@@ -312,7 +312,7 @@ def test_fashion_seed_has_till_demo_data(client, session) -> None:
     assert len(cards) == 5
     assert session.scalar(select(Product).where(Product.is_final_sale.is_(True))) is not None
     again = seed_fashion(session, get_settings(), user=user)
-    assert again == ["apparel models already exist (unchanged)", "till demo already seeded (unchanged)"]
+    assert again == ["catalogue already complete", "till demo already seeded (unchanged)"]
 
 
 def test_bundled_seed_policy_matches_the_server_default() -> None:

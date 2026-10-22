@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # One-time (and re-runnable) setup of an Ubuntu 24.04 server for the API and admin portal.
 #   scp -r deploy ubuntu@<server>:~/deploy && ssh ubuntu@<server> 'sudo bash ~/deploy/server-setup.sh'
+# Installs system packages once. Routine deploys only sync code, pip-install the API, migrate, and restart.
+# This host does not run the register: that is a Windows installer published by the release workflow.
 # Postgres users, /opt/ai-pos/.env.production, and tenants stay manual (deploy/README.md).
 set -euo pipefail
 

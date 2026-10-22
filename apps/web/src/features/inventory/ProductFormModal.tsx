@@ -15,6 +15,7 @@ import { ErrorNote, GhostButton, PrimaryButton, SelectField, TextField } from ".
 import { Modal } from "../../components/ui/Modal";
 import { Toggle } from "../../components/ui/Toggle";
 import { apiDelete, apiGet, apiPatch, apiUpload } from "../../lib/api";
+import { compressImageToWebp } from "../../lib/imageFile";
 import { useAuth } from "../../lib/auth";
 import { useCapabilities } from "../../lib/capabilities";
 import { useAutoCode } from "../../lib/codes";
@@ -215,7 +216,7 @@ export function ProductFormModal({
       }
       if (id !== null && photo.file) {
         const form = new FormData();
-        form.append("file", photo.file);
+        form.append("file", await compressImageToWebp(photo.file));
         const image = await apiUpload<ProductImage>(`/api/v1/inventory/products/${id}/images`, form);
         if (!image.is_primary) await apiPatch(`/api/v1/inventory/images/${image.id}`, { is_primary: true });
       } else if (id !== null && photo.removed && product !== null) {

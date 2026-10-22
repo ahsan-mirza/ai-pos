@@ -1,11 +1,28 @@
 import { useEffect, useState, type ReactNode } from "react";
+import { displayPhoto, subscribePhotos } from "./productImages";
 
-/** A product photo from the API's media URL; renders nothing when there is none or it cannot load (offline). */
+/** A product photo. Uses the copy saved on this till when one exists, and the category icon when it cannot load. */
 export function ProductPhoto({ src, className = "" }: { src: string | null | undefined; className?: string }) {
+  const [shown, setShown] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
-  useEffect(() => setFailed(false), [src]);
-  if (!src || failed) return null;
-  return <img src={src} alt="" loading="lazy" decoding="async" onError={() => setFailed(true)} className={className} />;
+  const [revision, setRevision] = useState(0);
+  useEffect(() => subscribePhotos(() => setRevision((current) => current + 1)), []);
+  useEffect(() => {
+    let cancelled = false;
+    setFailed(false);
+    if (!src) {
+      setShown(null);
+      return;
+    }
+    void displayPhoto(src).then((url) => {
+      if (!cancelled) setShown(url);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [src, revision]);
+  if (!shown || failed) return null;
+  return <img src={shown} alt="" loading="lazy" decoding="async" onError={() => setFailed(true)} className={className} />;
 }
 
 /** Top of a till card: the photo covers the frame, and a category icon shows until one loads. */

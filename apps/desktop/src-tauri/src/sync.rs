@@ -324,7 +324,7 @@ fn post_batch(config: &DesktopConfig, events: &[QueuedEvent]) -> Result<PushResp
     }
 }
 
-fn client() -> Result<reqwest::blocking::Client, String> {
+pub(crate) fn client() -> Result<reqwest::blocking::Client, String> {
     reqwest::blocking::Client::builder()
         .timeout(Duration::from_secs(20))
         .build()

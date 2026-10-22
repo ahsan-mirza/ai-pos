@@ -2,6 +2,7 @@ import type { ProductImage } from "@ai-pos/shared-types";
 import { ImagePlus, Loader2, Star, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { apiDelete, apiGet, apiPatch, apiUpload } from "../../lib/api";
+import { compressImageToWebp } from "../../lib/imageFile";
 import { errorMessage } from "../users/api";
 
 interface PhotoGalleryProps {
@@ -17,7 +18,7 @@ interface PhotoGalleryProps {
 
 const ACCEPT = "image/jpeg,image/png,image/webp";
 
-/** Upload, order and tag product photos. Uploads are resized on the server to 1200 px WebP with a thumbnail. */
+/** Upload, order and tag product photos. Each file is compressed to WebP here, then stored as WebP on the server. */
 export function PhotoGallery({ path, canManage, colours = [], fallbackUrl = null, onChange }: PhotoGalleryProps) {
   const [images, setImages] = useState<ProductImage[] | null>(null);
   const [colour, setColour] = useState("");
@@ -49,7 +50,7 @@ export function PhotoGallery({ path, canManage, colours = [], fallbackUrl = null
     try {
       for (const file of Array.from(files)) {
         const form = new FormData();
-        form.append("file", file);
+        form.append("file", await compressImageToWebp(file));
         if (colour) form.append("attribute_value", colour);
         await apiUpload<ProductImage>(path, form);
       }

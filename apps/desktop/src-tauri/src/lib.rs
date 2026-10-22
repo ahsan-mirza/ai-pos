@@ -7,6 +7,7 @@ mod documents;
 mod erp;
 mod held;
 mod margin;
+mod media_cache;
 mod menu;
 mod payments;
 mod restaurant;
@@ -29,7 +30,7 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
 use serde::Serialize;
-use tauri::Manager;
+use tauri::{Emitter, Manager};
 use tauri_plugin_opener::OpenerExt;
 
 use crate::auth::Session;
@@ -39,6 +40,7 @@ use crate::sync::DesktopConfig;
 pub struct AppState {
     db: Arc<Db>,
     config: DesktopConfig,
+    media_dir: PathBuf,
     terminal: terminal::TerminalStatus,
     terminal_path: PathBuf,
     flush_lock: Arc<Mutex<()>>,
@@ -438,10 +440,11 @@ async fn flush_sync(state: tauri::State<'_, AppState>) -> Result<sync::SyncRepor
 }
 
 #[tauri::command]
-async fn refresh_products(state: tauri::State<'_, AppState>) -> Result<CatalogSnapshot, String> {
+async fn refresh_products(app: tauri::AppHandle, state: tauri::State<'_, AppState>) -> Result<CatalogSnapshot, String> {
     let db = state.db.clone();
     let config = state.config.clone();
-    tauri::async_runtime::spawn_blocking(move || match sync::fetch_products(&config) {
+    let media_dir = state.media_dir.clone();
+    let snapshot = tauri::async_runtime::spawn_blocking(move || -> Result<CatalogSnapshot, String> { match sync::fetch_products(&config) {
         Ok(products) => {
             db.replace_products(&products)?;
             Ok(CatalogSnapshot {
@@ -455,9 +458,26 @@ async fn refresh_products(state: tauri::State<'_, AppState>) -> Result<CatalogSn
             source: "cache",
             message: Some(reason),
         }),
-    })
+    }})
     .await
-    .map_err(|err| err.to_string())?
+    .map_err(|err| err.to_string())??;
+    if snapshot.source == "api" {
+        let urls = media_cache::urls(&snapshot.products);
+        tauri::async_runtime::spawn(async move {
+            let saved = tauri::async_runtime::spawn_blocking(move || media_cache::download_missing(&media_dir, &urls))
+                .await
+                .unwrap_or(false);
+            if saved {
+                let _ = app.emit("product-images-cached", ());
+            }
+        });
+    }
+    Ok(snapshot)
+}
+
+#[tauri::command]
+fn local_product_image(state: tauri::State<AppState>, url: String) -> Option<String> {
+    media_cache::local_path(&state.media_dir, &url).map(|path| path.to_string_lossy().into_owned())
 }
 
 #[tauri::command]
@@ -527,9 +547,11 @@ pub fn run() {
                 std::fs::create_dir_all(parent)?;
             }
             let db = Db::open(&database).map_err(std::io::Error::other)?;
+            let media_dir = directory.join("media");
             app.manage(AppState {
                 db: Arc::new(db),
                 config,
+                media_dir,
                 terminal: status,
                 terminal_path,
                 flush_lock: Arc::new(Mutex::new(())),
@@ -560,6 +582,7 @@ pub fn run() {
             batch_status,
             flush_sync,
             refresh_products,
+            local_product_image,
             business_currency,
             approve_manager,
             refresh_customers,

@@ -15,6 +15,8 @@ permissions:
   contents: read
 
 jobs:
+  # API plus the static admin portal. System packages are installed once by deploy/server-setup.sh.
+  # The Windows register is release-pos.yml; this job does not build a desktop app.
   deploy:
     if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest

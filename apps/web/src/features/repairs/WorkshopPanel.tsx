@@ -2,6 +2,7 @@ import { formatMoney, type RepairDetail } from "@ai-pos/shared-types";
 import { useState } from "react";
 import { GhostButton, PrimaryButton, TextField } from "../../components/ui/Field";
 import { apiBlob, apiGet, apiPost, apiUpload } from "../../lib/api";
+import { compressImageToWebp } from "../../lib/imageFile";
 import { message, toCents } from "../customers/api";
 
 /** Estimate approval, deposit, photos, passcode and the job card on an open ticket. */
@@ -40,7 +41,7 @@ export function WorkshopPanel({
     setLocalError(null);
     const form = new FormData();
     form.append("kind", "INTAKE");
-    form.append("file", file);
+    form.append("file", await compressImageToWebp(file));
     try {
       await run(() => apiUpload<RepairDetail>(`/api/v1/repairs/${ticket.id}/attachments`, form), "Photo attached.");
     } catch (caught) {
