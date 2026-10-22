@@ -65,8 +65,14 @@ jobs:
           EOF
           ssh server 'echo connected to $(hostname)'
 
+      - name: Prepare the server
+        run: |
+          rsync -az deploy/ server:ai-pos-deploy/
+          ssh server "sudo -n bash ~/ai-pos-deploy/server-setup.sh"
+
       - name: Upload API and catalog
         run: |
+          ssh server "mkdir -p $APP_DIR/apps/api $APP_DIR/packages/catalog $WEB_DIR"
           rsync -az --delete \
             --exclude '.venv/' --exclude '.env*' --exclude 'storage/' \
             --exclude '__pycache__/' --exclude 'tests/' --exclude '*.db' \
@@ -74,12 +80,38 @@ jobs:
             apps/api/ server:$APP_DIR/apps/api/
           rsync -az --delete packages/catalog/ server:$APP_DIR/packages/catalog/
 
+      - name: Ensure production env
+        env:
+          ENV_PRODUCTION: ${{ secrets.ENV_PRODUCTION }}
+        run: |
+          if ssh server "test -f $APP_DIR/.env.production"; then
+            echo "Using the env file already on the server."
+            exit 0
+          fi
+          if [ -z "$ENV_PRODUCTION" ]; then
+            echo "Missing $APP_DIR/.env.production."
+            echo "Add the contents of the local .env.production file as the ENV_PRODUCTION secret on the production environment."
+            exit 1
+          fi
+          tmp=$(mktemp)
+          printf '%s\n' "$ENV_PRODUCTION" > "$tmp"
+          scp -q "$tmp" "server:$APP_DIR/.env.production"
+          rm -f "$tmp"
+          ssh server "chmod 600 $APP_DIR/.env.production"
+
+      - name: Ensure Postgres role and databases
+        run: ssh server "sudo -n bash ~/ai-pos-deploy/ensure-postgres.sh"
+
       - name: Install, migrate, restart
         run: |
           ssh server "APP_DIR=$APP_DIR bash -s" <<'EOF'
           set -euo pipefail
           test -f "$APP_DIR/.env.production" || { echo "Missing $APP_DIR/.env.production"; exit 1; }
           cd "$APP_DIR/apps/api"
+          if [ ! -x .venv/bin/pip ]; then
+            python3 -m venv .venv
+            .venv/bin/pip install -q --upgrade pip
+          fi
           .venv/bin/pip install -q -r requirements.txt
           export APP_ENV=production
           .venv/bin/python -m app.tenancy.cli init
