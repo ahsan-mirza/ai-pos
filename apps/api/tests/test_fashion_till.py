@@ -8,10 +8,10 @@ from pathlib import Path
 
 from sqlalchemy import select
 
+from app.core.config import get_settings
 from app.models import AuditLog
 from app.models.inventory import InventoryLevel
 from app.models.product import Product
-from app.core.config import get_settings
 from app.models.store_credit import StoreCredit
 from app.models.user import User
 from app.schemas.pos_policy import returns_preset

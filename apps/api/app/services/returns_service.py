@@ -380,7 +380,10 @@ def apply_return(db: Session, settings: Settings, payload: dict[str, object]) ->
                 raise SyncRejected("Restocking fee does not match the return policy.")
             fee_waived = True
         discounted = discount_share(
-            (item.discount_cents or 0) + (item.manual_discount_cents or 0), item.quantity, line.quantity, previous.quantity
+            (item.discount_cents or 0) + (item.manual_discount_cents or 0),
+            item.quantity,
+            line.quantity,
+            previous.quantity,
         )
         line_subtotal = weighed.amount(line.quantity, line.unit_price_cents, scale) - discounted
         if line.refund_cents != line_subtotal + line.tax_refund_cents - line.restocking_fee_cents:

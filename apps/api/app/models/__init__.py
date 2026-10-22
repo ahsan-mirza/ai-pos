@@ -19,8 +19,8 @@ from app.models.expense import Expense, PettyCashEntry
 from app.models.inventory import InventoryLevel, StockMovement
 from app.models.kitchen import KitchenStation, KitchenTicket, KitchenTicketItem
 from app.models.loyalty import LoyaltyEntry
-from app.models.markdown import MarkdownEvent, PriceChange
 from app.models.margin import MarginPolicy
+from app.models.markdown import MarkdownEvent, PriceChange
 from app.models.menu import ComboSlot, ComboSlotOption, ModifierGroup, ModifierOption, ProductModifierGroup
 from app.models.messaging import MessageTemplate, OutboundMessage
 from app.models.payables import SupplierBill, SupplierBillLine, SupplierPayment, SupplierPaymentAllocation

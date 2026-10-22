@@ -255,7 +255,15 @@ def journal(db: Session, start: date, end: date, store_id: uuid.UUID | None) -> 
         lines.append(JournalLine(day, "SALES", ref, chart["revenue"][0], credit=net, source=source))
         if gift_cards:
             lines.append(
-                JournalLine(day, "SALES", ref, chart["gift_card"][0], credit=gift_cards, memo="gift card", source=source)
+                JournalLine(
+                    day,
+                    "SALES",
+                    ref,
+                    chart["gift_card"][0],
+                    credit=gift_cards,
+                    memo="gift card",
+                    source=source,
+                )
             )
         if service:
             lines.append(JournalLine(day, "SALES", ref, chart["service_charge"][0], credit=service, source=source))

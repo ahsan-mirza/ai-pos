@@ -219,7 +219,10 @@ def _registration_out(db: Session, settings: Settings, rows: list[WarrantyRegist
     repair_ids = {row.repair_ticket_id for row in rows if row.repair_ticket_id}
     repairs = (
         {
-            row.id: (f"Repair {str(row.id)[:8].upper()}: {row.device_model}", decrypt_value(row.identifier_encrypted, settings))
+            row.id: (
+                f"Repair {str(row.id)[:8].upper()}: {row.device_model}",
+                decrypt_value(row.identifier_encrypted, settings),
+            )
             for row in db.scalars(select(RepairTicket).where(RepairTicket.id.in_(repair_ids)))
         }
         if repair_ids

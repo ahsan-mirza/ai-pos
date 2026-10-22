@@ -55,6 +55,12 @@ def _money(cents: int, currency: str) -> str:
     return f"{currency} {cents / 100:,.2f}"
 
 
+def _shelf_cents(cents: int, tax_category: str, tax) -> int:
+    if tax.enforced and not tax.prices_include_vat:
+        return line_tax(cents, 1, tax.rate_for(tax_category), inclusive=False).line_total_cents
+    return cents
+
+
 def _variant_text(attributes: dict[str, str] | None) -> str:
     return " · ".join(value for value in (attributes or {}).values())
 
@@ -64,16 +70,11 @@ def label_data(db: Session, products: list[tuple[Product, int]], show_price: boo
     currency = business_currency(db)
     labels: list[LabelData] = []
     for product, copies in products:
-        def shelf_of(cents: int) -> int:
-            if tax.enforced and not tax.prices_include_vat:
-                return line_tax(cents, 1, tax.rate_for(product.tax_category), inclusive=False).line_total_cents
-            return cents
-
-        shelf = shelf_of(product.price_cents)
+        shelf = _shelf_cents(product.price_cents, product.tax_category, tax)
         price = _money(shelf, currency) if show_price and not product.is_open_price else None
         was = product.compare_at_cents
         if price and was is not None and was > product.price_cents:
-            price = f"{price}  was {_money(shelf_of(was), currency)}"
+            price = f"{price}  was {_money(_shelf_cents(was, product.tax_category, tax), currency)}"
         data = LabelData(
             name=product.name,
             variant=_variant_text(product.variant_attributes),
