@@ -28,13 +28,20 @@ pub fn migrate(conn: &Connection) -> Result<(), String> {
     .map_err(|err| err.to_string())?;
     // Customers added at this register stay in the cache until the server's list includes them.
     let has_local_flag = conn
-        .query_row("SELECT 1 FROM pragma_table_info('customers') WHERE name = 'local_only'", [], |_| Ok(()))
+        .query_row(
+            "SELECT 1 FROM pragma_table_info('customers') WHERE name = 'local_only'",
+            [],
+            |_| Ok(()),
+        )
         .optional()
         .map_err(|err| err.to_string())?
         .is_some();
     if !has_local_flag {
-        conn.execute("ALTER TABLE customers ADD COLUMN local_only INTEGER NOT NULL DEFAULT 0", [])
-            .map_err(|err| err.to_string())?;
+        conn.execute(
+            "ALTER TABLE customers ADD COLUMN local_only INTEGER NOT NULL DEFAULT 0",
+            [],
+        )
+        .map_err(|err| err.to_string())?;
     }
     Ok(())
 }
@@ -86,12 +93,22 @@ pub fn create(db: &Db, session: &Session, input: &NewCustomer) -> Result<Value, 
     if wholesale && company.is_none() {
         return Err("Wholesale customers need a company name.".into());
     }
-    let trusted = session.user.permissions.iter().any(|item| item == CUSTOMERS_MANAGE);
+    let trusted = session
+        .user
+        .permissions
+        .iter()
+        .any(|item| item == CUSTOMERS_MANAGE);
     let (tier, credit, terms) = if wholesale && trusted {
-        if !PRICE_TIERS.contains(&input.price_tier.as_str()) || !PAYMENT_TERMS.contains(&input.payment_terms.as_str()) {
+        if !PRICE_TIERS.contains(&input.price_tier.as_str())
+            || !PAYMENT_TERMS.contains(&input.payment_terms.as_str())
+        {
             return Err("Choose a price tier and payment terms.".into());
         }
-        (input.price_tier.clone(), input.credit_limit_cents.clamp(0, 10_000_000_000), input.payment_terms.clone())
+        (
+            input.price_tier.clone(),
+            input.credit_limit_cents.clamp(0, 10_000_000_000),
+            input.payment_terms.clone(),
+        )
     } else {
         ("RETAIL".to_string(), 0, "DUE_ON_RECEIPT".to_string())
     };
@@ -201,7 +218,14 @@ pub fn refresh(db: &Db, config: &DesktopConfig) -> Result<CustomerSnapshot, Stri
 
 /// Matches name, company, code, phone, or TRN. Balances include on-account sales still waiting to sync.
 pub fn search(db: &Db, query: &str, limit: i64) -> Result<Vec<Value>, String> {
-    let like = format!("%{}%", query.trim().to_lowercase().replace('%', "").replace('_', ""));
+    let like = format!(
+        "%{}%",
+        query
+            .trim()
+            .to_lowercase()
+            .replace('%', "")
+            .replace('_', "")
+    );
     let rows: Vec<String> = db.read(|conn| {
         let mut statement = conn
             .prepare(
@@ -212,7 +236,8 @@ pub fn search(db: &Db, query: &str, limit: i64) -> Result<Vec<Value>, String> {
         let rows = statement
             .query_map(params![like, limit], |row| row.get::<_, String>(0))
             .map_err(|err| err.to_string())?;
-        rows.collect::<rusqlite::Result<Vec<_>>>().map_err(|err| err.to_string())
+        rows.collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(|err| err.to_string())
     })?;
     let customers = rows
         .iter()
@@ -226,13 +251,27 @@ fn with_pending(db: &Db, customers: Vec<Value>) -> Result<Vec<Value>, String> {
     Ok(customers
         .into_iter()
         .map(|mut customer| {
-            let id = customer.get("id").and_then(Value::as_str).unwrap_or_default().to_string();
+            let id = customer
+                .get("id")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_string();
             let extra = pending.get(&id).copied().unwrap_or(0);
             if let Some(object) = customer.as_object_mut() {
-                let balance = object.get("current_balance_cents").and_then(Value::as_i64).unwrap_or(0) + extra;
-                let limit = object.get("credit_limit_cents").and_then(Value::as_i64).unwrap_or(0);
+                let balance = object
+                    .get("current_balance_cents")
+                    .and_then(Value::as_i64)
+                    .unwrap_or(0)
+                    + extra;
+                let limit = object
+                    .get("credit_limit_cents")
+                    .and_then(Value::as_i64)
+                    .unwrap_or(0);
                 object.insert("current_balance_cents".into(), Value::from(balance));
-                object.insert("available_credit_cents".into(), Value::from(limit - balance));
+                object.insert(
+                    "available_credit_cents".into(),
+                    Value::from(limit - balance),
+                );
                 object.insert("pending_on_account_cents".into(), Value::from(extra));
             }
             customer
@@ -261,12 +300,19 @@ fn pending_on_account(db: &Db) -> Result<HashMap<String, i64>, String> {
 }
 
 fn search_text(customer: &Value) -> String {
-    ["name", "company_name", "code", "phone", "trn_vat_number", "email"]
-        .iter()
-        .filter_map(|field| customer.get(*field).and_then(Value::as_str))
-        .collect::<Vec<_>>()
-        .join(" ")
-        .to_lowercase()
+    [
+        "name",
+        "company_name",
+        "code",
+        "phone",
+        "trn_vat_number",
+        "email",
+    ]
+    .iter()
+    .filter_map(|field| customer.get(*field).and_then(Value::as_str))
+    .collect::<Vec<_>>()
+    .join(" ")
+    .to_lowercase()
 }
 
 fn fetch(config: &DesktopConfig) -> Result<Vec<Value>, String> {

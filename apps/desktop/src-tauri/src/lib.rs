@@ -10,10 +10,10 @@ mod margin;
 mod media_cache;
 mod menu;
 mod payments;
-mod restaurant;
-mod retail;
 mod printer;
 mod quotes;
+mod restaurant;
+mod retail;
 mod returns;
 mod scale;
 mod search_index;
@@ -51,7 +51,10 @@ pub struct AppState {
 
 impl AppState {
     fn session(&self) -> Result<Option<Session>, String> {
-        self.session.lock().map(|guard| guard.clone()).map_err(|err| err.to_string())
+        self.session
+            .lock()
+            .map(|guard| guard.clone())
+            .map_err(|err| err.to_string())
     }
 }
 
@@ -63,7 +66,11 @@ struct CatalogSnapshot {
 }
 
 #[tauri::command]
-async fn pin_login(state: tauri::State<'_, AppState>, username: String, pin: String) -> Result<Session, String> {
+async fn pin_login(
+    state: tauri::State<'_, AppState>,
+    username: String,
+    pin: String,
+) -> Result<Session, String> {
     let db = state.db.clone();
     let config = state.config.clone();
     let session = tauri::async_runtime::spawn_blocking(move || {
@@ -91,8 +98,14 @@ fn lock_session(state: tauri::State<AppState>) -> Result<(), String> {
 }
 
 #[tauri::command]
-fn search_products(state: tauri::State<AppState>, query: String, limit: Option<i64>) -> Result<Vec<db::SearchHit>, String> {
-    state.db.search_products(&query, limit.unwrap_or(50).clamp(1, 100))
+fn search_products(
+    state: tauri::State<AppState>,
+    query: String,
+    limit: Option<i64>,
+) -> Result<Vec<db::SearchHit>, String> {
+    state
+        .db
+        .search_products(&query, limit.unwrap_or(50).clamp(1, 100))
 }
 
 #[tauri::command]
@@ -117,15 +130,28 @@ fn enqueue_events(
     let Some(session) = state.session()? else {
         return Err("Unlock the register before charging.".into());
     };
-    if events.iter().any(|event| event.entity_type == "sale_return") {
-        return Err("Returns are queued with enqueue_return so manager approval is checked.".into());
+    if events
+        .iter()
+        .any(|event| event.entity_type == "sale_return")
+    {
+        return Err(
+            "Returns are queued with enqueue_return so manager approval is checked.".into(),
+        );
     }
     for event in events.iter().filter(|event| event.entity_type == "sale") {
-        let cashier = event.payload.get("cashier_id").and_then(serde_json::Value::as_str);
+        let cashier = event
+            .payload
+            .get("cashier_id")
+            .and_then(serde_json::Value::as_str);
         if cashier != Some(session.user.id.as_str()) {
-            return Err("The sale must be attributed to the cashier who unlocked this register.".into());
+            return Err(
+                "The sale must be attributed to the cashier who unlocked this register.".into(),
+            );
         }
-        let store = event.payload.get("store_id").and_then(serde_json::Value::as_str);
+        let store = event
+            .payload
+            .get("store_id")
+            .and_then(serde_json::Value::as_str);
         if store != Some(state.config.store_id.as_str()) {
             return Err("The sale must be booked to this terminal's branch (STORE_ID).".into());
         }
@@ -148,7 +174,15 @@ async fn approve_manager(
     let config = state.config.clone();
     let approvals = state.checkout_approvals.clone();
     tauri::async_runtime::spawn_blocking(move || {
-        let approver = checkout_approvals::approve(&db, &config, &approvals, &session, &username, &pin, &permission)?;
+        let approver = checkout_approvals::approve(
+            &db,
+            &config,
+            &approvals,
+            &session,
+            &username,
+            &pin,
+            &permission,
+        )?;
         audit::record_manager_override(
             &db,
             &session,
@@ -164,7 +198,9 @@ async fn approve_manager(
 }
 
 #[tauri::command]
-async fn refresh_customers(state: tauri::State<'_, AppState>) -> Result<customers::CustomerSnapshot, String> {
+async fn refresh_customers(
+    state: tauri::State<'_, AppState>,
+) -> Result<customers::CustomerSnapshot, String> {
     let db = state.db.clone();
     let config = state.config.clone();
     tauri::async_runtime::spawn_blocking(move || customers::refresh(&db, &config))
@@ -182,7 +218,10 @@ fn search_customers(
 }
 
 #[tauri::command]
-fn create_customer(state: tauri::State<AppState>, input: customers::NewCustomer) -> Result<serde_json::Value, String> {
+fn create_customer(
+    state: tauri::State<AppState>,
+    input: customers::NewCustomer,
+) -> Result<serde_json::Value, String> {
     let Some(session) = state.session()? else {
         return Err("Unlock the register before adding a customer.".into());
     };
@@ -190,7 +229,9 @@ fn create_customer(state: tauri::State<AppState>, input: customers::NewCustomer)
 }
 
 #[tauri::command]
-async fn refresh_serials(state: tauri::State<'_, AppState>) -> Result<serials::SerialRefresh, String> {
+async fn refresh_serials(
+    state: tauri::State<'_, AppState>,
+) -> Result<serials::SerialRefresh, String> {
     let db = state.db.clone();
     let config = state.config.clone();
     tauri::async_runtime::spawn_blocking(move || serials::refresh(&db, &config))
@@ -205,7 +246,12 @@ fn available_serials(
     limit: Option<i64>,
     exclude: Option<Vec<String>>,
 ) -> Result<Vec<serials::SerialRow>, String> {
-    serials::available(&state.db, &product_id, limit.unwrap_or(100).clamp(1, 1000), &exclude.unwrap_or_default())
+    serials::available(
+        &state.db,
+        &product_id,
+        limit.unwrap_or(100).clamp(1, 1000),
+        &exclude.unwrap_or_default(),
+    )
 }
 
 #[tauri::command]
@@ -226,14 +272,25 @@ fn check_serials(
 }
 
 #[tauri::command]
-async fn create_quote(state: tauri::State<'_, AppState>, payload: serde_json::Value) -> Result<serde_json::Value, String> {
+async fn create_quote(
+    state: tauri::State<'_, AppState>,
+    payload: serde_json::Value,
+) -> Result<serde_json::Value, String> {
     let Some(session) = state.session()? else {
         return Err("Unlock the register before saving a quote.".into());
     };
-    if payload.get("cashier_id").and_then(serde_json::Value::as_str) != Some(session.user.id.as_str()) {
-        return Err("The quote must be attributed to the cashier who unlocked this register.".into());
+    if payload
+        .get("cashier_id")
+        .and_then(serde_json::Value::as_str)
+        != Some(session.user.id.as_str())
+    {
+        return Err(
+            "The quote must be attributed to the cashier who unlocked this register.".into(),
+        );
     }
-    if payload.get("store_id").and_then(serde_json::Value::as_str) != Some(state.config.store_id.as_str()) {
+    if payload.get("store_id").and_then(serde_json::Value::as_str)
+        != Some(state.config.store_id.as_str())
+    {
         return Err("The quote must be booked to this terminal's branch (STORE_ID).".into());
     }
     let event = db::QueuedEvent {
@@ -259,10 +316,16 @@ async fn open_quote_pdf(
     number: String,
 ) -> Result<String, String> {
     let config = state.config.clone();
-    let directory = app.path().app_data_dir().map_err(|err| err.to_string())?.join("quotes");
-    let path = tauri::async_runtime::spawn_blocking(move || quotes::download_pdf(&config, &quote_id, &number, &directory))
-        .await
-        .map_err(|err| err.to_string())??;
+    let directory = app
+        .path()
+        .app_data_dir()
+        .map_err(|err| err.to_string())?
+        .join("quotes");
+    let path = tauri::async_runtime::spawn_blocking(move || {
+        quotes::download_pdf(&config, &quote_id, &number, &directory)
+    })
+    .await
+    .map_err(|err| err.to_string())??;
     app.opener()
         .open_path(path.clone(), None::<&str>)
         .map_err(|err| format!("Saved to {path} but could not open it: {err}"))?;
@@ -323,19 +386,31 @@ async fn deactivate_terminal(
     pin: String,
 ) -> Result<(), String> {
     if state.terminal.source != "activation" {
-        return Err("This register was configured from the developer .env and has no activation to remove.".into());
+        return Err(
+            "This register was configured from the developer .env and has no activation to remove."
+                .into(),
+        );
     }
     let pending = state.db.pending_count()?;
     if pending > 0 {
-        return Err(format!("{pending} sale(s) are still waiting to sync. Reconnect and sync before deactivating."));
+        return Err(format!(
+            "{pending} sale(s) are still waiting to sync. Reconnect and sync before deactivating."
+        ));
     }
     let db = state.db.clone();
     let config = state.config.clone();
     let path = state.terminal_path.clone();
     tauri::async_runtime::spawn_blocking(move || {
         let manager = auth::pin_login(&db, &config, &username, &pin)?.user;
-        if !manager.permissions.iter().any(|item| item == "devices:manage") {
-            return Err(format!("{} cannot deactivate registers.", manager.full_name));
+        if !manager
+            .permissions
+            .iter()
+            .any(|item| item == "devices:manage")
+        {
+            return Err(format!(
+                "{} cannot deactivate registers.",
+                manager.full_name
+            ));
         }
         terminal::remove(&path)
     })
@@ -360,7 +435,10 @@ async fn check_branches(
 }
 
 #[tauri::command]
-async fn lookup_receipt(state: tauri::State<'_, AppState>, code: String) -> Result<returns::ReceiptLookup, String> {
+async fn lookup_receipt(
+    state: tauri::State<'_, AppState>,
+    code: String,
+) -> Result<returns::ReceiptLookup, String> {
     let db = state.db.clone();
     let config = state.config.clone();
     tauri::async_runtime::spawn_blocking(move || returns::lookup(&db, &config, &code))
@@ -409,7 +487,10 @@ fn enqueue_return(
 }
 
 #[tauri::command]
-fn recent_returns(state: tauri::State<AppState>, limit: Option<i64>) -> Result<Vec<returns::LocalReturn>, String> {
+fn recent_returns(
+    state: tauri::State<AppState>,
+    limit: Option<i64>,
+) -> Result<Vec<returns::LocalReturn>, String> {
     returns::recent(&state.db, limit.unwrap_or(20).clamp(1, 100))
 }
 
@@ -419,7 +500,10 @@ fn pending_count(state: tauri::State<AppState>) -> Result<i64, String> {
 }
 
 #[tauri::command]
-fn batch_status(state: tauri::State<AppState>, batch_id: String) -> Result<Option<db::BatchStatus>, String> {
+fn batch_status(
+    state: tauri::State<AppState>,
+    batch_id: String,
+) -> Result<Option<db::BatchStatus>, String> {
     state.db.batch_status(&batch_id)
 }
 
@@ -440,33 +524,41 @@ async fn flush_sync(state: tauri::State<'_, AppState>) -> Result<sync::SyncRepor
 }
 
 #[tauri::command]
-async fn refresh_products(app: tauri::AppHandle, state: tauri::State<'_, AppState>) -> Result<CatalogSnapshot, String> {
+async fn refresh_products(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, AppState>,
+) -> Result<CatalogSnapshot, String> {
     let db = state.db.clone();
     let config = state.config.clone();
     let media_dir = state.media_dir.clone();
-    let snapshot = tauri::async_runtime::spawn_blocking(move || -> Result<CatalogSnapshot, String> { match sync::fetch_products(&config) {
-        Ok(products) => {
-            db.replace_products(&products)?;
-            Ok(CatalogSnapshot {
-                products,
-                source: "api",
-                message: None,
-            })
-        }
-        Err(reason) => Ok(CatalogSnapshot {
-            products: db.list_products()?,
-            source: "cache",
-            message: Some(reason),
-        }),
-    }})
-    .await
-    .map_err(|err| err.to_string())??;
+    let snapshot =
+        tauri::async_runtime::spawn_blocking(move || -> Result<CatalogSnapshot, String> {
+            match sync::fetch_products(&config) {
+                Ok(products) => {
+                    db.replace_products(&products)?;
+                    Ok(CatalogSnapshot {
+                        products,
+                        source: "api",
+                        message: None,
+                    })
+                }
+                Err(reason) => Ok(CatalogSnapshot {
+                    products: db.list_products()?,
+                    source: "cache",
+                    message: Some(reason),
+                }),
+            }
+        })
+        .await
+        .map_err(|err| err.to_string())??;
     if snapshot.source == "api" {
         let urls = media_cache::urls(&snapshot.products);
         tauri::async_runtime::spawn(async move {
-            let saved = tauri::async_runtime::spawn_blocking(move || media_cache::download_missing(&media_dir, &urls))
-                .await
-                .unwrap_or(false);
+            let saved = tauri::async_runtime::spawn_blocking(move || {
+                media_cache::download_missing(&media_dir, &urls)
+            })
+            .await
+            .unwrap_or(false);
             if saved {
                 let _ = app.emit("product-images-cached", ());
             }
@@ -481,7 +573,9 @@ fn local_product_image(state: tauri::State<AppState>, url: String) -> Option<Str
 }
 
 #[tauri::command]
-async fn business_currency(state: tauri::State<'_, AppState>) -> Result<settings::CurrencySnapshot, String> {
+async fn business_currency(
+    state: tauri::State<'_, AppState>,
+) -> Result<settings::CurrencySnapshot, String> {
     let db = state.db.clone();
     let config = state.config.clone();
     tauri::async_runtime::spawn_blocking(move || settings::refresh(&db, &config))
@@ -490,7 +584,10 @@ async fn business_currency(state: tauri::State<'_, AppState>) -> Result<settings
 }
 
 #[tauri::command]
-fn log_audit_event(state: tauri::State<AppState>, event: audit::AuditInput) -> Result<String, String> {
+fn log_audit_event(
+    state: tauri::State<AppState>,
+    event: audit::AuditInput,
+) -> Result<String, String> {
     let Some(session) = state.session()? else {
         return Err("Unlock the register first.".into());
     };
@@ -503,7 +600,10 @@ fn audit_status(state: tauri::State<AppState>) -> Result<audit::AuditStatus, Str
 }
 
 #[tauri::command]
-fn recent_audit_events(state: tauri::State<AppState>, limit: Option<i64>) -> Result<Vec<audit::LocalAuditEvent>, String> {
+fn recent_audit_events(
+    state: tauri::State<AppState>,
+    limit: Option<i64>,
+) -> Result<Vec<audit::LocalAuditEvent>, String> {
     audit::recent(&state.db, limit.unwrap_or(20).clamp(1, 200))
 }
 
@@ -539,7 +639,11 @@ pub fn run() {
                             };
                             (config, status, directory.join("ai-pos.db"))
                         }
-                        None => (DesktopConfig::unactivated(), terminal::TerminalStatus::none(), directory.join("ai-pos.db")),
+                        None => (
+                            DesktopConfig::unactivated(),
+                            terminal::TerminalStatus::none(),
+                            directory.join("ai-pos.db"),
+                        ),
                     }
                 }
             };

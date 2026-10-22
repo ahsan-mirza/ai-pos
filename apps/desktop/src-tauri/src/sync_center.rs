@@ -76,7 +76,13 @@ pub fn resolve(db: &Db, session: &Session, batch_id: &str, action: &str) -> Resu
         "discard" => ("rejected", "discarded"),
         _ => return Err("Unknown action.".into()),
     };
-    if action == "discard" && !session.user.permissions.iter().any(|item| item == RESOLVE_PERMISSION) {
+    if action == "discard"
+        && !session
+            .user
+            .permissions
+            .iter()
+            .any(|item| item == RESOLVE_PERMISSION)
+    {
         return Err("Only a manager can discard a rejected transaction.".into());
     }
     db.transaction(|tx| {

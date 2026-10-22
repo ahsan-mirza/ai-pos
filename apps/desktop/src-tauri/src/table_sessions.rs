@@ -176,7 +176,12 @@ pub fn save(db: &Db, session: &TableSession) -> Result<TableSession, String> {
 pub fn cache_event(db: &Db, store_id: &str, payload: &str) -> Result<(), String> {
     let event_type = serde_json::from_str::<serde_json::Value>(payload)
         .ok()
-        .and_then(|value| value.get("type").and_then(|item| item.as_str()).map(str::to_string))
+        .and_then(|value| {
+            value
+                .get("type")
+                .and_then(|item| item.as_str())
+                .map(str::to_string)
+        })
         .unwrap_or_else(|| "UNKNOWN".to_string());
     db.transaction(|tx| {
         tx.execute(

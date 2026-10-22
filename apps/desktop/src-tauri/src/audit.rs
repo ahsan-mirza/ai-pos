@@ -111,7 +111,14 @@ pub fn new_id() -> String {
     bytes[6] = (bytes[6] & 0x0f) | 0x40;
     bytes[8] = (bytes[8] & 0x3f) | 0x80;
     let hex: String = bytes.iter().map(|byte| format!("{byte:02x}")).collect();
-    format!("{}-{}-{}-{}-{}", &hex[0..8], &hex[8..12], &hex[12..16], &hex[16..20], &hex[20..32])
+    format!(
+        "{}-{}-{}-{}-{}",
+        &hex[0..8],
+        &hex[8..12],
+        &hex[12..16],
+        &hex[16..20],
+        &hex[20..32]
+    )
 }
 
 fn clean(text: Option<&str>) -> Option<String> {
@@ -124,24 +131,36 @@ fn valid_key(value: &str, max: usize, allowed: impl Fn(char) -> bool) -> bool {
 }
 
 /// Validates and stores one event. Mirrors the server's rules so a queued event is never rejected later.
-pub fn record(db: &Db, session: &Session, store_id: &str, input: AuditInput) -> Result<String, String> {
+pub fn record(
+    db: &Db,
+    session: &Session,
+    store_id: &str,
+    input: AuditInput,
+) -> Result<String, String> {
     let reason = clean(input.reason_notes.as_deref());
     if REASON_REQUIRED.contains(&input.action_type.as_str())
         && reason.as_deref().map_or(0, |text| text.chars().count()) < REASON_MIN_CHARS
     {
         return Err("Enter a reason for this action.".into());
     }
-    if reason.as_deref().is_some_and(|text| text.chars().count() > 1000) {
+    if reason
+        .as_deref()
+        .is_some_and(|text| text.chars().count() > 1000)
+    {
         return Err("Keep the reason under 1000 characters.".into());
     }
-    if !valid_key(&input.action, 64, |c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_' || c == '.') {
+    if !valid_key(&input.action, 64, |c| {
+        c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_' || c == '.'
+    }) {
         return Err("Invalid audit action key.".into());
     }
     if !valid_key(&input.target_entity, 40, |c| c.is_ascii_alphabetic()) {
         return Err("Invalid audit target.".into());
     }
     let id = new_id();
-    let details = input.details.unwrap_or_else(|| Value::Object(Default::default()));
+    let details = input
+        .details
+        .unwrap_or_else(|| Value::Object(Default::default()));
     if !details.is_object() {
         return Err("Audit details must be an object.".into());
     }
@@ -174,7 +193,12 @@ pub fn record(db: &Db, session: &Session, store_id: &str, input: AuditInput) -> 
 }
 
 /// Entry point for the checkout UI; only register-floor actions are accepted from it.
-pub fn record_from_ui(db: &Db, session: &Session, store_id: &str, input: AuditInput) -> Result<String, String> {
+pub fn record_from_ui(
+    db: &Db,
+    session: &Session,
+    store_id: &str,
+    input: AuditInput,
+) -> Result<String, String> {
     if !UI_ACTIONS.contains(&input.action_type.as_str()) {
         return Err("This action cannot be logged from the register screen.".into());
     }
@@ -235,7 +259,9 @@ pub fn record_manager_override(
             approver_id: Some(approver_id.to_string()),
             old_values: None,
             new_values: None,
-            details: Some(serde_json::json!({ "permission": permission, "approver_name": approver_name })),
+            details: Some(
+                serde_json::json!({ "permission": permission, "approver_name": approver_name }),
+            ),
         },
     )
     .map(|_| ())
@@ -298,7 +324,8 @@ fn pending(conn: &Connection) -> Result<Vec<(String, Value)>, String> {
              FROM audit_events WHERE status = 'pending' ORDER BY occurred_at LIMIT ?1",
         )
         .map_err(|err| err.to_string())?;
-    let parse = |text: Option<String>| text.and_then(|value| serde_json::from_str::<Value>(&value).ok());
+    let parse =
+        |text: Option<String>| text.and_then(|value| serde_json::from_str::<Value>(&value).ok());
     let rows = statement
         .query_map(params![BATCH_SIZE], |row| {
             let id: String = row.get(0)?;
@@ -320,7 +347,8 @@ fn pending(conn: &Connection) -> Result<Vec<(String, Value)>, String> {
             Ok((id, event))
         })
         .map_err(|err| err.to_string())?;
-    rows.collect::<rusqlite::Result<Vec<_>>>().map_err(|err| err.to_string())
+    rows.collect::<rusqlite::Result<Vec<_>>>()
+        .map_err(|err| err.to_string())
 }
 
 fn mark(db: &Db, ids: &[String], state: &str, error: Option<&str>) -> Result<(), String> {
@@ -339,7 +367,12 @@ fn mark(db: &Db, ids: &[String], state: &str, error: Option<&str>) -> Result<(),
 fn error_message(body: &str, status: u16) -> String {
     serde_json::from_str::<Value>(body)
         .ok()
-        .and_then(|value| value.pointer("/error/message").and_then(Value::as_str).map(str::to_string))
+        .and_then(|value| {
+            value
+                .pointer("/error/message")
+                .and_then(Value::as_str)
+                .map(str::to_string)
+        })
         .unwrap_or_else(|| format!("Audit sync failed ({status})."))
 }
 
@@ -415,10 +448,24 @@ mod tests {
             [],
         )
         .unwrap();
-        assert!(conn.execute("UPDATE audit_events SET reason_notes = 'edited' WHERE id = 'e1'", []).is_err());
-        assert!(conn.execute("DELETE FROM audit_events WHERE id = 'e1'", []).is_err());
-        conn.execute("UPDATE audit_events SET status = 'synced', attempts = 1 WHERE id = 'e1'", [])
-            .unwrap();
-        assert_eq!(conn.execute("DELETE FROM audit_events WHERE id = 'e1'", []).unwrap(), 1);
+        assert!(conn
+            .execute(
+                "UPDATE audit_events SET reason_notes = 'edited' WHERE id = 'e1'",
+                []
+            )
+            .is_err());
+        assert!(conn
+            .execute("DELETE FROM audit_events WHERE id = 'e1'", [])
+            .is_err());
+        conn.execute(
+            "UPDATE audit_events SET status = 'synced', attempts = 1 WHERE id = 'e1'",
+            [],
+        )
+        .unwrap();
+        assert_eq!(
+            conn.execute("DELETE FROM audit_events WHERE id = 'e1'", [])
+                .unwrap(),
+            1
+        );
     }
 }

@@ -83,9 +83,12 @@ struct ErrorDetail {
 
 pub fn lookup(db: &Db, config: &DesktopConfig, code: &str) -> Result<ReceiptLookup, String> {
     let code = code.trim();
-    let valid = (8..=64).contains(&code.len()) && code.chars().all(|c| c.is_ascii_alphanumeric() || c == '-');
+    let valid = (8..=64).contains(&code.len())
+        && code.chars().all(|c| c.is_ascii_alphanumeric() || c == '-');
     if !valid {
-        return Err("Enter a receipt barcode or an invoice number of at least 8 characters.".into());
+        return Err(
+            "Enter a receipt barcode or an invoice number of at least 8 characters.".into(),
+        );
     }
     match fetch_receipt(config, code) {
         Remote::Found(receipt) => {
@@ -105,12 +108,17 @@ pub fn lookup(db: &Db, config: &DesktopConfig, code: &str) -> Result<ReceiptLook
         }
         Remote::Refused(message) => Err(message),
         Remote::NotFound(message) => offline_lookup(db, code, None)?.ok_or(message),
-        Remote::Unavailable(reason) => offline_lookup(db, code, Some(reason))?
-            .ok_or_else(|| "The server is unreachable and this receipt is not cached on this register.".into()),
+        Remote::Unavailable(reason) => offline_lookup(db, code, Some(reason))?.ok_or_else(|| {
+            "The server is unreachable and this receipt is not cached on this register.".into()
+        }),
     }
 }
 
-fn offline_lookup(db: &Db, code: &str, reason: Option<String>) -> Result<Option<ReceiptLookup>, String> {
+fn offline_lookup(
+    db: &Db,
+    code: &str,
+    reason: Option<String>,
+) -> Result<Option<ReceiptLookup>, String> {
     let lowered = code.to_lowercase();
     let prefix = format!("{lowered}%");
     let cached: Vec<(String, String, String, i64)> = db.read(|conn| {
@@ -129,10 +137,14 @@ fn offline_lookup(db: &Db, code: &str, reason: Option<String>) -> Result<Option<
         return Err("More than one cached sale matches. Scan the full receipt barcode.".into());
     }
     if let Some((sale_id, payload, pending_ids, fetched_at)) = cached.into_iter().next() {
-        let excluded: HashSet<String> = serde_json::from_str(&pending_ids).map_err(|err| err.to_string())?;
+        let excluded: HashSet<String> =
+            serde_json::from_str(&pending_ids).map_err(|err| err.to_string())?;
         let local = local_returns_for(db, &sale_id)?
             .into_iter()
-            .filter(|item| item.status != "rejected" && (item.created_at > fetched_at || excluded.contains(&item.id)))
+            .filter(|item| {
+                item.status != "rejected"
+                    && (item.created_at > fetched_at || excluded.contains(&item.id))
+            })
             .collect();
         return Ok(Some(ReceiptLookup {
             source: "cache",
@@ -158,7 +170,9 @@ fn offline_lookup(db: &Db, code: &str, reason: Option<String>) -> Result<Option<
         rows.collect::<rusqlite::Result<Vec<_>>>().map_err(|err| err.to_string())
     })?;
     if queued.len() > 1 {
-        return Err("More than one sale on this register matches. Scan the full receipt barcode.".into());
+        return Err(
+            "More than one sale on this register matches. Scan the full receipt barcode.".into(),
+        );
     }
     let Some(payload) = queued.into_iter().next() else {
         return Ok(None);
@@ -281,7 +295,10 @@ pub fn approve(
     }
     if let (Some(store), Some(own)) = (&session.user.store_id, &approver.store_id) {
         if store != own {
-            return Err(format!("{} is not assigned to this store.", approver.full_name));
+            return Err(format!(
+                "{} is not assigned to this store.",
+                approver.full_name
+            ));
         }
     }
     approvals
@@ -307,7 +324,9 @@ pub fn enqueue(
     }
     let payload = &event.payload;
     if payload.get("cashier_id").and_then(Value::as_str) != Some(session.user.id.as_str()) {
-        return Err("The return must be attributed to the cashier who unlocked this register.".into());
+        return Err(
+            "The return must be attributed to the cashier who unlocked this register.".into(),
+        );
     }
     if let Some(store) = &session.user.store_id {
         if payload.get("store_id").and_then(Value::as_str) != Some(store.as_str()) {
@@ -324,7 +343,9 @@ pub fn enqueue(
             .get(approver)
             .is_some_and(|verified| auth::now_secs() - verified <= APPROVAL_TTL_SECS);
         if !fresh {
-            return Err("Manager approval expired. Ask the manager to enter their PIN again.".into());
+            return Err(
+                "Manager approval expired. Ask the manager to enter their PIN again.".into(),
+            );
         }
     }
 
@@ -347,11 +368,17 @@ pub fn enqueue(
 }
 
 fn fetch_receipt(config: &DesktopConfig, code: &str) -> Remote {
-    let Ok(client) = reqwest::blocking::Client::builder().timeout(Duration::from_secs(8)).build() else {
+    let Ok(client) = reqwest::blocking::Client::builder()
+        .timeout(Duration::from_secs(8))
+        .build()
+    else {
         return Remote::Unavailable("Could not start the HTTP client.".into());
     };
     let response = client
-        .get(format!("{}/api/v1/returns/receipts/{code}", config.api_base_url))
+        .get(format!(
+            "{}/api/v1/returns/receipts/{code}",
+            config.api_base_url
+        ))
         .headers(config.auth_headers())
         .send();
     let response = match response {

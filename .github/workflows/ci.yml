@@ -31,4 +31,7 @@ jobs:
           python -m venv apps/api/.venv
           apps/api/.venv/bin/pip install -r apps/api/requirements-dev.txt
       - name: Verify
-        run: pnpm verify
+        run: |
+          # Python's pkg-config path must not shadow the system libraries Cargo probes.
+          export PKG_CONFIG_PATH="/usr/lib/x86_64-linux-gnu/pkgconfig:/usr/share/pkgconfig"
+          pnpm verify

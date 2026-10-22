@@ -40,7 +40,11 @@ fn cached(db: &Db) -> Result<Vec<FloorRow>, String> {
             .map_err(|err| err.to_string())?;
         let rows = statement
             .query_map([], |row| {
-                Ok(FloorRow { product_id: row.get(0)?, floor_cents: row.get(1)?, min_margin_bps: row.get(2)? })
+                Ok(FloorRow {
+                    product_id: row.get(0)?,
+                    floor_cents: row.get(1)?,
+                    min_margin_bps: row.get(2)?,
+                })
             })
             .map_err(|err| err.to_string())?
             .collect::<Result<Vec<_>, _>>()
@@ -59,8 +63,15 @@ pub fn refresh(db: &Db, config: &DesktopConfig) -> Result<FloorSnapshot, String>
         .headers(config.auth_headers())
         .send();
     let rows: Vec<FloorRow> = match response {
-        Ok(response) if response.status().is_success() => response.json().map_err(|err| err.to_string())?,
-        _ => return Ok(FloorSnapshot { floors: cached(db)?, source: "cache" }),
+        Ok(response) if response.status().is_success() => {
+            response.json().map_err(|err| err.to_string())?
+        }
+        _ => {
+            return Ok(FloorSnapshot {
+                floors: cached(db)?,
+                source: "cache",
+            })
+        }
     };
     db.transaction(|tx| {
         tx.execute("DELETE FROM margin_floors", []).map_err(|err| err.to_string())?;
@@ -73,5 +84,8 @@ pub fn refresh(db: &Db, config: &DesktopConfig) -> Result<FloorSnapshot, String>
         }
         Ok(())
     })?;
-    Ok(FloorSnapshot { floors: rows, source: "api" })
+    Ok(FloorSnapshot {
+        floors: rows,
+        source: "api",
+    })
 }

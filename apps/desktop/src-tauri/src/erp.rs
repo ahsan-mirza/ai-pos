@@ -22,18 +22,28 @@ pub fn list_batches(
     limit: Option<i64>,
 ) -> Result<Vec<sync_center::BatchRow>, String> {
     require_session(&state)?;
-    sync_center::list(&state.db, status.as_deref(), limit.unwrap_or(50).clamp(1, 200))
+    sync_center::list(
+        &state.db,
+        status.as_deref(),
+        limit.unwrap_or(50).clamp(1, 200),
+    )
 }
 
 #[tauri::command]
-pub fn resolve_batch(state: tauri::State<AppState>, batch_id: String, action: String) -> Result<(), String> {
+pub fn resolve_batch(
+    state: tauri::State<AppState>,
+    batch_id: String,
+    action: String,
+) -> Result<(), String> {
     let session = require_session(&state)?;
     sync_center::resolve(&state.db, &session, &batch_id, &action)
 }
 
 /// The loyalty programme's rules; offline the register treats the programme as off rather than guess a value.
 #[tauri::command]
-pub async fn loyalty_settings(state: tauri::State<'_, AppState>) -> Result<serde_json::Value, String> {
+pub async fn loyalty_settings(
+    state: tauri::State<'_, AppState>,
+) -> Result<serde_json::Value, String> {
     let config = state.config.clone();
     tauri::async_runtime::spawn_blocking(move || {
         let response = reqwest::blocking::Client::builder()
@@ -44,9 +54,9 @@ pub async fn loyalty_settings(state: tauri::State<'_, AppState>) -> Result<serde
             .headers(config.auth_headers())
             .send();
         Ok(match response {
-            Ok(response) if response.status().is_success() => {
-                response.json().unwrap_or(serde_json::json!({ "enabled": false }))
-            }
+            Ok(response) if response.status().is_success() => response
+                .json()
+                .unwrap_or(serde_json::json!({ "enabled": false })),
             _ => serde_json::json!({ "enabled": false }),
         })
     })
@@ -56,7 +66,9 @@ pub async fn loyalty_settings(state: tauri::State<'_, AppState>) -> Result<serde
 
 /// Promotions this register may apply. Returns null when offline so the register keeps its cached copy.
 #[tauri::command]
-pub async fn active_promotions(state: tauri::State<'_, AppState>) -> Result<serde_json::Value, String> {
+pub async fn active_promotions(
+    state: tauri::State<'_, AppState>,
+) -> Result<serde_json::Value, String> {
     let config = state.config.clone();
     tauri::async_runtime::spawn_blocking(move || {
         let response = reqwest::blocking::Client::builder()
@@ -68,7 +80,9 @@ pub async fn active_promotions(state: tauri::State<'_, AppState>) -> Result<serd
             .headers(config.auth_headers())
             .send();
         Ok(match response {
-            Ok(response) if response.status().is_success() => response.json().unwrap_or(serde_json::Value::Null),
+            Ok(response) if response.status().is_success() => {
+                response.json().unwrap_or(serde_json::Value::Null)
+            }
             _ => serde_json::Value::Null,
         })
     })
@@ -124,7 +138,10 @@ pub async fn payment_intent(
         let status = response.status();
         let value: serde_json::Value = response.json().unwrap_or(serde_json::Value::Null);
         if !status.is_success() {
-            return Err(value["error"]["message"].as_str().unwrap_or("The payment server refused.").to_string());
+            return Err(value["error"]["message"]
+                .as_str()
+                .unwrap_or("The payment server refused.")
+                .to_string());
         }
         Ok(value)
     })
@@ -154,14 +171,20 @@ pub async fn store_credit_lookup(
             .timeout(std::time::Duration::from_secs(8))
             .build()
             .map_err(|err| err.to_string())?
-            .get(format!("{}/api/v1/store-credits/{safe_code}", config.api_base_url))
+            .get(format!(
+                "{}/api/v1/store-credits/{safe_code}",
+                config.api_base_url
+            ))
             .headers(config.auth_headers())
             .send()
             .map_err(|err| format!("Store credit needs a connection: {err}"))?;
         let status = response.status();
         let value: serde_json::Value = response.json().unwrap_or(serde_json::Value::Null);
         if !status.is_success() {
-            return Err(value["error"]["message"].as_str().unwrap_or("The server refused the voucher.").to_string());
+            return Err(value["error"]["message"]
+                .as_str()
+                .unwrap_or("The server refused the voucher.")
+                .to_string());
         }
         Ok(value)
     })
@@ -191,7 +214,9 @@ pub async fn trade_in_request(
             .map_err(|err| err.to_string())?;
         let base = format!("{}/api/v1/trade-ins", config.api_base_url);
         let request = match action.as_str() {
-            "check" => client.post(format!("{base}/check")).json(&body.unwrap_or_default()),
+            "check" => client
+                .post(format!("{base}/check"))
+                .json(&body.unwrap_or_default()),
             "create" => client.post(&base).json(&body.unwrap_or_default()),
             "cancel" if !safe_id.is_empty() => client.post(format!("{base}/{safe_id}/cancel")),
             _ => return Err("Unknown trade-in action.".to_string()),
@@ -203,7 +228,10 @@ pub async fn trade_in_request(
         let status = response.status();
         let value: serde_json::Value = response.json().unwrap_or(serde_json::Value::Null);
         if !status.is_success() {
-            return Err(value["error"]["message"].as_str().unwrap_or("The server refused the trade-in.").to_string());
+            return Err(value["error"]["message"]
+                .as_str()
+                .unwrap_or("The server refused the trade-in.")
+                .to_string());
         }
         Ok(value)
     })
@@ -235,7 +263,11 @@ pub async fn approval_request(
         let request = match action.as_str() {
             "create" => {
                 let mut payload = body.unwrap_or_default();
-                if payload.get("store_id").map_or(true, |value| value.is_null()) && !config.store_id.is_empty() {
+                if payload
+                    .get("store_id")
+                    .map_or(true, |value| value.is_null())
+                    && !config.store_id.is_empty()
+                {
                     payload["store_id"] = serde_json::Value::String(config.store_id.clone());
                 }
                 client.post(&base).json(&payload)
@@ -251,7 +283,10 @@ pub async fn approval_request(
         let status = response.status();
         let value: serde_json::Value = response.json().unwrap_or(serde_json::Value::Null);
         if !status.is_success() {
-            return Err(value["error"]["message"].as_str().unwrap_or("The server refused the request.").to_string());
+            return Err(value["error"]["message"]
+                .as_str()
+                .unwrap_or("The server refused the request.")
+                .to_string());
         }
         Ok(value)
     })
@@ -260,7 +295,9 @@ pub async fn approval_request(
 }
 
 #[tauri::command]
-pub async fn refresh_floors(state: tauri::State<'_, AppState>) -> Result<margin::FloorSnapshot, String> {
+pub async fn refresh_floors(
+    state: tauri::State<'_, AppState>,
+) -> Result<margin::FloorSnapshot, String> {
     let db = state.db.clone();
     let config = state.config.clone();
     tauri::async_runtime::spawn_blocking(move || margin::refresh(&db, &config))
@@ -274,7 +311,10 @@ pub fn rejected_count(state: tauri::State<AppState>) -> Result<i64, String> {
 }
 
 #[tauri::command]
-pub fn list_table_sessions(state: tauri::State<AppState>, store_id: String) -> Result<Vec<crate::table_sessions::TableSession>, String> {
+pub fn list_table_sessions(
+    state: tauri::State<AppState>,
+    store_id: String,
+) -> Result<Vec<crate::table_sessions::TableSession>, String> {
     require_session(&state)?;
     crate::table_sessions::list(&state.db, &store_id)
 }
@@ -289,7 +329,11 @@ pub fn save_table_session(
 }
 
 #[tauri::command]
-pub fn cache_table_event(state: tauri::State<AppState>, store_id: String, payload: String) -> Result<(), String> {
+pub fn cache_table_event(
+    state: tauri::State<AppState>,
+    store_id: String,
+    payload: String,
+) -> Result<(), String> {
     require_session(&state)?;
     crate::table_sessions::cache_event(&state.db, &store_id, &payload)
 }
@@ -314,7 +358,10 @@ pub fn held_carts(state: tauri::State<AppState>) -> Result<Vec<held::HeldCart>, 
 }
 
 #[tauri::command]
-pub fn recall_cart(state: tauri::State<AppState>, id: String) -> Result<Option<held::HeldCart>, String> {
+pub fn recall_cart(
+    state: tauri::State<AppState>,
+    id: String,
+) -> Result<Option<held::HeldCart>, String> {
     require_session(&state)?;
     held::take(&state.db, &id)
 }
@@ -332,7 +379,10 @@ pub async fn add_layaway_payment(
     payment: serde_json::Value,
 ) -> Result<serde_json::Value, String> {
     let session = require_session(&state)?;
-    let safe_id: String = quote_id.chars().filter(|c| c.is_ascii_hexdigit() || *c == '-').collect();
+    let safe_id: String = quote_id
+        .chars()
+        .filter(|c| c.is_ascii_hexdigit() || *c == '-')
+        .collect();
     let mut body = payment;
     body["cashier_id"] = serde_json::Value::String(session.user.id.clone());
     let config = state.config.clone();
@@ -341,7 +391,10 @@ pub async fn add_layaway_payment(
             .timeout(std::time::Duration::from_secs(15))
             .build()
             .map_err(|err| err.to_string())?
-            .post(format!("{}/api/v1/quotes/{safe_id}/payments", config.api_base_url))
+            .post(format!(
+                "{}/api/v1/quotes/{safe_id}/payments",
+                config.api_base_url
+            ))
             .headers(config.auth_headers())
             .json(&body)
             .send()
@@ -349,7 +402,9 @@ pub async fn add_layaway_payment(
         let status = response.status();
         let value: serde_json::Value = response.json().unwrap_or(serde_json::Value::Null);
         if !status.is_success() {
-            let message = value["error"]["message"].as_str().unwrap_or("The server rejected the deposit.");
+            let message = value["error"]["message"]
+                .as_str()
+                .unwrap_or("The server rejected the deposit.");
             return Err(message.to_string());
         }
         Ok(value)
@@ -364,25 +419,36 @@ pub fn current_shift(state: tauri::State<AppState>) -> Result<Option<shifts::Loc
 }
 
 #[tauri::command]
-pub fn open_shift(state: tauri::State<AppState>, input: shifts::OpenShift) -> Result<shifts::LocalShift, String> {
+pub fn open_shift(
+    state: tauri::State<AppState>,
+    input: shifts::OpenShift,
+) -> Result<shifts::LocalShift, String> {
     let session = require_session(&state)?;
     shifts::open(&state.db, &session, &state.config.store_id, &input)
 }
 
 #[tauri::command]
-pub fn clock_status(state: tauri::State<AppState>) -> Result<Option<timeclock::LocalTimeEntry>, String> {
+pub fn clock_status(
+    state: tauri::State<AppState>,
+) -> Result<Option<timeclock::LocalTimeEntry>, String> {
     let session = require_session(&state)?;
     timeclock::status(&state.db, &session)
 }
 
 #[tauri::command]
-pub fn clock_in(state: tauri::State<AppState>, input: timeclock::ClockIn) -> Result<timeclock::LocalTimeEntry, String> {
+pub fn clock_in(
+    state: tauri::State<AppState>,
+    input: timeclock::ClockIn,
+) -> Result<timeclock::LocalTimeEntry, String> {
     let session = require_session(&state)?;
     timeclock::clock_in(&state.db, &session, &state.config.store_id, &input)
 }
 
 #[tauri::command]
-pub fn clock_out(state: tauri::State<AppState>, input: timeclock::ClockOut) -> Result<timeclock::LocalTimeEntry, String> {
+pub fn clock_out(
+    state: tauri::State<AppState>,
+    input: timeclock::ClockOut,
+) -> Result<timeclock::LocalTimeEntry, String> {
     let session = require_session(&state)?;
     timeclock::clock_out(&state.db, &session, &state.config.store_id, &input)
 }
@@ -394,7 +460,10 @@ pub fn on_duty(state: tauri::State<AppState>) -> Result<Vec<timeclock::LocalTime
 }
 
 #[tauri::command]
-pub fn record_cash_movement(state: tauri::State<AppState>, input: shifts::CashMovementInput) -> Result<(), String> {
+pub fn record_cash_movement(
+    state: tauri::State<AppState>,
+    input: shifts::CashMovementInput,
+) -> Result<(), String> {
     let session = require_session(&state)?;
     shifts::record_movement(&state.db, &session, &state.config.store_id, &input)
 }
@@ -408,7 +477,13 @@ pub fn shift_summary(
     let session = require_session(&state)?;
     let mut summary = shifts::summary(&state.db, shift_id.as_deref())?;
     if let Some(found) = summary.as_mut() {
-        if found.shift.status == "OPEN" && !session.user.permissions.iter().any(|item| item == SHIFT_MANAGE) {
+        if found.shift.status == "OPEN"
+            && !session
+                .user
+                .permissions
+                .iter()
+                .any(|item| item == SHIFT_MANAGE)
+        {
             found.expected_cash_cents = 0;
         }
     }
@@ -416,18 +491,26 @@ pub fn shift_summary(
 }
 
 #[tauri::command]
-pub fn close_shift(state: tauri::State<AppState>, input: shifts::CloseShift) -> Result<shifts::ShiftSummary, String> {
+pub fn close_shift(
+    state: tauri::State<AppState>,
+    input: shifts::CloseShift,
+) -> Result<shifts::ShiftSummary, String> {
     let session = require_session(&state)?;
     shifts::close(&state.db, &session, &state.config.store_id, &input)
 }
 
 #[tauri::command]
-pub fn recent_shifts(state: tauri::State<AppState>, limit: Option<i64>) -> Result<Vec<shifts::LocalShift>, String> {
+pub fn recent_shifts(
+    state: tauri::State<AppState>,
+    limit: Option<i64>,
+) -> Result<Vec<shifts::LocalShift>, String> {
     shifts::recent(&state.db, limit.unwrap_or(10).clamp(1, 50))
 }
 
 fn require_session(state: &AppState) -> Result<crate::auth::Session, String> {
-    state.session()?.ok_or_else(|| "Unlock the register first.".to_string())
+    state
+        .session()?
+        .ok_or_else(|| "Unlock the register first.".to_string())
 }
 
 #[tauri::command]
@@ -445,7 +528,10 @@ pub fn save_printer_settings(
 }
 
 #[tauri::command]
-pub async fn print_receipt(state: tauri::State<'_, AppState>, job: printer::RasterJob) -> Result<(), String> {
+pub async fn print_receipt(
+    state: tauri::State<'_, AppState>,
+    job: printer::RasterJob,
+) -> Result<(), String> {
     require_session(&state)?;
     let db = state.db.clone();
     tauri::async_runtime::spawn_blocking(move || printer::print_raster(&db, &job))
@@ -471,7 +557,11 @@ pub async fn open_document_pdf(
     number: String,
 ) -> Result<String, String> {
     let config = state.config.clone();
-    let directory = app.path().app_data_dir().map_err(|err| err.to_string())?.join("documents");
+    let directory = app
+        .path()
+        .app_data_dir()
+        .map_err(|err| err.to_string())?
+        .join("documents");
     let path = tauri::async_runtime::spawn_blocking(move || {
         printer::download_document(&config, &kind, &id, &number, &directory)
     })
@@ -484,7 +574,9 @@ pub async fn open_document_pdf(
 }
 
 #[tauri::command]
-pub async fn refresh_series(state: tauri::State<'_, AppState>) -> Result<documents::SeriesStatus, String> {
+pub async fn refresh_series(
+    state: tauri::State<'_, AppState>,
+) -> Result<documents::SeriesStatus, String> {
     let db = state.db.clone();
     let config = state.config.clone();
     tauri::async_runtime::spawn_blocking(move || documents::refresh(&db, &config))
@@ -493,7 +585,10 @@ pub async fn refresh_series(state: tauri::State<'_, AppState>) -> Result<documen
 }
 
 #[tauri::command]
-pub fn next_document_number(state: tauri::State<AppState>, doc_type: String) -> Result<Option<String>, String> {
+pub fn next_document_number(
+    state: tauri::State<AppState>,
+    doc_type: String,
+) -> Result<Option<String>, String> {
     if !matches!(doc_type.as_str(), "INV" | "CN" | "Z") {
         return Err("Unknown document type.".into());
     }

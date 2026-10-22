@@ -70,7 +70,10 @@ pub fn refresh(db: &Db, config: &DesktopConfig) -> Result<SeriesStatus, String> 
         return Ok(SeriesStatus {
             registered: has_series(db)?,
             device_code: None,
-            message: Some(format!("Series refresh failed ({}).", response.status().as_u16())),
+            message: Some(format!(
+                "Series refresh failed ({}).",
+                response.status().as_u16()
+            )),
         });
     }
     let device: RemoteDevice = response.json().map_err(|err| err.to_string())?;
@@ -95,9 +98,11 @@ pub fn refresh(db: &Db, config: &DesktopConfig) -> Result<SeriesStatus, String> 
 
 fn has_series(db: &Db) -> Result<bool, String> {
     db.read(|conn| {
-        conn.query_row("SELECT COUNT(*) FROM document_series", [], |row| row.get::<_, i64>(0))
-            .map(|count| count > 0)
-            .map_err(|err| err.to_string())
+        conn.query_row("SELECT COUNT(*) FROM document_series", [], |row| {
+            row.get::<_, i64>(0)
+        })
+        .map(|count| count > 0)
+        .map_err(|err| err.to_string())
     })
 }
 

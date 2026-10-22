@@ -155,7 +155,11 @@ pub fn send(settings: &PrinterSettings, bytes: &[u8]) -> Result<(), String> {
 }
 
 fn send_tcp(address: &str, bytes: &[u8]) -> Result<(), String> {
-    let target = if address.contains(':') { address.to_string() } else { format!("{address}:9100") };
+    let target = if address.contains(':') {
+        address.to_string()
+    } else {
+        format!("{address}:9100")
+    };
     let socket = target
         .to_socket_addrs()
         .map_err(|err| format!("Printer address {target} is invalid: {err}"))?
@@ -163,16 +167,20 @@ fn send_tcp(address: &str, bytes: &[u8]) -> Result<(), String> {
         .ok_or_else(|| format!("Printer address {target} did not resolve."))?;
     let mut stream = TcpStream::connect_timeout(&socket, Duration::from_secs(4))
         .map_err(|err| format!("Printer at {target} is unreachable: {err}"))?;
-    stream.set_write_timeout(Some(Duration::from_secs(8))).map_err(|err| err.to_string())?;
-    stream.write_all(bytes).map_err(|err| format!("Printing failed: {err}"))?;
+    stream
+        .set_write_timeout(Some(Duration::from_secs(8)))
+        .map_err(|err| err.to_string())?;
+    stream
+        .write_all(bytes)
+        .map_err(|err| format!("Printing failed: {err}"))?;
     stream.flush().map_err(|err| err.to_string())
 }
 
 #[cfg(windows)]
 fn send_spooler(name: &str, bytes: &[u8]) -> Result<(), String> {
     use windows_sys::Win32::Graphics::Printing::{
-        ClosePrinter, EndDocPrinter, EndPagePrinter, OpenPrinterW, StartDocPrinterW, StartPagePrinter, WritePrinter,
-        DOC_INFO_1W, PRINTER_HANDLE,
+        ClosePrinter, EndDocPrinter, EndPagePrinter, OpenPrinterW, StartDocPrinterW,
+        StartPagePrinter, WritePrinter, DOC_INFO_1W, PRINTER_HANDLE,
     };
 
     fn wide(value: &str) -> Vec<u16> {
@@ -199,7 +207,12 @@ fn send_spooler(name: &str, bytes: &[u8]) -> Result<(), String> {
             }
             StartPagePrinter(handle);
             let mut written = 0u32;
-            let ok = WritePrinter(handle, bytes.as_ptr().cast(), bytes.len() as u32, &mut written);
+            let ok = WritePrinter(
+                handle,
+                bytes.as_ptr().cast(),
+                bytes.len() as u32,
+                &mut written,
+            );
             EndPagePrinter(handle);
             EndDocPrinter(handle);
             if ok == 0 || written as usize != bytes.len() {
@@ -231,16 +244,32 @@ pub fn kick_drawer(db: &Db) -> Result<(), String> {
 }
 
 /// Downloads the API's A4 tax invoice or credit note PDF for the cashier to print or hand over.
-pub fn download_document(config: &DesktopConfig, kind: &str, id: &str, number: &str, directory: &Path) -> Result<String, String> {
-    let safe_id: String = id.chars().filter(|c| c.is_ascii_hexdigit() || *c == '-').collect();
-    let safe_number: String = number.chars().filter(|c| c.is_ascii_alphanumeric() || *c == '-').collect();
+pub fn download_document(
+    config: &DesktopConfig,
+    kind: &str,
+    id: &str,
+    number: &str,
+    directory: &Path,
+) -> Result<String, String> {
+    let safe_id: String = id
+        .chars()
+        .filter(|c| c.is_ascii_hexdigit() || *c == '-')
+        .collect();
+    let safe_number: String = number
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric() || *c == '-')
+        .collect();
     let path = match kind {
         "invoice" => format!("sales/{safe_id}/invoice.pdf"),
         "credit_note" => format!("returns/{safe_id}/credit-note.pdf"),
         "gift_receipt" => format!("sales/{safe_id}/gift-receipt.pdf"),
         _ => return Err("Unknown document.".into()),
     };
-    let safe_number = if kind == "gift_receipt" && !safe_number.is_empty() { format!("gift-{safe_number}") } else { safe_number };
+    let safe_number = if kind == "gift_receipt" && !safe_number.is_empty() {
+        format!("gift-{safe_number}")
+    } else {
+        safe_number
+    };
     if safe_id.is_empty() {
         return Err("Unknown document.".into());
     }
@@ -258,10 +287,17 @@ pub fn download_document(config: &DesktopConfig, kind: &str, id: &str, number: &
         return Err("The server has not received this document yet. Sync, then try again.".into());
     }
     if !status.is_success() {
-        return Err(format!("The server rejected the request ({}).", status.as_u16()));
+        return Err(format!(
+            "The server rejected the request ({}).",
+            status.as_u16()
+        ));
     }
     std::fs::create_dir_all(directory).map_err(|err| err.to_string())?;
-    let name = if safe_number.is_empty() { safe_id } else { safe_number };
+    let name = if safe_number.is_empty() {
+        safe_id
+    } else {
+        safe_number
+    };
     let file = directory.join(format!("{name}.pdf"));
     std::fs::write(&file, &bytes).map_err(|err| err.to_string())?;
     Ok(file.to_string_lossy().into_owned())
@@ -273,16 +309,29 @@ mod tests {
 
     #[test]
     fn raster_is_banded_and_kicks_once() {
-        let job = RasterJob { width: 16, height: 300, data: vec![0xff; 2 * 300], kick_drawer: true };
+        let job = RasterJob {
+            width: 16,
+            height: 300,
+            data: vec![0xff; 2 * 300],
+            kick_drawer: true,
+        };
         let bytes = escpos_raster(&job, 2).unwrap();
-        let bands = bytes.windows(3).filter(|w| w == &[0x1d, b'v', b'0']).count();
+        let bands = bytes
+            .windows(3)
+            .filter(|w| w == &[0x1d, b'v', b'0'])
+            .count();
         assert_eq!(bands, 4);
         assert_eq!(bytes.windows(5).filter(|w| w == &DRAWER_KICK).count(), 1);
     }
 
     #[test]
     fn malformed_raster_is_rejected() {
-        let job = RasterJob { width: 16, height: 3, data: vec![0; 5], kick_drawer: false };
+        let job = RasterJob {
+            width: 16,
+            height: 3,
+            data: vec![0; 5],
+            kick_drawer: false,
+        };
         assert!(escpos_raster(&job, 1).is_err());
     }
 }

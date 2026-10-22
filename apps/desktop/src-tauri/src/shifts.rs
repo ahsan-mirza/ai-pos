@@ -121,7 +121,8 @@ fn row_to_shift(row: &rusqlite::Row<'_>) -> rusqlite::Result<LocalShift> {
     })
 }
 
-const SHIFT_COLUMNS: &str = "id, opened_at, opened_by_name, opening_float_cents, currency, status, closed_at, \
+const SHIFT_COLUMNS: &str =
+    "id, opened_at, opened_by_name, opening_float_cents, currency, status, closed_at, \
      closed_by_name, counted_cash_cents, expected_cash_cents, z_number";
 
 fn open_shift_row(conn: &Connection) -> Result<Option<LocalShift>, String> {
@@ -141,7 +142,9 @@ pub fn current(db: &Db) -> Result<Option<LocalShift>, String> {
 pub fn recent(db: &Db, limit: i64) -> Result<Vec<LocalShift>, String> {
     db.read(|conn| {
         let mut statement = conn
-            .prepare(&format!("SELECT {SHIFT_COLUMNS} FROM local_shifts ORDER BY opened_at DESC LIMIT ?1"))
+            .prepare(&format!(
+                "SELECT {SHIFT_COLUMNS} FROM local_shifts ORDER BY opened_at DESC LIMIT ?1"
+            ))
             .map_err(|err| err.to_string())?;
         let rows = statement
             .query_map(params![limit], row_to_shift)
@@ -152,7 +155,12 @@ pub fn recent(db: &Db, limit: i64) -> Result<Vec<LocalShift>, String> {
     })
 }
 
-fn event(key: String, entity_type: &str, payload: serde_json::Value, occurred_at: &str) -> QueuedEvent {
+fn event(
+    key: String,
+    entity_type: &str,
+    payload: serde_json::Value,
+    occurred_at: &str,
+) -> QueuedEvent {
     QueuedEvent {
         id: key.clone(),
         idempotency_key: key,
@@ -167,7 +175,12 @@ fn valid_id(value: &str) -> bool {
     value.len() == 36 && value.chars().all(|c| c.is_ascii_hexdigit() || c == '-')
 }
 
-pub fn open(db: &Db, session: &Session, store_id: &str, input: &OpenShift) -> Result<LocalShift, String> {
+pub fn open(
+    db: &Db,
+    session: &Session,
+    store_id: &str,
+    input: &OpenShift,
+) -> Result<LocalShift, String> {
     if !valid_id(&input.id) {
         return Err("Shift id must be a UUID.".into());
     }
@@ -210,11 +223,19 @@ pub fn open(db: &Db, session: &Session, store_id: &str, input: &OpenShift) -> Re
     })
 }
 
-pub fn record_movement(db: &Db, session: &Session, store_id: &str, input: &CashMovementInput) -> Result<(), String> {
+pub fn record_movement(
+    db: &Db,
+    session: &Session,
+    store_id: &str,
+    input: &CashMovementInput,
+) -> Result<(), String> {
     if !valid_id(&input.id) {
         return Err("Movement id must be a UUID.".into());
     }
-    if !matches!(input.kind.as_str(), "PAY_IN" | "PAY_OUT" | "CASH_DROP" | "NO_SALE") {
+    if !matches!(
+        input.kind.as_str(),
+        "PAY_IN" | "PAY_OUT" | "CASH_DROP" | "NO_SALE"
+    ) {
         return Err("Unknown cash movement.".into());
     }
     let no_sale = input.kind == "NO_SALE";
@@ -262,7 +283,12 @@ pub fn record_movement(db: &Db, session: &Session, store_id: &str, input: &CashM
     })
 }
 
-fn sum_by_method(conn: &Connection, entity: &str, path: &str, shift_id: &str) -> Result<BTreeMap<String, i64>, String> {
+fn sum_by_method(
+    conn: &Connection,
+    entity: &str,
+    path: &str,
+    shift_id: &str,
+) -> Result<BTreeMap<String, i64>, String> {
     let mut statement = conn
         .prepare(&format!(
             "SELECT json_extract(t.value, '$.method'), SUM(json_extract(t.value, '$.amount_cents'))
@@ -272,7 +298,9 @@ fn sum_by_method(conn: &Connection, entity: &str, path: &str, shift_id: &str) ->
         ))
         .map_err(|err| err.to_string())?;
     let rows = statement
-        .query_map(params![entity, shift_id], |row| Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?)))
+        .query_map(params![entity, shift_id], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+        })
         .map_err(|err| err.to_string())?
         .collect::<Result<BTreeMap<_, _>, _>>()
         .map_err(|err| err.to_string());
@@ -304,7 +332,13 @@ fn summarize(conn: &Connection, shift: LocalShift) -> Result<ShiftSummary, Strin
         .prepare("SELECT kind, SUM(amount_cents), COUNT(*) FROM local_cash_movements WHERE shift_id = ?1 GROUP BY kind")
         .map_err(|err| err.to_string())?;
     let rows = statement
-        .query_map(params![shift.id], |row| Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?, row.get::<_, i64>(2)?)))
+        .query_map(params![shift.id], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, i64>(1)?,
+                row.get::<_, i64>(2)?,
+            ))
+        })
         .map_err(|err| err.to_string())?;
     for row in rows {
         let (kind, amount, count) = row.map_err(|err| err.to_string())?;
@@ -327,7 +361,12 @@ fn summarize(conn: &Connection, shift: LocalShift) -> Result<ShiftSummary, Strin
         .map_err(|err| err.to_string())?;
     let rows = statement
         .query_map(params![shift.id, shift.currency], |row| {
-            Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?, row.get::<_, i64>(2)?, row.get::<_, i64>(3)?))
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, i64>(1)?,
+                row.get::<_, i64>(2)?,
+                row.get::<_, i64>(3)?,
+            ))
         })
         .map_err(|err| err.to_string())?;
     for row in rows {
@@ -365,7 +404,11 @@ pub fn summary(db: &Db, shift_id: Option<&str>) -> Result<Option<ShiftSummary>, 
     db.read(|conn| {
         let shift = match shift_id {
             Some(id) => conn
-                .query_row(&format!("SELECT {SHIFT_COLUMNS} FROM local_shifts WHERE id = ?1"), params![id], row_to_shift)
+                .query_row(
+                    &format!("SELECT {SHIFT_COLUMNS} FROM local_shifts WHERE id = ?1"),
+                    params![id],
+                    row_to_shift,
+                )
                 .optional()
                 .map_err(|err| err.to_string())?,
             None => open_shift_row(conn)?,
@@ -374,7 +417,12 @@ pub fn summary(db: &Db, shift_id: Option<&str>) -> Result<Option<ShiftSummary>, 
     })
 }
 
-pub fn close(db: &Db, session: &Session, store_id: &str, input: &CloseShift) -> Result<ShiftSummary, String> {
+pub fn close(
+    db: &Db,
+    session: &Session,
+    store_id: &str,
+    input: &CloseShift,
+) -> Result<ShiftSummary, String> {
     if !(0..=MAX_CASH).contains(&input.counted_cash_cents) {
         return Err("Enter the counted cash.".into());
     }
@@ -456,14 +504,24 @@ mod tests {
             &db,
             &session,
             "store",
-            &OpenShift { id: shift_id.into(), opened_at: "2026-10-19T08:00:00Z".into(), opening_float_cents: 10_000, currency: "AED".into() },
+            &OpenShift {
+                id: shift_id.into(),
+                opened_at: "2026-10-19T08:00:00Z".into(),
+                opening_float_cents: 10_000,
+                currency: "AED".into(),
+            },
         )
         .unwrap();
         assert!(open(
             &db,
             &session,
             "store",
-            &OpenShift { id: "22222222-2222-4222-8222-222222222222".into(), opened_at: "x".into(), opening_float_cents: 0, currency: "AED".into() },
+            &OpenShift {
+                id: "22222222-2222-4222-8222-222222222222".into(),
+                opened_at: "x".into(),
+                opening_float_cents: 0,
+                currency: "AED".into()
+            },
         )
         .is_err());
         let sale = QueuedEvent {

@@ -245,8 +245,8 @@ impl Db {
                 "IFNULL(collection, '')",
             ]
             .iter()
-                .map(|field| format!("{field} LIKE ?{plain} ESCAPE '\\'"))
-                .collect();
+            .map(|field| format!("{field} LIKE ?{plain} ESCAPE '\\'"))
+            .collect();
             if !compact.is_empty() {
                 values.push(format!("%{}%", like_escape(&compact)));
                 let squeezed = values.len();
@@ -281,7 +281,11 @@ impl Db {
             .query_map(rusqlite::params_from_iter(values.iter()), |row| {
                 Ok(SearchHit {
                     product: read_product(row)?,
-                    match_kind: if row.get::<_, bool>(PRODUCT_COLUMN_COUNT)? { "exact".into() } else { "text".into() },
+                    match_kind: if row.get::<_, bool>(PRODUCT_COLUMN_COUNT)? {
+                        "exact".into()
+                    } else {
+                        "text".into()
+                    },
                     serial_kind: None,
                     serial_status: None,
                 })
@@ -294,7 +298,9 @@ impl Db {
     pub fn list_products(&self) -> Result<Vec<ProductRow>, String> {
         let conn = self.lock()?;
         let mut statement = conn
-            .prepare(&format!("SELECT {PRODUCT_COLUMNS} FROM products ORDER BY name"))
+            .prepare(&format!(
+                "SELECT {PRODUCT_COLUMNS} FROM products ORDER BY name"
+            ))
             .map_err(|err| err.to_string())?;
         let rows = statement
             .query_map([], read_product)
@@ -322,7 +328,10 @@ impl Db {
     }
 
     /// Runs `work` in one SQLite transaction so feature modules can write alongside the sync queue atomically.
-    pub fn transaction<T>(&self, work: impl FnOnce(&rusqlite::Transaction<'_>) -> Result<T, String>) -> Result<T, String> {
+    pub fn transaction<T>(
+        &self,
+        work: impl FnOnce(&rusqlite::Transaction<'_>) -> Result<T, String>,
+    ) -> Result<T, String> {
         let mut conn = self.lock()?;
         let tx = conn.transaction().map_err(|err| err.to_string())?;
         let value = work(&tx)?;
@@ -330,7 +339,10 @@ impl Db {
         Ok(value)
     }
 
-    pub fn read<T>(&self, work: impl FnOnce(&Connection) -> Result<T, String>) -> Result<T, String> {
+    pub fn read<T>(
+        &self,
+        work: impl FnOnce(&Connection) -> Result<T, String>,
+    ) -> Result<T, String> {
         let conn = self.lock()?;
         work(&conn)
     }
@@ -418,7 +430,12 @@ impl Db {
         .map_err(|err| err.to_string())
     }
 
-    pub fn mark_batch(&self, batch_id: &str, status: &str, error: Option<&str>) -> Result<(), String> {
+    pub fn mark_batch(
+        &self,
+        batch_id: &str,
+        status: &str,
+        error: Option<&str>,
+    ) -> Result<(), String> {
         let conn = self.lock()?;
         conn.execute(
             "UPDATE sync_queue SET status = ?1, last_error = ?2 WHERE batch_id = ?3",
@@ -438,8 +455,14 @@ impl Db {
         Ok(())
     }
 
-    pub fn upsert_cached_user(&self, profile: &CashierProfile, pin_hash: &str, now: i64) -> Result<(), String> {
-        let permissions = serde_json::to_string(&profile.permissions).map_err(|err| err.to_string())?;
+    pub fn upsert_cached_user(
+        &self,
+        profile: &CashierProfile,
+        pin_hash: &str,
+        now: i64,
+    ) -> Result<(), String> {
+        let permissions =
+            serde_json::to_string(&profile.permissions).map_err(|err| err.to_string())?;
         let mut conn = self.lock()?;
         let tx = conn.transaction().map_err(|err| err.to_string())?;
         tx.execute(
@@ -507,7 +530,12 @@ impl Db {
         .map_err(|err| err.to_string())
     }
 
-    pub fn record_cached_failure(&self, username: &str, attempts: i64, locked_until: Option<i64>) -> Result<(), String> {
+    pub fn record_cached_failure(
+        &self,
+        username: &str,
+        attempts: i64,
+        locked_until: Option<i64>,
+    ) -> Result<(), String> {
         let conn = self.lock()?;
         conn.execute(
             "UPDATE cached_users SET failed_attempts = ?1, locked_until = ?2 WHERE username = ?3",
@@ -519,8 +547,11 @@ impl Db {
 
     pub fn remove_cached_user(&self, username: &str) -> Result<(), String> {
         let conn = self.lock()?;
-        conn.execute("DELETE FROM cached_users WHERE username = ?1", params![username])
-            .map_err(|err| err.to_string())?;
+        conn.execute(
+            "DELETE FROM cached_users WHERE username = ?1",
+            params![username],
+        )
+        .map_err(|err| err.to_string())?;
         Ok(())
     }
 
@@ -608,8 +639,10 @@ fn migrate(conn: &Connection) -> Result<(), String> {
         ("compare_at_cents", "INTEGER"),
     ] {
         if !has_column(conn, "products", column)? {
-            conn.execute_batch(&format!("ALTER TABLE products ADD COLUMN {column} {definition};"))
-                .map_err(|err| err.to_string())?;
+            conn.execute_batch(&format!(
+                "ALTER TABLE products ADD COLUMN {column} {definition};"
+            ))
+            .map_err(|err| err.to_string())?;
         }
     }
     if !has_column(conn, "cached_users", "max_discount_bps")? {
@@ -623,11 +656,17 @@ fn migrate(conn: &Connection) -> Result<(), String> {
         )
         .map_err(|err| err.to_string())?;
     }
-    conn.execute_batch("CREATE INDEX IF NOT EXISTS ix_sync_queue_batch ON sync_queue (batch_id, status);")
-        .map_err(|err| err.to_string())
+    conn.execute_batch(
+        "CREATE INDEX IF NOT EXISTS ix_sync_queue_batch ON sync_queue (batch_id, status);",
+    )
+    .map_err(|err| err.to_string())
 }
 
-pub fn insert_events(tx: &rusqlite::Transaction<'_>, batch_id: &str, events: &[QueuedEvent]) -> Result<(), String> {
+pub fn insert_events(
+    tx: &rusqlite::Transaction<'_>,
+    batch_id: &str,
+    events: &[QueuedEvent],
+) -> Result<(), String> {
     let created_at = events
         .first()
         .map(|event| event.occurred_at.clone())
@@ -654,13 +693,18 @@ pub fn insert_events(tx: &rusqlite::Transaction<'_>, batch_id: &str, events: &[Q
 }
 
 fn has_column(conn: &Connection, table: &str, column: &str) -> Result<bool, String> {
-    conn.prepare(&format!("SELECT 1 FROM pragma_table_info('{table}') WHERE name = ?1"))
-        .and_then(|mut statement| statement.exists(params![column]))
-        .map_err(|err| err.to_string())
+    conn.prepare(&format!(
+        "SELECT 1 FROM pragma_table_info('{table}') WHERE name = ?1"
+    ))
+    .and_then(|mut statement| statement.exists(params![column]))
+    .map_err(|err| err.to_string())
 }
 
 fn like_escape(value: &str) -> String {
-    value.replace('\\', "\\\\").replace('%', "\\%").replace('_', "\\_")
+    value
+        .replace('\\', "\\\\")
+        .replace('%', "\\%")
+        .replace('_', "\\_")
 }
 
 fn compact(value: &str) -> String {
@@ -677,9 +721,13 @@ fn seed(conn: &Connection) -> Result<(), String> {
     if count > 0 {
         return Ok(());
     }
-    let seed: SeedFile = serde_json::from_str(include_str!("../../../../packages/catalog/seed.json"))
-        .map_err(|err| err.to_string())?;
-    let pricing = seed.wholesale.map(|wholesale| wholesale.pricing).unwrap_or_default();
+    let seed: SeedFile =
+        serde_json::from_str(include_str!("../../../../packages/catalog/seed.json"))
+            .map_err(|err| err.to_string())?;
+    let pricing = seed
+        .wholesale
+        .map(|wholesale| wholesale.pricing)
+        .unwrap_or_default();
     for product in seed.products {
         let mut product = product;
         if let Some(spec) = pricing.iter().find(|spec| spec.sku == product.sku) {
@@ -695,8 +743,10 @@ fn seed(conn: &Connection) -> Result<(), String> {
 fn insert_product(conn: &Connection, product: &ProductRow) -> Result<(), String> {
     let units = serde_json::to_string(&product.sellable_units).map_err(|err| err.to_string())?;
     let prices = serde_json::to_string(&product.prices).map_err(|err| err.to_string())?;
-    let variant = serde_json::to_string(&product.variant_attributes).map_err(|err| err.to_string())?;
-    let unit_options = serde_json::to_string(&product.unit_options).map_err(|err| err.to_string())?;
+    let variant =
+        serde_json::to_string(&product.variant_attributes).map_err(|err| err.to_string())?;
+    let unit_options =
+        serde_json::to_string(&product.unit_options).map_err(|err| err.to_string())?;
     let price_lists = serde_json::to_string(&product.price_lists).map_err(|err| err.to_string())?;
     conn.execute(
         &format!(
@@ -747,7 +797,11 @@ fn insert_product(conn: &Connection, product: &ProductRow) -> Result<(), String>
     Ok(())
 }
 
-fn json_column<T: serde::de::DeserializeOwned>(row: &rusqlite::Row<'_>, index: usize, fallback: T) -> rusqlite::Result<T> {
+fn json_column<T: serde::de::DeserializeOwned>(
+    row: &rusqlite::Row<'_>,
+    index: usize,
+    fallback: T,
+) -> rusqlite::Result<T> {
     let raw: String = row.get(index)?;
     Ok(serde_json::from_str(&raw).unwrap_or(fallback))
 }

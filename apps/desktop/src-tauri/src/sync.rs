@@ -112,7 +112,12 @@ impl DesktopConfig {
     /// Legacy developer setup from .env, used only when POS_DEV_ENV_CONFIG=true (skips activation).
     pub fn from_env() -> Result<Option<Self>, String> {
         let opted_in = std::env::var("POS_DEV_ENV_CONFIG")
-            .map(|value| matches!(value.trim().to_ascii_lowercase().as_str(), "1" | "true" | "yes"))
+            .map(|value| {
+                matches!(
+                    value.trim().to_ascii_lowercase().as_str(),
+                    "1" | "true" | "yes"
+                )
+            })
             .unwrap_or(false);
         if !opted_in {
             return Ok(None);
@@ -136,7 +141,9 @@ impl DesktopConfig {
             .map(|value| value.trim().to_string())
             .filter(|value| !value.is_empty())
             .unwrap_or_else(|| DEFAULT_STORE_ID.to_string());
-        let tenant_domain = std::env::var("TENANT_DOMAIN").map(|value| value.trim().to_string()).unwrap_or_default();
+        let tenant_domain = std::env::var("TENANT_DOMAIN")
+            .map(|value| value.trim().to_string())
+            .unwrap_or_default();
         Ok(Some(Self {
             api_base_url,
             api_key,
@@ -163,7 +170,11 @@ pub fn flush(db: &Db, config: &DesktopConfig) -> Result<SyncReport, String> {
             Ok(response) => {
                 db.mark_batch(&batch_id, "synced", None)?;
                 synced += 1;
-                applied += response.results.iter().filter(|result| result.status == "applied").count() as i64;
+                applied += response
+                    .results
+                    .iter()
+                    .filter(|result| result.status == "applied")
+                    .count() as i64;
                 duplicates += response
                     .results
                     .iter()
@@ -216,7 +227,10 @@ pub fn fetch_products(config: &DesktopConfig) -> Result<Vec<ProductRow>, String>
     let mut products = Vec::new();
     let mut after: Option<String> = None;
     loop {
-        let mut query = vec![("limit", page_size.as_str()), ("store_id", config.store_id.as_str())];
+        let mut query = vec![
+            ("limit", page_size.as_str()),
+            ("store_id", config.store_id.as_str()),
+        ];
         if let Some(last) = after.as_deref() {
             query.push(("after", last));
         }
@@ -231,7 +245,8 @@ pub fn fetch_products(config: &DesktopConfig) -> Result<Vec<ProductRow>, String>
         if !status.is_success() {
             return Err(error_message(&body, status.as_u16()));
         }
-        let page: Vec<RemoteProduct> = serde_json::from_str(&body).map_err(|err| err.to_string())?;
+        let page: Vec<RemoteProduct> =
+            serde_json::from_str(&body).map_err(|err| err.to_string())?;
         let full = page.len() == CATALOG_PAGE;
         after = page.last().map(|item| item.row.id.clone());
         products.extend(page.into_iter().map(|item| {
@@ -247,13 +262,21 @@ pub fn fetch_products(config: &DesktopConfig) -> Result<Vec<ProductRow>, String>
 }
 
 /// Server search adds what the local cache cannot answer: IMEI/serial lookups and other stores' live stock.
-pub fn remote_search(config: &DesktopConfig, query: &str, limit: i64) -> Result<Vec<SearchHit>, String> {
+pub fn remote_search(
+    config: &DesktopConfig,
+    query: &str,
+    limit: i64,
+) -> Result<Vec<SearchHit>, String> {
     let response = reqwest::blocking::Client::builder()
         .timeout(Duration::from_secs(4))
         .build()
         .map_err(|err| err.to_string())?
         .get(format!("{}/api/v1/products/search", config.api_base_url))
-        .query(&[("q", query), ("limit", &limit.to_string()), ("store_id", &config.store_id)])
+        .query(&[
+            ("q", query),
+            ("limit", &limit.to_string()),
+            ("store_id", &config.store_id),
+        ])
         .headers(config.auth_headers())
         .send()
         .map_err(|err| err.to_string())?;
@@ -279,7 +302,10 @@ pub fn branch_availability(
         params.push(("serial", serial));
     }
     let response = client()?
-        .get(format!("{}/api/v1/inventory/availability", config.api_base_url))
+        .get(format!(
+            "{}/api/v1/inventory/availability",
+            config.api_base_url
+        ))
         .query(&params)
         .headers(config.auth_headers())
         .send()

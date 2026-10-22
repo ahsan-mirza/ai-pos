@@ -36,7 +36,9 @@ pub fn create(config: &DesktopConfig, payload: &Value) -> Result<Value, String> 
         .headers(config.auth_headers())
         .json(payload)
         .send()
-        .map_err(|_| "Quotes need a live connection to reserve stock. The server is unreachable.".to_string())?;
+        .map_err(|_| {
+            "Quotes need a live connection to reserve stock. The server is unreachable.".to_string()
+        })?;
     let status = response.status();
     let body = response.text().map_err(|err| err.to_string())?;
     if !status.is_success() {
@@ -46,14 +48,28 @@ pub fn create(config: &DesktopConfig, payload: &Value) -> Result<Value, String> 
 }
 
 /// Downloads the quotation PDF into `directory` and returns the saved file path.
-pub fn download_pdf(config: &DesktopConfig, quote_id: &str, number: &str, directory: &Path) -> Result<String, String> {
-    let safe_id: String = quote_id.chars().filter(|c| c.is_ascii_hexdigit() || *c == '-').collect();
-    let safe_number: String = number.chars().filter(|c| c.is_ascii_alphanumeric() || *c == '-').collect();
+pub fn download_pdf(
+    config: &DesktopConfig,
+    quote_id: &str,
+    number: &str,
+    directory: &Path,
+) -> Result<String, String> {
+    let safe_id: String = quote_id
+        .chars()
+        .filter(|c| c.is_ascii_hexdigit() || *c == '-')
+        .collect();
+    let safe_number: String = number
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric() || *c == '-')
+        .collect();
     if safe_id.is_empty() {
         return Err("Unknown quote.".into());
     }
     let response = client(20)?
-        .get(format!("{}/api/v1/quotes/{safe_id}/pdf", config.api_base_url))
+        .get(format!(
+            "{}/api/v1/quotes/{safe_id}/pdf",
+            config.api_base_url
+        ))
         .headers(config.auth_headers())
         .send()
         .map_err(|err| format!("The server is unreachable: {err}"))?;
@@ -63,7 +79,11 @@ pub fn download_pdf(config: &DesktopConfig, quote_id: &str, number: &str, direct
         return Err(failure(&String::from_utf8_lossy(&bytes), status.as_u16()));
     }
     std::fs::create_dir_all(directory).map_err(|err| err.to_string())?;
-    let name = if safe_number.is_empty() { safe_id } else { safe_number };
+    let name = if safe_number.is_empty() {
+        safe_id
+    } else {
+        safe_number
+    };
     let path = directory.join(format!("{name}.pdf"));
     std::fs::write(&path, &bytes).map_err(|err| err.to_string())?;
     Ok(path.to_string_lossy().into_owned())

@@ -70,7 +70,12 @@ fn open_for(conn: &Connection, user_id: &str) -> Result<Option<LocalTimeEntry>, 
     .map_err(|err| err.to_string())
 }
 
-fn queue(tx: &rusqlite::Transaction<'_>, key: String, payload: serde_json::Value, at: &str) -> Result<(), String> {
+fn queue(
+    tx: &rusqlite::Transaction<'_>,
+    key: String,
+    payload: serde_json::Value,
+    at: &str,
+) -> Result<(), String> {
     insert_events(
         tx,
         &key,
@@ -89,7 +94,12 @@ pub fn status(db: &Db, session: &Session) -> Result<Option<LocalTimeEntry>, Stri
     db.read(|conn| open_for(conn, &session.user.id))
 }
 
-pub fn clock_in(db: &Db, session: &Session, store_id: &str, input: &ClockIn) -> Result<LocalTimeEntry, String> {
+pub fn clock_in(
+    db: &Db,
+    session: &Session,
+    store_id: &str,
+    input: &ClockIn,
+) -> Result<LocalTimeEntry, String> {
     if input.id.len() != 36 || !input.id.chars().all(|c| c.is_ascii_hexdigit() || c == '-') {
         return Err("Time entry id must be a UUID.".into());
     }
@@ -112,7 +122,12 @@ pub fn clock_in(db: &Db, session: &Session, store_id: &str, input: &ClockIn) -> 
     })
 }
 
-pub fn clock_out(db: &Db, session: &Session, store_id: &str, input: &ClockOut) -> Result<LocalTimeEntry, String> {
+pub fn clock_out(
+    db: &Db,
+    session: &Session,
+    store_id: &str,
+    input: &ClockOut,
+) -> Result<LocalTimeEntry, String> {
     if !(0..=600).contains(&input.break_minutes) {
         return Err("Enter a break between 0 and 600 minutes.".into());
     }
@@ -137,7 +152,11 @@ pub fn clock_out(db: &Db, session: &Session, store_id: &str, input: &ClockOut) -
             }),
             &input.at,
         )?;
-        Ok(LocalTimeEntry { clock_out_at: Some(input.at.clone()), break_minutes: input.break_minutes, ..entry })
+        Ok(LocalTimeEntry {
+            clock_out_at: Some(input.at.clone()),
+            break_minutes: input.break_minutes,
+            ..entry
+        })
     })
 }
 

@@ -18,9 +18,14 @@ const PREFIXES: [&str; 6] = [
 ];
 
 fn safe(path: &str) -> bool {
-    PREFIXES.iter().any(|prefix| path == *prefix || path.starts_with(&format!("{prefix}/")) || path.starts_with(&format!("{prefix}?")))
-        && !path.contains("..")
-        && path.chars().all(|c| c.is_ascii_alphanumeric() || "/-_?=&:.%+".contains(c))
+    PREFIXES.iter().any(|prefix| {
+        path == *prefix
+            || path.starts_with(&format!("{prefix}/"))
+            || path.starts_with(&format!("{prefix}?"))
+    }) && !path.contains("..")
+        && path
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || "/-_?=&:.%+".contains(c))
 }
 
 fn failure(status: u16, code: &str, message: &str) -> String {
@@ -38,7 +43,11 @@ pub async fn restaurant_request(
         .session()?
         .ok_or_else(|| failure(401, "locked", "Unlock the register first."))?;
     if !safe(&path) {
-        return Err(failure(400, "invalid_path", "That restaurant request is not allowed."));
+        return Err(failure(
+            400,
+            "invalid_path",
+            "That restaurant request is not allowed.",
+        ));
     }
     let config = state.config.clone();
     tauri::async_runtime::spawn_blocking(move || {
@@ -62,7 +71,9 @@ pub async fn restaurant_request(
         let value: Value = response.json().unwrap_or(Value::Null);
         if !status.is_success() {
             let code = value["error"]["code"].as_str().unwrap_or("rejected");
-            let message = value["error"]["message"].as_str().unwrap_or("The server refused the request.");
+            let message = value["error"]["message"]
+                .as_str()
+                .unwrap_or("The server refused the request.");
             return Err(failure(status.as_u16(), code, message));
         }
         Ok(value)
@@ -78,7 +89,9 @@ mod tests {
     #[test]
     fn only_restaurant_paths_pass() {
         assert!(safe("/api/v1/orders?store_id=abc&status=OPEN"));
-        assert!(safe("/api/v1/orders/123e4567-e89b-12d3-a456-426614174000/send"));
+        assert!(safe(
+            "/api/v1/orders/123e4567-e89b-12d3-a456-426614174000/send"
+        ));
         assert!(safe("/api/v1/dining/floor?store_id=x"));
         assert!(!safe("/api/v1/users"));
         assert!(!safe("/api/v1/orders/../users"));

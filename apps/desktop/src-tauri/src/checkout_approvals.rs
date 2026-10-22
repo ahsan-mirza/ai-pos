@@ -19,7 +19,10 @@ const CUSTOMERS_MANAGE: &str = "customers:manage";
 pub type CheckoutApprovals = Mutex<HashMap<(String, String), i64>>;
 
 fn allowed_permission(permission: &str) -> bool {
-    matches!(permission, POS_PRICE_OVERRIDE | POS_BELOW_FLOOR_OVERRIDE | POS_DISCOUNT | CUSTOMERS_MANAGE)
+    matches!(
+        permission,
+        POS_PRICE_OVERRIDE | POS_BELOW_FLOOR_OVERRIDE | POS_DISCOUNT | CUSTOMERS_MANAGE
+    )
 }
 
 fn action_label(permission: &str) -> &'static str {
@@ -46,22 +49,40 @@ pub fn approve(
     }
     let approver = auth::pin_login(db, config, username, pin)?.user;
     if !approver.permissions.iter().any(|item| item == permission) {
-        return Err(format!("{} cannot approve {}.", approver.full_name, action_label(permission)));
+        return Err(format!(
+            "{} cannot approve {}.",
+            approver.full_name,
+            action_label(permission)
+        ));
     }
     if let (Some(store), Some(own)) = (&session.user.store_id, &approver.store_id) {
         if store != own {
-            return Err(format!("{} is not assigned to this store.", approver.full_name));
+            return Err(format!(
+                "{} is not assigned to this store.",
+                approver.full_name
+            ));
         }
     }
-    approvals
-        .lock()
-        .map_err(|err| err.to_string())?
-        .insert((approver.id.clone(), permission.to_string()), auth::now_secs());
+    approvals.lock().map_err(|err| err.to_string())?.insert(
+        (approver.id.clone(), permission.to_string()),
+        auth::now_secs(),
+    );
     Ok(approver)
 }
 
-fn fresh(approvals: &HashMap<(String, String), i64>, session: &Session, approver: &str, permission: &str) -> bool {
-    if approver == session.user.id && session.user.permissions.iter().any(|item| item == permission) {
+fn fresh(
+    approvals: &HashMap<(String, String), i64>,
+    session: &Session,
+    approver: &str,
+    permission: &str,
+) -> bool {
+    if approver == session.user.id
+        && session
+            .user
+            .permissions
+            .iter()
+            .any(|item| item == permission)
+    {
         return true;
     }
     approvals
@@ -70,15 +91,27 @@ fn fresh(approvals: &HashMap<(String, String), i64>, session: &Session, approver
 }
 
 /// Every override named in a queued sale must come from a manager verified on this register.
-pub fn check_sale(approvals: &CheckoutApprovals, session: &Session, events: &[QueuedEvent]) -> Result<(), String> {
+pub fn check_sale(
+    approvals: &CheckoutApprovals,
+    session: &Session,
+    events: &[QueuedEvent],
+) -> Result<(), String> {
     let guard = approvals.lock().map_err(|err| err.to_string())?;
     for event in events.iter().filter(|event| event.entity_type == "sale") {
         let payload = &event.payload;
-        let items = payload.get("items").and_then(Value::as_array).cloned().unwrap_or_default();
+        let items = payload
+            .get("items")
+            .and_then(Value::as_array)
+            .cloned()
+            .unwrap_or_default();
         for item in &items {
             for (field, permission, label) in [
                 ("price_override", POS_PRICE_OVERRIDE, "Price override"),
-                ("below_floor_override", POS_BELOW_FLOOR_OVERRIDE, "Below-floor price"),
+                (
+                    "below_floor_override",
+                    POS_BELOW_FLOOR_OVERRIDE,
+                    "Below-floor price",
+                ),
                 ("discount_override", POS_DISCOUNT, "Discount"),
             ] {
                 let Some(approver) = item
@@ -89,7 +122,9 @@ pub fn check_sale(approvals: &CheckoutApprovals, session: &Session, events: &[Qu
                     continue;
                 };
                 if !fresh(&guard, session, approver, permission) {
-                    return Err(format!("{label} approval expired. Ask the manager to enter their PIN again."));
+                    return Err(format!(
+                        "{label} approval expired. Ask the manager to enter their PIN again."
+                    ));
                 }
             }
         }
@@ -97,12 +132,21 @@ pub fn check_sale(approvals: &CheckoutApprovals, session: &Session, events: &[Qu
             .get("tenders")
             .and_then(Value::as_array)
             .is_some_and(|tenders| {
-                tenders
-                    .iter()
-                    .any(|tender| tender.get("method").and_then(Value::as_str) == Some("on_account"))
+                tenders.iter().any(|tender| {
+                    tender.get("method").and_then(Value::as_str) == Some("on_account")
+                })
             });
-        if on_account && !session.user.permissions.iter().any(|item| item == POS_CREDIT_SALE) {
-            return Err(format!("{} cannot sell on account.", session.user.full_name));
+        if on_account
+            && !session
+                .user
+                .permissions
+                .iter()
+                .any(|item| item == POS_CREDIT_SALE)
+        {
+            return Err(format!(
+                "{} cannot sell on account.",
+                session.user.full_name
+            ));
         }
         if let Some(approver) = payload
             .get("credit_override")
@@ -110,7 +154,10 @@ pub fn check_sale(approvals: &CheckoutApprovals, session: &Session, events: &[Qu
             .and_then(Value::as_str)
         {
             if !fresh(&guard, session, approver, CUSTOMERS_MANAGE) {
-                return Err("Credit limit approval expired. Ask the manager to enter their PIN again.".into());
+                return Err(
+                    "Credit limit approval expired. Ask the manager to enter their PIN again."
+                        .into(),
+                );
             }
         }
     }

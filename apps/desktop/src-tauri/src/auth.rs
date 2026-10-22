@@ -67,7 +67,10 @@ struct ErrorDetail {
 enum Remote {
     Accepted(TokenResponse),
     /// The server answered and refused. Offline fallback must not override it.
-    Refused { status: u16, message: String },
+    Refused {
+        status: u16,
+        message: String,
+    },
     Unreachable,
 }
 
@@ -80,7 +83,12 @@ pub fn now_secs() -> i64 {
 
 /// Online first: the API is the source of truth for credentials. When it cannot be reached, the PIN is
 /// checked against the Argon2 verifier cached on this register after the cashier's last online unlock.
-pub fn pin_login(db: &Db, config: &DesktopConfig, username: &str, pin: &str) -> Result<Session, String> {
+pub fn pin_login(
+    db: &Db,
+    config: &DesktopConfig,
+    username: &str,
+    pin: &str,
+) -> Result<Session, String> {
     let username = username.trim().to_lowercase();
     if !(4..=6).contains(&pin.len()) || !pin.chars().all(|c| c.is_ascii_digit()) {
         return Err("PINs are 4 to 6 digits.".into());
@@ -115,16 +123,25 @@ pub fn pin_login(db: &Db, config: &DesktopConfig, username: &str, pin: &str) -> 
 
 fn offline_login(db: &Db, username: &str, pin: &str) -> Result<Session, String> {
     let Some(cached) = db.cached_user(username)? else {
-        return Err("The server is unreachable and this cashier has not unlocked this register online yet.".into());
+        return Err(
+            "The server is unreachable and this cashier has not unlocked this register online yet."
+                .into(),
+        );
     };
     let now = now_secs();
     if cached.locked_until.is_some_and(|until| until > now) {
-        return Err("Too many failed attempts on this register. Try again in a few minutes.".into());
+        return Err(
+            "Too many failed attempts on this register. Try again in a few minutes.".into(),
+        );
     }
     if !verify_pin(pin, &cached.pin_hash) {
         let attempts = cached.failed_attempts + 1;
         let locked_until = (attempts >= LOCAL_MAX_ATTEMPTS).then_some(now + LOCAL_LOCKOUT_SECS);
-        db.record_cached_failure(username, if locked_until.is_some() { 0 } else { attempts }, locked_until)?;
+        db.record_cached_failure(
+            username,
+            if locked_until.is_some() { 0 } else { attempts },
+            locked_until,
+        )?;
         return Err("Invalid username or credentials.".into());
     }
     db.record_cached_failure(username, 0, None)?;
@@ -152,7 +169,10 @@ fn cached_profile(cached: CachedUser) -> Result<CashierProfile, String> {
 }
 
 fn remote_login(config: &DesktopConfig, username: &str, pin: &str) -> Remote {
-    let Ok(client) = reqwest::blocking::Client::builder().timeout(Duration::from_secs(8)).build() else {
+    let Ok(client) = reqwest::blocking::Client::builder()
+        .timeout(Duration::from_secs(8))
+        .build()
+    else {
         return Remote::Unreachable;
     };
     let response = client
@@ -192,6 +212,10 @@ fn hash_pin(pin: &str) -> Result<String, String> {
 
 fn verify_pin(pin: &str, encoded: &str) -> bool {
     PasswordHash::new(encoded)
-        .map(|parsed| Argon2::default().verify_password(pin.as_bytes(), &parsed).is_ok())
+        .map(|parsed| {
+            Argon2::default()
+                .verify_password(pin.as_bytes(), &parsed)
+                .is_ok()
+        })
         .unwrap_or(false)
 }

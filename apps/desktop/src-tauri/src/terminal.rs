@@ -48,7 +48,10 @@ pub struct TerminalStatus {
 
 impl TerminalStatus {
     pub fn none() -> Self {
-        Self { source: "none".into(), ..Self::default() }
+        Self {
+            source: "none".into(),
+            ..Self::default()
+        }
     }
 
     pub fn from_config(config: &TerminalConfig, source: &str) -> Self {
@@ -100,17 +103,21 @@ pub fn config_path(app_data_dir: &Path) -> PathBuf {
 
 /// Each tenant's catalog, users, and unsynced sales live in their own database file.
 pub fn database_path(app_data_dir: &Path, tenant_slug: &str) -> PathBuf {
-    app_data_dir.join("tenants").join(tenant_slug).join("ai-pos.db")
+    app_data_dir
+        .join("tenants")
+        .join(tenant_slug)
+        .join("ai-pos.db")
 }
 
 pub fn load(path: &Path) -> Result<Option<TerminalConfig>, String> {
     if !path.exists() {
         return Ok(None);
     }
-    let sealed = std::fs::read(path).map_err(|err| format!("Unable to read {}: {err}", path.display()))?;
+    let sealed =
+        std::fs::read(path).map_err(|err| format!("Unable to read {}: {err}", path.display()))?;
     let plain = protect::unseal(&sealed)?;
-    let config: TerminalConfig =
-        serde_json::from_slice(&plain).map_err(|err| format!("The terminal configuration is damaged: {err}"))?;
+    let config: TerminalConfig = serde_json::from_slice(&plain)
+        .map_err(|err| format!("The terminal configuration is damaged: {err}"))?;
     Ok(Some(config))
 }
 
@@ -142,15 +149,26 @@ fn normalize_subdomain_for(input: &str, base: &str) -> Result<(String, String), 
     if let Some((_, rest)) = host.split_once("://") {
         host = rest.to_string();
     }
-    let host = host.split(['/', ':']).next().unwrap_or("").trim_end_matches('.').to_string();
+    let host = host
+        .split(['/', ':'])
+        .next()
+        .unwrap_or("")
+        .trim_end_matches('.')
+        .to_string();
     let slug = match host.split_once('.') {
         None => host.clone(),
         Some((label, rest)) if rest == base || rest == "localhost" => label.to_string(),
-        Some(_) => return Err(format!("Enter your store subdomain, e.g. client1 or client1.{base}.")),
+        Some(_) => {
+            return Err(format!(
+                "Enter your store subdomain, e.g. client1 or client1.{base}."
+            ))
+        }
     };
     let valid = !slug.is_empty()
         && slug.len() <= 32
-        && slug.chars().all(|ch| ch.is_ascii_lowercase() || ch.is_ascii_digit() || ch == '-')
+        && slug
+            .chars()
+            .all(|ch| ch.is_ascii_lowercase() || ch.is_ascii_digit() || ch == '-')
         && !slug.starts_with('-')
         && !slug.ends_with('-');
     if !valid {
@@ -171,18 +189,26 @@ fn setting(name: &str, baked: &str, default: &str) -> String {
 }
 
 fn base_domain() -> String {
-    setting("TENANT_BASE_DOMAIN", env!("POS_TENANT_BASE_DOMAIN"), DEFAULT_TENANT_BASE_DOMAIN)
-        .trim_start_matches('.')
-        .to_lowercase()
+    setting(
+        "TENANT_BASE_DOMAIN",
+        env!("POS_TENANT_BASE_DOMAIN"),
+        DEFAULT_TENANT_BASE_DOMAIN,
+    )
+    .trim_start_matches('.')
+    .to_lowercase()
 }
 
 /// https://{tenant}.qios.ae in production, https://{tenant}.dev.qios.ae in the dev build; developers point
 /// TENANT_URL_TEMPLATE at a local API.
 pub fn tenant_api_url(slug: &str) -> String {
-    setting("TENANT_URL_TEMPLATE", env!("POS_TENANT_URL_TEMPLATE"), DEFAULT_TENANT_URL_TEMPLATE)
-        .replace("{tenant}", slug)
-        .trim_end_matches('/')
-        .to_string()
+    setting(
+        "TENANT_URL_TEMPLATE",
+        env!("POS_TENANT_URL_TEMPLATE"),
+        DEFAULT_TENANT_URL_TEMPLATE,
+    )
+    .replace("{tenant}", slug)
+    .trim_end_matches('/')
+    .to_string()
 }
 
 fn machine_name() -> String {
@@ -196,7 +222,10 @@ fn machine_name() -> String {
 
 pub fn activate(subdomain: &str, activation_key: &str) -> Result<TerminalConfig, String> {
     let (slug, domain) = normalize_subdomain(subdomain)?;
-    let key: String = activation_key.chars().filter(|ch| ch.is_ascii_alphanumeric()).collect();
+    let key: String = activation_key
+        .chars()
+        .filter(|ch| ch.is_ascii_alphanumeric())
+        .collect();
     if key.len() < 8 {
         return Err("Enter the activation key from the admin portal (e.g. ABCD-EFGH-JKLM).".into());
     }
@@ -218,12 +247,16 @@ pub fn activate(subdomain: &str, activation_key: &str) -> Result<TerminalConfig,
             .unwrap_or_else(|_| format!("Activation failed ({}).", status.as_u16()));
         return Err(message);
     }
-    let activated: ActivationResponse =
-        serde_json::from_str(&body).map_err(|err| format!("Unexpected activation response: {err}"))?;
+    let activated: ActivationResponse = serde_json::from_str(&body)
+        .map_err(|err| format!("Unexpected activation response: {err}"))?;
     Ok(TerminalConfig {
         tenant_slug: activated.tenant_slug,
         tenant_name: activated.tenant_name,
-        tenant_domain: if activated.tenant_domain.is_empty() { domain } else { activated.tenant_domain },
+        tenant_domain: if activated.tenant_domain.is_empty() {
+            domain
+        } else {
+            activated.tenant_domain
+        },
         tenant_url: activated.tenant_url,
         api_base_url,
         store_id: activated.store_id,
@@ -249,7 +282,10 @@ mod protect {
     const ENTROPY: &[u8] = b"ai-pos-terminal-config-v1";
 
     fn blob(data: &[u8]) -> CRYPT_INTEGER_BLOB {
-        CRYPT_INTEGER_BLOB { cbData: data.len() as u32, pbData: data.as_ptr() as *mut u8 }
+        CRYPT_INTEGER_BLOB {
+            cbData: data.len() as u32,
+            pbData: data.as_ptr() as *mut u8,
+        }
     }
 
     fn take(output: CRYPT_INTEGER_BLOB) -> Vec<u8> {
@@ -264,10 +300,21 @@ mod protect {
     pub fn seal(plain: &[u8]) -> Result<Vec<u8>, String> {
         let input = blob(plain);
         let entropy = blob(ENTROPY);
-        let mut output = CRYPT_INTEGER_BLOB { cbData: 0, pbData: null_mut() };
+        let mut output = CRYPT_INTEGER_BLOB {
+            cbData: 0,
+            pbData: null_mut(),
+        };
         // SAFETY: every pointer refers to a live blob for the duration of the call.
         let ok = unsafe {
-            CryptProtectData(&input, null(), &entropy, null(), null(), CRYPTPROTECT_UI_FORBIDDEN, &mut output)
+            CryptProtectData(
+                &input,
+                null(),
+                &entropy,
+                null(),
+                null(),
+                CRYPTPROTECT_UI_FORBIDDEN,
+                &mut output,
+            )
         };
         if ok == 0 {
             return Err("Windows could not encrypt the terminal configuration.".into());
@@ -278,13 +325,27 @@ mod protect {
     pub fn unseal(sealed: &[u8]) -> Result<Vec<u8>, String> {
         let input = blob(sealed);
         let entropy = blob(ENTROPY);
-        let mut output = CRYPT_INTEGER_BLOB { cbData: 0, pbData: null_mut() };
+        let mut output = CRYPT_INTEGER_BLOB {
+            cbData: 0,
+            pbData: null_mut(),
+        };
         // SAFETY: as in `seal`.
         let ok = unsafe {
-            CryptUnprotectData(&input, null_mut(), &entropy, null(), null(), CRYPTPROTECT_UI_FORBIDDEN, &mut output)
+            CryptUnprotectData(
+                &input,
+                null_mut(),
+                &entropy,
+                null(),
+                null(),
+                CRYPTPROTECT_UI_FORBIDDEN,
+                &mut output,
+            )
         };
         if ok == 0 {
-            return Err("This terminal was activated under another Windows account. Activate it again.".into());
+            return Err(
+                "This terminal was activated under another Windows account. Activate it again."
+                    .into(),
+            );
         }
         Ok(take(output))
     }
@@ -309,13 +370,19 @@ mod tests {
     #[test]
     fn subdomains_normalise() {
         let live = |input: &str| normalize_subdomain_for(input, "qios.ae");
-        assert_eq!(live("Client1").unwrap(), ("client1".into(), "client1.qios.ae".into()));
+        assert_eq!(
+            live("Client1").unwrap(),
+            ("client1".into(), "client1.qios.ae".into())
+        );
         assert_eq!(live("https://client1.qios.ae/login").unwrap().0, "client1");
         assert_eq!(live("demo.localhost:5173").unwrap().0, "demo");
         assert!(live("client1.example.com").is_err());
         assert!(live("bad_name").is_err());
         let dev = |input: &str| normalize_subdomain_for(input, "dev.qios.ae");
-        assert_eq!(dev("client1").unwrap(), ("client1".into(), "client1.dev.qios.ae".into()));
+        assert_eq!(
+            dev("client1").unwrap(),
+            ("client1".into(), "client1.dev.qios.ae".into())
+        );
         assert_eq!(dev("https://client1.dev.qios.ae/").unwrap().0, "client1");
         assert!(dev("client1.qios.ae").is_err());
     }

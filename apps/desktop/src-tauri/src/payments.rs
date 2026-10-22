@@ -26,7 +26,9 @@ pub async fn payments_request(
     path: String,
     body: Option<serde_json::Value>,
 ) -> Result<serde_json::Value, String> {
-    state.session()?.ok_or_else(|| "Unlock the register first.".to_string())?;
+    state
+        .session()?
+        .ok_or_else(|| "Unlock the register first.".to_string())?;
     let path = safe_path(&path)?;
     let config = state.config.clone();
     tauri::async_runtime::spawn_blocking(move || {
@@ -37,7 +39,9 @@ pub async fn payments_request(
         let url = format!("{}{}", config.api_base_url, path);
         let request = match method.as_str() {
             "GET" => client.get(&url),
-            "POST" => client.post(&url).json(&body.unwrap_or(serde_json::json!({}))),
+            "POST" => client
+                .post(&url)
+                .json(&body.unwrap_or(serde_json::json!({}))),
             _ => return Err("Unknown payment request.".to_string()),
         };
         let response = request
@@ -47,7 +51,10 @@ pub async fn payments_request(
         let status = response.status();
         let value: serde_json::Value = response.json().unwrap_or(serde_json::Value::Null);
         if !status.is_success() {
-            return Err(value["error"]["message"].as_str().unwrap_or("The payment server refused.").to_string());
+            return Err(value["error"]["message"]
+                .as_str()
+                .unwrap_or("The payment server refused.")
+                .to_string());
         }
         Ok(value)
     })

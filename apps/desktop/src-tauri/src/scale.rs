@@ -46,7 +46,10 @@ pub fn parse_frame(text: &str) -> Option<ScaleReading> {
     let mut index = 0;
     while index < bytes.len() {
         let c = bytes[index];
-        if c.is_ascii_digit() || ((c == '-' || c == '+') && index + 1 < bytes.len() && bytes[index + 1].is_ascii_digit())
+        if c.is_ascii_digit()
+            || ((c == '-' || c == '+')
+                && index + 1 < bytes.len()
+                && bytes[index + 1].is_ascii_digit())
         {
             let start = index;
             index += 1;
@@ -64,7 +67,11 @@ pub fn parse_frame(text: &str) -> Option<ScaleReading> {
                 cursor += 1;
             }
             if let Ok(value) = number.replace('+', "").parse::<f64>() {
-                let unit = if unit.is_empty() && number.contains('.') { "kg".to_string() } else { unit };
+                let unit = if unit.is_empty() && number.contains('.') {
+                    "kg".to_string()
+                } else {
+                    unit
+                };
                 found = Some((value, unit));
             }
             continue;
@@ -78,7 +85,11 @@ pub fn parse_frame(text: &str) -> Option<ScaleReading> {
         "oz" => value * 28.349_523,
         _ => value * 1000.0,
     };
-    Some(ScaleReading { grams: grams.round() as i64, stable, raw: frame.to_string() })
+    Some(ScaleReading {
+        grams: grams.round() as i64,
+        stable,
+        raw: frame.to_string(),
+    })
 }
 
 fn read_from(config: &ScaleConfig) -> Result<ScaleReading, String> {
@@ -87,7 +98,8 @@ fn read_from(config: &ScaleConfig) -> Result<ScaleReading, String> {
         .open()
         .map_err(|err| format!("Could not open the scale on {}: {err}", config.port))?;
     if config.protocol == "request" {
-        port.write_all(b"W\r").map_err(|err| format!("Could not ask the scale for a weight: {err}"))?;
+        port.write_all(b"W\r")
+            .map_err(|err| format!("Could not ask the scale for a weight: {err}"))?;
     }
     let deadline = Instant::now() + Duration::from_millis(1500);
     let mut buffer = String::new();

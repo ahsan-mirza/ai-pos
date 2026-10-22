@@ -21,9 +21,14 @@ const PREFIXES: [&str; 9] = [
 ];
 
 fn safe(path: &str) -> bool {
-    PREFIXES.iter().any(|prefix| path == *prefix || path.starts_with(&format!("{prefix}/")) || path.starts_with(&format!("{prefix}?")))
-        && !path.contains("..")
-        && path.chars().all(|c| c.is_ascii_alphanumeric() || "/-_?=&:.%+".contains(c))
+    PREFIXES.iter().any(|prefix| {
+        path == *prefix
+            || path.starts_with(&format!("{prefix}/"))
+            || path.starts_with(&format!("{prefix}?"))
+    }) && !path.contains("..")
+        && path
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || "/-_?=&:.%+".contains(c))
 }
 
 fn failure(status: u16, code: &str, message: &str) -> String {
@@ -41,7 +46,11 @@ pub async fn retail_request(
         .session()?
         .ok_or_else(|| failure(401, "locked", "Unlock the register first."))?;
     if !safe(&path) {
-        return Err(failure(400, "invalid_path", "That request is not allowed from the register."));
+        return Err(failure(
+            400,
+            "invalid_path",
+            "That request is not allowed from the register.",
+        ));
     }
     let config = state.config.clone();
     tauri::async_runtime::spawn_blocking(move || {
@@ -65,7 +74,9 @@ pub async fn retail_request(
         let value: Value = response.json().unwrap_or(Value::Null);
         if !status.is_success() {
             let code = value["error"]["code"].as_str().unwrap_or("rejected");
-            let message = value["error"]["message"].as_str().unwrap_or("The server refused the request.");
+            let message = value["error"]["message"]
+                .as_str()
+                .unwrap_or("The server refused the request.");
             return Err(failure(status.as_u16(), code, message));
         }
         Ok(value)
@@ -82,7 +93,9 @@ mod tests {
     fn only_retail_paths_pass() {
         assert!(safe("/api/v1/gift-cards/GC-AAAA-BBBB-CCCC"));
         assert!(safe("/api/v1/gift-cards/product"));
-        assert!(safe("/api/v1/customers/123e4567-e89b-12d3-a456-426614174000/history?limit=10"));
+        assert!(safe(
+            "/api/v1/customers/123e4567-e89b-12d3-a456-426614174000/history?limit=10"
+        ));
         assert!(safe("/api/v1/online-orders?status=NEW"));
         assert!(safe("/api/v1/users/register-staff?store_id=s-1"));
         assert!(!safe("/api/v1/users"));

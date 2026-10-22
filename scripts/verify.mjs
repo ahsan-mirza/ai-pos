@@ -7,6 +7,18 @@ import { fileURLToPath } from "node:url";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const shell = process.platform === "win32";
+// setup-python puts its own pkg-config dir on PKG_CONFIG_PATH, which then hides the
+// system libraries Cargo looks up (webkit, gtk, openssl) on Linux CI runners.
+const LINUX_PKG_CONFIG = ["/usr/lib/x86_64-linux-gnu/pkgconfig", "/usr/share/pkgconfig"];
+
+function commandEnv(step) {
+  const runsRust = step.cmd === "cargo" || step.cmd === "rustc";
+  if (process.platform !== "linux" || !runsRust) return process.env;
+  const rest = (process.env.PKG_CONFIG_PATH ?? "")
+    .split(":")
+    .filter((entry) => entry && !LINUX_PKG_CONFIG.includes(entry) && !/(\.venv|site-packages|python)/i.test(entry));
+  return { ...process.env, PKG_CONFIG_PATH: [...LINUX_PKG_CONFIG, ...rest].join(":") };
+}
 
 const steps = [
   { name: "API lint (ruff)", cmd: "pnpm", args: ["--filter", "@ai-pos/api", "lint"] },
@@ -34,7 +46,7 @@ for (const step of steps) {
   if (only.length > 0 && !only.some((word) => step.name.toLowerCase().includes(word))) continue;
   console.log(`\n=== ${step.name} ===`);
   const started = Date.now();
-  const run = spawnSync(step.cmd, step.args, { cwd: step.cwd ?? root, stdio: "inherit", shell });
+  const run = spawnSync(step.cmd, step.args, { cwd: step.cwd ?? root, stdio: "inherit", shell, env: commandEnv(step) });
   const seconds = ((Date.now() - started) / 1000).toFixed(1);
   if (run.error && step.optional) {
     results.push({ name: step.name, status: "skipped", seconds, note: `${step.cmd} is not installed` });

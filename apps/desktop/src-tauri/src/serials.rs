@@ -90,8 +90,10 @@ pub fn refresh(db: &Db, config: &DesktopConfig) -> Result<SerialRefresh, String>
         }
         Err(reason) => Ok(SerialRefresh {
             count: db.read(|conn| {
-                conn.query_row("SELECT COUNT(*) FROM register_serials", [], |row| row.get(0))
-                    .map_err(|err| err.to_string())
+                conn.query_row("SELECT COUNT(*) FROM register_serials", [], |row| {
+                    row.get(0)
+                })
+                .map_err(|err| err.to_string())
             })?,
             source: "cache",
             message: Some(reason),
@@ -100,7 +102,12 @@ pub fn refresh(db: &Db, config: &DesktopConfig) -> Result<SerialRefresh, String>
 }
 
 /// Up to `limit` cached units of a product that no queued sale on this register has claimed.
-pub fn available(db: &Db, product_id: &str, limit: i64, exclude: &[String]) -> Result<Vec<SerialRow>, String> {
+pub fn available(
+    db: &Db,
+    product_id: &str,
+    limit: i64,
+    exclude: &[String],
+) -> Result<Vec<SerialRow>, String> {
     let claimed = claimed_values(db)?;
     let skip: HashSet<&str> = exclude.iter().map(String::as_str).collect();
     let rows: Vec<SerialRow> = db.read(|conn| {
@@ -166,7 +173,11 @@ pub fn check(db: &Db, product_id: &str, values: &[String]) -> Result<Vec<SerialC
 fn claimed_values(db: &Db) -> Result<HashSet<String>, String> {
     db.read(|conn| {
         let mark: i64 = conn
-            .query_row("SELECT queue_mark FROM register_serials_meta WHERE id = 1", [], |row| row.get(0))
+            .query_row(
+                "SELECT queue_mark FROM register_serials_meta WHERE id = 1",
+                [],
+                |row| row.get(0),
+            )
             .optional()
             .map_err(|err| err.to_string())?
             .unwrap_or(0);
@@ -182,7 +193,8 @@ fn claimed_values(db: &Db) -> Result<HashSet<String>, String> {
         let rows = statement
             .query_map(params![mark], |row| row.get::<_, String>(0))
             .map_err(|err| err.to_string())?;
-        rows.collect::<rusqlite::Result<HashSet<_>>>().map_err(|err| err.to_string())
+        rows.collect::<rusqlite::Result<HashSet<_>>>()
+            .map_err(|err| err.to_string())
     })
 }
 
@@ -200,7 +212,10 @@ fn fetch(config: &DesktopConfig) -> Result<Vec<SerialRow>, String> {
         .timeout(Duration::from_secs(15))
         .build()
         .map_err(|err| err.to_string())?
-        .get(format!("{}/api/v1/inventory/register-serials", config.api_base_url))
+        .get(format!(
+            "{}/api/v1/inventory/register-serials",
+            config.api_base_url
+        ))
         .query(&[("store_id", config.store_id.as_str())])
         .headers(config.auth_headers())
         .send()

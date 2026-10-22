@@ -17,16 +17,31 @@ fn main() {
         panic!("POS_ENV must be one of {ENVIRONMENTS:?}; got {pos_env:?}.");
     }
 
-    let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR is set by cargo"));
-    let file_name = if pos_env == "development" { ".env".to_string() } else { format!(".env.{pos_env}") };
-    let env_path = manifest_dir.join("..").join("..").join("..").join(file_name);
+    let manifest_dir =
+        PathBuf::from(env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR is set by cargo"));
+    let file_name = if pos_env == "development" {
+        ".env".to_string()
+    } else {
+        format!(".env.{pos_env}")
+    };
+    let env_path = manifest_dir
+        .join("..")
+        .join("..")
+        .join("..")
+        .join(file_name);
     println!("cargo:rerun-if-changed={}", env_path.display());
 
     let mut url_template = String::new();
     let mut base_domain = String::new();
     if let Ok(text) = fs::read_to_string(&env_path) {
-        for line in text.lines().map(str::trim).filter(|line| !line.starts_with('#')) {
-            let Some((key, value)) = line.split_once('=') else { continue };
+        for line in text
+            .lines()
+            .map(str::trim)
+            .filter(|line| !line.starts_with('#'))
+        {
+            let Some((key, value)) = line.split_once('=') else {
+                continue;
+            };
             let value = value.trim().trim_matches('"').to_string();
             match key.trim() {
                 "TENANT_URL_TEMPLATE" => url_template = value,
@@ -36,7 +51,10 @@ fn main() {
         }
     }
     if pos_env != "development" && (url_template.is_empty() || base_domain.is_empty()) {
-        panic!("{} must set TENANT_URL_TEMPLATE and TENANT_BASE_DOMAIN.", env_path.display());
+        panic!(
+            "{} must set TENANT_URL_TEMPLATE and TENANT_BASE_DOMAIN.",
+            env_path.display()
+        );
     }
 
     println!("cargo:rustc-env=POS_TENANT_URL_TEMPLATE={url_template}");

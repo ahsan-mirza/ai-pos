@@ -60,7 +60,11 @@ pub fn migrate(conn: &Connection) -> Result<(), String> {
     ))
     .map_err(|err| err.to_string())?;
     let version: Option<i64> = conn
-        .query_row("SELECT version FROM search_index_meta WHERE name = 'products'", [], |row| row.get(0))
+        .query_row(
+            "SELECT version FROM search_index_meta WHERE name = 'products'",
+            [],
+            |row| row.get(0),
+        )
         .optional()
         .map_err(|err| err.to_string())?;
     let indexed: i64 = conn
@@ -133,7 +137,11 @@ mod tests {
     }
 
     fn names(db: &Db, query: &str) -> Vec<String> {
-        db.search_products(query, 50).expect("search").into_iter().map(|hit| hit.product.name).collect()
+        db.search_products(query, 50)
+            .expect("search")
+            .into_iter()
+            .map(|hit| hit.product.name)
+            .collect()
     }
 
     #[test]
@@ -150,12 +158,21 @@ mod tests {
         assert_eq!(names(&db, "ga05843us"), vec!["Pixel 9"]);
         assert_eq!(names(&db, "GA05843-US"), vec!["Pixel 9"]);
         assert_eq!(names(&db, "fcm1l"), vec!["Full Cream Milk 1 L"]);
-        assert_eq!(names(&db, "up 5"), vec!["Laban Up 500 ml"], "short words still match through LIKE");
-        assert_eq!(names(&db, "\"milk"), Vec::<String>::new(), "quotes are literal, not FTS syntax");
+        assert_eq!(
+            names(&db, "up 5"),
+            vec!["Laban Up 500 ml"],
+            "short words still match through LIKE"
+        );
+        assert_eq!(
+            names(&db, "\"milk"),
+            Vec::<String>::new(),
+            "quotes are literal, not FTS syntax"
+        );
         let hits = db.search_products("600000000002", 5).expect("search");
         assert_eq!(hits[0].match_kind, "exact");
 
-        db.replace_products(&[product(4, "Goat Milk 500 ml", None)]).expect("refresh");
+        db.replace_products(&[product(4, "Goat Milk 500 ml", None)])
+            .expect("refresh");
         assert_eq!(names(&db, "milk"), vec!["Goat Milk 500 ml"]);
         assert_eq!(names(&db, "laban"), Vec::<String>::new());
     }
@@ -163,10 +180,18 @@ mod tests {
     #[test]
     fn fifty_thousand_products_search_fast() {
         let db = Db::open(Path::new(":memory:")).expect("db");
-        let words = ["Apple", "Banana", "Carrot", "Dates", "Eggs", "Flour", "Garlic", "Honey", "Juice", "Milk"];
+        let words = [
+            "Apple", "Banana", "Carrot", "Dates", "Eggs", "Flour", "Garlic", "Honey", "Juice",
+            "Milk",
+        ];
         let catalog: Vec<ProductRow> = (0..50_000)
             .map(|index| {
-                let name = format!("{} {} {}g", words[index % words.len()], words[(index / 10) % words.len()], index % 900);
+                let name = format!(
+                    "{} {} {}g",
+                    words[index % words.len()],
+                    words[(index / 10) % words.len()],
+                    index % 900
+                );
                 product(index, &name, (index % 3 == 0).then_some("FR-100"))
             })
             .collect();
@@ -175,7 +200,15 @@ mod tests {
         let load_ms = loaded.elapsed().as_millis();
 
         let mut slowest = 0;
-        for query in ["milk", "honey dates", "almarai juice", "600000025000", "gro025000", "zzqx", "fr100"] {
+        for query in [
+            "milk",
+            "honey dates",
+            "almarai juice",
+            "600000025000",
+            "gro025000",
+            "zzqx",
+            "fr100",
+        ] {
             let started = Instant::now();
             let hits = db.search_products(query, 50).expect("search");
             slowest = slowest.max(started.elapsed().as_millis());

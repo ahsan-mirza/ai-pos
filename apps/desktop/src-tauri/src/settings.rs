@@ -24,8 +24,10 @@ pub fn migrate(conn: &Connection) -> Result<(), String> {
             .and_then(|mut statement| statement.exists([column]))
             .map_err(|err| err.to_string())?;
         if !exists {
-            conn.execute_batch(&format!("ALTER TABLE business_settings ADD COLUMN {column} TEXT;"))
-                .map_err(|err| err.to_string())?;
+            conn.execute_batch(&format!(
+                "ALTER TABLE business_settings ADD COLUMN {column} TEXT;"
+            ))
+            .map_err(|err| err.to_string())?;
         }
     }
     conn.execute_batch(
@@ -74,11 +76,16 @@ pub fn refresh_currencies(db: &Db, config: &DesktopConfig) -> Result<Vec<Foreign
             .filter_map(|row| {
                 row.rate_micros
                     .filter(|_| row.is_active)
-                    .map(|rate| ForeignCurrency { code: row.code, name: row.name, rate_micros: rate })
+                    .map(|rate| ForeignCurrency {
+                        code: row.code,
+                        name: row.name,
+                        rate_micros: rate,
+                    })
             })
             .collect();
         db.transaction(|tx| {
-            tx.execute("DELETE FROM foreign_currencies", []).map_err(|err| err.to_string())?;
+            tx.execute("DELETE FROM foreign_currencies", [])
+                .map_err(|err| err.to_string())?;
             for row in &usable {
                 tx.execute(
                     "INSERT INTO foreign_currencies (code, name, rate_micros) VALUES (?1, ?2, ?3)",
@@ -95,7 +102,13 @@ pub fn refresh_currencies(db: &Db, config: &DesktopConfig) -> Result<Vec<Foreign
             .prepare("SELECT code, name, rate_micros FROM foreign_currencies ORDER BY code")
             .map_err(|err| err.to_string())?;
         let rows = statement
-            .query_map([], |row| Ok(ForeignCurrency { code: row.get(0)?, name: row.get(1)?, rate_micros: row.get(2)? }))
+            .query_map([], |row| {
+                Ok(ForeignCurrency {
+                    code: row.get(0)?,
+                    name: row.get(1)?,
+                    rate_micros: row.get(2)?,
+                })
+            })
             .map_err(|err| err.to_string())?
             .collect::<Result<Vec<_>, _>>()
             .map_err(|err| err.to_string());
@@ -239,7 +252,10 @@ fn fetch_receipt(config: &DesktopConfig) -> Result<Value, String> {
         .send()
         .map_err(|err| err.to_string())?;
     if !response.status().is_success() {
-        return Err(format!("Receipt settings request failed ({}).", response.status().as_u16()));
+        return Err(format!(
+            "Receipt settings request failed ({}).",
+            response.status().as_u16()
+        ));
     }
     response.json::<Value>().map_err(|err| err.to_string())
 }

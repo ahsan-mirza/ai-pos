@@ -57,9 +57,11 @@ pub fn refresh(db: &Db, config: &DesktopConfig) -> Result<Value, String> {
         }
         Err(_) => {
             let cached: Option<String> = db.read(|conn| {
-                conn.query_row("SELECT body FROM menu_cache WHERE id = 1", [], |row| row.get(0))
-                    .optional()
-                    .map_err(|err| err.to_string())
+                conn.query_row("SELECT body FROM menu_cache WHERE id = 1", [], |row| {
+                    row.get(0)
+                })
+                .optional()
+                .map_err(|err| err.to_string())
             })?;
             Ok(cached
                 .and_then(|raw| serde_json::from_str(&raw).ok())

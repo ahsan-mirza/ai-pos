@@ -38,10 +38,18 @@ pub fn local_path(dir: &Path, url: &str) -> Option<PathBuf> {
 pub fn urls(products: &[ProductRow]) -> Vec<String> {
     let mut urls = Vec::new();
     for product in products {
-        if let Some(url) = product.thumb_url.as_deref().filter(|url| cache_name(url).is_some()) {
+        if let Some(url) = product
+            .thumb_url
+            .as_deref()
+            .filter(|url| cache_name(url).is_some())
+        {
             urls.push(url.to_string());
         }
-        if let Some(url) = product.image_url.as_deref().filter(|url| cache_name(url).is_some()) {
+        if let Some(url) = product
+            .image_url
+            .as_deref()
+            .filter(|url| cache_name(url).is_some())
+        {
             urls.push(url.to_string());
         }
     }
@@ -65,7 +73,9 @@ pub fn download_missing(dir: &Path, urls: &[String]) -> bool {
     let mut saved = false;
     let mut wanted = Vec::new();
     for url in urls {
-        let Some(name) = cache_name(url) else { continue };
+        let Some(name) = cache_name(url) else {
+            continue;
+        };
         wanted.push(name.clone());
         let path = dir.join(&name);
         if path.is_file() {
@@ -84,11 +94,17 @@ fn save(client: &reqwest::blocking::Client, url: &str, path: &Path) -> bool {
         Ok(response) if response.status().is_success() => response,
         _ => return false,
     };
-    if response.content_length().is_some_and(|length| length > MAX_BYTES) {
+    if response
+        .content_length()
+        .is_some_and(|length| length > MAX_BYTES)
+    {
         return false;
     }
     let mut body = Vec::new();
-    if response.take(MAX_BYTES + 1).read_to_end(&mut body).is_err() || body.is_empty() || body.len() as u64 > MAX_BYTES {
+    if response.take(MAX_BYTES + 1).read_to_end(&mut body).is_err()
+        || body.is_empty()
+        || body.len() as u64 > MAX_BYTES
+    {
         return false;
     }
     let partial = path.with_extension("part");
@@ -100,7 +116,9 @@ fn save(client: &reqwest::blocking::Client, url: &str, path: &Path) -> bool {
 
 /// Drop photos whose product no longer points at them.
 fn prune(dir: &Path, wanted: &[String]) -> bool {
-    let Ok(entries) = fs::read_dir(dir) else { return false };
+    let Ok(entries) = fs::read_dir(dir) else {
+        return false;
+    };
     let mut removed = false;
     for entry in entries.flatten() {
         let name = entry.file_name().to_string_lossy().to_string();
@@ -120,11 +138,21 @@ mod tests {
 
     #[test]
     fn names_a_product_webp_and_rejects_anything_else() {
-        let full = "http://130.210.53.214/media/demo/products/0123456789abcdef0123456789abcdef.webp";
+        let full =
+            "http://130.210.53.214/media/demo/products/0123456789abcdef0123456789abcdef.webp";
         let thumb = "http://130.210.53.214/media/demo/products/0123456789abcdef0123456789abcdef-thumb.webp?v=1";
-        assert_eq!(cache_name(full).as_deref(), Some("0123456789abcdef0123456789abcdef.webp"));
-        assert_eq!(cache_name(thumb).as_deref(), Some("0123456789abcdef0123456789abcdef-thumb.webp"));
-        assert_eq!(cache_name("http://130.210.53.214/media/demo/products/logo.png"), None);
+        assert_eq!(
+            cache_name(full).as_deref(),
+            Some("0123456789abcdef0123456789abcdef.webp")
+        );
+        assert_eq!(
+            cache_name(thumb).as_deref(),
+            Some("0123456789abcdef0123456789abcdef-thumb.webp")
+        );
+        assert_eq!(
+            cache_name("http://130.210.53.214/media/demo/products/logo.png"),
+            None
+        );
         assert_eq!(cache_name("../0123456789abcdef0123456789abcdef.webp"), None);
     }
 }
