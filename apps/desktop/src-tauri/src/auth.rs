@@ -12,6 +12,8 @@ const LOCAL_MAX_ATTEMPTS: i64 = 5;
 const LOCAL_LOCKOUT_SECS: i64 = 5 * 60;
 const POS_ACCESS: &str = "pos:access";
 
+
+///  Dummy 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CashierProfile {
     pub id: String,
