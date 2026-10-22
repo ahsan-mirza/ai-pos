@@ -30,12 +30,14 @@ const steps = [
   { name: "POS lint + typecheck", cmd: "pnpm", args: ["--filter", "@ai-pos/desktop", "lint"] },
   // { name: "POS tests (vitest)", cmd: "pnpm", args: ["--filter", "@ai-pos/desktop", "test"] },
   {
-    // Local only. CI does not install Rust: the register is a Windows installer built on a version tag.
+    // Local only. CI does not install the GTK/WebKit headers this crate probes, and the
+    // register itself is a Windows installer built on a version tag.
     name: "POS native (cargo check)",
     cmd: "cargo",
     args: ["check", "--quiet"],
     cwd: join(root, "apps", "desktop", "src-tauri"),
     optional: true,
+    skipOnCi: true,
   },
 ];
 
@@ -44,6 +46,10 @@ const results = [];
 
 for (const step of steps) {
   if (only.length > 0 && !only.some((word) => step.name.toLowerCase().includes(word))) continue;
+  if (step.skipOnCi && process.env.CI) {
+    results.push({ name: step.name, status: "skipped", seconds: "0.0", note: "Linux CI has no GTK/WebKit dev packages" });
+    continue;
+  }
   console.log(`\n=== ${step.name} ===`);
   const started = Date.now();
   const run = spawnSync(step.cmd, step.args, { cwd: step.cwd ?? root, stdio: "inherit", shell, env: commandEnv(step) });
