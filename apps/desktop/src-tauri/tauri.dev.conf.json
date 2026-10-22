@@ -1,0 +1,19 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "AI POS Dev",
+  "identifier": "com.aipos.desktop.dev",
+  "build": {
+    "beforeBuildCommand": "pnpm build:dev"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "AI POS Dev",
+        "width": 1440,
+        "height": 900,
+        "resizable": true
+      }
+    ]
+  }
+}

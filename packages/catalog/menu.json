@@ -1,0 +1,47 @@
+{
+  "categories": [
+    { "name": "Hot Drinks", "description": "Coffee, tea and hot chocolate" },
+    { "name": "Cold Drinks", "description": "Iced drinks, juices and soft drinks" },
+    { "name": "Bakery", "description": "Pastries, cakes and cookies" },
+    { "name": "Mains", "description": "Plated dishes and sandwiches" },
+    { "name": "Burgers & Wraps", "description": "Counter-service favourites" },
+    { "name": "Sides", "description": "Fries, salads and extras" },
+    { "name": "Desserts", "description": "Sweet plates" }
+  ],
+  "menus": {
+    "cafe": [
+      { "sku": "MENU-ESP", "barcode": "2000000000017", "name": "Espresso", "category": "Hot Drinks", "price_cents": 1000 },
+      { "sku": "MENU-CAP", "barcode": "2000000000024", "name": "Cappuccino", "category": "Hot Drinks", "price_cents": 1600 },
+      { "sku": "MENU-LAT", "barcode": "2000000000031", "name": "Caffe Latte", "category": "Hot Drinks", "price_cents": 1700 },
+      { "sku": "MENU-FWH", "barcode": "2000000000048", "name": "Flat White", "category": "Hot Drinks", "price_cents": 1700 },
+      { "sku": "MENU-KRK", "barcode": "2000000000055", "name": "Karak Chai", "category": "Hot Drinks", "price_cents": 600 },
+      { "sku": "MENU-ICL", "barcode": "2000000000062", "name": "Iced Latte", "category": "Cold Drinks", "price_cents": 1800 },
+      { "sku": "MENU-OJ", "barcode": "2000000000079", "name": "Fresh Orange Juice", "category": "Cold Drinks", "price_cents": 1500 },
+      { "sku": "MENU-CRS", "barcode": "2000000000086", "name": "Butter Croissant", "category": "Bakery", "price_cents": 1100 },
+      { "sku": "MENU-MUF", "barcode": "2000000000093", "name": "Blueberry Muffin", "category": "Bakery", "price_cents": 1200 },
+      { "sku": "MENU-CHC", "barcode": "2000000000109", "name": "Chocolate Chip Cookie", "category": "Bakery", "price_cents": 800 },
+      { "sku": "MENU-CLB", "barcode": "2000000000116", "name": "Club Sandwich", "category": "Mains", "price_cents": 3200 }
+    ],
+    "restaurant": [
+      { "sku": "MENU-SAL", "barcode": "2000000000123", "name": "Caesar Salad", "category": "Sides", "price_cents": 2800 },
+      { "sku": "MENU-SOU", "barcode": "2000000000130", "name": "Lentil Soup", "category": "Sides", "price_cents": 1800 },
+      { "sku": "MENU-GRL", "barcode": "2000000000147", "name": "Mixed Grill", "category": "Mains", "price_cents": 7500 },
+      { "sku": "MENU-BIR", "barcode": "2000000000154", "name": "Chicken Biryani", "category": "Mains", "price_cents": 4200 },
+      { "sku": "MENU-PAS", "barcode": "2000000000161", "name": "Penne Arrabbiata", "category": "Mains", "price_cents": 3900 },
+      { "sku": "MENU-SLM", "barcode": "2000000000178", "name": "Grilled Salmon", "category": "Mains", "price_cents": 8900 },
+      { "sku": "MENU-KUN", "barcode": "2000000000185", "name": "Kunafa", "category": "Desserts", "price_cents": 2400 },
+      { "sku": "MENU-LEM", "barcode": "2000000000192", "name": "Fresh Lemon Mint", "category": "Cold Drinks", "price_cents": 1600 },
+      { "sku": "MENU-WAT", "barcode": "2000000000208", "name": "Mineral Water", "category": "Cold Drinks", "price_cents": 500 }
+    ],
+    "quick_service": [
+      { "sku": "MENU-CBG", "barcode": "2000000000215", "name": "Classic Beef Burger", "category": "Burgers & Wraps", "price_cents": 2900 },
+      { "sku": "MENU-CHB", "barcode": "2000000000222", "name": "Crispy Chicken Burger", "category": "Burgers & Wraps", "price_cents": 2600 },
+      { "sku": "MENU-SHW", "barcode": "2000000000239", "name": "Chicken Shawarma Wrap", "category": "Burgers & Wraps", "price_cents": 1400 },
+      { "sku": "MENU-FRI", "barcode": "2000000000246", "name": "French Fries", "category": "Sides", "price_cents": 900 },
+      { "sku": "MENU-NUG", "barcode": "2000000000253", "name": "Chicken Nuggets (6 pc)", "category": "Sides", "price_cents": 1500 },
+      { "sku": "MENU-SFT", "barcode": "2000000000260", "name": "Soft Drink", "category": "Cold Drinks", "price_cents": 600 },
+      { "sku": "MENU-SHK", "barcode": "2000000000277", "name": "Vanilla Milkshake", "category": "Cold Drinks", "price_cents": 1400 },
+      { "sku": "MENU-SUN", "barcode": "2000000000284", "name": "Chocolate Sundae", "category": "Desserts", "price_cents": 1100 }
+    ]
+  }
+}

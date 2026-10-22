@@ -1,0 +1,13 @@
+---
+description: The API reaches the database only through SQLAlchemy ORM models, never raw SQL
+globs: apps/api/app/**/*.py
+alwaysApply: false
+---
+
+# ORM-only database access in the API
+
+- Query and change data with ORM models and `select()`, `update()`, `delete()`, `insert()` on a `Session` (`db.scalars(...)`, `db.execute(select(...))`, `db.add(...)`).
+- Never write raw SQL: no `text()`, `literal_column()`, `exec_driver_sql()`, `execute("...")` with a SQL string, or `sqlite3` / `psycopg` imports. `ruff` and `tests/test_no_raw_sql.py` fail on all of these.
+- If a query seems to need raw SQL, express it with SQLAlchemy constructs (`func.*`, `case()`, `and_()`, joins, subqueries) instead.
+- The only exception is a driver setting with no ORM equivalent, marked `# raw-sql: allowed (<reason>)` on the same line, and only in files allowlisted in `tests/test_no_raw_sql.py` (currently `app/core/database.py`).
+- Alembic migrations are outside this rule.

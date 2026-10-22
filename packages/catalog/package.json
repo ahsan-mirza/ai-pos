@@ -1,0 +1,15 @@
+{
+  "name": "@ai-pos/catalog",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "exports": {
+    "./seed.json": "./seed.json",
+    "./demo-users.json": "./demo-users.json"
+  },
+  "scripts": {
+    "build": "node ./check.mjs",
+    "lint": "node ./check.mjs",
+    "typecheck": "node ./check.mjs"
+  }
+}

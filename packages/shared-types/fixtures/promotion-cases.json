@@ -1,0 +1,88 @@
+{
+  "$comment": "Shared by apps/api/tests/test_promotions.py and apps/desktop/src/features/checkout/promotions.test.ts. Both engines must produce exactly these awards.",
+  "cases": [
+    {
+      "name": "10% off a category",
+      "rules": [{ "id": "P1", "kind": "PERCENT_OFF", "product_ids": [], "category_ids": ["acc"], "percent_bps": 1000, "min_spend_cents": 0 }],
+      "lines": [
+        { "line_id": "L1", "product_id": "cable", "category_id": "acc", "unit_price_cents": 1500, "quantity": 2 },
+        { "line_id": "L2", "product_id": "phone", "category_id": "phones", "unit_price_cents": 79900, "quantity": 1 }
+      ],
+      "awards": [{ "line_id": "L1", "promotion_id": "P1", "discount_cents": 300 }]
+    },
+    {
+      "name": "buy 2 get the cheapest third free",
+      "rules": [
+        { "id": "B1", "kind": "BUY_X_GET_Y", "product_ids": ["case"], "category_ids": [], "buy_qty": 2, "get_qty": 1, "get_discount_bps": 10000, "min_spend_cents": 0 }
+      ],
+      "lines": [
+        { "line_id": "L1", "product_id": "case", "category_id": "acc", "unit_price_cents": 2000, "quantity": 2 },
+        { "line_id": "L2", "product_id": "case", "category_id": "acc", "unit_price_cents": 1500, "quantity": 1 },
+        { "line_id": "L3", "product_id": "case", "category_id": "acc", "unit_price_cents": 1000, "quantity": 1 }
+      ],
+      "awards": [{ "line_id": "L2", "promotion_id": "B1", "discount_cents": 1500 }]
+    },
+    {
+      "name": "any 3 accessories for 50",
+      "rules": [
+        { "id": "M1", "kind": "MIX_MATCH", "product_ids": [], "category_ids": ["acc"], "group_qty": 3, "group_price_cents": 5000, "min_spend_cents": 0 }
+      ],
+      "lines": [
+        { "line_id": "L1", "product_id": "cable", "category_id": "acc", "unit_price_cents": 2500, "quantity": 2 },
+        { "line_id": "L2", "product_id": "charger", "category_id": "acc", "unit_price_cents": 3000, "quantity": 1 },
+        { "line_id": "L3", "product_id": "case", "category_id": "acc", "unit_price_cents": 1000, "quantity": 1 }
+      ],
+      "awards": [{ "line_id": "L2", "promotion_id": "M1", "discount_cents": 3000 }]
+    },
+    {
+      "name": "phone and case bundle",
+      "rules": [
+        {
+          "id": "BN1",
+          "kind": "BUNDLE",
+          "product_ids": [],
+          "category_ids": [],
+          "components": [
+            { "product_id": "phone", "quantity": 1 },
+            { "product_id": "case", "quantity": 1 }
+          ],
+          "bundle_price_cents": 80000,
+          "min_spend_cents": 0
+        }
+      ],
+      "lines": [
+        { "line_id": "L1", "product_id": "phone", "category_id": "phones", "unit_price_cents": 79900, "quantity": 1 },
+        { "line_id": "L2", "product_id": "case", "category_id": "acc", "unit_price_cents": 2000, "quantity": 1 },
+        { "line_id": "L3", "product_id": "case", "category_id": "acc", "unit_price_cents": 2000, "quantity": 1 }
+      ],
+      "awards": [{ "line_id": "L1", "promotion_id": "BN1", "discount_cents": 1900 }]
+    },
+    {
+      "name": "the bigger saving claims its lines first",
+      "rules": [
+        { "id": "P1", "kind": "PERCENT_OFF", "product_ids": [], "category_ids": [], "percent_bps": 1000, "min_spend_cents": 0 },
+        { "id": "B1", "kind": "BUY_X_GET_Y", "product_ids": ["case"], "category_ids": [], "buy_qty": 1, "get_qty": 1, "get_discount_bps": 5000, "min_spend_cents": 0 }
+      ],
+      "lines": [
+        { "line_id": "L1", "product_id": "case", "category_id": "acc", "unit_price_cents": 2000, "quantity": 2 },
+        { "line_id": "L2", "product_id": "cable", "category_id": "acc", "unit_price_cents": 1500, "quantity": 1 }
+      ],
+      "awards": [
+        { "line_id": "L1", "promotion_id": "B1", "discount_cents": 1000 },
+        { "line_id": "L2", "promotion_id": "P1", "discount_cents": 150 }
+      ]
+    },
+    {
+      "name": "minimum spend not reached",
+      "rules": [{ "id": "P2", "kind": "PERCENT_OFF", "product_ids": [], "category_ids": [], "percent_bps": 2000, "min_spend_cents": 10000 }],
+      "lines": [{ "line_id": "L1", "product_id": "cable", "category_id": "acc", "unit_price_cents": 1500, "quantity": 2 }],
+      "awards": []
+    },
+    {
+      "name": "percent rounds half up on the line",
+      "rules": [{ "id": "P3", "kind": "PERCENT_OFF", "product_ids": ["cable"], "category_ids": [], "percent_bps": 1250, "min_spend_cents": 0 }],
+      "lines": [{ "line_id": "L1", "product_id": "cable", "category_id": "acc", "unit_price_cents": 333, "quantity": 3 }],
+      "awards": [{ "line_id": "L1", "promotion_id": "P3", "discount_cents": 125 }]
+    }
+  ]
+}

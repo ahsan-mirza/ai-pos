@@ -1,0 +1,19 @@
+{
+  "name": "@ai-pos/api",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "dev": "node ../../scripts/python.mjs --env=development -m app.dev",
+    "start:dev": "node ../../scripts/python.mjs --env=dev -m app.serve",
+    "start:prod": "node ../../scripts/python.mjs --env=production -m app.serve",
+    "build": "node ../../scripts/python.mjs -m compileall app",
+    "lint": "node ../../scripts/python.mjs -m ruff check app tests",
+    "test": "node ../../scripts/python.mjs --env=test -m pytest",
+    "migrate": "node ../../scripts/python.mjs --env=development -m alembic upgrade head",
+    "migrate:dev": "node ../../scripts/python.mjs --env=dev -m app.tenancy.cli migrate-all",
+    "migrate:prod": "node ../../scripts/python.mjs --env=production -m app.tenancy.cli migrate-all",
+    "seed": "node ../../scripts/python.mjs --env=development -m app.seed",
+    "seed:demo": "node ../../scripts/python.mjs --env=development -m app.seed --demo",
+    "demo:businesses": "node ../../scripts/python.mjs --env=development -m app.tenancy.cli demo"
+  }
+}

@@ -1,0 +1,115 @@
+/*
+ * Slim scrollbars for every scroll container in the POS and the admin portal.
+ *
+ * Thumb colours are inherited custom properties, so a scroll area takes the palette of the nearest
+ * surface that sets one: dark surfaces (charcoal / ink panels, `.dark`, `[data-theme="dark"]`,
+ * `[color-scheme:dark]`) get the light-on-dark thumb, light cards switch back.
+ */
+
+:root,
+[data-theme="light"],
+.scroll-light,
+.bg-white:not([class*="dark:bg-"]),
+.bg-card:not([class*="dark:bg-"]),
+.bg-canvas:not([class*="dark:bg-"]),
+.bg-surface:not([class*="dark:bg-"]) {
+  --scrollbar-size: 6px;
+  --scrollbar-thumb: rgba(0, 0, 0, 0.15);
+  --scrollbar-thumb-hover: rgba(0, 0, 0, 0.35);
+}
+
+.dark,
+[data-theme="dark"],
+.scroll-dark,
+.bg-charcoal,
+.bg-ink,
+.\[color-scheme\:dark\] {
+  --scrollbar-thumb: rgba(255, 255, 255, 0.18);
+  --scrollbar-thumb-hover: rgba(255, 255, 255, 0.38);
+}
+
+@media (prefers-color-scheme: dark) {
+  [data-theme="system"] {
+    --scrollbar-thumb: rgba(255, 255, 255, 0.18);
+    --scrollbar-thumb-hover: rgba(255, 255, 255, 0.38);
+  }
+}
+
+html,
+* {
+  scroll-behavior: smooth;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html,
+  * {
+    scroll-behavior: auto;
+  }
+}
+
+/* Chromium (incl. the Tauri WebView) and Safari. Standard scrollbar-* properties must stay unset here:
+   Chromium 121+ ignores these pseudo-elements on any element that sets them. */
+::-webkit-scrollbar {
+  width: var(--scrollbar-size, 6px);
+  height: var(--scrollbar-size, 6px);
+  background: transparent;
+}
+
+::-webkit-scrollbar-track,
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* Keep the thumb clear of rounded container corners so it is never clipped. */
+::-webkit-scrollbar-track:vertical {
+  margin-top: 6px;
+  margin-bottom: 6px;
+}
+
+::-webkit-scrollbar-track:horizontal {
+  margin-left: 6px;
+  margin-right: 6px;
+}
+
+::-webkit-scrollbar-thumb {
+  border-radius: 9999px;
+  background-color: var(--scrollbar-thumb);
+  transition: background-color 150ms ease;
+}
+
+::-webkit-scrollbar-thumb:hover,
+::-webkit-scrollbar-thumb:active {
+  background-color: var(--scrollbar-thumb-hover);
+}
+
+::-webkit-scrollbar-button {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+/* Firefox has no thumb pseudo-element: thin is its slimmest width, and hovering the scroll area
+   brightens the thumb. */
+@supports not selector(::-webkit-scrollbar) {
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--scrollbar-thumb) transparent;
+  }
+
+  *:hover {
+    scrollbar-color: var(--scrollbar-thumb-hover) transparent;
+  }
+}
+
+/* Explicit opt-in for primary scroll regions: same slim thumb, and scrolling never chains to the page. */
+.custom-scrollbar {
+  overscroll-behavior: contain;
+}
+
+.no-scrollbar {
+  scrollbar-width: none;
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}

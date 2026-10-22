@@ -1,0 +1,30 @@
+node_modules/
+dist/
+.turbo/
+__pycache__/
+.venv/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+target/
+apps/desktop/src-tauri/gen/
+apps/api/storage/
+# Published installers (see DOWNLOADS_DIR); CI copies them to the server.
+/downloads/
+*.db
+.DS_Store
+Thumbs.db
+
+# Real env files hold secrets. Templates are committed, and so are the frontends' public
+# dev/production files (Vite inlines every value into the bundle, so they must hold nothing secret).
+.env
+.env.*
+!**/.env.*.example
+!apps/web/.env.dev
+!apps/web/.env.production
+!apps/super-admin/.env.dev
+!apps/super-admin/.env.production
+!apps/desktop/.env.dev
+!apps/desktop/.env.production
+!apps/desktop/.env.test

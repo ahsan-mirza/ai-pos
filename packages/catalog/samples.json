@@ -1,0 +1,294 @@
+{
+  "$comment": "Practice items loaded into a self-service store at signup (flagged is_sample; Go live deletes them). Prices are in the store's currency; serialized items get generated sample IMEIs.",
+  "electronics_wholesale": {
+    "products": [
+      { "sku": "SAMPLE-LAPTOP-14", "name": "Sample Laptop 14\" i5 16GB", "category": "Computers", "brand": "Sample", "price_cents": 289900, "is_serialized": true, "units": 3 },
+      { "sku": "SAMPLE-PHONE-128", "name": "Sample Phone 128GB Black", "category": "Phones", "brand": "Sample", "price_cents": 199900, "is_serialized": true, "units": 4 },
+      { "sku": "SAMPLE-CABLE-USBC", "name": "Sample USB-C Cable 1m", "category": "Accessories", "price_cents": 2900, "is_serialized": false, "stock": 40 },
+      { "sku": "SAMPLE-CHARGER-20W", "name": "Sample 20W USB-C Charger", "category": "Accessories", "price_cents": 6900, "is_serialized": false, "stock": 25 },
+      { "sku": "SAMPLE-CASE-CLEAR", "name": "Sample Clear Phone Case", "category": "Accessories", "price_cents": 3900, "is_serialized": false, "stock": 30 },
+      { "sku": "SAMPLE-EARBUDS", "name": "Sample Wireless Earbuds", "category": "Audio", "price_cents": 14900, "is_serialized": false, "stock": 12 }
+    ],
+    "customers": [
+      { "name": "Sample Trader", "company_name": "Sample Trading LLC", "customer_type": "WHOLESALE", "price_tier": "TIER_1", "phone": "+971500000001" },
+      { "name": "Sample Walk-in", "customer_type": "RETAIL", "phone": "+971500000002" }
+    ]
+  },
+  "retail_fashion": {
+    "products": [
+      { "sku": "SAMPLE-TEE-M", "name": "Sample Cotton T-Shirt White M", "category": "Tops", "price_cents": 7900, "is_serialized": false, "stock": 20 },
+      { "sku": "SAMPLE-TEE-L", "name": "Sample Cotton T-Shirt White L", "category": "Tops", "price_cents": 7900, "is_serialized": false, "stock": 18 },
+      { "sku": "SAMPLE-JEANS-32", "name": "Sample Slim Jeans Blue 32", "category": "Bottoms", "price_cents": 18900, "is_serialized": false, "stock": 10 },
+      { "sku": "SAMPLE-ABAYA", "name": "Sample Classic Abaya Black", "category": "Modest wear", "price_cents": 34900, "is_serialized": false, "stock": 6 },
+      { "sku": "SAMPLE-SCARF", "name": "Sample Silk Scarf", "category": "Accessories", "price_cents": 9900, "is_serialized": false, "stock": 15 },
+      { "sku": "SAMPLE-SNEAKER-42", "name": "Sample Sneakers White 42", "category": "Footwear", "price_cents": 24900, "is_serialized": false, "stock": 8 }
+    ],
+    "customers": [{ "name": "Sample Shopper", "customer_type": "RETAIL", "phone": "+971500000003" }]
+  },
+  "grocery": {
+    "products": [
+      { "sku": "SAMPLE-MILK-1L", "name": "Sample Fresh Milk 1L", "category": "Dairy", "price_cents": 650, "is_serialized": false, "stock": 48 },
+      { "sku": "SAMPLE-LABAN-1L", "name": "Sample Laban 1L", "category": "Dairy", "price_cents": 550, "is_serialized": false, "stock": 36 },
+      { "sku": "SAMPLE-EGGS-30", "name": "Sample Eggs Tray (30)", "category": "Dairy", "price_cents": 2450, "is_serialized": false, "stock": 20 },
+      { "sku": "SAMPLE-BREAD-ARABIC", "name": "Sample Arabic Bread (6)", "category": "Bakery", "price_cents": 300, "is_serialized": false, "stock": 40 },
+      { "sku": "SAMPLE-RICE-5KG", "name": "Sample Basmati Rice 5kg", "category": "Pantry", "price_cents": 4200, "is_serialized": false, "stock": 25 },
+      { "sku": "SAMPLE-OIL-1_5L", "name": "Sample Sunflower Oil 1.5L", "category": "Pantry", "price_cents": 1650, "is_serialized": false, "stock": 30 },
+      { "sku": "SAMPLE-BANANA-1KG", "name": "Sample Bananas 1kg", "category": "Fruit & Veg", "price_cents": 690, "is_serialized": false, "stock": 50 },
+      { "sku": "SAMPLE-TOMATO-1KG", "name": "Sample Tomatoes 1kg", "category": "Fruit & Veg", "price_cents": 590, "is_serialized": false, "stock": 50 },
+      { "sku": "SAMPLE-WATER-6X1_5", "name": "Sample Water 6 x 1.5L", "category": "Beverages", "price_cents": 1100, "is_serialized": false, "stock": 60 },
+      { "sku": "SAMPLE-DETERGENT-3KG", "name": "Sample Laundry Detergent 3kg", "category": "Household", "price_cents": 3500, "is_serialized": false, "stock": 15 }
+    ],
+    "customers": [{ "name": "Sample Neighbour", "customer_type": "RETAIL", "phone": "+971500000007" }]
+  },
+  "restaurant": {
+    "areas": [
+      {
+        "name": "Main hall",
+        "tables": [
+          { "label": "T1", "seats": 2 }, { "label": "T2", "seats": 2 }, { "label": "T3", "seats": 4 }, { "label": "T4", "seats": 4 },
+          { "label": "T5", "seats": 4 }, { "label": "T6", "seats": 4 }, { "label": "T7", "seats": 6, "shape": "rect" }, { "label": "T8", "seats": 6, "shape": "rect" }
+        ]
+      },
+      {
+        "name": "Terrace",
+        "tables": [
+          { "label": "P1", "seats": 4, "shape": "round" }, { "label": "P2", "seats": 4, "shape": "round" },
+          { "label": "P3", "seats": 4, "shape": "round" }, { "label": "P4", "seats": 2, "shape": "round" }
+        ]
+      }
+    ],
+    "stations": [
+      { "name": "Kitchen", "default": true, "categories": [] },
+      { "name": "Bar", "categories": ["Drinks"] }
+    ],
+    "products": [
+      { "sku": "SAMPLE-HUMMUS", "name": "Hummus with warm bread", "category": "Starters", "price_cents": 2200 },
+      { "sku": "SAMPLE-LENTIL-SOUP", "name": "Lentil soup", "category": "Starters", "price_cents": 1800 },
+      { "sku": "SAMPLE-FATTOUSH", "name": "Fattoush salad", "category": "Starters", "price_cents": 2400 },
+      { "sku": "SAMPLE-GRILLED-CHICKEN", "name": "Grilled half chicken", "category": "Mains", "price_cents": 5200 },
+      { "sku": "SAMPLE-MIXED-GRILL", "name": "Mixed grill platter", "category": "Mains", "price_cents": 7800 },
+      { "sku": "SAMPLE-CHICKEN-PASTA", "name": "Creamy chicken pasta", "category": "Mains", "price_cents": 4600 },
+      { "sku": "SAMPLE-BEEF-BURGER", "name": "Classic beef burger", "category": "Burgers", "price_cents": 4200 },
+      { "sku": "SAMPLE-CHICKEN-BURGER", "name": "Crispy chicken burger", "category": "Burgers", "price_cents": 3900 },
+      { "sku": "SAMPLE-FRIES", "name": "French fries", "category": "Sides", "price_cents": 1400 },
+      { "sku": "SAMPLE-SIDE-SALAD", "name": "Garden salad", "category": "Sides", "price_cents": 1600 },
+      { "sku": "SAMPLE-ONION-RINGS", "name": "Onion rings", "category": "Sides", "price_cents": 1700 },
+      { "sku": "SAMPLE-SAFFRON-RICE", "name": "Saffron rice", "category": "Sides", "price_cents": 1200 },
+      { "sku": "SAMPLE-ORANGE-JUICE", "name": "Fresh orange juice", "category": "Drinks", "price_cents": 1800 },
+      { "sku": "SAMPLE-MINT-LEMONADE", "name": "Mint lemonade", "category": "Drinks", "price_cents": 1800 },
+      { "sku": "SAMPLE-SOFT-DRINK", "name": "Soft drink", "category": "Drinks", "price_cents": 900 },
+      { "sku": "SAMPLE-WATER", "name": "Mineral water", "category": "Drinks", "price_cents": 500 },
+      { "sku": "SAMPLE-KARAK", "name": "Karak tea", "category": "Drinks", "price_cents": 800 },
+      { "sku": "SAMPLE-KUNAFA", "name": "Kunafa", "category": "Desserts", "price_cents": 2600 },
+      { "sku": "SAMPLE-FONDANT", "name": "Chocolate fondant", "category": "Desserts", "price_cents": 2800 }
+    ],
+    "modifier_groups": [
+      {
+        "name": "Cooking",
+        "min": 1,
+        "max": 1,
+        "options": [{ "name": "Medium", "default": true }, { "name": "Medium well" }, { "name": "Well done" }],
+        "products": ["SAMPLE-BEEF-BURGER", "SAMPLE-MIXED-GRILL"]
+      },
+      {
+        "name": "Add-ons",
+        "min": 0,
+        "max": 3,
+        "options": [{ "name": "Extra cheese", "price_cents": 300 }, { "name": "Extra patty", "price_cents": 1200 }, { "name": "Jalapeños", "price_cents": 200 }],
+        "products": ["SAMPLE-BEEF-BURGER", "SAMPLE-CHICKEN-BURGER"]
+      },
+      {
+        "name": "Juice",
+        "min": 0,
+        "max": 2,
+        "options": [{ "name": "No ice" }, { "name": "Less sugar" }],
+        "products": ["SAMPLE-ORANGE-JUICE", "SAMPLE-MINT-LEMONADE"]
+      }
+    ],
+    "combos": [
+      {
+        "sku": "SAMPLE-MEAL-BURGER",
+        "name": "Burger Meal",
+        "category": "Meals",
+        "price_cents": 5400,
+        "slots": [
+          { "name": "Burger", "options": [{ "sku": "SAMPLE-BEEF-BURGER", "default": true }, { "sku": "SAMPLE-CHICKEN-BURGER" }] },
+          { "name": "Side", "options": [{ "sku": "SAMPLE-FRIES", "default": true }, { "sku": "SAMPLE-SIDE-SALAD" }, { "sku": "SAMPLE-ONION-RINGS", "surcharge_cents": 300 }] },
+          { "name": "Drink", "options": [{ "sku": "SAMPLE-SOFT-DRINK", "default": true }, { "sku": "SAMPLE-WATER" }, { "sku": "SAMPLE-MINT-LEMONADE", "surcharge_cents": 600 }, { "sku": "SAMPLE-ORANGE-JUICE", "surcharge_cents": 600 }] }
+        ]
+      },
+      {
+        "sku": "SAMPLE-MEAL-LUNCH",
+        "name": "Business Lunch",
+        "category": "Meals",
+        "price_cents": 6500,
+        "slots": [
+          { "name": "Starter", "options": [{ "sku": "SAMPLE-LENTIL-SOUP", "default": true }, { "sku": "SAMPLE-HUMMUS" }, { "sku": "SAMPLE-FATTOUSH" }] },
+          { "name": "Main", "options": [{ "sku": "SAMPLE-GRILLED-CHICKEN", "default": true }, { "sku": "SAMPLE-CHICKEN-PASTA" }, { "sku": "SAMPLE-MIXED-GRILL", "surcharge_cents": 1500 }] },
+          { "name": "Drink", "options": [{ "sku": "SAMPLE-SOFT-DRINK", "default": true }, { "sku": "SAMPLE-WATER" }, { "sku": "SAMPLE-KARAK" }] }
+        ]
+      }
+    ],
+    "customers": [{ "name": "Sample Regular", "customer_type": "RETAIL", "phone": "+971500000004" }]
+  },
+  "cafe": {
+    "areas": [
+      {
+        "name": "Seating",
+        "tables": [
+          { "label": "C1", "seats": 2, "shape": "round" }, { "label": "C2", "seats": 2, "shape": "round" }, { "label": "C3", "seats": 2, "shape": "round" },
+          { "label": "C4", "seats": 4 }, { "label": "C5", "seats": 4 }, { "label": "C6", "seats": 6, "shape": "rect" }
+        ]
+      }
+    ],
+    "stations": [
+      { "name": "Barista", "categories": ["Hot Drinks", "Cold Drinks"] },
+      { "name": "Kitchen", "default": true, "categories": [] }
+    ],
+    "products": [
+      { "sku": "SAMPLE-ESPRESSO", "name": "Espresso", "category": "Hot Drinks", "price_cents": 1200 },
+      { "sku": "SAMPLE-CAPPUCCINO", "name": "Cappuccino", "category": "Hot Drinks", "price_cents": 1700 },
+      { "sku": "SAMPLE-LATTE", "name": "Caffè latte", "category": "Hot Drinks", "price_cents": 1800 },
+      { "sku": "SAMPLE-FLAT-WHITE", "name": "Flat white", "category": "Hot Drinks", "price_cents": 1800 },
+      { "sku": "SAMPLE-CAFE-KARAK", "name": "Karak chai", "category": "Hot Drinks", "price_cents": 800 },
+      { "sku": "SAMPLE-ICED-LATTE", "name": "Iced latte", "category": "Cold Drinks", "price_cents": 2000 },
+      { "sku": "SAMPLE-CAFE-ORANGE", "name": "Fresh orange juice", "category": "Cold Drinks", "price_cents": 1800 },
+      { "sku": "SAMPLE-ICED-TEA", "name": "Peach iced tea", "category": "Cold Drinks", "price_cents": 1500 },
+      { "sku": "SAMPLE-CAFE-WATER", "name": "Mineral water", "category": "Cold Drinks", "price_cents": 500 },
+      { "sku": "SAMPLE-CROISSANT", "name": "Butter croissant", "category": "Bakery", "price_cents": 1100 },
+      { "sku": "SAMPLE-ZAATAR-CROISSANT", "name": "Zaatar croissant", "category": "Bakery", "price_cents": 1200 },
+      { "sku": "SAMPLE-MUFFIN", "name": "Blueberry muffin", "category": "Bakery", "price_cents": 1300 },
+      { "sku": "SAMPLE-HALLOUMI", "name": "Grilled halloumi sandwich", "category": "Sandwiches", "price_cents": 2600 },
+      { "sku": "SAMPLE-CLUB", "name": "Chicken club sandwich", "category": "Sandwiches", "price_cents": 2900 },
+      { "sku": "SAMPLE-AVOCADO-TOAST", "name": "Egg & avocado toast", "category": "Sandwiches", "price_cents": 3200 },
+      { "sku": "SAMPLE-CHEESECAKE", "name": "Cheesecake slice", "category": "Desserts", "price_cents": 2400 },
+      { "sku": "SAMPLE-BROWNIE", "name": "Chocolate brownie", "category": "Desserts", "price_cents": 1400 }
+    ],
+    "modifier_groups": [
+      {
+        "name": "Size",
+        "min": 1,
+        "max": 1,
+        "options": [{ "name": "Regular", "default": true }, { "name": "Large", "price_cents": 300 }],
+        "products": ["SAMPLE-CAPPUCCINO", "SAMPLE-LATTE", "SAMPLE-FLAT-WHITE", "SAMPLE-ICED-LATTE"]
+      },
+      {
+        "name": "Milk",
+        "min": 1,
+        "max": 1,
+        "options": [{ "name": "Full fat", "default": true }, { "name": "Skimmed" }, { "name": "Oat", "price_cents": 200 }, { "name": "Almond", "price_cents": 200 }],
+        "products": ["SAMPLE-CAPPUCCINO", "SAMPLE-LATTE", "SAMPLE-FLAT-WHITE", "SAMPLE-ICED-LATTE"]
+      },
+      {
+        "name": "Extras",
+        "min": 0,
+        "max": 3,
+        "options": [{ "name": "Extra shot", "price_cents": 300 }, { "name": "Vanilla syrup", "price_cents": 200 }, { "name": "Caramel syrup", "price_cents": 200 }],
+        "products": ["SAMPLE-ESPRESSO", "SAMPLE-CAPPUCCINO", "SAMPLE-LATTE", "SAMPLE-FLAT-WHITE", "SAMPLE-ICED-LATTE"]
+      }
+    ],
+    "combos": [
+      {
+        "sku": "SAMPLE-MEAL-BREAKFAST",
+        "name": "Breakfast Deal",
+        "category": "Deals",
+        "price_cents": 2600,
+        "slots": [
+          { "name": "Pastry", "options": [{ "sku": "SAMPLE-CROISSANT", "default": true }, { "sku": "SAMPLE-ZAATAR-CROISSANT" }, { "sku": "SAMPLE-MUFFIN" }] },
+          { "name": "Hot drink", "options": [{ "sku": "SAMPLE-CAPPUCCINO", "default": true }, { "sku": "SAMPLE-LATTE" }, { "sku": "SAMPLE-FLAT-WHITE" }, { "sku": "SAMPLE-CAFE-KARAK" }] }
+        ]
+      },
+      {
+        "sku": "SAMPLE-MEAL-CAFE-LUNCH",
+        "name": "Lunch Combo",
+        "category": "Deals",
+        "price_cents": 3900,
+        "slots": [
+          { "name": "Sandwich", "options": [{ "sku": "SAMPLE-HALLOUMI", "default": true }, { "sku": "SAMPLE-CLUB" }, { "sku": "SAMPLE-AVOCADO-TOAST", "surcharge_cents": 300 }] },
+          { "name": "Drink", "options": [{ "sku": "SAMPLE-ICED-TEA", "default": true }, { "sku": "SAMPLE-CAFE-WATER" }, { "sku": "SAMPLE-CAFE-ORANGE", "surcharge_cents": 200 }, { "sku": "SAMPLE-ICED-LATTE", "surcharge_cents": 300 }] },
+          { "name": "Sweet", "options": [{ "sku": "SAMPLE-BROWNIE", "default": true }, { "sku": "SAMPLE-CHEESECAKE", "surcharge_cents": 600 }] }
+        ]
+      }
+    ],
+    "customers": [{ "name": "Sample Regular", "customer_type": "RETAIL", "phone": "+971500000005" }]
+  },
+  "quick_service": {
+    "areas": [],
+    "stations": [
+      { "name": "Kitchen", "default": true, "categories": [] },
+      { "name": "Drinks", "categories": ["Drinks"] }
+    ],
+    "products": [
+      { "sku": "SAMPLE-QSR-BURGER", "name": "Classic burger", "category": "Burgers", "price_cents": 2200 },
+      { "sku": "SAMPLE-QSR-CHEESEBURGER", "name": "Cheeseburger", "category": "Burgers", "price_cents": 2500 },
+      { "sku": "SAMPLE-QSR-DOUBLE", "name": "Double burger", "category": "Burgers", "price_cents": 3200 },
+      { "sku": "SAMPLE-QSR-SPICY", "name": "Spicy chicken burger", "category": "Burgers", "price_cents": 2400 },
+      { "sku": "SAMPLE-QSR-SHAWARMA", "name": "Chicken shawarma wrap", "category": "Wraps", "price_cents": 1600 },
+      { "sku": "SAMPLE-QSR-FALAFEL", "name": "Falafel wrap", "category": "Wraps", "price_cents": 1300 },
+      { "sku": "SAMPLE-QSR-FRIES", "name": "Fries", "category": "Sides", "price_cents": 900 },
+      { "sku": "SAMPLE-QSR-LARGE-FRIES", "name": "Large fries", "category": "Sides", "price_cents": 1200 },
+      { "sku": "SAMPLE-QSR-NUGGETS", "name": "Chicken nuggets (6)", "category": "Sides", "price_cents": 1600 },
+      { "sku": "SAMPLE-QSR-COLESLAW", "name": "Coleslaw", "category": "Sides", "price_cents": 700 },
+      { "sku": "SAMPLE-QSR-COLA", "name": "Cola", "category": "Drinks", "price_cents": 700 },
+      { "sku": "SAMPLE-QSR-ORANGE-SODA", "name": "Orange soda", "category": "Drinks", "price_cents": 700 },
+      { "sku": "SAMPLE-QSR-WATER", "name": "Water", "category": "Drinks", "price_cents": 400 },
+      { "sku": "SAMPLE-QSR-SHAKE", "name": "Vanilla milkshake", "category": "Drinks", "price_cents": 1500 },
+      { "sku": "SAMPLE-QSR-KIDS-BURGER", "name": "Kids burger", "category": "Kids", "price_cents": 1500 },
+      { "sku": "SAMPLE-QSR-MINI-NUGGETS", "name": "Mini nuggets (4)", "category": "Kids", "price_cents": 1200 },
+      { "sku": "SAMPLE-QSR-APPLE-JUICE", "name": "Apple juice", "category": "Kids", "price_cents": 600 },
+      { "sku": "SAMPLE-QSR-SOFT-SERVE", "name": "Soft serve cone", "category": "Desserts", "price_cents": 600 }
+    ],
+    "modifier_groups": [
+      {
+        "name": "Spice level",
+        "min": 1,
+        "max": 1,
+        "options": [{ "name": "Mild", "default": true }, { "name": "Medium" }, { "name": "Hot" }],
+        "products": ["SAMPLE-QSR-SPICY", "SAMPLE-QSR-SHAWARMA"]
+      },
+      {
+        "name": "Extras",
+        "min": 0,
+        "max": 3,
+        "options": [{ "name": "Extra cheese", "price_cents": 200 }, { "name": "Beef bacon", "price_cents": 300 }, { "name": "No onions" }],
+        "products": ["SAMPLE-QSR-BURGER", "SAMPLE-QSR-CHEESEBURGER", "SAMPLE-QSR-DOUBLE", "SAMPLE-QSR-SPICY"]
+      }
+    ],
+    "combos": [
+      {
+        "sku": "SAMPLE-MEAL-QSR-BURGER",
+        "name": "Burger Combo",
+        "category": "Combos",
+        "price_cents": 3200,
+        "slots": [
+          { "name": "Burger", "options": [{ "sku": "SAMPLE-QSR-BURGER", "default": true }, { "sku": "SAMPLE-QSR-CHEESEBURGER", "surcharge_cents": 300 }, { "sku": "SAMPLE-QSR-DOUBLE", "surcharge_cents": 900 }, { "sku": "SAMPLE-QSR-SPICY", "surcharge_cents": 200 }] },
+          { "name": "Side", "options": [{ "sku": "SAMPLE-QSR-FRIES", "default": true }, { "sku": "SAMPLE-QSR-LARGE-FRIES", "surcharge_cents": 300 }, { "sku": "SAMPLE-QSR-COLESLAW" }] },
+          { "name": "Drink", "options": [{ "sku": "SAMPLE-QSR-COLA", "default": true }, { "sku": "SAMPLE-QSR-ORANGE-SODA" }, { "sku": "SAMPLE-QSR-WATER" }, { "sku": "SAMPLE-QSR-SHAKE", "surcharge_cents": 700 }] }
+        ]
+      },
+      {
+        "sku": "SAMPLE-MEAL-QSR-WRAP",
+        "name": "Wrap Combo",
+        "category": "Combos",
+        "price_cents": 2400,
+        "slots": [
+          { "name": "Wrap", "options": [{ "sku": "SAMPLE-QSR-SHAWARMA", "default": true }, { "sku": "SAMPLE-QSR-FALAFEL" }] },
+          { "name": "Side", "options": [{ "sku": "SAMPLE-QSR-FRIES", "default": true }, { "sku": "SAMPLE-QSR-COLESLAW" }] },
+          { "name": "Drink", "options": [{ "sku": "SAMPLE-QSR-COLA", "default": true }, { "sku": "SAMPLE-QSR-ORANGE-SODA" }, { "sku": "SAMPLE-QSR-WATER" }] }
+        ]
+      },
+      {
+        "sku": "SAMPLE-MEAL-QSR-KIDS",
+        "name": "Kids Meal",
+        "category": "Combos",
+        "price_cents": 2200,
+        "slots": [
+          { "name": "Main", "options": [{ "sku": "SAMPLE-QSR-KIDS-BURGER", "default": true }, { "sku": "SAMPLE-QSR-MINI-NUGGETS" }] },
+          { "name": "Drink", "options": [{ "sku": "SAMPLE-QSR-APPLE-JUICE", "default": true }, { "sku": "SAMPLE-QSR-WATER" }] },
+          { "name": "Treat", "options": [{ "sku": "SAMPLE-QSR-SOFT-SERVE", "default": true }] }
+        ]
+      }
+    ],
+    "customers": [{ "name": "Sample Regular", "customer_type": "RETAIL", "phone": "+971500000006" }]
+  }
+}

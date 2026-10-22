@@ -1,0 +1,95 @@
+@import url("https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&display=swap");
+@import "@ai-pos/design-tokens/tokens.css";
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Register default accent (Vibrant Orange #FF4500); src/lib/theme.ts overwrites these from POS Settings. */
+:root {
+  --primary: #ff4500;
+  --primary-rgb: 255 69 0;
+  --primary-hover-rgb: 219 59 0;
+  --primary-50-rgb: 255 240 235;
+  --primary-100-rgb: 255 225 214;
+  --primary-200-rgb: 255 195 173;
+  --primary-300-rgb: 255 153 115;
+  --primary-400-rgb: 255 110 56;
+  --primary-500-rgb: 255 69 0;
+  --primary-600-rgb: 219 59 0;
+  --primary-700-rgb: 184 50 0;
+}
+
+@layer components {
+  .modal-backdrop {
+    @apply fixed inset-0 z-50 flex items-center justify-center bg-charcoal/40 p-4 backdrop-blur-[8px];
+    animation: fade-in 180ms ease-out both;
+  }
+  .modal-card {
+    @apply max-h-[90vh] w-full overflow-y-auto rounded-3xl bg-white p-6 text-charcoal shadow-2xl ring-1 ring-transparent sm:p-7 dark:bg-zinc-900 dark:text-zinc-100 dark:ring-zinc-800;
+    animation: modal-in 220ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+  .modal-input {
+    @apply w-full rounded-xl border border-transparent bg-surface px-4 py-3 text-charcoal transition-colors placeholder:text-charcoal/40 focus:border-primary focus:bg-white focus:outline-none dark:bg-zinc-800/60 dark:text-zinc-100 dark:placeholder:text-zinc-500 dark:focus:bg-zinc-900;
+  }
+  .modal-cancel {
+    @apply inline-flex items-center justify-center rounded-full border border-gray-200 bg-white px-6 py-2.5 text-sm font-medium text-black transition-colors hover:bg-gray-50 disabled:opacity-40 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-100 dark:hover:bg-zinc-700;
+  }
+  .modal-save {
+    @apply inline-flex items-center justify-center rounded-full bg-primary px-8 py-2.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-primary-600 disabled:opacity-40 disabled:hover:bg-primary;
+  }
+  .modal-close {
+    @apply -mr-1 -mt-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-charcoal/70 transition-colors hover:bg-gray-100 hover:text-charcoal dark:text-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-white;
+  }
+
+  .kbd {
+    @apply inline-flex h-6 min-w-6 items-center justify-center rounded-md border border-zinc-200 bg-zinc-50 px-1.5 font-mono text-[11px] font-semibold text-zinc-500 dark:border-white/15 dark:bg-white/5 dark:text-white/60;
+  }
+  /* The cart is a full-screen sheet on phones, a slide-over on tablets and a fixed column on desktop. */
+  .cart-sheet {
+    animation: sheet-up 260ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+  @media (min-width: 768px) {
+    .cart-sheet {
+      animation-name: sheet-left;
+    }
+  }
+  @media (min-width: 1024px) {
+    .cart-sheet {
+      animation: none;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .modal-backdrop,
+    .modal-card,
+    .cart-sheet {
+      animation-duration: 1ms;
+    }
+  }
+}
+
+@keyframes sheet-up {
+  from {
+    transform: translateY(100%);
+  }
+}
+
+@keyframes sheet-left {
+  from {
+    transform: translateX(100%);
+  }
+}
+
+@keyframes modal-in {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+}

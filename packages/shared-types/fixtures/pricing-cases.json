@@ -1,0 +1,37 @@
+{
+  "retail_cents": 1500,
+  "prices": [
+    {
+      "price_tier": "RETAIL",
+      "price_cents": 1500,
+      "min_order_quantity": 1,
+      "volume_discounts": [{ "min_qty": 10, "price_cents": 1400 }]
+    },
+    {
+      "price_tier": "TIER_1",
+      "price_cents": 1200,
+      "min_order_quantity": 5,
+      "volume_discounts": [
+        { "min_qty": 25, "price_cents": 1000 },
+        { "min_qty": 50, "price_cents": 950 }
+      ]
+    },
+    {
+      "price_tier": "DISTRIBUTOR",
+      "price_cents": 900,
+      "min_order_quantity": 100,
+      "volume_discounts": []
+    }
+  ],
+  "cases": [
+    { "name": "retail single", "tier": "RETAIL", "pieces": 1, "price_cents": 1500, "resolved_tier": "RETAIL", "source": "retail", "moq_shortfall": 0 },
+    { "name": "retail volume break", "tier": "RETAIL", "pieces": 12, "price_cents": 1400, "resolved_tier": "RETAIL", "source": "volume", "moq_shortfall": 0 },
+    { "name": "tier 1 below moq falls back to retail", "tier": "TIER_1", "pieces": 3, "price_cents": 1500, "resolved_tier": "RETAIL", "source": "retail", "moq_shortfall": 2 },
+    { "name": "tier 1 at moq", "tier": "TIER_1", "pieces": 5, "price_cents": 1200, "resolved_tier": "TIER_1", "source": "tier", "moq_shortfall": 0 },
+    { "name": "tier 1 bulk 25", "tier": "TIER_1", "pieces": 25, "price_cents": 1000, "resolved_tier": "TIER_1", "source": "volume", "moq_shortfall": 0 },
+    { "name": "tier 1 bulk 60 picks best break", "tier": "TIER_1", "pieces": 60, "price_cents": 950, "resolved_tier": "TIER_1", "source": "volume", "moq_shortfall": 0 },
+    { "name": "tier 2 without a row uses tier 1", "tier": "TIER_2", "pieces": 30, "price_cents": 1000, "resolved_tier": "TIER_1", "source": "volume", "moq_shortfall": 0 },
+    { "name": "distributor below moq uses tier 1", "tier": "DISTRIBUTOR", "pieces": 40, "price_cents": 1000, "resolved_tier": "TIER_1", "source": "volume", "moq_shortfall": 60 },
+    { "name": "distributor at moq", "tier": "DISTRIBUTOR", "pieces": 100, "price_cents": 900, "resolved_tier": "DISTRIBUTOR", "source": "tier", "moq_shortfall": 0 }
+  ]
+}

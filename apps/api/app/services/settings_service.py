@@ -1,0 +1,530 @@
+import copy
+import re
+import threading
+import time
+import uuid
+from dataclasses import dataclass, field
+from datetime import UTC, datetime
+from typing import Any
+
+from sqlalchemy import event, select, update
+from sqlalchemy.orm import ORMExecuteState, Session
+
+from app.core import capabilities as capability_catalog
+from app.core.config import get_settings
+from app.core.currency import BUSINESS_SETTINGS_ID, DEFAULT_CURRENCY, SUPPORTED_CURRENCIES
+from app.core.errors import ApiError
+from app.models.business_settings import BusinessSettings
+from app.models.product import Product
+from app.models.store import Store
+from app.models.user import User
+from app.schemas.governance import TenantModulesOut
+from app.schemas.module_settings import ModuleSettings, resolve_module_settings
+from app.schemas.pos_policy import PosPolicy, resolve_pos_policy
+from app.schemas.receipt import ReceiptProfileOut, ReceiptSettings, ReceiptStore, resolve_receipt_settings
+from app.schemas.settings import AppearanceUpdate, BusinessSettingsOut, ProfileUpdate, TaxSettingsUpdate
+from app.services import audit, race
+
+CURRENCY_CHANGED = "settings.currency"
+# Commits in this process invalidate at once; the TTL bounds staleness when another API worker changed the row.
+CACHE_TTL_SECONDS = 30.0
+_CHANGED = "business_settings_changed"
+
+
+@dataclass(frozen=True)
+class SettingsSnapshot:
+    """Read-only copy of the business settings row, safe to share between requests."""
+
+    id: Any
+    currency: str
+    vat_registered: bool
+    trn: str | None
+    legal_name: str | None
+    legal_name_ar: str | None
+    prices_include_vat: bool
+    standard_rate_bps: int
+    messaging: dict | None
+    message_events: dict | None
+    updated_at: datetime | None
+    updated_by_name: str | None
+    primary_color: str | None = None
+    business_profile: str = capability_catalog.DEFAULT_PROFILE
+    capabilities: tuple[capability_catalog.Capability, ...] = capability_catalog.ELECTRONICS_WHOLESALE
+    planned_capabilities: tuple[capability_catalog.Capability, ...] = ()
+    onboarded: bool = True
+    tax_authority: str = "fta"
+    module_settings: ModuleSettings = field(default_factory=ModuleSettings)
+    receipt: ReceiptSettings = field(default_factory=ReceiptSettings)
+    pos_policy: PosPolicy = field(default_factory=PosPolicy)
+    practice_mode: bool = False
+    # IT support's overrides from the console: module -> "on" | "off".
+    managed_capabilities: dict[str, str] = field(default_factory=dict)
+
+
+class _SettingsCache:
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._entries: dict[int, tuple[float, SettingsSnapshot]] = {}
+        self._generation = 0
+
+    def get(self, key: int) -> SettingsSnapshot | None:
+        with self._lock:
+            entry = self._entries.get(key)
+            if entry is None or entry[0] <= time.monotonic():
+                return None
+            return entry[1]
+
+    def generation(self) -> int:
+        with self._lock:
+            return self._generation
+
+    def put(self, key: int, snapshot: SettingsSnapshot, generation: int) -> None:
+        """Skips the write when settings changed while this snapshot was being read."""
+        with self._lock:
+            if generation == self._generation:
+                self._entries[key] = (time.monotonic() + CACHE_TTL_SECONDS, snapshot)
+
+    def clear(self) -> None:
+        with self._lock:
+            self._generation += 1
+            self._entries.clear()
+
+
+_cache = _SettingsCache()
+
+
+def clear_settings_cache() -> None:
+    _cache.clear()
+
+
+@event.listens_for(Session, "after_flush")
+def _track_settings_writes(session: Session, _flush_context: object) -> None:
+    if any(isinstance(obj, BusinessSettings) for obj in (*session.new, *session.dirty, *session.deleted)):
+        session.info[_CHANGED] = True
+
+
+@event.listens_for(Session, "do_orm_execute")
+def _track_bulk_settings_writes(state: ORMExecuteState) -> None:
+    if (state.is_update or state.is_delete) and state.bind_mapper is not None:
+        if state.bind_mapper.class_ is BusinessSettings:
+            state.session.info[_CHANGED] = True
+
+
+@event.listens_for(Session, "after_commit")
+def _invalidate_on_commit(session: Session) -> None:
+    if session.info.pop(_CHANGED, False):
+        _cache.clear()
+
+
+@event.listens_for(Session, "after_rollback")
+def _forget_on_rollback(session: Session) -> None:
+    session.info.pop(_CHANGED, None)
+
+
+def _load(db: Session, *, lock: bool) -> tuple[BusinessSettings, bool]:
+    statement = select(BusinessSettings).where(BusinessSettings.id == BUSINESS_SETTINGS_ID)
+    if lock and db.get_bind().dialect.name == "postgresql":
+        # `updated_by` is eager-joined, and Postgres refuses to lock the nullable side of an outer join.
+        statement = statement.with_for_update(of=BusinessSettings)
+    row = db.scalar(statement)
+    if row is not None:
+        return row, False
+    first_store = db.scalar(select(Store).order_by(Store.created_at).limit(1))
+    row = BusinessSettings(
+        id=BUSINESS_SETTINGS_ID,
+        currency=first_store.currency if first_store is not None else DEFAULT_CURRENCY,
+    )
+    if not race.add_if_absent(db, [row]):
+        existing = db.scalar(statement)
+        assert existing is not None
+        return existing, False
+    return row, True
+
+
+def load_settings(db: Session, *, lock: bool = False) -> BusinessSettings:
+    """The live ORM row, always read from the database. Use it to change settings; reads use `cached_settings`."""
+    return _load(db, lock=lock)[0]
+
+
+def managed_of(row: BusinessSettings) -> dict[str, str]:
+    known = {capability.value for capability in capability_catalog.Capability}
+    return {
+        key: value for key, value in (row.managed_capabilities or {}).items() if key in known and value in ("on", "off")
+    }
+
+
+def snapshot_of(row: BusinessSettings) -> SettingsSnapshot:
+    profile = row.business_profile or capability_catalog.DEFAULT_PROFILE
+    managed = managed_of(row)
+    resolved = capability_catalog.resolve(profile, row.capabilities, managed)
+    return SettingsSnapshot(
+        managed_capabilities=managed,
+        business_profile=profile,
+        capabilities=resolved.enabled,
+        planned_capabilities=resolved.planned,
+        onboarded=row.onboarded_at is not None,
+        practice_mode=row.live_at is None,
+        id=row.id,
+        currency=row.currency,
+        vat_registered=bool(row.vat_registered),
+        trn=row.trn,
+        legal_name=row.legal_name,
+        legal_name_ar=row.legal_name_ar,
+        prices_include_vat=bool(row.prices_include_vat),
+        standard_rate_bps=int(row.standard_rate_bps),
+        messaging=copy.deepcopy(row.messaging),
+        message_events=copy.deepcopy(row.message_events),
+        updated_at=row.updated_at,
+        updated_by_name=row.updated_by.full_name if row.updated_by is not None else None,
+        primary_color=row.primary_color,
+        tax_authority=row.tax_authority or "fta",
+        module_settings=resolve_module_settings(row.module_settings),
+        receipt=resolve_receipt_settings(row.receipt),
+        pos_policy=resolve_pos_policy(row.pos_policy, profile),
+    )
+
+
+def _pending_settings_change(db: Session) -> bool:
+    if db.info.get(_CHANGED):
+        return True
+    return any(isinstance(obj, BusinessSettings) for obj in (*db.new, *db.dirty, *db.deleted))
+
+
+def cached_settings(db: Session) -> SettingsSnapshot:
+    """Business settings for read paths, served from memory. A session holding uncommitted settings changes
+    always reads its own row so it sees them."""
+    if _pending_settings_change(db):
+        return snapshot_of(load_settings(db))
+    key = id(db.get_bind())
+    hit = _cache.get(key)
+    if hit is not None:
+        return hit
+    generation = _cache.generation()
+    row, created = _load(db, lock=False)
+    snapshot = snapshot_of(row)
+    if not created:
+        _cache.put(key, snapshot, generation)
+    return snapshot
+
+
+def business_currency(db: Session) -> str:
+    return cached_settings(db).currency
+
+
+def report_currency(db: Session, requested: str | None) -> str:
+    """Reports default to the business currency; an explicit code reads history taken in another one."""
+    if requested is None:
+        return business_currency(db)
+    code = requested.strip().upper()
+    if re.fullmatch(r"[A-Z]{3}", code) is None:
+        raise ApiError(422, "invalid_request", "currency must be a 3-letter ISO code.")
+    return code
+
+
+def settings_out(settings: BusinessSettings | SettingsSnapshot) -> BusinessSettingsOut:
+    snapshot = settings if isinstance(settings, SettingsSnapshot) else snapshot_of(settings)
+    return BusinessSettingsOut(
+        currency=snapshot.currency,
+        supported_currencies=list(SUPPORTED_CURRENCIES),
+        updated_at=snapshot.updated_at,
+        updated_by_name=snapshot.updated_by_name,
+        vat_registered=snapshot.vat_registered,
+        trn=snapshot.trn,
+        legal_name=snapshot.legal_name,
+        legal_name_ar=snapshot.legal_name_ar,
+        prices_include_vat=snapshot.prices_include_vat,
+        standard_rate_bps=snapshot.standard_rate_bps,
+        primary_color=snapshot.primary_color,
+        business_profile=snapshot.business_profile,
+        capabilities=[capability.value for capability in snapshot.capabilities],
+        planned_capabilities=[capability.value for capability in snapshot.planned_capabilities],
+        onboarded=snapshot.onboarded,
+        practice_mode=snapshot.practice_mode,
+        tax_authority=snapshot.tax_authority,
+        module_settings=snapshot.module_settings.model_copy(deep=True),
+        pos_policy=snapshot.pos_policy.model_copy(deep=True),
+    )
+
+
+def pos_policy(db: Session) -> PosPolicy:
+    return cached_settings(db).pos_policy
+
+
+def change_pos_policy(db: Session, actor: User, data: PosPolicy) -> BusinessSettingsOut:
+    row = load_settings(db, lock=True)
+    before = resolve_pos_policy(row.pos_policy, row.business_profile).model_dump()
+    after = data.model_dump()
+    if before == after:
+        return settings_out(row)
+    row.pos_policy = after
+    row.updated_by_id = actor.id
+    audit.record(
+        db,
+        action_type="UPDATE",
+        action="settings.pos_policy",
+        target_entity="Settings",
+        target_entity_id=row.id,
+        user=actor,
+        old_values=before,
+        new_values=after,
+    )
+    db.commit()
+    db.refresh(row)
+    return settings_out(row)
+
+
+def change_appearance(db: Session, actor: User, data: AppearanceUpdate) -> BusinessSettingsOut:
+    row = load_settings(db, lock=True)
+    previous = row.primary_color
+    if previous == data.primary_color:
+        return settings_out(row)
+    row.primary_color = data.primary_color
+    row.updated_by_id = actor.id
+    audit.record(
+        db,
+        action_type="UPDATE",
+        action="settings.appearance",
+        target_entity="Settings",
+        target_entity_id=row.id,
+        user=actor,
+        old_values={"primary_color": previous},
+        new_values={"primary_color": data.primary_color},
+    )
+    db.commit()
+    db.refresh(row)
+    return settings_out(row)
+
+
+PROFILE_CHANGED = "settings.profile"
+
+
+def provision_profile(db: Session, profile: str) -> None:
+    """Seed and tenant provisioning: the profile's preset modules. Onboarding is left to the first admin."""
+    if profile not in capability_catalog.PROFILES:
+        raise ApiError(422, "invalid_request", f"Unknown business profile '{profile}'.")
+    row = load_settings(db, lock=True)
+    row.business_profile = profile
+    row.capabilities = None
+    db.commit()
+
+
+def tenant_modules(db: Session, tenant_name: str) -> TenantModulesOut:
+    snapshot = cached_settings(db)
+    profile = snapshot.business_profile
+    enabled = {capability.value for capability in snapshot.capabilities}
+    return TenantModulesOut(
+        tenant_name=tenant_name,
+        business_profile=profile,
+        profile_label=capability_catalog.PROFILE_LABELS.get(profile, profile),
+        locked=snapshot.onboarded,
+        enabled=[capability.value for capability in snapshot.capabilities],
+        available=[
+            capability.value
+            for capability in capability_catalog.compatible(profile)
+            if capability.value not in enabled and capability_catalog.SPECS[capability].available
+        ],
+        planned=[capability.value for capability in snapshot.planned_capabilities],
+        managed=dict(snapshot.managed_capabilities),  # type: ignore[arg-type]
+        support_email=get_settings().support_email,
+    )
+
+
+def locked_message(support_email: str) -> str:
+    return f"To change your business type and migrate store data safely, please contact IT Support at {support_email}"
+
+
+def _check_locked_change(row: BusinessSettings, profile: str, selection: list[str] | None) -> None:
+    """After onboarding the business type is fixed (its sales and stock depend on it), and only the modules that fit
+    it can be switched on from the portal. IT support handles everything else."""
+    if profile != row.business_profile:
+        raise ApiError(409, "business_type_locked", locked_message(get_settings().support_email))
+    if selection is None:
+        return
+    allowed = set(capability_catalog.compatible(profile))
+    managed = managed_of(row)
+    outside = [
+        value for value in selection if capability_catalog.Capability(value) not in allowed and value not in managed
+    ]
+    if outside:
+        names = ", ".join(capability_catalog.SPECS[capability_catalog.Capability(value)].label for value in outside)
+        raise ApiError(
+            422,
+            "module_not_available",
+            f"{names} does not fit a {capability_catalog.PROFILE_LABELS.get(profile, profile)} business. "
+            "Ask IT Support to add it.",
+            details={"modules": outside},
+        )
+
+
+def change_profile(db: Session, actor: User, data: ProfileUpdate) -> BusinessSettingsOut:
+    """Switches the business type and/or its modules. Roadmap modules are kept as planned, never enabled, and a
+    disabled module only hides features: its data stays."""
+    if data.business_profile not in capability_catalog.PROFILES:
+        raise ApiError(422, "invalid_request", f"Unknown business profile '{data.business_profile}'.")
+    selection = None
+    if data.capabilities is not None:
+        unknown = sorted(set(data.capabilities) - {capability.value for capability in capability_catalog.Capability})
+        if unknown:
+            raise ApiError(422, "invalid_request", f"Unknown modules: {', '.join(unknown)}.")
+        chosen = capability_catalog.parse(data.capabilities)
+        missing = capability_catalog.missing_dependencies(chosen)
+        if missing:
+            detail = "; ".join(
+                f"{capability.value} needs {', '.join(required.value for required in needs)}"
+                for capability, needs in missing.items()
+            )
+            raise ApiError(422, "capability_dependencies", f"Some modules need others switched on: {detail}.")
+        selection = [capability.value for capability in chosen]
+
+    row = load_settings(db, lock=True)
+    if row.onboarded_at is not None:
+        _check_locked_change(row, data.business_profile, selection)
+    managed = managed_of(row)
+    before = {
+        "business_profile": row.business_profile,
+        "capabilities": list(capability_catalog.resolve(row.business_profile, row.capabilities, managed).enabled),
+    }
+    row.business_profile = data.business_profile
+    row.capabilities = selection
+    if data.complete_onboarding and row.onboarded_at is None:
+        row.onboarded_at = datetime.now(UTC)
+    row.updated_by_id = actor.id
+    after = capability_catalog.resolve(row.business_profile, row.capabilities, managed)
+    audit.record(
+        db,
+        action_type="UPDATE",
+        action=PROFILE_CHANGED,
+        target_entity="Settings",
+        target_entity_id=row.id,
+        user=actor,
+        old_values={"business_profile": before["business_profile"], "capabilities": before["capabilities"]},
+        new_values={"business_profile": row.business_profile, "capabilities": [c.value for c in after.enabled]},
+        details={"planned": [c.value for c in after.planned], "onboarding": bool(data.complete_onboarding)},
+    )
+    db.commit()
+    db.refresh(row)
+    return settings_out(row)
+
+
+TAX_FIELDS = (
+    "vat_registered",
+    "trn",
+    "legal_name",
+    "legal_name_ar",
+    "prices_include_vat",
+    "standard_rate_bps",
+    "tax_authority",
+)
+
+
+def change_tax(db: Session, actor: User, data: TaxSettingsUpdate) -> BusinessSettingsOut:
+    row = load_settings(db, lock=True)
+    before = {name: getattr(row, name) for name in TAX_FIELDS}
+    after = data.model_dump()
+    if before == after:
+        return settings_out(row)
+    for name, value in after.items():
+        setattr(row, name, value)
+    row.updated_by_id = actor.id
+    audit.record(
+        db,
+        action_type="UPDATE",
+        action="settings.tax",
+        target_entity="Settings",
+        target_entity_id=row.id,
+        user=actor,
+        old_values=before,
+        new_values=after,
+    )
+    db.commit()
+    db.refresh(row)
+    return settings_out(row)
+
+
+def change_module_settings(db: Session, actor: User, data: ModuleSettings) -> BusinessSettingsOut:
+    row = load_settings(db, lock=True)
+    before = resolve_module_settings(row.module_settings).model_dump()
+    after = data.model_dump()
+    if before == after:
+        return settings_out(row)
+    row.module_settings = after
+    row.updated_by_id = actor.id
+    audit.record(
+        db,
+        action_type="UPDATE",
+        action="settings.modules",
+        target_entity="Settings",
+        target_entity_id=row.id,
+        user=actor,
+        old_values=before,
+        new_values=after,
+    )
+    db.commit()
+    db.refresh(row)
+    return settings_out(row)
+
+
+def receipt_profile(db: Session, store_id: uuid.UUID | None) -> ReceiptProfileOut:
+    """Receipt branding plus the branch's own contact lines; an unknown branch prints without them."""
+    store = db.get(Store, store_id) if store_id is not None else None
+    return ReceiptProfileOut(
+        settings=cached_settings(db).receipt.model_copy(),
+        store=ReceiptStore(id=store.id, name=store.name, address=store.address, phone=store.phone)
+        if store is not None
+        else None,
+    )
+
+
+def _audited_receipt(values: dict[str, Any]) -> dict[str, Any]:
+    """The logo is a data URL of up to 64 KB; the audit trail only records whether one is set."""
+    return {**values, "logo_png": values.get("logo_png") is not None}
+
+
+def change_receipt(db: Session, actor: User, data: ReceiptSettings) -> ReceiptProfileOut:
+    row = load_settings(db, lock=True)
+    before = resolve_receipt_settings(row.receipt).model_dump()
+    after = data.model_dump()
+    if before != after:
+        row.receipt = after
+        row.updated_by_id = actor.id
+        logo_changed = before["logo_png"] != after["logo_png"]
+        audit.record(
+            db,
+            action_type="UPDATE",
+            action="settings.receipt",
+            target_entity="Settings",
+            target_entity_id=row.id,
+            user=actor,
+            old_values=_audited_receipt(before),
+            new_values=_audited_receipt(after),
+            details={"logo_changed": logo_changed},
+        )
+        db.commit()
+    return ReceiptProfileOut(settings=resolve_receipt_settings(row.receipt))
+
+
+def change_currency(db: Session, actor: User, currency: str) -> BusinessSettingsOut:
+    """Relabels every store and product price in the new currency. Amounts are not converted, and
+    recorded sales, returns, and repairs keep the currency they were taken in."""
+    row = load_settings(db, lock=True)
+    previous = row.currency
+    if previous == currency:
+        return settings_out(row)
+    stores = db.execute(update(Store).values(currency=currency)).rowcount
+    products = db.execute(update(Product).values(currency=currency)).rowcount
+    row.currency = currency
+    row.updated_by_id = actor.id
+    audit.record(
+        db,
+        action_type="UPDATE",
+        action=CURRENCY_CHANGED,
+        target_entity="Settings",
+        target_entity_id=row.id,
+        user=actor,
+        old_values={"currency": previous},
+        new_values={"currency": currency},
+        details={"from": previous, "to": currency, "stores": stores, "products": products},
+    )
+    db.commit()
+    db.refresh(row)
+    return settings_out(row)

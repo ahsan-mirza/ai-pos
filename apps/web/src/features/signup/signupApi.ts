@@ -1,0 +1,58 @@
+import type {
+  SignupBusiness,
+  SignupStart,
+  SignupStarted,
+  SignupState,
+  SignupStore,
+  SlugCheck,
+} from "@ai-pos/shared-types";
+import { apiSignup } from "../../lib/api";
+
+const STORAGE_KEY = "ai-pos.signup";
+
+export interface SignupSession {
+  id: string;
+  token: string;
+  sentTo: string;
+  channel: SignupStarted["channel"];
+  devCode: string | null;
+}
+
+export function readSignupSession(): SignupSession | null {
+  try {
+    const raw = sessionStorage.getItem(STORAGE_KEY);
+    return raw === null ? null : (JSON.parse(raw) as SignupSession);
+  } catch {
+    return null;
+  }
+}
+
+export function saveSignupSession(session: SignupSession | null): void {
+  if (session === null) sessionStorage.removeItem(STORAGE_KEY);
+  else sessionStorage.setItem(STORAGE_KEY, JSON.stringify(session));
+}
+
+export const signupApi = {
+  start: (body: SignupStart) => apiSignup<SignupStarted>("POST", "/start", { body }),
+  status: (session: SignupSession) => apiSignup<SignupState>("GET", `/${session.id}/status`, { token: session.token }),
+  resend: (session: SignupSession) =>
+    apiSignup<SignupStarted>("POST", `/${session.id}/resend`, { token: session.token }),
+  verify: (session: SignupSession, code: string) =>
+    apiSignup<SignupState>("POST", `/${session.id}/verify`, { token: session.token, body: { code } }),
+  business: (session: SignupSession, body: SignupBusiness) =>
+    apiSignup<SignupState>("POST", `/${session.id}/business`, { token: session.token, body }),
+  store: (session: SignupSession, body: SignupStore) =>
+    apiSignup<SignupState>("POST", `/${session.id}/store`, { token: session.token, body }),
+  retry: (session: SignupSession) => apiSignup<SignupState>("POST", `/${session.id}/retry`, { token: session.token }),
+  slugCheck: (slug: string) => apiSignup<SlugCheck>("GET", `/slug-check?slug=${encodeURIComponent(slug)}`),
+};
+
+/** Same rule as the API: lowercase letters, numbers and single dashes, at most 32 characters. */
+export function slugFromName(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 32)
+    .replace(/-+$/, "");
+}

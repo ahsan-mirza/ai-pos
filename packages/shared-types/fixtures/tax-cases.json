@@ -1,0 +1,12 @@
+{
+  "cases": [
+    { "name": "exclusive 5% single", "unit": 1500, "quantity": 1, "rate_bps": 500, "inclusive": false, "net": 1500, "tax": 75, "total": 1575 },
+    { "name": "exclusive 5% half cent rounds up", "unit": 1010, "quantity": 1, "rate_bps": 500, "inclusive": false, "net": 1010, "tax": 51, "total": 1061 },
+    { "name": "exclusive 5% quantity", "unit": 79900, "quantity": 3, "rate_bps": 500, "inclusive": false, "net": 239700, "tax": 11985, "total": 251685 },
+    { "name": "inclusive 5% single", "unit": 1050, "quantity": 1, "rate_bps": 500, "inclusive": true, "net": 1000, "tax": 50, "total": 1050 },
+    { "name": "inclusive 5% awkward", "unit": 999, "quantity": 1, "rate_bps": 500, "inclusive": true, "net": 951, "tax": 48, "total": 999 },
+    { "name": "inclusive 5% quantity", "unit": 1575, "quantity": 25, "rate_bps": 500, "inclusive": true, "net": 37500, "tax": 1875, "total": 39375 },
+    { "name": "zero rated", "unit": 5000, "quantity": 2, "rate_bps": 0, "inclusive": false, "net": 10000, "tax": 0, "total": 10000 },
+    { "name": "zero rated inclusive", "unit": 5000, "quantity": 2, "rate_bps": 0, "inclusive": true, "net": 10000, "tax": 0, "total": 10000 }
+  ]
+}

@@ -1,0 +1,159 @@
+{
+  "$comment": "Demo staff for local development only. Created by `pnpm --filter @ai-pos/api seed:demo`; shown on the login screens only in dev builds with VITE_SHOW_DEMO_ACCOUNTS=true. Never use these credentials in a shared environment.",
+  "roles": [
+    {
+      "name": "Store Manager",
+      "system": true,
+      "permissions": [
+        "cheques:manage",
+        "currencies:manage",
+        "customers:manage",
+        "devices:manage",
+        "expenses:manage",
+        "inventory:adjust_stock",
+        "messaging:manage",
+        "payables:manage",
+        "portal:access",
+        "portal:inventory_manage",
+        "portal:pricing_manage",
+        "portal:reports_read",
+        "pos:access",
+        "pos:below_floor_override",
+        "pos:credit_sale",
+        "pos:discount",
+        "pos:drawer_override",
+        "pos:open_price",
+        "pos:price_override",
+        "pos:refund",
+        "pos:shift_manage",
+        "pos:trade_in",
+        "promotions:manage",
+        "repairs:create",
+        "repairs:update",
+        "replenishment:manage",
+        "reports:vat",
+        "staff:manage",
+        "users:create",
+        "users:read",
+        "users:update",
+        "warranty:manage"
+      ]
+    },
+    {
+      "name": "Cashier",
+      "system": true,
+      "permissions": [
+        "pos:access",
+        "pos:credit_sale",
+        "repairs:create"
+      ]
+    },
+    {
+      "name": "Technician",
+      "system": true,
+      "permissions": [
+        "pos:access",
+        "repairs:create",
+        "repairs:update"
+      ]
+    },
+    {
+      "name": "Shift Lead",
+      "system": false,
+      "description": "Senior cashier who can discount, refund, and open the drawer.",
+      "permissions": [
+        "pos:access",
+        "pos:discount",
+        "pos:drawer_override",
+        "pos:refund",
+        "repairs:create"
+      ]
+    },
+    {
+      "name": "Reports Viewer",
+      "system": false,
+      "description": "Read-only access to sales and analytics in the portal.",
+      "permissions": [
+        "portal:access",
+        "portal:reports_read"
+      ]
+    },
+    {
+      "name": "Inventory Clerk",
+      "system": false,
+      "description": "Maintains stores and products in the portal.",
+      "permissions": [
+        "portal:access",
+        "portal:inventory_manage"
+      ]
+    }
+  ],
+  "users": [
+    {
+      "username": "manager.dt",
+      "full_name": "Maya Manager",
+      "email": "manager.dt@demo.ai-pos.local",
+      "role": "Store Manager",
+      "store_id": "00000000-0000-4000-8000-000000000001",
+      "password": "Manager#2026",
+      "pin": "1111",
+      "has_portal_access": true,
+      "has_pos_access": true
+    },
+    {
+      "username": "lead.dt",
+      "full_name": "Liam Lead",
+      "email": "lead.dt@demo.ai-pos.local",
+      "role": "Shift Lead",
+      "store_id": "00000000-0000-4000-8000-000000000001",
+      "password": null,
+      "pin": "4444",
+      "has_portal_access": false,
+      "has_pos_access": true
+    },
+    {
+      "username": "cashier.dt",
+      "full_name": "Cara Cashier",
+      "email": "cashier.dt@demo.ai-pos.local",
+      "role": "Cashier",
+      "store_id": "00000000-0000-4000-8000-000000000001",
+      "password": null,
+      "pin": "2222",
+      "has_portal_access": false,
+      "has_pos_access": true
+    },
+    {
+      "username": "tech.dt",
+      "full_name": "Theo Technician",
+      "email": "tech.dt@demo.ai-pos.local",
+      "role": "Technician",
+      "store_id": "00000000-0000-4000-8000-000000000001",
+      "password": null,
+      "pin": "3333",
+      "has_portal_access": false,
+      "has_pos_access": true
+    },
+    {
+      "username": "analyst",
+      "full_name": "Ava Analyst",
+      "email": "analyst@demo.ai-pos.local",
+      "role": "Reports Viewer",
+      "store_id": null,
+      "password": "Reports#2026",
+      "pin": null,
+      "has_portal_access": true,
+      "has_pos_access": false
+    },
+    {
+      "username": "clerk.dt",
+      "full_name": "Ian Inventory",
+      "email": "clerk.dt@demo.ai-pos.local",
+      "role": "Inventory Clerk",
+      "store_id": "00000000-0000-4000-8000-000000000001",
+      "password": "Inventory#2026",
+      "pin": null,
+      "has_portal_access": true,
+      "has_pos_access": false
+    }
+  ]
+}

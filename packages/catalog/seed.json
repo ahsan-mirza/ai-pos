@@ -1,0 +1,610 @@
+{
+  "store": {
+    "id": "00000000-0000-4000-8000-000000000001",
+    "code": "DT-01",
+    "name": "Downtown Flagship",
+    "currency": "USD"
+  },
+  "branches": [
+    {
+      "id": "00000000-0000-4000-8000-000000000005",
+      "code": "WH-01",
+      "name": "Central Warehouse",
+      "currency": "USD",
+      "address": "Warehouse 4, Industrial Area 2",
+      "phone": "+971-6-555-0100",
+      "is_warehouse": true,
+      "is_active": true
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000000006",
+      "code": "SHJ-02",
+      "name": "Sharjah City Centre",
+      "currency": "USD",
+      "address": "Unit 112, Sharjah City Centre",
+      "phone": "+971-6-555-0142",
+      "is_warehouse": false,
+      "is_active": true
+    }
+  ],
+  "branch_stock": [
+    { "store_code": "DT-01", "sku": "ACC-CABLE-USBC", "location": "A1-02", "min_reorder_level": 10, "max_stock_level": 80 },
+    { "store_code": "DT-01", "sku": "ACC-CASE-SLIM", "location": "A1-04", "min_reorder_level": 8, "max_stock_level": 60 },
+    { "store_code": "DT-01", "sku": "PHN-PIXEL-9", "location": "SAFE-1", "min_reorder_level": 2 },
+    { "store_code": "WH-01", "sku": "ACC-CABLE-USBC", "quantity": 200, "location": "R3-B2", "min_reorder_level": 50 },
+    { "store_code": "WH-01", "sku": "ACC-CASE-SLIM", "quantity": 120, "location": "R3-B4", "min_reorder_level": 40 },
+    { "store_code": "SHJ-02", "sku": "ACC-CABLE-USBC", "quantity": 6, "location": "B2-01", "min_reorder_level": 10 },
+    { "store_code": "SHJ-02", "sku": "ACC-CASE-SLIM", "quantity": 0, "location": "B2-03", "min_reorder_level": 6 }
+  ],
+  "tax_rate_bps": 500,
+  "wholesale": {
+    "pricing": [
+      {
+        "sku": "ACC-CABLE-USBC",
+        "sellable_units": ["PIECE", "BOX_10", "CARTON_100"],
+        "min_order_quantity": 1,
+        "tiers": [
+          { "price_tier": "TIER_1", "price_cents": 1200, "min_order_quantity": 5, "volume_discounts": [{ "min_qty": 25, "price_cents": 1000 }, { "min_qty": 100, "price_cents": 900 }] },
+          { "price_tier": "TIER_2", "price_cents": 1100, "min_order_quantity": 10, "volume_discounts": [{ "min_qty": 50, "price_cents": 950 }] },
+          { "price_tier": "DISTRIBUTOR", "price_cents": 850, "min_order_quantity": 100, "volume_discounts": [] }
+        ]
+      },
+      {
+        "sku": "ACC-CASE-SLIM",
+        "sellable_units": ["PIECE", "BOX_10"],
+        "min_order_quantity": 1,
+        "tiers": [
+          { "price_tier": "TIER_1", "price_cents": 2400, "min_order_quantity": 5, "volume_discounts": [{ "min_qty": 20, "price_cents": 2200 }] },
+          { "price_tier": "DISTRIBUTOR", "price_cents": 1900, "min_order_quantity": 50, "volume_discounts": [] }
+        ]
+      },
+      {
+        "sku": "PHN-PIXEL-9",
+        "sellable_units": ["PIECE"],
+        "min_order_quantity": 1,
+        "tiers": [
+          { "price_tier": "TIER_1", "price_cents": 74900, "min_order_quantity": 2, "volume_discounts": [{ "min_qty": 10, "price_cents": 72000 }, { "min_qty": 20, "price_cents": 70000 }] },
+          { "price_tier": "TIER_2", "price_cents": 72900, "min_order_quantity": 5, "volume_discounts": [] },
+          { "price_tier": "DISTRIBUTOR", "price_cents": 68900, "min_order_quantity": 20, "volume_discounts": [] }
+        ]
+      }
+    ],
+    "customers": [
+      {
+        "id": "00000000-0000-4000-8000-0000000000c1",
+        "code": "ALNR-0001",
+        "name": "Omar Haddad",
+        "company_name": "Al Noor Mobiles LLC",
+        "customer_type": "WHOLESALE",
+        "price_tier": "TIER_1",
+        "credit_limit_cents": 500000,
+        "payment_terms": "NET_30",
+        "trn_vat_number": "100234567800003",
+        "phone": "+971-4-555-0101",
+        "email": "accounts@alnoor.example"
+      },
+      {
+        "id": "00000000-0000-4000-8000-0000000000c2",
+        "code": "GULF-0002",
+        "name": "Priya Nair",
+        "company_name": "Gulf Gadgets Trading",
+        "customer_type": "WHOLESALE",
+        "price_tier": "TIER_2",
+        "credit_limit_cents": 1500000,
+        "payment_terms": "NET_15",
+        "trn_vat_number": "100987654300003",
+        "phone": "+971-6-555-0177",
+        "email": "ap@gulfgadgets.example"
+      },
+      {
+        "id": "00000000-0000-4000-8000-0000000000c3",
+        "code": "EMIR-0003",
+        "name": "Khalid Al Mansoori",
+        "company_name": "Emirates Distribution FZE",
+        "customer_type": "WHOLESALE",
+        "price_tier": "DISTRIBUTOR",
+        "credit_limit_cents": 5000000,
+        "payment_terms": "NET_60",
+        "trn_vat_number": "100555444300003",
+        "phone": "+971-4-555-0190",
+        "email": "finance@emiratesdist.example"
+      },
+      {
+        "id": "00000000-0000-4000-8000-0000000000c4",
+        "code": "SARA-0004",
+        "name": "Sara Ahmed",
+        "customer_type": "RETAIL",
+        "price_tier": "RETAIL",
+        "credit_limit_cents": 0,
+        "payment_terms": "DUE_ON_RECEIPT",
+        "phone": "+971-50-555-0123"
+      }
+    ]
+  },
+  "return_policy": {
+    "window_days": 30,
+    "exchange_window_days": 0,
+    "open_box_fee_bps": 1500,
+    "serial_status_by_condition": {
+      "unopened_resealable": "in_stock",
+      "open_box": "quarantine",
+      "defective_doa": "repair"
+    },
+    "preset": "electronics",
+    "conditions": [
+      { "key": "unopened_resealable", "label": "Unopened / resealable", "restock": true, "fee_bps": 0, "serial_status": "in_stock" },
+      { "key": "open_box", "label": "Open box", "restock": false, "fee_bps": 1500, "serial_status": "quarantine" },
+      { "key": "defective_doa", "label": "Defective / DOA", "restock": false, "fee_bps": 0, "serial_status": "repair" }
+    ],
+    "reasons": [
+      { "key": "defective", "label": "Defective" },
+      { "key": "changed_mind", "label": "Changed mind" },
+      { "key": "wrong_item", "label": "Wrong item" },
+      { "key": "damaged_in_transit", "label": "Damaged in transit" },
+      { "key": "not_as_described", "label": "Not as described" },
+      { "key": "other", "label": "Other" }
+    ]
+  },
+  "categories": [
+    {
+      "name": "Phones",
+      "description": "Mobile handsets, tracked by IMEI.",
+      "sub_categories": ["Smartphones", "Feature Phones", "Refurbished Phones", "Rugged Phones"]
+    },
+    {
+      "name": "Tablets",
+      "description": "Tablets and e-readers.",
+      "sub_categories": ["iPads", "Android Tablets", "Kids Tablets", "E-Readers"]
+    },
+    {
+      "name": "Computers",
+      "description": "Portable and desktop computers and displays.",
+      "sub_categories": ["Laptops", "Desktops", "Monitors", "Keyboards & Mice"]
+    },
+    {
+      "name": "Wearables",
+      "description": "Watches and fitness devices.",
+      "sub_categories": ["Smartwatches", "Fitness Trackers", "Watch Straps"]
+    },
+    {
+      "name": "Audio",
+      "description": "Personal and portable audio.",
+      "sub_categories": ["Earbuds", "Headphones", "Bluetooth Speakers", "Wired Earphones"]
+    },
+    {
+      "name": "Accessories",
+      "description": "Protection, power, and connectivity add-ons.",
+      "sub_categories": [
+        "Cases",
+        "Screen Protectors",
+        "Cables",
+        "Chargers & Adapters",
+        "Power Banks",
+        "Car Accessories",
+        "Mounts & Holders",
+        "Memory Cards",
+        "Miscellaneous"
+      ]
+    },
+    {
+      "name": "Smart Home",
+      "description": "Connected devices for the home.",
+      "sub_categories": ["Smart Speakers", "Security Cameras", "Smart Plugs & Lighting", "Routers & Mesh Wi-Fi"]
+    },
+    {
+      "name": "Gaming",
+      "description": "Consoles, controllers, and gaming gear.",
+      "sub_categories": ["Consoles", "Controllers", "Gaming Headsets", "Gaming Accessories"]
+    },
+    {
+      "name": "Repair Parts",
+      "description": "Spare parts used by the repair desk.",
+      "sub_categories": ["Screens & Displays", "Batteries", "Charging Ports", "Cameras", "Back Glass & Housings"]
+    },
+    {
+      "name": "SIM & Connectivity",
+      "description": "SIM cards, recharge, and mobile data.",
+      "sub_categories": ["SIM Cards", "Prepaid Recharge", "Mobile Hotspots"]
+    },
+    {
+      "name": "Services",
+      "description": "Labour and other non-stock services.",
+      "sub_categories": ["Repairs"]
+    }
+  ],
+  "catalog_tree": [
+    {
+      "brand": "Apple",
+      "description": "iPhone, iPad, Mac, Apple Watch, and AirPods.",
+      "models": [
+        {
+          "name": "iPhone 16 Pro Max", "category": "Phones", "sub_category": "Smartphones", "release_year": 2024, "serialized": true,
+          "variants": [
+            {"sku": "APL-IP16PM-256-DST", "barcode": "2000000010014", "attributes": {"storage": "256GB", "color": "Desert Titanium"}, "price_cents": 509900},
+            {"sku": "APL-IP16PM-256-BLK", "barcode": "2000000010021", "attributes": {"storage": "256GB", "color": "Black Titanium"}, "price_cents": 509900},
+            {"sku": "APL-IP16PM-512-NAT", "barcode": "2000000010038", "attributes": {"storage": "512GB", "color": "Natural Titanium"}, "price_cents": 594900},
+            {"sku": "APL-IP16PM-1TB-WHT", "barcode": "2000000010045", "attributes": {"storage": "1TB", "color": "White Titanium"}, "price_cents": 679900}
+          ]
+        },
+        {
+          "name": "iPhone 16 Pro", "category": "Phones", "sub_category": "Smartphones", "release_year": 2024, "serialized": true,
+          "variants": [
+            {"sku": "APL-IP16P-128-BLK", "barcode": "2000000010052", "attributes": {"storage": "128GB", "color": "Black Titanium"}, "price_cents": 429900},
+            {"sku": "APL-IP16P-256-DST", "barcode": "2000000010069", "attributes": {"storage": "256GB", "color": "Desert Titanium"}, "price_cents": 469900},
+            {"sku": "APL-IP16P-512-NAT", "barcode": "2000000010076", "attributes": {"storage": "512GB", "color": "Natural Titanium"}, "price_cents": 554900}
+          ]
+        },
+        {
+          "name": "iPhone 16", "category": "Phones", "sub_category": "Smartphones", "release_year": 2024, "serialized": true,
+          "variants": [
+            {"sku": "APL-IP16-128-BLK", "barcode": "2000000010083", "attributes": {"storage": "128GB", "color": "Black"}, "price_cents": 339900},
+            {"sku": "APL-IP16-128-ULM", "barcode": "2000000010090", "attributes": {"storage": "128GB", "color": "Ultramarine"}, "price_cents": 339900},
+            {"sku": "APL-IP16-256-TEA", "barcode": "2000000010106", "attributes": {"storage": "256GB", "color": "Teal"}, "price_cents": 384900}
+          ]
+        },
+        {
+          "name": "iPhone 15", "category": "Phones", "sub_category": "Smartphones", "release_year": 2023, "serialized": true,
+          "variants": [
+            {"sku": "APL-IP15-128-BLK", "barcode": "2000000010113", "attributes": {"storage": "128GB", "color": "Black"}, "price_cents": 299900},
+            {"sku": "APL-IP15-128-PNK", "barcode": "2000000010120", "attributes": {"storage": "128GB", "color": "Pink"}, "price_cents": 299900}
+          ]
+        },
+        {
+          "name": "MacBook Air 13 (M3)", "category": "Computers", "sub_category": "Laptops", "release_year": 2024, "serialized": true,
+          "variants": [
+            {"sku": "APL-MBA13M3-8-256-MID", "barcode": "2000000010137", "attributes": {"processor": "Apple M3", "ram": "8GB", "storage": "256GB", "color": "Midnight"}, "price_cents": 429900},
+            {"sku": "APL-MBA13M3-16-512-STL", "barcode": "2000000010144", "attributes": {"processor": "Apple M3", "ram": "16GB", "storage": "512GB", "color": "Starlight"}, "price_cents": 589900}
+          ]
+        },
+        {
+          "name": "MacBook Pro 14 (M4)", "category": "Computers", "sub_category": "Laptops", "release_year": 2024, "serialized": true,
+          "variants": [
+            {"sku": "APL-MBP14M4-16-512-SBK", "barcode": "2000000010151", "attributes": {"processor": "Apple M4", "ram": "16GB", "storage": "512GB", "color": "Space Black"}, "price_cents": 699900}
+          ]
+        },
+        {
+          "name": "iPad Air 11 (M2)", "category": "Tablets", "sub_category": "iPads", "release_year": 2024, "serialized": true,
+          "variants": [
+            {"sku": "APL-IPADAIR11-128-WF-SG", "barcode": "2000000010168", "attributes": {"storage": "128GB", "connectivity": "Wi-Fi", "color": "Space Gray"}, "price_cents": 249900},
+            {"sku": "APL-IPADAIR11-256-CL-BLU", "barcode": "2000000010175", "attributes": {"storage": "256GB", "connectivity": "Wi-Fi + Cellular", "color": "Blue"}, "price_cents": 349900}
+          ]
+        },
+        {
+          "name": "Apple Watch Series 10", "category": "Wearables", "sub_category": "Smartwatches", "release_year": 2024, "serialized": true,
+          "variants": [
+            {"sku": "APL-AWS10-42-JBK", "barcode": "2000000010182", "attributes": {"size": "42mm", "color": "Jet Black Aluminium"}, "price_cents": 169900},
+            {"sku": "APL-AWS10-46-SLV", "barcode": "2000000010199", "attributes": {"size": "46mm", "color": "Silver Aluminium"}, "price_cents": 184900}
+          ]
+        },
+        {
+          "name": "AirPods Pro 2 (USB-C)", "category": "Audio", "sub_category": "Earbuds", "release_year": 2023, "serialized": false,
+          "variants": [
+            {"sku": "APL-APP2-USBC-WHT", "barcode": "2000000010205", "attributes": {"color": "White"}, "price_cents": 94900, "stock": {"DT-01": 6, "WH-01": 30}}
+          ]
+        },
+        {
+          "name": "20W USB-C Power Adapter", "category": "Accessories", "sub_category": "Chargers & Adapters", "release_year": 2020, "serialized": false,
+          "variants": [
+            {"sku": "APL-20W-USBC-WHT", "barcode": "2000000010212", "attributes": {"color": "White"}, "price_cents": 7900, "stock": {"DT-01": 25, "WH-01": 120}}
+          ]
+        }
+      ]
+    },
+    {
+      "brand": "Samsung",
+      "description": "Galaxy phones, tablets, wearables, and accessories.",
+      "models": [
+        {
+          "name": "Galaxy S24 Ultra", "category": "Phones", "sub_category": "Smartphones", "release_year": 2024, "code": "SM-S928B", "serialized": true,
+          "variants": [
+            {"sku": "SAM-S24U-256-TGY", "barcode": "2000000010229", "attributes": {"ram": "12GB", "storage": "256GB", "color": "Titanium Gray"}, "price_cents": 489900},
+            {"sku": "SAM-S24U-512-TBK", "barcode": "2000000010236", "attributes": {"ram": "12GB", "storage": "512GB", "color": "Titanium Black"}, "price_cents": 534900}
+          ]
+        },
+        {
+          "name": "Galaxy S24", "category": "Phones", "sub_category": "Smartphones", "release_year": 2024, "code": "SM-S921B", "serialized": true,
+          "variants": [
+            {"sku": "SAM-S24-256-OBK", "barcode": "2000000010243", "attributes": {"ram": "8GB", "storage": "256GB", "color": "Onyx Black"}, "price_cents": 329900},
+            {"sku": "SAM-S24-256-MGY", "barcode": "2000000010250", "attributes": {"ram": "8GB", "storage": "256GB", "color": "Marble Grey"}, "price_cents": 329900}
+          ]
+        },
+        {
+          "name": "Galaxy A55 5G", "category": "Phones", "sub_category": "Smartphones", "release_year": 2024, "code": "SM-A556E", "serialized": true,
+          "variants": [
+            {"sku": "SAM-A55-128-NVY", "barcode": "2000000010267", "attributes": {"ram": "8GB", "storage": "128GB", "color": "Awesome Navy"}, "price_cents": 149900},
+            {"sku": "SAM-A55-256-ICB", "barcode": "2000000010274", "attributes": {"ram": "8GB", "storage": "256GB", "color": "Awesome Iceblue"}, "price_cents": 169900}
+          ]
+        },
+        {
+          "name": "Galaxy Z Fold6", "category": "Phones", "sub_category": "Smartphones", "release_year": 2024, "code": "SM-F956B", "serialized": true,
+          "variants": [
+            {"sku": "SAM-ZFOLD6-512-SLV", "barcode": "2000000010281", "attributes": {"ram": "12GB", "storage": "512GB", "color": "Silver Shadow"}, "price_cents": 749900}
+          ]
+        },
+        {
+          "name": "Galaxy Z Flip6", "category": "Phones", "sub_category": "Smartphones", "release_year": 2024, "code": "SM-F741B", "serialized": true,
+          "variants": [
+            {"sku": "SAM-ZFLIP6-256-MNT", "barcode": "2000000010298", "attributes": {"ram": "12GB", "storage": "256GB", "color": "Mint"}, "price_cents": 419900}
+          ]
+        },
+        {
+          "name": "Galaxy Tab S9 FE", "category": "Tablets", "sub_category": "Android Tablets", "release_year": 2023, "code": "SM-X510", "serialized": true,
+          "variants": [
+            {"sku": "SAM-TABS9FE-128-WF-GRY", "barcode": "2000000010304", "attributes": {"storage": "128GB", "connectivity": "Wi-Fi", "color": "Gray"}, "price_cents": 149900}
+          ]
+        },
+        {
+          "name": "Galaxy Watch7", "category": "Wearables", "sub_category": "Smartwatches", "release_year": 2024, "code": "SM-L310", "serialized": true,
+          "variants": [
+            {"sku": "SAM-GW7-44-GRN", "barcode": "2000000010311", "attributes": {"size": "44mm", "color": "Green"}, "price_cents": 129900}
+          ]
+        },
+        {
+          "name": "Galaxy Buds3 Pro", "category": "Audio", "sub_category": "Earbuds", "release_year": 2024, "code": "SM-R630", "serialized": false,
+          "variants": [
+            {"sku": "SAM-BUDS3PRO-SLV", "barcode": "2000000010328", "attributes": {"color": "Silver"}, "price_cents": 89900, "stock": {"DT-01": 5, "WH-01": 20}}
+          ]
+        },
+        {
+          "name": "25W Super Fast Charger", "category": "Accessories", "sub_category": "Chargers & Adapters", "release_year": 2021, "code": "EP-TA800", "serialized": false,
+          "variants": [
+            {"sku": "SAM-25W-USBC-BLK", "barcode": "2000000010335", "attributes": {"color": "Black"}, "price_cents": 6900, "stock": {"DT-01": 20, "WH-01": 100}}
+          ]
+        }
+      ]
+    },
+    {
+      "brand": "Google",
+      "description": "Pixel phones.",
+      "models": [
+        {
+          "name": "Pixel 9", "category": "Phones", "sub_category": "Smartphones", "release_year": 2024, "serialized": true,
+          "variants": [
+            {"sku": "PHN-PIXEL-9", "attributes": {"storage": "128GB", "color": "Obsidian"}, "price_cents": 79900},
+            {"sku": "GOO-PIXEL9-256-POR", "barcode": "2000000010342", "attributes": {"storage": "256GB", "color": "Porcelain"}, "price_cents": 359900}
+          ]
+        },
+        {
+          "name": "Pixel 9 Pro", "category": "Phones", "sub_category": "Smartphones", "release_year": 2024, "serialized": true,
+          "variants": [
+            {"sku": "GOO-PIXEL9P-256-HZL", "barcode": "2000000010359", "attributes": {"ram": "16GB", "storage": "256GB", "color": "Hazel"}, "price_cents": 429900}
+          ]
+        }
+      ]
+    },
+    {
+      "brand": "Xiaomi",
+      "description": "Xiaomi and Redmi phones.",
+      "models": [
+        {
+          "name": "Xiaomi 14T Pro", "category": "Phones", "sub_category": "Smartphones", "release_year": 2024, "serialized": true,
+          "variants": [
+            {"sku": "XIA-14TPRO-512-TBK", "barcode": "2000000010366", "attributes": {"ram": "12GB", "storage": "512GB", "color": "Titan Black"}, "price_cents": 239900}
+          ]
+        },
+        {
+          "name": "Redmi Note 13 Pro", "category": "Phones", "sub_category": "Smartphones", "release_year": 2024, "serialized": true,
+          "variants": [
+            {"sku": "XIA-RN13PRO-256-MBK", "barcode": "2000000010373", "attributes": {"ram": "8GB", "storage": "256GB", "color": "Midnight Black"}, "price_cents": 109900}
+          ]
+        }
+      ]
+    },
+    {
+      "brand": "Nokia",
+      "description": "Feature phones by HMD.",
+      "models": [
+        {
+          "name": "Nokia 105 (2023)", "category": "Phones", "sub_category": "Feature Phones", "release_year": 2023, "serialized": true,
+          "variants": [
+            {"sku": "NOK-105-2023-CHR", "barcode": "2000000010380", "attributes": {"color": "Charcoal"}, "price_cents": 9900}
+          ]
+        },
+        {
+          "name": "Nokia 3210 4G", "category": "Phones", "sub_category": "Feature Phones", "release_year": 2024, "serialized": true,
+          "variants": [
+            {"sku": "NOK-3210-4G-GLD", "barcode": "2000000010397", "attributes": {"color": "Y2K Gold"}, "price_cents": 24900}
+          ]
+        }
+      ]
+    },
+    {
+      "brand": "Dell",
+      "description": "XPS and Inspiron laptops.",
+      "models": [
+        {
+          "name": "XPS 13 (9340)", "category": "Computers", "sub_category": "Laptops", "release_year": 2024, "serialized": true,
+          "variants": [
+            {"sku": "DEL-XPS13-9340-U7-16-512", "barcode": "2000000010403", "attributes": {"processor": "Intel Core Ultra 7 155H", "ram": "16GB", "storage": "512GB", "color": "Platinum"}, "price_cents": 599900}
+          ]
+        },
+        {
+          "name": "Inspiron 15 (3520)", "category": "Computers", "sub_category": "Laptops", "release_year": 2023, "serialized": true,
+          "variants": [
+            {"sku": "DEL-INS15-3520-I5-8-512", "barcode": "2000000010410", "attributes": {"processor": "Intel Core i5-1235U", "ram": "8GB", "storage": "512GB", "color": "Carbon Black"}, "price_cents": 219900}
+          ]
+        }
+      ]
+    },
+    {
+      "brand": "HP",
+      "description": "Pavilion laptops.",
+      "models": [
+        {
+          "name": "Pavilion 15", "category": "Computers", "sub_category": "Laptops", "release_year": 2023, "serialized": true,
+          "variants": [
+            {"sku": "HP-PAV15-I5-16-512-SLV", "barcode": "2000000010427", "attributes": {"processor": "Intel Core i5-1335U", "ram": "16GB", "storage": "512GB", "color": "Natural Silver"}, "price_cents": 279900}
+          ]
+        }
+      ]
+    },
+    {
+      "brand": "Lenovo",
+      "description": "ThinkPad and IdeaPad laptops.",
+      "models": [
+        {
+          "name": "ThinkPad X1 Carbon Gen 12", "category": "Computers", "sub_category": "Laptops", "release_year": 2024, "serialized": true,
+          "variants": [
+            {"sku": "LEN-X1C-G12-U7-32-1TB", "barcode": "2000000010434", "attributes": {"processor": "Intel Core Ultra 7 155U", "ram": "32GB", "storage": "1TB", "color": "Black"}, "price_cents": 849900}
+          ]
+        },
+        {
+          "name": "IdeaPad Slim 5 14", "category": "Computers", "sub_category": "Laptops", "release_year": 2024, "serialized": true,
+          "variants": [
+            {"sku": "LEN-IPS5-14-R7-16-1TB", "barcode": "2000000010441", "attributes": {"processor": "AMD Ryzen 7 8845HS", "ram": "16GB", "storage": "1TB", "color": "Cosmic Blue"}, "price_cents": 329900}
+          ]
+        }
+      ]
+    },
+    {
+      "brand": "ASUS",
+      "description": "ROG gaming and Zenbook laptops.",
+      "models": [
+        {
+          "name": "ROG Zephyrus G14 (2024)", "category": "Computers", "sub_category": "Laptops", "release_year": 2024, "serialized": true,
+          "variants": [
+            {"sku": "ASU-G14-2024-R9-4070-32-1TB", "barcode": "2000000010458", "attributes": {"processor": "AMD Ryzen 9 8945HS", "graphics": "RTX 4070", "ram": "32GB", "storage": "1TB", "color": "Eclipse Gray"}, "price_cents": 799900}
+          ]
+        },
+        {
+          "name": "Zenbook 14 OLED", "category": "Computers", "sub_category": "Laptops", "release_year": 2024, "serialized": true,
+          "variants": [
+            {"sku": "ASU-ZB14-U7-16-1TB-BLU", "barcode": "2000000010465", "attributes": {"processor": "Intel Core Ultra 7 155H", "ram": "16GB", "storage": "1TB", "color": "Ponder Blue"}, "price_cents": 449900}
+          ]
+        }
+      ]
+    },
+    {
+      "brand": "Sony",
+      "description": "Headphones and audio.",
+      "models": [
+        {
+          "name": "WH-1000XM5", "category": "Audio", "sub_category": "Headphones", "release_year": 2022, "serialized": false,
+          "variants": [
+            {"sku": "SON-WH1000XM5-BLK", "barcode": "2000000010472", "attributes": {"color": "Black"}, "price_cents": 139900, "stock": {"DT-01": 4, "WH-01": 15}},
+            {"sku": "SON-WH1000XM5-SLV", "barcode": "2000000010489", "attributes": {"color": "Silver"}, "price_cents": 139900, "stock": {"DT-01": 2, "WH-01": 10}}
+          ]
+        }
+      ]
+    },
+    {
+      "brand": "Anker",
+      "description": "Chargers and power banks.",
+      "models": [
+        {
+          "name": "Nano 20W USB-C Charger", "category": "Accessories", "sub_category": "Chargers & Adapters", "release_year": 2022, "serialized": false,
+          "variants": [
+            {"sku": "ANK-NANO20W-WHT", "barcode": "2000000010496", "attributes": {"color": "White"}, "price_cents": 5900, "stock": {"DT-01": 30, "WH-01": 150}}
+          ]
+        },
+        {
+          "name": "PowerCore 10000 PD Redux", "category": "Accessories", "sub_category": "Power Banks", "release_year": 2021, "serialized": false,
+          "variants": [
+            {"sku": "ANK-PC10K-PD-BLK", "barcode": "2000000010502", "attributes": {"capacity": "10000mAh", "color": "Black"}, "price_cents": 14900, "stock": {"DT-01": 12, "WH-01": 60}}
+          ]
+        }
+      ]
+    },
+    {
+      "brand": "Volt",
+      "description": "House-brand cables.",
+      "models": [
+        {
+          "name": "USB-C Cable", "category": "Accessories", "sub_category": "Cables", "release_year": 2025, "serialized": false,
+          "variants": [
+            {"sku": "ACC-CABLE-USBC", "attributes": {"length": "1m"}, "price_cents": 1500}
+          ]
+        }
+      ]
+    },
+    {
+      "brand": "Shield",
+      "description": "House-brand cases.",
+      "models": [
+        {
+          "name": "Slim Silicone Case", "category": "Accessories", "sub_category": "Cases", "release_year": 2025, "serialized": false,
+          "variants": [
+            {"sku": "ACC-CASE-SLIM", "attributes": {"fits": "Pixel 9"}, "price_cents": 2900}
+          ]
+        }
+      ]
+    }
+  ],
+  "products": [
+    {
+      "id": "00000000-0000-4000-8000-000000000010",
+      "store_id": "00000000-0000-4000-8000-000000000001",
+      "sku": "ACC-CABLE-USBC",
+      "barcode": "100000000001",
+      "name": "USB-C Cable",
+      "model_number": "VC-USBC-1M",
+      "brand": "Volt",
+      "category": "Accessories",
+      "sub_category": "Cables",
+      "price_cents": 1500,
+      "currency": "USD",
+      "is_serialized": false,
+      "stock_quantity": 40
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000000011",
+      "store_id": "00000000-0000-4000-8000-000000000001",
+      "sku": "ACC-CASE-SLIM",
+      "barcode": "100000000002",
+      "name": "Slim Silicone Case",
+      "model_number": "SSC-PX9",
+      "brand": "Shield",
+      "category": "Accessories",
+      "sub_category": "Cases",
+      "price_cents": 2900,
+      "currency": "USD",
+      "is_serialized": false,
+      "stock_quantity": 25
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000000012",
+      "store_id": "00000000-0000-4000-8000-000000000001",
+      "sku": "PHN-PIXEL-9",
+      "barcode": "100000000003",
+      "name": "Pixel 9",
+      "model_number": "GA05843-US",
+      "brand": "Google",
+      "category": "Phones",
+      "sub_category": "Smartphones",
+      "price_cents": 79900,
+      "currency": "USD",
+      "is_serialized": true,
+      "stock_quantity": 0
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000000013",
+      "store_id": "00000000-0000-4000-8000-000000000001",
+      "sku": "ACC-MISC-OPEN",
+      "barcode": "100000000004",
+      "name": "Misc accessory",
+      "brand": "Generic",
+      "category": "Accessories",
+      "sub_category": "Miscellaneous",
+      "price_cents": 0,
+      "currency": "USD",
+      "is_serialized": false,
+      "is_open_price": true,
+      "stock_quantity": 0
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000000014",
+      "store_id": "00000000-0000-4000-8000-000000000001",
+      "sku": "SRV-REPAIR-LABOUR",
+      "barcode": "100000000005",
+      "name": "Repair labour",
+      "brand": "Service",
+      "category": "Services",
+      "sub_category": "Repairs",
+      "price_cents": 0,
+      "currency": "USD",
+      "is_serialized": false,
+      "is_open_price": true,
+      "stock_quantity": 0
+    }
+  ]
+}

@@ -1,0 +1,81 @@
+import { Capability, activeRules, applyPromotions, type Promotion } from "@ai-pos/shared-types";
+import { env, previewHeaders } from "../../config/env";
+import { hasCapability } from "../../lib/capabilities";
+import { inTauri } from "../../lib/tauri";
+import type { CartLine, CartState } from "./cart";
+
+const CACHE_KEY = "ai-pos.promotions";
+
+function cached(): Promotion[] {
+  try {
+    const raw = localStorage.getItem(CACHE_KEY);
+    return raw ? (JSON.parse(raw) as Promotion[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+/** Live promotions when online; the last list fetched when offline, so offline sales still get them. */
+export async function loadPromotions(): Promise<Promotion[]> {
+  if (!hasCapability(Capability.Promotions)) {
+    localStorage.removeItem(CACHE_KEY);
+    return [];
+  }
+  try {
+    let fresh: Promotion[] | null = null;
+    if (inTauri()) {
+      const core = await import("@tauri-apps/api/core");
+      fresh = await core.invoke<Promotion[] | null>("active_promotions");
+    } else {
+      const response = await fetch(`${env.apiBaseUrl}/api/v1/promotions/active?store_id=${env.storeId}`, { headers: previewHeaders() });
+      fresh = response.ok ? ((await response.json()) as Promotion[]) : null;
+    }
+    if (Array.isArray(fresh)) {
+      localStorage.setItem(CACHE_KEY, JSON.stringify(fresh));
+      return fresh;
+    }
+  } catch {
+    // Offline: fall through to the cache.
+  }
+  return cached();
+}
+
+/** Retail carts get the best promotions; each discounted line carries its promotion. Wholesale carts are left alone. */
+export function withPromotions(
+  state: Pick<CartState, "mode" | "lines">,
+  promotions: Promotion[],
+  coupon: string | null,
+  at: Date = new Date(),
+): CartLine[] {
+  const cleared = state.lines.map((line) => (line.promotion ? { ...line, promotion: null } : line));
+  if (state.mode !== "RETAIL" || promotions.length === 0) return cleared;
+  const rules = activeRules(promotions, at, env.storeId, coupon);
+  if (rules.length === 0) return cleared;
+  const eligible = cleared.filter(
+    (line) => !line.product.is_open_price && !line.product.is_service && !line.product.sold_by_weight && line.override === null,
+  );
+  const awards = applyPromotions(
+    eligible.map((line) => ({
+      line_id: line.lineId,
+      product_id: line.product.id,
+      category_id: line.product.category_id ?? null,
+      unit_price_cents: line.unitPriceCents,
+      quantity: line.quantity,
+    })),
+    rules,
+  );
+  const names = new Map(promotions.map((promo) => [promo.id, promo.name]));
+  const byLine = new Map(awards.map((award) => [award.line_id, award]));
+  return cleared.map((line) => {
+    const award = byLine.get(line.lineId);
+    return award
+      ? { ...line, promotion: { id: award.promotion_id, name: names.get(award.promotion_id) ?? "Promotion", discountCents: award.discount_cents } }
+      : line;
+  });
+}
+
+/** Whether a typed coupon matches one of the loaded coupon promotions. */
+export function couponKnown(promotions: Promotion[], coupon: string): Promotion | null {
+  const code = coupon.trim().toUpperCase();
+  return promotions.find((promo) => promo.coupon_code !== null && promo.coupon_code === code) ?? null;
+}

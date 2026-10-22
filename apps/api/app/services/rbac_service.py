@@ -1,0 +1,478 @@
+import uuid
+from datetime import UTC, datetime, timedelta
+from typing import Literal
+
+from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session
+
+from app.core.config import Settings
+from app.core.deps import Principal
+from app.core.errors import ApiError
+from app.core.permissions import (
+    ALL_PERMISSIONS,
+    PERMISSION_GROUPS,
+    SUPER_ADMIN_ROLE_ID,
+    SYSTEM_ROLES,
+    Permission,
+)
+from app.core.security import create_access_token, hash_password, hash_pin, verify_password, verify_pin
+from app.models.audit_log import AuditLog
+from app.models.base import utcnow
+from app.models.role import Role
+from app.models.sale import Sale
+from app.models.sale_return import SaleReturn
+from app.models.store import Store
+from app.models.user import User
+from app.schemas.auth import (
+    PermissionGroupOut,
+    PermissionOut,
+    RoleCreate,
+    RoleOut,
+    RoleSummary,
+    RoleUpdate,
+    TokenResponse,
+    UserCreate,
+    UserOut,
+    UserUpdate,
+)
+from app.services import audit
+from app.tenancy.context import current_tenant
+
+SUPER_ADMIN_ID = uuid.UUID(SUPER_ADMIN_ROLE_ID)
+INVALID_CREDENTIALS = "Invalid username or credentials."
+
+
+# --- Serialization -------------------------------------------------------------------------------
+
+
+def user_out(user: User) -> UserOut:
+    return UserOut(
+        id=user.id,
+        username=user.username,
+        email=user.email,
+        full_name=user.full_name,
+        is_active=user.is_active,
+        store_id=user.store_id,
+        role=RoleSummary(id=user.role.id, name=user.role.name, max_discount_bps=user.role.max_discount_bps),
+        permissions=sorted(user.permissions),
+        has_pos_access=user.has_pos_access,
+        has_portal_access=user.has_portal_access,
+        has_password=user.hashed_password is not None,
+        has_pin=user.hashed_pin is not None,
+        locked_until=_aware(user.locked_until),
+        last_login_at=_aware(user.last_login_at),
+        created_at=user.created_at,
+        updated_at=user.updated_at,
+    )
+
+
+def role_out(db: Session, role: Role) -> RoleOut:
+    count = db.scalar(select(func.count()).select_from(User).where(User.role_id == role.id)) or 0
+    return RoleOut(
+        id=role.id,
+        name=role.name,
+        description=role.description,
+        is_system=role.is_system,
+        permissions=sorted(role.permissions),
+        user_count=count,
+        created_at=role.created_at,
+        updated_at=role.updated_at,
+        max_discount_bps=role.max_discount_bps,
+    )
+
+
+def permission_catalog() -> list[PermissionGroupOut]:
+    return [
+        PermissionGroupOut(
+            group=group,
+            permissions=[PermissionOut(key=item.value, label=label) for item, label in items],
+        )
+        for group, items in PERMISSION_GROUPS.items()
+    ]
+
+
+def _aware(value: datetime | None) -> datetime | None:
+    if value is None or value.tzinfo is not None:
+        return value
+    return value.replace(tzinfo=UTC)
+
+
+# --- System roles and bootstrap ------------------------------------------------------------------
+
+
+def ensure_system_roles(db: Session) -> None:
+    """Creates missing system roles and keeps Super Admin holding every permission."""
+    for spec in SYSTEM_ROLES:
+        role_id = uuid.UUID(str(spec["id"]))
+        role = db.get(Role, role_id)
+        permissions = set(spec["permissions"])  # type: ignore[arg-type]
+        if role is None:
+            role = Role(
+                id=role_id,
+                name=str(spec["name"]),
+                description=str(spec["description"]),
+                is_system=True,
+                max_discount_bps=spec.get("max_discount_bps"),  # type: ignore[arg-type]
+            )
+            role.set_permissions(permissions)
+            db.add(role)
+        elif role_id == SUPER_ADMIN_ID:
+            role.set_permissions(set(ALL_PERMISSIONS))
+    db.flush()
+
+
+def ensure_super_admin(
+    db: Session,
+    settings: Settings,
+    *,
+    username: str,
+    email: str,
+    full_name: str,
+    password: str,
+    pin: str | None,
+) -> tuple[User, bool]:
+    existing = db.scalar(select(User).where(User.username == username))
+    if existing is not None:
+        return existing, False
+    user = User(
+        username=username,
+        email=email,
+        full_name=full_name,
+        hashed_password=hash_password(password),
+        hashed_pin=hash_pin(pin, settings) if pin is not None else None,
+        is_active=True,
+        store_id=None,
+        role_id=SUPER_ADMIN_ID,
+        has_pos_access=pin is not None,
+        has_portal_access=True,
+        failed_login_attempts=0,
+        token_version=0,
+    )
+    db.add(user)
+    db.flush()
+    return user, True
+
+
+# --- Authentication ------------------------------------------------------------------------------
+
+
+def _locked(user: User) -> bool:
+    locked_until = _aware(user.locked_until)
+    return locked_until is not None and locked_until > datetime.now(UTC)
+
+
+def _register_failure(db: Session, user: User, settings: Settings) -> None:
+    user.failed_login_attempts += 1
+    if user.failed_login_attempts >= settings.login_max_attempts:
+        user.locked_until = datetime.now(UTC) + timedelta(minutes=settings.login_lockout_minutes)
+        user.failed_login_attempts = 0
+    db.commit()
+
+
+def authenticate(
+    db: Session,
+    settings: Settings,
+    *,
+    username: str,
+    secret: str,
+    method: Literal["password", "pin"],
+) -> TokenResponse:
+    user = db.scalar(select(User).where(User.username == username.strip().lower()))
+    stored = None if user is None else (user.hashed_password if method == "password" else user.hashed_pin)
+    valid = verify_password(secret, stored) if method == "password" else verify_pin(secret, stored, settings)
+    if user is None:
+        raise ApiError(401, "invalid_credentials", INVALID_CREDENTIALS)
+    if _locked(user):
+        raise ApiError(423, "account_locked", "Too many failed attempts. Try again later.")
+    if not valid:
+        _register_failure(db, user, settings)
+        raise ApiError(401, "invalid_credentials", INVALID_CREDENTIALS)
+
+    scope: Literal["portal", "pos"] = "portal" if method == "password" else "pos"
+    if not user.is_active:
+        raise ApiError(403, "account_disabled", "This account is disabled.")
+    if scope == "portal" and not (user.has_portal_access and Permission.PORTAL_ACCESS.value in user.permissions):
+        raise ApiError(403, "portal_access_denied", "This account cannot sign in to the web portal.")
+    if scope == "pos" and not (user.has_pos_access and Permission.POS_ACCESS.value in user.permissions):
+        raise ApiError(403, "pos_access_denied", "This account cannot unlock a register.")
+
+    return issue_session(db, settings, user, method)
+
+
+def issue_session(db: Session, settings: Settings, user: User, method: str) -> TokenResponse:
+    """Records a successful sign-in and returns the access token; `method` is password, pin or handoff."""
+    scope: Literal["portal", "pos"] = "pos" if method == "pin" else "portal"
+    user.failed_login_attempts = 0
+    user.locked_until = None
+    user.last_login_at = utcnow()
+    audit.log_login(db, user, method, client_device="desktop" if method == "pin" else None)
+    db.commit()
+    tenant = current_tenant()
+    token, expires_in = create_access_token(
+        subject=str(user.id),
+        scope=scope,
+        token_version=user.token_version,
+        settings=settings,
+        tenant_id=tenant.id if tenant is not None else None,
+    )
+    return TokenResponse(access_token=token, scope=scope, expires_in=expires_in, user=user_out(user))
+
+
+# --- Authorization rules -------------------------------------------------------------------------
+
+
+def _assert_can_grant(actor: Principal, permissions: set[str]) -> None:
+    excess = sorted(permissions - actor.permissions)
+    if excess:
+        raise ApiError(
+            403,
+            "privilege_escalation",
+            "You cannot grant permissions you do not hold.",
+            details={"permissions": excess},
+        )
+
+
+def _assert_store_scope(actor: Principal, store_id: uuid.UUID | None) -> None:
+    if actor.store_id is not None and store_id != actor.store_id:
+        raise ApiError(403, "store_scope", "You can only manage users in your own store.")
+
+
+def _assert_can_manage(actor: Principal, target: User) -> None:
+    _assert_store_scope(actor, target.store_id)
+    _assert_can_grant(actor, target.permissions)
+
+
+def _active_super_admins(db: Session) -> int:
+    statement = select(func.count()).select_from(User).where(User.role_id == SUPER_ADMIN_ID, User.is_active.is_(True))
+    return db.scalar(statement) or 0
+
+
+def _get_role(db: Session, role_id: uuid.UUID) -> Role:
+    role = db.get(Role, role_id)
+    if role is None:
+        raise ApiError(422, "unknown_role", "Role does not exist.")
+    return role
+
+
+def _check_store(db: Session, store_id: uuid.UUID | None) -> None:
+    if store_id is not None and db.get(Store, store_id) is None:
+        raise ApiError(422, "unknown_store", "Store does not exist.")
+
+
+def _commit(db: Session, conflict_message: str) -> None:
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise ApiError(409, "conflict", conflict_message) from exc
+
+
+# --- Users ---------------------------------------------------------------------------------------
+
+
+def get_user(db: Session, actor: Principal, user_id: uuid.UUID) -> User:
+    user = db.get(User, user_id)
+    if user is None or (actor.store_id is not None and user.store_id != actor.store_id):
+        raise ApiError(404, "not_found", "User was not found.")
+    return user
+
+
+def list_users(db: Session, actor: Principal) -> list[UserOut]:
+    statement = select(User).order_by(User.full_name)
+    if actor.store_id is not None:
+        statement = statement.where(User.store_id == actor.store_id)
+    return [user_out(user) for user in db.scalars(statement).unique().all()]
+
+
+def create_user(db: Session, settings: Settings, actor: Principal, data: UserCreate) -> UserOut:
+    role = _get_role(db, data.role_id)
+    store_id = data.store_id if actor.store_id is None else (data.store_id or actor.store_id)
+    _assert_store_scope(actor, store_id)
+    _assert_can_grant(actor, role.permissions)
+    _check_store(db, store_id)
+    if db.scalar(select(User).where((User.username == data.username) | (User.email == data.email))) is not None:
+        raise ApiError(409, "conflict", "Username or email is already in use.")
+    user = User(
+        username=data.username,
+        email=data.email,
+        full_name=data.full_name.strip(),
+        hashed_password=hash_password(data.password) if data.password is not None else None,
+        hashed_pin=hash_pin(data.pin, settings) if data.pin is not None else None,
+        is_active=data.is_active,
+        store_id=store_id,
+        role_id=role.id,
+        has_pos_access=data.has_pos_access,
+        has_portal_access=data.has_portal_access,
+        failed_login_attempts=0,
+        token_version=0,
+    )
+    db.add(user)
+    _commit(db, "Username or email is already in use.")
+    db.refresh(user)
+    return user_out(user)
+
+
+def update_user(db: Session, actor: Principal, user_id: uuid.UUID, data: UserUpdate) -> UserOut:
+    user = get_user(db, actor, user_id)
+    _assert_can_manage(actor, user)
+    is_self = actor.user is not None and actor.user.id == user.id
+    was_super_admin = user.role_id == SUPER_ADMIN_ID and user.is_active
+
+    if data.role_id is not None and data.role_id != user.role_id:
+        if is_self:
+            raise ApiError(422, "self_change", "You cannot change your own role.")
+        role = _get_role(db, data.role_id)
+        _assert_can_grant(actor, role.permissions)
+        user.role_id = role.id
+        user.role = role
+    if data.store_id is not None or data.clear_store:
+        new_store = None if data.clear_store else data.store_id
+        _assert_store_scope(actor, new_store)
+        _check_store(db, new_store)
+        user.store_id = new_store
+    if data.is_active is not None and data.is_active != user.is_active:
+        if is_self and not data.is_active:
+            raise ApiError(422, "self_change", "You cannot disable your own account.")
+        user.is_active = data.is_active
+        user.token_version += 1
+    if data.email is not None:
+        user.email = data.email
+    if data.full_name is not None:
+        user.full_name = data.full_name.strip()
+    if data.has_portal_access is not None:
+        if data.has_portal_access and user.hashed_password is None:
+            raise ApiError(422, "password_required", "Set a password before enabling web portal access.")
+        if is_self and not data.has_portal_access:
+            raise ApiError(422, "self_change", "You cannot remove your own web portal access.")
+        user.has_portal_access = data.has_portal_access
+    if data.has_pos_access is not None:
+        if data.has_pos_access and user.hashed_pin is None:
+            raise ApiError(422, "pin_required", "Set a PIN before enabling POS access.")
+        user.has_pos_access = data.has_pos_access
+
+    still_super_admin = user.role_id == SUPER_ADMIN_ID and user.is_active
+    try:
+        db.flush()
+    except IntegrityError as exc:
+        db.rollback()
+        raise ApiError(409, "conflict", "Email is already in use.") from exc
+    if was_super_admin and not still_super_admin and _active_super_admins(db) == 0:
+        db.rollback()
+        raise ApiError(422, "last_super_admin", "At least one active Super Admin must remain.")
+    _commit(db, "Email is already in use.")
+    db.refresh(user)
+    return user_out(user)
+
+
+def set_password(db: Session, actor: Principal, user_id: uuid.UUID, password: str) -> UserOut:
+    user = get_user(db, actor, user_id)
+    _assert_can_manage(actor, user)
+    user.hashed_password = hash_password(password)
+    user.token_version += 1
+    user.failed_login_attempts = 0
+    user.locked_until = None
+    db.commit()
+    db.refresh(user)
+    return user_out(user)
+
+
+def set_pin(db: Session, settings: Settings, actor: Principal, user_id: uuid.UUID, pin: str) -> UserOut:
+    user = get_user(db, actor, user_id)
+    _assert_can_manage(actor, user)
+    user.hashed_pin = hash_pin(pin, settings)
+    user.token_version += 1
+    user.failed_login_attempts = 0
+    user.locked_until = None
+    db.commit()
+    db.refresh(user)
+    return user_out(user)
+
+
+def delete_user(db: Session, actor: Principal, user_id: uuid.UUID) -> None:
+    user = get_user(db, actor, user_id)
+    _assert_can_manage(actor, user)
+    if actor.user is not None and actor.user.id == user.id:
+        raise ApiError(422, "self_change", "You cannot delete your own account.")
+    if user.role_id == SUPER_ADMIN_ID and user.is_active and _active_super_admins(db) <= 1:
+        raise ApiError(422, "last_super_admin", "At least one active Super Admin must remain.")
+    if db.scalar(select(func.count()).select_from(Sale).where(Sale.cashier_id == user.id)):
+        raise ApiError(409, "user_has_sales", "This user has recorded sales. Disable the account instead.")
+    involved = (SaleReturn.cashier_id == user.id) | (SaleReturn.approved_by_id == user.id)
+    if db.scalar(select(func.count()).select_from(SaleReturn).where(involved)):
+        raise ApiError(409, "user_has_returns", "This user has handled returns. Disable the account instead.")
+    authored = (AuditLog.user_id == user.id) | (AuditLog.approver_id == user.id)
+    if db.scalar(select(func.count()).select_from(AuditLog).where(authored)):
+        raise ApiError(
+            409, "user_has_audit_history", "This user appears in the audit trail. Disable the account instead."
+        )
+    db.delete(user)
+    db.commit()
+
+
+# --- Roles ---------------------------------------------------------------------------------------
+
+
+def list_roles(db: Session) -> list[RoleOut]:
+    roles = db.scalars(select(Role).order_by(Role.is_system.desc(), Role.name)).all()
+    return [role_out(db, role) for role in roles]
+
+
+def create_role(db: Session, actor: Principal, data: RoleCreate) -> RoleOut:
+    permissions = set(data.permissions)
+    _assert_can_grant(actor, permissions)
+    if db.scalar(select(Role).where(func.lower(Role.name) == data.name.lower())) is not None:
+        raise ApiError(409, "conflict", "A role with this name already exists.")
+    role = Role(
+        name=data.name,
+        description=data.description.strip(),
+        is_system=False,
+        max_discount_bps=data.max_discount_bps,
+    )
+    role.set_permissions(permissions)
+    db.add(role)
+    _commit(db, "A role with this name already exists.")
+    db.refresh(role)
+    return role_out(db, role)
+
+
+def update_role(db: Session, actor: Principal, role_id: uuid.UUID, data: RoleUpdate) -> RoleOut:
+    role = db.get(Role, role_id)
+    if role is None:
+        raise ApiError(404, "not_found", "Role was not found.")
+    _assert_can_grant(actor, role.permissions)
+    if role.id == SUPER_ADMIN_ID and data.permissions is not None and set(data.permissions) != ALL_PERMISSIONS:
+        raise ApiError(422, "system_role", "Super Admin always holds every permission.")
+    if data.name is not None and data.name != role.name:
+        if role.is_system:
+            raise ApiError(422, "system_role", "System roles cannot be renamed.")
+        clash = db.scalar(select(Role).where(func.lower(Role.name) == data.name.lower(), Role.id != role.id))
+        if clash is not None:
+            raise ApiError(409, "conflict", "A role with this name already exists.")
+        role.name = data.name
+    if data.description is not None:
+        role.description = data.description.strip()
+    if "max_discount_bps" in data.model_fields_set:
+        role.max_discount_bps = data.max_discount_bps
+    if data.permissions is not None:
+        permissions = set(data.permissions)
+        _assert_can_grant(actor, permissions)
+        if actor.user is not None and actor.user.role_id == role.id and not permissions >= actor.permissions:
+            raise ApiError(422, "self_change", "You cannot remove permissions from your own role.")
+        role.set_permissions(permissions)
+    _commit(db, "A role with this name already exists.")
+    db.refresh(role)
+    return role_out(db, role)
+
+
+def delete_role(db: Session, actor: Principal, role_id: uuid.UUID) -> None:
+    role = db.get(Role, role_id)
+    if role is None:
+        raise ApiError(404, "not_found", "Role was not found.")
+    if role.is_system:
+        raise ApiError(422, "system_role", "System roles cannot be deleted.")
+    _assert_can_grant(actor, role.permissions)
+    if db.scalar(select(func.count()).select_from(User).where(User.role_id == role.id)):
+        raise ApiError(409, "role_in_use", "Reassign this role's users before deleting it.")
+    db.delete(role)
+    db.commit()

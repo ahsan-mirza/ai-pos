@@ -1,0 +1,346 @@
+import seed from "@ai-pos/catalog/seed.json";
+import { Permission, formatMoney, noMatchesMessage, type Product } from "@ai-pos/shared-types";
+import { Pencil, Plus, Printer, Search, Upload } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { DataTable, type DataTableColumn } from "../../components/ui/DataTable";
+import { PrimaryButton } from "../../components/ui/Field";
+import { apiGet } from "../../lib/api";
+import { useAuth } from "../../lib/auth";
+import { useCurrency } from "../../lib/currency";
+import { labelsApi } from "./api";
+import { ProductDetailDrawer } from "./ProductDetailDrawer";
+import { ImportWizardModal } from "./import/ImportWizardModal";
+import { ProductFormModal } from "./ProductFormModal";
+import { BrandModelFilters } from "./shared";
+import { IconButton } from "./StockPage";
+import { useProductSearch } from "./useProductSearch";
+
+const stamped = "2026-10-19T00:00:00.000Z";
+
+const sampleProducts: Product[] = seed.products.map((product) => ({
+  ...product,
+  created_at: stamped,
+  updated_at: stamped,
+}));
+
+export function InventoryPage() {
+  const { currency } = useCurrency();
+  const [live, setLive] = useState<Product[] | null>(null);
+  const products = useMemo(() => live ?? sampleProducts.map((product) => ({ ...product, currency })), [live, currency]);
+  const source = live === null ? "sample" : "live";
+  const [query, setQuery] = useState("");
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
+  const [brandId, setBrandId] = useState<string | null>(null);
+  const [modelId, setModelId] = useState<string | null>(null);
+  const search = useProductSearch(query, products, source === "live");
+  const { debouncedQuery, searching, resolve } = search;
+  const hits = search.hits.filter(
+    ({ product }) =>
+      (brandId === null || product.brand_id === brandId) && (modelId === null || product.product_model_id === modelId),
+  );
+
+  const { can } = useAuth();
+  const manage = can(Permission.PortalInventoryManage);
+  const [editing, setEditing] = useState<Product | "new" | null>(null);
+  const [importing, setImporting] = useState(false);
+  const navigate = useNavigate();
+  const [closing, setClosing] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
+  const closeTimer = useRef<number | undefined>(undefined);
+  const selected = products.find((product) => product.id === selectedId) ?? null;
+  const open = selected !== null && !closing && source === "live";
+
+  const closeDrawer = useCallback(() => {
+    setClosing(true);
+    window.clearTimeout(closeTimer.current);
+    closeTimer.current = window.setTimeout(() => {
+      setSelectedId(null);
+      setClosing(false);
+    }, 200);
+  }, []);
+
+  const selectProduct = useCallback((id: string) => {
+    window.clearTimeout(closeTimer.current);
+    setClosing(false);
+    setSelectedId(id);
+  }, []);
+
+  useEffect(() => () => window.clearTimeout(closeTimer.current), []);
+
+  const toggleRow = (id: string) => {
+    if (selectedId === id && !closing) closeDrawer();
+    else selectProduct(id);
+  };
+
+  const reload = useCallback(() => {
+    apiGet<Product[]>("/api/v1/products?limit=500")
+      .then(setLive)
+      .catch(() => setLive(null));
+  }, []);
+
+  useEffect(() => {
+    reload();
+  }, [reload]);
+
+  const submit = async (value: string) => {
+    const trimmed = value.trim();
+    if (trimmed === "") return;
+    const found = await resolve(trimmed);
+    const exact = found.filter((hit) => hit.match === "exact" || hit.match === "identifier");
+    const chosen = exact.length === 1 ? exact[0] : found.length === 1 ? found[0] : undefined;
+    if (chosen) {
+      selectProduct(chosen.product.id);
+      setNotice(
+        chosen.match === "identifier"
+          ? `${trimmed} belongs to ${chosen.product.name} (${chosen.serial_status ?? "registered"}).`
+          : `Selected ${chosen.product.name}.`,
+      );
+      const index = hits.findIndex((hit) => hit.product.id === chosen.product.id);
+      if (index >= 0) setPage(Math.floor(index / pageSize) + 1);
+      window.requestAnimationFrame(() =>
+        document
+          .querySelector(`[data-row-id="${CSS.escape(chosen.product.id)}"]`)
+          ?.scrollIntoView({ block: "center", behavior: "smooth" }),
+      );
+      return;
+    }
+    if (selectedId !== null) closeDrawer();
+    setNotice(found.length === 0 ? noMatchesMessage(trimmed) : `${found.length} products match "${trimmed}".`);
+  };
+
+  const trimmedQuery = debouncedQuery.trim();
+  const splitHide = open ? "lg:hidden" : "";
+  const splitHideCategory = open ? "lg:hidden 2xl:table-cell" : "";
+
+  const columns: DataTableColumn<(typeof hits)[number]>[] = [
+    {
+      id: "product",
+      header: "Product",
+      cell: ({ product, match, serial_status: serialStatus }) => (
+        <span className={`font-medium ${open && selectedId === product.id ? "text-accent" : ""}`}>
+          {product.name}
+          {product.is_serialized ? (
+            <span className="ml-2 rounded-full bg-accent px-2 py-0.5 text-[10px] font-semibold uppercase text-white">
+              IMEI
+            </span>
+          ) : null}
+          {match === "identifier" ? (
+            <span className="ml-2 rounded-full bg-charcoal px-2 py-0.5 text-[10px] font-semibold uppercase text-white">
+              Serial {serialStatus ?? "match"}
+            </span>
+          ) : null}
+        </span>
+      ),
+    },
+    { id: "brand", header: "Brand", className: splitHide, cell: ({ product }) => product.brand ?? "—" },
+    {
+      id: "model",
+      header: "Model",
+      className: splitHide,
+      cell: ({ product }) => (
+        <>
+          <span className="block">{product.model_name ?? "—"}</span>
+          {product.model_number ? (
+            <span className="block font-mono text-[11px] text-charcoal/50">{product.model_number}</span>
+          ) : null}
+        </>
+      ),
+    },
+    { id: "sku", header: "SKU", cell: ({ product }) => product.sku },
+    { id: "barcode", header: "Barcode", className: splitHide, cell: ({ product }) => product.barcode },
+    { id: "category", header: "Category", className: splitHideCategory, cell: ({ product }) => product.category },
+    { id: "sub", header: "Sub-category", className: splitHide, cell: ({ product }) => product.sub_category ?? "—" },
+    {
+      id: "price",
+      header: "Price",
+      align: "right",
+      cell: ({ product }) => formatMoney(product.price_cents, product.currency),
+    },
+    {
+      id: "stock",
+      header: "Stock",
+      align: "right",
+      cell: ({ product }) => (
+        <>
+          {product.stock_quantity}
+          {product.is_serialized ? <span className="ml-1 text-xs text-charcoal/50">units</span> : null}
+        </>
+      ),
+    },
+    ...(manage
+      ? [
+          {
+            id: "edit",
+            header: "Edit",
+            align: "right" as const,
+            className: splitHide,
+            cell: ({ product }: (typeof hits)[number]) => (
+              <div className="flex justify-end gap-1">
+                <IconButton
+                  label={`Print labels for ${product.name}`}
+                  onClick={() => {
+                    const copies = Number(window.prompt(`How many labels for ${product.name}?`, "1"));
+                    if (Number.isInteger(copies) && copies > 0) {
+                      void labelsApi.products([{ product_id: product.id, copies: Math.min(copies, 500) }], "a4_3x8");
+                    }
+                  }}
+                >
+                  <Printer size={14} />
+                </IconButton>
+                <IconButton label={`Edit ${product.name}`} onClick={() => setEditing(product)}>
+                  <Pencil size={14} />
+                </IconButton>
+              </div>
+            ),
+          },
+        ]
+      : []),
+  ];
+
+  return (
+    <div className="flex items-start gap-4">
+      <section
+        className={`split-catalog min-w-0 grow basis-full overflow-hidden rounded-card border border-line bg-white p-4 sm:p-6 ${
+          open ? "lg:basis-1/2" : ""
+        }`}
+      >
+        <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <h2 className="text-2xl font-semibold">Catalog</h2>
+            <p className="text-sm text-charcoal/60">
+              {source === "live"
+                ? "One catalog for every branch. Stock shown is the total across your stores."
+                : "Showing the offline sample catalog."}
+            </p>
+          </div>
+          {manage && source === "live" ? (
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => setImporting(true)}
+                className="inline-flex items-center justify-center gap-2 rounded-full border border-charcoal/15 bg-white px-6 py-2.5 text-sm font-medium text-charcoal transition-colors hover:border-accent hover:text-accent"
+              >
+                <Upload size={16} aria-hidden="true" /> Import purchases
+              </button>
+              <PrimaryButton onClick={() => setEditing("new")}>
+                <span className="inline-flex items-center gap-2">
+                  <Plus size={16} aria-hidden="true" /> New product
+                </span>
+              </PrimaryButton>
+            </div>
+          ) : null}
+          <label className="w-full max-w-md text-xs font-medium text-charcoal/60" htmlFor="inventory-search">
+            Search Product, Model, Barcode, or IMEI...
+            <span className="relative mt-1 block">
+              <Search
+                size={16}
+                aria-hidden="true"
+                className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-charcoal/40"
+              />
+              <input
+                id="inventory-search"
+                type="search"
+                autoComplete="off"
+                spellCheck={false}
+                value={query}
+                onChange={(event) => {
+                  setQuery(event.target.value);
+                  setNotice(null);
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    event.preventDefault();
+                    void submit(event.currentTarget.value);
+                  } else if (event.key === "Escape") {
+                    setQuery("");
+                  }
+                }}
+                placeholder="Search Product, Model, Barcode, or IMEI..."
+                className="h-11 w-full rounded-full border border-line bg-surface pl-10 pr-4 text-sm text-charcoal"
+              />
+            </span>
+          </label>
+        </div>
+        {source === "live" ? (
+          <div className="mb-5 flex flex-wrap items-end gap-3">
+            <BrandModelFilters
+              subCategoryId={null}
+              brandId={brandId}
+              modelId={modelId}
+              onChange={(brand, model) => {
+                setBrandId(brand);
+                setModelId(model);
+              }}
+            />
+          </div>
+        ) : null}
+        {notice ? (
+          <p className="mb-4 text-sm" role="status">
+            {notice}
+          </p>
+        ) : null}
+        <DataTable
+          aria-label="Product catalog"
+          variant="flush"
+          className="-mx-4 -mb-4 border-t border-line sm:-mx-6 sm:-mb-6"
+          minWidth={open ? undefined : "860px"}
+          columns={columns}
+          data={hits}
+          getRowId={(hit) => hit.product.id}
+          isLoading={searching && hits.length === 0}
+          onRowClick={(hit) => toggleRow(hit.product.id)}
+          isRowActive={(hit) => open && selectedId === hit.product.id}
+          emptyState={{
+            icon: Search,
+            title: trimmedQuery !== "" ? noMatchesMessage(trimmedQuery) : "No products in the catalog yet",
+          }}
+          pagination={{
+            mode: "client",
+            currentPage: page,
+            pageSize,
+            onPageChange: setPage,
+            onPageSizeChange: setPageSize,
+            resetKey: [debouncedQuery, brandId, modelId],
+          }}
+        />
+        {editing !== null ? (
+          <ProductFormModal
+            product={editing === "new" ? null : editing}
+            onClose={() => setEditing(null)}
+            onSaved={() => {
+              setEditing(null);
+              reload();
+              setRefreshKey((value) => value + 1);
+            }}
+          />
+        ) : null}
+        {importing ? (
+          <ImportWizardModal
+            onClose={() => setImporting(false)}
+            onCommitted={(batch) => {
+              reload();
+              setRefreshKey((value) => value + 1);
+              setNotice(`${batch.batch_number} committed: ${batch.total_items_count} units at ${batch.store_code}.`);
+            }}
+            onViewBatch={(batch) => navigate(`/inventory/batches?batch=${batch.id}`)}
+          />
+        ) : null}
+      </section>
+      {selected !== null && source === "live" ? (
+        <ProductDetailDrawer
+          key={selected.id}
+          product={selected}
+          closing={closing}
+          escapeEnabled={editing === null}
+          refreshKey={refreshKey}
+          onClose={closeDrawer}
+          onEdit={manage ? setEditing : null}
+        />
+      ) : null}
+    </div>
+  );
+}

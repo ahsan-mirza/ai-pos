@@ -1,0 +1,18 @@
+{
+  "$comment": "One demo store per business type for local development. Created by `pnpm demo:businesses`; never use these credentials in a shared environment. Every store gets the same staff and one register (POS1) with a fresh activation key each run.",
+  "password": "Demo#2026",
+  "businesses": [
+    { "slug": "demo-electronics", "name": "Demo Electronics", "profile": "electronics_wholesale", "sub_type": "electronics_b2b" },
+    { "slug": "demo-fashion", "name": "Demo Fashion", "profile": "retail_fashion", "sub_type": "fashion_chain" },
+    { "slug": "demo-grocery", "name": "Demo Grocery", "profile": "grocery", "sub_type": null },
+    { "slug": "demo-restaurant", "name": "Demo Restaurant", "profile": "restaurant", "sub_type": "full_service" },
+    { "slug": "demo-cafe", "name": "Demo Cafe", "profile": "cafe", "sub_type": "sit_down_cafe" },
+    { "slug": "demo-qsr", "name": "Demo Quick Service", "profile": "quick_service", "sub_type": "qsr_delivery" }
+  ],
+  "staff": [
+    { "username": "owner", "full_name": "Olivia Owner", "role": "Super Admin", "pin": "1111", "portal": true },
+    { "username": "manager", "full_name": "Maya Manager", "role": "Store Manager", "pin": "2222", "portal": true },
+    { "username": "cashier", "full_name": "Cara Cashier", "role": "Cashier", "pin": "3333", "portal": false }
+  ],
+  "register": { "code": "POS1", "name": "Front counter" }
+}

@@ -1,0 +1,19 @@
+[Unit]
+Description=ai-pos API (FastAPI)
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/opt/ai-pos/apps/api
+Environment=APP_ENV=production
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/opt/ai-pos/apps/api/.venv/bin/python -m app.serve
+Restart=always
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

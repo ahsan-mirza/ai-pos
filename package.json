@@ -1,0 +1,39 @@
+{
+  "name": "ai-pos",
+  "private": true,
+  "version": "0.1.0",
+  "packageManager": "pnpm@10.18.2",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "turbo run dev",
+    "dev:backend": "pnpm --filter @ai-pos/api dev",
+    "dev:pos": "pnpm --filter @ai-pos/desktop tauri:dev",
+    "dev:pos:web": "pnpm --filter @ai-pos/desktop dev",
+    "dev:admin": "pnpm --filter @ai-pos/web dev",
+    "dev:console": "pnpm --filter @ai-pos/super-admin dev",
+    "start:backend:dev": "pnpm --filter @ai-pos/api start:dev",
+    "start:backend:prod": "pnpm --filter @ai-pos/api start:prod",
+    "build:admin:dev": "pnpm --filter @ai-pos/web build:dev",
+    "build:admin:prod": "pnpm --filter @ai-pos/web build",
+    "build:console:dev": "pnpm --filter @ai-pos/super-admin build:dev",
+    "build:console:prod": "pnpm --filter @ai-pos/super-admin build",
+    "build:pos:dev": "pnpm --filter @ai-pos/desktop tauri:build:dev",
+    "build:pos:prod": "pnpm --filter @ai-pos/desktop tauri:build",
+    "build": "turbo run build",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck",
+    "test": "pnpm --filter @ai-pos/api --filter @ai-pos/desktop test",
+    "verify": "node scripts/verify.mjs",
+    "demo:businesses": "pnpm --filter @ai-pos/api demo:businesses",
+    "bootstrap": "powershell -ExecutionPolicy Bypass -File ./scripts/bootstrap.ps1"
+  },
+  "devDependencies": {
+    "turbo": "^2.5.8",
+    "typescript": "^5.8.3"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": ["esbuild"]
+  }
+}

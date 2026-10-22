@@ -1,0 +1,31 @@
+[project]
+name = "ai-pos-api"
+version = "0.1.0"
+description = "AI POS cloud API"
+requires-python = ">=3.12"
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+src = ["app", "tests"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["app"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "TID"]
+
+# API code reaches the database only through ORM models; tests/test_no_raw_sql.py covers call sites ruff cannot see.
+[tool.ruff.lint.flake8-tidy-imports.banned-api]
+"sqlalchemy.text".msg = "Raw SQL is not allowed in the API. Use ORM models with select()/update()/delete()."
+"sqlalchemy.sql.text".msg = "Raw SQL is not allowed in the API. Use ORM models."
+"sqlalchemy.sql.expression.text".msg = "Raw SQL is not allowed in the API. Use ORM models."
+"sqlalchemy.literal_column".msg = "Raw SQL fragments are not allowed. Use model columns."
+"sqlalchemy.sql.literal_column".msg = "Raw SQL fragments are not allowed. Use model columns."
+"sqlalchemy.sql.expression.literal_column".msg = "Raw SQL fragments are not allowed. Use model columns."
+"sqlite3".msg = "Use the SQLAlchemy session, not the sqlite3 driver."
+"psycopg".msg = "Use the SQLAlchemy session, not the database driver directly."
+"psycopg2".msg = "Use the SQLAlchemy session, not the database driver directly."
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

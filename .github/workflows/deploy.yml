@@ -1,0 +1,100 @@
+name: Deploy
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      APP_DIR: /opt/ai-pos
+      WEB_DIR: /var/www/ai-pos-admin
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Build admin portal
+        run: |
+          pnpm install --frozen-lockfile --filter "@ai-pos/web..."
+          pnpm build:admin:prod
+          test -f apps/web/dist/index.html
+
+      - name: Configure SSH
+        env:
+          SSH_KEY: ${{ secrets.SSH_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.SSH_KNOWN_HOSTS }}
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy
+          chmod 600 ~/.ssh/deploy
+          printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          cat > ~/.ssh/config <<EOF
+          Host server
+            HostName $SSH_HOST
+            User $SSH_USER
+            IdentityFile ~/.ssh/deploy
+            IdentitiesOnly yes
+            ServerAliveInterval 30
+          EOF
+          ssh server 'echo connected to $(hostname)'
+
+      - name: Upload API and catalog
+        run: |
+          rsync -az --delete \
+            --exclude '.venv/' --exclude '.env*' --exclude 'storage/' \
+            --exclude '__pycache__/' --exclude 'tests/' --exclude '*.db' \
+            --exclude '.pytest_cache/' --exclude '.ruff_cache/' \
+            apps/api/ server:$APP_DIR/apps/api/
+          rsync -az --delete packages/catalog/ server:$APP_DIR/packages/catalog/
+
+      - name: Install, migrate, restart
+        run: |
+          ssh server "APP_DIR=$APP_DIR bash -s" <<'EOF'
+          set -euo pipefail
+          cd "$APP_DIR/apps/api"
+          test -f .env.production || { echo "Missing $APP_DIR/apps/api/.env.production"; exit 1; }
+          .venv/bin/pip install -q -r requirements.txt
+          export APP_ENV=production
+          .venv/bin/python -m app.tenancy.cli init
+          .venv/bin/python -m app.tenancy.cli migrate-all
+          sudo systemctl restart ai-pos-api
+          for attempt in $(seq 1 15); do
+            if curl -fsS http://127.0.0.1:8000/health; then
+              echo
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "API did not become healthy"
+          journalctl -u ai-pos-api -n 80 --no-pager || systemctl status ai-pos-api --no-pager || true
+          exit 1
+          EOF
+
+      - name: Upload admin portal
+        run: rsync -az --delete apps/web/dist/ server:$WEB_DIR/
+
+      - name: Summary
+        run: |
+          echo "Deployed ${{ github.event.workflow_run.head_sha || github.sha }}" >> "$GITHUB_STEP_SUMMARY"

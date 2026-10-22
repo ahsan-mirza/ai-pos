@@ -1,0 +1,201 @@
+import uuid
+from datetime import UTC, datetime
+
+from sqlalchemy import (
+    JSON,
+    BigInteger,
+    Boolean,
+    DateTime,
+    ForeignKey,
+    Integer,
+    MetaData,
+    String,
+    Text,
+    UniqueConstraint,
+    Uuid,
+)
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+
+TENANT_STATUSES = ("active", "suspended")
+SIGNUP_STATUSES = ("PENDING_OTP", "VERIFIED", "WAITLIST", "PROVISIONING", "READY", "FAILED")
+
+
+def _now() -> datetime:
+    return datetime.now(UTC)
+
+
+class ControlBase(DeclarativeBase):
+    """Tables of the control database only; tenant databases use app.models.Base."""
+
+    metadata = MetaData(
+        naming_convention={
+            "ix": "ix_%(column_0_label)s",
+            "uq": "uq_%(table_name)s_%(column_0_name)s",
+            "ck": "ck_%(table_name)s_%(constraint_name)s",
+            "fk": "fk_%(table_name)s_%(column_0_name)s_%(referred_table_name)s",
+            "pk": "pk_%(table_name)s",
+        }
+    )
+
+
+class Tenant(ControlBase):
+    __tablename__ = "tenants"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    slug: Mapped[str] = mapped_column(String(32), unique=True)
+    name: Mapped[str] = mapped_column(String(120))
+    status: Mapped[str] = mapped_column(String(16), default="active")
+    # Business type chosen at provisioning; the tenant's own business_settings row is the source of truth.
+    profile: Mapped[str] = mapped_column(String(32), default="electronics_wholesale")
+    # Full SQLAlchemy URL of the tenant database, Fernet-encrypted with ENCRYPTION_SECRET.
+    database_url_encrypted: Mapped[str] = mapped_column(Text)
+    # Subscription tier shown in the console directory.
+    plan: Mapped[str] = mapped_column(String(32), default="standard")
+    owner_email: Mapped[str | None] = mapped_column(String(254), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC)
+    )
+
+
+OPERATOR_ROLES = ("SUPPORT", "ADMIN")
+OVERRIDE_STATES = ("on", "off")
+
+
+class TenantModuleOverride(ControlBase):
+    """A module IT support forced on or off for one tenant; the tenant's own database holds the applied copy."""
+
+    __tablename__ = "tenant_module_overrides"
+    __table_args__ = (UniqueConstraint("tenant_id", "module_key", name="uq_tenant_module_overrides_tenant_module"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("tenants.id"), index=True)
+    module_key: Mapped[str] = mapped_column(String(32))
+    state: Mapped[str] = mapped_column(String(8))
+    reason: Mapped[str] = mapped_column(Text)
+    operator_id: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True), ForeignKey("operators.id"), nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
+
+
+class Operator(ControlBase):
+    """POS-company staff who run the console. They are not users of any store and sign in with their own tokens."""
+
+    __tablename__ = "operators"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    email: Mapped[str] = mapped_column(String(254), unique=True)
+    full_name: Mapped[str] = mapped_column(String(120))
+    password_hash: Mapped[str] = mapped_column(Text)
+    # Base32 TOTP key, Fernet-encrypted with ENCRYPTION_SECRET.
+    totp_secret_enc: Mapped[str] = mapped_column(Text)
+    # SUPPORT works tenants; ADMIN can also reveal customer contacts and manage operators.
+    role: Mapped[str] = mapped_column(String(16), default="SUPPORT")
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    # Bumped to sign the operator out everywhere.
+    token_version: Mapped[int] = mapped_column(Integer, default=1)
+    failed_attempts: Mapped[int] = mapped_column(Integer, default=0)
+    locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
+
+
+class OperatorAuditLog(ControlBase):
+    """Every console action, with the operator, the tenant it touched, and why."""
+
+    __tablename__ = "operator_audit_log"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    operator_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("operators.id"), nullable=True, index=True
+    )
+    tenant_id: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True), nullable=True, index=True)
+    action: Mapped[str] = mapped_column(String(64))
+    before: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    after: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    ip: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, index=True)
+
+
+class TenantStats(ControlBase):
+    """Each store's size and activity, collected from its own database so the console directory never opens
+    every tenant database on page load."""
+
+    __tablename__ = "tenant_stats"
+
+    tenant_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("tenants.id"), primary_key=True)
+    onboarded: Mapped[bool] = mapped_column(Boolean, default=False)
+    business_profile: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    enabled_modules: Mapped[list] = mapped_column(JSON, default=list)
+    stores: Mapped[int] = mapped_column(Integer, default=0)
+    registers: Mapped[int] = mapped_column(Integer, default=0)
+    users: Mapped[int] = mapped_column(Integer, default=0)
+    customers: Mapped[int] = mapped_column(Integer, default=0)
+    products: Mapped[int] = mapped_column(Integer, default=0)
+    sales_30d_count: Mapped[int] = mapped_column(Integer, default=0)
+    sales_30d_cents: Mapped[int] = mapped_column(Integer, default=0)
+    currency: Mapped[str | None] = mapped_column(String(3), nullable=True)
+    last_sale_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    db_size_bytes: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    collected_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
+class TenantChangeRequest(ControlBase):
+    """A tenant asking IT support for what the portal does not do by itself: a new business type (a data migration)
+    or a module outside its type. `snapshot` holds the store's size when it asked, for the migration checks."""
+
+    __tablename__ = "tenant_change_requests"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("tenants.id"), index=True)
+    kind: Mapped[str] = mapped_column(String(16))
+    requested_value: Mapped[str] = mapped_column(String(40))
+    current_value: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    reason: Mapped[str] = mapped_column(Text)
+    snapshot: Mapped[dict] = mapped_column(JSON, default=dict)
+    status: Mapped[str] = mapped_column(String(16), default="PENDING", index=True)
+    requested_by_email: Mapped[str | None] = mapped_column(String(254), nullable=True)
+    requested_by_name: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    resolved_by_operator_id: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True), nullable=True)
+    resolution_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class SignupRequest(ControlBase):
+    """A self-service signup on the bare domain, from the first form to a provisioned store.
+
+    The password is hashed here and copied (still hashed) to the store's owner account; the one-time code is
+    hashed too. `steps` is the provisioning checklist the signup screen polls."""
+
+    __tablename__ = "signup_requests"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    email: Mapped[str] = mapped_column(String(254), index=True)
+    phone: Mapped[str] = mapped_column(String(32), index=True)
+    full_name: Mapped[str] = mapped_column(String(120))
+    password_hash: Mapped[str] = mapped_column(Text)
+    # SHA-256 of the token returned at start; every later step must present it.
+    access_hash: Mapped[str] = mapped_column(String(64))
+    otp_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    otp_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    otp_sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    otp_attempts: Mapped[int] = mapped_column(Integer, default=0)
+    verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    profile: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    sub_type: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    store_name: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    slug: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
+    currency: Mapped[str | None] = mapped_column(String(3), nullable=True)
+    country: Mapped[str | None] = mapped_column(String(2), nullable=True)
+    trn: Mapped[str | None] = mapped_column(String(15), nullable=True)
+    status: Mapped[str] = mapped_column(String(16), default="PENDING_OTP", index=True)
+    steps: Mapped[list] = mapped_column(JSON, default=list)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    tenant_id: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True), nullable=True)
+    owner_username: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    handoff_jti: Mapped[str | None] = mapped_column(String(64), nullable=True, unique=True)
+    handoff_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)

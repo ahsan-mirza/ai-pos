@@ -1,0 +1,98 @@
+import re
+from typing import Literal
+from uuid import UUID
+
+from pydantic import Field, field_validator
+
+from app.schemas.payloads import ApiModel
+
+# Same rule as portal users (UserCreate).
+PASSWORD_MIN_LENGTH = 10
+
+SignupStatus = Literal["PENDING_OTP", "VERIFIED", "WAITLIST", "PROVISIONING", "READY", "FAILED"]
+StepState = Literal["pending", "running", "done", "failed"]
+EMAIL = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
+
+class SignupStart(ApiModel):
+    email: str = Field(max_length=254)
+    phone: str = Field(min_length=8, max_length=20)
+    full_name: str = Field(min_length=2, max_length=120)
+    password: str = Field(min_length=PASSWORD_MIN_LENGTH, max_length=128)
+
+    @field_validator("email")
+    @classmethod
+    def _email(cls, value: str) -> str:
+        cleaned = value.strip().lower()
+        if not EMAIL.fullmatch(cleaned):
+            raise ValueError("Enter a valid email address.")
+        return cleaned
+
+    @field_validator("phone")
+    @classmethod
+    def _phone(cls, value: str) -> str:
+        digits = re.sub(r"[\s()-]", "", value.strip())
+        if not re.fullmatch(r"\+?\d{8,15}", digits):
+            raise ValueError("Enter a mobile number with country code, e.g. +971 50 123 4567.")
+        return digits if digits.startswith("+") else f"+{digits}"
+
+
+class SignupStarted(ApiModel):
+    id: UUID
+    # Sent back on every later call (X-Signup-Token); only its hash is stored.
+    token: str
+    channel: str
+    sent_to: str
+    resend_after_seconds: int
+    dev_code: str | None = None
+
+
+class SignupVerify(ApiModel):
+    code: str = Field(pattern=r"^\d{6}$")
+
+
+class SignupBusiness(ApiModel):
+    profile: str = Field(max_length=32)
+    sub_type: str | None = Field(default=None, max_length=32)
+
+
+class SignupStore(ApiModel):
+    store_name: str = Field(min_length=2, max_length=120)
+    slug: str = Field(min_length=1, max_length=32)
+    currency: str = Field(pattern=r"^[A-Z]{3}$")
+    country: str = Field(pattern=r"^[A-Z]{2}$")
+    trn: str | None = Field(default=None, pattern=r"^\d{15}$")
+
+
+class SlugCheck(ApiModel):
+    slug: str
+    available: bool
+    reason: str | None
+    suggestion: str | None
+
+
+class ProvisionStep(ApiModel):
+    key: str
+    label: str
+    state: StepState
+
+
+class SignupState(ApiModel):
+    id: UUID
+    status: SignupStatus
+    email: str
+    phone: str
+    profile: str | None
+    sub_type: str | None
+    store_name: str | None
+    slug: str | None
+    steps: list[ProvisionStep]
+    error: str | None
+    portal_url: str | None
+    owner_username: str | None
+    # A five-minute, single-use sign-in for the new store; present once the store is ready.
+    handoff_token: str | None
+
+
+class HandoffRequest(ApiModel):
+    token: str = Field(min_length=20, max_length=2000)

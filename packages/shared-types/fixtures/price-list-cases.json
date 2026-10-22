@@ -1,0 +1,31 @@
+{
+  "retail_cents": 1500,
+  "prices": [
+    { "price_tier": "TIER_1", "price_cents": 1200, "min_order_quantity": 5, "volume_discounts": [] }
+  ],
+  "entries": [
+    { "price_list_id": "L-GLOBAL", "scope": "global", "scope_id": null, "valid_from": null, "valid_to": null, "priority": 0, "is_active": true, "price_cents": null, "discount_bps": 500, "min_qty": 1, "volume_breaks": [] },
+    { "price_list_id": "L-FUTURE", "scope": "global", "scope_id": null, "valid_from": "2027-01-01T00:00:00Z", "valid_to": null, "priority": 0, "is_active": true, "price_cents": 600, "discount_bps": null, "min_qty": 1, "volume_breaks": [] },
+    { "price_list_id": "L-STORE", "scope": "store", "scope_id": "s1", "valid_from": null, "valid_to": null, "priority": 0, "is_active": true, "price_cents": 1300, "discount_bps": null, "min_qty": 1, "volume_breaks": [] },
+    { "price_list_id": "L-OFF", "scope": "store", "scope_id": "s1", "valid_from": null, "valid_to": null, "priority": 0, "is_active": false, "price_cents": 700, "discount_bps": null, "min_qty": 1, "volume_breaks": [] },
+    { "price_list_id": "L-BULK", "scope": "store", "scope_id": "s3", "valid_from": null, "valid_to": null, "priority": 0, "is_active": true, "price_cents": 1000, "discount_bps": null, "min_qty": 10, "volume_breaks": [] },
+    { "price_list_id": "L-GROUP", "scope": "group", "scope_id": "g1", "valid_from": null, "valid_to": null, "priority": 0, "is_active": true, "price_cents": 1250, "discount_bps": null, "min_qty": 1, "volume_breaks": [{ "min_qty": 20, "price_cents": 1100 }] },
+    { "price_list_id": "L-CUST", "scope": "customer", "scope_id": "c1", "valid_from": "2026-01-01T00:00:00Z", "valid_to": "2026-12-31T00:00:00Z", "priority": 0, "is_active": true, "price_cents": 1350, "discount_bps": null, "min_qty": 1, "volume_breaks": [] },
+    { "price_list_id": "L-PROMO", "scope": "customer", "scope_id": "c1", "valid_from": null, "valid_to": "2026-06-01T00:00:00Z", "priority": 0, "is_active": true, "price_cents": 800, "discount_bps": null, "min_qty": 1, "volume_breaks": [] },
+    { "price_list_id": "L-TIE", "scope": "customer", "scope_id": "c2", "valid_from": null, "valid_to": null, "priority": 0, "is_active": true, "price_cents": 1250, "discount_bps": null, "min_qty": 1, "volume_breaks": [] }
+  ],
+  "cases": [
+    { "name": "business-wide discount off retail", "tier": "RETAIL", "pieces": 1, "customer_id": null, "group_id": null, "store_id": null, "at": "2026-10-21T10:00:00Z", "price_cents": 1425, "source": "global_list", "price_list_id": "L-GLOBAL" },
+    { "name": "store list beats the discount", "tier": "RETAIL", "pieces": 1, "customer_id": null, "group_id": null, "store_id": "s1", "at": "2026-10-21T10:00:00Z", "price_cents": 1300, "source": "store_list", "price_list_id": "L-STORE" },
+    { "name": "group list is lower still", "tier": "RETAIL", "pieces": 1, "customer_id": null, "group_id": "g1", "store_id": "s1", "at": "2026-10-21T10:00:00Z", "price_cents": 1250, "source": "group_list", "price_list_id": "L-GROUP" },
+    { "name": "group list volume break", "tier": "RETAIL", "pieces": 20, "customer_id": null, "group_id": "g1", "store_id": "s1", "at": "2026-10-21T10:00:00Z", "price_cents": 1100, "source": "group_list", "price_list_id": "L-GROUP" },
+    { "name": "lowest wins over a dearer customer list", "tier": "RETAIL", "pieces": 1, "customer_id": "c1", "group_id": "g1", "store_id": "s1", "at": "2026-10-21T10:00:00Z", "price_cents": 1250, "source": "group_list", "price_list_id": "L-GROUP" },
+    { "name": "customer promo inside its window", "tier": "RETAIL", "pieces": 1, "customer_id": "c1", "group_id": null, "store_id": "s2", "at": "2026-05-01T10:00:00Z", "price_cents": 800, "source": "customer_list", "price_list_id": "L-PROMO" },
+    { "name": "customer list once the promo expired", "tier": "RETAIL", "pieces": 1, "customer_id": "c1", "group_id": null, "store_id": "s2", "at": "2026-10-21T10:00:00Z", "price_cents": 1350, "source": "customer_list", "price_list_id": "L-CUST" },
+    { "name": "discount applies to the tier price", "tier": "TIER_1", "pieces": 5, "customer_id": null, "group_id": null, "store_id": null, "at": "2026-10-21T10:00:00Z", "price_cents": 1140, "source": "global_list", "price_list_id": "L-GLOBAL" },
+    { "name": "equal price goes to the customer list", "tier": "RETAIL", "pieces": 1, "customer_id": "c2", "group_id": "g1", "store_id": null, "at": "2026-10-21T10:00:00Z", "price_cents": 1250, "source": "customer_list", "price_list_id": "L-TIE" },
+    { "name": "future list starts on its date", "tier": "RETAIL", "pieces": 1, "customer_id": null, "group_id": null, "store_id": null, "at": "2027-02-01T10:00:00Z", "price_cents": 600, "source": "global_list", "price_list_id": "L-FUTURE" },
+    { "name": "store list below its minimum quantity", "tier": "RETAIL", "pieces": 5, "customer_id": null, "group_id": null, "store_id": "s3", "at": "2026-10-21T10:00:00Z", "price_cents": 1425, "source": "global_list", "price_list_id": "L-GLOBAL" },
+    { "name": "store list at its minimum quantity", "tier": "RETAIL", "pieces": 10, "customer_id": null, "group_id": null, "store_id": "s3", "at": "2026-10-21T10:00:00Z", "price_cents": 1000, "source": "store_list", "price_list_id": "L-BULK" }
+  ]
+}
