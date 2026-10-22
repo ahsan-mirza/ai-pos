@@ -20,6 +20,7 @@ from app.schemas.payloads import SyncEventIn, SyncPushRequest
 from app.schemas.wholesale import CustomerWrite
 from app.services import customer_service
 from app.services.identifiers import is_valid_imei
+from app.services.item_type import PACKAGED_SAMPLE_SKUS
 from app.services.settings_service import business_currency
 from app.services.sync_service import push_batch
 
@@ -78,6 +79,7 @@ def load_food_kit(db: Session, settings: Settings, *, profile: str, sample: bool
         return 0
     skus = [item["sku"] for item in kit["products"]]
     if db.scalar(select(Product.id).where(Product.sku.in_(skus)).limit(1)) is not None:
+        ensure_starter_pantry(db)
         return 0
     modules = set(cached_settings(db).capabilities)
     currency = business_currency(db)
@@ -100,9 +102,11 @@ def load_food_kit(db: Session, settings: Settings, *, profile: str, sample: bool
             category_id=category_id,
             price_cents=item["price_cents"],
             currency=currency,
-            # Made to order: no stock of its own until a recipe draws ingredients.
-            is_service=True,
+            # Prepared dishes carry no stock. Canned drinks and water are tracked units.
+            is_service=False,
             is_sample=sample,
+            item_type="PRE_PACKAGED" if item["sku"] in PACKAGED_SAMPLE_SKUS else "MADE_TO_ORDER",
+            is_stock_tracked=item["sku"] in PACKAGED_SAMPLE_SKUS,
         )
         db.add(product)
         products[item["sku"]] = product
@@ -205,7 +209,168 @@ def load_food_kit(db: Session, settings: Settings, *, profile: str, sample: bool
         customer = customer_service.new_customer(db, CustomerWrite(**spec))
         customer.is_sample = sample
     db.commit()
+    ensure_starter_pantry(db)
     return len(products) + meals
+
+
+# Dish SKU -> ingredient lines (sku, name, by weight, recipe qty, opening stock, reorder level).
+_STARTER_RECIPES: dict[str, list[tuple[str, str, bool, int, int, int]]] = {
+    "SAMPLE-BEEF-BURGER": [
+        ("ING-BEEF-PATTY", "Beef patty", False, 1, 42, 12),
+        ("ING-BURGER-BUN", "Burger bun", False, 1, 42, 12),
+        ("ING-CHEESE", "Cheese", True, 50, 5_000, 500),
+    ],
+    "SAMPLE-CHICKEN-PASTA": [
+        ("ING-PASTA", "Pasta", True, 120, 6_000, 1_000),
+        ("ING-CHICKEN", "Chicken breast", True, 100, 3_000, 800),
+        ("ING-CREAM", "Cooking cream", True, 40, 4_000, 400),
+    ],
+    "SAMPLE-QSR-BURGER": [
+        ("ING-BEEF-PATTY", "Beef patty", False, 1, 42, 12),
+        ("ING-BURGER-BUN", "Burger bun", False, 1, 42, 12),
+    ],
+    "SAMPLE-CAPPUCCINO": [
+        ("ING-COFFEE-BEANS", "Coffee beans", True, 18, 2_000, 200),
+        ("ING-MILK", "Milk", True, 150, 10_000, 1_000),
+    ],
+}
+
+_PACKAGED_OPENING = {
+    "SAMPLE-SOFT-DRINK": 48,
+    "SAMPLE-WATER": 72,
+    "SAMPLE-CAFE-WATER": 72,
+    "SAMPLE-QSR-COLA": 48,
+    "SAMPLE-QSR-ORANGE-SODA": 36,
+    "SAMPLE-QSR-WATER": 72,
+    "SAMPLE-QSR-APPLE-JUICE": 24,
+}
+
+
+def ensure_starter_pantry(db: Session) -> None:
+    """Gives an F&B sample menu a real pantry: tracked ingredients, recipes, and bottled drinks.
+
+    Idempotent. Retail tenants return immediately. Opening quantities are written once, the first time a
+    packaged item or dish has no stock movement or recipe yet.
+    """
+    from sqlalchemy import exists, or_
+
+    from app.core.capabilities import FOOD_AND_BEVERAGE
+    from app.models.inventory import StockMovement
+    from app.models.recipe import Recipe, RecipeLine
+    from app.models.store import Store
+    from app.services import category_service
+    from app.services.inventory import move_stock
+    from app.services.item_type import apply_item_type
+    from app.services.settings_service import cached_settings
+
+    if cached_settings(db).business_profile not in FOOD_AND_BEVERAGE:
+        return
+    dish_skus = list(_STARTER_RECIPES)
+    pending_dish = db.scalar(
+        select(Product.id)
+        .where(
+            Product.sku.in_(dish_skus),
+            ~exists(select(Recipe.id).where(Recipe.product_id == Product.id)),
+        )
+        .limit(1)
+    )
+    pending_pack = db.scalar(
+        select(Product.id)
+        .where(
+            Product.sku.in_(list(PACKAGED_SAMPLE_SKUS)),
+            or_(
+                Product.item_type != "PRE_PACKAGED",
+                ~exists(select(StockMovement.id).where(StockMovement.product_id == Product.id)),
+            ),
+        )
+        .limit(1)
+    )
+    if pending_dish is None and pending_pack is None:
+        return
+
+    stores = list(db.scalars(select(Store).where(Store.is_warehouse.is_(False), Store.is_active.is_(True))).all())
+    currency = business_currency(db)
+    ingredients: dict[str, Product] = {}
+    wanted = [line[0] for lines in _STARTER_RECIPES.values() for line in lines]
+    for product in db.scalars(select(Product).where(Product.sku.in_(wanted))).all():
+        ingredients[product.sku] = product
+
+    def ingredient(spec: tuple[str, str, bool, int, int, int], sample: bool) -> Product:
+        sku, name, by_weight, _qty, opening, reorder = spec
+        product = ingredients.get(sku)
+        if product is None:
+            category, _sub = category_service.resolve_by_name(db, "Ingredients", None)
+            product = Product(
+                sku=sku,
+                barcode=sku,
+                name=name,
+                category=category.name,
+                category_id=category.id,
+                price_cents=0,
+                currency=currency,
+                sold_by_weight=by_weight,
+                is_sample=sample,
+            )
+            db.add(product)
+            db.flush()
+            apply_item_type(db, product, "RAW_INGREDIENT")
+            ingredients[sku] = product
+            for store in stores:
+                level = move_stock(
+                    db,
+                    product_id=product.id,
+                    store_id=store.id,
+                    quantity=opening,
+                    movement_type="AUDIT_ADJUSTMENT",
+                    reference_type="opening_balance",
+                    reference_id=product.id,
+                    note="Opening ingredient stock",
+                )
+                level.min_reorder_level = reorder
+        return product
+
+    if pending_dish is not None:
+        dishes = {
+            product.sku: product
+            for product in db.scalars(select(Product).where(Product.sku.in_(dish_skus))).all()
+        }
+        for sku, lines in _STARTER_RECIPES.items():
+            dish = dishes.get(sku)
+            if dish is None or db.scalar(select(Recipe.id).where(Recipe.product_id == dish.id)):
+                continue
+            apply_item_type(db, dish, "MADE_TO_ORDER")
+            recipe = Recipe(product_id=dish.id, yield_quantity=1)
+            db.add(recipe)
+            db.flush()
+            for position, spec in enumerate(lines):
+                item = ingredient(spec, dish.is_sample)
+                db.add(RecipeLine(recipe_id=recipe.id, ingredient_id=item.id, quantity=spec[3], position=position))
+
+    if pending_pack is not None:
+        for product in db.scalars(select(Product).where(Product.sku.in_(list(PACKAGED_SAMPLE_SKUS)))).all():
+            apply_item_type(db, product, "PRE_PACKAGED")
+            opening = _PACKAGED_OPENING.get(product.sku, 24)
+            for store in stores:
+                moved = db.scalar(
+                    select(StockMovement.id)
+                    .where(StockMovement.product_id == product.id, StockMovement.store_id == store.id)
+                    .limit(1)
+                )
+                if moved is not None:
+                    continue
+                level = move_stock(
+                    db,
+                    product_id=product.id,
+                    store_id=store.id,
+                    quantity=opening,
+                    movement_type="AUDIT_ADJUSTMENT",
+                    reference_type="opening_balance",
+                    reference_id=product.id,
+                    note="Opening packaged stock",
+                )
+                if not level.min_reorder_level:
+                    level.min_reorder_level = 12
+    db.commit()
 
 
 def load(db: Session, settings: Settings, *, profile: str, sub_type: str | None = None) -> int:

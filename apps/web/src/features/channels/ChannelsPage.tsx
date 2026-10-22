@@ -7,6 +7,7 @@ import {
 } from "@ai-pos/shared-types";
 import { Copy, KeyRound, Plus, Truck } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useConfirm } from "../../components/ui/ConfirmDialog";
 import { ErrorNote, GhostButton, PrimaryButton, SelectField, TextField } from "../../components/ui/Field";
 import { Modal } from "../../components/ui/Modal";
 import { Toggle } from "../../components/ui/Toggle";
@@ -247,6 +248,7 @@ export function ChannelsPage() {
   const [report, setReport] = useState<ChannelSettlementReport | null>(null);
   const [payout, setPayout] = useState<ChannelSettlementReport["rows"][number] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const confirm = useConfirm();
 
   const query = useMemo(() => new URLSearchParams({ from: range.from, to: range.to }).toString(), [range]);
 
@@ -269,7 +271,13 @@ export function ChannelsPage() {
   }, [load]);
 
   async function rotate(channel: DeliveryChannel) {
-    if (!window.confirm(`Issue a new secret for ${channel.name}? The old one stops working at once.`)) return;
+    const accepted = await confirm({
+      title: "Issue a new secret",
+      message: `Issue a new secret for ${channel.name}? The old one stops working at once.`,
+      confirmLabel: "Issue secret",
+      tone: "danger",
+    });
+    if (!accepted) return;
     try {
       setSecret(await apiPost<DeliveryChannelSecret>(`/api/v1/channels/${channel.id}/rotate-secret`, {}));
     } catch (caught) {

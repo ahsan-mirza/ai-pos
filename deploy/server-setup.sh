@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # One-time (and re-runnable) setup of an Ubuntu 24.04 server for the API and admin portal.
 #   scp -r deploy ubuntu@<server>:~/deploy && ssh ubuntu@<server> 'sudo bash ~/deploy/server-setup.sh'
-# Postgres users, apps/api/.env.production, the TLS certificate and tenants stay manual (deploy/README.md).
+# Postgres users, /opt/ai-pos/.env.production, and tenants stay manual (deploy/README.md).
 set -euo pipefail
 
 if [[ $EUID -ne 0 ]]; then
@@ -13,7 +13,6 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DEPLOY_USER="${SUDO_USER:-ubuntu}"
 APP_ROOT=/opt/ai-pos
 WEB_ROOT=/var/www/ai-pos-admin
-CERT=/etc/letsencrypt/live/qios.ae/fullchain.pem
 
 echo "==> Packages"
 export DEBIAN_FRONTEND=noninteractive
@@ -54,17 +53,12 @@ chmod 440 "$SUDOERS.tmp"
 visudo -cf "$SUDOERS.tmp"
 mv "$SUDOERS.tmp" "$SUDOERS"
 
-echo "==> nginx"
+echo "==> nginx (HTTP on the public IP; TLS waits until a domain exists)"
 cp "$HERE/nginx/ai-pos.conf" /etc/nginx/sites-available/ai-pos.conf
 rm -f /etc/nginx/sites-enabled/default
-if [[ -f "$CERT" ]]; then
-  ln -sf /etc/nginx/sites-available/ai-pos.conf /etc/nginx/sites-enabled/ai-pos.conf
-  nginx -t
-  systemctl reload nginx
-else
-  rm -f /etc/nginx/sites-enabled/ai-pos.conf
-  echo "    No certificate at $CERT yet; the site stays disabled. Issue it, then re-run this script."
-fi
+ln -sf /etc/nginx/sites-available/ai-pos.conf /etc/nginx/sites-enabled/ai-pos.conf
+nginx -t
+systemctl reload nginx
 
 echo
-echo "Done. Next: Postgres user + qios_control, $APP_ROOT/apps/api/.env.production, first deploy, tenants."
+echo "Done. Next: Postgres user + qios_control, $APP_ROOT/.env.production, first deploy, tenants."

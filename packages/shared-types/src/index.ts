@@ -134,13 +134,14 @@ export type {
 export { discountShareCents, policyConditions, proratedTaxCents, restockingFeeCents } from "./returns.js";
 export {
   DEFAULT_POS_POLICY,
+  DEFAULT_VOID_POLICY,
   GIFT_CARD_CODE,
   RETURNS_PRESETS,
   discountLimitBps,
   discountShareBps,
   resolvePosPolicy,
 } from "./posPolicy.js";
-export type { DiscountPolicy, GiftCardPolicy, PolicyChoice, PosPolicy, ReturnsPolicySettings } from "./posPolicy.js";
+export type { DiscountPolicy, GiftCardPolicy, PolicyChoice, PosPolicy, ReturnsPolicySettings, VoidPolicy } from "./posPolicy.js";
 export type { GiftCardIssue, GiftCardProduct } from "./giftCards.js";
 export { GENDER_LABELS } from "./catalogue.js";
 export type { CatalogAttributes, FashionAttributes, Gender, ProductImage, ProductImageUpdate } from "./catalogue.js";
@@ -409,6 +410,7 @@ export {
   MovementType,
   REMOVE_ONLY_REASONS,
   StockStatus,
+  ItemType,
   VARIANT_ATTRIBUTE_KEYS,
   adjustmentReasonLabels,
   movementLabel,
@@ -445,6 +447,7 @@ export type {
   StockMovement,
   StockRow,
   StockSummary,
+  StockView,
   StockTransfer,
   StoreSerial,
   SubCategory,
@@ -589,8 +592,8 @@ export type {
   SalesOrderStatus,
   SalesOrderUpdate,
 } from "./salesOrders.js";
-export { unpaidItems } from "./orders.js";
-export type { DiningArea, DiningTable, Floor, KitchenStatus, Order, OrderItem, OrderItemInput, OrderStatus, ServiceType, TableStatus } from "./orders.js";
+export { ORDER_PROGRESS_LABEL, unpaidItems } from "./orders.js";
+export type { DiningArea, DiningTable, Floor, KitchenStatus, Order, OrderItem, OrderItemInput, OrderProgress, OrderStatus, OrderStatusEvent, ServiceType, TableStatus } from "./orders.js";
 export { NEXT_TICKET_STATUS, mergeBoard, ticketAge } from "./kitchen.js";
 export { PAYMENT_PROVIDER_LABELS, PAYMENT_STATUS_LABELS } from "./payments.js";
 export type {

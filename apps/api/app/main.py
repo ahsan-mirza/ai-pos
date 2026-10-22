@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -21,6 +22,8 @@ from app.routers.super_admin import router as super_admin_router
 from app.routers.v1 import api_router
 from app.services import audit as _audit_listeners  # noqa: F401  registers the ORM audit listeners
 from app.tenancy import middleware as tenancy_middleware
+from app.websockets.rooms import bind_loop as bind_room_loop
+from app.websockets.table_sync import bind_loop
 
 logger = logging.getLogger("ai_pos")
 
@@ -32,6 +35,9 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     for name in ("jwt_secret", "pin_salt", "encryption_secret", "api_key", "admin_password"):
         if str(getattr(settings, name)).startswith("change-me"):
             logger.warning("%s is still a placeholder value.", name.upper())
+    loop = asyncio.get_running_loop()
+    bind_loop(loop)
+    bind_room_loop(loop)
     scheduler.start(settings)
     try:
         yield

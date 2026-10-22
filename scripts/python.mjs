@@ -10,7 +10,7 @@ const venvPython =
     : join(apiRoot, ".venv", "bin", "python");
 const python = existsSync(venvPython) ? venvPython : process.platform === "win32" ? "python" : "python3";
 
-// `--env=<name>` selects apps/api/.env.<name> (development, dev, production) via APP_ENV.
+// `--env=<name>` selects the repo-root env file (development -> .env, otherwise .env.<name>) via APP_ENV.
 const args = process.argv.slice(2);
 const env = { ...process.env };
 if (args[0]?.startsWith("--env=")) {

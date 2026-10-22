@@ -36,6 +36,13 @@ class TenantOut(BaseModel):
     multi_tenant: bool
 
 
+class TenantProfileOut(BaseModel):
+    """The industry this tenant registered as, and the modules that industry currently has switched on."""
+
+    business_type: str
+    enabled_modules: list[str]
+
+
 @router.get("", response_model=TenantOut)
 def tenant(settings: Annotated[Settings, Depends(get_settings)]) -> TenantOut:
     """Public: which store this subdomain belongs to (login and activation screens show its name)."""
@@ -43,6 +50,12 @@ def tenant(settings: Annotated[Settings, Depends(get_settings)]) -> TenantOut:
     if ref is None:
         return TenantOut(slug="default", name="AI POS", url=settings.public_base_url, multi_tenant=False)
     return TenantOut(slug=ref.slug, name=ref.name, url=tenant_public_url(ref.slug, settings), multi_tenant=True)
+
+
+@router.get("/profile", response_model=TenantProfileOut)
+def profile(db: Db, _: SignedIn, settings: Config) -> TenantProfileOut:
+    modules = settings_service.tenant_modules(db, tenant_name(db, settings))
+    return TenantProfileOut(business_type=modules.business_profile, enabled_modules=modules.enabled)
 
 
 @router.get("/change-requests", response_model=list[ChangeRequestOut])

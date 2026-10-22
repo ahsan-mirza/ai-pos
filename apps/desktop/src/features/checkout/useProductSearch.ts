@@ -9,13 +9,18 @@ import {
 } from "@ai-pos/shared-types";
 import { useCallback, useEffect, useState } from "react";
 import { searchProductsRemote } from "../../lib/api";
+import { registerCapabilities } from "../../lib/capabilities";
+import { productFitsRegister } from "../../lib/industry";
 import { inTauri, searchProductsLocal, searchProductsViaShell } from "../../lib/tauri";
 
 export type Hit = ProductSearchHit<ProductUpsert>;
 
 const REMOTE_TIMEOUT_MS = 4000;
 
-const sellable = (hits: Hit[]) => hits.filter((hit) => !hit.product.is_ingredient);
+const sellable = (hits: Hit[]) => {
+  const profile = registerCapabilities().profile;
+  return hits.filter((hit) => !hit.product.is_ingredient && productFitsRegister(hit.product, profile));
+};
 
 async function localSearch(products: ProductUpsert[], query: string): Promise<Hit[]> {
   return sellable(inTauri() ? await searchProductsLocal(query) : searchProducts(products, query));
@@ -49,7 +54,7 @@ export function useProductSearch(query: string, products: ProductUpsert[]) {
   useEffect(() => {
     let cancelled = false;
     if (searchTokens(debounced).length === 0) {
-      setHits(searchProducts(products, ""));
+      setHits(sellable(searchProducts(products, "")));
       setSearching(false);
       return;
     }

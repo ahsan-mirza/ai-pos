@@ -1,10 +1,11 @@
 import { CheckCircle2, KeyRound, Loader2, ShieldCheck, Store } from "lucide-react";
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { useRegisterLayout } from "../../components/RegisterLayout";
-import { activateTerminal, type TerminalStatus } from "../../lib/tauri";
+import { activateTerminal, inTauri, type TerminalStatus } from "../../lib/tauri";
 
-/** Store domain suffix for this build: qios.ae (production), dev.qios.ae (dev), localhost (development). */
+/** Store host for this build: a public IP until DNS exists, otherwise a domain suffix. */
 const BASE_DOMAIN = (import.meta.env.VITE_TENANT_BASE_DOMAIN?.trim() || "qios.ae").replace(/^\./, "").toLowerCase();
+const DIRECT_IP = /^\d{1,3}(?:\.\d{1,3}){3}$/.test(BASE_DOMAIN) || BASE_DOMAIN.includes(":");
 
 /** "ab12cd34ef56" -> "AB12-CD34-EF56" while typing. */
 function formatKey(raw: string): string {
@@ -25,7 +26,7 @@ const input =
   "h-12 w-full rounded-xl border border-zinc-200 bg-white px-4 text-base text-zinc-900 placeholder:text-zinc-400 focus:border-orange-500 focus:outline-none focus:ring-4 focus:ring-orange-500/15 dark:border-zinc-800 dark:bg-zinc-900/60 dark:text-zinc-100 dark:placeholder:text-zinc-500";
 
 /** First run: binds this register to a store subdomain with a one-time key from the admin portal. */
-export function ActivationScreen() {
+export function ActivationScreen({ onCancel }: { onCancel?: () => void }) {
   const { theme } = useRegisterLayout();
   const [subdomain, setSubdomain] = useState("");
   const [key, setKey] = useState("");
@@ -34,6 +35,12 @@ export function ActivationScreen() {
   const [done, setDone] = useState<TerminalStatus | null>(null);
   const slug = subdomainOf(subdomain);
   const ready = /^[a-z0-9](?:[a-z0-9-]{0,30}[a-z0-9])?$/.test(slug) && key.replace(/-/g, "").length === 12;
+
+  useEffect(() => {
+    if (done === null || inTauri()) return;
+    const timer = window.setTimeout(() => window.location.reload(), 1200);
+    return () => window.clearTimeout(timer);
+  }, [done]);
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
@@ -67,9 +74,19 @@ export function ActivationScreen() {
           </div>
           <ol className="space-y-4 text-sm text-white/70">
             {[
-              { icon: Store, text: `Open your admin portal at yourstore.${BASE_DOMAIN}.` },
+              {
+                icon: Store,
+                text: DIRECT_IP
+                  ? `Open the admin portal at http://${BASE_DOMAIN} and sign in with the store code.`
+                  : `Open your admin portal at yourstore.${BASE_DOMAIN}.`,
+              },
               { icon: KeyRound, text: "Registers › choose this till › Generate activation key." },
-              { icon: ShieldCheck, text: "Enter the subdomain and key here. The key works once, for 24 hours." },
+              {
+                icon: ShieldCheck,
+                text: DIRECT_IP
+                  ? "Enter the store code and key here. The key works once, for 24 hours."
+                  : "Enter the subdomain and key here. The key works once, for 24 hours.",
+              },
             ].map(({ icon: Icon, text }) => (
               <li key={text} className="flex gap-3">
                 <Icon size={18} aria-hidden="true" className="mt-0.5 shrink-0 text-orange-400" />
@@ -108,10 +125,12 @@ export function ActivationScreen() {
             <form onSubmit={(event) => void submit(event)} className="space-y-5">
               <div>
                 <h2 className="text-xl font-semibold">Store connection</h2>
-                <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">Ask your manager for the subdomain and key.</p>
+                <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
+                  {DIRECT_IP ? "Ask your manager for the store code and key." : "Ask your manager for the subdomain and key."}
+                </p>
               </div>
               <label className="block">
-                <span className="mb-1.5 block text-sm font-semibold">Store subdomain</span>
+                <span className="mb-1.5 block text-sm font-semibold">{DIRECT_IP ? "Store code" : "Store subdomain"}</span>
                 <span className="flex overflow-hidden rounded-xl border border-zinc-200 focus-within:border-orange-500 focus-within:ring-4 focus-within:ring-orange-500/15 dark:border-zinc-800">
                   <input
                     autoFocus
@@ -122,11 +141,17 @@ export function ActivationScreen() {
                     placeholder="client1"
                     className="h-12 min-w-0 flex-1 bg-white px-4 text-base text-zinc-900 placeholder:text-zinc-400 focus:outline-none dark:bg-zinc-900/60 dark:text-zinc-100 dark:placeholder:text-zinc-500"
                   />
-                  <span className="flex items-center border-l border-zinc-200 bg-zinc-50 px-4 text-sm font-medium text-zinc-500 dark:border-zinc-800 dark:bg-zinc-800/60 dark:text-zinc-400">
-                    .{BASE_DOMAIN}
-                  </span>
+                  {DIRECT_IP ? null : (
+                    <span className="flex items-center border-l border-zinc-200 bg-zinc-50 px-4 text-sm font-medium text-zinc-500 dark:border-zinc-800 dark:bg-zinc-800/60 dark:text-zinc-400">
+                      .{BASE_DOMAIN}
+                    </span>
+                  )}
                 </span>
-                {slug ? (
+                {DIRECT_IP ? (
+                  <span className="mt-1.5 block text-xs text-zinc-500 dark:text-zinc-400">
+                    Connects to <span className="font-mono">http://{BASE_DOMAIN}</span>
+                  </span>
+                ) : slug ? (
                   <span className="mt-1.5 block text-xs text-zinc-500 dark:text-zinc-400">
                     Connects to <span className="font-mono">{slug}.{BASE_DOMAIN}</span>
                   </span>
@@ -156,6 +181,15 @@ export function ActivationScreen() {
                 {busy ? <Loader2 size={18} aria-hidden="true" className="animate-spin" /> : <KeyRound size={18} aria-hidden="true" />}
                 {busy ? "Activating…" : "Activate register"}
               </button>
+              {onCancel ? (
+                <button
+                  type="button"
+                  onClick={onCancel}
+                  className="h-12 w-full rounded-xl text-sm font-semibold text-zinc-500 transition hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100"
+                >
+                  Back to unlock
+                </button>
+              ) : null}
             </form>
           )}
         </div>

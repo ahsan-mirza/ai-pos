@@ -253,6 +253,23 @@ def test_registers_still_sync_work_from_a_disabled_module(client, session) -> No
     assert str(note.target_entity_id) == ticket["id"]
 
 
+def test_tenant_profile_names_the_business_type_and_its_modules(client) -> None:
+    seed(client)
+    headers, _ = admin(client)
+    electronics = client.get("/api/v1/tenant/profile", headers=headers)
+    assert electronics.status_code == 200, electronics.text
+    assert electronics.json()["business_type"] == "electronics_wholesale"
+    assert "serial_tracking" in electronics.json()["enabled_modules"]
+    assert "kds" not in electronics.json()["enabled_modules"]
+
+    assert change_profile(client, headers, "restaurant").status_code == 200
+    restaurant = client.get("/api/v1/tenant/profile", headers=headers).json()
+    assert restaurant["business_type"] == "restaurant"
+    assert "kds" in restaurant["enabled_modules"]
+    assert "serial_tracking" not in restaurant["enabled_modules"]
+    assert "repairs" not in restaurant["enabled_modules"]
+
+
 def test_provisioning_sets_the_preset_and_leaves_onboarding_to_the_admin(client, session) -> None:
     provision_profile(session, "quick_service")
     body = client.get("/api/v1/settings", headers=device()).json()

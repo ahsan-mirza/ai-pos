@@ -160,7 +160,7 @@ fn normalize_subdomain_for(input: &str, base: &str) -> Result<(String, String), 
 }
 
 /// A runtime environment variable wins (LAN testing), then the value build.rs baked in from
-/// apps/desktop/.env.<POS_ENV>, then the production default.
+/// the repo-root env file (`.env`, `.env.dev`, or `.env.production`), then the production default.
 fn setting(name: &str, baked: &str, default: &str) -> String {
     std::env::var(name)
         .ok()

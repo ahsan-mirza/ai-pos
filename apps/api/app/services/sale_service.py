@@ -744,7 +744,12 @@ def record_sale(
             if product.is_ingredient:
                 raise SyncRejected(f"{product.name} is an ingredient and is not sold on its own.")
             # Open-price lines (labour, unlisted accessories) are not stocked items.
-            stocked = not product.is_serialized and not product.is_open_price and not product.is_service
+            stocked = (
+                product.is_stock_tracked
+                and not product.is_serialized
+                and not product.is_open_price
+                and not product.is_service
+            )
             if stocked and product.id not in dishes:
                 demand[product.id] = demand.get(product.id, 0) + line.item.quantity
     for product_id, quantity in demand.items():
@@ -930,7 +935,9 @@ def record_sale(
         if part.id in dishes
     ]
     if sold_dishes:
-        recipe_service.consume(
+        from app.services import fnb_service
+
+        fnb_service.consume_sale(
             db, sale_id=data.id, store_id=data.store_id, user_id=data.cashier_id, dishes=sold_dishes
         )
     if parts:
@@ -1059,5 +1066,22 @@ def record_sale(
             entity_id=data.id,
             details={"issues": issues, "coupon_code": data.coupon_code},
         )
+    if data.order_id is not None:
+        closed_order = db.get(OpenOrder, data.order_id)
+        if closed_order is not None and closed_order.status == "SETTLED" and closed_order.table_id is not None:
+            from app.models.restaurant import DiningTable
+            from app.websockets.table_sync import publish
+
+            table = db.get(DiningTable, closed_order.table_id)
+            publish(
+                closed_order.store_id,
+                {
+                    "type": "TABLE_SESSION_CLOSED",
+                    "store_id": str(closed_order.store_id),
+                    "table_id": str(closed_order.table_id),
+                    "table_label": table.label if table is not None else None,
+                    "order_id": str(closed_order.id),
+                },
+            )
     db.flush()
     return sale

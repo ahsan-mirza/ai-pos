@@ -15,6 +15,7 @@ import {
 import { Armchair, ChefHat, Radar, ShieldAlert, Sparkles, Tags, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
+import { useConfirm } from "../../components/ui/ConfirmDialog";
 import { ErrorNote, PrimaryButton } from "../../components/ui/Field";
 import { apiGet, apiPatch } from "../../lib/api";
 import { useAuth } from "../../lib/auth";
@@ -209,6 +210,7 @@ function AnomaliesTab() {
 }
 
 function PricingTab({ canApply }: { canApply: boolean }) {
+  const confirm = useConfirm();
   const { data, error, reload } = useReport<PricingReport>("/api/v1/insights/pricing?limit=200", "Could not load suggestions.");
   const [filter, setFilter] = useState<PriceAction | "ALL">("ALL");
   const [busy, setBusy] = useState<string | null>(null);
@@ -223,7 +225,12 @@ function PricingTab({ canApply }: { canApply: boolean }) {
 
   const apply = async (row: PriceSuggestion) => {
     const label = `${money(row.price_cents)} → ${money(row.suggested_price_cents)}`;
-    if (!window.confirm(`Change ${row.name} from ${label}${row.sold_by_weight ? " per kg" : ""} at every branch?`)) return;
+    const accepted = await confirm({
+      title: "Change price",
+      message: `Change ${row.name} from ${label}${row.sold_by_weight ? " per kg" : ""} at every branch?`,
+      confirmLabel: "Change price",
+    });
+    if (!accepted) return;
     setBusy(`${row.product_id}-${row.action}`);
     setFailure(null);
     try {

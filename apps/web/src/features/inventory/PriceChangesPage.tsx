@@ -8,6 +8,7 @@ import {
 } from "@ai-pos/shared-types";
 import { CalendarClock, ChevronDown, ChevronRight, Plus, Printer, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
+import { useConfirm } from "../../components/ui/ConfirmDialog";
 import { ErrorNote, GhostButton, PrimaryButton, TextField } from "../../components/ui/Field";
 import { Modal } from "../../components/ui/Modal";
 import { ProductPicker } from "../../components/ui/ProductPicker";
@@ -39,6 +40,7 @@ export function PriceChangesPage() {
   const [error, setError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const dismissToast = useCallback(() => setToast(null), []);
+  const confirm = useConfirm();
   const manage = can(Permission.PortalPricingManage);
 
   const load = useCallback(async () => {
@@ -55,7 +57,14 @@ export function PriceChangesPage() {
   }, [load]);
 
   const act = async (change: PriceChange, action: "apply" | "cancel") => {
-    if (action === "apply" && !window.confirm(`Apply ${change.name} now? New prices reach registers on their next sync.`)) return;
+    if (action === "apply") {
+      const accepted = await confirm({
+        title: "Apply price change",
+        message: `Apply ${change.name} now? New prices reach registers on their next sync.`,
+        confirmLabel: "Apply",
+      });
+      if (!accepted) return;
+    }
     setBusy(change.id);
     try {
       const next = await (action === "apply" ? priceListsApi.applyChange(change.id) : priceListsApi.cancelChange(change.id));

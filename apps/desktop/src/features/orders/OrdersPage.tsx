@@ -12,14 +12,17 @@ import {
   type DiningTable,
   type Floor,
   type ModifierChoice,
+  ORDER_PROGRESS_LABEL,
+  type KitchenStatus,
   type Order,
   type OrderItem,
+  type OrderProgress,
   type ProductUpsert,
   type ServiceType,
 } from "@ai-pos/shared-types";
-import { DiningTableShape } from "@ai-pos/ui";
+import { FloorTableCard, floorTableGridClass } from "../../components/FloorTableCard";
 import { ChefHat, CreditCard, Merge, MoveRight, Plus, Receipt, Search, Send, Split, Truck, Users, UtensilsCrossed, X } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useState } from "react";
 import { ManagerApprovalModal } from "../../components/ManagerApprovalModal";
 import { DrawerHeader } from "../../components/shell/Drawer";
 import { PageFrame } from "../../components/shell/RegisterShell";
@@ -37,29 +40,123 @@ import { printKitchenTickets } from "./kitchenPrint";
 import { SplitChecksModal } from "./SplitChecksModal";
 import { IncomingDeliveries, KeyInDeliveryModal } from "./IncomingDeliveries";
 import { OrderRequestError, channelsApi, ordersApi, queueOfflineOrder } from "./ordersClient";
+import { listenForTableEvents } from "./tableSync";
 import { startSettlement } from "./settlement";
 
 const POLL_MS = 3000;
 
-const STATUS_STYLE: Record<DiningTable["status"], string> = {
-  free: "border-zinc-300 bg-white text-zinc-600 dark:border-white/15 dark:bg-zinc-900 dark:text-white/70",
-  seated: "border-sky-400 bg-sky-50 text-sky-800 dark:bg-sky-950 dark:text-sky-200",
-  ordered: "border-primary bg-primary/10 text-zinc-900 dark:bg-zinc-900 dark:text-white",
-  bill: "border-amber-400 bg-amber-50 text-amber-900 dark:bg-amber-950 dark:text-amber-100",
+const KITCHEN_LABEL: Record<string, string> = {
+  new: ORDER_PROGRESS_LABEL.preparing,
+  preparing: ORDER_PROGRESS_LABEL.preparing,
+  ready: ORDER_PROGRESS_LABEL.ready,
+  bumped: ORDER_PROGRESS_LABEL.completed,
 };
 
-/** Chairs with a guest in them take the table's status colour; empty chairs stay neutral. */
-const TAKEN_CHAIR: Record<DiningTable["status"], string> = {
-  free: "bg-zinc-300 dark:bg-white/20",
-  seated: "bg-sky-400",
-  ordered: "bg-primary",
-  bill: "bg-amber-400",
-};
-
-const KITCHEN_LABEL: Record<string, string> = { new: "In kitchen", preparing: "Preparing", ready: "Ready", bumped: "Served" };
+/** The most urgent kitchen phase on a ticket: a ready plate beats a line that is still cooking. */
+function orderPhase(order: Order | undefined): OrderProgress | null {
+  if (!order) return null;
+  const live = order.items.filter((item) => !item.voided_at && (item.sent_at || item.kitchen_status));
+  if (live.length === 0) return null;
+  if (live.every((item) => item.kitchen_status === "bumped")) return "completed";
+  if (live.some((item) => item.kitchen_status === "ready")) return "ready";
+  return "preparing";
+}
 
 function minutesSince(iso: string | null): number {
   return iso ? Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 60_000)) : 0;
+}
+
+function GuestCountModal({
+  table,
+  onClose,
+  onConfirm,
+}: {
+  table: DiningTable;
+  onClose: () => void;
+  onConfirm: (covers: number) => void;
+}) {
+  const titleId = useId();
+  const [covers, setCovers] = useState(Math.min(2, Math.max(1, table.seats)));
+  const seats = Math.max(1, table.seats);
+  const choices = Array.from({ length: Math.min(seats, 12) }, (_, index) => index + 1);
+
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  return (
+    <div className="modal-backdrop" role="presentation">
+      <div role="dialog" aria-modal="true" aria-labelledby={titleId} className="modal-card max-w-md">
+        <div className="flex items-start gap-3">
+          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-charcoal text-white dark:bg-zinc-100 dark:text-zinc-900">
+            <Users size={20} aria-hidden="true" />
+          </span>
+          <div className="min-w-0 flex-1">
+            <h2 id={titleId} className="text-xl font-semibold">
+              Seat {table.label}
+            </h2>
+            <p className="text-sm text-charcoal/60 dark:text-zinc-400">
+              How many guests? This table seats {table.seats}.
+            </p>
+          </div>
+          <button type="button" aria-label="Close" onClick={onClose} className="modal-close">
+            <X size={18} aria-hidden="true" />
+          </button>
+        </div>
+        <form
+          className="mt-5 space-y-4"
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (covers >= 1 && covers <= seats) onConfirm(covers);
+          }}
+        >
+          <div className="flex flex-wrap gap-2" role="group" aria-label="Guest count">
+            {choices.map((count) => (
+              <button
+                key={count}
+                type="button"
+                aria-pressed={covers === count}
+                onClick={() => setCovers(count)}
+                className={`h-12 min-w-12 rounded-2xl px-3 text-base font-semibold tabular-nums ${
+                  covers === count ? "bg-primary text-white" : "bg-zinc-100 text-zinc-800 dark:bg-white/10 dark:text-zinc-100"
+                }`}
+              >
+                {count}
+              </button>
+            ))}
+          </div>
+          {seats > 12 ? (
+            <label className="block text-sm font-medium" htmlFor="guest-count">
+              Guests
+              <input
+                id="guest-count"
+                inputMode="numeric"
+                autoComplete="off"
+                value={covers}
+                onChange={(event) => {
+                  const next = Number(event.target.value.replace(/\D/g, ""));
+                  if (Number.isFinite(next)) setCovers(Math.min(seats, next));
+                }}
+                className="modal-input mt-1.5 text-lg font-semibold tabular-nums"
+              />
+            </label>
+          ) : null}
+          <div className="flex justify-end gap-3 pt-2">
+            <button type="button" onClick={onClose} className="modal-cancel">
+              Cancel
+            </button>
+            <button type="submit" className="modal-save" disabled={covers < 1}>
+              Seat {covers} {covers === 1 ? "guest" : "guests"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
 }
 
 function lineLabel(item: OrderItem): string {
@@ -88,7 +185,7 @@ export function OrdersPage({ session }: { session: CashierSession }) {
 
   const [orders, setOrders] = useState<Order[]>([]);
   const [floor, setFloor] = useState<Floor | null>(null);
-  const [areaId, setAreaId] = useState<string | null>(null);
+  const [areaId, setAreaId] = useState<string>("all");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [offline, setOffline] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
@@ -107,6 +204,7 @@ export function OrdersPage({ session }: { session: CashierSession }) {
   const [channels, setChannels] = useState<DeliveryChannel[]>([]);
   const [keyingIn, setKeyingIn] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [seating, setSeating] = useState<DiningTable | null>(null);
 
   const selected = orders.find((order) => order.id === selectedId) ?? null;
 
@@ -125,8 +223,45 @@ export function OrdersPage({ session }: { session: CashierSession }) {
   useEffect(() => {
     void refresh();
     const timer = window.setInterval(() => void refresh(), POLL_MS);
-    return () => window.clearInterval(timer);
-  }, [refresh]);
+    const stopLive = listenForTableEvents(storeId, (event) => {
+      if (
+        event.message &&
+        (event.type === "KDS_ITEM_READY" || event.type === "ORDER_STATUS_CHANGED")
+      ) {
+        setNotice(event.message);
+      }
+      if (event.type === "ORDER_STATUS_CHANGED" && event.order_id && event.kitchen_status) {
+        const ids = new Set(event.item_ids ?? []);
+        setOrders((current) =>
+          current.map((order) =>
+            order.id !== event.order_id
+              ? order
+              : {
+                  ...order,
+                  items: order.items.map((item) =>
+                    ids.has(item.id)
+                      ? { ...item, kitchen_status: event.kitchen_status as KitchenStatus, sent_at: item.sent_at ?? event.updated_at ?? null }
+                      : item,
+                  ),
+                },
+          ),
+        );
+      }
+      if (
+        event.type === "TABLE_ITEMS_ADDED" ||
+        event.type === "TABLE_SESSION_CLOSED" ||
+        event.type === "KDS_ITEM_READY" ||
+        event.type === "ORDER_STATUS_CHANGED" ||
+        event.type === "BILL_REQUESTED"
+      ) {
+        void refresh();
+      }
+    });
+    return () => {
+      stopLive();
+      window.clearInterval(timer);
+    };
+  }, [refresh, storeId]);
 
   useEffect(() => {
     void loadCatalog().then((catalog) => setProducts(catalog.products));
@@ -138,7 +273,7 @@ export function OrdersPage({ session }: { session: CashierSession }) {
   }, [channelsOn]);
 
   useEffect(() => {
-    if (floor && (areaId === null || !floor.areas.some((area) => area.id === areaId))) setAreaId(floor.areas[0]?.id ?? null);
+    if (floor && areaId !== "all" && !floor.areas.some((area) => area.id === areaId)) setAreaId("all");
   }, [floor, areaId]);
 
   /** Runs a write; a stale order refreshes and asks the cashier to try again. */
@@ -167,9 +302,7 @@ export function OrdersPage({ session }: { session: CashierSession }) {
     [refresh],
   );
 
-  async function openTab(serviceType: ServiceType, table: DiningTable | null) {
-    const covers = table ? Number(window.prompt(`Guests at ${table.label}?`, String(Math.min(2, table.seats))) || "0") : 0;
-    if (table && !Number.isFinite(covers)) return;
+  async function openTab(serviceType: ServiceType, table: DiningTable | null, covers = 0) {
     const id = crypto.randomUUID();
     const input = { storeId, userId, serviceType, tableId: table?.id ?? null, covers };
     setBusy(true);
@@ -269,7 +402,13 @@ export function OrdersPage({ session }: { session: CashierSession }) {
     await write(() => channelsApi.keyIn(channelId, externalRef, userId, customerName), "Delivery order opened. Add its items, then send.");
   }
 
-  const area = floor?.areas.find((item) => item.id === areaId) ?? null;
+  const visibleTables =
+    floor === null
+      ? []
+      : (areaId === "all" ? floor.areas : floor.areas.filter((item) => item.id === areaId)).flatMap((item) =>
+          item.tables.filter((table) => table.is_active),
+        );
+  const occupiedTables = visibleTables.filter((table) => table.status !== "free").length;
   const incoming = orders.filter((order) => order.channel_status === "PENDING");
   const tabs = orders.filter((order) => order.table_id === null && order.channel_status !== "PENDING");
   const unpaid = selected ? unpaidItems(selected) : [];
@@ -441,7 +580,7 @@ export function OrdersPage({ session }: { session: CashierSession }) {
                     </button>
                   ) : null}
                   <button type="button" disabled={busy || unpaid.length === 0} onClick={() => pay(unpaid.map((item) => item.id), `order #${selected.number}`)} className={`${ui.primaryAction} h-12 flex-1 rounded-full`}>
-                    <CreditCard size={18} aria-hidden="true" /> Pay {formatMoney(selected.open_cents, currency)}
+                    <CreditCard size={18} aria-hidden="true" /> {selected.table_id ? "Pay & Settle Table" : "Pay"} {formatMoney(selected.open_cents, currency)}
                   </button>
                 </div>
               </div>
@@ -482,70 +621,66 @@ export function OrdersPage({ session }: { session: CashierSession }) {
 
         {tablesOn && floor ? (
           <section aria-label="Floor plan">
-            <div className="mb-3 flex gap-1.5">
-              {floor.areas.map((item) => (
-                <button key={item.id} type="button" aria-pressed={item.id === areaId} onClick={() => setAreaId(item.id)}
-                  className={`h-9 rounded-full px-4 text-sm font-semibold ${item.id === areaId ? "bg-primary text-white" : "bg-zinc-100 dark:bg-white/10"}`}>
-                  {item.name}
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+              <div className="flex flex-wrap gap-1.5" role="group" aria-label="Floor">
+                <button type="button" aria-pressed={areaId === "all"} onClick={() => setAreaId("all")}
+                  className={`h-9 rounded-full px-4 text-sm font-semibold ${areaId === "all" ? "bg-primary text-white" : "bg-zinc-100 dark:bg-white/10"}`}>
+                  All Tables
                 </button>
-              ))}
-              {floor.areas.length === 0 ? <p className="text-sm text-zinc-500">No dining areas yet. Add them in the portal under Inventory › Floor plan.</p> : null}
-            </div>
-            {area ? (
-              <div className="relative overflow-auto rounded-3xl border border-zinc-200 bg-zinc-50 p-3 dark:border-white/10 dark:bg-black/20"
-                style={{ minHeight: `${Math.max(...area.tables.map((table) => table.y + table.h), 6) * 52 + 24}px` }}>
-                {area.tables.filter((table) => table.is_active).map((table) => (
-                  <button
-                    key={table.id}
-                    type="button"
-                    disabled={busy}
-                    onClick={() => {
-                      const order = orders.find((item) => item.id === table.order_id);
-                      if (moving) {
-                        if (!order) {
-                          const from = moving;
-                          setMoving(null);
-                          void write(() => ordersApi.move(from, userId, table.id), `#${from.number} moved to ${table.label}.`);
-                        }
-                        return;
-                      }
-                      if (mergeFrom) {
-                        if (order && order.id !== mergeFrom.id) {
-                          const from = mergeFrom;
-                          setMergeFrom(null);
-                          void write(() => ordersApi.merge(from, order, userId), `#${from.number} merged into ${table.label}.`);
-                        }
-                        return;
-                      }
-                      if (order) setSelectedId(order.id);
-                      else void openTab("DINE_IN", table);
-                    }}
-                    aria-label={`Table ${table.label}, ${table.seats} seats, ${table.status === "free" ? "free" : `${table.covers} guests`}`}
-                    className={`group absolute rounded-2xl outline-none transition-transform focus-visible:ring-4 focus-visible:ring-primary/40 active:scale-[0.97] disabled:opacity-60 ${
-                      selectedId && table.order_id === selectedId ? "ring-4 ring-primary/40" : ""
-                    }`}
-                    style={{ left: table.x * 52 + 12, top: table.y * 52 + 12, width: table.w * 52 - 8, height: table.h * 52 - 8 }}
-                  >
-                    <DiningTableShape
-                      shape={table.shape}
-                      seats={table.seats}
-                      width={table.w * 52 - 8}
-                      height={table.h * 52 - 8}
-                      occupied={table.status === "free" ? 0 : table.covers}
-                      topClassName={`border-2 shadow-sm transition-colors ${STATUS_STYLE[table.status]}`}
-                      chairClassName="bg-zinc-300 dark:bg-white/15"
-                      occupiedChairClassName={TAKEN_CHAIR[table.status]}
-                    >
-                      <span className="text-base font-bold leading-tight">{table.label}</span>
-                      <span className="text-[10px] font-semibold leading-tight">
-                        {table.status === "free" ? `${table.seats} seats` : `${table.covers}/${table.seats} · ${minutesSince(table.seated_at)}m`}
-                      </span>
-                      {table.status !== "free" ? (
-                        <span className="text-[10px] leading-tight tabular-nums">{formatMoney(table.open_cents, currency)}</span>
-                      ) : null}
-                    </DiningTableShape>
+                {floor.areas.map((item) => (
+                  <button key={item.id} type="button" aria-pressed={item.id === areaId} onClick={() => setAreaId(item.id)}
+                    className={`h-9 rounded-full px-4 text-sm font-semibold ${item.id === areaId ? "bg-primary text-white" : "bg-zinc-100 dark:bg-white/10"}`}>
+                    {item.name}
                   </button>
                 ))}
+              </div>
+              <div className="flex flex-wrap gap-1.5" aria-label="Table summary">
+                <span className="rounded-full bg-zinc-100 px-3 py-1.5 text-xs font-semibold dark:bg-white/10">Total {visibleTables.length}</span>
+                <span className="rounded-full bg-amber-500/15 px-3 py-1.5 text-xs font-semibold text-amber-800 dark:text-amber-200">Occupied {occupiedTables}</span>
+                <span className="rounded-full bg-emerald-500/15 px-3 py-1.5 text-xs font-semibold text-emerald-800 dark:text-emerald-200">Available {visibleTables.length - occupiedTables}</span>
+              </div>
+              {floor.areas.length === 0 ? <p className="text-sm text-zinc-500">No dining areas yet. Add them in the portal under Inventory › Floor plan.</p> : null}
+            </div>
+            {visibleTables.length > 0 ? (
+              <div className={`overflow-visible rounded-3xl border border-zinc-200 bg-zinc-950 dark:border-white/10 ${floorTableGridClass}`} aria-label="Floor plan tables">
+                {visibleTables.map((table) => {
+                  return (
+                    <FloorTableCard
+                      key={table.id}
+                      tableId={table.id}
+                      label={table.label}
+                      seats={table.seats}
+                      covers={table.covers}
+                      seatedAt={table.seated_at}
+                      openCents={table.open_cents}
+                      currency={currency}
+                      status={table.status}
+                      selected={Boolean(selectedId && table.order_id === selectedId)}
+                      disabled={busy}
+                      onClick={() => {
+                        const order = orders.find((item) => item.id === table.order_id);
+                        if (moving) {
+                          if (!order) {
+                            const from = moving;
+                            setMoving(null);
+                            void write(() => ordersApi.move(from, userId, table.id), `#${from.number} moved to ${table.label}.`);
+                          }
+                          return;
+                        }
+                        if (mergeFrom) {
+                          if (order && order.id !== mergeFrom.id) {
+                            const from = mergeFrom;
+                            setMergeFrom(null);
+                            void write(() => ordersApi.merge(from, order, userId), `#${from.number} merged into ${table.label}.`);
+                          }
+                          return;
+                        }
+                        if (order) setSelectedId(order.id);
+                        else setSeating(table);
+                      }}
+                    />
+                  );
+                })}
               </div>
             ) : null}
           </section>
@@ -554,7 +689,9 @@ export function OrdersPage({ session }: { session: CashierSession }) {
         <section aria-label="Open tabs">
           <h2 className="mb-2 text-sm font-semibold">{tablesOn ? "Tabs without a table" : "Open tabs"}</h2>
           <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
-            {(tablesOn ? tabs : orders.filter((order) => order.channel_status !== "PENDING")).map((order) => (
+            {(tablesOn ? tabs : orders.filter((order) => order.channel_status !== "PENDING")).map((order) => {
+              const phase = orderPhase(order);
+              return (
               <button key={order.id} type="button" onClick={() => {
                 if (mergeFrom) {
                   if (order.id !== mergeFrom.id) {
@@ -573,9 +710,11 @@ export function OrdersPage({ session }: { session: CashierSession }) {
                 </span>
                 <span className="mt-1 block text-xs text-zinc-500 dark:text-white/50">
                   {order.service_type === "DELIVERY" ? `${order.channel_name ?? "Delivery"} ${order.external_ref ?? ""}` : order.service_type === "TAKEAWAY" ? "Takeaway" : "Dine-in"} · {order.items.filter((item) => !item.voided_at).length} lines · {minutesSince(order.opened_at)} min
+                  {phase ? ` · ${ORDER_PROGRESS_LABEL[phase]}` : ""}
                 </span>
               </button>
-            ))}
+              );
+            })}
             {(tablesOn ? tabs : orders.filter((order) => order.channel_status !== "PENDING")).length === 0 ? <p className="text-sm text-zinc-500 dark:text-white/50">No open tabs.</p> : null}
           </div>
         </section>
@@ -596,6 +735,18 @@ export function OrdersPage({ session }: { session: CashierSession }) {
             addDraft(comboFor, [], components);
             setComboFor(null);
           }} />
+      ) : null}
+
+      {seating ? (
+        <GuestCountModal
+          table={seating}
+          onClose={() => setSeating(null)}
+          onConfirm={(covers) => {
+            const table = seating;
+            setSeating(null);
+            void openTab("DINE_IN", table, covers);
+          }}
+        />
       ) : null}
 
       {keyingIn ? <KeyInDeliveryModal channels={channels} onClose={() => setKeyingIn(false)} onSubmit={(id, ref, name) => void keyIn(id, ref, name)} /> : null}

@@ -1,6 +1,8 @@
 import { useCallback, useMemo, useRef, useState, type ReactNode } from "react";
+import { TableAlertProvider } from "../../features/alerts/TableAlertContext";
 import type { CashierSession } from "../../features/auth/session";
 import { useRegisterLayout } from "../RegisterLayout";
+import { POSAlertBanner } from "../POSAlertBanner";
 import { HeaderBar, type SyncState } from "./HeaderBar";
 import { ShellContext, type RegisterView } from "./ShellContext";
 import { SidebarNav } from "./SidebarNav";
@@ -36,7 +38,7 @@ export function RegisterShell({ session, view, onNavigate, onLock, children }: R
         className="flex h-screen w-screen flex-col overflow-hidden bg-slate-50 font-sans text-zinc-900 antialiased md:flex-row dark:bg-zinc-950 dark:text-zinc-100 dark:[color-scheme:dark]"
       >
         <SidebarNav busy={busy} onNavigate={onNavigate} onLock={onLock} />
-        {children}
+        <TableAlertProvider>{children}</TableAlertProvider>
       </div>
     </ShellContext.Provider>
   );
@@ -59,6 +61,7 @@ export function PageFrame({ title, sync, actions, drawer, footer, children }: Pa
     <div className="flex min-h-0 min-w-0 flex-1 flex-col lg:flex-row">
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         <HeaderBar title={title} sync={sync} actions={actions} />
+        <POSAlertBanner />
         <main className="custom-scrollbar min-h-0 flex-1 overflow-y-auto">{children}</main>
         {footer}
       </div>

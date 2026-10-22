@@ -21,6 +21,7 @@ mod settings;
 mod shifts;
 mod sync;
 mod sync_center;
+mod table_sessions;
 mod terminal;
 mod timeclock;
 
@@ -274,6 +275,12 @@ fn terminal_store(state: tauri::State<AppState>) -> String {
 #[tauri::command]
 fn terminal_status(state: tauri::State<AppState>) -> terminal::TerminalStatus {
     state.terminal.clone()
+}
+
+/// The webview uses this to subscribe to table events. It is the same token the shell already sends.
+#[tauri::command]
+fn terminal_api_key(state: tauri::State<AppState>) -> String {
+    state.config.api_key.clone()
 }
 
 /// Exchanges subdomain + activation key for this register's identity, stores it encrypted, and restarts
@@ -540,6 +547,7 @@ pub fn run() {
             remote_search,
             terminal_store,
             terminal_status,
+            terminal_api_key,
             activate_terminal,
             deactivate_terminal,
             check_branches,
@@ -579,6 +587,10 @@ pub fn run() {
             erp::shift_summary,
             erp::close_shift,
             erp::recent_shifts,
+            erp::list_table_sessions,
+            erp::save_table_session,
+            erp::cache_table_event,
+            erp::close_table_session,
             erp::hold_cart,
             erp::held_carts,
             erp::recall_cart,

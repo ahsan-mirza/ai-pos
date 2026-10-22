@@ -24,20 +24,20 @@ macOS and Linux:
 ./scripts/bootstrap.sh
 ```
 
-The script installs workspace packages, creates `apps/api/.venv`, creates each app's `.env.development` from its `.env.development.example` (or moves an existing `.env` there, keeping its values), and generates desktop icons. When it creates `apps/api/.env.development` it also replaces the `change-me` secrets (`JWT_SECRET`, `PIN_SALT`, `ENCRYPTION_SECRET`, `API_KEY`, `ADMIN_PASSWORD`, `ADMIN_PIN`) with random values and copies the same `API_KEY` into `apps/desktop/.env.development`. It never touches an existing env file, because rotating `ENCRYPTION_SECRET` or `PIN_SALT` on a live database makes stored IMEIs and PINs unusable.
+The script installs workspace packages, creates `apps/api/.venv`, creates the repo-root `.env` from `.env.example`, and generates desktop icons. When it creates `.env` it also replaces the `change-me` secrets (`JWT_SECRET`, `PIN_SALT`, `ENCRYPTION_SECRET`, `API_KEY`, `ADMIN_PASSWORD`, `ADMIN_PIN`, `VITE_API_KEY`) with random values. It never touches an existing env file, because rotating `ENCRYPTION_SECRET` or `PIN_SALT` on a live database makes stored IMEIs and PINs unusable.
 
 ## Environments
 
-Every app has the same three env files; no app reads a plain `.env`.
+Every app reads the env files at the repo root. None of them keep their own.
 
 | File | Where | Selected by |
 | --- | --- | --- |
-| `.env.development` | your machine (`localhost`, `demo` tenant) | `pnpm dev:*`, `migrate`, `seed` |
-| `.env.dev` | shared dev server, `https://{tenant}.dev.qios.ae` | `APP_ENV=dev`, `vite build --mode dev`, `POS_ENV=dev` |
-| `.env.production` | live, `https://{tenant}.qios.ae` | `APP_ENV=production`, `vite build`, `POS_ENV=production` |
+| `.env` | your machine (`localhost`, `demo` tenant). Gitignored. Copy from `.env.example`. | `pnpm dev:*`, `migrate`, `seed` |
+| `.env.dev` | public build values for `https://{tenant}.dev.qios.ae`. Committed. Secrets go in `.env.dev.local`. | `APP_ENV=dev`, `vite build --mode dev`, `POS_ENV=dev` |
+| `.env.production` | full production config, including the database URL. Gitignored. Copy it to `/opt/ai-pos/.env.production` on the VM. CI builds use `deploy/portal.production.env` when this file is absent. | `APP_ENV=production`, `vite build`, `POS_ENV=production` |
 
-- Backend (`apps/api`): all three hold secrets and are gitignored; copy them from `.env.<name>.example`. `node scripts/generate-secrets.mjs --env dev` (or `--env production`) creates the file and fills fresh secrets; set the database credentials by hand. Production refuses to start while any value contains `change-me`, `CONTROL_DATABASE_URL` is unset, or `DEFAULT_TENANT` is set. Tests run with `APP_ENV=test` and read no file.
-- Admin and POS: `.env.dev` and `.env.production` hold only public values (Vite inlines them into the bundle) and are committed; `.env.development` is gitignored.
+- `node scripts/generate-secrets.mjs --env dev` creates `.env.dev.local` and fills fresh secrets. `--env production` fills the remaining `change-me` values in `.env.production` and leaves `DATABASE_URL` alone. Production refuses to start while any value contains `change-me`, `CONTROL_DATABASE_URL` is unset, or `DEFAULT_TENANT` is set. Tests run with `APP_ENV=test` and do not read `.env`.
+- `.env.dev` in git holds only public values. Vite inlines `VITE_*` into the bundle, and the register installer bakes `TENANT_URL_TEMPLATE`. The register's browser preview uses `VITE_POS_API_BASE_URL` when the admin portal's `VITE_API_BASE_URL` is a different address.
 - POS installers bake the activation endpoint (`TENANT_URL_TEMPLATE`, `TENANT_BASE_DOMAIN`) in at compile time and never read the build machine's files. Setting `TENANT_URL_TEMPLATE` on a register PC still overrides it, for LAN testing. The dev installer is a separate app ("AI POS Dev") that installs side by side with the live one.
 
 | Task | Dev server | Production |
@@ -49,7 +49,7 @@ Every app has the same three env files; no app reads a plain `.env`.
 
 ## Run
 
-Skip `docker compose up -d` if PostgreSQL already runs on port 5432; point `DATABASE_URL` in `apps/api/.env.development` at it instead (URL-encode special characters in the password, for example `@` as `%40`).
+Skip `docker compose up -d` if PostgreSQL already runs on port 5432; point `DATABASE_URL` in the repo-root `.env` at it instead (URL-encode special characters in the password, for example `@` as `%40`).
 
 ```bash
 docker compose up -d
@@ -72,7 +72,7 @@ pnpm dev
 - IMEI/serial units carry the branch that physically holds them. Selling a unit that sits at another branch is refused until it is transferred.
 - Purchase orders (`/api/v1/inventory/purchase-orders`) go draft → ordered → partially received / received through goods receipts at their `destination_store_id`. Transfers (`/api/v1/inventory/transfers`) go requested (stock reserved at the source) → in transit → received.
 - Store-bound users only see and change their own branch; global users can pick a branch or view consolidated totals. `GET /api/v1/inventory/availability` is open to registers so cashiers can check other branches.
-- Each register sells from the store it was activated for (`STORE_ID` / `VITE_STORE_ID` in `apps/desktop/.env.development` for the legacy developer setup).
+- Each register sells from the store it was activated for (`STORE_ID` / `VITE_STORE_ID` in the repo-root `.env` for the legacy developer setup).
 
 ## Grocery and restaurant modules
 
@@ -109,7 +109,7 @@ Each business type switches on its own modules (Store Settings → Business prof
 - Accounts lock for `LOGIN_LOCKOUT_MINUTES` after `LOGIN_MAX_ATTEMPTS` failures. Password and PIN resets revoke existing tokens.
 - Users can only grant permissions they hold. Store-bound users only see and manage their own store.
 - Every synced sale must name a cashier who exists, holds `pos:access`, and belongs to the sale's store (or to every store).
-- Demo staff: `pnpm --filter @ai-pos/api seed:demo` adds the roles and users in `packages/catalog/demo-users.json` (skipping usernames that already exist). Set `VITE_SHOW_DEMO_ACCOUNTS=true` in `apps/web/.env.development` and `apps/desktop/.env.development` to list them on the login and unlock screens. Only `vite dev` honors the flag; production builds never include the file.
+- Demo staff: `pnpm --filter @ai-pos/api seed:demo` adds the roles and users in `packages/catalog/demo-users.json` (skipping usernames that already exist). Set `VITE_SHOW_DEMO_ACCOUNTS=true` in the repo-root `.env` to list them on the login and unlock screens. Only `vite dev` honors the flag; production builds never include the file.
 
 ## Database access
 

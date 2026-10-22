@@ -1,6 +1,7 @@
 import { LogOut, X } from "lucide-react";
 import { useEffect, useRef, useState, type FocusEvent, type MouseEvent, type ReactNode } from "react";
 import { Link, useLocation } from "react-router-dom";
+import { useTenant } from "../../context/TenantContext";
 import { useAuth, useIsSuperAdmin } from "../../lib/auth";
 import { useCapabilities } from "../../lib/capabilities";
 import { useCanManageSettings } from "../../lib/currency";
@@ -26,12 +27,14 @@ function useVisibleGroups(): { label: NavGroup["label"]; items: VisibleItem[] }[
   const canManageSettings = useCanManageSettings();
   const superAdmin = useIsSuperAdmin();
   const capabilities = useCapabilities();
+  const tenant = useTenant();
   return navGroups
     .map((group) => ({
       label: group.label,
       items: group.items
         .filter(
           (item) =>
+            tenant.allows(item.profiles) &&
             (item.capability === undefined || capabilities.has(item.capability)) &&
             (!item.superAdminOnly || superAdmin) &&
             (item.settingsOnly ? canManageSettings : can(item.permission)),

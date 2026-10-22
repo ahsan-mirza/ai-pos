@@ -112,6 +112,33 @@ class ReturnsPolicy(_Section):
         return next((condition for condition in self.conditions if condition.key == key), None)
 
 
+VOID_REASONS = [
+    Choice(key="order_mistake", label="Order mistake"),
+    Choice(key="changed_mind", label="Customer changed mind"),
+    Choice(key="wrong_preparation", label="Wrong preparation"),
+    Choice(key="food_quality", label="Food quality issue"),
+    Choice(key="payment_refused", label="Payment refused"),
+]
+
+
+class VoidPolicy(_Section):
+    """Food and beverage: cancellations after the kitchen has the ticket, and what happens to the food."""
+
+    manager_pin_after_dispatch: bool = True
+    # wasted: the item is scrapped. restock: an unopened bar item goes back to stock.
+    cancelled_stock: Literal["wasted", "restock"] = "wasted"
+    reasons: list[Choice] = Field(default_factory=lambda: list(VOID_REASONS), min_length=1, max_length=20)
+    # How a prepaid table or online order is given back.
+    prepaid_refund: Literal["original", "voucher"] = "voucher"
+
+    @field_validator("reasons")
+    @classmethod
+    def unique_reasons(cls, value: list[Choice]) -> list[Choice]:
+        if len({choice.key for choice in value}) != len(value):
+            raise ValueError("Void reason keys must be unique.")
+        return value
+
+
 def returns_preset(name: Literal["electronics", "fashion"]) -> ReturnsPolicy:
     if name == "fashion":
         return ReturnsPolicy(
@@ -128,6 +155,7 @@ class PosPolicy(_Section):
     discounts: DiscountPolicy = Field(default_factory=DiscountPolicy)
     gift_cards: GiftCardPolicy = Field(default_factory=GiftCardPolicy)
     returns: ReturnsPolicy = Field(default_factory=ReturnsPolicy)
+    voids: VoidPolicy = Field(default_factory=VoidPolicy)
 
 
 FASHION_PROFILES = frozenset({"retail_fashion"})

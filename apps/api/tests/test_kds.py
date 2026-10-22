@@ -3,9 +3,21 @@ from datetime import UTC, datetime
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
+from tests.test_capabilities import change_profile
 from tests.test_menu import enable
 from tests.test_orders import line, open_order, settle
-from tests.test_returns import CABLE_ID, CASHIER_ID, STORE_ID, admin_id, admin_token, bearer, device, push, seed_catalog
+from tests.test_returns import (
+    API_KEY,
+    CABLE_ID,
+    CASHIER_ID,
+    STORE_ID,
+    admin_id,
+    admin_token,
+    bearer,
+    device,
+    push,
+    seed_catalog,
+)
 
 from app.models import KitchenTicket, Product
 
@@ -80,16 +92,30 @@ def test_sending_fires_tickets_per_station_and_tracks_progress(client, session: 
     assert len(board(client, kitchen)["tickets"]) == 1
     assert board(client, bar, bar_board["server_time"])["tickets"] == []
 
-    assert status(client, ticket["id"], "READY").status_code == 200
+    assert change_profile(client, bearer(token), "restaurant").status_code == 200
+    with client.websocket_connect(f"/api/v1/ws/stores/{STORE_ID}/tables?token={API_KEY}") as socket:
+        assert status(client, ticket["id"], "READY").status_code == 200
+        progress = socket.receive_json()
+        assert progress["type"] == "ORDER_STATUS_CHANGED"
+        assert progress["status"] == "ready"
+        assert progress["kitchen_status"] == "ready"
+        assert progress["ticket_id"] == ticket["id"]
+        assert progress["order_id"] == order["id"]
+        assert socket.receive_json()["type"] == "KDS_ITEM_READY"
+        assert status(client, ticket["id"], "PREPARING").status_code == 409
+        bumped = status(client, ticket["id"], "BUMPED").json()
+        assert bumped["bumped_at"] is not None and bumped["ready_at"] is not None
+        completed = socket.receive_json()
+        assert completed["type"] == "ORDER_STATUS_CHANGED"
+        assert completed["status"] == "completed"
+        assert completed["kitchen_status"] == "bumped"
+        changed = board(client, bar, bar_board["server_time"])["tickets"]
+        assert [item["status"] for item in changed] == ["BUMPED"]
+        recalled = client.post(f"/api/v1/kds/tickets/{ticket['id']}/recall", headers=device())
+        assert recalled.status_code == 200 and recalled.json()["status"] == "READY"
+        assert socket.receive_json()["status"] == "ready"
     refreshed = client.get(f"/api/v1/orders/{order['id']}", headers=device()).json()
     assert refreshed["items"][0]["kitchen_status"] == "ready"
-    assert status(client, ticket["id"], "PREPARING").status_code == 409
-    bumped = status(client, ticket["id"], "BUMPED").json()
-    assert bumped["bumped_at"] is not None and bumped["ready_at"] is not None
-    changed = board(client, bar, bar_board["server_time"])["tickets"]
-    assert [item["status"] for item in changed] == ["BUMPED"]
-    recalled = client.post(f"/api/v1/kds/tickets/{ticket['id']}/recall", headers=device())
-    assert recalled.status_code == 200 and recalled.json()["status"] == "READY"
 
     burger_item = next(item for item in refreshed["items"] if item["product_id"] == BURGER_ID)
     voided = client.post(

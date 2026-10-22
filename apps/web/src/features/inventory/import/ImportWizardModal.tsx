@@ -253,7 +253,7 @@ export function ImportWizardModal({
         aria-labelledby={titleId}
         className="modal-card flex max-h-[94vh] w-full max-w-6xl flex-col overflow-hidden rounded-3xl border border-white/60 bg-white/95 shadow-2xl backdrop-blur-xl"
       >
-        <header className="border-b border-line px-5 pb-5 pt-5 sm:px-7">
+        <header className="sticky top-0 z-20 flex-none border-b border-line bg-white px-5 pb-5 pt-5 sm:px-7">
           <div className="mb-5 flex items-start justify-between gap-4">
             <div className="flex items-center gap-3">
               <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-accent text-white">
@@ -382,7 +382,7 @@ export function ImportWizardModal({
           <ErrorNote message={error} />
         </div>
 
-        <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-line bg-surface/50 px-5 py-4 sm:px-7">
+        <footer className="sticky bottom-0 z-20 flex flex-none flex-wrap items-center justify-between gap-3 border-t border-line bg-white px-5 py-4 sm:px-7">
           <span className="text-xs text-charcoal/50">
             {committed
               ? "Stock, IMEIs and the audit trail were updated."

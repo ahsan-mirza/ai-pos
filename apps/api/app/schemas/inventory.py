@@ -19,7 +19,10 @@ MovementType = Literal[
     "PURCHASE_REVERSAL",
     "RECIPE_OUT",
 ]
-StockStatus = Literal["ok", "low", "out", "over"]
+StockStatus = Literal["ok", "low", "out", "over", "unavailable"]
+ItemType = Literal["MADE_TO_ORDER", "RAW_INGREDIENT", "PRE_PACKAGED"]
+MenuStatus = Literal["available", "unavailable", "no_recipe", "meal"]
+StockView = Literal["stock", "menu"]
 PurchaseOrderStatus = Literal["draft", "ordered", "partially_received", "received", "cancelled"]
 TransferStatus = Literal["requested", "in_transit", "received", "cancelled"]
 CODE = re.compile(r"[A-Z0-9][A-Z0-9-]{0,31}")
@@ -220,9 +223,16 @@ class StockRow(ApiModel):
     min_reorder_level: int
     max_stock_level: int | None
     aisle_shelf_location: str | None
+    thumb_url: str | None = None
     status: StockStatus
     # Quantities of weighed products count grams.
     sold_by_weight: bool = False
+    item_type: ItemType = "PRE_PACKAGED"
+    # Menu view: how many portions ingredient stock can still make, and why.
+    max_portions: int | None = None
+    limiting_ingredient: str | None = None
+    availability_note: str | None = None
+    menu_status: MenuStatus | None = None
 
 
 class StockSummary(ApiModel):
@@ -232,6 +242,7 @@ class StockSummary(ApiModel):
     units_on_hand: int
     low_count: int
     out_count: int
+    view: StockView = "stock"
 
 
 class LevelUpdate(ApiModel):
@@ -569,6 +580,8 @@ class ProductCreate(FashionAttributes):
     tare_grams: int = Field(default=0, ge=0, le=100_000)
     # Recipes module: kept in stock for dishes only; registers do not sell it.
     is_ingredient: bool = False
+    # Prepared dishes are not stocked. Ingredients and packaged goods are.
+    item_type: ItemType | None = None
     # Packs it sells in besides the piece (units of measure), e.g. ["CASE_24"].
     sellable_units: list[UnitType] = Field(default_factory=lambda: ["PIECE"], max_length=8)
     opening_store_id: UUID | None = None
@@ -613,6 +626,7 @@ class ProductUpdate(FashionAttributes):
     plu_code: str | None = Field(default=None, pattern=r"^\d{4,6}$")
     tare_grams: int | None = Field(default=None, ge=0, le=100_000)
     is_ingredient: bool | None = None
+    item_type: ItemType | None = None
     sellable_units: list[UnitType] | None = Field(default=None, max_length=8)
 
     @field_validator("variant_attributes")

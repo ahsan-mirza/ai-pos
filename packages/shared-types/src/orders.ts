@@ -5,6 +5,35 @@ export type OrderStatus = "OPEN" | "SETTLED" | "VOID";
 export type TableStatus = "free" | "seated" | "ordered" | "bill";
 export type KitchenStatus = "new" | "preparing" | "ready" | "bumped";
 
+/** Guest-facing phase broadcast on the store table socket as `ORDER_STATUS_CHANGED`. */
+export type OrderProgress = "preparing" | "ready" | "completed";
+
+export const ORDER_PROGRESS_LABEL: Record<OrderProgress, string> = {
+  preparing: "Preparing",
+  ready: "Ready to Serve",
+  completed: "Completed",
+};
+
+/**
+ * Pushed to every screen watching `/api/v1/ws/stores/{store_id}/tables` after a round is sent
+ * or a kitchen ticket moves (start, ready, bump, recall).
+ */
+export interface OrderStatusEvent {
+  type: "ORDER_STATUS_CHANGED";
+  store_id: string;
+  order_id: string | null;
+  table_id: string | null;
+  table_label: string | null;
+  ticket_id: string | null;
+  /** Guest-facing phase. */
+  status: OrderProgress;
+  /** Line badge stored on the order, matching the kitchen ticket. */
+  kitchen_status: KitchenStatus;
+  item_ids: string[];
+  message: string;
+  updated_at: string;
+}
+
 export interface OrderItemInput {
   id: string;
   product_id: string;

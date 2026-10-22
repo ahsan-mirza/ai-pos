@@ -1,12 +1,13 @@
 function required(name: keyof ImportMetaEnv): string {
   const value = import.meta.env[name];
   if (typeof value !== "string" || value.trim() === "") {
-    throw new Error(`Missing required environment variable ${name}. Check apps/desktop/.env.${import.meta.env.MODE}.`);
+    throw new Error(`Missing required environment variable ${name}. Check the repo-root env file (.env, .env.dev, or .env.production).`);
   }
   return value.trim();
 }
 
-const apiBaseUrl = required("VITE_API_BASE_URL").replace(/\/$/, "");
+const posApi = import.meta.env.VITE_POS_API_BASE_URL?.trim();
+const apiBaseUrl = (posApi ? posApi : required("VITE_API_BASE_URL")).replace(/\/$/, "");
 if (!/^https?:\/\//.test(apiBaseUrl)) {
   throw new Error("VITE_API_BASE_URL must be an absolute http(s) URL.");
 }

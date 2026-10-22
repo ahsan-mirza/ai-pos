@@ -1,6 +1,13 @@
 import { X } from "lucide-react";
 import { useEffect, useId, type ReactNode } from "react";
 
+/** Shared shell so every dialog keeps its title and actions visible while the form scrolls. */
+export const modalHeader =
+  "sticky top-0 z-20 flex flex-none items-start justify-between gap-4 border-b border-line bg-white px-6 py-4 sm:px-7";
+export const modalBody = "min-h-0 flex-1 overflow-y-auto px-6 py-4 sm:px-7";
+export const modalFooter =
+  "sticky bottom-0 z-20 flex flex-none flex-wrap items-center justify-end gap-3 border-t border-line bg-white px-6 py-4 sm:px-7";
+
 interface ModalProps {
   title: string;
   subtitle?: string;
@@ -8,9 +15,11 @@ interface ModalProps {
   children: ReactNode;
   footer?: ReactNode;
   width?: "md" | "lg";
+  /** Sits above another open modal, such as a confirmation asked from inside one. */
+  elevated?: boolean;
 }
 
-export function Modal({ title, subtitle, onClose, children, footer, width = "md" }: ModalProps) {
+export function Modal({ title, subtitle, onClose, children, footer, width = "md", elevated = false }: ModalProps) {
   const titleId = useId();
 
   useEffect(() => {
@@ -31,19 +40,21 @@ export function Modal({ title, subtitle, onClose, children, footer, width = "md"
 
   return (
     <div
-      className="modal-backdrop fixed inset-0 z-50 flex items-center justify-center bg-charcoal/40 p-4 backdrop-blur-[8px]"
+      className={`modal-backdrop fixed inset-0 flex items-center justify-center bg-charcoal/40 p-4 backdrop-blur-[8px] ${
+        elevated ? "z-[80]" : "z-50"
+      }`}
       role="presentation"
     >
       <div
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
-        className={`modal-card max-h-[90vh] w-full overflow-y-auto rounded-3xl bg-white p-6 shadow-2xl sm:p-7 ${
+        className={`modal-card flex max-h-[90vh] w-full flex-col overflow-hidden rounded-3xl bg-white shadow-2xl ${
           width === "lg" ? "max-w-2xl" : "max-w-md"
         }`}
       >
-        <div className="mb-6 flex items-start justify-between gap-4">
-          <div>
+        <header className={modalHeader}>
+          <div className="min-w-0">
             <h2 id={titleId} className="text-xl font-semibold">
               {title}
             </h2>
@@ -57,9 +68,9 @@ export function Modal({ title, subtitle, onClose, children, footer, width = "md"
           >
             <X size={18} aria-hidden="true" />
           </button>
-        </div>
-        {children}
-        {footer ? <div className="mt-7 flex flex-wrap justify-end gap-3">{footer}</div> : null}
+        </header>
+        <div className={modalBody}>{children}</div>
+        {footer ? <footer className={modalFooter}>{footer}</footer> : null}
       </div>
     </div>
   );

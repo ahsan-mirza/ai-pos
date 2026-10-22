@@ -80,10 +80,10 @@ export function Modal({
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
-        className={`frost-card max-h-[90vh] w-full overflow-y-auto rounded-3xl bg-white p-6 shadow-2xl ${wide ? "max-w-2xl" : "max-w-lg"}`}
+        className={`frost-card flex max-h-[90vh] w-full flex-col overflow-hidden rounded-3xl bg-white shadow-2xl ${wide ? "max-w-2xl" : "max-w-lg"}`}
       >
-        <div className="flex items-start justify-between gap-4">
-          <div>
+        <header className="sticky top-0 z-20 flex flex-none items-start justify-between gap-4 border-b border-line bg-white px-6 py-4">
+          <div className="min-w-0">
             <h2 id={titleId} className="text-xl font-semibold text-charcoal">
               {title}
             </h2>
@@ -92,9 +92,13 @@ export function Modal({
           <button type="button" aria-label="Close" onClick={onClose} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full hover:bg-surface">
             <X size={18} aria-hidden="true" />
           </button>
-        </div>
-        <div className="mt-5">{children}</div>
-        {footer ? <div className="mt-6 flex flex-wrap justify-end gap-2">{footer}</div> : null}
+        </header>
+        <div className="min-h-0 flex-1 overflow-y-auto px-6 py-4">{children}</div>
+        {footer ? (
+          <footer className="sticky bottom-0 z-20 flex flex-none flex-wrap items-center justify-end gap-3 border-t border-line bg-white px-6 py-4">
+            {footer}
+          </footer>
+        ) : null}
       </div>
     </div>
   );

@@ -59,14 +59,14 @@ enum PushError {
 }
 
 impl DesktopConfig {
-    /// Debug builds read apps/desktop/.env.development (TENANT_URL_TEMPLATE, POS_DEV_ENV_CONFIG, ...).
+    /// Debug builds read the repo-root `.env` (TENANT_URL_TEMPLATE, POS_DEV_ENV_CONFIG, ...).
     /// Release builds never read files from the build machine; build.rs bakes their settings in.
     pub fn load_env_file() -> Result<(), String> {
         if !cfg!(debug_assertions) {
             return Ok(());
         }
         let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        let env_path = manifest_dir.join("..").join(".env.development");
+        let env_path = manifest_dir.join("..").join("..").join("..").join(".env");
         if env_path.exists() {
             dotenvy::from_path(&env_path)
                 .map_err(|err| format!("Unable to load {}: {err}", env_path.display()))?;

@@ -33,6 +33,9 @@ jobs:
           node-version: 20
           cache: pnpm
 
+      - name: Production build env
+        run: test -f .env.production || cp deploy/portal.production.env .env.production
+
       - name: Build admin portal
         run: |
           pnpm install --frozen-lockfile --filter "@ai-pos/web..."
@@ -73,8 +76,8 @@ jobs:
         run: |
           ssh server "APP_DIR=$APP_DIR bash -s" <<'EOF'
           set -euo pipefail
+          test -f "$APP_DIR/.env.production" || { echo "Missing $APP_DIR/.env.production"; exit 1; }
           cd "$APP_DIR/apps/api"
-          test -f .env.production || { echo "Missing $APP_DIR/apps/api/.env.production"; exit 1; }
           .venv/bin/pip install -q -r requirements.txt
           export APP_ENV=production
           .venv/bin/python -m app.tenancy.cli init

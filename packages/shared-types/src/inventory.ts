@@ -15,8 +15,18 @@ export const MovementType = {
 } as const;
 export type MovementType = (typeof MovementType)[keyof typeof MovementType];
 
-export const StockStatus = { Ok: "ok", Low: "low", Out: "out", Over: "over" } as const;
+export const StockStatus = { Ok: "ok", Low: "low", Out: "out", Over: "over", Unavailable: "unavailable" } as const;
 export type StockStatus = (typeof StockStatus)[keyof typeof StockStatus];
+
+export const ItemType = {
+  MadeToOrder: "MADE_TO_ORDER",
+  RawIngredient: "RAW_INGREDIENT",
+  PrePackaged: "PRE_PACKAGED",
+} as const;
+export type ItemType = (typeof ItemType)[keyof typeof ItemType];
+
+export type MenuStatus = "available" | "unavailable" | "no_recipe" | "meal";
+export type StockView = "stock" | "menu";
 
 export type PurchaseOrderStatus = "draft" | "ordered" | "partially_received" | "received" | "cancelled";
 export type TransferStatus = "requested" | "in_transit" | "received" | "cancelled";
@@ -143,9 +153,17 @@ export interface StockRow {
   min_reorder_level: number;
   max_stock_level: number | null;
   aisle_shelf_location: string | null;
+  /** Cover thumbnail, when the product has a photo. */
+  thumb_url?: string | null;
   status: StockStatus;
   /** Quantities of weighed products count grams. */
   sold_by_weight?: boolean;
+  item_type?: ItemType;
+  /** Menu availability: portions the current ingredient stock can still make. */
+  max_portions?: number | null;
+  limiting_ingredient?: string | null;
+  availability_note?: string | null;
+  menu_status?: MenuStatus | null;
 }
 
 export interface StockSummary {
@@ -155,6 +173,7 @@ export interface StockSummary {
   units_on_hand: number;
   low_count: number;
   out_count: number;
+  view?: StockView;
 }
 
 export interface LevelUpdate {
@@ -434,6 +453,8 @@ export interface ProductCreate extends FashionAttributes {
   tare_grams?: number;
   /** Recipes module: stocked for dishes only; registers do not sell it. */
   is_ingredient?: boolean;
+  /** Prepared dishes are not stocked. Ingredients and packaged goods are. */
+  item_type?: ItemType;
   /** Unit-of-measure codes it sells in; PIECE is always included. */
   sellable_units?: string[];
   opening_store_id?: string | null;
@@ -460,11 +481,18 @@ export interface ProductUpdate extends FashionAttributes {
   plu_code?: string | null;
   tare_grams?: number;
   is_ingredient?: boolean;
+  item_type?: ItemType;
   sellable_units?: string[];
 }
 
 export function stockStatusLabel(status: StockStatus): string {
-  return { ok: "In stock", low: "Low stock", out: "Out of stock", over: "Overstock" }[status];
+  return {
+    ok: "In stock",
+    low: "Low stock",
+    out: "Out of stock",
+    over: "Overstock",
+    unavailable: "Ingredients Unavailable",
+  }[status];
 }
 
 export function movementLabel(type: MovementType): string {

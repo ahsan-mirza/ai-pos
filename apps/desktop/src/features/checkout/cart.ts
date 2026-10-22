@@ -238,7 +238,15 @@ function newLine(product: ProductUpsert, quantity: number, unitType: UnitType, e
 }
 
 function stockError(lines: CartLine[], product: ProductUpsert, pieces: number): string | null {
-  if (product.is_serialized || product.is_service || product.is_open_price || product.has_recipe) return null;
+  if (
+    product.is_serialized ||
+    product.is_service ||
+    product.is_open_price ||
+    product.has_recipe ||
+    product.is_stock_tracked === false ||
+    product.item_type === "MADE_TO_ORDER"
+  )
+    return null;
   const others = piecesOf(lines, product.id);
   if (others + pieces > product.stock_quantity) {
     const held = product.sold_by_weight ? formatWeight(product.stock_quantity) : String(product.stock_quantity);

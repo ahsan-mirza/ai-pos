@@ -8,22 +8,16 @@ function Require-Command([string]$Name) {
   }
 }
 
-# Each app reads .env.development on this machine (.env.dev / .env.production elsewhere).
+# Every app reads the repo-root .env on this machine (.env.dev / .env.production elsewhere).
 # Returns $true only when the file was created from the template, so its secrets still need generating.
-function Ensure-DevelopmentEnv([string]$App) {
-  $Example = "$App\.env.development.example"
-  $Destination = "$App\.env.development"
-  $Legacy = "$App\.env"
+function Ensure-DevelopmentEnv() {
+  $Example = ".env.example"
+  $Destination = ".env"
   if (-not (Test-Path $Example)) {
     throw "Missing env template: $Example"
   }
   if (Test-Path $Destination) {
     Write-Host "Kept existing $Destination"
-    return $false
-  }
-  if (Test-Path $Legacy) {
-    Move-Item $Legacy $Destination
-    Write-Host "Moved $Legacy to $Destination (values kept)"
     return $false
   }
   Copy-Item $Example $Destination
@@ -38,13 +32,11 @@ Require-Command "python"
 Write-Host "Installing workspace packages..."
 pnpm install
 
-$ApiEnvCreated = Ensure-DevelopmentEnv "apps\api"
-Ensure-DevelopmentEnv "apps\web" | Out-Null
-Ensure-DevelopmentEnv "apps\desktop" | Out-Null
-if ($ApiEnvCreated) {
-  Write-Host "Generating secrets for the new apps\api\.env.development..."
+$EnvCreated = Ensure-DevelopmentEnv
+if ($EnvCreated) {
+  Write-Host "Generating secrets for the new .env..."
   node ".\scripts\generate-secrets.mjs"
-  Write-Host "Set DATABASE_URL in apps\api\.env.development before migrating."
+  Write-Host "Set DATABASE_URL in .env before migrating."
 }
 
 $VenvPython = Join-Path $Root "apps\api\.venv\Scripts\python.exe"

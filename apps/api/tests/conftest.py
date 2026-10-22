@@ -2,7 +2,7 @@
 # ruff: noqa: E402
 import os
 
-# No apps/api/.env.test exists, so no developer's env file reaches the tests.
+# APP_ENV=test reads .env.test only, so a developer's .env never reaches the tests.
 os.environ["APP_ENV"] = "test"
 os.environ["DATABASE_URL"] = "sqlite://"
 os.environ["CONTROL_DATABASE_URL"] = ""

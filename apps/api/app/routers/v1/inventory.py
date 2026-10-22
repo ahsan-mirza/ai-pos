@@ -26,6 +26,7 @@ from app.schemas.inventory import (
     StockRow,
     StockStatus,
     StockSummary,
+    StockView,
     StoreSerial,
     TransferCreate,
     TransferOut,
@@ -64,6 +65,7 @@ def stock(
     season: Annotated[str | None, Query(max_length=16)] = None,
     collection: Annotated[str | None, Query(max_length=80)] = None,
     gender: Annotated[str | None, Query(max_length=12)] = None,
+    view: StockView = "stock",
 ) -> StockSummary:
     return inventory.stock_summary(
         db,
@@ -78,6 +80,7 @@ def stock(
         season=season,
         collection=collection,
         gender=gender,
+        view=view,
     )
 
 

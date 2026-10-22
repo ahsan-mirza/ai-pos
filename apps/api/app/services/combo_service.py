@@ -194,7 +194,11 @@ def create_combo(db: Session, data: ComboIn, *, is_sample: bool = False, commit:
     )
     db.add(product)
     db.flush()
+    from app.services.item_type import apply_item_type
+
     _replace_slots(db, product, data)
+    apply_item_type(db, product, "MADE_TO_ORDER")
+    product.is_service = True
     if commit:
         db.commit()
     else:
@@ -214,6 +218,8 @@ def update_combo(db: Session, product_id: uuid.UUID, data: ComboIn) -> ComboOut:
     product.price_cents = data.price_cents
     product.tax_category = data.tax_category
     product.is_service = True
+    product.item_type = "MADE_TO_ORDER"
+    product.is_stock_tracked = False
     _replace_slots(db, product, data)
     db.commit()
     return get_combo(db, product.id)

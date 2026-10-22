@@ -23,6 +23,7 @@ import type {
   StockRow,
   StockSummary,
   StockTransfer,
+  StockView,
   Store,
   StoreSerial,
   StoreUpdate,
@@ -60,6 +61,7 @@ export interface StockFilters {
   season?: string | null;
   collection?: string | null;
   gender?: string | null;
+  view?: StockView;
 }
 
 export const inventoryApi = {

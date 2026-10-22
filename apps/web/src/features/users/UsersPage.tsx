@@ -1,6 +1,7 @@
 import { Permission, type Role, type Store, type User } from "@ai-pos/shared-types";
 import { KeyRound, Pencil, Plus, Smartphone, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useConfirm } from "../../components/ui/ConfirmDialog";
 import { ErrorNote, PrimaryButton } from "../../components/ui/Field";
 import { useAuth } from "../../lib/auth";
 import { errorMessage, rolesApi, storesApi, usersApi } from "./api";
@@ -40,6 +41,7 @@ export function UsersPage() {
   const [query, setQuery] = useState("");
   const [dialog, setDialog] = useState<Dialog>(null);
   const [error, setError] = useState<string | null>(null);
+  const confirm = useConfirm();
 
   const load = useCallback(async () => {
     try {
@@ -80,7 +82,13 @@ export function UsersPage() {
   };
 
   const remove = async (user: User) => {
-    if (!window.confirm(`Delete ${user.full_name}? This cannot be undone.`)) return;
+    const accepted = await confirm({
+      title: "Delete user",
+      message: `Delete ${user.full_name}? This cannot be undone.`,
+      confirmLabel: "Delete",
+      tone: "danger",
+    });
+    if (!accepted) return;
     try {
       await usersApi.remove(user.id);
       setUsers((current) => current.filter((item) => item.id !== user.id));

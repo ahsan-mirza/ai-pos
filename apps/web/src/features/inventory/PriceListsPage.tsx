@@ -16,6 +16,7 @@ import {
 import { ArrowLeft, Download, Plus, Tags, Trash2, Upload, Users } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { DataTable, type DataTableColumn } from "../../components/ui/DataTable";
+import { useConfirm } from "../../components/ui/ConfirmDialog";
 import { ErrorNote, GhostButton, PrimaryButton, SelectField, TextField } from "../../components/ui/Field";
 import { Modal } from "../../components/ui/Modal";
 import { ProductPicker } from "../../components/ui/ProductPicker";
@@ -440,6 +441,7 @@ function ListEditor({
   const [error, setError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const dismissToast = useCallback(() => setToast(null), []);
+  const confirm = useConfirm();
 
   const adopt = (next: PriceList) => {
     setList(next);
@@ -501,7 +503,14 @@ function ListEditor({
   };
 
   const remove = async () => {
-    if (!list || !window.confirm(`Delete ${list.name}? Its prices stop applying straight away.`)) return;
+    if (!list) return;
+    const accepted = await confirm({
+      title: "Delete price list",
+      message: `Delete ${list.name}? Its prices stop applying straight away.`,
+      confirmLabel: "Delete",
+      tone: "danger",
+    });
+    if (!accepted) return;
     try {
       await priceListsApi.remove(list.id);
       onBack();

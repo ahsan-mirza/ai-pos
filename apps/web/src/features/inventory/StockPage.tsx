@@ -1,10 +1,11 @@
-import { Permission, formatWeight, type StockRow, type StockStatus, type StockSummary } from "@ai-pos/shared-types";
-import { Boxes, History, SlidersHorizontal, SquarePen } from "lucide-react";
+import { Permission, formatWeight, type StockRow, type StockStatus, type StockSummary, type StockView } from "@ai-pos/shared-types";
+import { Boxes, History, Package, SlidersHorizontal, SquarePen, UtensilsCrossed } from "lucide-react";
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { DataTable, type DataTableColumn } from "../../components/ui/DataTable";
 import { ErrorNote, filterLabel } from "../../components/ui/Field";
 import { SegmentedControl } from "../../components/ui/SegmentedControl";
 import { Toast } from "../../components/ui/Toast";
+import { useTenant } from "../../context/TenantContext";
 import { useAuth } from "../../lib/auth";
 import { AdjustStockModal } from "./AdjustStockModal";
 import { inventoryApi, message } from "./api";
@@ -25,15 +26,27 @@ const CONSOLIDATED_HINT = "Select a specific store branch to adjust stock levels
 type StatusFilter = "all" | StockStatus;
 type Dialog = { kind: "adjust" | "levels" | "history"; row: StockRow } | null;
 
-const statusOptions = [
+const stockStatusOptions = [
   { value: "all", label: "All" },
   { value: "low", label: "Low" },
   { value: "out", label: "Out" },
   { value: "over", label: "Over" },
 ] as const;
 
+const menuStatusOptions = [
+  { value: "all", label: "All" },
+  { value: "ok", label: "Available" },
+  { value: "unavailable", label: "Unavailable" },
+] as const;
+
+const viewOptions = [
+  { value: "stock", label: "Raw ingredients & stock" },
+  { value: "menu", label: "Menu item availability" },
+] as const;
+
 export function StockPage() {
   const { can } = useAuth();
+  const { isFnB } = useTenant();
   const { stores } = useStores();
   const { categories } = useCategories();
   const { storeId, setStoreId, pinned } = useStoreScope();
@@ -42,6 +55,8 @@ export function StockPage() {
   const [brandId, setBrandId] = useState<string | null>(null);
   const [modelId, setModelId] = useState<string | null>(null);
   const [status, setStatus] = useState<StatusFilter>("all");
+  const [view, setView] = useState<StockView>("stock");
+  const menu = isFnB && view === "menu";
   const [fashion, setFashion] = useState<FashionFilterValue>(NO_FASHION_FILTER);
   const [query, setQuery] = useState("");
   const [debounced, setDebounced] = useState("");
@@ -69,6 +84,7 @@ export function StockPage() {
           product_model_id: modelId,
           status: status === "all" ? null : status,
           q: debounced.trim() || null,
+          view: isFnB ? view : "stock",
           ...fashion,
         }),
       );
@@ -76,7 +92,7 @@ export function StockPage() {
     } catch (caught) {
       setError(message(caught, "Could not load stock."));
     }
-  }, [storeId, categoryId, subCategoryId, brandId, modelId, status, debounced, fashion]);
+  }, [storeId, categoryId, subCategoryId, brandId, modelId, status, debounced, fashion, isFnB, view]);
 
   useEffect(() => {
     void load();
@@ -89,7 +105,51 @@ export function StockPage() {
     void load();
   };
 
-  const columns: DataTableColumn<StockRow>[] = [
+  const photoColumn: DataTableColumn<StockRow> = {
+    id: "photo",
+    header: "Photo",
+    className: "w-14",
+    cell: (row) =>
+      row.thumb_url ? (
+        <img src={row.thumb_url} alt="" className="h-10 w-10 rounded-lg object-cover" />
+      ) : (
+        <span className="grid h-10 w-10 place-items-center rounded-lg bg-surface text-charcoal/35" aria-hidden="true">
+          {menu ? <UtensilsCrossed size={16} /> : <Package size={16} />}
+        </span>
+      ),
+  };
+  const columns: DataTableColumn<StockRow>[] = menu
+    ? [
+        photoColumn,
+        { id: "sku", header: "SKU", className: "max-w-[130px] font-mono text-xs", accessorKey: "sku" },
+        {
+          id: "product",
+          header: "Menu item",
+          className: "min-w-[260px]",
+          cell: (row) => (
+            <>
+              <span className="block font-medium">{row.name}</span>
+              <span className="block text-xs text-charcoal/50">{row.availability_note ?? "Prepared to order"}</span>
+            </>
+          ),
+        },
+        { id: "category", header: "Category", accessorKey: "category" },
+        {
+          id: "portions",
+          header: "Max portions",
+          align: "right",
+          className: "font-semibold",
+          cell: (row) => (row.menu_status === "available" || row.menu_status === "unavailable" ? row.max_portions ?? 0 : "—"),
+        },
+        {
+          id: "limiting",
+          header: "Limited by",
+          cell: (row) => row.limiting_ingredient ?? "—",
+        },
+        { id: "status", header: "Status", cell: (row) => <MenuBadge row={row} /> },
+      ]
+    : [
+    photoColumn,
     { id: "sku", header: "SKU", className: "max-w-[130px] font-mono text-xs", accessorKey: "sku" },
     {
       id: "product",
@@ -165,27 +225,55 @@ export function StockPage() {
     <section className="space-y-4">
       <div className="grid gap-4 md:grid-cols-3">
         <article className="rounded-card bg-charcoal p-6 text-white">
-          <p className="text-sm text-white/60">{summary?.consolidated ? "Units on hand · all stores" : "Units on hand"}</p>
+          <p className="text-sm text-white/60">
+            {menu
+              ? summary?.consolidated
+                ? "Portions buildable · all stores"
+                : "Portions buildable"
+              : summary?.consolidated
+                ? "Units on hand · all stores"
+                : "Units on hand"}
+          </p>
           <p className="mt-4 text-4xl font-semibold tabular-nums">{summary?.units_on_hand ?? "—"}</p>
           <p className="mt-2 text-xs text-white/50">
             {store ? `${store.code} · ${store.name}` : `${stores.length} branches and warehouses`}
           </p>
         </article>
         <article className="rounded-card bg-accent p-6 text-white">
-          <p className="text-sm text-white/80">Needs reorder</p>
-          <p className="mt-4 text-4xl font-semibold tabular-nums">{summary?.low_count ?? "—"}</p>
+          <p className="text-sm text-white/80">{menu ? "Ingredients unavailable" : "Needs reorder"}</p>
+          <p className="mt-4 text-4xl font-semibold tabular-nums">
+            {menu ? (summary?.out_count ?? "—") : (summary?.low_count ?? "—")}
+          </p>
           <p className="mt-2 text-xs text-white/80">
-            {summary?.out_count ?? 0} {summary?.out_count === 1 ? "product" : "products"} out of stock
+            {menu
+              ? "Prepared dishes missing a critical ingredient"
+              : `${summary?.out_count ?? 0} ${summary?.out_count === 1 ? "product" : "products"} out of stock`}
           </p>
         </article>
         <article className="rounded-card border border-line bg-white p-6">
-          <p className="text-sm text-charcoal/60">Products listed</p>
+          <p className="text-sm text-charcoal/60">{menu ? "Dishes listed" : "Products listed"}</p>
           <p className="mt-4 text-4xl font-semibold tabular-nums">{rows.length}</p>
           <p className="mt-2 text-xs text-charcoal/50">
-            {summary?.consolidated ? "Consolidated totals across branches" : "Branch-isolated stock"}
+            {menu
+              ? "Prepared dishes, not shelf counts"
+              : summary?.consolidated
+                ? "Consolidated totals across branches"
+                : "Branch-isolated stock"}
           </p>
         </article>
       </div>
+
+      {isFnB ? (
+        <SegmentedControl
+          label="Inventory view"
+          value={view}
+          options={viewOptions}
+          onChange={(next) => {
+            setView(next);
+            setStatus("all");
+          }}
+        />
+      ) : null}
 
       <div className="overflow-hidden rounded-card border border-line bg-white">
         <div className="flex flex-wrap items-end gap-3 p-6 pb-5">
@@ -220,7 +308,12 @@ export function StockPage() {
               className="h-11 w-full rounded-full border border-line bg-white px-5 text-sm font-medium text-charcoal transition-all placeholder:font-normal placeholder:text-charcoal/40 hover:border-gray-400 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
             />
           </label>
-          <SegmentedControl label="Stock status" value={status} options={statusOptions} onChange={setStatus} />
+          <SegmentedControl
+            label="Stock status"
+            value={status}
+            options={menu ? menuStatusOptions : stockStatusOptions}
+            onChange={setStatus}
+          />
           {error ? (
             <div className="w-full">
               <ErrorNote message={error} />
@@ -228,7 +321,7 @@ export function StockPage() {
           ) : null}
         </div>
         <DataTable
-          aria-label="Stock levels"
+          aria-label={menu ? "Menu item availability" : "Stock levels"}
           variant="flush"
           minWidth="1080px"
           columns={columns}
@@ -238,7 +331,7 @@ export function StockPage() {
           emptyState={{ icon: Boxes, title: "No products match these filters" }}
           pagination={{
             mode: "client",
-            resetKey: [storeId, categoryId, subCategoryId, brandId, modelId, status, debounced, JSON.stringify(fashion)],
+            resetKey: [storeId, categoryId, subCategoryId, brandId, modelId, status, debounced, view, JSON.stringify(fashion)],
           }}
         />
         {summary?.consolidated && (manage || canAdjust) ? (
@@ -260,6 +353,21 @@ export function StockPage() {
       {dialog?.kind === "history" ? <MovementsModal row={dialog.row} onClose={() => setDialog(null)} /> : null}
       {toast ? <Toast message={toast} onDismiss={dismissToast} /> : null}
     </section>
+  );
+}
+
+function MenuBadge({ row }: { row: StockRow }) {
+  if (row.menu_status === "unavailable" || row.status === "unavailable") return <StatusBadge status="unavailable" />;
+  const label =
+    row.menu_status === "meal" ? "Meal" : row.menu_status === "no_recipe" ? "No recipe" : "Available";
+  const tone =
+    row.menu_status === "no_recipe"
+      ? "bg-surface text-charcoal/70 ring-1 ring-line"
+      : "bg-charcoal text-white";
+  return (
+    <span className={`inline-flex whitespace-nowrap rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${tone}`}>
+      {label}
+    </span>
   );
 }
 

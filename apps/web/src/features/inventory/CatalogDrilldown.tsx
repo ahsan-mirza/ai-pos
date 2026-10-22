@@ -11,6 +11,7 @@ import {
 import { ChevronRight, Link2, Pencil, Plus, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { ErrorNote, GhostButton, PrimaryButton, SelectField, TextField } from "../../components/ui/Field";
+import { useConfirm } from "../../components/ui/ConfirmDialog";
 import { Modal } from "../../components/ui/Modal";
 import { useAuth } from "../../lib/auth";
 import { useCapability } from "../../lib/capabilities";
@@ -49,6 +50,7 @@ export function CatalogDrilldown({
   const [dialog, setDialog] = useState<"link" | "model" | null>(null);
   const [editingModel, setEditingModel] = useState<ProductModel | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const confirm = useConfirm();
 
   const modelsByBrand = useMemo(() => {
     const counts = new Map<string, number>();
@@ -61,7 +63,13 @@ export function CatalogDrilldown({
   };
 
   const unlink = async (item: Brand) => {
-    if (!window.confirm(`Remove ${item.name} from ${sub.name}?`)) return;
+    const accepted = await confirm({
+      title: "Remove brand",
+      message: `Remove ${item.name} from ${sub.name}?`,
+      confirmLabel: "Remove",
+      tone: "danger",
+    });
+    if (!accepted) return;
     try {
       await brandsApi.unlink(item.id, sub.id);
       await refresh();
@@ -71,7 +79,13 @@ export function CatalogDrilldown({
   };
 
   const removeModel = async (item: ProductModel) => {
-    if (!window.confirm(`Delete the ${item.name} model?`)) return;
+    const accepted = await confirm({
+      title: "Delete model",
+      message: `Delete the ${item.name} model?`,
+      confirmLabel: "Delete",
+      tone: "danger",
+    });
+    if (!accepted) return;
     try {
       await modelsApi.remove(item.id);
       onNavigate({ brandId: item.brand_id });

@@ -7,7 +7,13 @@ import { unlock, type CashierSession } from "./session";
 const MAX_PIN = 6;
 const keys = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "clear", "0", "back"] as const;
 
-export function PinUnlock({ onUnlocked }: { onUnlocked: (session: CashierSession) => void }) {
+export function PinUnlock({
+  onUnlocked,
+  onActivate,
+}: {
+  onUnlocked: (session: CashierSession) => void;
+  onActivate?: () => void;
+}) {
   const [username, setUsername] = useState("");
   const [pin, setPin] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -72,6 +78,15 @@ export function PinUnlock({ onUnlocked }: { onUnlocked: (session: CashierSession
               className="mt-2 h-14 w-full rounded-2xl border border-white/10 bg-white/5 px-4 text-lg text-white outline-none focus:border-primary"
             />
           </label>
+          {onActivate ? (
+            <button
+              type="button"
+              onClick={onActivate}
+              className="mt-4 h-12 w-full rounded-2xl border border-white/15 text-sm font-semibold text-white/80 transition hover:bg-white/10"
+            >
+              New activation
+            </button>
+          ) : null}
         </section>
 
         <section className="rounded-[28px] bg-white/5 p-6">

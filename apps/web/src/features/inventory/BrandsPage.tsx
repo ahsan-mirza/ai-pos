@@ -1,6 +1,7 @@
 import { Permission, type Brand } from "@ai-pos/shared-types";
 import { Pencil, Plus, Search, Trash2 } from "lucide-react";
 import { useMemo, useState } from "react";
+import { useConfirm } from "../../components/ui/ConfirmDialog";
 import { ErrorNote, GhostButton, PrimaryButton, TextField, filterLabel } from "../../components/ui/Field";
 import { Modal } from "../../components/ui/Modal";
 import { useAuth } from "../../lib/auth";
@@ -13,6 +14,7 @@ import { IconButton } from "./StockPage";
 export function BrandsPage() {
   const { can, user } = useAuth();
   const manage = can(Permission.PortalInventoryManage) && user?.store_id === null;
+  const confirm = useConfirm();
   const { brands, error: loadError, reload } = useBrands();
   const { categories } = useCategories();
   const [query, setQuery] = useState("");
@@ -31,7 +33,13 @@ export function BrandsPage() {
   const visible = brands.filter((brand) => needle === "" || `${brand.name} ${brand.code}`.toLowerCase().includes(needle));
 
   const remove = async (brand: Brand) => {
-    if (!window.confirm(`Delete the ${brand.name} brand?`)) return;
+    const accepted = await confirm({
+      title: "Delete brand",
+      message: `Delete the ${brand.name} brand?`,
+      confirmLabel: "Delete",
+      tone: "danger",
+    });
+    if (!accepted) return;
     try {
       await brandsApi.remove(brand.id);
       await reload();

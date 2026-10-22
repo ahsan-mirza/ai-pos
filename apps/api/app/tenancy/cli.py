@@ -23,7 +23,7 @@ from sqlalchemy.engine import make_url
 from sqlalchemy.orm import sessionmaker
 
 from app.core.capabilities import DEFAULT_PROFILE, PROFILES
-from app.core.config import Settings, get_settings
+from app.core.config import Settings, env_file_name, get_settings
 from app.core.database import build_engine, create_database
 from app.services.rbac_service import ensure_super_admin, ensure_system_roles
 from app.tenancy import registry
@@ -41,7 +41,7 @@ def _alembic(script: str, ini: str, url: str) -> Config:
 
 def upgrade_control(settings: Settings) -> None:
     if not settings.control_database_url:
-        sys.exit(f"Set CONTROL_DATABASE_URL in apps/api/.env.{settings.app_env} first.")
+        sys.exit(f"Set CONTROL_DATABASE_URL in {env_file_name(settings.app_env)} at the repo root first.")
     command.upgrade(_alembic("alembic_control", "alembic_control.ini", settings.control_database_url), "head")
 
 
@@ -225,7 +225,8 @@ def main(argv: list[str] | None = None) -> None:
         print("Control database is at head.")
         return
     if not settings.tenancy_enabled:
-        sys.exit(f"Set CONTROL_DATABASE_URL in apps/api/.env.{settings.app_env} and run `init` first.")
+        file_name = env_file_name(settings.app_env)
+        sys.exit(f"Set CONTROL_DATABASE_URL in {file_name} at the repo root and run `init` first.")
     {
         "create": create,
         "adopt": adopt,

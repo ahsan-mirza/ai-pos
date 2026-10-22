@@ -1,5 +1,6 @@
 import type { Gender } from "./catalogue.js";
 import type { SerialKind, SerialStatus, UnitType } from "./enums.js";
+import type { ItemType } from "./inventory.js";
 import type { PriceListEntry, ProductPrice } from "./pricing.js";
 import type { TaxCategory } from "./tax.js";
 import type { UnitOption } from "./units.js";
@@ -28,6 +29,9 @@ export interface ProductPricing {
   has_recipe?: boolean;
   /** Recipes module: kept in stock for dishes only; registers do not sell it. */
   is_ingredient?: boolean;
+  /** MADE_TO_ORDER dishes are prepared from ingredients and are not a shelf quantity. */
+  item_type?: ItemType;
+  is_stock_tracked?: boolean;
   /** Business-wide and this branch's price-list entries; customer and group lists come per customer. */
   price_lists?: PriceListEntry[];
   /** Cover photo (the variant's own, its model's photo for this colour, or the model's primary photo). */
@@ -118,6 +122,8 @@ export function productSyncPayload(product: ProductUpsert): Omit<ProductUpsert, 
     nearest_expiry: _expiry,
     has_recipe: _recipe,
     is_ingredient: _ingredient,
+    item_type: _itemType,
+    is_stock_tracked: _tracked,
     price_lists: _lists,
     image_url: _image,
     thumb_url: _thumb,

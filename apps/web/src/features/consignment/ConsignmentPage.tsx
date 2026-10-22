@@ -2,6 +2,7 @@ import { formatMoney, type ConsignmentOverview, type ConsignmentSettlement, type
 import { ChevronDown, Handshake } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
+import { useConfirm } from "../../components/ui/ConfirmDialog";
 import { ErrorNote, PrimaryButton } from "../../components/ui/Field";
 import { apiGet, apiPost } from "../../lib/api";
 import { errorMessage } from "../users/api";
@@ -13,6 +14,7 @@ export function ConsignmentPage() {
   const [open, setOpen] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const confirm = useConfirm();
   const [notice, setNotice] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -34,7 +36,12 @@ export function ConsignmentPage() {
   }, [load]);
 
   const settle = async (supplier: ConsignmentSupplier) => {
-    if (!window.confirm(`Raise a bill to ${supplier.supplier_name} for ${supplier.unsettled_units} sold units?`)) return;
+    const accepted = await confirm({
+      title: "Raise a bill",
+      message: `Raise a bill to ${supplier.supplier_name} for ${supplier.unsettled_units} sold units?`,
+      confirmLabel: "Raise bill",
+    });
+    if (!accepted) return;
     setBusy(supplier.supplier_id);
     setNotice(null);
     try {

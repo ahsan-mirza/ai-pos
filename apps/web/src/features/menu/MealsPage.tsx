@@ -1,6 +1,7 @@
 import { formatMoney, type Category, type Combo, type ComboInput, type Product } from "@ai-pos/shared-types";
 import { Plus, Trash2, UtensilsCrossed } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useConfirm } from "../../components/ui/ConfirmDialog";
 import { ErrorNote, GhostButton, PrimaryButton, SelectField, TextField } from "../../components/ui/Field";
 import { Modal } from "../../components/ui/Modal";
 import { apiDelete, apiGet, apiPost, apiPut } from "../../lib/api";
@@ -254,6 +255,7 @@ export function MealsPage() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [editing, setEditing] = useState<Combo | "new" | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const confirm = useConfirm();
 
   const load = useCallback(async () => {
     try {
@@ -278,7 +280,13 @@ export function MealsPage() {
   const mealIds = useMemo(() => new Set((combos ?? []).map((combo) => combo.product_id)), [combos]);
 
   async function remove(combo: Combo) {
-    if (!window.confirm(`Stop selling ${combo.name} as a meal? It stays on the menu as a single item.`)) return;
+    const accepted = await confirm({
+      title: "Stop selling as a meal",
+      message: `Stop selling ${combo.name} as a meal? It stays on the menu as a single item.`,
+      confirmLabel: "Stop selling",
+      tone: "danger",
+    });
+    if (!accepted) return;
     try {
       await apiDelete(`/api/v1/menu/combos/${combo.product_id}`);
       void load();

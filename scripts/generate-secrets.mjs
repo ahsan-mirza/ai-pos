@@ -1,11 +1,12 @@
 // Replaces change-me placeholders in a backend env file with random values; existing values are never touched,
 // because rotating ENCRYPTION_SECRET or PIN_SALT on a live database makes stored identifiers and PINs unusable.
 //
-//   node scripts/generate-secrets.mjs                   apps/api/.env.development (+ the POS preview key)
-//   node scripts/generate-secrets.mjs --env dev         apps/api/.env.dev, created from its template if missing
-//   node scripts/generate-secrets.mjs --env production  apps/api/.env.production, likewise
+//   node scripts/generate-secrets.mjs                   .env  (local; also the register preview key)
+//   node scripts/generate-secrets.mjs --env dev         .env.dev.local, created from .env.dev.example if missing
+//   node scripts/generate-secrets.mjs --env production  .env.production (gitignored; database URL is left as-is)
 //
 // Database passwords stay change-me: fill them from the server's credentials.
+// The committed .env.dev holds public build values only and is never rewritten. Production secrets live in .env.production.
 import { randomBytes, randomInt } from "node:crypto";
 import { copyFileSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -20,8 +21,13 @@ if (!ENVIRONMENTS.includes(appEnv)) {
 }
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
-const apiEnv = join(root, "apps", "api", `.env.${appEnv}`);
-const desktopEnv = join(root, "apps", "desktop", ".env.development");
+const apiEnv =
+  appEnv === "development"
+    ? join(root, ".env")
+    : appEnv === "production"
+      ? join(root, ".env.production")
+      : join(root, `.env.${appEnv}.local`);
+const example = appEnv === "development" ? join(root, ".env.example") : join(root, `.env.${appEnv}.example`);
 
 const token = (bytes) => randomBytes(bytes).toString("base64url");
 const pin = () => Array.from({ length: 6 }, () => randomInt(10)).join("");
@@ -50,8 +56,8 @@ function replacePlaceholders(path, values) {
 }
 
 if (!existsSync(apiEnv)) {
-  copyFileSync(`${apiEnv}.example`, apiEnv);
-  console.log(`Created apps/api/.env.${appEnv} from its template.`);
+  copyFileSync(example, apiEnv);
+  console.log(`Created ${apiEnv} from its template.`);
 }
 
 const existingApiKey = valueOf(read(apiEnv), "API_KEY");
@@ -69,13 +75,14 @@ if (valueOf(read(apiEnv), "ADMIN_PIN") === "135790") {
   writeFileSync(apiEnv, read(apiEnv).replace(/^ADMIN_PIN=.*$/m, `ADMIN_PIN=${pin()}`));
   apiChanged.push("ADMIN_PIN");
 }
-console.log(`apps/api/.env.${appEnv}: generated ${apiChanged.join(", ") || "nothing"}`);
+const label = appEnv === "development" ? ".env" : appEnv === "production" ? ".env.production" : `.env.${appEnv}.local`;
+console.log(`${label}: generated ${apiChanged.join(", ") || "nothing"}`);
 
-// Only the developer machine's browser preview shares the API key; installers never carry one.
-if (appEnv === "development" && existsSync(desktopEnv)) {
-  const desktopChanged = replacePlaceholders(desktopEnv, { API_KEY: apiKey, VITE_API_KEY: apiKey });
-  console.log(`apps/desktop/.env.development: set ${desktopChanged.join(", ") || "nothing"}`);
+// The register browser preview uses the same file and the same API key. Installers never carry one.
+if (appEnv === "development") {
+  const previewChanged = replacePlaceholders(apiEnv, { VITE_API_KEY: apiKey });
+  if (previewChanged.length > 0) console.log(`${label}: set ${previewChanged.join(", ")}`);
 }
 if (apiChanged.includes("ADMIN_PASSWORD")) {
-  console.log(`Super Admin credentials for the first seed are in apps/api/.env.${appEnv} (ADMIN_PASSWORD, ADMIN_PIN).`);
+  console.log(`Super Admin credentials for the first seed are in ${label} (ADMIN_PASSWORD, ADMIN_PIN).`);
 }

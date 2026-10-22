@@ -24,18 +24,21 @@ from app.routers.v1.downloads import router as downloads_router
 from app.routers.v1.einvoices import router as einvoices_router
 from app.routers.v1.expenses import router as expenses_router
 from app.routers.v1.expiry import router as expiry_router
+from app.routers.v1.fnb_table_orders import router as fnb_table_orders_router
+from app.routers.v1.fnb_table_orders import ws_router as fnb_table_ws_router
 from app.routers.v1.gift_cards import router as gift_cards_router
 from app.routers.v1.insights import router as insights_router
 from app.routers.v1.integrations import router as integrations_router
 from app.routers.v1.inventory import router as inventory_router
 from app.routers.v1.kds import router as kds_router
 from app.routers.v1.labels import router as labels_router
+from app.routers.v1.live_socket import router as live_ws_router
 from app.routers.v1.loyalty import exports_router
 from app.routers.v1.loyalty import router as loyalty_router
 from app.routers.v1.management_reports import router as management_router
-from app.routers.v1.markdowns import router as markdowns_router
 from app.routers.v1.manager import router as manager_router
 from app.routers.v1.margin import router as margin_router
+from app.routers.v1.markdowns import router as markdowns_router
 from app.routers.v1.menu import router as menu_router
 from app.routers.v1.messaging import jobs_router
 from app.routers.v1.messaging import router as messaging_router
@@ -141,6 +144,14 @@ api_router.include_router(margin_router, prefix="/margin", tags=["margin"])
 api_router.include_router(menu_router, prefix="/menu", tags=["menu"], dependencies=module(Capability.MENU_MODIFIERS))
 api_router.include_router(orders_router, prefix="/orders", tags=["orders"], dependencies=module(Capability.OPEN_ORDERS))
 api_router.include_router(dining_router, prefix="/dining", tags=["dining"], dependencies=module(Capability.TABLES))
+api_router.include_router(
+    fnb_table_orders_router,
+    prefix="/fnb",
+    tags=["fnb"],
+    dependencies=module(Capability.OPEN_ORDERS) + module(Capability.TABLES),
+)
+api_router.include_router(fnb_table_ws_router, prefix="/ws", tags=["fnb"])
+api_router.include_router(live_ws_router, prefix="/ws", tags=["live"])
 api_router.include_router(kds_router, prefix="/kds", tags=["kds"], dependencies=module(Capability.KDS))
 api_router.include_router(
     channels_router, prefix="/channels", tags=["channels"], dependencies=module(Capability.DELIVERY_CHANNELS)

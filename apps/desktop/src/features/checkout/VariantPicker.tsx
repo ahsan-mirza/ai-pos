@@ -1,8 +1,8 @@
 import { formatMoney, variantAttributeLabel, type ProductUpsert } from "@ai-pos/shared-types";
-import { Grid3x3, X } from "lucide-react";
+import { Grid3x3, Package, X } from "lucide-react";
 import { useMemo, useState } from "react";
 import { stockPill } from "../../components/shell/tokens";
-import { ProductPhoto } from "./ProductPhoto";
+import { ProductPhoto, ProductPhotoFrame } from "./ProductPhoto";
 import { findVariant, variantAxes, type ModelGroup } from "./variants";
 
 export function ModelCard({
@@ -27,9 +27,9 @@ export function ModelCard({
         onClick={onOpen}
         className="flex flex-1 flex-col p-4 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/70 active:scale-[0.99] disabled:opacity-50"
       >
-        <ProductPhoto
+        <ProductPhotoFrame
           src={group.variants.find((variant) => variant.thumb_url)?.thumb_url}
-          className="-mx-4 -mt-4 mb-3 aspect-[4/3] w-[calc(100%+2rem)] max-w-none bg-zinc-100 object-cover dark:bg-white/5"
+          icon={<Package size={28} aria-hidden="true" />}
         />
         <span className="flex min-h-6 items-center justify-between gap-2">
           <span className="truncate text-[11px] font-semibold uppercase tracking-[0.12em] text-zinc-500 dark:text-white/40">

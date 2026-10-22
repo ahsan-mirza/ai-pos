@@ -569,6 +569,8 @@ class ProductOut(ApiModel):
     # Recipes module: a dish drawn from its ingredients (no stock of its own), and ingredients registers never sell.
     has_recipe: bool = False
     is_ingredient: bool = False
+    item_type: str = "PRE_PACKAGED"
+    is_stock_tracked: bool = True
     # Business-wide and this branch's price-list entries (customer and group lists come per customer).
     price_lists: list[PriceListEntryOut] = Field(default_factory=list)
     # Cover photo: the variant's own, else its model's photo for this colour, else the model's primary photo.

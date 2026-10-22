@@ -1,4 +1,10 @@
-const BASE = (import.meta.env.VITE_CONSOLE_API_BASE_URL ?? "").replace(/\/$/, "");
+function apiBase(): string {
+  const raw = (import.meta.env.VITE_CONSOLE_API_BASE_URL ?? "").trim().replace(/\/$/, "");
+  if (raw === "" || raw === "same-origin") {
+    return typeof window === "undefined" ? "" : window.location.origin;
+  }
+  return raw;
+}
 const PREFIX = "/api/v1/super-admin";
 const STORAGE_KEY = "qios.console.session";
 
@@ -44,13 +50,13 @@ async function exchange<T>(method: string, path: string, body?: unknown): Promis
   if (token) headers.Authorization = `Bearer ${token}`;
   let response: Response;
   try {
-    response = await fetch(`${BASE}${PREFIX}${path}`, {
+    response = await fetch(`${apiBase()}${PREFIX}${path}`, {
       method,
       headers,
       body: body === undefined ? undefined : JSON.stringify(body),
     });
   } catch {
-    throw new ConsoleError(`Cannot reach the API at ${BASE || "(VITE_CONSOLE_API_BASE_URL unset)"}.`, 0, "api_unreachable");
+    throw new ConsoleError(`Cannot reach the API at ${apiBase() || "(VITE_CONSOLE_API_BASE_URL unset)"}.`, 0, "api_unreachable");
   }
   if (!response.ok) {
     let message = `Request failed (${response.status}).`;

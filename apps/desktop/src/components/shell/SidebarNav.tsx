@@ -1,6 +1,7 @@
 import { Capability, profileSpec, type ProductUpsert } from "@ai-pos/shared-types";
 import {
   Boxes,
+  ChefHat,
   Clock,
   Lock,
   MonitorUp,
@@ -29,7 +30,7 @@ import { useRegisterLayout } from "../RegisterLayout";
 import type { RegisterView } from "./ShellContext";
 import { useShell } from "./ShellContext";
 
-type Tool = "inventory" | "clock" | "shift" | "sync" | "display" | "settings";
+type Tool = "inventory" | "clock" | "shift" | "sync" | "display" | "kitchen" | "settings";
 
 interface SidebarNavProps {
   busy: boolean;
@@ -37,15 +38,17 @@ interface SidebarNavProps {
   onLock: () => void;
 }
 
-const allPages: { id: RegisterView; label: string; icon: LucideIcon; capability?: Capability }[] = [
+const allPages: { id: RegisterView; label: string; icon: LucideIcon; capability?: Capability; audience?: "fnb" | "retail" | "electronics" }[] = [
   { id: "checkout", label: "Checkout", icon: ShoppingCart },
-  { id: "orders", label: "Orders & Tables", icon: UtensilsCrossed, capability: Capability.OpenOrders },
-  { id: "repairs", label: "Repairs", icon: Wrench, capability: Capability.Repairs },
-  { id: "returns", label: "Returns & Exchanges", icon: RotateCcw },
+  { id: "orders", label: "Orders & Tables", icon: UtensilsCrossed, audience: "fnb" },
+  { id: "orders", label: "Void & waste", icon: RotateCcw, audience: "fnb" },
+  { id: "repairs", label: "Repairs", icon: Wrench, capability: Capability.Repairs, audience: "electronics" },
+  { id: "returns", label: "Returns & Exchanges", icon: RotateCcw, audience: "retail" },
 ];
 
-const allTools: { id: Tool; label: string; hint: string; icon: LucideIcon; desktopOnly: boolean; capability?: Capability }[] = [
-  { id: "inventory", label: "Inventory", hint: "Stock at every branch and the warehouse", icon: Boxes, desktopOnly: false },
+const allTools: { id: Tool; label: string; hint: string; icon: LucideIcon; desktopOnly: boolean; capability?: Capability; audience?: "fnb" | "retail" }[] = [
+  { id: "inventory", label: "Inventory", hint: "Stock at every branch and the warehouse", icon: Boxes, desktopOnly: false, audience: "retail" as const },
+  { id: "kitchen", label: "Kitchen display", hint: "Open orders and tickets sent to the kitchen", icon: ChefHat, desktopOnly: false, audience: "fnb" as const },
   { id: "clock", label: "Time clock", hint: "Clock in and out with your PIN", icon: Timer, desktopOnly: true },
   { id: "shift", label: "Shift", hint: "X report, pay in / out, close", icon: Clock, desktopOnly: true },
   { id: "sync", label: "Sync Center", hint: "Queued and rejected register events", icon: RefreshCw, desktopOnly: true },
@@ -92,9 +95,16 @@ export function SidebarNav({ busy, onNavigate, onLock }: SidebarNavProps) {
   const desktop = inTauri();
   const { enabled, profile, foodAndBeverage } = useCapabilities();
   const spec = profileSpec(profile);
-  const pages = allPages.filter((page) => page.capability === undefined || enabled.has(page.capability));
+  const allows = (audience: "fnb" | "retail" | "electronics" | undefined) =>
+    audience === undefined ||
+    (audience === "fnb" && foodAndBeverage) ||
+    (audience === "retail" && !foodAndBeverage) ||
+    (audience === "electronics" && profile === "electronics_wholesale");
+  const pages = allPages.filter(
+    (page) => allows(page.audience) && (page.capability === undefined || enabled.has(page.capability)),
+  );
   const tools = allTools
-    .filter((item) => item.capability === undefined || enabled.has(item.capability))
+    .filter((item) => allows(item.audience) && (item.capability === undefined || enabled.has(item.capability)))
     .map((item) => (item.id === "settings" ? { ...item, label: spec.settingsLabel } : item));
   const who = `${session.user.full_name} · ${session.user.role_name}${session.mode === "offline" ? " · offline unlock" : ""}`;
 
@@ -145,11 +155,11 @@ export function SidebarNav({ busy, onNavigate, onLock }: SidebarNavProps) {
   );
 
   const pageButtons = pages.map(({ id, label, icon }) =>
-    navItem(id, label, icon, { active: view === id, disabled: busy && view !== id, onClick: () => onNavigate(id) }),
+    navItem(`${id}-${label}`, label, icon, { active: view === id && label !== "Void & waste", disabled: busy && view !== id, onClick: () => onNavigate(id) }),
   );
   const openTool = (id: Tool) => {
     if (id === "display") void openDisplayWindow();
-    else if (id === "settings") onNavigate("settings");
+    else if (id === "settings" || id === "kitchen") onNavigate(id === "kitchen" ? "orders" : "settings");
     else setTool(id);
   };
   const toolButtons = tools.map((item) =>
@@ -170,7 +180,7 @@ export function SidebarNav({ busy, onNavigate, onLock }: SidebarNavProps) {
         </span>
         {pages.map(({ id, label, icon: Icon }) => (
           <button
-            key={id}
+            key={`${id}-${label}`}
             type="button"
             aria-label={label}
             aria-current={view === id ? "page" : undefined}

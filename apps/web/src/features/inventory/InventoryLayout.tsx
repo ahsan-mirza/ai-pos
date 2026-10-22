@@ -1,9 +1,11 @@
-import { Capability } from "@ai-pos/shared-types";
+import { Capability, type BusinessProfile } from "@ai-pos/shared-types";
 import type { CSSProperties } from "react";
 import { NavLink, Outlet } from "react-router-dom";
+import { useTenant } from "../../context/TenantContext";
 import { useCapabilities } from "../../lib/capabilities";
+import { ELECTRONICS_PROFILES, FNB_PROFILES, RETAIL_PROFILES } from "../../lib/industry";
 
-const tabs: { to: string; label: string; capability?: Capability }[] = [
+const tabs: { to: string; label: string; capability?: Capability; profiles?: readonly BusinessProfile[] }[] = [
   { to: "/inventory/stock", label: "Stock" },
   { to: "/inventory/products", label: "Products" },
   { to: "/inventory/pricing", label: "Pricing", capability: Capability.WholesalePricing },
@@ -12,19 +14,19 @@ const tabs: { to: string; label: string; capability?: Capability }[] = [
   { to: "/inventory/categories", label: "Categories" },
   { to: "/inventory/brands", label: "Brands" },
   { to: "/inventory/units", label: "Units" },
-  { to: "/inventory/batches", label: "Batches" },
+  { to: "/inventory/batches", label: "Batches", profiles: RETAIL_PROFILES },
   { to: "/inventory/expiring", label: "Expiring", capability: Capability.Fefo },
-  { to: "/inventory/modifiers", label: "Modifiers", capability: Capability.MenuModifiers },
-  { to: "/inventory/meals", label: "Meals", capability: Capability.MenuModifiers },
-  { to: "/inventory/floor-plan", label: "Floor plan", capability: Capability.Tables },
-  { to: "/inventory/kitchen", label: "Kitchen stations", capability: Capability.Kds },
-  { to: "/inventory/recipes", label: "Recipes", capability: Capability.Recipes },
-  { to: "/inventory/recipe-usage", label: "Ingredient usage", capability: Capability.Recipes },
+  { to: "/inventory/modifiers", label: "Modifiers", capability: Capability.MenuModifiers, profiles: FNB_PROFILES },
+  { to: "/inventory/meals", label: "Meals", capability: Capability.MenuModifiers, profiles: FNB_PROFILES },
+  { to: "/inventory/floor-plan", label: "Floor plan", capability: Capability.Tables, profiles: FNB_PROFILES },
+  { to: "/inventory/kitchen", label: "Kitchen stations", capability: Capability.Kds, profiles: FNB_PROFILES },
+  { to: "/inventory/recipes", label: "Recipes", capability: Capability.Recipes, profiles: FNB_PROFILES },
+  { to: "/inventory/recipe-usage", label: "Ingredient usage", capability: Capability.Recipes, profiles: FNB_PROFILES },
   { to: "/inventory/replenishment", label: "Replenishment" },
   { to: "/inventory/counts", label: "Stock Counts" },
   { to: "/inventory/purchase-orders", label: "Purchase Orders" },
   { to: "/inventory/transfers", label: "Transfers" },
-  { to: "/inventory/serials", label: "IMEI Tracker", capability: Capability.SerialTracking },
+  { to: "/inventory/serials", label: "IMEI Tracker", capability: Capability.SerialTracking, profiles: ELECTRONICS_PROFILES },
 ];
 
 /** Header (4rem) plus this tab strip (3rem); split-view drawers subtract it from the viewport height. */
@@ -32,13 +34,14 @@ const chrome = { "--chrome": "7rem" } as CSSProperties;
 
 export function InventoryLayout() {
   const { has } = useCapabilities();
+  const { allows } = useTenant();
   return (
     <div className="flex min-h-full flex-col lg:h-full" style={chrome}>
       <nav
         aria-label="Inventory sections"
         className="no-scrollbar sticky top-0 z-20 flex h-12 shrink-0 gap-1 overflow-x-auto border-b border-line bg-white px-2 md:px-3 lg:static lg:px-4"
       >
-        {tabs.filter((tab) => tab.capability === undefined || has(tab.capability)).map((tab) => (
+        {tabs.filter((tab) => allows(tab.profiles) && (tab.capability === undefined || has(tab.capability))).map((tab) => (
           <NavLink
             key={tab.to}
             to={tab.to}

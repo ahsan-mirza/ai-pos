@@ -99,3 +99,57 @@ def test_dishes_draw_ingredients_with_modifier_deltas_and_report_usage(client, s
         -100,
     )
     assert rows[beans["id"]]["theoretical"] == 45
+
+
+def test_prepared_dishes_are_omitted_from_stock_and_report_buildable_portions(client, session: Session) -> None:
+    seed_catalog(client)
+    token = admin_token(client)
+    enable(client, token, "menu_modifiers", "recipes")
+    pantry = category(client, token)
+    beans = ingredient(client, token, "Coffee beans", quantity=1000, by_weight=True, category_id=pantry)
+    milk = ingredient(client, token, "Milk", quantity=300, by_weight=False, category_id=pantry)
+    assert beans["item_type"] == "RAW_INGREDIENT" and beans["is_stock_tracked"] is True
+    headers = bearer(token)
+    level = client.patch(
+        f"/api/v1/inventory/levels/{milk['id']}/{STORE_ID}",
+        headers=headers,
+        json={"min_reorder_level": 250},
+    )
+    assert level.status_code == 200, level.text
+    saved = client.put(
+        f"/api/v1/recipes/{CABLE_ID}",
+        headers=headers,
+        json={
+            "yield_quantity": 1,
+            "lines": [{"ingredient_id": beans["id"], "quantity": 18}, {"ingredient_id": milk["id"], "quantity": 200}],
+        },
+    )
+    assert saved.status_code == 200, saved.text
+
+    stock = client.get("/api/v1/inventory/stock", headers=headers, params={"store_id": STORE_ID}).json()
+    assert "ACC-CABLE-USBC" not in [row["sku"] for row in stock["rows"]]
+    assert stock["view"] == "stock"
+    milk_row = next(row for row in stock["rows"] if row["sku"] == milk["sku"])
+    assert milk_row["status"] != "out"
+
+    menu = client.get(
+        "/api/v1/inventory/stock", headers=headers, params={"store_id": STORE_ID, "view": "menu"}
+    ).json()
+    dish = next(row for row in menu["rows"] if row["sku"] == "ACC-CABLE-USBC")
+    assert (dish["menu_status"], dish["max_portions"], dish["limiting_ingredient"]) == ("available", 1, "Milk")
+    assert dish["availability_note"] == "1 portion available based on Milk stock"
+    assert menu["out_count"] == 0
+
+    assert push(client, "sale", sale_with([], 1500)).status_code == 200
+    session.expire_all()
+    alert = session.scalar(select(AuditLog).where(AuditLog.action == "inventory.reorder_alert"))
+    assert alert is not None and alert.details["name"] == "Milk" and alert.details["on_hand"] == 100
+    after = client.get(
+        "/api/v1/inventory/stock", headers=headers, params={"store_id": STORE_ID, "view": "menu"}
+    ).json()
+    sold_out = next(row for row in after["rows"] if row["sku"] == "ACC-CABLE-USBC")
+    assert sold_out["menu_status"] == "unavailable" and sold_out["status"] == "unavailable"
+    assert after["out_count"] == 1
+    physical = client.get("/api/v1/inventory/stock", headers=headers, params={"store_id": STORE_ID}).json()
+    assert all(row["item_type"] != "MADE_TO_ORDER" for row in physical["rows"])
+

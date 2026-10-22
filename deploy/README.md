@@ -7,7 +7,8 @@ Server layout:
 
 | Path | Contents |
 | --- | --- |
-| `/opt/ai-pos/apps/api` | API code (synced by CI), `.venv`, `.env.production` and `storage/` (never touched by CI) |
+| `/opt/ai-pos/apps/api` | API code (synced by CI), `.venv`, and `storage/` (never touched by CI) |
+| `/opt/ai-pos/.env.production` | API secrets (never touched by CI) |
 | `/opt/ai-pos/packages/catalog` | seed data read by `app/seed.py` |
 | `/opt/ai-pos/downloads/pos/<version>` | POS installers and `manifest.json`, published by the release workflow (`DOWNLOADS_DIR`) |
 | `/var/www/ai-pos-admin` | built admin portal |
@@ -15,7 +16,7 @@ Server layout:
 ## First-time server setup
 
 1. **Oracle Cloud:** add ingress rules for TCP 80 and 443 from `0.0.0.0/0` to the subnet's Security List (or the instance's NSG).
-2. **DNS:** point `qios.ae` and `*.qios.ae` (A records) at the server's public IP.
+2. **Address:** there is no domain yet. Use the VM's public IP. The portal and API are `http://<public-ip>/` (port 80). When a domain exists later, point it at this same IP and add TLS.
 3. **Packages, firewall, systemd, nginx, sudoers:**
 
    ```bash
@@ -23,13 +24,14 @@ Server layout:
    ssh ubuntu@<server> 'sudo bash ~/deploy/server-setup.sh'
    ```
 
-   The script is safe to re-run. It leaves the nginx site disabled until the certificate exists.
+   The script is safe to re-run. nginx serves HTTP on port 80 immediately. No certificate is required.
 
 4. **PostgreSQL:** the tenancy CLI creates one database per store, so the user needs `CREATEDB`.
 
    ```bash
-   sudo -u postgres psql -c "CREATE USER ai_pos WITH PASSWORD '<strong password>' CREATEDB;"
-   sudo -u postgres psql -c "CREATE DATABASE qios_control OWNER ai_pos;"
+   sudo -u postgres psql -c "CREATE USER ai_pos_user WITH PASSWORD '<strong password>' CREATEDB;"
+   sudo -u postgres psql -c "CREATE DATABASE ai_pos_db OWNER ai_pos_user;"
+   sudo -u postgres psql -c "CREATE DATABASE qios_control OWNER ai_pos_user;"
    ```
 
 5. **Backend env file:** generate it on your own machine, so the secrets never pass through CI:
@@ -38,26 +40,16 @@ Server layout:
    node scripts/generate-secrets.mjs --env production
    ```
 
-   In `apps/api/.env.production`, replace `db.internal` with `127.0.0.1` and `change-me` in the database URLs with the Postgres password (URL-encode special characters, for example `@` as `%40`). Then copy it up and lock it down:
+   `.env.production` at the repo root is the file the API reads. `DATABASE_URL` and `CONTROL_DATABASE_URL` are already set for Postgres on the VM (`ai_pos_db` and `qios_control` on localhost). Run the generator to replace the remaining `change-me` secrets; it does not touch the database URLs. Replace every `YOUR_VM_PUBLIC_IP` with the VM's public address. `TENANT_BASE_DOMAINS`, `TENANT_PUBLIC_URL_TEMPLATE`, and `PUBLIC_BASE_URL` must all use that IP, over `http://`. Leave `DEFAULT_TENANT` unset and `SIGNUP_ENABLED=false`. Then copy it up and lock it down:
 
    ```bash
-   scp apps/api/.env.production ubuntu@<server>:/opt/ai-pos/apps/api/.env.production
-   ssh ubuntu@<server> 'chmod 600 /opt/ai-pos/apps/api/.env.production'
+   scp .env.production ubuntu@<server>:/opt/ai-pos/.env.production
+   ssh ubuntu@<server> 'chmod 600 /opt/ai-pos/.env.production'
    ```
 
    Keep a copy somewhere safe. Rotating `ENCRYPTION_SECRET` or `PIN_SALT` later makes stored IMEIs and PINs unusable.
 
-6. **TLS certificate** for `qios.ae` and `*.qios.ae`. Wildcards need a DNS challenge. With Cloudflare:
-
-   ```bash
-   sudo apt install -y python3-certbot-dns-cloudflare
-   # /root/cloudflare.ini: dns_cloudflare_api_token = <token with Zone:DNS:Edit>, chmod 600
-   sudo certbot certonly --dns-cloudflare --dns-cloudflare-credentials /root/cloudflare.ini \
-     -d qios.ae -d '*.qios.ae'
-   sudo bash ~/deploy/server-setup.sh   # enables the nginx site now that the certificate exists
-   ```
-
-   Other DNS hosts have their own `python3-certbot-dns-*` plugin. `--manual --preferred-challenges dns` works too, but does not renew by itself.
+6. **TLS:** skip this until a real domain points at the VM. Browsers use `http://<public-ip>` until then. A certificate cannot be issued for a name you do not control.
 
 ## GitHub setup
 
@@ -89,7 +81,7 @@ Server layout:
    APP_ENV=production .venv/bin/python -m app.tenancy.cli create client1 --name "Client One"
    ```
 
-   The portal is then at `https://client1.qios.ae`; the Super Admin comes from `ADMIN_*` in `.env.production`.
+   The portal is then at `http://<public-ip>/`. Sign in with store code `client1` and the Super Admin from `ADMIN_*` in `/opt/ai-pos/.env.production`.
 
 ## Releasing the POS installer
 

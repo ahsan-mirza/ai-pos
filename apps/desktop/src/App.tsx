@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { ConfirmProvider } from "./components/ConfirmDialog";
 import { RegisterShell } from "./components/shell/RegisterShell";
 import type { RegisterView } from "./components/shell/ShellContext";
 import { needsActivation } from "./config/terminal";
@@ -12,13 +13,21 @@ import { ReturnsPage } from "./features/returns/ReturnsPage";
 import { SettingsPage } from "./features/settings/SettingsPage";
 import { OpenShiftScreen } from "./features/shifts/OpenShiftScreen";
 import { reloadShift, useShift } from "./features/shifts/shift";
+import { useCapabilities } from "./lib/capabilities";
 import { inTauri } from "./lib/tauri";
 
 export function App() {
   const [session, setSession] = useState<CashierSession | null>(null);
   const [ready, setReady] = useState(false);
+  const [activating, setActivating] = useState(false);
   const [view, setView] = useState<RegisterView>("checkout");
   const shiftState = useShift();
+  const { foodAndBeverage } = useCapabilities();
+
+  useEffect(() => {
+    if (foodAndBeverage && (view === "returns" || view === "repairs")) setView("checkout");
+    if (!foodAndBeverage && view === "orders") setView("checkout");
+  }, [foodAndBeverage, view]);
 
   useEffect(() => {
     restore()
@@ -31,9 +40,11 @@ export function App() {
     if (session !== null) void reloadShift();
   }, [session]);
 
-  if (needsActivation()) return <ActivationScreen />;
+  if (needsActivation() || activating) {
+    return <ActivationScreen onCancel={needsActivation() ? undefined : () => setActivating(false)} />;
+  }
   if (!ready) return <div className="min-h-screen bg-zinc-950" />;
-  if (session === null) return <PinUnlock onUnlocked={setSession} />;
+  if (session === null) return <PinUnlock onUnlocked={setSession} onActivate={() => setActivating(true)} />;
   const onLock = () => {
     void lock().finally(() => {
       setSession(null);
@@ -43,18 +54,20 @@ export function App() {
   if (inTauri() && !shiftState.loaded) return <div className="min-h-screen bg-zinc-950" />;
   if (inTauri() && shiftState.shift === null) return <OpenShiftScreen session={session} onLock={onLock} />;
   return (
-    <RegisterShell session={session} view={view} onNavigate={setView} onLock={onLock}>
-      {view === "returns" ? (
-        <ReturnsPage session={session} />
-      ) : view === "settings" ? (
-        <SettingsPage />
-      ) : view === "orders" ? (
-        <OrdersPage session={session} />
-      ) : view === "repairs" ? (
-        <RepairsPage session={session} />
-      ) : (
-        <CheckoutPage session={session} />
-      )}
-    </RegisterShell>
+    <ConfirmProvider>
+      <RegisterShell session={session} view={view} onNavigate={setView} onLock={onLock}>
+        {view === "returns" ? (
+          <ReturnsPage session={session} />
+        ) : view === "settings" ? (
+          <SettingsPage />
+        ) : view === "orders" ? (
+          <OrdersPage session={session} />
+        ) : view === "repairs" ? (
+          <RepairsPage session={session} />
+        ) : (
+          <CheckoutPage session={session} />
+        )}
+      </RegisterShell>
+    </ConfirmProvider>
   );
 }

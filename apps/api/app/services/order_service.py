@@ -342,9 +342,41 @@ def send_order(db: Session, principal: Principal, order_id: uuid.UUID, data: Ord
     for hook in ON_SEND:
         hook(db, order, fired)
     _touch(order)
+    fired_ids = {item.id for item in fired}
     db.commit()
     db.refresh(order)
-    return orders_out(db, [order])[0]
+    result = orders_out(db, [order])[0]
+    from app.websockets.table_sync import publish, publish_order_status
+
+    publish(
+        order.store_id,
+        {
+            "type": "TABLE_ITEMS_ADDED",
+            "store_id": str(order.store_id),
+            "table_id": str(order.table_id) if order.table_id is not None else None,
+            "table_label": result.table_label,
+            "order_id": str(order.id),
+            "open_cents": result.open_cents,
+            "items": [
+                {"id": str(item.id), "name": item.product_name, "quantity": item.quantity}
+                for item in result.items
+                if item.id in fired_ids
+            ],
+        },
+    )
+    label = result.table_label or result.name or f"#{result.number}"
+    publish_order_status(
+        order.store_id,
+        order_id=order.id,
+        table_id=order.table_id,
+        table_label=result.table_label,
+        ticket_id=None,
+        status="preparing",
+        kitchen_status="new",
+        item_ids=[str(item_id) for item_id in fired_ids],
+        message=f"{label} — Preparing",
+    )
+    return result
 
 
 def _void_approver(db: Session, approved_by_id: uuid.UUID | None, store_id: uuid.UUID) -> User:
@@ -396,7 +428,30 @@ def request_bill(db: Session, principal: Principal, order_id: uuid.UUID, data: O
     order.bill_requested_at = _now()
     _touch(order)
     db.commit()
-    return orders_out(db, [order])[0]
+    result = orders_out(db, [order])[0]
+    from app.websockets.table_sync import publish
+
+    publish(
+        order.store_id,
+        {
+            "type": "BILL_REQUESTED",
+            "store_id": str(order.store_id),
+            "table_id": str(order.table_id) if order.table_id is not None else None,
+            "table_label": result.table_label,
+            "order_id": str(order.id),
+            "message": f"{result.table_label or 'A guest'} requested the bill.",
+        },
+    )
+    from app.websockets.rooms import publish_table_alert
+
+    publish_table_alert(
+        order.store_id,
+        alert="request-bill",
+        table_id=order.table_id,
+        table_name=result.table_label or "Table",
+        total_amount=result.open_cents,
+    )
+    return result
 
 
 def void_order(db: Session, principal: Principal, order_id: uuid.UUID, data: ItemVoid) -> OrderOut:
@@ -430,7 +485,21 @@ def void_order(db: Session, principal: Principal, order_id: uuid.UUID, data: Ite
     )
     _touch(order)
     db.commit()
-    return orders_out(db, [order])[0]
+    result = orders_out(db, [order])[0]
+    if order.table_id is not None:
+        from app.websockets.table_sync import publish
+
+        publish(
+            order.store_id,
+            {
+                "type": "TABLE_SESSION_CLOSED",
+                "store_id": str(order.store_id),
+                "table_id": str(order.table_id),
+                "table_label": result.table_label,
+                "order_id": str(order.id),
+            },
+        )
+    return result
 
 
 def move_order(db: Session, principal: Principal, order_id: uuid.UUID, data: OrderMove) -> OrderOut:

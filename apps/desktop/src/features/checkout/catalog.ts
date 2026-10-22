@@ -2,6 +2,8 @@ import seed from "@ai-pos/catalog/seed.json";
 import type { ProductPrice, ProductUpsert, StoreUpsert, UnitType } from "@ai-pos/shared-types";
 import { listProducts } from "../../lib/api";
 import { inTauri, refreshProducts } from "../../lib/tauri";
+import { registerCapabilities } from "../../lib/capabilities";
+import { productFitsRegister } from "../../lib/industry";
 import { GIFT_CARD_SKU } from "./cart";
 import { activeStore, syncBusinessCurrency } from "./currency";
 
@@ -48,6 +50,9 @@ export async function loadCatalog(): Promise<Catalog> {
   const [catalog, currency] = await Promise.all([fetchCatalog(), syncBusinessCurrency()]);
   // Ingredients are stocked for recipes only; the register never sells them. Gift cards are sold from their own
   // button, which loads the card product with the business's amount rules.
-  const sellable = catalog.products.filter((product) => !product.is_ingredient && product.sku !== GIFT_CARD_SKU);
+  const profile = registerCapabilities().profile;
+  const sellable = catalog.products.filter(
+    (product) => !product.is_ingredient && product.sku !== GIFT_CARD_SKU && productFitsRegister(product, profile),
+  );
   return { ...catalog, products: sellable.map((product) => ({ ...product, currency })) };
 }

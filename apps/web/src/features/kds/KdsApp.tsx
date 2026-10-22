@@ -11,9 +11,11 @@ import {
 import { ChefHat, LogOut, RotateCcw } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { ApiRequestError, apiPublicPost, apiTerminal } from "../../lib/api";
+import { listenForStation } from "./live";
 
 const STORAGE_KEY = "kds.device";
-const POLL_MS = 2000;
+/** Safety net when a frame is missed. Live tickets arrive on the station socket. */
+const POLL_MS = 15000;
 
 interface KdsDevice {
   token: string;
@@ -245,6 +247,8 @@ function Board({
   const [now, setNow] = useState(() => Date.now());
   const since = useRef<string | null>(null);
   const known = useRef(new Set<string>());
+  const snapshots = useRef(new Map<string, KitchenTicket>());
+  const sendStatus = useRef<(ticketId: string, status: KitchenTicket["status"]) => boolean>(() => false);
 
   const poll = useCallback(async () => {
     const query = since.current ? `?since=${encodeURIComponent(since.current)}` : "";
@@ -270,11 +274,37 @@ function Board({
     void poll();
     const timer = window.setInterval(() => void poll(), POLL_MS);
     const clock = window.setInterval(() => setNow(Date.now()), 1000);
+    const stationSocket = listenForStation(
+      stationId,
+      device.token,
+      (event) => {
+        if (event.type === "kitchen:status-rejected") {
+          const previous = event.ticket_id ? snapshots.current.get(event.ticket_id) : undefined;
+          if (event.ticket_id) snapshots.current.delete(event.ticket_id);
+          if (previous) setTickets((current) => mergeBoard(current, [previous]));
+          setError(event.message ?? "Could not update the ticket.");
+          void poll();
+          return;
+        }
+        const ticket = event.ticket;
+        if (!ticket || ticket.station_id !== stationId) return;
+        if (event.type === "kitchen:new-order" && ticket.status === "NEW" && !known.current.has(ticket.id)) chime();
+        known.current.add(ticket.id);
+        snapshots.current.delete(ticket.id);
+        setTickets((current) => mergeBoard(current, [ticket]));
+      },
+      () => {
+        since.current = null;
+        void poll();
+      },
+    );
+    sendStatus.current = stationSocket.sendStatus;
     return () => {
+      stationSocket.stop();
       window.clearInterval(timer);
       window.clearInterval(clock);
     };
-  }, [poll]);
+  }, [device.token, poll, stationId]);
 
   const live = useMemo(() => tickets.filter((ticket) => ticket.status !== "BUMPED"), [tickets]);
   const bumped = useMemo(
@@ -290,9 +320,17 @@ function Board({
     async (ticket: KitchenTicket) => {
       const next = NEXT_TICKET_STATUS[ticket.status];
       if (next === null) return;
+      snapshots.current.set(ticket.id, ticket);
+      replace({ ...ticket, status: next });
+      if (sendStatus.current(ticket.id, next)) return;
       try {
-        replace(await apiTerminal<KitchenTicket>("POST", `/api/v1/kds/tickets/${ticket.id}/status`, device.token, { status: next }));
+        const saved = await apiTerminal<KitchenTicket>("POST", `/api/v1/kds/tickets/${ticket.id}/status`, device.token, { status: next });
+        snapshots.current.delete(ticket.id);
+        replace(saved);
       } catch (caught) {
+        const previous = snapshots.current.get(ticket.id);
+        if (previous) replace(previous);
+        snapshots.current.delete(ticket.id);
         setError(errorText(caught, "Could not update the ticket."));
         void poll();
       }

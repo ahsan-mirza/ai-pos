@@ -47,6 +47,9 @@ jobs:
       - name: Generate icons if missing
         run: test -f apps/desktop/src-tauri/icons/icon.ico || node scripts/generate-icon.mjs
 
+      - name: Production build env
+        run: test -f .env.production || cp deploy/portal.production.env .env.production
+
       - name: Build installers
         run: pnpm build:pos:prod
 

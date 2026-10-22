@@ -257,7 +257,11 @@ def create(db: Session, settings: Settings, principal: Principal, data: StockCou
     products = (
         select(Product.id)
         .join(InventoryLevel, InventoryLevel.product_id == Product.id)
-        .where(InventoryLevel.store_id == store.id, Product.is_service.is_(False))
+        .where(
+            InventoryLevel.store_id == store.id,
+            Product.is_service.is_(False),
+            Product.is_stock_tracked.is_(True),
+        )
     )
     if data.category_id is not None:
         products = products.where(Product.category_id == data.category_id)
@@ -282,7 +286,7 @@ def record(
     now = datetime.now(UTC)
     for entry in data.entries:
         product = db.get(Product, entry.product_id)
-        if product is None or product.is_service:
+        if product is None or product.is_service or not product.is_stock_tracked:
             raise ApiError(404, "not_found", "Product was not found.")
         if count.category_id is not None and product.category_id != count.category_id:
             raise ApiError(422, "out_of_scope", f"{product.name} is outside this count's category.")

@@ -2,6 +2,7 @@ import { Capability, Permission, capabilitySpec } from "@ai-pos/shared-types";
 import { useCallback, useState, type ReactNode } from "react";
 import { BrowserRouter, Link, Navigate, Route, Routes } from "react-router-dom";
 import { AppShell, PageFrame } from "./components/layout/AppShell";
+import { ConfirmProvider } from "./components/ui/ConfirmDialog";
 import { DashboardPage } from "./features/analytics/DashboardPage";
 import { AuditPage } from "./features/audit/AuditPage";
 import { LoginPage } from "./features/auth/LoginPage";
@@ -26,6 +27,7 @@ import { KitchenStationsPage } from "./features/menu/KitchenStationsPage";
 import { RecipesPage } from "./features/menu/RecipesPage";
 import { RecipeUsagePage } from "./features/menu/RecipeUsagePage";
 import { KdsApp } from "./features/kds/KdsApp";
+import { TableOrderApp } from "./features/table-order/TableOrderApp";
 import { ModifiersPage } from "./features/menu/ModifiersPage";
 import { MealsPage } from "./features/menu/MealsPage";
 import { SerialTrackerPage } from "./features/inventory/SerialTrackerPage";
@@ -70,6 +72,7 @@ import { StoresPage } from "./features/stores/StoresPage";
 import { UsersPage } from "./features/users/UsersPage";
 import { AuthProvider, useAuth, useIsSuperAdmin } from "./lib/auth";
 import { useCapability, useSettingsLabel } from "./lib/capabilities";
+import { TenantProvider } from "./context/TenantContext";
 import { CurrencyProvider, useCanManageSettings } from "./lib/currency";
 import { OnboardingWizard } from "./features/onboarding/OnboardingWizard";
 import { SignupApp } from "./features/signup/SignupApp";
@@ -515,10 +518,16 @@ export function App() {
   if (window.location.pathname.startsWith("/signup")) return <SignupApp />;
   // The kitchen display signs in with a device token, not a staff session.
   if (window.location.pathname.startsWith("/kds")) return <KdsApp />;
+  // Waiter handheld and the tablet left on a table. Same device-token sign-in as the kitchen display.
+  if (window.location.pathname === "/table" || window.location.pathname.startsWith("/table/")) return <TableOrderApp />;
   return (
     <AuthProvider>
       <CurrencyProvider>
-        <Portal />
+        <TenantProvider>
+          <ConfirmProvider>
+            <Portal />
+          </ConfirmProvider>
+        </TenantProvider>
       </CurrencyProvider>
     </AuthProvider>
   );

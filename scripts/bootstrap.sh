@@ -11,24 +11,17 @@ require_cmd() {
   fi
 }
 
-# Each app reads .env.development on this machine (.env.dev / .env.production elsewhere).
+# Every app reads the repo-root .env on this machine (.env.dev / .env.production elsewhere).
 # Succeeds only when the file was created from the template, so its secrets still need generating.
 ensure_development_env() {
-  local app="$1"
-  local example="$app/.env.development.example"
-  local destination="$app/.env.development"
-  local legacy="$app/.env"
+  local example=".env.example"
+  local destination=".env"
   if [[ ! -f "$example" ]]; then
     echo "Missing env template: $example" >&2
     exit 1
   fi
   if [[ -f "$destination" ]]; then
     echo "Kept existing $destination"
-    return 1
-  fi
-  if [[ -f "$legacy" ]]; then
-    mv "$legacy" "$destination"
-    echo "Moved $legacy to $destination (values kept)"
     return 1
   fi
   cp "$example" "$destination"
@@ -42,14 +35,12 @@ require_cmd python3
 echo "Installing workspace packages..."
 pnpm install
 
-API_ENV_CREATED=0
-ensure_development_env "apps/api" && API_ENV_CREATED=1
-ensure_development_env "apps/web" || true
-ensure_development_env "apps/desktop" || true
-if [[ "$API_ENV_CREATED" == "1" ]]; then
-  echo "Generating secrets for the new apps/api/.env.development..."
+ENV_CREATED=0
+ensure_development_env && ENV_CREATED=1 || true
+if [[ "$ENV_CREATED" == "1" ]]; then
+  echo "Generating secrets for the new .env..."
   node "$ROOT/scripts/generate-secrets.mjs"
-  echo "Set DATABASE_URL in apps/api/.env.development before migrating."
+  echo "Set DATABASE_URL in .env before migrating."
 fi
 
 VENV_PYTHON="$ROOT/apps/api/.venv/bin/python"

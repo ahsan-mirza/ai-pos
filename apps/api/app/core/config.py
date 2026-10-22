@@ -1,3 +1,4 @@
+import ipaddress
 import os
 import re
 from functools import lru_cache
@@ -9,26 +10,51 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 PIN_PATTERN = re.compile(r"\d{4,6}")
 API_ROOT = Path(__file__).resolve().parents[2]
+# apps/api -> repository root. On the server this is /opt/ai-pos, next to apps/.
+REPO_ROOT = API_ROOT.parent.parent
 AppEnv = Literal["development", "dev", "production", "test"]
 APP_ENVS: tuple[str, ...] = ("development", "dev", "production", "test")
 
 
+def is_ip_host(value: str) -> bool:
+    """True for an IPv4 or IPv6 address, which cannot carry a store subdomain."""
+    host = value.strip().removeprefix("[").removesuffix("]")
+    try:
+        ipaddress.ip_address(host)
+    except ValueError:
+        return False
+    return True
+
+
 def current_app_env() -> str:
-    """APP_ENV picks apps/api/.env.<name>: development (your machine), dev (dev server), production, test."""
+    """APP_ENV picks a repo-root env file: .env (your machine), .env.dev, .env.production, or .env.test."""
     value = os.environ.get("APP_ENV", "").strip().lower() or "development"
     if value not in APP_ENVS:
         raise RuntimeError(f"APP_ENV must be one of {', '.join(APP_ENVS)}; got {value!r}.")
     return value
 
 
+def env_file_name(app_env: str | None = None) -> str:
+    """development is `.env`; dev and production are `.env.dev` and `.env.production`."""
+    name = app_env or current_app_env()
+    return ".env" if name == "development" else f".env.{name}"
+
+
 def env_file_path(app_env: str | None = None) -> Path:
-    return API_ROOT / f".env.{app_env or current_app_env()}"
+    return REPO_ROOT / env_file_name(app_env)
+
+
+def env_files(app_env: str | None = None) -> tuple[Path, ...]:
+    """Public file first, then an optional `.local` overlay for secrets that must not be committed."""
+    primary = env_file_path(app_env)
+    return (primary, primary.with_name(f"{primary.name}.local"))
 
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file_encoding="utf-8",
-        extra="forbid",
+        # The repo-root env file also holds Vite and register keys. Those are not API settings.
+        extra="ignore",
         case_sensitive=False,
         # Validation errors would otherwise echo the settings (secrets included) into logs.
         hide_input_in_errors=True,
@@ -223,12 +249,14 @@ class Settings(BaseSettings):
             return None
         parts = []
         for domain in self.tenant_domain_list:
-            scheme = "https?" if domain == "localhost" else "https"
-            parts.append(rf"{scheme}://([a-z0-9-]+\.)?{re.escape(domain)}(:\d+)?")
+            # A public IP is opened as http://<ip> until a domain and certificate exist.
+            scheme = "https?" if domain == "localhost" or is_ip_host(domain) else "https"
+            host = re.escape(domain) if is_ip_host(domain) else rf"([a-z0-9-]+\.)?{re.escape(domain)}"
+            parts.append(rf"{scheme}://{host}(:\d+)?")
         return "^(" + "|".join(parts) + ")$" if parts else None
 
 
 @lru_cache
 def get_settings() -> Settings:
     app_env = current_app_env()
-    return Settings(_env_file=env_file_path(app_env), app_env=app_env)
+    return Settings(_env_file=env_files(app_env), app_env=app_env)

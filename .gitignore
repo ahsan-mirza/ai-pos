@@ -8,6 +8,7 @@ __pycache__/
 .ruff_cache/
 .mypy_cache/
 target/
+target-win11/
 apps/desktop/src-tauri/gen/
 apps/api/storage/
 # Published installers (see DOWNLOADS_DIR); CI copies them to the server.
@@ -16,15 +17,11 @@ apps/api/storage/
 .DS_Store
 Thumbs.db
 
-# Real env files hold secrets. Templates are committed, and so are the frontends' public
-# dev/production files (Vite inlines every value into the bundle, so they must hold nothing secret).
+# Real env files hold secrets. Templates are committed, and so is the public dev build file
+# (Vite inlines every VITE_ value into the bundle). .env.production holds the live database URL.
 .env
 .env.*
+!/.env.example
+!/.env.dev
+!/.env.test
 !**/.env.*.example
-!apps/web/.env.dev
-!apps/web/.env.production
-!apps/super-admin/.env.dev
-!apps/super-admin/.env.production
-!apps/desktop/.env.dev
-!apps/desktop/.env.production
-!apps/desktop/.env.test

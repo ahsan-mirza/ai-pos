@@ -27,10 +27,21 @@ export interface ReturnsPolicySettings {
   reasons: PolicyChoice[];
 }
 
+/** Food and beverage cancellations. Retail tenants keep the defaults and do not edit this section. */
+export interface VoidPolicy {
+  manager_pin_after_dispatch: boolean;
+  /** wasted: scrapped. restock: an unopened bar item goes back to stock. */
+  cancelled_stock: "wasted" | "restock";
+  reasons: PolicyChoice[];
+  /** original: refund the tender. voucher: issue store credit. */
+  prepaid_refund: "original" | "voucher";
+}
+
 export interface PosPolicy {
   discounts: DiscountPolicy;
   gift_cards: GiftCardPolicy;
   returns: ReturnsPolicySettings;
+  voids: VoidPolicy;
 }
 
 const BASE_REASONS: PolicyChoice[] = [
@@ -72,6 +83,19 @@ export const RETURNS_PRESETS: Record<"electronics" | "fashion", ReturnsPolicySet
   },
 };
 
+export const DEFAULT_VOID_POLICY: VoidPolicy = {
+  manager_pin_after_dispatch: true,
+  cancelled_stock: "wasted",
+  reasons: [
+    { key: "order_mistake", label: "Order mistake" },
+    { key: "changed_mind", label: "Customer changed mind" },
+    { key: "wrong_preparation", label: "Wrong preparation" },
+    { key: "food_quality", label: "Food quality issue" },
+    { key: "payment_refused", label: "Payment refused" },
+  ],
+  prepaid_refund: "voucher",
+};
+
 export const DEFAULT_POS_POLICY: PosPolicy = {
   discounts: {
     reasons: [
@@ -85,6 +109,7 @@ export const DEFAULT_POS_POLICY: PosPolicy = {
   },
   gift_cards: { expiry_months: 36, min_cents: 1000, max_cents: 500_000 },
   returns: RETURNS_PRESETS.electronics,
+  voids: DEFAULT_VOID_POLICY,
 };
 
 /** Policy with defaults filled in, section by section, as the API resolves it. */
@@ -93,6 +118,7 @@ export function resolvePosPolicy(raw: Partial<PosPolicy> | null | undefined): Po
     discounts: raw?.discounts ?? DEFAULT_POS_POLICY.discounts,
     gift_cards: raw?.gift_cards ?? DEFAULT_POS_POLICY.gift_cards,
     returns: raw?.returns ?? DEFAULT_POS_POLICY.returns,
+    voids: raw?.voids ?? DEFAULT_POS_POLICY.voids,
   };
 }
 

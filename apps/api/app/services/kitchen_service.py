@@ -1,5 +1,8 @@
-"""Kitchen display. Sending an order fires its new lines as one ticket per station (routed by category); stations
-poll their board with `since`, move tickets NEW -> PREPARING -> READY -> BUMPED, and can recall a bumped ticket."""
+"""Kitchen display. Sending an order fires its new lines as one ticket per station (routed by category).
+
+Each ticket is announced only on that station's room (`station:kitchen-{id}`): `kitchen:new-order`,
+`kitchen:order-updated`, and `kitchen:order-cancelled`. Screens still poll with `since` if the socket drops.
+"""
 
 import uuid
 from dataclasses import dataclass
@@ -24,6 +27,13 @@ from app.services.settings_service import cached_settings
 RECALL_WINDOW = timedelta(minutes=30)
 COUNTER_FIRE_WINDOW = timedelta(hours=2)
 SERVICE_LABELS = {"DINE_IN": "Dine in", "TAKEAWAY": "Takeaway", "DELIVERY": "Delivery"}
+# Ticket status -> (guest phase, line badge, phrase shown on the till and the table).
+_PROGRESS = {
+    "NEW": ("preparing", "new", "Preparing"),
+    "PREPARING": ("preparing", "preparing", "Preparing"),
+    "READY": ("ready", "ready", "Ready to Serve"),
+    "BUMPED": ("completed", "bumped", "Completed"),
+}
 
 
 def _now() -> datetime:
@@ -159,6 +169,50 @@ def order_tickets(db: Session, principal: Principal, order_id: uuid.UUID) -> lis
     return [_ticket_out(ticket, db.get(KitchenStation, ticket.station_id)) for ticket in tickets]
 
 
+def _order_table(db: Session, ticket: KitchenTicket) -> uuid.UUID | None:
+    if ticket.order_id is None:
+        return None
+    order = db.get(OpenOrder, ticket.order_id)
+    return order.table_id if order is not None else None
+
+
+def _publish_progress(db: Session, ticket: KitchenTicket) -> None:
+    """Tell the till, the waiter, and the table tablet that this ticket moved."""
+    from app.websockets.table_sync import publish_order_status
+
+    phase, kitchen, phrase = _PROGRESS.get(ticket.status, ("preparing", "new", "Preparing"))
+    publish_order_status(
+        ticket.store_id,
+        order_id=ticket.order_id,
+        table_id=_order_table(db, ticket),
+        table_label=ticket.label,
+        ticket_id=ticket.id,
+        status=phase,
+        kitchen_status=kitchen,
+        item_ids=[
+            str(item.order_item_id)
+            for item in ticket.items
+            if item.order_item_id is not None and item.voided_at is None
+        ],
+        message=f"{ticket.label} — {phrase}",
+    )
+
+
+def _announce(db: Session, ticket: KitchenTicket, station: KitchenStation | None, event_type: str) -> None:
+    """Queue one station's ticket. It is sent only to that station's room after commit."""
+    from app.websockets import rooms
+
+    rooms.queue(
+        db,
+        rooms.kitchen_room(ticket.station_id),
+        {
+            "type": event_type,
+            "station_id": str(ticket.station_id),
+            "ticket": _ticket_out(ticket, station).model_dump(mode="json"),
+        },
+    )
+
+
 def _ticket(db: Session, principal: Principal, ticket_id: uuid.UUID) -> KitchenTicket:
     ticket = db.get(KitchenTicket, ticket_id, with_for_update=True)
     if ticket is None:
@@ -179,9 +233,32 @@ def set_status(db: Session, principal: Principal, ticket_id: uuid.UUID, status: 
         ticket.ready_at = now
     if status == "BUMPED":
         ticket.bumped_at = now
+    previous = ticket.status
     ticket.status = status
     ticket.updated_at = now
+    _announce(db, ticket, db.get(KitchenStation, ticket.station_id), "kitchen:order-updated")
     db.commit()
+    if status != previous:
+        _publish_progress(db, ticket)
+    if status == "READY" and previous != "READY":
+        from app.websockets.table_sync import publish
+
+        table_id = _order_table(db, ticket)
+        for item in ticket.items:
+            if item.voided_at is not None:
+                continue
+            publish(
+                ticket.store_id,
+                {
+                    "type": "KDS_ITEM_READY",
+                    "store_id": str(ticket.store_id),
+                    "order_id": str(ticket.order_id) if ticket.order_id is not None else None,
+                    "table_id": str(table_id) if table_id is not None else None,
+                    "table_label": ticket.label,
+                    "product_name": item.product_name,
+                    "message": f"{ticket.label} - {item.product_name} Ready",
+                },
+            )
     return _ticket_out(ticket, db.get(KitchenStation, ticket.station_id))
 
 
@@ -192,8 +269,11 @@ def recall(db: Session, principal: Principal, ticket_id: uuid.UUID) -> TicketOut
     ticket.status = "READY"
     ticket.bumped_at = None
     ticket.updated_at = _now()
+    station = db.get(KitchenStation, ticket.station_id)
+    _announce(db, ticket, station, "kitchen:order-updated")
     db.commit()
-    return _ticket_out(ticket, db.get(KitchenStation, ticket.station_id))
+    _publish_progress(db, ticket)
+    return _ticket_out(ticket, station)
 
 
 # --- Order hooks ------------------------------------------------------------------------------------------
@@ -287,6 +367,8 @@ def _fire(db: Session, source: _Source, lines: list[_Line]) -> None:
         if station is not None:
             grouped.setdefault(station.id, []).append(line)
     now = _now()
+    station_by_id = {station.id: station for station in stations}
+    created: list[tuple[KitchenTicket, KitchenStation]] = []
     for station_id, routed in grouped.items():
         ticket = KitchenTicket(
             store_id=source.store_id,
@@ -315,7 +397,10 @@ def _fire(db: Session, source: _Source, lines: list[_Line]) -> None:
                 )
             )
         db.add(ticket)
+        created.append((ticket, station_by_id[station_id]))
     db.flush()
+    for ticket, station in created:
+        _announce(db, ticket, station, "kitchen:new-order")
 
 
 def _label(db: Session, order: OpenOrder) -> str:
@@ -397,9 +482,16 @@ def void(db: Session, order: OpenOrder, items: list[OpenOrderItem]) -> None:
         if ticket is None:
             continue
         ticket.updated_at = now
-        if all(line.voided_at is not None for line in ticket.items) and ticket.status != "BUMPED":
+        fully_voided = all(line.voided_at is not None for line in ticket.items)
+        if fully_voided and ticket.status != "BUMPED":
             ticket.status = "BUMPED"
             ticket.bumped_at = now
+        _announce(
+            db,
+            ticket,
+            db.get(KitchenStation, ticket.station_id),
+            "kitchen:order-cancelled" if fully_voided else "kitchen:order-updated",
+        )
     db.flush()
 
 

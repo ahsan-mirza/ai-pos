@@ -166,11 +166,17 @@ def preview_recipe(db: Session, product_id: uuid.UUID, data: RecipeIn) -> Recipe
 
 
 def save_recipe(db: Session, product_id: uuid.UUID, data: RecipeIn, user_id: uuid.UUID | None) -> RecipeOut:
+    from app.models.menu import ComboSlot
+    from app.services.item_type import apply_item_type
+
     product = _product(db, product_id)
     if product.is_ingredient:
         raise ApiError(422, "invalid_request", f"{product.name} is an ingredient; dishes have recipes.")
-    if product.is_serialized or product.is_service or product.is_open_price:
+    if product.is_serialized or product.is_open_price:
         raise ApiError(422, "invalid_request", f"{product.name} cannot have a recipe.")
+    if db.scalar(select(ComboSlot.id).where(ComboSlot.product_id == product_id).limit(1)):
+        raise ApiError(422, "invalid_request", f"{product.name} is a meal. Give its dishes recipes instead.")
+    apply_item_type(db, product, "MADE_TO_ORDER")
     if db.scalar(select(Recipe.id).join(RecipeLine).where(RecipeLine.ingredient_id == product_id).limit(1)):
         raise ApiError(422, "invalid_request", f"{product.name} is an ingredient of another dish.")
     _check_ingredients(db, product, [line.ingredient_id for line in data.lines])
@@ -347,7 +353,7 @@ def consume(
         take = min(quantity, available)
         unit: int | None = None
         if take > 0:
-            move_stock(
+            level = move_stock(
                 db,
                 product_id=ingredient_id,
                 store_id=store_id,
@@ -357,6 +363,25 @@ def consume(
                 reference_id=sale_id,
                 user_id=user_id,
             )
+            before = level.quantity_on_hand + take
+            if level.min_reorder_level > 0 and level.quantity_on_hand <= level.min_reorder_level < before:
+                ingredient = ingredients.get(ingredient_id)
+                audit.record(
+                    db,
+                    action_type="UPDATE",
+                    action="inventory.reorder_alert",
+                    target_entity="Product",
+                    target_entity_id=ingredient_id,
+                    store_id=store_id,
+                    user_id=user_id,
+                    client_device="system",
+                    details={
+                        "name": ingredient.name if ingredient else "",
+                        "on_hand": level.quantity_on_hand,
+                        "min_reorder_level": level.min_reorder_level,
+                        "sale_id": str(sale_id),
+                    },
+                )
             movement = db.scalar(
                 select(StockMovement.id)
                 .where(

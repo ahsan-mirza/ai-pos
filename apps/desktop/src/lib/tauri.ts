@@ -14,6 +14,7 @@ import type {
   SaleUpsert,
   SyncEvent,
 } from "@ai-pos/shared-types";
+import { env } from "../config/env";
 
 export interface SyncReport {
   pending: number;
@@ -62,8 +63,21 @@ export function lockSession(): Promise<void> {
   return invoke("lock_session");
 }
 
+const PREVIEW_TERMINAL_KEY = "ai-pos.preview-terminal";
+
+interface TauriBridge {
+  invoke: (command: string, args?: Record<string, unknown>) => Promise<unknown>;
+}
+
+function bridge(): TauriBridge | null {
+  if (typeof window === "undefined") return null;
+  const internals = (window as Window & { __TAURI_INTERNALS__?: { invoke?: unknown } }).__TAURI_INTERNALS__;
+  return typeof internals?.invoke === "function" ? (internals as TauriBridge) : null;
+}
+
+/** True only inside the desktop window. A browser tab on the Vite URL has no Tauri bridge. */
 export function inTauri(): boolean {
-  return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+  return bridge() !== null;
 }
 
 /** Activated identity of this register (no device token; that stays in Rust). */
@@ -86,16 +100,109 @@ export function terminalStatus(): Promise<TerminalStatus> {
   return invoke<TerminalStatus>("terminal_status");
 }
 
-/** Stores the encrypted terminal config; the app restarts itself a moment after this resolves. */
-export function activateTerminal(subdomain: string, activationKey: string): Promise<TerminalStatus> {
-  return invoke<TerminalStatus>("activate_terminal", { subdomain, activationKey });
+interface ActivationResponse {
+  tenant_slug: string;
+  tenant_name: string;
+  tenant_domain: string;
+  tenant_url: string;
+  store_id: string;
+  store_code: string;
+  store_name: string;
+  register_id: string;
+  register_code: string;
+  register_name: string;
+  device_token: string;
+}
+
+interface PreviewTerminal {
+  status: TerminalStatus;
+  device_token: string;
+}
+
+function baseDomain(): string {
+  const raw = import.meta.env.VITE_TENANT_BASE_DOMAIN;
+  const value = typeof raw === "string" ? raw.trim() : "";
+  return (value || "qios.ae").replace(/^\./, "").toLowerCase();
+}
+
+export function readPreviewTerminal(): PreviewTerminal | null {
+  if (typeof localStorage === "undefined") return null;
+  const raw = localStorage.getItem(PREVIEW_TERMINAL_KEY);
+  if (raw === null) return null;
+  try {
+    const parsed = JSON.parse(raw) as PreviewTerminal;
+    if (!parsed.status?.activated || parsed.device_token === "") return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+export function applyPreviewTerminal(saved: PreviewTerminal): void {
+  env.apiKey = saved.device_token;
+  env.storeId = saved.status.store_id;
+  if (saved.status.tenant_domain) env.tenantDomain = saved.status.tenant_domain;
+}
+
+/** The desktop window stores this in terminal.bin. The browser preview calls the same API and keeps the token locally. */
+export async function activateTerminal(subdomain: string, activationKey: string): Promise<TerminalStatus> {
+  if (inTauri()) return invoke<TerminalStatus>("activate_terminal", { subdomain, activationKey });
+  const slug = subdomain.trim().toLowerCase();
+  const domain = `${slug}.${baseDomain()}`;
+  const key = activationKey.toUpperCase().replace(/[^A-Z0-9]/g, "");
+  let response: Response;
+  try {
+    response = await fetch(`${env.apiBaseUrl}/api/v1/terminals/activate`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Tenant-Domain": domain },
+      body: JSON.stringify({ activation_key: key, machine_name: "Browser preview" }),
+    });
+  } catch {
+    throw new Error(`Could not reach the API at ${env.apiBaseUrl}.`);
+  }
+  const body = (await response.json().catch(() => null)) as { error?: { message?: string } } | ActivationResponse | null;
+  if (!response.ok || body === null || !("device_token" in body)) {
+    const message = body && "error" in body ? body.error?.message : null;
+    throw new Error(message || `Activation failed (${response.status}).`);
+  }
+  const status: TerminalStatus = {
+    activated: true,
+    source: "activation",
+    tenant_slug: body.tenant_slug,
+    tenant_name: body.tenant_name,
+    tenant_domain: body.tenant_domain || domain,
+    tenant_url: body.tenant_url,
+    store_id: body.store_id,
+    store_code: body.store_code,
+    store_name: body.store_name,
+    register_id: body.register_id,
+    register_code: body.register_code,
+    register_name: body.register_name,
+  };
+  const saved = { status, device_token: body.device_token };
+  localStorage.setItem(PREVIEW_TERMINAL_KEY, JSON.stringify(saved));
+  applyPreviewTerminal(saved);
+  return status;
 }
 
 export function deactivateTerminal(username: string, pin: string): Promise<void> {
   return invoke("deactivate_terminal", { username, pin });
 }
 
+/** The activated register's device token, so the cashier screen can open the table socket. */
+export function terminalApiKey(): Promise<string> {
+  return invoke<string>("terminal_api_key");
+}
+
+/** Keeps the latest table-sync frames in the register's SQLite file when the cloud socket blips. */
+export function cacheTableEvent(storeId: string, payload: string): Promise<void> {
+  return invoke("cache_table_event", { storeId, payload });
+}
+
 async function invoke<T>(command: string, args?: Record<string, unknown>): Promise<T> {
+  if (bridge() === null) {
+    throw new Error("This action only works in the AI POS desktop window.");
+  }
   const core = await import("@tauri-apps/api/core");
   return core.invoke<T>(command, args);
 }

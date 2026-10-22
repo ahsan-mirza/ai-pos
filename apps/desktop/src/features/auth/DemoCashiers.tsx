@@ -61,7 +61,7 @@ export function DemoCashiers({ onPick }: { onPick: (username: string, pin: strin
           </li>
         ))}
       </ul>
-      <p className="mt-3 text-xs text-white/40">Super Admin: username admin, PIN is ADMIN_PIN in apps/api/.env.development.</p>
+      <p className="mt-3 text-xs text-white/40">Super Admin: username admin, PIN is ADMIN_PIN in the repo-root .env.</p>
     </section>
   );
 }

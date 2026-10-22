@@ -6,8 +6,11 @@ import {
   noMatchesMessage,
   parseEmbeddedBarcode,
   resolveUnitPrice,
+  unpaidItems,
   type PaymentMethod,
   type PriceTier,
+  type DiningArea,
+  type Order,
   type ProductUpsert,
   type Promotion,
 } from "@ai-pos/shared-types";
@@ -34,6 +37,7 @@ import { SearchInput } from "../../components/shell/SearchInput";
 import { useShell, useShellPage } from "../../components/shell/ShellContext";
 import { ui } from "../../components/shell/tokens";
 import { useCapabilities } from "../../lib/capabilities";
+import { categoryChips, searchLabel, searchPlaceholder } from "../../lib/industry";
 import { inTauri, openDocumentPdf, recordCashMovement, refreshSeries, type RegisterCustomer } from "../../lib/tauri";
 import { CashDrawerModal } from "../audit/CashDrawerModal";
 import { logItemVoid } from "../audit/registerAudit";
@@ -64,7 +68,23 @@ import { DiscountModal } from "./DiscountModal";
 import { GiftCardSellModal } from "./GiftCardSellModal";
 import { CartList } from "./CartList";
 import { CheckoutSidebar } from "./CheckoutSidebar";
-import { loadCatalog, seedProducts, type Catalog } from "./catalog";
+import { loadCatalog, seedProducts, store, type Catalog } from "./catalog";
+import { OrderModeBar } from "./fnb/OrderModeBar";
+import {
+  closeSession,
+  dispatchKitchen,
+  listSessions,
+  markSent,
+  mirrorCart,
+  modifiersOf,
+  openSession,
+  packAddress,
+  saveSession,
+  type OrderMode,
+  type SessionItem,
+  type TableSession,
+  type TicketDetails,
+} from "./fnb/tableSessions";
 import { invoiceOf, prepareNumberedBatch, submitCharge, submitQuote, type ChargeBatch } from "./checkout";
 import { activeStore, businessTax, customerTax, useBusinessCurrency } from "./currency";
 import { refreshPricing } from "./customerPricing";
@@ -80,6 +100,7 @@ import { WeighModal } from "./WeighModal";
 import { ComboBuilderModal } from "./ComboBuilderModal";
 import { ModifierPickerModal } from "./ModifierPickerModal";
 import { combosFor, groupsFor, refreshMenu, useMenu } from "./menu";
+import { ordersApi } from "../orders/ordersClient";
 import { serviceCharge, takeSettlement, type SettlementIntent } from "../orders/settlement";
 import { TipRow } from "../orders/TipRow";
 import { PriceOverrideModal } from "./PriceOverrideModal";
@@ -148,6 +169,52 @@ function tierPreview(product: ProductUpsert, tier: PriceTier): TierPreview | nul
   };
 }
 
+/** Catalog row for a dish already on a table, or a stand-in when this register has not synced that product yet. */
+function dishProduct(
+  item: { product_id: string; product_name: string; unit_price_cents: number },
+  products: ProductUpsert[],
+  storeId: string,
+  currencyCode: string,
+): ProductUpsert {
+  return (
+    products.find((product) => product.id === item.product_id) ?? {
+      id: item.product_id,
+      store_id: storeId,
+      sku: "ORDER",
+      barcode: item.product_id,
+      name: item.product_name,
+      category: "Menu",
+      price_cents: item.unit_price_cents,
+      currency: currencyCode,
+      is_serialized: false,
+      stock_quantity: 0,
+      is_service: true,
+      is_stock_tracked: false,
+      item_type: "MADE_TO_ORDER",
+      tax_category: "STANDARD",
+    }
+  );
+}
+
+function withPending(state: CartState, items: SessionItem[], products: ProductUpsert[], storeId: string, currencyCode: string): CartState {
+  return items.reduce((current, item) => {
+    if (item.kitchen_status !== "PENDING") return current;
+    const product = dishProduct(item, products, storeId, currencyCode);
+    const modifiers = modifiersOf(item);
+    const added = applyCart(current, {
+      type: "add_product",
+      product,
+      ...(modifiers.length > 0 ? { modifiers } : {}),
+    });
+    if (added.error) return current;
+    if (item.quantity <= 1) return added.state;
+    const line = added.state.lines[added.state.lines.length - 1];
+    if (!line) return added.state;
+    const packed = applyCart(added.state, { type: "set_packs", lineId: line.lineId, packs: item.quantity });
+    return packed.error ? added.state : packed.state;
+  }, state);
+}
+
 export function CheckoutPage({ session }: CheckoutPageProps) {
   const currency = useBusinessCurrency();
   const [catalog, setCatalog] = useState<Catalog>({ products: seedProducts, source: "seed", message: null });
@@ -160,7 +227,7 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
   const [overrideRow, setOverrideRow] = useState<CartRow | null>(null);
   const [discountFor, setDiscountFor] = useState<{ lines: CartLine[]; title: string } | null>(null);
   const [giftCardOpen, setGiftCardOpen] = useState(false);
-  const [notice, setNotice] = useState("Scan, or search by name, model, barcode, SKU, or IMEI.");
+  const [notice, setNotice] = useState("Search the catalog.");
   const [query, setQuery] = useState("");
   const [pendingSerial, setPendingSerial] = useState<ProductUpsert | null>(null);
   const [openPriceFor, setOpenPriceFor] = useState<ProductUpsert | null>(null);
@@ -199,8 +266,17 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
   const discountable = pricedLines.filter((line) => !line.giftCardCode && !line.product.sold_by_weight && !line.orderItemId);
   const couponsOffered = cart.mode === "RETAIL" && promotions.some((promo) => promo.coupon_code !== null);
   const capabilities = useCapabilities();
+  const food = capabilities.foodAndBeverage;
+  const [orderMode, setOrderMode] = useState<OrderMode>("dine_in");
+  const [tableSession, setTableSession] = useState<TableSession | null>(null);
+  const [floorAreas, setFloorAreas] = useState<DiningArea[]>([]);
+  const sessionRef = useRef<TableSession | null>(null);
+  const tableIdRef = useRef<string | null>(null);
+  sessionRef.current = tableSession;
   // Restaurant: a tab handed over from Orders, its automatic service charge, and the tip on top.
   const [settlement, setSettlement] = useState<SettlementIntent | null>(() => takeSettlement());
+  const settlementRef = useRef<SettlementIntent | null>(settlement);
+  settlementRef.current = settlement;
   const [tipCents, setTipCents] = useState(0);
   const tipsOn = capabilities.enabled.has(Capability.TipsServiceCharge);
   const service = useMemo(
@@ -363,6 +439,10 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
 
   const resetSale = useCallback(() => {
     batchRef.current = null;
+    const openId = sessionRef.current?.id;
+    if (openId) void closeSession(openId);
+    sessionRef.current = null;
+    setTableSession(null);
     const next = { ...emptyCart, mode: cartRef.current.mode };
     cartRef.current = next;
     setCart(next);
@@ -371,6 +451,53 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
     setCartOpen(false);
     setCoupon(null);
   }, []);
+
+  useEffect(() => {
+    setNotice((current) =>
+      current === "Search the catalog."
+        ? food
+          ? "Search the menu, or pick a category."
+          : searchPlaceholder(capabilities.profile)
+        : current,
+    );
+  }, [food, capabilities.profile]);
+
+  useEffect(() => {
+    if (!food) return;
+    let cancelled = false;
+    const loadFloor = () => {
+      void ordersApi
+        .floor(store.id)
+        .then((floor) => {
+          if (cancelled) return;
+          setFloorAreas(
+            floor.areas
+              .filter((area) => area.is_active)
+              .map((area) => ({ ...area, tables: area.tables.filter((table) => table.is_active) })),
+          );
+        })
+        .catch(() => {
+          // Keep the last floor plan. One missed refresh should not blank the tables.
+        });
+    };
+    loadFloor();
+    const timer = window.setInterval(loadFloor, 5000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [food]);
+
+  useEffect(() => {
+    if (!food || sessionRef.current === null) return;
+    const current = sessionRef.current;
+    const next = mirrorCart(current, cart.lines);
+    if (JSON.stringify(next.items) === JSON.stringify(current.items)) return;
+    void saveSession(next).then((saved) => {
+      sessionRef.current = saved;
+      setTableSession(saved);
+    });
+  }, [cart.lines, food]);
 
   const saveAsSalesOrder = async () => {
     setSavingOrder(true);
@@ -454,6 +581,75 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
 
   // "Split equally into N" from Orders: once the bill is in the cart, open the guest-by-guest split.
   const splitGuests = useRef(settlement?.guests ?? 0);
+
+  const sendRound = async () => {
+    const current = sessionRef.current;
+    if (current === null) {
+      setNotice("Choose a table or guest before sending to the kitchen.");
+      return;
+    }
+    const mirrored = mirrorCart(current, cartRef.current.lines);
+    const fresh = mirrored.items.filter((item) => item.kitchen_status === "PENDING").map((item) => item.id);
+    if (fresh.length === 0) {
+      setNotice("These dishes are already with the kitchen. Add another dish to send a new round.");
+      return;
+    }
+    const sent = markSent(mirrored);
+    sessionRef.current = sent;
+    setTableSession(sent);
+    dispatch({ type: "clear" });
+    const fired = await dispatchKitchen(sent, session.user.id, tableIdRef.current, fresh);
+    const saved = await saveSession(fired);
+    sessionRef.current = saved;
+    setTableSession(saved);
+    setNotice("Round sent to the kitchen. The table stays open for the next round.");
+  };
+
+  const payTable = async () => {
+    if (cartRef.current.lines.length === 0) {
+      setNotice("Nothing on this order to pay.");
+      return;
+    }
+    let current = sessionRef.current;
+    if (current === null) {
+      setNotice("Choose a table before checking out.");
+      return;
+    }
+    const unsent = cartRef.current.lines.filter((line) => !line.orderItemId);
+    if (unsent.length > 0) {
+      const mirrored = mirrorCart(current, cartRef.current.lines);
+      const fresh = mirrored.items.filter((item) => item.kitchen_status === "PENDING").map((item) => item.id);
+      if (fresh.length > 0) {
+        const fired = await dispatchKitchen(markSent(mirrored), session.user.id, tableIdRef.current, fresh);
+        current = fired;
+        const sentIds = new Set(fresh);
+        const nextLines = cartRef.current.lines.map((line) => (sentIds.has(line.lineId) ? { ...line, orderItemId: line.lineId } : line));
+        cartRef.current = { ...cartRef.current, lines: nextLines };
+        setCart(cartRef.current);
+      }
+    }
+    if (current.server_order_id) {
+      try {
+        const order = await ordersApi.get(current.server_order_id);
+        const intent: SettlementIntent = {
+          order,
+          itemIds: unpaidItems(order).map((item) => item.id),
+          label: current.table_number,
+        };
+        settlementRef.current = intent;
+        setSettlement(intent);
+        settlementLoaded.current = true;
+      } catch {
+        // The sale still records. The table link is attached when the order can be read.
+      }
+    }
+    if (current.order_mode === "dine_in" && current.guest_count >= 2) splitGuests.current = current.guest_count;
+    const billed = { ...current, status: "BILL_PRINTED" as const };
+    sessionRef.current = billed;
+    setTableSession(billed);
+    void saveSession(billed);
+    await charge();
+  };
   useEffect(() => {
     if (splitGuests.current < 2 || dueCents <= 0 || !settlementLoaded.current) return;
     const guests = splitGuests.current;
@@ -538,9 +734,9 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
       shiftId: activeShiftId(),
       loyaltyPoints: plan.loyaltyPoints ?? null,
       restaurant:
-        settlement || service.charge || (tipsOn && tipCents)
+        settlementRef.current || service.charge || (tipsOn && tipCents)
           ? {
-              orderId: settlement?.order.id ?? null,
+              orderId: settlementRef.current?.order.id ?? null,
               orderItemIds: chargedCart.lines.map((line) => line.orderItemId).filter((id): id is string => Boolean(id)),
               serviceChargeCents: service.charge,
               serviceChargeTaxCents: service.tax,
@@ -954,15 +1150,32 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
                   <PauseCircle size={18} aria-hidden="true" />
                   {cart.lines.length > 0 ? "Hold" : "Recall"}
                 </button>
-                <button type="button" disabled={chargeBlocked} onClick={() => void charge()} className={`${ui.primaryAction} flex-1 rounded-full`}>
-                  {charging ? "Recording sale…" : `Charge ${formatMoney(dueCents, currency)}`}
+                {food ? (
+                  <button
+                    type="button"
+                    disabled={charging || cart.lines.length === 0}
+                    title={cart.lines.length === 0 ? "Add dishes before sending a round" : "Send this round to the kitchen"}
+                    onClick={() => void sendRound()}
+                    className={`${ui.secondaryAction} h-14 flex-1 rounded-full`}
+                  >
+                    Send round to kitchen
+                  </button>
+                ) : null}
+                <button
+                  type="button"
+                  disabled={chargeBlocked}
+                  onClick={() => void (food ? payTable() : charge())}
+                  className={`${ui.primaryAction} flex-1 rounded-full`}
+                >
+                  {charging ? "Recording sale…" : food ? `Pay & checkout ${formatMoney(dueCents, currency)}` : `Charge ${formatMoney(dueCents, currency)}`}
                 </button>
               </div>
             }
           />
         }
       >
-        <div className="space-y-4 p-5">
+        <div className="flex h-full min-h-0 flex-col">
+          <div className="shrink-0 space-y-3 px-5 pt-5">
           <p className="flex items-center gap-2 text-xs text-zinc-500 dark:text-zinc-400">
             <span
               aria-hidden="true"
@@ -979,45 +1192,178 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
             </p>
           ) : null}
 
+          {food ? (
+            <OrderModeBar
+              mode={orderMode}
+              session={tableSession}
+              areas={floorAreas}
+              storeId={store.id}
+              onMode={(mode) => {
+                setOrderMode(mode);
+                setTableSession(null);
+                sessionRef.current = null;
+                tableIdRef.current = null;
+                settlementRef.current = null;
+                setSettlement(null);
+                dispatch({ type: "clear" });
+              }}
+              onSeat={(tableNumber, guestCount, tableId, orderId) => {
+                void (async () => {
+                  const previous = sessionRef.current;
+                  if (previous && previous.table_number !== tableNumber) {
+                    const mirrored = mirrorCart(previous, cartRef.current.lines);
+                    sessionRef.current = mirrored;
+                    await saveSession(mirrored);
+                  }
+                  const rows = await listSessions(store.id);
+                  const existing =
+                    rows.find((row) => row.order_mode === "dine_in" && row.table_number === tableNumber && row.status !== "CLOSED") ?? null;
+                  let order: Order | null = null;
+                  const knownId = orderId ?? existing?.server_order_id ?? null;
+                  try {
+                    if (knownId) order = await ordersApi.get(knownId);
+                    else {
+                      const open = await ordersApi.list(store.id);
+                      order = open.find((row) => row.table_id === tableId && row.status === "OPEN") ?? null;
+                    }
+                  } catch {
+                    order = null;
+                  }
+                  const opened = openSession({
+                    storeId: store.id,
+                    mode: "dine_in",
+                    tableNumber,
+                    guestCount: order?.covers || guestCount,
+                    existing,
+                  });
+                  const unpaid = order ? unpaidItems(order) : [];
+                  const sent: SessionItem[] = unpaid.map((item) => ({
+                    id: item.id,
+                    session_id: opened.id,
+                    product_id: item.product_id,
+                    product_name: item.product_name,
+                    quantity: item.quantity,
+                    unit_price_cents: item.unit_price_cents,
+                    modifiers_json: JSON.stringify(item.modifiers ?? []),
+                    kitchen_status: "SENT_TO_KDS",
+                  }));
+                  const pending = (existing?.items ?? []).filter(
+                    (item) => item.kitchen_status === "PENDING" && !sent.some((row) => row.id === item.id),
+                  );
+                  const nextSession: TableSession = {
+                    ...opened,
+                    server_order_id: order?.id ?? opened.server_order_id,
+                    server_revision: order?.revision ?? opened.server_revision,
+                    items: [...sent, ...pending],
+                  };
+                  const saved = await saveSession(nextSession);
+                  sessionRef.current = saved;
+                  setTableSession(saved);
+                  tableIdRef.current = tableId;
+                  const ordered = unpaid.map((item) => ({
+                    product: dishProduct(item, catalog.products, store.id, currency),
+                    quantity: item.quantity,
+                    modifiers: item.modifiers ?? [],
+                    components: item.components ?? [],
+                    orderItemId: item.id,
+                  }));
+                  const loaded =
+                    ordered.length > 0 ? applyCart(emptyCart, { type: "load_order", lines: ordered }) : applyCart(emptyCart, { type: "clear" });
+                  const state = withPending(loaded.error ? emptyCart : loaded.state, pending, catalog.products, store.id, currency);
+                  cartRef.current = state;
+                  setCart(state);
+                  if (order && unpaid.length > 0) {
+                    const intent: SettlementIntent = {
+                      order,
+                      itemIds: unpaid.map((item) => item.id),
+                      label: tableNumber,
+                    };
+                    settlementRef.current = intent;
+                    setSettlement(intent);
+                    settlementLoaded.current = true;
+                    setNotice(`${tableNumber} · ${state.lines.length} item${state.lines.length === 1 ? "" : "s"} on this order.`);
+                  } else if (state.lines.length > 0) {
+                    settlementRef.current = null;
+                    setSettlement(null);
+                    setNotice(`${tableNumber} · ${state.lines.length} item${state.lines.length === 1 ? "" : "s"} waiting to send.`);
+                  } else {
+                    settlementRef.current = null;
+                    setSettlement(null);
+                    setNotice(`${tableNumber} is free. Add dishes, then send the round to the kitchen.`);
+                  }
+                })();
+              }}
+              onTicket={(details: TicketDetails) => {
+                tableIdRef.current = null;
+                const opened = openSession({
+                  storeId: store.id,
+                  mode: orderMode,
+                  tableNumber: orderMode === "takeaway" ? details.tag || "Takeaway" : "Delivery",
+                  guestCount: 1,
+                  guestName: details.guestName,
+                  address: packAddress(details),
+                  phone: details.phone,
+                  existing: tableSession?.order_mode === orderMode ? tableSession : null,
+                });
+                void saveSession(opened).then((saved) => {
+                  sessionRef.current = saved;
+                  setTableSession(saved);
+                  setNotice(orderMode === "takeaway" ? "Takeaway ticket is open. Add dishes below." : "Delivery ticket is open. Add dishes below.");
+                });
+              }}
+            />
+          ) : null}
+          </div>
+
+          <div className="custom-scrollbar min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-4">
           <div>
             <SearchInput
               id="product-search"
-              label="Search Product, Model, Barcode, or IMEI"
+              label={searchLabel(capabilities.profile)}
               inputRef={searchRef}
               value={query}
-              placeholder="Scan or search product, model, barcode, IMEI…"
+              placeholder={searchPlaceholder(capabilities.profile)}
               onChange={setQuery}
               onSubmit={(value) => void submitSearch(value)}
               onShortcut={closeCart}
-              actionLabel="Search Catalog"
+              actionLabel={food ? "Search menu" : "Search Catalog"}
             />
             <p className="mt-2.5 min-h-5 text-sm text-zinc-600 dark:text-zinc-400" role="status">
               {notice}
             </p>
           </div>
 
-          {categories.length > 0 ? (
+          {(() => {
+            const preferred = categoryChips(capabilities.profile);
+            const extra = categories
+              .filter((name) => !preferred.some((chip) => chip.value === name))
+              .map((name) => ({ value: name, label: name }));
+            const chips = preferred.length > 0 ? [{ value: "", label: food ? "All dishes" : "All products" }, ...preferred, ...extra] : categories.length > 0 ? [{ value: "", label: "All products" }, ...extra] : [];
+            if (chips.length === 0) return null;
+            return (
             <div className="no-scrollbar -mx-5 flex gap-2 overflow-x-auto px-5" role="group" aria-label="Categories">
-              {[null, ...categories].map((name) => {
-                const active = category === name;
+              {chips.map((chip) => {
+                const value = chip.value === "" ? null : chip.value;
+                const active = category === value;
                 return (
                   <button
-                    key={name ?? "all"}
+                    key={chip.label}
                     type="button"
                     aria-pressed={active}
-                    onClick={() => setCategory(name)}
-                    className={`h-10 shrink-0 rounded-full px-4 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/50 ${
+                    onClick={() => setCategory(value)}
+                    className={`h-12 shrink-0 rounded-2xl px-4 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/50 ${
                       active
                         ? "bg-primary-500 text-white shadow-sm shadow-primary-500/25"
                         : "border border-zinc-200 bg-white text-zinc-600 hover:border-zinc-300 hover:text-zinc-900 dark:border-zinc-800 dark:bg-zinc-900/60 dark:text-zinc-300 dark:hover:border-zinc-700 dark:hover:text-white"
                     }`}
                   >
-                    {name ?? "All products"}
+                    {chip.label}
                   </button>
                 );
               })}
             </div>
-          ) : null}
+            );
+          })()}
 
           <p className={ui.label}>
             {searching
@@ -1049,9 +1395,11 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
                 <ProductCard
                   key={entry.hit.product.id}
                   hit={entry.hit}
-                  preview={tierPreview(entry.hit.product, tier)}
+                  preview={food ? null : tierPreview(entry.hit.product, tier)}
                   currency={currency}
                   disabled={charging}
+                  menuItem={food}
+                  hasModifiers={groupsFor(menu, entry.hit.product.id).length > 0 || combosFor(menu, entry.hit.product.id).length > 0}
                   onSelect={select}
                   onCheckBranches={(product) => setBranchCheck({ product })}
                 />
@@ -1064,6 +1412,7 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
               find the rest.
             </p>
           ) : null}
+          </div>
         </div>
       </PageFrame>
 

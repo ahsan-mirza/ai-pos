@@ -209,6 +209,7 @@ const badgeStyles: Record<StockStatus, string> = {
   low: "bg-accent text-white",
   out: "bg-accent/10 text-accent ring-1 ring-accent/40",
   over: "bg-surface text-charcoal ring-1 ring-line",
+  unavailable: "bg-accent/10 text-accent ring-1 ring-accent/40",
 };
 
 export function StatusBadge({ status }: { status: StockStatus }) {

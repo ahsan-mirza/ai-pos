@@ -92,9 +92,9 @@ export function DemoAccounts({ onPick }: { onPick: (username: string, password: 
               </span>
             ) : (
               <span className="mt-3 block text-xs text-white/60">
-                Set <span className="font-mono">VITE_DEMO_ADMIN_PASSWORD</span> in apps/web/.env.development to sign in with one click.
+                Set <span className="font-mono">VITE_DEMO_ADMIN_PASSWORD</span> in the repo-root .env to sign in with one click.
                 Password and PIN are <span className="font-mono">ADMIN_PASSWORD</span> /{" "}
-                <span className="font-mono">ADMIN_PIN</span> in apps/api/.env.
+                <span className="font-mono">ADMIN_PIN</span> in that same file.
               </span>
             )}
             <span className="mt-3 flex gap-1 text-[11px] font-semibold">

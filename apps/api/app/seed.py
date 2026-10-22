@@ -7,7 +7,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.core import capabilities as capability_catalog
-from app.core.config import Settings, get_settings
+from app.core.config import Settings, env_file_name, get_settings
 from app.core.database import build_engine
 from app.core.security import hash_password, hash_pin
 from app.models.brand import ProductModel
@@ -346,7 +346,8 @@ def admin_spec(settings: Settings) -> UserCreate:
         if not value
     ]
     if missing:
-        sys.exit(f"Seed needs {', '.join(missing)} in apps/api/.env.{settings.app_env} to create the Super Admin.")
+        file_name = env_file_name(settings.app_env)
+        sys.exit(f"Seed needs {', '.join(missing)} in {file_name} at the repo root to create the Super Admin.")
     return UserCreate.model_validate(
         {
             "username": settings.admin_username,

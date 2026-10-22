@@ -71,6 +71,10 @@ class Product(TimestampMixin, Base):
         CheckConstraint("price_cents >= 0", name="price_nonnegative"),
         CheckConstraint("min_order_quantity >= 1", name="moq_positive"),
         CheckConstraint("tare_grams >= 0", name="tare_nonnegative"),
+        CheckConstraint(
+            "item_type IN ('MADE_TO_ORDER', 'RAW_INGREDIENT', 'PRE_PACKAGED')",
+            name="ck_products_item_type",
+        ),
         # Keyset paging of the full catalog (GET /products?after=) for registers syncing tens of thousands of SKUs.
         Index("ix_products_name_id", "name", "id"),
         Index(
@@ -157,6 +161,10 @@ class Product(TimestampMixin, Base):
     is_service: Mapped[bool] = mapped_column(Boolean, default=False)
     # Recipes module: stocked only to make dishes; registers never sell it.
     is_ingredient: Mapped[bool] = mapped_column(Boolean, default=False)
+    # MADE_TO_ORDER dishes are produced from a recipe and carry no stock of their own.
+    # RAW_INGREDIENT and PRE_PACKAGED stay on the stock overview.
+    item_type: Mapped[str] = mapped_column(String(20), default="PRE_PACKAGED")
+    is_stock_tracked: Mapped[bool] = mapped_column(Boolean, default=True)
     sellable_units: Mapped[list[str]] = mapped_column(JSON, default=lambda: ["PIECE"])
     # Weighed goods: stock and sale quantities count grams and price_cents is the price per kilogram.
     sold_by_weight: Mapped[bool] = mapped_column(Boolean, default=False)

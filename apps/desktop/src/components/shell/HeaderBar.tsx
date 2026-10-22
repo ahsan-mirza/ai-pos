@@ -31,7 +31,7 @@ export function HeaderBar({ title, sync, actions }: { title: string; sync: SyncS
       <div className="min-w-[12rem] flex-1">
         <nav aria-label="Breadcrumb" className="flex items-center gap-1.5 text-xs font-medium text-zinc-500 dark:text-zinc-400">
           <StoreIcon size={13} aria-hidden="true" />
-          <span className="truncate">{store.name}</span>
+          <span className="truncate">{/^restur[ae]nt$/i.test(store.name.trim()) ? "Restaurant" : store.name}</span>
           <ChevronRight size={13} aria-hidden="true" className="shrink-0 text-zinc-300 dark:text-zinc-600" />
           <span aria-current="page" className="truncate text-zinc-900 dark:text-zinc-100">
             {title}

@@ -1,6 +1,7 @@
 import { PRICE_TIER_LABELS } from "@ai-pos/shared-types";
 import { Plus, Search } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
+import { useCapabilities } from "../../lib/capabilities";
 import type { RegisterCustomer } from "../../lib/tauri";
 import { searchCustomers } from "./wholesaleClient";
 
@@ -13,6 +14,7 @@ interface CustomerSearchPopoverProps {
 
 /** Finds a customer by name, phone, code, company or TRN in the register's cache; offers to add one when none match. */
 export function CustomerSearchPopover({ disabled = false, onSelect, onQuickAdd }: CustomerSearchPopoverProps) {
+  const { foodAndBeverage } = useCapabilities();
   const listId = useId();
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
@@ -66,7 +68,7 @@ export function CustomerSearchPopover({ disabled = false, onSelect, onQuickAdd }
   return (
     <div ref={boxRef} className="relative">
       <label htmlFor="customer-search" className="sr-only">
-        Attach B2B customer or walk-in
+        {foodAndBeverage ? "Find a guest" : "Attach B2B customer or walk-in"}
       </label>
       <Search
         size={16}
@@ -82,7 +84,7 @@ export function CustomerSearchPopover({ disabled = false, onSelect, onQuickAdd }
         autoComplete="off"
         disabled={disabled}
         value={query}
-        placeholder="Attach B2B Customer / Walk-in"
+        placeholder={foodAndBeverage ? "Find a guest" : "Attach B2B Customer / Walk-in"}
         onFocus={() => setOpen(true)}
         onChange={(event) => {
           setQuery(event.target.value);

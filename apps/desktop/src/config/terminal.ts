@@ -1,4 +1,4 @@
-import { inTauri, terminalStatus, type TerminalStatus } from "../lib/tauri";
+import { applyPreviewTerminal, inTauri, readPreviewTerminal, terminalStatus, type TerminalStatus } from "../lib/tauri";
 import { env } from "./env";
 
 let current: TerminalStatus | null = null;
@@ -8,7 +8,13 @@ let current: TerminalStatus | null = null;
  * (catalog, receipts, floors) already use the activated branch instead of VITE_STORE_ID.
  */
 export async function loadTerminal(): Promise<TerminalStatus | null> {
-  if (!inTauri()) return null;
+  if (!inTauri()) {
+    const saved = readPreviewTerminal();
+    if (saved === null) return null;
+    applyPreviewTerminal(saved);
+    current = saved.status;
+    return current;
+  }
   current = await terminalStatus();
   if (current.activated && current.store_id) env.storeId = current.store_id;
   if (current.tenant_domain) env.tenantDomain = current.tenant_domain;

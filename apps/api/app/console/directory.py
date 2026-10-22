@@ -28,8 +28,7 @@ from app.tenancy.models import Operator, OperatorAuditLog, Tenant, TenantChangeR
 
 
 def _domain(slug: str, settings: Settings) -> str:
-    base = settings.tenant_domain_list[0] if settings.tenant_domain_list else "qios.ae"
-    return f"{slug}.{base}"
+    return registry.tenant_domain_for(slug, settings)
 
 
 def tenant_row(tenant: Tenant, stats: TenantStats | None, pending: int, settings: Settings) -> TenantRow:

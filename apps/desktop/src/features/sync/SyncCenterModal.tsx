@@ -1,6 +1,7 @@
 import { Permission } from "@ai-pos/shared-types";
 import { CheckCircle2, Clock3, RefreshCw, Trash2, TriangleAlert, X } from "lucide-react";
 import { useCallback, useEffect, useId, useState } from "react";
+import { useConfirm } from "../../components/ConfirmDialog";
 import { flushSync, listBatches, resolveBatch, type QueuedBatch } from "../../lib/tauri";
 import type { CashierSession } from "../auth/session";
 
@@ -31,6 +32,7 @@ export function SyncCenterModal({ session, onClose }: { session: CashierSession;
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const manager = session.user.permissions.includes(Permission.PosShiftManage);
+  const confirm = useConfirm();
 
   const load = useCallback(() => {
     void listBatches(filter, 100)
@@ -165,11 +167,19 @@ export function SyncCenterModal({ session, onClose }: { session: CashierSession;
                       title={manager ? "Drop it for good" : "Only a manager can discard"}
                       aria-label="Discard"
                       onClick={() => {
-                        if (!window.confirm("Discard this transaction? It will never reach head office.")) return;
-                        void act(async () => {
-                          await resolveBatch(batch.batch_id, "discard");
-                          return "Discarded.";
-                        });
+                        void (async () => {
+                          const accepted = await confirm({
+                            title: "Discard transaction",
+                            message: "Discard this transaction? It will never reach head office.",
+                            confirmLabel: "Discard",
+                            tone: "danger",
+                          });
+                          if (!accepted) return;
+                          void act(async () => {
+                            await resolveBatch(batch.batch_id, "discard");
+                            return "Discarded.";
+                          });
+                        })();
                       }}
                       className="flex h-8 w-8 items-center justify-center rounded-full text-charcoal/50 dark:text-zinc-400 hover:bg-charcoal/10 dark:hover:bg-white/10 hover:text-charcoal disabled:opacity-30"
                     >

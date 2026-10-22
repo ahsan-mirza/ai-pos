@@ -2,6 +2,7 @@ import { Capability, Permission, formatMoney, type Quote, type QuoteList, type Q
 import { ArrowRightLeft, Ban, Banknote, FileDown, FileText, Truck } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import { useConfirm } from "../../components/ui/ConfirmDialog";
 import { DataTable, usePagination, type DataTableColumn } from "../../components/ui/DataTable";
 import { ErrorNote } from "../../components/ui/Field";
 import { SegmentedControl } from "../../components/ui/SegmentedControl";
@@ -67,6 +68,7 @@ export function QuotationsPage() {
   const manage = can(Permission.CustomersManage);
   const ordersOn = useCapability(Capability.SalesOrders) && can(Permission.SalesOrders);
   const navigate = useNavigate();
+  const confirm = useConfirm();
 
   const toOrder = async (quote: Quote) => {
     setBusyId(quote.id);
@@ -104,7 +106,13 @@ export function QuotationsPage() {
   const quotes = data?.quotes ?? [];
 
   const cancel = async (quote: Quote) => {
-    if (!window.confirm(`Cancel ${quote.number}? Its reserved stock is released.`)) return;
+    const accepted = await confirm({
+      title: "Cancel quotation",
+      message: `Cancel ${quote.number}? Its reserved stock is released.`,
+      confirmLabel: "Cancel quotation",
+      tone: "danger",
+    });
+    if (!accepted) return;
     setBusyId(quote.id);
     try {
       await quotesApi.cancel(quote.id);

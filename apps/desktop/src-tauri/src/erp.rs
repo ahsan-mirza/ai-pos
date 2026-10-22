@@ -274,6 +274,34 @@ pub fn rejected_count(state: tauri::State<AppState>) -> Result<i64, String> {
 }
 
 #[tauri::command]
+pub fn list_table_sessions(state: tauri::State<AppState>, store_id: String) -> Result<Vec<crate::table_sessions::TableSession>, String> {
+    require_session(&state)?;
+    crate::table_sessions::list(&state.db, &store_id)
+}
+
+#[tauri::command]
+pub fn save_table_session(
+    state: tauri::State<AppState>,
+    session: crate::table_sessions::TableSession,
+) -> Result<crate::table_sessions::TableSession, String> {
+    require_session(&state)?;
+    crate::table_sessions::save(&state.db, &session)
+}
+
+#[tauri::command]
+pub fn cache_table_event(state: tauri::State<AppState>, store_id: String, payload: String) -> Result<(), String> {
+    require_session(&state)?;
+    crate::table_sessions::cache_event(&state.db, &store_id, &payload)
+}
+
+#[tauri::command]
+pub fn close_table_session(state: tauri::State<AppState>, id: String) -> Result<bool, String> {
+    require_session(&state)?;
+    crate::table_sessions::close(&state.db, &id)?;
+    Ok(true)
+}
+
+#[tauri::command]
 pub fn hold_cart(state: tauri::State<AppState>, input: held::HoldInput) -> Result<(), String> {
     let session = require_session(&state)?;
     held::hold(&state.db, &session, &input)

@@ -1,6 +1,7 @@
 import { Permission, type UnitOfMeasure } from "@ai-pos/shared-types";
 import { Package, Plus, Trash2 } from "lucide-react";
 import { useState, type FormEvent } from "react";
+import { useConfirm } from "../../components/ui/ConfirmDialog";
 import { ErrorNote, PrimaryButton, TextField } from "../../components/ui/Field";
 import { useAuth } from "../../lib/auth";
 import { errorMessage } from "../users/api";
@@ -13,6 +14,7 @@ export function UnitsPage() {
   const { units, error, reload } = useUnits();
   const [form, setForm] = useState({ code: "", name: "", short_name: "", factor: "" });
   const [busy, setBusy] = useState(false);
+  const confirm = useConfirm();
   const [failure, setFailure] = useState<string | null>(null);
 
   const create = async (event: FormEvent) => {
@@ -48,8 +50,16 @@ export function UnitsPage() {
   const toggle = (unit: UnitOfMeasure) =>
     void act(() => unitsApi.update(unit.id ?? "", { is_active: !unit.is_active }), "Could not change the unit.");
   const remove = (unit: UnitOfMeasure) => {
-    if (!window.confirm(`Delete ${unit.name}?`)) return;
-    void act(() => unitsApi.remove(unit.id ?? ""), "Could not delete the unit.");
+    void (async () => {
+      const accepted = await confirm({
+        title: "Delete unit",
+        message: `Delete ${unit.name}?`,
+        confirmLabel: "Delete",
+        tone: "danger",
+      });
+      if (!accepted) return;
+      void act(() => unitsApi.remove(unit.id ?? ""), "Could not delete the unit.");
+    })();
   };
 
   return (

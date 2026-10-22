@@ -150,3 +150,23 @@ def test_tenant_portals_pass_cors(tenants: TestClient) -> None:
 )
 def test_slug_from_domain(value: str, slug: str | None) -> None:
     assert registry.slug_from_domain(value, get_settings()) == slug
+
+
+def test_public_ip_portal_is_allowed_over_http() -> None:
+    import re
+
+    settings = get_settings().model_copy(
+        update={
+            "tenant_base_domains": "203.0.113.10",
+            "control_database_url": "postgresql+psycopg://ai_pos:secret@127.0.0.1:5432/control",
+        }
+    )
+    pattern = re.compile(settings.tenant_origin_regex or "")
+    assert pattern.fullmatch("http://203.0.113.10")
+    assert pattern.fullmatch("https://203.0.113.10")
+    assert pattern.fullmatch("http://203.0.113.10:80")
+    assert pattern.fullmatch("http://client1.203.0.113.10") is None
+    assert registry.slug_from_domain("203.0.113.10", settings) is None
+    assert registry.slug_from_domain("client1", settings) == "client1"
+    assert registry.slug_from_domain("client1.203.0.113.10", settings) == "client1"
+    assert registry.tenant_domain_for("client1", settings) == "client1"

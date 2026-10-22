@@ -248,9 +248,9 @@ export function BatchDrawer({
         role="dialog"
         aria-labelledby={titleId}
         data-state={closing ? "closing" : "open"}
-        className="drawer-panel fixed inset-y-0 right-0 z-50 flex w-full flex-col bg-white shadow-2xl outline-none sm:max-w-xl lg:static lg:z-auto lg:h-full lg:w-[min(560px,46%)] lg:max-w-none lg:shrink-0 lg:border-l lg:border-line lg:shadow-none"
+        className="drawer-panel fixed inset-y-0 right-0 z-50 flex w-full flex-col overflow-hidden bg-white shadow-2xl outline-none sm:max-w-xl lg:static lg:z-auto lg:h-full lg:w-[min(560px,46%)] lg:max-w-none lg:shrink-0 lg:border-l lg:border-line lg:shadow-none"
       >
-        <header className="shrink-0 border-b border-line px-5 pb-4 pt-4">
+        <header className="sticky top-0 z-20 flex-none border-b border-line bg-white px-5 pb-4 pt-4">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">

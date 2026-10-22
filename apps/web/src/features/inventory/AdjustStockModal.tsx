@@ -14,6 +14,7 @@ import {
 import { Minus, Plus, ScanLine, Search, X } from "lucide-react";
 import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { ErrorNote, GhostButton, PrimaryButton, SelectField } from "../../components/ui/Field";
+import { modalBody, modalFooter, modalHeader } from "../../components/ui/Modal";
 import { SegmentedControl } from "../../components/ui/SegmentedControl";
 import { inventoryApi, message } from "./api";
 
@@ -184,9 +185,9 @@ export function AdjustStockModal({
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
-        className="modal-card max-h-[92vh] w-full max-w-[600px] overflow-y-auto rounded-3xl bg-white p-6 shadow-2xl sm:p-7"
+        className="modal-card flex max-h-[90vh] w-full max-w-[600px] flex-col overflow-hidden rounded-3xl bg-white shadow-2xl"
       >
-        <div className="flex items-start justify-between gap-4">
+        <header className={modalHeader}>
           <div className="min-w-0">
             <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-charcoal/50">Manual stock adjustment</p>
             <h2 id={titleId} className="mt-1 truncate text-xl font-semibold">
@@ -209,9 +210,10 @@ export function AdjustStockModal({
           >
             <X size={18} aria-hidden="true" />
           </button>
-        </div>
+        </header>
 
-        <div className="mt-6">
+        <div className={modalBody}>
+        <div>
           <SegmentedControl
             label="Adjustment type"
             value={mode}
@@ -382,15 +384,16 @@ export function AdjustStockModal({
 
         {problem !== null && !busy ? <p className="mt-4 text-xs text-charcoal/60">{problem}</p> : null}
         <ErrorNote message={error} />
+        </div>
 
-        <div className="mt-6 flex flex-wrap justify-end gap-3">
+        <footer className={modalFooter}>
           <GhostButton onClick={onClose} disabled={busy}>
             Cancel
           </GhostButton>
           <PrimaryButton disabled={busy || problem !== null} onClick={() => void confirm()}>
             {busy ? "Recording…" : "Confirm Adjustment"}
           </PrimaryButton>
-        </div>
+        </footer>
       </div>
     </div>
   );

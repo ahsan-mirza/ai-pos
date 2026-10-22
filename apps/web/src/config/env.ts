@@ -1,10 +1,12 @@
 function required(name: keyof ImportMetaEnv): string {
   const value = import.meta.env[name];
   if (typeof value !== "string" || value.trim() === "") {
-    throw new Error(`Missing required environment variable ${name}. Check apps/web/.env.${import.meta.env.MODE}.`);
+    throw new Error(`Missing required environment variable ${name}. Check the repo-root env file (.env, .env.dev, or .env.production).`);
   }
   return value.trim();
 }
+
+const STORE_CODE_KEY = "ai-pos.store-code";
 
 const TENANT_BASE_DOMAINS = (import.meta.env.VITE_TENANT_BASE_DOMAINS ?? "qios.ae,localhost")
   .split(",")
@@ -23,19 +25,45 @@ function tenantHost(): string | null {
 }
 
 const rawDefaultTenant = import.meta.env.VITE_DEFAULT_TENANT;
-const tenantDomain =
-  tenantHost() ?? (typeof rawDefaultTenant === "string" && rawDefaultTenant.trim() !== "" ? rawDefaultTenant.trim() : null);
-const tenantSlug = tenantDomain?.split(".")[0] ?? null;
+const configuredTenant =
+  typeof rawDefaultTenant === "string" && rawDefaultTenant.trim() !== "" ? rawDefaultTenant.trim() : null;
+const tenantSlug = (tenantHost() ?? configuredTenant)?.split(".")[0] ?? null;
 
-/** VITE_API_BASE_URL may contain {tenant} (https://{tenant}.qios.ae) to follow the portal's subdomain. */
-function requiredUrl(name: keyof ImportMetaEnv): string {
-  const value = required(name)
-    .replace("{tenant}", tenantSlug ?? "www")
-    .replace(/\/$/, "");
+/** Store code typed on the sign-in screen when the portal is opened by a public IP (no subdomain). */
+function rememberedStoreCode(): string | null {
+  if (typeof localStorage === "undefined") return null;
+  const value = localStorage.getItem(STORE_CODE_KEY)?.trim().toLowerCase() ?? "";
+  return value === "" ? null : value;
+}
+
+/** Subdomain, then the dev default, then the store code saved at sign-in. */
+function tenantDomainNow(): string | null {
+  return tenantHost() ?? configuredTenant ?? rememberedStoreCode();
+}
+
+/** True on a production IP install: the sign-in screen must collect the store code. */
+function needsStoreCode(): boolean {
+  return tenantHost() === null && configuredTenant === null;
+}
+
+export function saveStoreCode(code: string): void {
+  localStorage.setItem(STORE_CODE_KEY, code.trim().toLowerCase());
+}
+
+/** "same-origin" follows the address in the browser (http://<vm-public-ip>). "{tenant}" follows a subdomain. */
+function resolveUrl(raw: string): string {
+  if (raw === "same-origin") {
+    return typeof window === "undefined" ? "http://127.0.0.1" : window.location.origin;
+  }
+  const value = raw.replace("{tenant}", tenantSlug ?? "www").replace(/\/$/, "");
   if (!/^https?:\/\//.test(value)) {
-    throw new Error(`${name} must be an absolute http(s) URL.`);
+    throw new Error("VITE_API_BASE_URL must be an absolute http(s) URL or same-origin.");
   }
   return value;
+}
+
+function requiredUrl(name: keyof ImportMetaEnv): string {
+  return resolveUrl(required(name));
 }
 
 const defaultCurrency = required("VITE_DEFAULT_CURRENCY").toUpperCase();
@@ -43,11 +71,12 @@ if (!/^[A-Z]{3}$/.test(defaultCurrency)) {
   throw new Error("VITE_DEFAULT_CURRENCY must be a 3-letter ISO code.");
 }
 
-/** Signup runs on the bare domain, so a {tenant} host collapses to it (https://{tenant}.qios.ae -> https://qios.ae). */
-const signupApiBaseUrl = required("VITE_API_BASE_URL")
-  .replace("{tenant}.", "")
-  .replace("{tenant}", "www")
-  .replace(/\/$/, "");
+/** Signup runs on the bare domain, so a {tenant} host collapses to it. */
+function resolveSignupUrl(): string {
+  const raw = required("VITE_API_BASE_URL");
+  if (raw === "same-origin") return resolveUrl(raw);
+  return raw.replace("{tenant}.", "").replace("{tenant}", "www").replace(/\/$/, "");
+}
 
 /** The domain stores live under: the bare host we are on, the parent of a store subdomain, or the first configured. */
 function tenantBaseDomain(): string {
@@ -64,13 +93,25 @@ function tenantPortalUrl(slug: string): string {
 }
 
 export const env = {
-  apiBaseUrl: requiredUrl("VITE_API_BASE_URL"),
-  signupApiBaseUrl,
+  get apiBaseUrl() {
+    return requiredUrl("VITE_API_BASE_URL");
+  },
+  get signupApiBaseUrl() {
+    return resolveSignupUrl();
+  },
   defaultCurrency,
-  /** Sent as X-Tenant-Domain on every API call; null on a single-tenant install. */
-  tenantDomain,
-  /** True when the portal was opened on a store subdomain rather than the bare domain. */
-  onTenantHost: tenantHost() !== null,
+  /** Sent as X-Tenant-Domain on every API call. */
+  get tenantDomain() {
+    return tenantDomainNow();
+  },
+  /** True when the portal was opened on a store subdomain rather than the bare host or an IP. */
+  get onTenantHost() {
+    return tenantHost() !== null;
+  },
+  /** The sign-in screen asks for a store code because this host has no subdomain. */
+  get needsStoreCode() {
+    return needsStoreCode();
+  },
   tenantBaseDomain,
   tenantPortalUrl,
 };

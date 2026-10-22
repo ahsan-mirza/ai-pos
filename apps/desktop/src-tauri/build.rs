@@ -2,9 +2,9 @@ use std::{env, fs, path::PathBuf};
 
 const ENVIRONMENTS: [&str; 3] = ["development", "dev", "production"];
 
-/// Bakes the activation endpoint of apps/desktop/.env.<POS_ENV> into the binary, so an installer never
+/// Bakes the activation endpoint from the repo-root env file into the binary, so an installer never
 /// depends on files from the build machine. POS_ENV defaults to development for debug builds and
-/// production for release builds.
+/// production for release builds. Development reads `.env`; dev and production read `.env.<name>`.
 fn main() {
     println!("cargo:rerun-if-env-changed=POS_ENV");
     let release = env::var("PROFILE").is_ok_and(|profile| profile == "release");
@@ -18,7 +18,8 @@ fn main() {
     }
 
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR is set by cargo"));
-    let env_path = manifest_dir.join("..").join(format!(".env.{pos_env}"));
+    let file_name = if pos_env == "development" { ".env".to_string() } else { format!(".env.{pos_env}") };
+    let env_path = manifest_dir.join("..").join("..").join("..").join(file_name);
     println!("cargo:rerun-if-changed={}", env_path.display());
 
     let mut url_template = String::new();

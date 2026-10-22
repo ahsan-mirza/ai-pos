@@ -19,6 +19,14 @@ export {
 } from "./DiningTableShape";
 export { PageSizeSelect } from "./PageSizeSelect";
 export {
+  TableGridNode,
+  TableSeatGraphic,
+  tableCapacityLabel,
+  tableDisplayNumber,
+  tableNodeTone,
+  type TableNodeTone,
+} from "./TableGridNode";
+export {
   DEFAULT_PAGE_SIZE,
   PAGE_SIZE_OPTIONS,
   clampPage,

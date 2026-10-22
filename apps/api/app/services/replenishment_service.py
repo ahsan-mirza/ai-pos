@@ -226,7 +226,13 @@ def create_run(
     run = ReplenishmentRun(store_id=store_id, review_days=review_days, created_by_id=user_id)
     db.add(run)
     db.flush()
-    products = db.scalars(select(Product).where(Product.is_open_price.is_(False), Product.is_service.is_(False)))
+    products = db.scalars(
+        select(Product).where(
+            Product.is_open_price.is_(False),
+            Product.is_service.is_(False),
+            Product.is_stock_tracked.is_(True),
+        )
+    )
     for product in products:
         level = levels.get(product.id)
         series = history.get(product.id, [0] * HISTORY_DAYS)

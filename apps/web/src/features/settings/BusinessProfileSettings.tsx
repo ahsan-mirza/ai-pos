@@ -160,13 +160,16 @@ function RequestChangeModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm" role="presentation">
-      <div role="dialog" aria-modal="true" aria-labelledby="change-request-title" className="w-full max-w-lg rounded-3xl bg-white p-6 shadow-2xl">
+      <div role="dialog" aria-modal="true" aria-labelledby="change-request-title" className="flex max-h-[90vh] w-full max-w-lg flex-col overflow-hidden rounded-3xl bg-white shadow-2xl">
+        <header className="sticky top-0 z-20 flex-none border-b border-line bg-white px-6 py-4">
         <h2 id="change-request-title" className="text-xl font-semibold">
           Request a change from IT Support
         </h2>
         <p className="mt-1 text-sm text-charcoal/60">
           Support checks your sales, stock and open orders, then migrates your store. You are emailed when it is done.
         </p>
+        </header>
+        <div className="min-h-0 flex-1 overflow-y-auto px-6 py-4">
         <div className="mt-4 inline-flex rounded-full bg-surface p-1" role="group" aria-label="What to change">
           {(["BUSINESS_TYPE", "MODULE"] as const).map((option) => (
             <button
@@ -215,14 +218,15 @@ function RequestChangeModal({
           className="mt-1.5 w-full rounded-2xl border border-line px-3 py-2 text-sm focus:border-accent focus:outline-none"
         />
         <ErrorNote message={error} />
-        <div className="mt-5 flex justify-end gap-2">
+        </div>
+        <footer className="sticky bottom-0 z-20 flex flex-none items-center justify-end gap-3 border-t border-line bg-white px-6 py-4">
           <GhostButton onClick={onClose} disabled={busy}>
             Cancel
           </GhostButton>
           <PrimaryButton disabled={busy || value === "" || reason.trim().length < 3} onClick={() => void send()}>
             {busy ? "Sending…" : "Send request"}
           </PrimaryButton>
-        </div>
+        </footer>
       </div>
     </div>
   );

@@ -5,6 +5,8 @@ import { Link, useLocation } from "react-router-dom";
 import { apiGet } from "../../lib/api";
 import { useCanManageSettings, useCurrency } from "../../lib/currency";
 import { useCapabilities } from "../../lib/capabilities";
+import { useTenant } from "../../context/TenantContext";
+import { industryAllows } from "../../lib/industry";
 import { crumbsFor, settingsLabel } from "./navigation";
 import { StoreSwitcher } from "./StoreSwitcher";
 
@@ -148,7 +150,11 @@ export function Header({
   const { currency } = useCurrency();
   const canManageSettings = useCanManageSettings();
   const capabilities = useCapabilities();
-  const crumbs = crumbsFor(pathname, capabilities);
+  const { businessType, ready } = useTenant();
+  const crumbs =
+    ready && !industryAllows(pathname, businessType)
+      ? [{ label: settingsLabel(capabilities) }]
+      : crumbsFor(pathname, capabilities);
   const settingsName = settingsLabel(capabilities);
   const badge =
     "hidden h-7 items-center rounded-md border border-line bg-[#f8fafc] px-2 font-mono text-[11px] font-bold tracking-wider text-charcoal/70 sm:inline-flex";

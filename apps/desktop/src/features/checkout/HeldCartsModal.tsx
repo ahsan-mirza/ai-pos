@@ -1,6 +1,7 @@
 import { formatMoney } from "@ai-pos/shared-types";
 import { PauseCircle, Trash2, X } from "lucide-react";
 import { useCallback, useEffect, useId, useState } from "react";
+import { useConfirm } from "../../components/ConfirmDialog";
 import { listHeld, takeHeld, type HeldCart } from "./held";
 
 interface HeldCartsModalProps {
@@ -19,6 +20,7 @@ export function HeldCartsModal({ currency, canHold, cartEmpty, onHold, onRecall,
   const [label, setLabel] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const confirm = useConfirm();
 
   const load = useCallback(() => {
     void listHeld()
@@ -125,11 +127,19 @@ export function HeldCartsModal({ currency, canHold, cartEmpty, onHold, onRecall,
                 aria-label={`Discard ${row.label}`}
                 disabled={busy}
                 onClick={() => {
-                  if (!window.confirm(`Discard the held sale "${row.label}"?`)) return;
-                  void act(async () => {
-                    await takeHeld(row.id);
-                    load();
-                  });
+                  void (async () => {
+                    const accepted = await confirm({
+                      title: "Discard held sale",
+                      message: `Discard the held sale "${row.label}"?`,
+                      confirmLabel: "Discard",
+                      tone: "danger",
+                    });
+                    if (!accepted) return;
+                    void act(async () => {
+                      await takeHeld(row.id);
+                      load();
+                    });
+                  })();
                 }}
                 className="flex h-9 w-9 items-center justify-center rounded-full text-charcoal/50 dark:text-zinc-400 hover:bg-charcoal/10 dark:hover:bg-white/10 hover:text-charcoal"
               >

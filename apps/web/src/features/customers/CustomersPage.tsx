@@ -2,6 +2,7 @@ import { Capability, PAYMENT_TERMS_LABELS, PRICE_TIER_LABELS, formatMoney, type 
 import { FileSpreadsheet, Plus, Send, SquarePen, Users } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
+import { useConfirm } from "../../components/ui/ConfirmDialog";
 import { DataTable, type DataTableColumn } from "../../components/ui/DataTable";
 import { ErrorNote, PrimaryButton, filterLabel } from "../../components/ui/Field";
 import { SegmentedControl } from "../../components/ui/SegmentedControl";
@@ -33,6 +34,7 @@ export function CustomersPage() {
   const [prefill, setPrefill] = useState("");
   const [toast, setToast] = useState<string | null>(null);
   const dismissToast = useCallback(() => setToast(null), []);
+  const confirm = useConfirm();
 
   useEffect(() => {
     const timer = window.setTimeout(() => setDebounced(query), 150);
@@ -239,13 +241,20 @@ export function CustomersPage() {
           <button
             type="button"
             onClick={() => {
-              if (!window.confirm("Send a statement to every wholesale account with a balance?")) return;
-              void customersApi
-                .sendStatements()
-                .then((result) =>
-                  setToast(`${result.queued} statements queued; ${result.skipped} accounts have no messaging consent.`),
-                )
-                .catch((caught: unknown) => setError(message(caught, "Could not send statements.")));
+              void (async () => {
+                const accepted = await confirm({
+                  title: "Send statements",
+                  message: "Send a statement to every wholesale account with a balance?",
+                  confirmLabel: "Send",
+                });
+                if (!accepted) return;
+                try {
+                  const result = await customersApi.sendStatements();
+                  setToast(`${result.queued} statements queued; ${result.skipped} accounts have no messaging consent.`);
+                } catch (caught) {
+                  setError(message(caught, "Could not send statements."));
+                }
+              })();
             }}
             className="inline-flex h-10 items-center gap-2 rounded-full border border-line bg-white px-5 text-sm font-semibold text-charcoal/80 hover:border-accent hover:text-accent"
           >

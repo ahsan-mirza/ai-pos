@@ -12,7 +12,7 @@ from sqlalchemy import select
 from sqlalchemy.engine import Engine, make_url
 from sqlalchemy.orm import Session, sessionmaker
 
-from app.core.config import Settings, get_settings
+from app.core.config import Settings, get_settings, is_ip_host
 from app.core.database import build_engine
 from app.core.security import decrypt_value, encrypt_value
 from app.tenancy.context import CONTROL_SESSION, TenantRef
@@ -166,10 +166,21 @@ def current_identity(settings: Settings | None = None) -> Identity:
     if ref is None:
         host = urlparse(settings.public_base_url).hostname or "localhost"
         return Identity(slug="default", name="AI POS", domain=host, url=settings.public_base_url.rstrip("/"))
-    base = settings.tenant_domain_list[0] if settings.tenant_domain_list else "qios.ae"
     return Identity(
-        slug=ref.slug, name=ref.name, domain=f"{ref.slug}.{base}", url=tenant_public_url(ref.slug, settings)
+        slug=ref.slug,
+        name=ref.name,
+        domain=tenant_domain_for(ref.slug, settings),
+        url=tenant_public_url(ref.slug, settings),
     )
+
+
+def tenant_domain_for(slug: str, settings: Settings | None = None) -> str:
+    """client1.example.com, or just the store code when the server is reached by a public IP."""
+    settings = settings or get_settings()
+    base = settings.tenant_domain_list[0] if settings.tenant_domain_list else "qios.ae"
+    if is_ip_host(base):
+        return slug
+    return f"{slug}.{base}"
 
 
 def tenant_public_url(slug: str, settings: Settings | None = None) -> str:

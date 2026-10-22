@@ -1,20 +1,26 @@
 import {
   Capability,
   GENDER_LABELS,
+  ItemType,
   VARIANT_ATTRIBUTE_KEYS,
   variantAttributeLabel,
   type Gender,
+  type ItemType as ItemTypeId,
   type Product,
+  type ProductImage,
   type TaxCategory,
 } from "@ai-pos/shared-types";
 import { useEffect, useState } from "react";
 import { ErrorNote, GhostButton, PrimaryButton, SelectField, TextField } from "../../components/ui/Field";
 import { Modal } from "../../components/ui/Modal";
 import { Toggle } from "../../components/ui/Toggle";
+import { apiDelete, apiGet, apiPatch, apiUpload } from "../../lib/api";
 import { useAuth } from "../../lib/auth";
 import { useCapabilities } from "../../lib/capabilities";
 import { useAutoCode } from "../../lib/codes";
+import { useTenant } from "../../context/TenantContext";
 import { inventoryApi, message } from "./api";
+import { ProductImageDropzone, type ProductPhotoChoice } from "./ProductImageDropzone";
 import { storeOptions, useBrands, useCategories, useModels, useStores } from "./shared";
 import { useUnits } from "./units";
 
@@ -47,6 +53,7 @@ export function ProductFormModal({
   onSaved: () => void;
 }) {
   const { user } = useAuth();
+  const { isFnB } = useTenant();
   const { categories } = useCategories();
   const { stores } = useStores();
   const editing = product !== null;
@@ -71,6 +78,9 @@ export function ProductFormModal({
   const [tare, setTare] = useState(String(product?.tare_grams ?? 0));
   const recipesOn = has(Capability.Recipes);
   const [ingredient, setIngredient] = useState(product?.is_ingredient ?? false);
+  const [itemType, setItemType] = useState<ItemTypeId>(
+    product?.item_type ?? (isFnB ? ItemType.MadeToOrder : ItemType.PrePackaged),
+  );
   // Standalone items carry their own season and collection; a model's variants take the model's.
   const fashionOn = has(Capability.VariantsMatrix);
   const [season, setSeason] = useState(product?.season ?? "");
@@ -83,6 +93,8 @@ export function ProductFormModal({
   const [reorder, setReorder] = useState("0");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [persistedId, setPersistedId] = useState<string | null>(product?.id ?? null);
+  const [photo, setPhoto] = useState<ProductPhotoChoice>({ file: null, removed: false });
   const { brands } = useBrands();
   const { models } = useModels(subCategoryId || null, brandId || null);
   const category = categories.find((item) => item.id === categoryId);
@@ -134,7 +146,12 @@ export function ProductFormModal({
     const weighed = weighing
       ? { sold_by_weight: byWeight, plu_code: byWeight && plu.trim() ? plu.trim() : null, tare_grams: byWeight ? Number(tare) || 0 : 0 }
       : {};
-    const recipes = recipesOn ? { is_ingredient: ingredient && !openPrice } : {};
+    const recipes =
+      isFnB
+        ? { item_type: itemType, is_ingredient: itemType === ItemType.RawIngredient }
+        : recipesOn
+          ? { is_ingredient: ingredient && !openPrice }
+          : {};
     const fashion =
       fashionOn && modelId === ""
         ? { season: season.trim() || null, collection: collection.trim() || null, gender: (gender || null) as Gender | null }
@@ -144,15 +161,16 @@ export function ProductFormModal({
     setBusy(true);
     setError(null);
     try {
-      if (editing) {
-        await inventoryApi.updateProduct(product.id, {
+      let id = persistedId;
+      if (id !== null) {
+        await inventoryApi.updateProduct(id, {
           name: name.trim(),
           model_number: modelNumber.trim() || null,
           ...classification,
           ...(subCategoryId === "" ? { clear_sub_category: true } : { sub_category_id: subCategoryId }),
           price_cents: cents,
           tax_category: taxCategory,
-          is_open_price: openPrice && !product.is_serialized,
+          is_open_price: openPrice && !(product?.is_serialized ?? false),
           ...weighed,
           ...recipes,
           ...fashion,
@@ -160,13 +178,20 @@ export function ProductFormModal({
         });
       } else {
         // Weighed stock is entered in kg and stored in grams.
-        const openingQuantity = serialized ? 0 : byWeight ? Math.round((Number(opening) || 0) * 1000) : Number(opening) || 0;
+        const openingQuantity =
+          itemType === ItemType.MadeToOrder
+            ? 0
+            : serialized
+              ? 0
+              : byWeight
+                ? Math.round((Number(opening) || 0) * 1000)
+                : Number(opening) || 0;
         const finalSku = sku.replace(/-$/, "");
         if (finalSku === "" || barcode.trim() === "") {
           setBusy(false);
           return setError("SKU and barcode are required.");
         }
-        await inventoryApi.createProduct({
+        const created = await inventoryApi.createProduct({
           sku: finalSku,
           barcode: barcode.trim(),
           name: name.trim(),
@@ -185,6 +210,18 @@ export function ProductFormModal({
           opening_quantity: openingQuantity,
           min_reorder_level: Number(reorder) || 0,
         });
+        id = created.id;
+        setPersistedId(created.id);
+      }
+      if (id !== null && photo.file) {
+        const form = new FormData();
+        form.append("file", photo.file);
+        const image = await apiUpload<ProductImage>(`/api/v1/inventory/products/${id}/images`, form);
+        if (!image.is_primary) await apiPatch(`/api/v1/inventory/images/${image.id}`, { is_primary: true });
+      } else if (id !== null && photo.removed && product !== null) {
+        const images = await apiGet<ProductImage[]>(`/api/v1/inventory/products/${id}/images`);
+        const cover = images.find((image) => image.is_primary) ?? images[0];
+        if (cover) await apiDelete(`/api/v1/inventory/images/${cover.id}`);
       }
       onSaved();
     } catch (caught) {
@@ -211,6 +248,7 @@ export function ProductFormModal({
         </>
       }
     >
+      <ProductImageDropzone currentUrl={product?.thumb_url ?? product?.image_url ?? null} onChange={setPhoto} />
       <h3 className="mb-3 text-sm font-semibold">Catalog placement</h3>
       <div className="grid gap-4 md:grid-cols-2">
         <SelectField
@@ -394,7 +432,24 @@ export function ProductFormModal({
           ) : null}
         </div>
       ) : null}
-      {recipesOn && !(editing ? product.is_serialized : serialized) && !openPrice ? (
+      {isFnB && !(editing ? product.is_serialized : serialized) ? (
+        <div className="mt-4">
+          <SelectField
+            label="Item type"
+            value={itemType}
+            options={[
+              { value: ItemType.MadeToOrder, label: "Prepared dish", hint: "Made to order. Stock lives on the recipe." },
+              { value: ItemType.RawIngredient, label: "Raw ingredient", hint: "Tracked. Used by recipes, not sold on its own." },
+              { value: ItemType.PrePackaged, label: "Pre-packaged", hint: "Tracked and sold as a unit, like bottled water." },
+            ]}
+            onChange={(next) => {
+              setItemType(next as ItemTypeId);
+              if (next !== ItemType.PrePackaged) setSerialized(false);
+            }}
+          />
+        </div>
+      ) : null}
+      {recipesOn && !isFnB && !(editing ? product.is_serialized : serialized) && !openPrice ? (
         <div className="mt-4">
           <Toggle
             label="Ingredient"
@@ -430,7 +485,7 @@ export function ProductFormModal({
           </div>
         </fieldset>
       ) : null}
-      {!editing ? (
+      {!editing && itemType !== ItemType.MadeToOrder ? (
         <div className="mt-4 space-y-4">
           <Toggle
             label="Track IMEI / serial numbers"

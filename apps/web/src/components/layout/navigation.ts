@@ -2,10 +2,12 @@ import { Capability, Permission, profileSpec, type BusinessProfile } from "@ai-p
 import {
   ArrowLeftRight,
   BadgeCheck,
+  Ban,
   Banknote,
   BookOpenCheck,
   ChartColumn,
   Boxes,
+  ChefHat,
   Clock,
   Coins,
   CreditCard,
@@ -17,6 +19,7 @@ import {
   Handshake,
   Landmark,
   LayoutDashboard,
+  LayoutGrid,
   MessageCircle,
   MonitorSmartphone,
   Percent,
@@ -24,6 +27,7 @@ import {
   ReceiptText,
   Repeat2,
   RotateCcw,
+  ScanBarcode,
   ScrollText,
   Settings,
   ShieldCheck,
@@ -37,10 +41,12 @@ import {
   Truck,
   UserCog,
   Users,
+  UtensilsCrossed,
   Wallet,
   Wrench,
   type LucideIcon,
 } from "lucide-react";
+import { ELECTRONICS_PROFILES, FASHION_PROFILES, FNB_PROFILES, RETAIL_PROFILES } from "../../lib/industry";
 
 /** What the navigation adapts to: the business type (for names) and its switched-on modules (for visibility). */
 export interface NavContext {
@@ -56,6 +62,8 @@ export interface NavItem {
   permission: Permission;
   /** Hidden while this module is switched off for the business. */
   capability?: Capability;
+  /** Hidden unless the tenant's business type is in this list. Stricter than the module switch. */
+  profiles?: readonly BusinessProfile[];
   /** Business-wide settings need a manager who is not pinned to one store. */
   settingsOnly?: boolean;
   /** Platform files (the POS installer) are for the Super Admin role only. */
@@ -89,6 +97,10 @@ const inventoryOwn = (pathname: string) =>
     "/inventory/modifiers",
     "/inventory/markdowns",
     "/inventory/size-curve",
+    "/inventory/floor-plan",
+    "/inventory/kitchen",
+    "/inventory/recipes",
+    "/inventory/recipe-usage",
   )(pathname);
 
 /** Grouped by domain; a group whose items are all switched off for this business type disappears. */
@@ -100,7 +112,13 @@ export const navGroups: NavGroup[] = [
       { to: "/assistant", label: "AI assistant", icon: Sparkles, permission: Permission.PortalReportsRead, isActive: under("/assistant") },
       { to: "/insights", label: "AI insights", icon: Radar, permission: Permission.PortalReportsRead, isActive: under("/insights") },
       { to: "/m", label: "Manager app", icon: Smartphone, permission: Permission.PortalReportsRead, isActive: under("/m") },
-      { to: "/inventory", label: "Inventory & Batches", icon: Boxes, permission: Permission.PortalAccess, isActive: inventoryOwn },
+      {
+        to: "/inventory",
+        label: (ctx) => (profileSpec(ctx.profile).group === "food_beverage" ? "Inventory" : "Inventory & Batches"),
+        icon: Boxes,
+        permission: Permission.PortalAccess,
+        isActive: inventoryOwn,
+      },
       {
         to: "/inventory/purchase-orders",
         label: "Purchase Orders",
@@ -110,10 +128,20 @@ export const navGroups: NavGroup[] = [
       },
       {
         to: "/inventory/transfers",
-        label: (ctx) => (ctx.has(Capability.SerialTracking) ? "Transfers & IMEI" : "Transfers"),
+        label: (ctx) =>
+          ctx.profile === "electronics_wholesale" && ctx.has(Capability.SerialTracking) ? "Transfers & IMEI" : "Transfers",
         icon: ArrowLeftRight,
         permission: Permission.PortalAccess,
-        isActive: under("/inventory/transfers", "/inventory/serials"),
+        isActive: under("/inventory/transfers"),
+      },
+      {
+        to: "/inventory/serials",
+        label: "IMEI / Serial tracking",
+        icon: ScanBarcode,
+        permission: Permission.PortalAccess,
+        capability: Capability.SerialTracking,
+        profiles: ELECTRONICS_PROFILES,
+        isActive: under("/inventory/serials"),
       },
       {
         to: "/inventory/markdowns",
@@ -121,19 +149,21 @@ export const navGroups: NavGroup[] = [
         icon: Percent,
         permission: Permission.PortalAccess,
         capability: Capability.VariantsMatrix,
+        profiles: FASHION_PROFILES,
         isActive: under("/inventory/markdowns"),
       },
       {
         to: "/inventory/size-curve",
-        label: "Size curve",
+        label: "Size & color matrix",
         icon: ChartColumn,
         permission: Permission.PortalReportsRead,
         capability: Capability.VariantsMatrix,
+        profiles: FASHION_PROFILES,
         isActive: under("/inventory/size-curve"),
       },
       {
         to: "/customers",
-        label: "Suppliers & CRM",
+        label: (ctx) => (ctx.profile === "electronics_wholesale" ? "Customers & B2B credit" : "Suppliers & CRM"),
         icon: Users,
         permission: Permission.CustomersManage,
         isActive: under("/customers"),
@@ -143,7 +173,14 @@ export const navGroups: NavGroup[] = [
   {
     label: "Sales",
     items: [
-      { to: "/returns", label: "Returns", icon: RotateCcw, permission: Permission.PortalReportsRead, isActive: under("/returns") },
+      {
+        to: "/returns",
+        label: "Returns",
+        icon: RotateCcw,
+        permission: Permission.PortalReportsRead,
+        profiles: RETAIL_PROFILES,
+        isActive: under("/returns"),
+      },
       { to: "/payments", label: "Card & pay later", icon: CreditCard, permission: Permission.PortalReportsRead, isActive: under("/payments") },
       {
         to: "/promotions",
@@ -166,6 +203,7 @@ export const navGroups: NavGroup[] = [
         icon: Gift,
         permission: Permission.GiftCardsManage,
         capability: Capability.GiftCards,
+        profiles: FASHION_PROFILES,
         isActive: under("/gift-cards"),
       },
       { to: "/margin", label: "Margin guard", icon: ShieldCheck, permission: Permission.PortalReportsRead, isActive: under("/margin") },
@@ -177,7 +215,7 @@ export const navGroups: NavGroup[] = [
     items: [
       {
         to: "/sales/quotations",
-        label: "Quotations",
+        label: "Quotations & layaway",
         icon: ReceiptText,
         permission: Permission.PortalReportsRead,
         capability: Capability.QuotesLayaway,
@@ -191,13 +229,22 @@ export const navGroups: NavGroup[] = [
         capability: Capability.SalesOrders,
         isActive: under("/sales-orders"),
       },
-      { to: "/cheques", label: "Cheques & PDCs", icon: Banknote, permission: Permission.ChequesManage, capability: Capability.Cheques, isActive: under("/cheques") },
+      {
+        to: "/cheques",
+        label: "Cheques & PDCs",
+        icon: Banknote,
+        permission: Permission.ChequesManage,
+        capability: Capability.Cheques,
+        profiles: ELECTRONICS_PROFILES,
+        isActive: under("/cheques"),
+      },
       {
         to: "/consignment",
         label: "Consignment",
         icon: Handshake,
         permission: Permission.PayablesManage,
         capability: Capability.Consignment,
+        profiles: RETAIL_PROFILES,
         isActive: under("/consignment"),
       },
     ],
@@ -205,14 +252,31 @@ export const navGroups: NavGroup[] = [
   {
     label: "Service",
     items: [
-      { to: "/repairs", label: "Repairs", icon: Wrench, permission: Permission.PortalAccess, capability: Capability.Repairs, isActive: under("/repairs") },
-      { to: "/warranties", label: "Warranties", icon: BadgeCheck, permission: Permission.PortalAccess, capability: Capability.Warranty, isActive: under("/warranties") },
+      {
+        to: "/repairs",
+        label: "Repairs & warranties",
+        icon: Wrench,
+        permission: Permission.PortalAccess,
+        capability: Capability.Repairs,
+        profiles: ELECTRONICS_PROFILES,
+        isActive: under("/repairs"),
+      },
+      {
+        to: "/warranties",
+        label: "Warranties",
+        icon: BadgeCheck,
+        permission: Permission.PortalAccess,
+        capability: Capability.Warranty,
+        profiles: ELECTRONICS_PROFILES,
+        isActive: under("/warranties"),
+      },
       {
         to: "/trade-ins",
         label: "Trade-ins",
         icon: Repeat2,
         permission: Permission.PortalReportsRead,
         capability: Capability.TradeIn,
+        profiles: ELECTRONICS_PROFILES,
         isActive: under("/trade-ins"),
       },
     ],
@@ -221,12 +285,49 @@ export const navGroups: NavGroup[] = [
     label: "Food & Beverage",
     items: [
       {
+        to: "/inventory/floor-plan",
+        label: "Floor plan & tables",
+        icon: LayoutGrid,
+        permission: Permission.PortalAccess,
+        capability: Capability.Tables,
+        profiles: FNB_PROFILES,
+        isActive: under("/inventory/floor-plan"),
+      },
+      {
+        to: "/inventory/kitchen",
+        label: "Kitchen display",
+        icon: ChefHat,
+        permission: Permission.PortalAccess,
+        capability: Capability.Kds,
+        profiles: FNB_PROFILES,
+        isActive: under("/inventory/kitchen"),
+      },
+      {
+        to: "/inventory/recipes",
+        label: "Recipes & ingredients",
+        icon: UtensilsCrossed,
+        permission: Permission.PortalAccess,
+        capability: Capability.Recipes,
+        profiles: FNB_PROFILES,
+        isActive: under("/inventory/recipes", "/inventory/recipe-usage"),
+      },
+      {
         to: "/inventory/modifiers",
         label: "Menu modifiers",
         icon: SlidersHorizontal,
         permission: Permission.PortalAccess,
         capability: Capability.MenuModifiers,
+        profiles: FNB_PROFILES,
         isActive: under("/inventory/modifiers"),
+      },
+      {
+        to: "/settings#void-policy",
+        label: "Void & comp",
+        icon: Ban,
+        permission: Permission.SettingsManage,
+        settingsOnly: true,
+        profiles: FNB_PROFILES,
+        isActive: () => false,
       },
     ],
   },
@@ -252,6 +353,7 @@ export const navGroups: NavGroup[] = [
         icon: HandCoins,
         permission: Permission.PortalReportsRead,
         capability: Capability.TipsServiceCharge,
+        profiles: FNB_PROFILES,
         isActive: under("/reports/tips"),
       },
     ],
@@ -299,6 +401,7 @@ export const navGroups: NavGroup[] = [
         icon: Truck,
         permission: Permission.SettingsManage,
         capability: Capability.DeliveryChannels,
+        profiles: FNB_PROFILES,
         isActive: under("/settings/channels"),
       },
       {
@@ -333,7 +436,11 @@ const inventoryPages: Record<string, string> = {
   brands: "Brands",
   batches: "Purchase Batches",
   markdowns: "Markdowns",
-  "size-curve": "Size curve",
+  "size-curve": "Size & color matrix",
+  "floor-plan": "Floor plan & tables",
+  kitchen: "Kitchen display",
+  recipes: "Recipes & ingredients",
+  "recipe-usage": "Ingredient usage",
   expiring: "Expiring stock",
   modifiers: "Modifiers",
   meals: "Meals & combos",

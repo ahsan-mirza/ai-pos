@@ -1,7 +1,7 @@
 import { daysUntil, formatMoney, formatWeight, type ProductUpsert } from "@ai-pos/shared-types";
-import { Building2, Scale, ScanLine } from "lucide-react";
+import { Building2, Package, Scale, ScanLine, UtensilsCrossed } from "lucide-react";
 import { stockPill } from "../../components/shell/tokens";
-import { ProductPhoto } from "./ProductPhoto";
+import { ProductPhotoFrame } from "./ProductPhoto";
 import type { Hit } from "./useProductSearch";
 
 export interface TierPreview {
@@ -15,6 +15,9 @@ interface ProductCardProps {
   preview: TierPreview | null;
   currency: string;
   disabled: boolean;
+  /** Food registers sell made-to-order dishes: no shelf count and no branch lookup. */
+  menuItem?: boolean;
+  hasModifiers?: boolean;
   onSelect: (product: ProductUpsert) => void;
   onCheckBranches: (product: ProductUpsert) => void;
 }
@@ -51,7 +54,7 @@ function ExpiryChip({ date }: { date: string }) {
   );
 }
 
-export function ProductCard({ hit, preview, currency, disabled, onSelect, onCheckBranches }: ProductCardProps) {
+export function ProductCard({ hit, preview, currency, disabled, menuItem = false, hasModifiers = false, onSelect, onCheckBranches }: ProductCardProps) {
   const { product, match, serial_status: serialStatus } = hit;
   const highlighted = match === "identifier" || match === "exact";
   const out = product.stock_quantity <= 0 && !product.has_recipe;
@@ -68,9 +71,10 @@ export function ProductCard({ hit, preview, currency, disabled, onSelect, onChec
         onClick={() => onSelect(product)}
         className="flex flex-1 flex-col p-4 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/70 active:scale-[0.99] disabled:opacity-50"
       >
-        <ProductPhoto
-          src={product.thumb_url}
-          className={`-mx-4 -mt-4 mb-3 aspect-[4/3] w-[calc(100%+2rem)] max-w-none bg-zinc-100 object-cover dark:bg-white/5 ${out ? "opacity-60" : ""}`}
+        <ProductPhotoFrame
+          src={product.thumb_url ?? product.image_url}
+          dimmed={out}
+          icon={menuItem ? <UtensilsCrossed size={28} aria-hidden="true" /> : <Package size={28} aria-hidden="true" />}
         />
         <span className="flex min-h-6 items-center justify-between gap-2">
           <span className="truncate text-[11px] font-semibold uppercase tracking-[0.12em] text-zinc-500 dark:text-white/40">
@@ -125,7 +129,15 @@ export function ProductCard({ hit, preview, currency, disabled, onSelect, onChec
               </span>
             )}
           </span>
-          <StockBadge product={product} />
+          {menuItem ? (
+            hasModifiers ? (
+              <span className={`shrink-0 whitespace-nowrap rounded-full px-2.5 py-1 text-[11px] font-semibold ${stockPill.in}`}>
+                Modifiers available
+              </span>
+            ) : null
+          ) : (
+            <StockBadge product={product} />
+          )}
         </span>
         {preview ? (
           <span className="mt-1 truncate text-[11px] text-zinc-500 dark:text-white/50">
@@ -135,6 +147,7 @@ export function ProductCard({ hit, preview, currency, disabled, onSelect, onChec
         ) : null}
       </button>
 
+      {menuItem ? null : (
       <button
         type="button"
         onClick={() => onCheckBranches(product)}
@@ -145,6 +158,7 @@ export function ProductCard({ hit, preview, currency, disabled, onSelect, onChec
         <Building2 size={14} aria-hidden="true" />
         {out ? "Find in other branches" : "Branch stock"}
       </button>
+      )}
     </li>
   );
 }

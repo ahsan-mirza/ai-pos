@@ -9,6 +9,7 @@ import {
 } from "@ai-pos/shared-types";
 import { BookOpen, Plus, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useConfirm } from "../../components/ui/ConfirmDialog";
 import { ErrorNote, GhostButton, PrimaryButton, SelectField, TextField } from "../../components/ui/Field";
 import { Modal } from "../../components/ui/Modal";
 import { apiDelete, apiGet, apiPost, apiPut } from "../../lib/api";
@@ -48,6 +49,7 @@ function RecipeEditor({
   onSaved: () => void;
 }) {
   const { currency } = useCurrency();
+  const confirm = useConfirm();
   const [yieldQuantity, setYieldQuantity] = useState(String(existing?.yield_quantity ?? (dish.sold_by_weight ? 1000 : 1)));
   const [notes, setNotes] = useState(existing?.notes ?? "");
   const [lines, setLines] = useState<LineDraft[]>(
@@ -97,7 +99,13 @@ function RecipeEditor({
   }
 
   async function remove() {
-    if (!window.confirm(`Remove the recipe for ${dish.name}? Sales will draw the dish's own stock again.`)) return;
+    const accepted = await confirm({
+      title: "Remove recipe",
+      message: `Remove the recipe for ${dish.name}? Sales will draw the dish's own stock again.`,
+      confirmLabel: "Remove",
+      tone: "danger",
+    });
+    if (!accepted) return;
     setBusy(true);
     try {
       await apiDelete(`/api/v1/recipes/${dish.id}`);
@@ -323,8 +331,10 @@ export function RecipesPage() {
   }, [load]);
 
   const withRecipe = new Set(recipes.map((recipe) => recipe.product_id));
-  const stocked = products.filter((product) => product.is_ingredient);
-  const dishes = products.filter((product) => !product.is_ingredient && !product.is_serialized && !product.is_service && !withRecipe.has(product.id));
+  const stocked = products.filter((product) => product.is_ingredient || product.item_type === "RAW_INGREDIENT" || (product.is_stock_tracked && product.item_type === "PRE_PACKAGED"));
+  const dishes = products.filter(
+    (product) => product.item_type === "MADE_TO_ORDER" && !product.is_service && !withRecipe.has(product.id),
+  );
   const byId = new Map(products.map((product) => [product.id, product]));
 
   return (
@@ -338,7 +348,7 @@ export function RecipesPage() {
             <div>
               <h2 className="text-xl font-semibold">Recipes</h2>
               <p className="text-sm text-charcoal/60">
-                A dish with a recipe draws its ingredients from stock when sold. Mark ingredients on the product form.
+                A prepared dish draws its ingredients from stock when sold. Raw ingredients and packaged goods stay on the stock overview.
               </p>
             </div>
           </div>
@@ -363,7 +373,7 @@ export function RecipesPage() {
         <ErrorNote message={error} />
         {stocked.length === 0 ? (
           <p className="mb-4 rounded-2xl bg-amber-50 px-4 py-3 text-sm text-amber-900">
-            No ingredients yet. Create the stock items a dish uses (coffee beans, milk, buns) and tick Ingredient on each.
+            No ingredients yet. Create raw ingredients or packaged goods (beef patties, buns, bottled drinks) and they show up here.
           </p>
         ) : null}
         <table className="w-full text-sm">

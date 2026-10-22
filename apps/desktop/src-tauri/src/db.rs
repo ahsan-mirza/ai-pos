@@ -204,6 +204,7 @@ impl Db {
         crate::printer::migrate(&conn)?;
         crate::shifts::migrate(&conn)?;
         crate::held::migrate(&conn)?;
+        crate::table_sessions::migrate(&conn)?;
         crate::margin::migrate(&conn)?;
         crate::timeclock::migrate(&conn)?;
         crate::menu::migrate(&conn)?;

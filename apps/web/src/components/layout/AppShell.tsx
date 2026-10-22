@@ -1,7 +1,10 @@
+import { profileSpec } from "@ai-pos/shared-types";
 import { useCallback, useEffect, useState } from "react";
-import { Outlet, useLocation } from "react-router-dom";
+import { Link, Outlet, useLocation } from "react-router-dom";
+import { useTenant } from "../../context/TenantContext";
 import { FirstWinChecklist } from "../../features/onboarding/FirstWinChecklist";
 import { PracticeBanner, PracticeProvider } from "../../features/onboarding/practice";
+import { industryAllows } from "../../lib/industry";
 import { StoreScopeProvider } from "../../lib/storeScope";
 import { Header } from "./Header";
 import { Sidebar } from "./Sidebar";
@@ -50,7 +53,7 @@ export function AppShell() {
             <PracticeBanner />
             <Header collapsed={collapsed} onToggleCollapsed={toggleCollapsed} onOpenMobile={() => setMobileOpen(true)} />
             <main className="relative min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
-              <Outlet />
+              <IndustryGate />
             </main>
           </div>
         </div>
@@ -58,6 +61,25 @@ export function AppShell() {
       </PracticeProvider>
     </StoreScopeProvider>
   );
+}
+
+/** Blocks a deep link when this business type does not use the page. */
+function IndustryGate() {
+  const { pathname } = useLocation();
+  const { businessType, ready } = useTenant();
+  if (ready && !industryAllows(pathname, businessType)) {
+    const name = profileSpec(businessType).label;
+    return (
+      <section className="m-6 max-w-lg rounded-card border border-line bg-white p-8">
+        <h1 className="text-xl font-semibold">Not part of this portal</h1>
+        <p className="mt-2 text-sm text-charcoal/70">{name} does not use this page.</p>
+        <Link to="/" className="mt-4 inline-block text-sm font-semibold text-accent">
+          Back to the dashboard
+        </Link>
+      </section>
+    );
+  }
+  return <Outlet />;
 }
 
 /** Padding for card-based pages; full-bleed workspaces such as Purchase Batches render outside it. */

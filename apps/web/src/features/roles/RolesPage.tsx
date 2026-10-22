@@ -1,6 +1,7 @@
 import { Permission, SystemRoleId, type PermissionGroup, type Role } from "@ai-pos/shared-types";
 import { Lock, Plus, ShieldCheck } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useConfirm } from "../../components/ui/ConfirmDialog";
 import { ErrorNote, GhostButton, PrimaryButton, TextField } from "../../components/ui/Field";
 import { useAuth } from "../../lib/auth";
 import { errorMessage, rolesApi } from "../users/api";
@@ -52,6 +53,7 @@ export function RolesPage() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const confirm = useConfirm();
   const manage = can(Permission.RolesManage);
 
   const load = useCallback(async (selectId?: string) => {
@@ -136,7 +138,14 @@ export function RolesPage() {
   };
 
   const remove = async () => {
-    if (draft.id === null || !window.confirm(`Delete the ${draft.name} role?`)) return;
+    if (draft.id === null) return;
+    const accepted = await confirm({
+      title: "Delete role",
+      message: `Delete the ${draft.name} role?`,
+      confirmLabel: "Delete",
+      tone: "danger",
+    });
+    if (!accepted) return;
     try {
       await rolesApi.remove(draft.id);
       setNotice(`${draft.name} deleted.`);

@@ -1,4 +1,5 @@
-import { inTauri } from "../../lib/tauri";
+import { env } from "../../config/env";
+import { inTauri, readPreviewTerminal, terminalApiKey, terminalStatus } from "../../lib/tauri";
 
 /** What the customer-facing screen shows. Sent from checkout on every cart change. */
 export interface DisplayState {
@@ -25,9 +26,108 @@ function broadcast(): BroadcastChannel | null {
   return channel;
 }
 
-/** Tauri windows talk through app events; browser tabs fall back to a BroadcastChannel. */
+interface TerminalLink {
+  token: string;
+  terminalId: string;
+  tenant: string | null;
+}
+
+/** The activated register. Cart sync is skipped until a register has its own terminal id. */
+async function terminalLink(): Promise<TerminalLink | null> {
+  try {
+    if (inTauri()) {
+      const status = await terminalStatus();
+      if (!status.activated || !status.register_id) return null;
+      const token = await terminalApiKey();
+      if (!token) return null;
+      return { token, terminalId: status.register_id, tenant: status.tenant_domain || env.tenantDomain };
+    }
+    const preview = readPreviewTerminal();
+    if (!preview?.status.register_id || !preview.device_token) return null;
+    return {
+      token: preview.device_token,
+      terminalId: preview.status.register_id,
+      tenant: preview.status.tenant_domain || env.tenantDomain,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function liveUrl(role: "pos" | "customer-display", link: TerminalLink): string {
+  const base = env.apiBaseUrl.replace(/^http/, "ws");
+  const tenant = link.tenant ? `&tenant=${encodeURIComponent(link.tenant)}` : "";
+  return `${base}/api/v1/ws/live?token=${encodeURIComponent(link.token)}&role=${role}&terminal_id=${encodeURIComponent(link.terminalId)}${tenant}`;
+}
+
+let posSocket: WebSocket | null = null;
+let posStarting: Promise<void> | null = null;
+
+/** Register socket. It joins `terminal:{id}` and relays the cart only to `customer-display:{id}`. */
+function ensurePosSocket(): Promise<void> {
+  if (posSocket && posSocket.readyState !== WebSocket.CLOSED) return Promise.resolve();
+  if (posStarting) return posStarting;
+  posStarting = (async () => {
+    const link = await terminalLink();
+    if (!link) return;
+    if (posSocket && posSocket.readyState !== WebSocket.CLOSED) return;
+    const socket = new WebSocket(liveUrl("pos", link));
+    posSocket = socket;
+    socket.onopen = () => {
+      if (last) socket.send(JSON.stringify({ type: "customer-display:cart", state: last }));
+    };
+    socket.onclose = () => {
+      if (posSocket === socket) posSocket = null;
+    };
+  })().finally(() => {
+    posStarting = null;
+  });
+  return posStarting;
+}
+
+function publishRoom(state: DisplayState): void {
+  if (posSocket?.readyState === WebSocket.OPEN) {
+    posSocket.send(JSON.stringify({ type: "customer-display:cart", state }));
+    return;
+  }
+  void ensurePosSocket();
+}
+
+/** Customer-display socket for this register. Cart frames from any other terminal are never delivered. */
+function subscribeRoom(onState: (state: DisplayState) => void): () => void {
+  let socket: WebSocket | null = null;
+  let stopped = false;
+  let timer = 0;
+
+  const open = async () => {
+    if (stopped) return;
+    const link = await terminalLink();
+    if (!link || stopped) return;
+    socket = new WebSocket(liveUrl("customer-display", link));
+    socket.onmessage = (message) => {
+      try {
+        const event = JSON.parse(String(message.data)) as { type?: string; state?: DisplayState };
+        if (event.type === "customer-display:cart" && event.state) onState(event.state);
+      } catch {
+        // A bad frame does not close the socket.
+      }
+    };
+    socket.onclose = () => {
+      if (!stopped) timer = window.setTimeout(() => void open(), 2000);
+    };
+  };
+  void open();
+  return () => {
+    stopped = true;
+    window.clearTimeout(timer);
+    socket?.close();
+  };
+}
+
+/** Tauri windows talk through app events; browser tabs fall back to a BroadcastChannel. Both also use the terminal room. */
 export function publishDisplay(state: DisplayState): void {
   last = state;
+  publishRoom(state);
   if (inTauri()) {
     void import("@tauri-apps/api/event").then(({ emit }) => emit(EVENT, state)).catch(() => undefined);
     return;
@@ -40,6 +140,15 @@ export function republishDisplay(): void {
 }
 
 export function subscribeDisplay(onState: (state: DisplayState) => void): () => void {
+  const stopRoom = subscribeRoom(onState);
+  const stopLocal = subscribeLocal(onState);
+  return () => {
+    stopRoom();
+    stopLocal();
+  };
+}
+
+function subscribeLocal(onState: (state: DisplayState) => void): () => void {
   if (inTauri()) {
     let stop: (() => void) | null = null;
     void import("@tauri-apps/api/event").then(async ({ listen, emit }) => {

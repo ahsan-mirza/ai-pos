@@ -1,6 +1,6 @@
 import seed from "@ai-pos/catalog/seed.json";
 import { Permission, formatMoney, noMatchesMessage, type Product } from "@ai-pos/shared-types";
-import { Pencil, Plus, Printer, Search, Upload } from "lucide-react";
+import { Package, Pencil, Plus, Printer, Search, Upload } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { DataTable, type DataTableColumn } from "../../components/ui/DataTable";
@@ -117,6 +117,19 @@ export function InventoryPage() {
   const splitHideCategory = open ? "lg:hidden 2xl:table-cell" : "";
 
   const columns: DataTableColumn<(typeof hits)[number]>[] = [
+    {
+      id: "photo",
+      header: "Photo",
+      className: "w-14",
+      cell: ({ product }) =>
+        product.thumb_url || product.image_url ? (
+          <img src={product.thumb_url ?? product.image_url ?? ""} alt="" className="h-10 w-10 rounded-lg object-cover" />
+        ) : (
+          <span className="grid h-10 w-10 place-items-center rounded-lg bg-surface text-charcoal/35" aria-hidden="true">
+            <Package size={16} />
+          </span>
+        ),
+    },
     {
       id: "product",
       header: "Product",

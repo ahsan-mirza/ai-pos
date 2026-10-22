@@ -1,5 +1,6 @@
 import { formatMoney, type ExpiringStockRow } from "@ai-pos/shared-types";
 import { useCallback, useEffect, useState } from "react";
+import { useConfirm } from "../../components/ui/ConfirmDialog";
 import { ErrorNote } from "../../components/ui/Field";
 import { SegmentedControl } from "../../components/ui/SegmentedControl";
 import { apiGet, apiPost } from "../../lib/api";
@@ -30,6 +31,7 @@ export function ExpiringStockPage() {
   const [rows, setRows] = useState<ExpiringStockRow[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
+  const confirm = useConfirm();
 
   const load = useCallback(async () => {
     try {
@@ -46,7 +48,13 @@ export function ExpiringStockPage() {
   }, [load]);
 
   async function writeOff(row: ExpiringStockRow) {
-    if (!globalThis.confirm(`Write off ${row.quantity_remaining} × ${row.product_name} (batch ${row.batch_number})?`)) return;
+    const accepted = await confirm({
+      title: "Write off stock",
+      message: `Write off ${row.quantity_remaining} × ${row.product_name} (batch ${row.batch_number})?`,
+      confirmLabel: "Write off",
+      tone: "danger",
+    });
+    if (!accepted) return;
     setBusy(row.batch_item_id);
     try {
       await apiPost("/api/v1/inventory/expiry-writeoff", { batch_item_id: row.batch_item_id });

@@ -436,6 +436,8 @@ def products_out(db: Session, products: list[Product], store_id: uuid.UUID | Non
                 nearest_expiry=expiries.get(product.id),
                 has_recipe=product.id in dishes,
                 is_ingredient=product.is_ingredient,
+                item_type=product.item_type,  # type: ignore[arg-type]
+                is_stock_tracked=product.is_stock_tracked,
                 price_lists=lists.get(product.id, []),
                 image_url=image_url,
                 thumb_url=thumb_url,
@@ -471,7 +473,9 @@ def _status(on_hand: int, minimum: int, maximum: int | None) -> str:
     return "ok"
 
 
-def _stock_row(product: Product, store: Store | None, levels: list[InventoryLevel]) -> StockRow:
+def _stock_row(
+    product: Product, store: Store | None, levels: list[InventoryLevel], *, thumb_url: str | None = None
+) -> StockRow:
     on_hand = sum(level.quantity_on_hand for level in levels)
     reserved = sum(level.quantity_reserved for level in levels)
     minimum = sum(level.min_reorder_level for level in levels)
@@ -503,7 +507,9 @@ def _stock_row(product: Product, store: Store | None, levels: list[InventoryLeve
         min_reorder_level=minimum,
         max_stock_level=maximum,
         aisle_shelf_location=single.aisle_shelf_location if single is not None else None,
+        thumb_url=thumb_url,
         status=_status(on_hand, minimum, maximum),  # type: ignore[arg-type]
+        item_type=product.item_type,  # type: ignore[arg-type]
     )
 
 
@@ -521,10 +527,18 @@ def stock_summary(
     season: str | None = None,
     collection: str | None = None,
     gender: str | None = None,
+    view: str = "stock",
 ) -> StockSummary:
+    from app.services.sample_data import ensure_starter_pantry
+
+    ensure_starter_pantry(db)
     scope = _scope(principal, store_id)
     store = _store(db, scope, active=False) if scope is not None else None
     statement = select(Product).order_by(Product.name).limit(MAX_STOCK_ROWS)
+    if view == "menu":
+        statement = statement.where(Product.item_type == "MADE_TO_ORDER")
+    else:
+        statement = statement.where(Product.is_stock_tracked.is_(True), Product.is_service.is_(False))
     statement = fashion_attributes.filter_products(statement, season=season, collection=collection, gender=gender)
     if category_id is not None:
         statement = statement.where(Product.category_id == category_id)
@@ -553,24 +567,124 @@ def stock_summary(
         for level in db.scalars(level_query).all():
             levels_by_product[level.product_id].append(level)
 
-    rows = [_stock_row(product, store, levels_by_product.get(product.id, [])) for product in products]
-    if status is not None:
+    covers = product_image_service.cover_urls(db, products)
+    rows = [
+        _stock_row(
+            product,
+            store,
+            levels_by_product.get(product.id, []),
+            thumb_url=covers.get(product.id, (None, None))[1],
+        )
+        for product in products
+    ]
+    if view == "menu":
+        rows = _with_menu_availability(db, rows, scope)
+    if view == "menu" and status == "ok":
+        rows = [row for row in rows if row.menu_status == "available"]
+    elif status is not None:
         rows = [row for row in rows if row.status == status]
+    portions = sum(row.max_portions or 0 for row in rows)
     return StockSummary(
         consolidated=scope is None,
         store_id=scope,
         rows=rows,
-        units_on_hand=sum(row.quantity_on_hand for row in rows),
-        low_count=sum(1 for row in rows if row.status == "low"),
-        out_count=sum(1 for row in rows if row.status == "out"),
+        units_on_hand=portions if view == "menu" else sum(row.quantity_on_hand for row in rows),
+        low_count=0 if view == "menu" else sum(1 for row in rows if row.status == "low"),
+        out_count=sum(1 for row in rows if row.status == "unavailable")
+        if view == "menu"
+        else sum(1 for row in rows if row.status == "out"),
+        view="menu" if view == "menu" else "stock",
     )
+
+
+def _with_menu_availability(db: Session, rows: list[StockRow], store_id: uuid.UUID | None) -> list[StockRow]:
+    """Replaces on-hand status for prepared dishes with portions their recipes can still make."""
+    from app.models.menu import ComboSlot
+    from app.services.fnb_service import menu_portions
+
+    if not rows:
+        return rows
+    product_ids = [row.product_id for row in rows]
+    if store_id is not None:
+        store_ids = [store_id]
+    else:
+        store_ids = list(db.scalars(select(Store.id).where(Store.is_active.is_(True))).all())
+    portions = menu_portions(db, product_ids, store_ids)
+    meals = set(
+        db.scalars(select(ComboSlot.product_id).where(ComboSlot.product_id.in_(product_ids)).distinct()).all()
+    )
+    annotated: list[StockRow] = []
+    for row in rows:
+        availability = portions.get(row.product_id)
+        if availability is None and row.product_id in meals:
+            annotated.append(
+                row.model_copy(
+                    update={
+                        "status": "ok",
+                        "menu_status": "meal",
+                        "max_portions": None,
+                        "availability_note": "Availability follows the dishes in this meal",
+                    }
+                )
+            )
+            continue
+        if availability is None:
+            annotated.append(
+                row.model_copy(
+                    update={
+                        "status": "ok",
+                        "menu_status": "no_recipe",
+                        "max_portions": None,
+                        "availability_note": "Add a recipe to calculate portions from ingredient stock",
+                    }
+                )
+            )
+            continue
+        limiting = " & ".join(availability.limiting)
+        if availability.menu_status == "unavailable":
+            note = f"Ingredients unavailable — out of {limiting}" if limiting else "Ingredients unavailable"
+            annotated.append(
+                row.model_copy(
+                    update={
+                        "status": "unavailable",
+                        "menu_status": "unavailable",
+                        "max_portions": 0,
+                        "limiting_ingredient": limiting or None,
+                        "quantity_on_hand": 0,
+                        "availability_note": note,
+                    }
+                )
+            )
+            continue
+        unit = "portion" if availability.portions == 1 else "portions"
+        note = (
+            f"{availability.portions} {unit} available based on {limiting} stock"
+            if limiting
+            else f"{availability.portions} {unit} available"
+        )
+        annotated.append(
+            row.model_copy(
+                update={
+                    "status": "ok",
+                    "menu_status": "available",
+                    "max_portions": availability.portions,
+                    "limiting_ingredient": limiting or None,
+                    "quantity_on_hand": availability.portions or 0,
+                    "availability_note": note,
+                }
+            )
+        )
+    return annotated
 
 
 def _single_row(db: Session, product: Product, store: Store) -> StockRow:
     level = db.scalar(
         select(InventoryLevel).where(InventoryLevel.product_id == product.id, InventoryLevel.store_id == store.id)
     )
-    return _stock_row(product, store, [level] if level is not None else [])
+    covers = product_image_service.cover_urls(db, [product])
+    return _stock_row(
+        product, store, [level] if level is not None else [], thumb_url=covers.get(product.id, (None, None))[1]
+    )
 
 
 @portal_errors
@@ -1027,8 +1141,13 @@ def create_product(db: Session, principal: Principal, data: ProductCreate, curre
         sold_by_weight=data.sold_by_weight,
         plu_code=data.plu_code if data.sold_by_weight else None,
         tare_grams=data.tare_grams if data.sold_by_weight else 0,
-        is_ingredient=data.is_ingredient and not data.is_serialized,
     )
+    from app.services.item_type import apply_item_type
+
+    kind = data.item_type or ("RAW_INGREDIENT" if data.is_ingredient else "PRE_PACKAGED")
+    apply_item_type(db, product, kind)
+    if product.item_type == "MADE_TO_ORDER" and data.opening_quantity:
+        raise ApiError(422, "invalid_request", "Prepared dishes are not stocked. Track their ingredients instead.")
     fashion_attributes.apply(product, data, only_sent=False)
     if product.plu_code and db.scalar(select(Product.id).where(Product.plu_code == product.plu_code)) is not None:
         raise ApiError(409, "conflict", f"PLU {product.plu_code} is already in use.")
@@ -1114,10 +1233,14 @@ def update_product(db: Session, product_id: uuid.UUID, data: ProductUpdate) -> P
         if data.is_open_price and product.is_serialized:
             raise ApiError(422, "invalid_request", "Serialized products cannot be open-price.")
         product.is_open_price = data.is_open_price
-    if data.is_ingredient is not None:
-        if data.is_ingredient and db.scalar(select(Recipe.id).where(Recipe.product_id == product.id)):
-            raise ApiError(422, "invalid_request", "A dish with a recipe cannot be an ingredient.")
-        product.is_ingredient = data.is_ingredient and not product.is_serialized
+    if data.item_type is not None or data.is_ingredient is not None:
+        from app.services.item_type import apply_item_type
+
+        if data.item_type is not None:
+            kind = data.item_type
+        else:
+            kind = "RAW_INGREDIENT" if data.is_ingredient and not product.is_serialized else "PRE_PACKAGED"
+        apply_item_type(db, product, kind)
     _update_weighing(db, product, data)
     if data.sellable_units is not None:
         product.sellable_units = uom_service.check_sellable(

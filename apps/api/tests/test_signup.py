@@ -294,7 +294,7 @@ def test_restaurants_start_with_a_menu_meals_tables_and_a_kitchen(signup: TestCl
     )
     live = signup.post("/api/v1/onboarding/go-live", headers=headers, json={"confirm": "Grill"})
     assert live.status_code == 200, live.text
-    assert live.json()["sample_products_removed"] == 19 + 2
+    assert live.json()["sample_products_removed"] == 19 + 2 + 6
     assert signup.get("/api/v1/menu/combos", headers=headers).json() == []
     assert signup.get("/api/v1/menu/register", headers=headers).json()["groups"] == []
     assert signup.get("/api/v1/orders", headers=headers, params={"store_id": store_id}).json() == []

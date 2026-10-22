@@ -3,6 +3,7 @@ import { Copy, Download, KeyRound, MonitorSmartphone, Plus, RotateCw, ShieldOff 
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { ErrorNote, GhostButton, PrimaryButton, SelectField, TextField } from "../../components/ui/Field";
+import { useConfirm } from "../../components/ui/ConfirmDialog";
 import { Modal } from "../../components/ui/Modal";
 import { Toast } from "../../components/ui/Toast";
 import { apiGet, apiPost } from "../../lib/api";
@@ -29,6 +30,7 @@ export function RegistersPage() {
   const [activation, setActivation] = useState<{ device: Device; key: DeviceActivationKey } | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const dismissToast = useCallback(() => setToast(null), []);
+  const confirm = useConfirm();
 
   const load = useCallback(async () => {
     try {
@@ -44,11 +46,21 @@ export function RegistersPage() {
   }, [load]);
 
   const act = async (device: Device, action: "rotate" | "revoke") => {
-    const question =
+    const accepted =
       action === "revoke"
-        ? `Revoke ${device.code}? It stops syncing until it gets a new key.`
-        : `Issue a new key for ${device.code}? The old key stops working immediately.`;
-    if (!window.confirm(question)) return;
+        ? await confirm({
+            title: "Revoke register",
+            message: `Revoke ${device.code}? It stops syncing until it gets a new key.`,
+            confirmLabel: "Revoke",
+            tone: "danger",
+          })
+        : await confirm({
+            title: "Issue a new key",
+            message: `Issue a new key for ${device.code}? The old key stops working immediately.`,
+            confirmLabel: "Issue key",
+            tone: "danger",
+          });
+    if (!accepted) return;
     try {
       if (action === "rotate") setIssued(await apiPost<DeviceKey>(`/api/v1/devices/${device.id}/rotate`, {}));
       else {

@@ -1,6 +1,7 @@
 import { Permission, type Category, type SubCategory } from "@ai-pos/shared-types";
 import { ChevronRight, FolderPlus, Pencil, Plus, Trash2 } from "lucide-react";
 import { useState } from "react";
+import { useConfirm } from "../../components/ui/ConfirmDialog";
 import { DataTable, type DataTableColumn } from "../../components/ui/DataTable";
 import { ErrorNote, GhostButton, PrimaryButton, TextField } from "../../components/ui/Field";
 import { Modal } from "../../components/ui/Modal";
@@ -24,6 +25,7 @@ export function CategoriesPage() {
   const [editing, setEditing] = useState<Editing>(null);
   const [error, setError] = useState<string | null>(null);
   const manage = can(Permission.PortalInventoryManage) && user?.store_id === null;
+  const confirm = useConfirm();
   const selected = categories.find((item) => item.id === selectedId) ?? categories[0];
   const drillSub = drill ? selected?.sub_categories.find((sub) => sub.id === drill.subId) : undefined;
 
@@ -38,7 +40,13 @@ export function CategoriesPage() {
   };
 
   const removeCategory = async (category: Category) => {
-    if (!window.confirm(`Delete ${category.name} and its sub-categories?`)) return;
+    const accepted = await confirm({
+      title: "Delete category",
+      message: `Delete ${category.name} and its sub-categories?`,
+      confirmLabel: "Delete",
+      tone: "danger",
+    });
+    if (!accepted) return;
     try {
       await categoriesApi.remove(category.id);
       setSelectedId(null);
@@ -49,7 +57,13 @@ export function CategoriesPage() {
   };
 
   const removeSub = async (sub: SubCategory) => {
-    if (!window.confirm(`Delete the ${sub.name} sub-category?`)) return;
+    const accepted = await confirm({
+      title: "Delete sub-category",
+      message: `Delete the ${sub.name} sub-category?`,
+      confirmLabel: "Delete",
+      tone: "danger",
+    });
+    if (!accepted) return;
     try {
       await categoriesApi.removeSub(sub.id);
       await reload();

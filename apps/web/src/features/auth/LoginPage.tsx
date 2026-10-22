@@ -1,21 +1,28 @@
 import { useState, type FormEvent } from "react";
-import { env } from "../../config/env";
+import { env, saveStoreCode } from "../../config/env";
 import { ApiRequestError } from "../../lib/api";
 import { useAuth } from "../../lib/auth";
 import { DemoAccounts, demoAccountsEnabled } from "./DemoAccounts";
 
+const STORE_CODE = /^[a-z0-9](?:[a-z0-9-]{0,30}[a-z0-9])?$/;
+
 export function LoginPage() {
   const { login } = useAuth();
+  const [storeCode, setStoreCode] = useState(() => (env.needsStoreCode ? (env.tenantDomain ?? "") : ""));
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const store = storeCode.trim().toLowerCase();
+  const storeReady = !env.needsStoreCode || STORE_CODE.test(store);
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
+    if (!storeReady) return;
     setBusy(true);
     setError(null);
     try {
+      if (env.needsStoreCode) saveStoreCode(store);
       await login(username.trim(), password);
     } catch (caught) {
       setError(caught instanceof ApiRequestError ? caught.message : "Sign-in failed.");
@@ -44,8 +51,25 @@ export function LoginPage() {
         <form className="flex flex-col justify-center gap-4 p-8" onSubmit={(event) => void submit(event)}>
           <div>
             <h2 className="text-2xl font-semibold">Sign in</h2>
-            <p className="text-sm text-charcoal/60">Use your portal username and password.</p>
+            <p className="text-sm text-charcoal/60">
+              {env.needsStoreCode ? "Enter the store code, then your portal username and password." : "Use your portal username and password."}
+            </p>
           </div>
+          {env.needsStoreCode ? (
+            <label className="text-sm font-medium" htmlFor="store-code">
+              Store code
+              <input
+                id="store-code"
+                autoComplete="off"
+                spellCheck={false}
+                value={storeCode}
+                onChange={(event) => setStoreCode(event.target.value.toLowerCase())}
+                placeholder="client1"
+                className="mt-1 h-12 w-full rounded-2xl border border-line bg-surface px-4 text-base"
+                required
+              />
+            </label>
+          ) : null}
           <label className="text-sm font-medium" htmlFor="username">
             Username
             <input
@@ -76,12 +100,12 @@ export function LoginPage() {
           ) : null}
           <button
             type="submit"
-            disabled={busy || username.trim() === "" || password === ""}
+            disabled={busy || !storeReady || username.trim() === "" || password === ""}
             className="h-12 rounded-2xl bg-accent font-semibold text-white disabled:opacity-40"
           >
             {busy ? "Signing in…" : "Sign in"}
           </button>
-          {env.onTenantHost ? null : (
+          {env.onTenantHost || env.needsStoreCode ? null : (
             <p className="text-center text-sm text-charcoal/60">
               New to AI POS?{" "}
               <a href="/signup" className="font-semibold text-accent hover:underline">
