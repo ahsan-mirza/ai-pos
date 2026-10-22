@@ -163,6 +163,8 @@ class Settings(BaseSettings):
     # through the messaging adapters; "log" writes it to the API log and, outside production, returns it.
     signup_enabled: bool = True
     signup_otp_channel: str = Field(default="log", pattern="^(log|whatsapp|sms|email)$")
+    # Fixed 6-digit code. When set, signup accepts this code and does not send a message.
+    signup_otp_code: str | None = Field(default=None, pattern=r"^\d{6}$")
     signup_otp_minutes: int = Field(default=10, ge=2, le=60)
     signup_max_per_hour: int = Field(default=5, ge=1, le=100)
 
@@ -220,9 +222,9 @@ class Settings(BaseSettings):
             problems.append("CONTROL_DATABASE_URL (required: production is multi-tenant)")
         if self.default_tenant:
             problems.append("DEFAULT_TENANT (must be unset: every request names its store)")
-        if self.signup_enabled and self.signup_otp_channel == "log":
+        if self.signup_enabled and self.signup_otp_channel == "log" and not self.signup_otp_code:
             problems.append(
-                "SIGNUP_OTP_CHANNEL (log delivers no code; pick whatsapp, sms or email, or SIGNUP_ENABLED=false)"
+                "SIGNUP_OTP_CHANNEL (log delivers no code; pick whatsapp, sms or email, set SIGNUP_OTP_CODE, or SIGNUP_ENABLED=false)"
             )
         if problems:
             raise ValueError("Production settings are not ready: " + ", ".join(problems))

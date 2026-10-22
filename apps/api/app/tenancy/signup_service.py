@@ -78,11 +78,13 @@ def _load(settings: Settings, request_id: uuid.UUID, token: str | None) -> tuple
 
 
 def _send_code(settings: Settings, row: SignupRequest) -> str:
-    code = f"{secrets.randbelow(1_000_000):06d}"
+    code = settings.signup_otp_code or f"{secrets.randbelow(1_000_000):06d}"
     row.otp_hash = _digest(f"{row.id}:{code}")
     row.otp_expires_at = _now() + timedelta(minutes=settings.signup_otp_minutes)
     row.otp_sent_at = _now()
     row.otp_attempts = 0
+    if settings.signup_otp_code:
+        return code
     channel = settings.signup_otp_channel
     to = row.email if channel == "email" else row.phone
     body = f"Your AI POS verification code is {code}. It expires in {settings.signup_otp_minutes} minutes."

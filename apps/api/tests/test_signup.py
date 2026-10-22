@@ -338,3 +338,20 @@ def test_a_failed_step_can_be_retried(signup: TestClient, monkeypatch) -> None:
     with registry.control_session(get_settings()) as db:
         assert len(db.scalars(select(Tenant).where(Tenant.slug == "alnoor")).all()) == 1
         assert db.scalar(select(SignupRequest.tenant_id)) is not None
+
+
+def test_a_configured_signup_code_is_accepted_without_sending(signup: TestClient, monkeypatch) -> None:
+    settings = get_settings()
+    previous = settings.signup_otp_code
+    settings.signup_otp_code = "742466"
+
+    def refuse(*_args, **_kwargs) -> str:
+        raise AssertionError("a fixed signup code is not sent")
+
+    monkeypatch.setattr(signup_service.messaging_providers, "deliver", refuse)
+    try:
+        started = _start(signup, email="fixed@alnoor.ae", phone="+971 50 000 0001")
+        assert started["dev_code"] == "742466"
+        assert _post(signup, started, "verify", {"code": "742466"}).json()["status"] == "VERIFIED"
+    finally:
+        settings.signup_otp_code = previous
