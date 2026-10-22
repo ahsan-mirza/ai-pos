@@ -99,9 +99,6 @@ jobs:
           rm -f "$tmp"
           ssh server "chmod 600 $APP_DIR/.env.production"
 
-      - name: Ensure Postgres role and databases
-        run: ssh server "sudo -n bash ~/ai-pos-deploy/ensure-postgres.sh"
-
       - name: Install, migrate, restart
         run: |
           ssh server "APP_DIR=$APP_DIR bash -s" <<'EOF'
