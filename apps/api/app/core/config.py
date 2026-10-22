@@ -224,7 +224,8 @@ class Settings(BaseSettings):
             problems.append("DEFAULT_TENANT (must be unset: every request names its store)")
         if self.signup_enabled and self.signup_otp_channel == "log" and not self.signup_otp_code:
             problems.append(
-                "SIGNUP_OTP_CHANNEL (log delivers no code; pick whatsapp, sms or email, set SIGNUP_OTP_CODE, or SIGNUP_ENABLED=false)"
+                "SIGNUP_OTP_CHANNEL (log delivers no code; pick whatsapp, sms or email, "
+                "set SIGNUP_OTP_CODE, or SIGNUP_ENABLED=false)"
             )
         if problems:
             raise ValueError("Production settings are not ready: " + ", ".join(problems))
