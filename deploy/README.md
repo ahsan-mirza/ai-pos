@@ -30,6 +30,7 @@ Server layout:
 
    ```bash
    sudo -u postgres psql -c "CREATE USER ai_pos_user WITH PASSWORD '<strong password>' CREATEDB;"
+   sudo -u postgres psql -c "ALTER ROLE ai_pos_user CREATEDB;"
    sudo -u postgres psql -c "CREATE DATABASE ai_pos_db OWNER ai_pos_user;"
    sudo -u postgres psql -c "CREATE DATABASE qios_control OWNER ai_pos_user;"
    ```

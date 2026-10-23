@@ -116,21 +116,31 @@ jobs:
           export APP_ENV=production
           .venv/bin/python -m app.tenancy.cli init
           .venv/bin/python -m app.tenancy.cli migrate-all
-          sudo systemctl restart ai-pos-api
+          EOF
+
+      - name: Upload admin portal
+        run: rsync -az --delete apps/web/dist/ server:$WEB_DIR/
+
+      - name: Start PM2
+        run: |
+          ssh server "bash -s" <<'EOF'
+          set -euo pipefail
+          test -f "$HOME/ai-pos-deploy/ecosystem.config.cjs"
+          pm2 startOrReload "$HOME/ai-pos-deploy/ecosystem.config.cjs"
+          pm2 save
           for attempt in $(seq 1 15); do
             if curl -fsS http://127.0.0.1:8000/health; then
               echo
+              pm2 status
               exit 0
             fi
             sleep 2
           done
           echo "API did not become healthy"
-          journalctl -u ai-pos-api -n 80 --no-pager || systemctl status ai-pos-api --no-pager || true
+          pm2 logs ai-pos-api --lines 80 --nostream || true
           exit 1
           EOF
-
-      - name: Upload admin portal
-        run: rsync -az --delete apps/web/dist/ server:$WEB_DIR/
+          ssh server "sudo -n systemctl reload nginx"
 
       - name: Summary
         run: |

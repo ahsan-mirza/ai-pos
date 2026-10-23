@@ -88,7 +88,16 @@ def step_database(job: Job) -> None:
     if url.get_backend_name() != "postgresql":
         return
     server = url.set(database="postgres").render_as_string(hide_password=False)
-    if not create_database(server, job.database):
+    try:
+        created = create_database(server, job.database)
+    except Exception as error:
+        if "permission denied to create database" in str(error).lower():
+            user = url.username or "the database user"
+            raise RuntimeError(
+                f"permission denied to create database. On the server run: ALTER ROLE {user} CREATEDB;"
+            ) from error
+        raise
+    if not created:
         raise RuntimeError(f"A database named {job.database} already exists; choose another store address.")
 
 

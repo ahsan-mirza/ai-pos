@@ -21,7 +21,8 @@ export DEBIAN_FRONTEND=noninteractive
 apt-get update
 apt-get install -y \
   git rsync curl build-essential python3.12-venv python3-dev \
-  postgresql postgresql-contrib nginx certbot netfilter-persistent iptables-persistent
+  postgresql postgresql-contrib nginx certbot netfilter-persistent iptables-persistent \
+  nodejs npm
 
 echo "==> Firewall (Oracle images reject everything but SSH by default)"
 for port in 80 443; do
@@ -41,15 +42,17 @@ if [[ ! -x "$APP_ROOT/apps/api/.venv/bin/python" ]]; then
   sudo -u "$DEPLOY_USER" "$APP_ROOT/apps/api/.venv/bin/pip" install -q --upgrade pip
 fi
 
-echo "==> systemd unit"
-sed "s/^User=.*/User=$DEPLOY_USER/" "$HERE/ai-pos-api.service" > /etc/systemd/system/ai-pos-api.service
-systemctl daemon-reload
-systemctl enable ai-pos-api
+echo "==> PM2 (API and admin portal; systemd no longer binds port 8000)"
+if ! command -v pm2 >/dev/null; then
+  npm install -g pm2
+fi
+systemctl disable --now ai-pos-api 2>/dev/null || true
+pm2 startup systemd -u "$DEPLOY_USER" --hp "/home/$DEPLOY_USER" --service-name "pm2-$DEPLOY_USER"
 
-echo "==> sudoers (CI may restart the API and reload nginx, nothing else)"
+echo "==> sudoers (CI may reload nginx, nothing else)"
 SUDOERS=/etc/sudoers.d/ai-pos-deploy
 cat > "$SUDOERS.tmp" <<EOF
-$DEPLOY_USER ALL=(root) NOPASSWD: /usr/bin/systemctl restart ai-pos-api, /usr/bin/systemctl reload nginx
+$DEPLOY_USER ALL=(root) NOPASSWD: /usr/bin/systemctl reload nginx
 EOF
 chmod 440 "$SUDOERS.tmp"
 visudo -cf "$SUDOERS.tmp"

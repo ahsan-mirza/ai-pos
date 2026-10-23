@@ -2,7 +2,7 @@ import type { ProvisionStep, SignupState } from "@ai-pos/shared-types";
 import { Check, Circle, Loader2, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { ErrorNote } from "../../components/ui/Field";
-import { env } from "../../config/env";
+import { env, saveStoreCode } from "../../config/env";
 import { ApiRequestError } from "../../lib/api";
 import { signupApi, type SignupSession } from "./signupApi";
 
@@ -71,10 +71,11 @@ export function ProvisioningStep({
     onFinished();
     if (state.handoff_token === null) return;
     const timer = window.setTimeout(() => {
+      if (state.slug && env.directHost) saveStoreCode(state.slug);
       window.location.assign(`${portal}/welcome?handoff=${encodeURIComponent(state.handoff_token ?? "")}`);
     }, 900);
     return () => window.clearTimeout(timer);
-  }, [state.status, state.handoff_token, portal, onFinished]);
+  }, [state.status, state.handoff_token, state.slug, portal, onFinished]);
 
   const retry = async () => {
     setRetrying(true);
@@ -105,7 +106,7 @@ export function ProvisioningStep({
           ? "Opening it now…"
           : state.status === "FAILED"
             ? "Nothing is lost. Try again; finished steps are skipped."
-            : `${state.slug}.${env.tenantBaseDomain()} — this takes under a minute.`}
+            : `${env.storeAddressLabel(state.slug ?? "")} — this takes under a minute.`}
       </p>
       <div className="mt-6 h-1.5 overflow-hidden rounded-full bg-surface" aria-hidden="true">
         <div className="h-full rounded-full bg-accent transition-all duration-500" style={{ width: `${percent}%` }} />
@@ -145,7 +146,14 @@ export function ProvisioningStep({
             <a className="font-semibold text-accent underline" href={portal}>
               {portal.replace(/^https?:\/\//, "")}
             </a>
-            . Sign in there as <strong>{state.owner_username}</strong> with the password you chose.
+            . Sign in there
+            {env.directHost && state.slug ? (
+              <>
+                {" "}
+                with store code <strong>{state.slug}</strong>
+              </>
+            ) : null}{" "}
+            as <strong>{state.owner_username}</strong> with the password you chose.
           </p>
           {state.handoff_token === null ? (
             <a

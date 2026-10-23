@@ -78,18 +78,46 @@ function resolveSignupUrl(): string {
   return raw.replace("{tenant}.", "").replace("{tenant}", "www").replace(/\/$/, "");
 }
 
+function isIpHost(value: string): boolean {
+  const host = value.trim().replace(/^\[|\]$/g, "");
+  if (/^\d{1,3}(\.\d{1,3}){3}$/.test(host)) {
+    return host.split(".").every((part) => Number(part) <= 255);
+  }
+  return host.includes(":");
+}
+
+function pageHost(): string {
+  return typeof window === "undefined" ? "" : window.location.hostname.toLowerCase();
+}
+
 /** The domain stores live under: the bare host we are on, the parent of a store subdomain, or the first configured. */
 function tenantBaseDomain(): string {
-  const host = typeof window === "undefined" ? "" : window.location.hostname.toLowerCase();
+  const host = pageHost();
   return (
-    TENANT_BASE_DOMAINS.find((base) => host === base || host.endsWith(`.${base}`)) ?? TENANT_BASE_DOMAINS[0] ?? "localhost"
+    TENANT_BASE_DOMAINS.find((base) => host === base || host.endsWith(`.${base}`)) ??
+    (isIpHost(host) ? host : undefined) ??
+    TENANT_BASE_DOMAINS[0] ??
+    "localhost"
   );
 }
 
-/** "client1.qios.ae" on the current scheme and port, e.g. http://client1.localhost:5173 in dev. */
+/** A public IP has no store subdomain. The portal stays on this host and sends the store code separately. */
+function directHost(): boolean {
+  const host = pageHost();
+  return isIpHost(host) || isIpHost(tenantBaseDomain());
+}
+
+/** "client1.qios.ae" on the current scheme and port, or this host itself when it is a public IP. */
 function tenantPortalUrl(slug: string): string {
+  if (directHost()) return window.location.origin;
   const { protocol, port } = window.location;
   return `${protocol}//${slug}.${tenantBaseDomain()}${port ? `:${port}` : ""}`;
+}
+
+/** How the signup screen names the new store: a subdomain, or a store code on this IP. */
+function storeAddressLabel(slug: string): string {
+  if (directHost()) return `${slug} at ${window.location.host}`;
+  return `${slug}.${tenantBaseDomain()}`;
 }
 
 export const env = {
@@ -114,4 +142,9 @@ export const env = {
   },
   tenantBaseDomain,
   tenantPortalUrl,
+  /** True when stores are reached on this IP, with the store code sent to the API. */
+  get directHost() {
+    return directHost();
+  },
+  storeAddressLabel,
 };

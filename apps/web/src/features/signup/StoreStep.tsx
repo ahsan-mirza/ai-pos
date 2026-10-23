@@ -110,7 +110,9 @@ export function StoreStep({
               aria-describedby="signup-slug-status"
               required
             />
-            <span className="shrink-0 text-sm text-charcoal/50">.{env.tenantBaseDomain()}</span>
+            {env.directHost ? null : (
+              <span className="shrink-0 text-sm text-charcoal/50">.{env.tenantBaseDomain()}</span>
+            )}
             <span className="ml-2 flex w-5 shrink-0 justify-center" aria-hidden="true">
               {checking ? (
                 <Loader2 size={16} className="animate-spin text-charcoal/40" />

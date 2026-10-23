@@ -99,7 +99,11 @@ export function SignupApp() {
           </ol>
           <p className="mt-10 text-xs text-white/50">
             Already have a store?{" "}
-            <span className="text-white/70">Open its address, for example yourstore.{env.tenantBaseDomain()}.</span>
+            <span className="text-white/70">
+              {env.directHost
+                ? `Open ${window.location.host} and enter the store code.`
+                : `Open its address, for example yourstore.${env.tenantBaseDomain()}.`}
+            </span>
           </p>
         </aside>
         <main className="min-h-[560px] p-6 sm:p-10">
