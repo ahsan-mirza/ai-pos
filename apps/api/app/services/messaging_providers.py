@@ -79,9 +79,17 @@ def send_http_sms(settings: Settings, message: Outgoing) -> str:
         return ""
 
 
-def send_smtp(settings: Settings, message: Outgoing) -> str:
-    host = _require(settings.smtp_host, "SMTP_HOST")
-    sender = _require(settings.smtp_from, "SMTP_FROM")
+def transmit_smtp(
+    message: Outgoing,
+    *,
+    host: str,
+    port: int,
+    username: str | None,
+    password: str | None,
+    sender: str,
+    security: str,
+) -> str:
+    """security is ssl (port 465), starttls (port 587), or none."""
     email = EmailMessage()
     email["From"] = sender
     email["To"] = message.to
@@ -90,18 +98,47 @@ def send_smtp(settings: Settings, message: Outgoing) -> str:
     if message.attachment is not None:
         name, content = message.attachment
         email.add_attachment(content, maintype="application", subtype="pdf", filename=name)
+    client_cls = smtplib.SMTP_SSL if security == "ssl" else smtplib.SMTP
     try:
-        with smtplib.SMTP(host, settings.smtp_port, timeout=20) as client:
-            if settings.smtp_starttls:
+        with client_cls(host, port, timeout=20) as client:
+            if security == "starttls":
                 client.starttls()
-            if settings.smtp_username and settings.smtp_password:
-                client.login(settings.smtp_username, settings.smtp_password)
+            if username and password:
+                client.login(username, password)
             client.send_message(email)
     except smtplib.SMTPRecipientsRefused as exc:
         raise ProviderError(f"Address refused: {exc}", permanent=True) from exc
     except (smtplib.SMTPException, OSError) as exc:
         raise ProviderError(f"SMTP failed: {exc}") from exc
     return email.get("Message-ID", "") or ""
+
+
+def send_smtp(settings: Settings, message: Outgoing) -> str:
+    from app.console.mail import platform_link
+
+    link = platform_link(settings)
+    if link is None:
+        host = _require(settings.smtp_host, "SMTP_HOST")
+        sender = _require(settings.smtp_from, "SMTP_FROM")
+        security = "starttls" if settings.smtp_starttls else ("ssl" if settings.smtp_port == 465 else "none")
+        return transmit_smtp(
+            message,
+            host=host,
+            port=settings.smtp_port,
+            username=settings.smtp_username,
+            password=settings.smtp_password,
+            sender=sender,
+            security=security,
+        )
+    return transmit_smtp(
+        message,
+        host=link.host,
+        port=link.port,
+        username=link.username,
+        password=link.password,
+        sender=link.sender,
+        security=link.security,
+    )
 
 
 SENDERS = {

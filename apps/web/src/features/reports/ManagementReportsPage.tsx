@@ -11,6 +11,7 @@ import {
 } from "@ai-pos/shared-types";
 import { Download } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
+import { Select } from "@ai-pos/ui";
 import { ErrorNote, FilterSelect, GhostButton, TextField } from "../../components/ui/Field";
 import { SegmentedControl } from "../../components/ui/SegmentedControl";
 import { apiBlob, apiGet } from "../../lib/api";
@@ -238,17 +239,14 @@ export function ManagementReportsPage() {
           <div className="flex flex-wrap items-center gap-3 text-sm text-charcoal/70">
             <label className="flex items-center gap-2">
               Annual carrying rate
-              <select
-                value={carryingRate}
-                onChange={(event) => setCarryingRate(Number(event.target.value))}
-                className="h-9 rounded-lg border border-line bg-white px-2 text-sm"
-              >
-                {[10, 15, 20, 25, 30, 40].map((rate) => (
-                  <option key={rate} value={rate}>
-                    {rate}%
-                  </option>
-                ))}
-              </select>
+              <Select
+                size="sm"
+                className="w-28"
+                aria-label="Carrying rate"
+                value={String(carryingRate)}
+                onChange={(value) => setCarryingRate(Number(value))}
+                options={[10, 15, 20, 25, 30, 40].map((rate) => ({ value: String(rate), label: `${rate}%` }))}
+              />
             </label>
             <span className="text-xs text-charcoal/50">
               Capital, space, insurance and shrink as a share of stock cost. Markdowns never go below the margin floor, or cost.

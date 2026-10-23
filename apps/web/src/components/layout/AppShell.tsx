@@ -3,7 +3,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Link, Outlet, useLocation } from "react-router-dom";
 import { useTenant } from "../../context/TenantContext";
 import { FirstWinChecklist } from "../../features/onboarding/FirstWinChecklist";
-import { PracticeBanner, PracticeProvider } from "../../features/onboarding/practice";
+import { PracticeBanner, PracticeProvider, TaxPortalBanner } from "../../features/onboarding/practice";
 import { industryAllows } from "../../lib/industry";
 import { StoreScopeProvider } from "../../lib/storeScope";
 import { Header } from "./Header";
@@ -51,6 +51,7 @@ export function AppShell() {
           <Sidebar collapsed={collapsed} mobileOpen={mobileOpen} onCloseMobile={closeMobile} />
           <div className="flex min-w-0 flex-1 flex-col">
             <PracticeBanner />
+            <TaxPortalBanner />
             <Header collapsed={collapsed} onToggleCollapsed={toggleCollapsed} onOpenMobile={() => setMobileOpen(true)} />
             <main className="relative min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
               <IndustryGate />

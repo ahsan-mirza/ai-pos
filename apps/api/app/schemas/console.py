@@ -14,7 +14,6 @@ TenantStatus = Literal["active", "suspended"]
 class ConsoleLogin(ApiModel):
     email: str = Field(min_length=3, max_length=254)
     password: str = Field(min_length=1, max_length=256)
-    code: str = Field(min_length=6, max_length=8)
 
 
 class OperatorOut(ApiModel):
@@ -59,6 +58,8 @@ class TenantRow(ApiModel):
     business_profile: str
     profile_label: str
     plan: str
+    plan_name: str
+    practice_mode: bool = True
     owner_email: str | None
     created_at: datetime
     stats: TenantStatsOut

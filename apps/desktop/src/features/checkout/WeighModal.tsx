@@ -1,4 +1,5 @@
 import { formatMoney, formatWeight, weighedLineCents, type ProductUpsert } from "@ai-pos/shared-types";
+import { Select } from "@ai-pos/ui";
 import { Loader2, RefreshCw, Scale, Settings2, X } from "lucide-react";
 import { useCallback, useEffect, useId, useState } from "react";
 import { inTauri, readScale, scalePorts, type ScaleConfig } from "../../lib/tauri";
@@ -148,40 +149,30 @@ export function WeighModal({ product, currency, onClose, onConfirm }: WeighModal
               </button>
               {setup ? (
                 <div className="mt-2 grid grid-cols-3 gap-2">
-                  <select
+                  <Select
+                    className="col-span-3"
                     aria-label="Scale port"
+                    placeholder="Choose a port…"
                     value={config?.port ?? ""}
-                    onChange={(event) => saveConfig({ port: event.target.value, baud: config?.baud ?? 9600, protocol: config?.protocol ?? "continuous" })}
-                    className="modal-input col-span-3 py-2 text-sm"
-                  >
-                    <option value="">Choose a port…</option>
-                    {ports.map((port) => (
-                      <option key={port} value={port}>
-                        {port}
-                      </option>
-                    ))}
-                  </select>
-                  <select
+                    onChange={(port) => saveConfig({ port, baud: config?.baud ?? 9600, protocol: config?.protocol ?? "continuous" })}
+                    options={[{ value: "", label: "Choose a port…" }, ...ports.map((port) => ({ value: port, label: port }))]}
+                  />
+                  <Select
                     aria-label="Baud rate"
-                    value={config?.baud ?? 9600}
-                    onChange={(event) => config && saveConfig({ ...config, baud: Number(event.target.value) })}
-                    className="modal-input py-2 text-sm"
-                  >
-                    {SCALE_BAUD_RATES.map((baud) => (
-                      <option key={baud} value={baud}>
-                        {baud}
-                      </option>
-                    ))}
-                  </select>
-                  <select
+                    value={String(config?.baud ?? 9600)}
+                    onChange={(value) => config && saveConfig({ ...config, baud: Number(value) })}
+                    options={SCALE_BAUD_RATES.map((baud) => ({ value: String(baud), label: String(baud) }))}
+                  />
+                  <Select
+                    className="col-span-2"
                     aria-label="Scale protocol"
                     value={config?.protocol ?? "continuous"}
-                    onChange={(event) => config && saveConfig({ ...config, protocol: event.target.value as ScaleConfig["protocol"] })}
-                    className="modal-input col-span-2 py-2 text-sm"
-                  >
-                    <option value="continuous">Continuous output</option>
-                    <option value="request">Request (Toledo / CAS)</option>
-                  </select>
+                    onChange={(protocol) => config && saveConfig({ ...config, protocol: protocol as ScaleConfig["protocol"] })}
+                    options={[
+                      { value: "continuous", label: "Continuous output" },
+                      { value: "request", label: "Request (Toledo / CAS)" },
+                    ]}
+                  />
                 </div>
               ) : null}
             </div>

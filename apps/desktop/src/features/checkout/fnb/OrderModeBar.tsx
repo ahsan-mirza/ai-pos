@@ -1,6 +1,7 @@
 import type { DiningArea } from "@ai-pos/shared-types";
-import { Bike, Minus, Plus, Soup, UtensilsCrossed } from "lucide-react";
-import { useEffect, useId, useMemo, useState } from "react";
+import { Select } from "@ai-pos/ui";
+import { Bike, ChevronDown, ChevronUp, Minus, Plus, Soup, UtensilsCrossed } from "lucide-react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { staffApi, type RegisterStaff } from "../../../lib/retailClient";
 import type { RegisterCustomer } from "../../../lib/tauri";
 import { searchCustomers } from "../wholesaleClient";
@@ -35,6 +36,37 @@ const labelClass = "block text-xs font-medium text-zinc-600 dark:text-zinc-300";
 
 function venueLabel(name: string): string {
   return /^restur[ae]nt$/i.test(name.trim()) ? "Restaurant" : name;
+}
+
+function coversLabel(count: number): string {
+  return `${count} ${count === 1 ? "Person" : "People"}`;
+}
+
+function orderCode(session: TableSession): string {
+  if (session.order_mode === "takeaway" && session.table_number && session.table_number !== "Takeaway") {
+    return session.table_number;
+  }
+  return session.id.replace(/-/g, "").slice(0, 4).toUpperCase();
+}
+
+function summaryDetail(
+  session: TableSession,
+  floors: { name: string; tables: { label: string }[] }[],
+): string {
+  if (session.order_mode === "dine_in") {
+    const area =
+      floors.find((floor) => floor.tables.some((table) => table.label === session.table_number))?.name ??
+      venueLabel(store.name);
+    const table = /^table\b/i.test(session.table_number) ? session.table_number : `Table ${session.table_number}`;
+    return `${area} • ${table} (${coversLabel(session.guest_count)})`;
+  }
+  const kind = session.order_mode === "delivery" ? "Delivery" : "Takeaway";
+  return `${kind} - Order #${orderCode(session)}`;
+}
+
+function cartSheetOpen(): boolean {
+  if (window.matchMedia("(min-width: 1024px)").matches) return false;
+  return document.getElementById("current-sale")?.classList.contains("cart-sheet") ?? false;
 }
 
 function areasOf(areas: DiningArea[]): { id: string; name: string; tables: TableChoice[] }[] {
@@ -133,7 +165,13 @@ export function OrderModeBar({
   const [staff, setStaff] = useState<RegisterStaff[]>([]);
   const [matches, setMatches] = useState<RegisterCustomer[]>([]);
   const [searchOpen, setSearchOpen] = useState(false);
+  const seated = session !== null && session.order_mode === mode;
+  const [expanded, setExpanded] = useState(!seated);
   const listId = useId();
+  const seatKey = seated && session ? `${session.id}:${session.table_number}:${mode}` : `open:${mode}`;
+  const seatKeyRef = useRef(seatKey);
+  const pendingRef = useRef(pending);
+  pendingRef.current = pending;
   const floor = floors.find((item) => item.id === floorId) ?? null;
   const visibleTables = floorId === "all" ? floors.flatMap((item) => item.tables) : (floor?.tables ?? []);
   const occupiedCount = visibleTables.filter((table) => table.status !== "free").length;
@@ -141,6 +179,41 @@ export function OrderModeBar({
   useEffect(() => {
     if (floorId !== "all" && !floors.some((item) => item.id === floorId)) setFloorId("all");
   }, [floors, floorId]);
+
+  useEffect(() => {
+    if (seatKeyRef.current === seatKey) return;
+    seatKeyRef.current = seatKey;
+    if (pendingRef.current) return;
+    setExpanded(!seated);
+  }, [seatKey, seated]);
+
+  useEffect(() => {
+    function onKey(event: KeyboardEvent) {
+      if (event.key !== "Escape" && event.key !== "F2") return;
+      if (event.key === "Escape" && pending) {
+        event.preventDefault();
+        setPending(null);
+        return;
+      }
+      if (document.querySelector(".modal-backdrop")) return;
+      if (event.key === "Escape" && cartSheetOpen()) return;
+      if (!seated) return;
+      if (event.key === "Escape") {
+        const target = event.target;
+        if (
+          (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) &&
+          target.value !== ""
+        ) {
+          return;
+        }
+      }
+      event.preventDefault();
+      if (event.key === "F2") event.stopImmediatePropagation();
+      setExpanded((open) => !open);
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [pending, seated]);
 
   const ticketKey =
     session && session.order_mode === mode
@@ -229,9 +302,42 @@ export function OrderModeBar({
 
   const zones = zone && !(DELIVERY_ZONES as readonly string[]).includes(zone) ? [zone, ...DELIVERY_ZONES] : [...DELIVERY_ZONES];
   const drivers = driver && !staff.some((member) => member.full_name === driver) ? [driver, ...staff.map((member) => member.full_name)] : staff.map((member) => member.full_name);
+  const modeLabel = MODES.find((item) => item.id === mode)?.label ?? "Dine-in";
 
   return (
     <section className="rounded-2xl border border-zinc-200 bg-white p-3 dark:border-zinc-800 dark:bg-zinc-900">
+      {seated && session && !expanded ? (
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="rounded-full bg-primary-500 px-3 py-1 text-sm font-semibold text-white">{modeLabel}</span>
+          <span className="rounded-full bg-zinc-100 px-3 py-1 text-sm font-medium text-zinc-800 dark:bg-zinc-800 dark:text-zinc-100">
+            {summaryDetail(session, floors)}
+          </span>
+          <button
+            type="button"
+            onClick={() => setExpanded(true)}
+            className="h-9 rounded-full border border-zinc-200 px-3 text-sm font-semibold text-zinc-700 hover:bg-zinc-50 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-800"
+          >
+            {mode === "dine_in" ? "Change table" : "Change type"}
+          </button>
+          <span className="ml-auto hidden items-center gap-1 sm:flex">
+            <kbd className="kbd">Esc</kbd>
+            <kbd className="kbd">F2</kbd>
+          </span>
+          <button
+            type="button"
+            aria-expanded={false}
+            aria-controls="order-setup-panel"
+            aria-keyshortcuts="Escape F2"
+            aria-label="Expand order setup"
+            onClick={() => setExpanded(true)}
+            className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-zinc-200 text-zinc-600 hover:bg-zinc-50 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
+          >
+            <ChevronDown size={16} aria-hidden="true" />
+          </button>
+        </div>
+      ) : null}
+      <div id="order-setup-panel" className={`order-setup-panel ${expanded ? "is-open" : ""}`}>
+      <div inert={expanded ? undefined : true}>
       <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Order type">
         {MODES.map((item) => {
           const Icon = item.icon;
@@ -255,6 +361,19 @@ export function OrderModeBar({
           <span className="ml-auto rounded-full bg-primary-500/10 px-3 py-1.5 text-sm font-semibold text-primary-700 dark:text-primary-300">
             {sessionHeading(session)}
           </span>
+        ) : null}
+        {seated ? (
+          <button
+            type="button"
+            aria-expanded
+            aria-controls="order-setup-panel"
+            aria-keyshortcuts="Escape F2"
+            aria-label="Collapse order setup"
+            onClick={() => setExpanded(false)}
+            className={`${session ? "" : "ml-auto "}inline-flex h-9 w-9 items-center justify-center rounded-full border border-zinc-200 text-zinc-600 hover:bg-zinc-50 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800`}
+          >
+            <ChevronUp size={16} aria-hidden="true" />
+          </button>
         ) : null}
       </div>
 
@@ -401,6 +520,7 @@ export function OrderModeBar({
             className="grid gap-3 md:grid-cols-2"
             onSubmit={(event) => {
               event.preventDefault();
+              if (zone === "") return;
               submitTicket();
             }}
           >
@@ -452,25 +572,25 @@ export function OrderModeBar({
             </label>
             <label className={labelClass}>
               Delivery zone
-              <select required value={zone} onChange={(event) => setZone(event.target.value)} className={`${field} mt-1`}>
-                <option value="">Select zone</option>
-                {zones.map((item) => (
-                  <option key={item} value={item}>
-                    {item}
-                  </option>
-                ))}
-              </select>
+              <Select
+                className="mt-1"
+                aria-label="Zone"
+                placeholder="Select zone"
+                value={zone}
+                onChange={setZone}
+                options={zones.map((item) => ({ value: item, label: item }))}
+              />
             </label>
             <label className={labelClass}>
               Driver
-              <select value={driver} onChange={(event) => setDriver(event.target.value)} className={`${field} mt-1`}>
-                <option value="">Unassigned</option>
-                {drivers.map((item) => (
-                  <option key={item} value={item}>
-                    {item}
-                  </option>
-                ))}
-              </select>
+              <Select
+                className="mt-1"
+                aria-label="Driver"
+                placeholder="Unassigned"
+                value={driver}
+                onChange={setDriver}
+                options={[{ value: "", label: "Unassigned" }, ...drivers.map((item) => ({ value: item, label: item }))]}
+              />
             </label>
             <div className="md:col-span-2 flex justify-end">
               <button type="submit" className="h-11 rounded-xl bg-primary-500 px-4 text-sm font-semibold text-white hover:bg-primary-600">
@@ -479,6 +599,8 @@ export function OrderModeBar({
             </div>
           </form>
         ) : null}
+      </div>
+      </div>
       </div>
     </section>
   );

@@ -1,4 +1,5 @@
 import type { ProductImage } from "@ai-pos/shared-types";
+import { Select } from "@ai-pos/ui";
 import { ImagePlus, Loader2, Star, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { apiDelete, apiGet, apiPatch, apiUpload } from "../../lib/api";
@@ -84,19 +85,15 @@ export function PhotoGallery({ path, canManage, colours = [], fallbackUrl = null
         {canManage ? (
           <div className="flex items-center gap-2">
             {colours.length ? (
-              <select
+              <Select
+                size="sm"
+                className="w-40"
                 aria-label="Colour for new photos"
+                placeholder="All colours"
                 value={colour}
-                onChange={(event) => setColour(event.target.value)}
-                className="h-8 rounded-full border border-line bg-white px-3 text-xs"
-              >
-                <option value="">All colours</option>
-                {colours.map((value) => (
-                  <option key={value} value={value}>
-                    {value}
-                  </option>
-                ))}
-              </select>
+                onChange={setColour}
+                options={[{ value: "", label: "All colours" }, ...colours.map((value) => ({ value, label: value }))]}
+              />
             ) : null}
             <button
               type="button"

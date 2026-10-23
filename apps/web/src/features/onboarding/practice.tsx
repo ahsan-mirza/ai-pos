@@ -1,5 +1,5 @@
 import type { BusinessSettings, OnboardingChecklist } from "@ai-pos/shared-types";
-import { FlaskConical } from "lucide-react";
+import { FlaskConical, ShieldAlert } from "lucide-react";
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { useLocation } from "react-router-dom";
 import { apiGet } from "../../lib/api";
@@ -71,6 +71,9 @@ export function PracticeProvider({ children }: { children: ReactNode }) {
       {goLiveOpen && canManage ? (
         <GoLiveModal
           storeName={checklist?.store_name ?? settings?.legal_name ?? ""}
+          trn={settings?.trn ?? null}
+          taxAuthority={settings?.tax_authority ?? "fta"}
+          openingStockUnits={checklist?.opening_stock_units ?? 0}
           onClose={() => setGoLiveOpen(false)}
           onLive={wentLive}
         />
@@ -81,6 +84,23 @@ export function PracticeProvider({ children }: { children: ReactNode }) {
 
 export function usePractice(): PracticeState {
   return useContext(PracticeContext);
+}
+
+export function TaxPortalBanner() {
+  const { settings } = useCurrency();
+  if (settings?.tax_portal_pending !== true) return null;
+  return (
+    <div
+      role="status"
+      className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-900 md:px-6"
+    >
+      <ShieldAlert size={16} aria-hidden="true" className="shrink-0" />
+      <p className="min-w-0 flex-1">
+        <strong className="font-semibold">Tax portal is not connected.</strong> Practice stamps were removed. Invoices
+        are validated locally and are not cleared with the authority.
+      </p>
+    </div>
+  );
 }
 
 export function PracticeBanner() {

@@ -72,11 +72,15 @@ export function UsersPage() {
   const posCount = active.filter((user) => user.has_pos_access).length;
   const portalCount = active.filter((user) => user.has_portal_access).length;
 
-  const saved = (next: User) => {
+  const remember = (next: User) => {
     setUsers((current) => {
       const exists = current.some((user) => user.id === next.id);
       return exists ? current.map((user) => (user.id === next.id ? next : user)) : [...current, next];
     });
+  };
+
+  const saved = (next: User) => {
+    remember(next);
     setDialog(null);
     void load();
   };
@@ -222,7 +226,14 @@ export function UsersPage() {
       </div>
 
       {dialog?.kind === "form" ? (
-        <UserFormModal user={dialog.user} roles={roles} stores={stores} onClose={() => setDialog(null)} onSaved={saved} />
+        <UserFormModal
+          user={dialog.user}
+          roles={roles}
+          stores={stores}
+          onClose={() => setDialog(null)}
+          onSaved={saved}
+          onUpdated={remember}
+        />
       ) : null}
       {dialog?.kind === "password" || dialog?.kind === "pin" ? (
         <CredentialModal user={dialog.user} kind={dialog.kind} onClose={() => setDialog(null)} onSaved={saved} />

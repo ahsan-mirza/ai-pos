@@ -1,5 +1,5 @@
 import { PROFILE_PRESETS, type BusinessProfile, type TenantRow } from "@ai-pos/shared-types";
-import { DataTable, type DataTableColumn } from "@ai-pos/ui";
+import { DataTable, Select, type DataTableColumn } from "@ai-pos/ui";
 import { Building2, Search } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { Outlet, useNavigate, useParams } from "react-router-dom";
@@ -18,7 +18,15 @@ const columns: DataTableColumn<TenantRow>[] = [
     ),
   },
   { header: "Business type", cell: (row) => row.profile_label },
-  { header: "Plan", cell: (row) => <span className="capitalize">{row.plan}</span> },
+  {
+    header: "Plan",
+    cell: (row) => (
+      <span>
+        {row.plan_name}
+        {row.practice_mode ? <span className="ml-2 text-xs text-charcoal/50">Practice</span> : null}
+      </span>
+    ),
+  },
   { header: "Stores", align: "right", cell: (row) => row.stats.stores },
   { header: "Customers", align: "right", cell: (row) => row.stats.customers },
   { header: "Sales (30 d)", align: "right", cell: (row) => money(row.stats.sales_30d_cents, row.stats.currency) },
@@ -108,35 +116,33 @@ export function TenantsPage() {
               className="h-10 w-72 rounded-full border border-line bg-white pl-9 pr-4 text-sm focus:border-accent focus:outline-none"
             />
           </label>
-          <select
+          <Select
+            className="w-44"
             aria-label="Status"
             value={status}
-            onChange={(event) => {
-              setStatus(event.target.value);
+            onChange={(value) => {
+              setStatus(value);
               setPage(1);
             }}
-            className="h-10 rounded-full border border-line bg-white px-4 text-sm"
-          >
-            <option value="">All statuses</option>
-            <option value="active">Active</option>
-            <option value="suspended">Suspended</option>
-          </select>
-          <select
+            options={[
+              { value: "", label: "All statuses" },
+              { value: "active", label: "Active" },
+              { value: "suspended", label: "Suspended" },
+            ]}
+          />
+          <Select
+            className="w-56"
             aria-label="Business type"
             value={profile}
-            onChange={(event) => {
-              setProfile(event.target.value);
+            onChange={(value) => {
+              setProfile(value);
               setPage(1);
             }}
-            className="h-10 rounded-full border border-line bg-white px-4 text-sm"
-          >
-            <option value="">All business types</option>
-            {profiles.map((id) => (
-              <option key={id} value={id}>
-                {PROFILE_PRESETS[id].label}
-              </option>
-            ))}
-          </select>
+            options={[
+              { value: "", label: "All business types" },
+              ...profiles.map((id) => ({ value: id, label: PROFILE_PRESETS[id].label })),
+            ]}
+          />
         </div>
       </div>
       <ErrorNote message={error} />

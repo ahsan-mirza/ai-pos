@@ -1,4 +1,5 @@
 import { Permission, discountLimitBps, discountShareBps, formatMoney } from "@ai-pos/shared-types";
+import { Select } from "@ai-pos/ui";
 import { Percent, X } from "lucide-react";
 import { useId, useMemo, useState } from "react";
 import { ManagerApprovalModal } from "../../components/ManagerApprovalModal";
@@ -186,13 +187,13 @@ export function DiscountModal({ session, lines, title, currency, onClose, onAppl
           ) : null}
           <label className="block text-sm font-medium">
             Reason
-            <select value={reason} onChange={(event) => setReason(event.target.value)} className="modal-input mt-1.5">
-              {reasons.map((item) => (
-                <option key={item.key} value={item.key}>
-                  {item.label}
-                </option>
-              ))}
-            </select>
+            <Select
+              className="mt-1.5"
+              aria-label="Reason"
+              value={reason}
+              onChange={setReason}
+              options={reasons.map((item) => ({ value: item.key, label: item.label }))}
+            />
           </label>
           <p className="text-sm tabular-nums text-zinc-600 dark:text-zinc-300">
             {discountCents > 0

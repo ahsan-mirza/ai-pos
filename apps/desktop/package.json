@@ -12,6 +12,7 @@
     "test": "vitest run",
     "tauri:dev": "tauri dev",
     "tauri:build": "cross-env POS_ENV=production tauri build",
+    "build:win": "cross-env POS_ENV=production tauri build --bundles nsis --target x86_64-pc-windows-msvc && node ../../scripts/stage-pos-setup.mjs",
     "tauri:build:dev": "cross-env POS_ENV=dev tauri build --config src-tauri/tauri.dev.conf.json"
   },
   "dependencies": {

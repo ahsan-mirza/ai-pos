@@ -18,6 +18,7 @@ export {
   type TableShape,
 } from "./DiningTableShape";
 export { PageSizeSelect } from "./PageSizeSelect";
+export { Select, billingCycleBadge, type SelectOption, type SelectProps } from "./Select";
 export {
   TableGridNode,
   TableSeatGraphic,

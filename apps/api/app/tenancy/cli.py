@@ -81,15 +81,18 @@ def _register(slug: str, name: str, url: str, settings: Settings, profile: str =
     with registry.control_session(settings) as db:
         if db.scalar(select(Tenant.id).where(Tenant.slug == slug)) is not None:
             sys.exit(f"Tenant '{slug}' already exists.")
-        db.add(
-            Tenant(
-                slug=slug,
-                name=name,
-                status="active",
-                profile=profile,
-                database_url_encrypted=registry.encrypt_database_url(url, settings),
-            )
+        tenant = Tenant(
+            slug=slug,
+            name=name,
+            status="active",
+            profile=profile,
+            database_url_encrypted=registry.encrypt_database_url(url, settings),
         )
+        db.add(tenant)
+        db.flush()
+        from app.console.billing import start_trial
+
+        start_trial(db, tenant)
         db.commit()
     registry.invalidate(slug)
 
@@ -160,21 +163,19 @@ def create_operator(args: argparse.Namespace, settings: Settings) -> None:
     import getpass
 
     from app.console.auth import create_operator as make_operator
-    from app.console.security import provisioning_uri
 
-    password = getpass.getpass("Password (12+ characters): ")
+    password = getpass.getpass(
+        "Password (8+ characters, with an uppercase letter, a number and a special character): "
+    )
     if password != getpass.getpass("Repeat password: "):
         sys.exit("The passwords do not match.")
     try:
-        operator, secret = make_operator(
+        operator, _secret = make_operator(
             settings, email=args.email, full_name=args.name, role=args.role, password=password
         )
     except ValueError as error:
         sys.exit(str(error))
     print(f"Operator {operator.email} ({operator.role}) created.")
-    print("Add this key to an authenticator app now; it is not shown again:")
-    print(f"  secret: {secret}")
-    print(f"  uri:    {provisioning_uri(secret, operator.email)}")
 
 
 def collect_stats(_: argparse.Namespace, settings: Settings) -> None:

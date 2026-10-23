@@ -31,23 +31,19 @@ fn main() {
         .join(file_name);
     println!("cargo:rerun-if-changed={}", env_path.display());
 
-    let mut url_template = String::new();
-    let mut base_domain = String::new();
-    if let Ok(text) = fs::read_to_string(&env_path) {
-        for line in text
-            .lines()
-            .map(str::trim)
-            .filter(|line| !line.starts_with('#'))
-        {
-            let Some((key, value)) = line.split_once('=') else {
-                continue;
-            };
-            let value = value.trim().trim_matches('"').to_string();
-            match key.trim() {
-                "TENANT_URL_TEMPLATE" => url_template = value,
-                "TENANT_BASE_DOMAIN" => base_domain = value,
-                _ => {}
-            }
+    let (mut url_template, mut base_domain) = read_tenant_pair(&env_path);
+    if url_template.is_empty() || base_domain.is_empty() {
+        let production = env_path
+            .parent()
+            .unwrap_or(&env_path)
+            .join(".env.production");
+        println!("cargo:rerun-if-changed={}", production.display());
+        let (prod_url, prod_domain) = read_tenant_pair(&production);
+        if url_template.is_empty() {
+            url_template = prod_url;
+        }
+        if base_domain.is_empty() {
+            base_domain = prod_domain;
         }
     }
     if pos_env != "development" && (url_template.is_empty() || base_domain.is_empty()) {
@@ -60,4 +56,28 @@ fn main() {
     println!("cargo:rustc-env=POS_TENANT_URL_TEMPLATE={url_template}");
     println!("cargo:rustc-env=POS_TENANT_BASE_DOMAIN={base_domain}");
     tauri_build::build()
+}
+
+fn read_tenant_pair(path: &std::path::Path) -> (String, String) {
+    let mut url_template = String::new();
+    let mut base_domain = String::new();
+    let Ok(text) = fs::read_to_string(path) else {
+        return (url_template, base_domain);
+    };
+    for line in text
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.starts_with('#'))
+    {
+        let Some((key, value)) = line.split_once('=') else {
+            continue;
+        };
+        let value = value.trim().trim_matches('"').to_string();
+        match key.trim() {
+            "TENANT_URL_TEMPLATE" => url_template = value,
+            "TENANT_BASE_DOMAIN" => base_domain = value,
+            _ => {}
+        }
+    }
+    (url_template, base_domain)
 }

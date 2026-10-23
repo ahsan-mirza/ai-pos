@@ -33,6 +33,10 @@ class User(TimestampMixin, Base):
     locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     token_version: Mapped[int] = mapped_column(Integer, default=0)
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    reset_code_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    reset_code_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    reset_code_sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    reset_code_attempts: Mapped[int] = mapped_column(Integer, default=0)
     role: Mapped[Role] = relationship("Role", lazy="joined")
 
     @property

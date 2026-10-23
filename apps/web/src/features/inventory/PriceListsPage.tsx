@@ -15,6 +15,7 @@ import {
 } from "@ai-pos/shared-types";
 import { ArrowLeft, Download, Plus, Tags, Trash2, Upload, Users } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
+import { Select } from "@ai-pos/ui";
 import { DataTable, type DataTableColumn } from "../../components/ui/DataTable";
 import { useConfirm } from "../../components/ui/ConfirmDialog";
 import { ErrorNote, GhostButton, PrimaryButton, SelectField, TextField } from "../../components/ui/Field";
@@ -608,16 +609,17 @@ function ListEditor({
                   </td>
                   <td className="py-2.5 text-right tabular-nums text-charcoal/60">{formatMoney(row.retail, currency)}</td>
                   <td className="py-2.5 pl-6">
-                    <select
+                    <Select
+                      size="sm"
                       aria-label={`How ${row.name} is priced`}
                       disabled={!manage}
                       value={row.mode}
-                      onChange={(event) => change(index, { mode: event.target.value as DraftItem["mode"], value: "" })}
-                      className="rounded-xl border border-line bg-surface px-3 py-1.5 text-sm"
-                    >
-                      <option value="price">Fixed price</option>
-                      <option value="discount">% off tier price</option>
-                    </select>
+                      onChange={(mode) => change(index, { mode: mode as DraftItem["mode"], value: "" })}
+                      options={[
+                        { value: "price", label: "Fixed price" },
+                        { value: "discount", label: "% off tier price" },
+                      ]}
+                    />
                   </td>
                   <td className="py-2.5 text-right">
                     <input

@@ -1,12 +1,12 @@
-import { X } from "lucide-react";
-import { useEffect, useId, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode } from "react";
+import { Eye, EyeOff, Lock, Mail, ShieldCheck, X, type LucideIcon } from "lucide-react";
+import { useEffect, useId, useState, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode } from "react";
 
 export function PrimaryButton({ className = "", ...props }: ButtonHTMLAttributes<HTMLButtonElement>) {
   return (
     <button
       type="button"
       {...props}
-      className={`inline-flex h-10 items-center justify-center gap-2 rounded-full bg-accent px-5 text-sm font-semibold text-white transition hover:bg-accent/90 disabled:opacity-50 ${className}`}
+      className={`inline-flex items-center justify-center gap-2 rounded-full bg-accent px-8 py-2.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-accent-hover disabled:opacity-40 disabled:hover:bg-accent ${className}`}
     />
   );
 }
@@ -16,27 +16,63 @@ export function GhostButton({ className = "", ...props }: ButtonHTMLAttributes<H
     <button
       type="button"
       {...props}
-      className={`inline-flex h-10 items-center justify-center gap-2 rounded-full border border-line px-4 text-sm font-semibold text-charcoal transition hover:border-charcoal/30 disabled:opacity-50 ${className}`}
+      className={`inline-flex items-center justify-center gap-2 rounded-full border border-gray-200 bg-white px-6 py-2.5 text-sm font-medium text-black transition-colors hover:bg-gray-50 disabled:opacity-40 ${className}`}
     />
   );
+}
+
+function leadingIcon(type: string | undefined, autoComplete: string | undefined): LucideIcon | null {
+  if (type === "password") return Lock;
+  if (type === "email") return Mail;
+  if (autoComplete === "one-time-code") return ShieldCheck;
+  return null;
 }
 
 export function Field({
   label,
   hint,
   className = "",
+  type,
+  autoComplete,
   ...props
 }: InputHTMLAttributes<HTMLInputElement> & { label: string; hint?: string }) {
   const id = useId();
+  const [showPassword, setShowPassword] = useState(false);
+  const isPassword = type === "password";
+  const Icon = leadingIcon(type, typeof autoComplete === "string" ? autoComplete : undefined);
   return (
     <label htmlFor={id} className={`block text-sm font-medium text-charcoal ${className}`}>
       {label}
-      <input
-        id={id}
-        {...props}
-        className="mt-1.5 h-11 w-full rounded-2xl border border-line bg-white px-3.5 text-sm text-charcoal placeholder:text-charcoal/40 focus:border-accent focus:outline-none focus:ring-4 focus:ring-accent/15"
-      />
-      {hint ? <span className="mt-1 block text-xs font-normal text-charcoal/50">{hint}</span> : null}
+      <span className="relative mt-1.5 block">
+        {Icon ? (
+          <Icon className="pointer-events-none absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400" aria-hidden="true" />
+        ) : null}
+        <input
+          id={id}
+          type={isPassword && showPassword ? "text" : type}
+          autoComplete={autoComplete}
+          {...props}
+          className={`w-full rounded-xl border border-transparent bg-surface py-3 text-sm font-normal text-charcoal transition placeholder:text-charcoal/40 focus:bg-white focus:outline-none disabled:cursor-not-allowed disabled:text-charcoal/50 ${
+            Icon
+              ? `pl-10 focus:border-orange-500 focus:ring-2 focus:ring-orange-500 ${isPassword ? "pr-12" : "pr-4"}`
+              : "px-4 focus:border-accent"
+          }`}
+        />
+        {isPassword ? (
+          <button
+            type="button"
+            tabIndex={-1}
+            aria-label={showPassword ? "Hide password" : "Show password"}
+            aria-pressed={showPassword}
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={() => setShowPassword((value) => !value)}
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+          >
+            {showPassword ? <EyeOff className="h-5 w-5" aria-hidden="true" /> : <Eye className="h-5 w-5" aria-hidden="true" />}
+          </button>
+        ) : null}
+      </span>
+      {hint ? <span className="mt-1.5 block text-xs font-normal text-charcoal/50">{hint}</span> : null}
     </label>
   );
 }
@@ -44,13 +80,19 @@ export function Field({
 export function ErrorNote({ message }: { message: string | null }) {
   if (!message) return null;
   return (
-    <p role="alert" className="mt-3 rounded-2xl bg-accent/10 px-4 py-2.5 text-sm text-accent">
+    <p role="alert" className="mt-4 rounded-2xl bg-accent/10 px-4 py-3 text-sm text-accent">
       {message}
     </p>
   );
 }
 
-/** Frosted modal: blurred backdrop, rounded-3xl card; Escape closes it. */
+const modalHeader =
+  "sticky top-0 z-20 flex flex-none items-start justify-between gap-4 border-b border-line bg-white px-6 py-4 sm:px-7";
+const modalBody = "min-h-0 flex-1 overflow-y-auto px-6 py-4 sm:px-7";
+const modalFooter =
+  "sticky bottom-0 z-20 flex flex-none flex-wrap items-center justify-end gap-3 border-t border-line bg-white px-6 py-4 sm:px-7";
+
+/** Shared dialog shell: title and actions stay visible while the form scrolls. */
 export function Modal({
   title,
   subtitle,
@@ -74,31 +116,41 @@ export function Modal({
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
+
+  useEffect(() => {
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previous;
+    };
+  }, []);
+
   return (
-    <div className="frost fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm" role="presentation">
+    <div className="modal-backdrop fixed inset-0 z-50 flex items-center justify-center bg-charcoal/40 p-4 backdrop-blur-[8px]" role="presentation">
       <div
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
-        className={`frost-card flex max-h-[90vh] w-full flex-col overflow-hidden rounded-3xl bg-white shadow-2xl ${wide ? "max-w-2xl" : "max-w-lg"}`}
+        className={`modal-card flex max-h-[90vh] w-full flex-col overflow-hidden rounded-3xl bg-white shadow-2xl ${wide ? "max-w-2xl" : "max-w-md"}`}
       >
-        <header className="sticky top-0 z-20 flex flex-none items-start justify-between gap-4 border-b border-line bg-white px-6 py-4">
+        <header className={modalHeader}>
           <div className="min-w-0">
-            <h2 id={titleId} className="text-xl font-semibold text-charcoal">
+            <h2 id={titleId} className="text-xl font-semibold">
               {title}
             </h2>
-            {subtitle ? <p className="mt-1 text-sm text-charcoal/60">{subtitle}</p> : null}
+            {subtitle ? <p className="mt-0.5 text-sm text-charcoal/60">{subtitle}</p> : null}
           </div>
-          <button type="button" aria-label="Close" onClick={onClose} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full hover:bg-surface">
+          <button
+            type="button"
+            aria-label="Close"
+            onClick={onClose}
+            className="-mr-1 -mt-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-charcoal/70 transition-colors hover:bg-gray-100 hover:text-charcoal"
+          >
             <X size={18} aria-hidden="true" />
           </button>
         </header>
-        <div className="min-h-0 flex-1 overflow-y-auto px-6 py-4">{children}</div>
-        {footer ? (
-          <footer className="sticky bottom-0 z-20 flex flex-none flex-wrap items-center justify-end gap-3 border-t border-line bg-white px-6 py-4">
-            {footer}
-          </footer>
-        ) : null}
+        <div className={modalBody}>{children}</div>
+        {footer ? <footer className={modalFooter}>{footer}</footer> : null}
       </div>
     </div>
   );

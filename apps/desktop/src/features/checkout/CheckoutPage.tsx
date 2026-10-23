@@ -1327,6 +1327,7 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
               onSubmit={(value) => void submitSearch(value)}
               onShortcut={closeCart}
               actionLabel={food ? "Search menu" : "Search Catalog"}
+              shortcut={food ? null : "F2"}
             />
             <p className="mt-2.5 min-h-5 text-sm text-zinc-600 dark:text-zinc-400" role="status">
               {notice}

@@ -100,6 +100,9 @@ class Settings(BaseSettings):
     console_token_minutes: int = Field(default=60, ge=5, le=12 * 60)
     # Browser origins of the console app, e.g. https://console.qios.ae,http://localhost:5174.
     console_origins: str = ""
+    # POS-company billing. Empty uses the recorded-payment simulator for go-live checkout.
+    stripe_secret_key: str | None = None
+    stripe_webhook_secret: str | None = None
 
     # Messaging provider credentials. Which provider each channel uses is chosen in Settings > Messaging.
     whatsapp_token: str | None = None

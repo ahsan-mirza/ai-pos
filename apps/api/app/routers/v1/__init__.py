@@ -9,6 +9,7 @@ from app.routers.v1.audit import router as audit_router
 from app.routers.v1.auth import router as auth_router
 from app.routers.v1.banking import router as banking_router
 from app.routers.v1.batches import router as batches_router
+from app.routers.v1.billing import router as billing_router
 from app.routers.v1.brands import models_router as product_models_router
 from app.routers.v1.brands import router as brands_router
 from app.routers.v1.catalogue import router as catalogue_router
@@ -64,6 +65,7 @@ from app.routers.v1.sales_orders import router as sales_orders_router
 from app.routers.v1.serials import router as serials_router
 from app.routers.v1.settings import router as settings_router
 from app.routers.v1.shifts import router as shifts_router
+from app.routers.v1.site import router as site_router
 from app.routers.v1.staff import router as staff_router
 from app.routers.v1.stock_counts import router as stock_counts_router
 from app.routers.v1.store_credits import router as store_credits_router
@@ -189,3 +191,5 @@ api_router.include_router(assistant_router, prefix="/assistant", tags=["assistan
 api_router.include_router(accounting_router, prefix="/accounting", tags=["accounting"])
 api_router.include_router(serials_router, prefix="/serials", tags=["serials"])
 api_router.include_router(onboarding_router, prefix="/onboarding", tags=["onboarding"])
+api_router.include_router(billing_router, prefix="/billing", tags=["billing"])
+api_router.include_router(site_router, prefix="/site", tags=["site"])

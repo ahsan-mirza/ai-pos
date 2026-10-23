@@ -1,4 +1,5 @@
 import { formatWeight } from "@ai-pos/shared-types";
+import { Select } from "@ai-pos/ui";
 import { Loader2, RefreshCw, Scale } from "lucide-react";
 import { useEffect, useId, useState } from "react";
 import { ui } from "../../components/shell/tokens";
@@ -58,46 +59,40 @@ export function ScaleSettingsCard() {
         <div className="mt-5 grid gap-3 sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,2fr)_auto] sm:items-end">
           <label htmlFor={portId} className={`block ${ui.label}`}>
             Port
-            <select
+            <Select
               id={portId}
+              className="mt-1.5"
+              aria-label="Port"
+              placeholder="Choose a port…"
               value={config.port}
-              onChange={(event) => update({ ...config, port: event.target.value })}
-              className={`mt-1.5 h-11 w-full rounded-xl px-3 text-sm ${ui.input}`}
-            >
-              <option value="">Choose a port…</option>
-              {ports.map((port) => (
-                <option key={port} value={port}>
-                  {port}
-                </option>
-              ))}
-            </select>
+              onChange={(port) => update({ ...config, port })}
+              options={[{ value: "", label: "Choose a port…" }, ...ports.map((port) => ({ value: port, label: port }))]}
+            />
           </label>
           <label htmlFor={baudId} className={`block ${ui.label}`}>
             Baud rate
-            <select
+            <Select
               id={baudId}
-              value={config.baud}
-              onChange={(event) => update({ ...config, baud: Number(event.target.value) })}
-              className={`mt-1.5 h-11 w-full rounded-xl px-3 text-sm ${ui.input}`}
-            >
-              {SCALE_BAUD_RATES.map((baud) => (
-                <option key={baud} value={baud}>
-                  {baud}
-                </option>
-              ))}
-            </select>
+              className="mt-1.5"
+              aria-label="Baud rate"
+              value={String(config.baud)}
+              onChange={(value) => update({ ...config, baud: Number(value) })}
+              options={SCALE_BAUD_RATES.map((baud) => ({ value: String(baud), label: String(baud) }))}
+            />
           </label>
           <label htmlFor={protocolId} className={`block ${ui.label}`}>
             Protocol
-            <select
+            <Select
               id={protocolId}
+              className="mt-1.5"
+              aria-label="Protocol"
               value={config.protocol}
-              onChange={(event) => update({ ...config, protocol: event.target.value as ScaleConfig["protocol"] })}
-              className={`mt-1.5 h-11 w-full rounded-xl px-3 text-sm ${ui.input}`}
-            >
-              <option value="continuous">Continuous output</option>
-              <option value="request">Request (Toledo / CAS)</option>
-            </select>
+              onChange={(protocol) => update({ ...config, protocol: protocol as ScaleConfig["protocol"] })}
+              options={[
+                { value: "continuous", label: "Continuous output" },
+                { value: "request", label: "Request (Toledo / CAS)" },
+              ]}
+            />
           </label>
           <button
             type="button"

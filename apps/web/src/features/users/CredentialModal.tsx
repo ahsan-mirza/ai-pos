@@ -9,9 +9,11 @@ interface CredentialModalProps {
   kind: "password" | "pin";
   onClose: () => void;
   onSaved: (user: User) => void;
+  /** Renders above the user form when PIN setup is opened from that dialog. */
+  elevated?: boolean;
 }
 
-export function CredentialModal({ user, kind, onClose, onSaved }: CredentialModalProps) {
+export function CredentialModal({ user, kind, onClose, onSaved, elevated = false }: CredentialModalProps) {
   const [value, setValue] = useState("");
   const [confirm, setConfirm] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -42,6 +44,7 @@ export function CredentialModal({ user, kind, onClose, onSaved }: CredentialModa
       title={isPin ? "Set POS PIN" : "Reset password"}
       subtitle={`${user.full_name} will be signed out of active sessions.`}
       onClose={onClose}
+      elevated={elevated}
       footer={
         <>
           <GhostButton onClick={onClose}>Cancel</GhostButton>

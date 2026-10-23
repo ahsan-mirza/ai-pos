@@ -10,6 +10,7 @@ import {
 } from "@ai-pos/shared-types";
 import { Grid3x3, Printer } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { Select } from "@ai-pos/ui";
 import { ErrorNote, GhostButton, PrimaryButton, SelectField, TextField } from "../../components/ui/Field";
 import { Modal } from "../../components/ui/Modal";
 import { useCurrency } from "../../lib/currency";
@@ -91,18 +92,17 @@ export function VariantMatrixPanel({
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <select
+          <Select
+            size="sm"
+            className="w-40"
             aria-label="Label layout"
             value={layout}
-            onChange={(event) => setLayout(event.target.value as LabelLayout)}
-            className="h-9 rounded-lg border border-line bg-white px-2 text-xs"
-          >
-            {(Object.keys(LABEL_LAYOUT_LABELS) as LabelLayout[]).map((value) => (
-              <option key={value} value={value}>
-                {LABEL_LAYOUT_LABELS[value]}
-              </option>
-            ))}
-          </select>
+            onChange={(value) => setLayout(value as LabelLayout)}
+            options={(Object.keys(LABEL_LAYOUT_LABELS) as LabelLayout[]).map((value) => ({
+              value,
+              label: LABEL_LAYOUT_LABELS[value],
+            }))}
+          />
           <GhostButton
             disabled={!matrix?.cells.length}
             onClick={() => void labelsApi.model(model.id, layout).catch((caught: unknown) => setError(message(caught, "Could not print labels.")))}

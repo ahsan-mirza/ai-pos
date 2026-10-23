@@ -46,6 +46,8 @@ export interface TenantRow {
   business_profile: string;
   profile_label: string;
   plan: string;
+  plan_name: string;
+  practice_mode: boolean;
   owner_email: string | null;
   created_at: string;
   stats: TenantStats;

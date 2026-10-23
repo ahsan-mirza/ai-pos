@@ -1,3 +1,4 @@
+import { Select } from "@ai-pos/ui";
 import { UserRound } from "lucide-react";
 import { useEffect, useState } from "react";
 import { staffApi, type RegisterStaff } from "../../lib/retailClient";
@@ -37,24 +38,24 @@ export function ServedByPicker({ storeId, cashierId, cashierName, associate, dis
     <label className="flex items-center gap-2 px-4 pb-2 text-xs text-zinc-500 dark:text-white/50">
       <UserRound size={14} aria-hidden="true" className="shrink-0" />
       <span className="shrink-0 font-semibold uppercase tracking-wider">Served by</span>
-      <select
+      <Select
+        size="sm"
+        className="min-w-0 flex-1"
         aria-label="Served by"
         disabled={disabled}
         value={associate?.id ?? ""}
-        onChange={(event) => {
-          const member = staff.find((row) => row.id === event.target.value);
+        onChange={(value) => {
+          const member = staff.find((row) => row.id === value);
           onChange(member ? { id: member.id, name: member.full_name } : null);
         }}
-        className="h-8 min-w-0 flex-1 rounded-full border border-zinc-200 bg-white px-3 text-xs font-medium text-zinc-900 focus:border-primary focus:outline-none dark:border-zinc-800 dark:bg-zinc-900/60 dark:text-white"
-      >
-        <option value="">{cashierName} (cashier)</option>
-        {others.map((member) => (
-          <option key={member.id} value={member.id}>
-            {member.full_name}
-            {member.role_name ? ` · ${member.role_name}` : ""}
-          </option>
-        ))}
-      </select>
+        options={[
+          { value: "", label: `${cashierName} (cashier)` },
+          ...others.map((member) => ({
+            value: member.id,
+            label: member.role_name ? `${member.full_name} · ${member.role_name}` : member.full_name,
+          })),
+        ]}
+      />
     </label>
   );
 }

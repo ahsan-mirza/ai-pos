@@ -117,6 +117,10 @@ def step_register(job: Job) -> None:
                 database_url_encrypted=registry.encrypt_database_url(job.url, job.settings),
             )
             db.add(existing)
+            db.flush()
+            from app.console.billing import start_trial
+
+            start_trial(db, existing)
             db.commit()
         job.tenant_id = existing.id
     registry.invalidate(job.slug)

@@ -15,6 +15,7 @@ import {
 } from "@ai-pos/shared-types";
 import { AlertTriangle, LayoutGrid, LifeBuoy, Lock, Mail, Send } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { Select } from "@ai-pos/ui";
 import { ErrorNote, GhostButton, PrimaryButton } from "../../components/ui/Field";
 import { Modal } from "../../components/ui/Modal";
 import { ApiRequestError, apiGet, apiPost, apiPut } from "../../lib/api";
@@ -187,24 +188,18 @@ function RequestChangeModal({
         <label className="mt-4 block text-sm font-medium" htmlFor="change-request-value">
           {kind === "BUSINESS_TYPE" ? "New business type" : "Module"}
         </label>
-        <select
+        <Select
           id="change-request-value"
+          className="mt-1.5"
+          aria-label={kind === "BUSINESS_TYPE" ? "Business type" : "Module"}
           value={value}
-          onChange={(event) => setValue(event.target.value)}
-          className="mt-1.5 h-11 w-full rounded-2xl border border-line bg-white px-3 text-sm focus:border-accent focus:outline-none"
-        >
-          {kind === "BUSINESS_TYPE"
-            ? profiles.map((id) => (
-                <option key={id} value={id}>
-                  {PROFILE_PRESETS[id].label}
-                </option>
-              ))
-            : modules.map((spec) => (
-                <option key={spec.id} value={spec.id}>
-                  {spec.label}
-                </option>
-              ))}
-        </select>
+          onChange={setValue}
+          options={
+            kind === "BUSINESS_TYPE"
+              ? profiles.map((id) => ({ value: id, label: PROFILE_PRESETS[id].label }))
+              : modules.map((spec) => ({ value: spec.id, label: spec.label }))
+          }
+        />
         <label className="mt-4 block text-sm font-medium" htmlFor="change-request-reason">
           Why do you need it?
         </label>

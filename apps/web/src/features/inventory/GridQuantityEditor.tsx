@@ -1,5 +1,6 @@
 import type { ProductModel } from "@ai-pos/shared-types";
 import { useEffect, useState } from "react";
+import { Select } from "@ai-pos/ui";
 import { PrimaryButton, TextField } from "../../components/ui/Field";
 import { modelsApi } from "./api";
 
@@ -68,18 +69,14 @@ export function GridQuantityEditor({
       <div className="mt-2 flex flex-wrap items-end gap-2">
         <label className="text-sm">
           Model
-          <select
-            className="mt-1.5 block rounded-xl bg-surface px-3 py-3 text-sm"
+          <Select
+            className="mt-1.5"
+            aria-label="Model"
+            placeholder="Choose a model"
             value={modelId}
-            onChange={(event) => setModelId(event.target.value)}
-          >
-            <option value="">Choose a model</option>
-            {models.map((model) => (
-              <option key={model.id} value={model.id}>
-                {model.name}
-              </option>
-            ))}
-          </select>
+            onChange={setModelId}
+            options={models.map((model) => ({ value: model.id, label: model.name }))}
+          />
         </label>
         <TextField label="Packs" value={packs} onChange={(event) => setPacks(event.target.value)} className="w-20" />
         <TextField label="Size ratio" value={ratio} onChange={(event) => setRatio(event.target.value)} className="w-36" />

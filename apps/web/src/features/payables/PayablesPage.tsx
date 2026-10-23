@@ -12,6 +12,7 @@ import {
 } from "@ai-pos/shared-types";
 import { Banknote, FileInput, Plus, Trash2, UserPlus } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
+import { Select } from "@ai-pos/ui";
 import { ErrorNote, FilterSelect, GhostButton, PrimaryButton, TextField } from "../../components/ui/Field";
 import { Modal } from "../../components/ui/Modal";
 import { SegmentedControl } from "../../components/ui/SegmentedControl";
@@ -601,16 +602,16 @@ function BillModal({
                 onChange={(event) => setLines(lines.map((row, at) => (at === index ? { ...row, cost: event.target.value } : row)))}
                 className="rounded-xl bg-surface px-3 py-2.5 text-right text-sm tabular-nums focus:outline-none focus:ring-2 focus:ring-accent/40"
               />
-              <select
+              <Select
                 aria-label="VAT"
                 value={line.tax}
-                onChange={(event) => setLines(lines.map((row, at) => (at === index ? { ...row, tax: event.target.value as TaxCategory } : row)))}
-                className="rounded-xl bg-surface px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-accent/40"
-              >
-                <option value="STANDARD">VAT 5%</option>
-                <option value="ZERO">Zero-rated</option>
-                <option value="EXEMPT">Exempt</option>
-              </select>
+                onChange={(tax) => setLines(lines.map((row, at) => (at === index ? { ...row, tax: tax as TaxCategory } : row)))}
+                options={[
+                  { value: "STANDARD", label: "VAT 5%" },
+                  { value: "ZERO", label: "Zero-rated" },
+                  { value: "EXEMPT", label: "Exempt" },
+                ]}
+              />
               <button
                 type="button"
                 aria-label="Remove line"

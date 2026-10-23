@@ -24,11 +24,13 @@ export function Modal({ title, subtitle, onClose, children, footer, width = "md"
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
+      if (event.key !== "Escape") return;
+      if (elevated) event.stopImmediatePropagation();
+      onClose();
     };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
+    window.addEventListener("keydown", onKey, elevated);
+    return () => window.removeEventListener("keydown", onKey, elevated);
+  }, [onClose, elevated]);
 
   useEffect(() => {
     const previous = document.body.style.overflow;

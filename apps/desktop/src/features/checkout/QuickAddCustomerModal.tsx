@@ -1,4 +1,5 @@
 import { PAYMENT_TERMS_LABELS, PRICE_TIERS, PRICE_TIER_LABELS, Permission, type PaymentTerms, type PriceTier } from "@ai-pos/shared-types";
+import { Select } from "@ai-pos/ui";
 import { Building2, UserRound, X } from "lucide-react";
 import { useEffect, useId, useState } from "react";
 import type { RegisterCustomer } from "../../lib/tauri";
@@ -164,13 +165,13 @@ export function QuickAddCustomerModal({ session, query, onClose, onCreated }: Qu
               <fieldset disabled={!manager} className="grid gap-4 sm:grid-cols-3 disabled:opacity-50">
                 <label className="block text-sm font-medium">
                   Price tier
-                  <select value={tier} onChange={(event) => setTier(event.target.value as PriceTier)} className={field}>
-                    {PRICE_TIERS.map((value) => (
-                      <option key={value} value={value}>
-                        {PRICE_TIER_LABELS[value]}
-                      </option>
-                    ))}
-                  </select>
+                  <Select
+                    className="mt-1"
+                    aria-label="Price tier"
+                    value={tier}
+                    onChange={(value) => setTier(value as PriceTier)}
+                    options={PRICE_TIERS.map((value) => ({ value, label: PRICE_TIER_LABELS[value] }))}
+                  />
                 </label>
                 <label className="block text-sm font-medium">
                   Credit limit
@@ -178,13 +179,13 @@ export function QuickAddCustomerModal({ session, query, onClose, onCreated }: Qu
                 </label>
                 <label className="block text-sm font-medium">
                   Terms
-                  <select value={terms} onChange={(event) => setTerms(event.target.value as PaymentTerms)} className={field}>
-                    {TERMS.map((value) => (
-                      <option key={value} value={value}>
-                        {PAYMENT_TERMS_LABELS[value]}
-                      </option>
-                    ))}
-                  </select>
+                  <Select
+                    className="mt-1"
+                    aria-label="Terms"
+                    value={terms}
+                    onChange={(value) => setTerms(value as PaymentTerms)}
+                    options={TERMS.map((value) => ({ value, label: PAYMENT_TERMS_LABELS[value] }))}
+                  />
                 </label>
               </fieldset>
               {manager ? null : (

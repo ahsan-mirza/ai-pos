@@ -125,6 +125,10 @@ function baseDomain(): string {
   return (value || "qios.ae").replace(/^\./, "").toLowerCase();
 }
 
+function directIp(host: string): boolean {
+  return /^\d{1,3}(?:\.\d{1,3}){3}$/.test(host) || host.includes(":");
+}
+
 export function readPreviewTerminal(): PreviewTerminal | null {
   if (typeof localStorage === "undefined") return null;
   const raw = localStorage.getItem(PREVIEW_TERMINAL_KEY);
@@ -148,17 +152,19 @@ export function applyPreviewTerminal(saved: PreviewTerminal): void {
 export async function activateTerminal(subdomain: string, activationKey: string): Promise<TerminalStatus> {
   if (inTauri()) return invoke<TerminalStatus>("activate_terminal", { subdomain, activationKey });
   const slug = subdomain.trim().toLowerCase();
-  const domain = `${slug}.${baseDomain()}`;
+  const host = baseDomain();
+  const domain = directIp(host) ? slug : `${slug}.${host}`;
+  const apiBaseUrl = directIp(host) ? `http://${host}` : env.apiBaseUrl;
   const key = activationKey.toUpperCase().replace(/[^A-Z0-9]/g, "");
   let response: Response;
   try {
-    response = await fetch(`${env.apiBaseUrl}/api/v1/terminals/activate`, {
+    response = await fetch(`${apiBaseUrl}/api/v1/terminals/activate`, {
       method: "POST",
       headers: { "Content-Type": "application/json", "X-Tenant-Domain": domain },
       body: JSON.stringify({ activation_key: key, machine_name: "Browser preview" }),
     });
   } catch {
-    throw new Error(`Could not reach the API at ${env.apiBaseUrl}.`);
+    throw new Error(`Could not reach the API at ${apiBaseUrl}.`);
   }
   const body = (await response.json().catch(() => null)) as { error?: { message?: string } } | ActivationResponse | null;
   if (!response.ok || body === null || !("device_token" in body)) {

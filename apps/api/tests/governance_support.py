@@ -19,7 +19,7 @@ from app.tenancy import registry
 from app.tenancy.models import ControlBase, Tenant
 
 PASSWORDS = {"alpha": "alpha-password-1", "bravo": "bravo-password-1"}
-OPERATOR_PASSWORD = "operator-password-1"
+OPERATOR_PASSWORD = "Operator-password-1"
 
 
 @dataclass
@@ -39,14 +39,11 @@ class Platform:
     def operator(self, email: str = "it@qios.ae", role: str = "ADMIN") -> dict[str, str]:
         """Creates a console operator and signs in; returns its Authorization header."""
         from app.console.auth import create_operator
-        from app.console.security import totp
 
-        _, secret = create_operator(
-            get_settings(), email=email, full_name="IT Support", role=role, password=OPERATOR_PASSWORD
-        )
+        create_operator(get_settings(), email=email, full_name="IT Support", role=role, password=OPERATOR_PASSWORD)
         response = self.client.post(
             "/api/v1/super-admin/auth/login",
-            json={"email": email, "password": OPERATOR_PASSWORD, "code": totp(secret)},
+            json={"email": email, "password": OPERATOR_PASSWORD},
         )
         assert response.status_code == 200, response.text
         return {"Authorization": f"Bearer {response.json()['access_token']}"}

@@ -16,6 +16,7 @@ import {
 } from "@ai-pos/shared-types";
 import { BookOpen, Lock, Plus, RefreshCw, Trash2, Undo2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
+import { Select } from "@ai-pos/ui";
 import { ErrorNote, FilterSelect, GhostButton, PrimaryButton, TextField } from "../../components/ui/Field";
 import { Modal } from "../../components/ui/Modal";
 import { SegmentedControl } from "../../components/ui/SegmentedControl";
@@ -575,19 +576,13 @@ function ManualJournalModal({ onClose, onSaved }: { onClose: () => void; onSaved
         <div className="space-y-2">
           {lines.map((line, index) => (
             <div key={index} className="grid grid-cols-[1fr_7rem_7rem_9rem_2rem] items-center gap-2">
-              <select
+              <Select
                 aria-label="Account"
+                placeholder="Choose account…"
                 value={line.accountId}
-                onChange={(event) => patch(index, { accountId: event.target.value })}
-                className="rounded-xl bg-surface px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-accent/40"
-              >
-                <option value="">Choose account…</option>
-                {accounts.map((account) => (
-                  <option key={account.id} value={account.id}>
-                    {account.code} · {account.name}
-                  </option>
-                ))}
-              </select>
+                onChange={(accountId) => patch(index, { accountId })}
+                options={accounts.map((account) => ({ value: account.id, label: `${account.code} · ${account.name}` }))}
+              />
               <input
                 aria-label="Debit"
                 inputMode="decimal"

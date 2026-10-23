@@ -1,6 +1,7 @@
 import { PROFILE_PRESETS, capabilitySpec, isCapability, type BusinessProfile, type MigrationPreflight, type TenantRow } from "@ai-pos/shared-types";
 import { AlertTriangle, CheckCircle2, OctagonX } from "lucide-react";
 import { useState } from "react";
+import { Select } from "@ai-pos/ui";
 import { ErrorNote, Field, GhostButton, Modal, PrimaryButton } from "../components/ui";
 import { ConsoleError, api, errorText } from "../lib/api";
 import { useSession } from "../lib/session";
@@ -91,21 +92,17 @@ export function MigrationModal({
       <label className="block text-sm font-medium" htmlFor="migration-target">
         New business type
       </label>
-      <select
+      <Select
         id="migration-target"
+        className="mt-1.5"
+        aria-label="New business type"
         value={target}
-        onChange={(event) => {
-          setTarget(event.target.value);
+        onChange={(value) => {
+          setTarget(value);
           setCheck(null);
         }}
-        className="mt-1.5 h-11 w-full rounded-2xl border border-line bg-white px-3 text-sm focus:border-accent focus:outline-none"
-      >
-        {profiles.map((id) => (
-          <option key={id} value={id}>
-            {PROFILE_PRESETS[id].label}
-          </option>
-        ))}
-      </select>
+        options={profiles.map((id) => ({ value: id, label: PROFILE_PRESETS[id].label }))}
+      />
 
       {check ? (
         <div className="mt-5 space-y-4 text-sm">

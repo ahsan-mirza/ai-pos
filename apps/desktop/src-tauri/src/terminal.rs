@@ -159,9 +159,12 @@ fn normalize_subdomain_for(input: &str, base: &str) -> Result<(String, String), 
         None => host.clone(),
         Some((label, rest)) if rest == base || rest == "localhost" => label.to_string(),
         Some(_) => {
-            return Err(format!(
-                "Enter your store subdomain, e.g. client1 or client1.{base}."
-            ))
+            let message = if base.parse::<std::net::IpAddr>().is_ok() {
+                "Enter your store code, e.g. client1.".to_string()
+            } else {
+                format!("Enter your store subdomain, e.g. client1 or client1.{base}.")
+            };
+            return Err(message);
         }
     };
     let valid = !slug.is_empty()
@@ -174,7 +177,13 @@ fn normalize_subdomain_for(input: &str, base: &str) -> Result<(String, String), 
     if !valid {
         return Err("Subdomains use lowercase letters, digits, and dashes.".into());
     }
-    Ok((slug.clone(), format!("{slug}.{base}")))
+    // On a public IP the portal has no store subdomain. The store code is the tenant.
+    let domain = if base.parse::<std::net::IpAddr>().is_ok() {
+        slug.clone()
+    } else {
+        format!("{slug}.{base}")
+    };
+    Ok((slug, domain))
 }
 
 /// A runtime environment variable wins (LAN testing), then the value build.rs baked in from
@@ -385,6 +394,10 @@ mod tests {
         );
         assert_eq!(dev("https://client1.dev.qios.ae/").unwrap().0, "client1");
         assert!(dev("client1.qios.ae").is_err());
+        let ip = |input: &str| normalize_subdomain_for(input, "130.210.53.214");
+        assert_eq!(ip("Client1").unwrap(), ("client1".into(), "client1".into()));
+        assert_eq!(ip("client1.130.210.53.214").unwrap().0, "client1");
+        assert!(ip("client1.qios.ae").is_err());
     }
 
     #[test]

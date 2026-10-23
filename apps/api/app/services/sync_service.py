@@ -457,6 +457,7 @@ def _apply_event(db: Session, ctx: SyncContext, event: SyncEventIn, settings: Se
             )
         return SyncPushResult(idempotency_key=event.idempotency_key, status="duplicate")
 
+    _reject_practice_replay(db, event)
     entity_id = _dispatch(db, settings, event, ctx)
     db.add(
         SyncEvent(
@@ -471,6 +472,23 @@ def _apply_event(db: Session, ctx: SyncContext, event: SyncEventIn, settings: Se
     )
     db.flush()
     return SyncPushResult(idempotency_key=event.idempotency_key, status="applied")
+
+
+def _reject_practice_replay(db: Session, event: SyncEventIn) -> None:
+    """A store that went live from practice does not accept activity dated before that moment.
+
+    The idempotency row for an already-applied practice sale is kept, so a retry is a duplicate and never reaches
+    here. Stores that were live from the start are unchanged: their tills still sync earlier offline events.
+    """
+    from app.services.settings_service import cached_settings
+
+    snapshot = cached_settings(db)
+    if not snapshot.promoted_from_practice or snapshot.live_at is None:
+        return
+    occurred = event.occurred_at if event.occurred_at.tzinfo else event.occurred_at.replace(tzinfo=UTC)
+    live_at = snapshot.live_at if snapshot.live_at.tzinfo else snapshot.live_at.replace(tzinfo=UTC)
+    if occurred < live_at:
+        raise SyncRejected("This was recorded during practice and was not kept when the store went live.")
 
 
 def _check_device_scope(event: SyncEventIn, ctx: SyncContext) -> None:

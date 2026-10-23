@@ -9,10 +9,22 @@ from app.tenancy import registry
 from app.tenancy.context import use_tenant
 
 TENANT_HEADER = "x-tenant-domain"
-# Reachable without a tenant: liveness, API docs, self-service signup on the bare domain, the POS-company
-# console (which opens tenant databases explicitly, never through the request's tenant), and media files (the
-# tenant is in their path, so <img> tags need no header).
-OPEN_PATHS = ("/health", "/docs", "/redoc", "/openapi.json", "/api/v1/signup", "/api/v1/super-admin", "/media/")
+# Reachable without a tenant: liveness, API docs, self-service signup on the bare domain, the public
+# package list, the POS-company console (which opens tenant databases explicitly, never through the
+# request's tenant), and media files (the tenant is in their path, so <img> tags need no header).
+OPEN_PATHS = (
+    "/health",
+    "/docs",
+    "/redoc",
+    "/openapi.json",
+    "/api/v1/signup",
+    "/api/v1/super-admin",
+    "/media/",
+    "/api/v1/billing/public-catalog",
+    "/api/v1/site/contact",
+    "/api/v1/billing/stripe-webhook",
+    "/api/v1/billing/checkout/return",
+)
 
 
 def _error(status: int, code: str, message: str) -> JSONResponse:

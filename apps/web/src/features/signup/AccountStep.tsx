@@ -1,7 +1,7 @@
 import { SIGNUP_PASSWORD_MIN_LENGTH, type SignupState } from "@ai-pos/shared-types";
-import { Eye, EyeOff } from "lucide-react";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { ErrorNote, TextField } from "../../components/ui/Field";
+import { isValidE164, PhoneField } from "../../components/ui/PhoneField";
 import { ApiRequestError } from "../../lib/api";
 import { signupApi, type SignupSession } from "./signupApi";
 
@@ -22,16 +22,15 @@ const submitClass =
 
 export function AccountStep({ onStarted }: { onStarted: (session: SignupSession) => void }) {
   const [email, setEmail] = useState("");
-  const [phone, setPhone] = useState("+971 ");
+  const [phone, setPhone] = useState("");
   const [fullName, setFullName] = useState("");
   const [password, setPassword] = useState("");
-  const [showPassword, setShowPassword] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const ready =
     email.includes("@") &&
-    phone.replace(/\D/g, "").length >= 8 &&
+    isValidE164(phone) &&
     fullName.trim().length >= 2 &&
     password.length >= SIGNUP_PASSWORD_MIN_LENGTH;
 
@@ -68,12 +67,10 @@ export function AccountStep({ onStarted }: { onStarted: (session: SignupSession)
           onChange={(event) => setEmail(event.target.value)}
           required
         />
-        <TextField
+        <PhoneField
           label="Mobile number"
-          type="tel"
-          autoComplete="tel"
           value={phone}
-          onChange={(event) => setPhone(event.target.value)}
+          onChange={setPhone}
           hint="We send a 6-digit code to confirm it."
           required
         />
@@ -84,26 +81,15 @@ export function AccountStep({ onStarted }: { onStarted: (session: SignupSession)
           onChange={(event) => setFullName(event.target.value)}
           required
         />
-        <div className="relative">
-          <TextField
-            label="Password"
-            type={showPassword ? "text" : "password"}
-            autoComplete="new-password"
-            value={password}
-            onChange={(event) => setPassword(event.target.value)}
-            hint={`At least ${SIGNUP_PASSWORD_MIN_LENGTH} characters.`}
-            className="pr-12"
-            required
-          />
-          <button
-            type="button"
-            onClick={() => setShowPassword((value) => !value)}
-            aria-label={showPassword ? "Hide password" : "Show password"}
-            className="absolute right-2 top-[34px] flex h-9 w-9 items-center justify-center rounded-full text-charcoal/50 hover:bg-gray-100"
-          >
-            {showPassword ? <EyeOff size={16} aria-hidden="true" /> : <Eye size={16} aria-hidden="true" />}
-          </button>
-        </div>
+        <TextField
+          label="Password"
+          type="password"
+          autoComplete="new-password"
+          value={password}
+          onChange={(event) => setPassword(event.target.value)}
+          hint={`At least ${SIGNUP_PASSWORD_MIN_LENGTH} characters.`}
+          required
+        />
       </div>
       <ErrorNote message={error} />
       <button type="submit" disabled={!ready || busy} className={`${submitClass} mt-6`}>

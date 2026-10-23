@@ -202,6 +202,18 @@ export type {
   TenantStats,
   TenantStatus,
 } from "./console.js";
+export type {
+  BillingAddon,
+  BillingCatalog,
+  BillingCheckout,
+  BillingCheckoutStatus,
+  BillingCycle,
+  BillingFee,
+  BillingPlan,
+  BillingQuote,
+  QuoteLine,
+  StoreSubscription,
+} from "./billing.js";
 export type { ChangeKind, ChangeRequest, ChangeRequestInput, ChangeStatus, OverrideState, TenantModules } from "./governance.js";
 export type {
   BusinessSettings,
@@ -533,7 +545,15 @@ export type {
   SignupSubType,
   SlugCheck,
 } from "./signup.js";
-export type { ChecklistItem, ChecklistKey, GoLiveRequest, GoLiveResult, OnboardingChecklist } from "./onboarding.js";
+export type {
+  ChecklistItem,
+  ChecklistKey,
+  GoLiveMode,
+  GoLiveRequest,
+  GoLiveResult,
+  OnboardingChecklist,
+  OpeningStockChoice,
+} from "./onboarding.js";
 export {
   comboChoiceOf,
   comboDefaults,

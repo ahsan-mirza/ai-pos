@@ -61,6 +61,8 @@ export interface BusinessSettings {
   onboarded?: boolean;
   /** A self-service store before Go live: sample items and practice sales, cleared by Go live. */
   practice_mode?: boolean;
+  /** Live, and e-invoicing has no production credential. Practice stamps were removed at Go live. */
+  tax_portal_pending?: boolean;
   /** Whose invoicing rules apply; see taxAuthority.ts. */
   tax_authority?: TaxAuthority;
   /** Configuration of the optional modules (expiry alerts, scale labels, service charge, kitchen timers). */

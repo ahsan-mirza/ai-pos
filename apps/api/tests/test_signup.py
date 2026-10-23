@@ -138,7 +138,9 @@ def test_signup_provisions_a_practice_store_and_hands_the_owner_over(signup: Tes
     assert login.status_code == 200, login.text
 
     live = signup.post(
-        "/api/v1/onboarding/go-live", headers=_tenant_headers("alnoor", token), json={"confirm": "al noor mobiles"}
+        "/api/v1/onboarding/go-live",
+        headers=_tenant_headers("alnoor", token),
+        json={"confirm": "al noor mobiles", "mode": "keep", "opening_stock": "keep", "tax_acknowledged": True},
     )
     assert live.status_code == 200, live.text
     assert live.json()["sample_products_removed"] == 6 and live.json()["sample_customers_removed"] == 2
@@ -292,7 +294,11 @@ def test_restaurants_start_with_a_menu_meals_tables_and_a_kitchen(signup: TestCl
     assert next(item for item in checklist["items"] if item["key"] == "real_product")["label"] == (
         "Add your first real menu item"
     )
-    live = signup.post("/api/v1/onboarding/go-live", headers=headers, json={"confirm": "Grill"})
+    live = signup.post(
+        "/api/v1/onboarding/go-live",
+        headers=headers,
+        json={"confirm": "Grill", "mode": "keep", "opening_stock": "keep", "tax_acknowledged": True},
+    )
     assert live.status_code == 200, live.text
     assert live.json()["sample_products_removed"] == 19 + 2 + 6
     assert signup.get("/api/v1/menu/combos", headers=headers).json() == []

@@ -57,6 +57,11 @@ class SettingsSnapshot:
     receipt: ReceiptSettings = field(default_factory=ReceiptSettings)
     pos_policy: PosPolicy = field(default_factory=PosPolicy)
     practice_mode: bool = False
+    live_at: datetime | None = None
+    # Go live sets this. Sync uses it to refuse practice events; it is not part of the settings API.
+    promoted_from_practice: bool = False
+    # Live, and the tax authority issues e-invoices, but no production credential is on file.
+    tax_portal_pending: bool = False
     # IT support's overrides from the console: module -> "on" | "off".
     managed_capabilities: dict[str, str] = field(default_factory=dict)
 
@@ -153,6 +158,30 @@ def managed_of(row: BusinessSettings) -> dict[str, str]:
     }
 
 
+def _tax_portal_pending(row: BusinessSettings) -> bool:
+    """True once the store is live and its authority issues e-invoices without a production credential.
+
+    Practice keys are deleted at Go live. A later invoice may create a new simulation key; that is still not a
+    production connection, so the portal keeps asking for one.
+    """
+    if row.live_at is None:
+        return False
+    from sqlalchemy.orm import object_session
+
+    from app.tax_authority import ADAPTERS
+
+    adapter = ADAPTERS.get(row.tax_authority or "fta")
+    if adapter is None or not adapter.issues_einvoices:
+        return False
+    session = object_session(row)
+    if session is None:
+        return True
+    from app.models.einvoice import TaxAuthorityCredential
+
+    credential = session.get(TaxAuthorityCredential, adapter.code)
+    return credential is None or credential.environment != "production"
+
+
 def snapshot_of(row: BusinessSettings) -> SettingsSnapshot:
     profile = row.business_profile or capability_catalog.DEFAULT_PROFILE
     managed = managed_of(row)
@@ -164,6 +193,9 @@ def snapshot_of(row: BusinessSettings) -> SettingsSnapshot:
         planned_capabilities=resolved.planned,
         onboarded=row.onboarded_at is not None,
         practice_mode=row.live_at is None,
+        live_at=row.live_at,
+        promoted_from_practice=bool(row.promoted_from_practice),
+        tax_portal_pending=_tax_portal_pending(row),
         id=row.id,
         currency=row.currency,
         vat_registered=bool(row.vat_registered),
@@ -240,6 +272,7 @@ def settings_out(settings: BusinessSettings | SettingsSnapshot) -> BusinessSetti
         planned_capabilities=[capability.value for capability in snapshot.planned_capabilities],
         onboarded=snapshot.onboarded,
         practice_mode=snapshot.practice_mode,
+        tax_portal_pending=snapshot.tax_portal_pending,
         tax_authority=snapshot.tax_authority,
         module_settings=snapshot.module_settings.model_copy(deep=True),
         pos_policy=snapshot.pos_policy.model_copy(deep=True),

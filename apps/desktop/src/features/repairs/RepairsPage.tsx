@@ -8,6 +8,7 @@ import {
   type RepairDetail,
   type RepairTicket,
 } from "@ai-pos/shared-types";
+import { Select } from "@ai-pos/ui";
 import { Printer, Wrench } from "lucide-react";
 import { useEffect, useState, type FormEvent } from "react";
 import { PageFrame } from "../../components/shell/RegisterShell";
@@ -302,10 +303,16 @@ export function RepairsPage({ session }: { session: CashierSession }) {
             </label>
             <label className="block text-sm font-medium">
               Identifier
-              <select className={field} value={kind} onChange={(event) => setKind(event.target.value as SerialKind)}>
-                <option value={SerialKind.Imei}>IMEI</option>
-                <option value={SerialKind.Serial}>Serial</option>
-              </select>
+              <Select
+                className="mt-1"
+                aria-label="Identifier kind"
+                value={kind}
+                onChange={(value) => setKind(value as SerialKind)}
+                options={[
+                  { value: SerialKind.Imei, label: "IMEI" },
+                  { value: SerialKind.Serial, label: "Serial" },
+                ]}
+              />
             </label>
             <label className="block text-sm font-medium">
               {kind === SerialKind.Imei ? "IMEI" : "Serial"}

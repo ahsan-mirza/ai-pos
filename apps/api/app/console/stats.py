@@ -92,6 +92,7 @@ def collect(control: Session, tenant: Tenant, settings: Settings) -> TenantStats
     ref = registry.ref_for(tenant, settings)
     with tenant_session(tenant, settings) as db:
         measured = _measure(db, ref.database_url)
+        tenant.practice_mode = load_settings(db).live_at is None
     row = control.get(TenantStats, tenant.id)
     if row is None:
         row = TenantStats(tenant_id=tenant.id)

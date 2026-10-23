@@ -1,5 +1,5 @@
-"""Console sign-in: password plus a TOTP code (RFC 6238), and short-lived tokens with their own secret and audience
-so a store's token can never open the console (and a console token never opens a store)."""
+"""Console sign-in tokens use their own secret and audience, so a store token can never open the console
+and a console token never opens a store."""
 
 import base64
 import hashlib
@@ -24,7 +24,7 @@ from app.tenancy.models import Operator, OperatorAuditLog
 
 AUDIENCE = "qios-console"
 ISSUER = "qios-console"
-TOTP_STEP_SECONDS = 30
+TOTP_STEP_SECONDS = 300
 TOTP_DIGITS = 6
 
 
@@ -40,25 +40,29 @@ def _key(secret: str) -> bytes:
     return base64.b32decode(padded)
 
 
-def totp(secret: str, at: float | None = None) -> str:
-    counter = int((time.time() if at is None else at) // TOTP_STEP_SECONDS)
+def totp(secret: str, at: float | None = None, *, step: int = TOTP_STEP_SECONDS) -> str:
+    counter = int((time.time() if at is None else at) // step)
     digest = hmac.new(_key(secret), struct.pack(">Q", counter), hashlib.sha1).digest()
     offset = digest[-1] & 0x0F
     value = struct.unpack(">I", digest[offset : offset + 4])[0] & 0x7FFFFFFF
     return str(value % 10**TOTP_DIGITS).zfill(TOTP_DIGITS)
 
 
-def verify_totp(secret: str, code: str, at: float | None = None) -> bool:
-    """Accepts the current step and one either side, for clock drift."""
+def verify_totp(secret: str, code: str, at: float | None = None, *, step: int = TOTP_STEP_SECONDS) -> bool:
+    """A 5-minute code is valid only in its own window. Shorter steps also allow one step of clock drift."""
     cleaned = code.strip().replace(" ", "")
     if not cleaned.isdigit() or len(cleaned) != TOTP_DIGITS:
         return False
     now = time.time() if at is None else at
-    return any(hmac.compare_digest(totp(secret, now + drift * TOTP_STEP_SECONDS), cleaned) for drift in (-1, 0, 1))
+    drifts = (0,) if step >= 300 else (-1, 0, 1)
+    return any(hmac.compare_digest(totp(secret, now + drift * step, step=step), cleaned) for drift in drifts)
 
 
 def provisioning_uri(secret: str, email: str) -> str:
-    return f"otpauth://totp/QIOS%20Console:{quote(email)}?secret={secret}&issuer=QIOS%20Console&digits=6&period=30"
+    return (
+        f"otpauth://totp/QIOS%20Console:{quote(email)}?secret={secret}&issuer=QIOS%20Console"
+        f"&digits=6&period={TOTP_STEP_SECONDS}"
+    )
 
 
 # --- Tokens -------------------------------------------------------------------------------------------------

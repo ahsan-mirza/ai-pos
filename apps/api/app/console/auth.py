@@ -6,10 +6,10 @@ from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import func, select
 
-from app.console.security import OperatorPrincipal, audit_operator, issue_token, new_totp_secret, verify_totp
+from app.console.security import OperatorPrincipal, audit_operator, issue_token, new_totp_secret
 from app.core.config import Settings
 from app.core.errors import ApiError
-from app.core.security import decrypt_value, encrypt_value, hash_password, verify_password
+from app.core.security import encrypt_value, hash_password, verify_password
 from app.schemas.console import ConsoleLogin, ConsoleSession, OperatorOut
 from app.tenancy import registry
 from app.tenancy.models import OPERATOR_ROLES, Operator
@@ -35,7 +35,7 @@ def operator_out(row: Operator) -> OperatorOut:
 
 
 def login(settings: Settings, data: ConsoleLogin, ip: str | None) -> ConsoleSession:
-    refused = ApiError(401, "invalid_credentials", "Email, password or code is wrong.")
+    refused = ApiError(401, "invalid_credentials", "Email or password is wrong.")
     with registry.control_session(settings) as db:
         operator = db.scalar(select(Operator).where(func.lower(Operator.email) == data.email.strip().lower()))
         password_ok = verify_password(data.password, operator.password_hash if operator else None)
@@ -44,8 +44,7 @@ def login(settings: Settings, data: ConsoleLogin, ip: str | None) -> ConsoleSess
         locked = _aware(operator.locked_until)
         if locked is not None and locked > _now():
             raise ApiError(423, "account_locked", "Too many failed attempts. Try again later.")
-        code_ok = verify_totp(decrypt_value(operator.totp_secret_enc, settings), data.code)
-        if not (password_ok and code_ok):
+        if not password_ok:
             operator.failed_attempts += 1
             if operator.failed_attempts >= settings.login_max_attempts:
                 operator.locked_until = _now() + timedelta(minutes=settings.login_lockout_minutes)
@@ -63,15 +62,26 @@ def login(settings: Settings, data: ConsoleLogin, ip: str | None) -> ConsoleSess
         return ConsoleSession(access_token=token, expires_in=expires_in, operator=operator_out(operator))
 
 
+def validate_operator_password(password: str) -> None:
+    """At least 8 characters, with an uppercase letter, a number, and a special character."""
+    if len(password) < 8:
+        raise ValueError("Operator passwords are at least 8 characters.")
+    if not any(character.isupper() for character in password):
+        raise ValueError("Operator passwords need an uppercase letter.")
+    if not any(character.isdigit() for character in password):
+        raise ValueError("Operator passwords need a number.")
+    if not any(not character.isalnum() for character in password):
+        raise ValueError("Operator passwords need a special character.")
+
+
 def create_operator(
-    settings: Settings, *, email: str, full_name: str, role: str, password: str
+    settings: Settings, *, email: str, full_name: str, role: str, password: str, totp_secret: str | None = None
 ) -> tuple[OperatorOut, str]:
     """Returns the operator and the TOTP secret to enrol in an authenticator app (shown once)."""
     if role not in OPERATOR_ROLES:
         raise ValueError(f"Role must be one of {', '.join(OPERATOR_ROLES)}.")
-    if len(password) < 12:
-        raise ValueError("Operator passwords are at least 12 characters.")
-    secret = new_totp_secret()
+    validate_operator_password(password)
+    secret = totp_secret or new_totp_secret()
     with registry.control_session(settings) as db:
         if db.scalar(select(Operator.id).where(func.lower(Operator.email) == email.strip().lower())) is not None:
             raise ValueError(f"An operator with {email} already exists.")

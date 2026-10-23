@@ -5,6 +5,13 @@
   "build": {
     "beforeBuildCommand": "pnpm build:dev"
   },
+  "bundle": {
+    "windows": {
+      "nsis": {
+        "installerHooks": null
+      }
+    }
+  },
   "app": {
     "windows": [
       {

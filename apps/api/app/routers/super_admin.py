@@ -10,11 +10,24 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query, Request, Response
 
-from app.console import auth, directory, entitlements, migration, stats
+from app.console import auth, billing, directory, entitlements, mail, migration, site, stats
 from app.console.security import ConsoleAdmin, CurrentOperator
 from app.core.config import Settings, get_settings
 from app.core.errors import ApiError
 from app.core.pagination import Offset, set_total
+from app.schemas.billing import (
+    AddonIn,
+    AddonOut,
+    CatalogOut,
+    CycleIn,
+    CycleOut,
+    FeeIn,
+    FeeOut,
+    PlanIn,
+    PlanOut,
+    SubscriptionAssign,
+    SubscriptionOut,
+)
 from app.schemas.console import (
     ConsoleChangeRequest,
     ConsoleLogin,
@@ -32,6 +45,8 @@ from app.schemas.console import (
     TenantStatsOut,
     TenantUpdate,
 )
+from app.schemas.mail import MailSettingsIn, MailSettingsOut, MailTestIn, MailTestOut
+from app.schemas.site import SiteContactIn, SiteContactOut
 from app.tenancy import registry
 from app.tenancy.models import Operator
 
@@ -185,6 +200,86 @@ def migrate_business_type(
     states = migration.migrate(settings, operator, tenant_id, payload)
     _refresh(settings, tenant_id)
     return states
+
+
+@router.get("/site/contact", response_model=SiteContactOut)
+def site_contact(_: CurrentOperator, settings: Config) -> SiteContactOut:
+    with registry.control_session(settings) as db:
+        found = site.read_contact(db)
+        db.commit()
+        return found
+
+
+@router.patch("/site/contact", response_model=SiteContactOut)
+def set_site_contact(payload: SiteContactIn, operator: ConsoleAdmin, settings: Config) -> SiteContactOut:
+    with registry.control_session(settings) as db:
+        return site.set_contact(db, operator, payload.whatsapp, payload.reason)
+
+
+@router.get("/mail", response_model=MailSettingsOut)
+def mail_settings(_: CurrentOperator, settings: Config) -> MailSettingsOut:
+    with registry.control_session(settings) as db:
+        found = mail.read_settings(db)
+        db.commit()
+        return found
+
+
+@router.patch("/mail", response_model=MailSettingsOut)
+def set_mail_settings(payload: MailSettingsIn, operator: ConsoleAdmin, settings: Config) -> MailSettingsOut:
+    with registry.control_session(settings) as db:
+        return mail.save_settings(db, settings, operator, payload)
+
+
+@router.post("/mail/test", response_model=MailTestOut)
+def mail_test(payload: MailTestIn, _: ConsoleAdmin, settings: Config) -> MailTestOut:
+    mail.send_test(settings, payload.to)
+    return MailTestOut()
+
+
+@router.get("/billing/catalog", response_model=CatalogOut)
+def billing_catalog(_: CurrentOperator, settings: Config) -> CatalogOut:
+    with registry.control_session(settings) as db:
+        found = billing.catalog(db)
+        db.commit()
+        return found
+
+
+@router.patch("/billing/plans/{plan_id}", response_model=PlanOut)
+def billing_plan(plan_id: uuid.UUID, payload: PlanIn, operator: ConsoleAdmin, settings: Config) -> PlanOut:
+    with registry.control_session(settings) as db:
+        return billing.update_plan(db, operator, plan_id, payload)
+
+
+@router.patch("/billing/cycles/{cycle_id}", response_model=CycleOut)
+def billing_cycle(cycle_id: uuid.UUID, payload: CycleIn, operator: ConsoleAdmin, settings: Config) -> CycleOut:
+    with registry.control_session(settings) as db:
+        return billing.update_cycle(db, operator, cycle_id, payload)
+
+
+@router.patch("/billing/addons/{addon_id}", response_model=AddonOut)
+def billing_addon(addon_id: uuid.UUID, payload: AddonIn, operator: ConsoleAdmin, settings: Config) -> AddonOut:
+    with registry.control_session(settings) as db:
+        return billing.update_addon(db, operator, addon_id, payload)
+
+
+@router.patch("/billing/fees/{fee_id}", response_model=FeeOut)
+def billing_fee(fee_id: uuid.UUID, payload: FeeIn, operator: ConsoleAdmin, settings: Config) -> FeeOut:
+    with registry.control_session(settings) as db:
+        return billing.update_fee(db, operator, fee_id, payload)
+
+
+@router.get("/subscriptions", response_model=list[SubscriptionOut])
+def subscriptions(_: CurrentOperator, settings: Config) -> list[SubscriptionOut]:
+    with registry.control_session(settings) as db:
+        return billing.list_subscriptions(db)
+
+
+@router.put("/tenants/{tenant_id}/subscription", response_model=SubscriptionOut)
+def assign_subscription(
+    tenant_id: uuid.UUID, payload: SubscriptionAssign, operator: ConsoleAdmin, settings: Config
+) -> SubscriptionOut:
+    with registry.control_session(settings) as db:
+        return billing.assign_subscription(db, operator, tenant_id, payload)
 
 
 @router.get("/me", response_model=OperatorOut)

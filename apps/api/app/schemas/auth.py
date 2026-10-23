@@ -43,6 +43,40 @@ def _permissions(values: list[str]) -> list[str]:
     return sorted(set(values))
 
 
+class ForgotPasswordRequest(ApiModel):
+    email: str
+
+    @field_validator("email")
+    @classmethod
+    def normalize_email(cls, value: str) -> str:
+        return _email(value)
+
+
+class ForgotPasswordResponse(ApiModel):
+    message: str
+
+
+class VerifyResetCodeRequest(ApiModel):
+    email: str
+    code: str = Field(pattern=r"^\d{6}$")
+
+    @field_validator("email")
+    @classmethod
+    def normalize_email(cls, value: str) -> str:
+        return _email(value)
+
+
+class ResetPasswordRequest(ApiModel):
+    email: str
+    code: str = Field(pattern=r"^\d{6}$")
+    password: str = Field(min_length=10, max_length=128)
+
+    @field_validator("email")
+    @classmethod
+    def normalize_email(cls, value: str) -> str:
+        return _email(value)
+
+
 class PasswordLoginRequest(ApiModel):
     username: str = Field(min_length=1, max_length=64)
     password: str = Field(min_length=1, max_length=128)

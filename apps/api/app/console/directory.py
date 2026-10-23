@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
+from app.console import billing
 from app.console import stats as tenant_stats
 from app.console.entitlements import get_tenant, module_states, tenant_modules, tenant_session
 from app.console.security import OperatorPrincipal, audit_operator
@@ -31,7 +32,10 @@ def _domain(slug: str, settings: Settings) -> str:
     return registry.tenant_domain_for(slug, settings)
 
 
-def tenant_row(tenant: Tenant, stats: TenantStats | None, pending: int, settings: Settings) -> TenantRow:
+def tenant_row(
+    tenant: Tenant, stats: TenantStats | None, pending: int, settings: Settings, names: dict[str, str] | None = None
+) -> TenantRow:
+    code = tenant.plan or "standard"
     return TenantRow(
         id=tenant.id,
         slug=tenant.slug,
@@ -40,7 +44,9 @@ def tenant_row(tenant: Tenant, stats: TenantStats | None, pending: int, settings
         status=tenant.status,  # type: ignore[arg-type]
         business_profile=tenant.profile,
         profile_label=catalog.PROFILE_LABELS.get(tenant.profile, tenant.profile),
-        plan=tenant.plan or "standard",
+        plan=code,
+        plan_name=(names or {}).get(code.lower(), code),
+        practice_mode=bool(tenant.practice_mode),
         owner_email=tenant.owner_email,
         created_at=tenant.created_at,
         stats=tenant_stats.stats_out(stats),
@@ -89,7 +95,8 @@ def list_tenants(
         total = count_rows(control, statement)
         rows = control.execute(statement.order_by(Tenant.created_at.desc()).offset(offset).limit(limit)).all()
         pending = _pending_counts(control, [tenant.id for tenant, _ in rows])
-        return [tenant_row(tenant, stats, pending.get(tenant.id, 0), settings) for tenant, stats in rows], total
+        names = billing.plan_names(control)
+        return [tenant_row(tenant, stats, pending.get(tenant.id, 0), settings, names) for tenant, stats in rows], total
 
 
 def _audit_rows(control: Session, tenant_id: uuid.UUID) -> list[OperatorAuditOut]:
@@ -132,8 +139,9 @@ def details(settings: Settings, tenant_id: uuid.UUID) -> TenantDetail:
             .limit(20)
         ).all()
         pending = sum(1 for request in requests if request.status == "PENDING")
+        names = billing.plan_names(control)
         return TenantDetail(
-            tenant=tenant_row(tenant, control.get(TenantStats, tenant.id), pending, settings),
+            tenant=tenant_row(tenant, control.get(TenantStats, tenant.id), pending, settings, names),
             modules=modules,
             change_requests=[change_requests.out(request) for request in requests],
             audit=_audit_rows(control, tenant.id),
@@ -160,7 +168,7 @@ def update_tenant(
         control.commit()
         registry.invalidate(tenant.slug)
         pending = _pending_counts(control, [tenant.id]).get(tenant.id, 0)
-        return tenant_row(tenant, control.get(TenantStats, tenant.id), pending, settings)
+        return tenant_row(tenant, control.get(TenantStats, tenant.id), pending, settings, billing.plan_names(control))
 
 
 def _mask_phone(value: str | None) -> str | None:

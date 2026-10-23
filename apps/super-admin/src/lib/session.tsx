@@ -5,7 +5,7 @@ import { api, hasToken, onSignOut, setToken } from "./api";
 interface SessionValue {
   operator: Operator | null;
   status: "checking" | "signed-in" | "signed-out";
-  signIn: (email: string, password: string, code: string) => Promise<void>;
+  signIn: (email: string, password: string) => Promise<void>;
   signOut: () => void;
 }
 
@@ -35,8 +35,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     return () => onSignOut(null);
   }, [signOut]);
 
-  const signIn = useCallback(async (email: string, password: string, code: string) => {
-    const session = await api.post<ConsoleSession>("/auth/login", { email, password, code });
+  const signIn = useCallback(async (email: string, password: string) => {
+    const session = await api.post<ConsoleSession>("/auth/login", { email, password });
     setToken(session.access_token);
     setOperator(session.operator);
     setStatus("signed-in");

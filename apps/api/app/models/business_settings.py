@@ -62,6 +62,9 @@ class BusinessSettings(TimestampMixin, Base):
     live_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True, default=lambda: datetime.now(UTC)
     )
+    # Set by Go live. Sync then refuses events that happened before live_at, so a till cannot replay practice
+    # sales. Stores that were live from the start leave this false and keep accepting earlier offline events.
+    promoted_from_practice: Mapped[bool] = mapped_column(Boolean, default=False)
     updated_by_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid(as_uuid=True),
         ForeignKey("users.id"),

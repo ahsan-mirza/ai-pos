@@ -49,8 +49,10 @@ class Tenant(ControlBase):
     profile: Mapped[str] = mapped_column(String(32), default="electronics_wholesale")
     # Full SQLAlchemy URL of the tenant database, Fernet-encrypted with ENCRYPTION_SECRET.
     database_url_encrypted: Mapped[str] = mapped_column(Text)
-    # Subscription tier shown in the console directory.
+    # Subscription tier shown in the console directory. Matches a billing_plans.code when one is assigned.
     plan: Mapped[str] = mapped_column(String(32), default="standard")
+    # Copy of the store's live_at being unset, so the directory does not open every store database.
+    practice_mode: Mapped[bool] = mapped_column(Boolean, default=True)
     owner_email: Mapped[str | None] = mapped_column(String(254), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
     updated_at: Mapped[datetime] = mapped_column(
@@ -199,3 +201,163 @@ class SignupRequest(ControlBase):
     handoff_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
+
+
+SUBSCRIPTION_STATUSES = ("trialing", "active", "past_due", "canceled")
+
+
+class BillingPlan(ControlBase):
+    """A package the POS company sells. Prices are fils per month before the billing-cycle discount."""
+
+    __tablename__ = "billing_plans"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    code: Mapped[str] = mapped_column(String(32), unique=True)
+    name: Mapped[str] = mapped_column(String(80))
+    included_registers: Mapped[int] = mapped_column(Integer, default=1)
+    included_modules: Mapped[list] = mapped_column(JSON, default=list)
+    monthly_fils: Mapped[int] = mapped_column(Integer, default=0)
+    trial_days: Mapped[int] = mapped_column(Integer, default=14)
+    active: Mapped[bool] = mapped_column(Boolean, default=True)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
+
+
+class BillingCycle(ControlBase):
+    """How far ahead the store pays. discount_bps is editable; 500 is 5 percent."""
+
+    __tablename__ = "billing_cycles"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    code: Mapped[str] = mapped_column(String(32), unique=True)
+    name: Mapped[str] = mapped_column(String(80))
+    months: Mapped[int] = mapped_column(Integer)
+    discount_bps: Mapped[int] = mapped_column(Integer, default=0)
+    active: Mapped[bool] = mapped_column(Boolean, default=True)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
+
+
+class BillingAddon(ControlBase):
+    """Hardware lease, protection, or an extra register. The one-time amount can be a refundable deposit."""
+
+    __tablename__ = "billing_addons"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    code: Mapped[str] = mapped_column(String(32), unique=True)
+    name: Mapped[str] = mapped_column(String(80))
+    description: Mapped[str] = mapped_column(Text, default="")
+    monthly_fils: Mapped[int] = mapped_column(Integer, default=0)
+    one_time_fils: Mapped[int] = mapped_column(Integer, default=0)
+    refundable: Mapped[bool] = mapped_column(Boolean, default=False)
+    active: Mapped[bool] = mapped_column(Boolean, default=True)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
+
+
+class BillingFee(ControlBase):
+    """One-time charges such as onboarding. Not discounted by the billing cycle."""
+
+    __tablename__ = "billing_fees"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    code: Mapped[str] = mapped_column(String(32), unique=True)
+    name: Mapped[str] = mapped_column(String(80))
+    amount_fils: Mapped[int] = mapped_column(Integer, default=0)
+    active: Mapped[bool] = mapped_column(Boolean, default=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
+
+
+class Subscription(ControlBase):
+    """The store's current package. Invoice lines snapshot the fils that were actually charged."""
+
+    __tablename__ = "subscriptions"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("tenants.id"), unique=True)
+    plan_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("billing_plans.id"))
+    cycle_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("billing_cycles.id"))
+    status: Mapped[str] = mapped_column(String(16), default="trialing")
+    trial_ends_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    current_period_end: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    stripe_customer_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    stripe_subscription_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
+
+
+class SubscriptionItem(ControlBase):
+    __tablename__ = "subscription_items"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    subscription_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("subscriptions.id"), index=True)
+    addon_code: Mapped[str] = mapped_column(String(32))
+    quantity: Mapped[int] = mapped_column(Integer, default=1)
+
+
+class BillingInvoice(ControlBase):
+    """A go-live checkout. Pending until Stripe or the simulator pays it, then the stored purge runs."""
+
+    __tablename__ = "billing_invoices"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("tenants.id"), index=True)
+    subscription_id: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True), nullable=True)
+    status: Mapped[str] = mapped_column(String(16), default="pending", index=True)
+    currency: Mapped[str] = mapped_column(String(3), default="AED")
+    plan_code: Mapped[str] = mapped_column(String(32))
+    cycle_code: Mapped[str] = mapped_column(String(32))
+    recurring_fils: Mapped[int] = mapped_column(Integer, default=0)
+    one_time_fils: Mapped[int] = mapped_column(Integer, default=0)
+    total_fils: Mapped[int] = mapped_column(Integer, default=0)
+    purge: Mapped[str] = mapped_column(String(16), default="keep")
+    opening_stock: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    actor_user_id: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True), nullable=True)
+    confirm_name: Mapped[str] = mapped_column(String(120))
+    stripe_session_id: Mapped[str | None] = mapped_column(String(80), nullable=True, unique=True)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    result: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    paid_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
+class SiteSettings(ControlBase):
+    """One row for the public marketing site. The WhatsApp number is digits with the country code, or blank."""
+
+    __tablename__ = "site_settings"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    whatsapp: Mapped[str] = mapped_column(String(16), default="")
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
+
+
+class MailSettings(ControlBase):
+    """The mailbox the platform uses to email store users (password reset and other notices)."""
+
+    __tablename__ = "mail_settings"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    host: Mapped[str] = mapped_column(String(255), default="")
+    port: Mapped[int] = mapped_column(Integer, default=465)
+    # ssl (implicit TLS, port 465), starttls (port 587), or none.
+    security: Mapped[str] = mapped_column(String(16), default="ssl")
+    username: Mapped[str] = mapped_column(String(254), default="")
+    password_encrypted: Mapped[str] = mapped_column(Text, default="")
+    from_address: Mapped[str] = mapped_column(String(254), default="")
+    from_name: Mapped[str] = mapped_column(String(120), default="AI POS")
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
+
+
+class BillingInvoiceLine(ControlBase):
+    __tablename__ = "billing_invoice_lines"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    invoice_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("billing_invoices.id"), index=True)
+    code: Mapped[str] = mapped_column(String(32))
+    label: Mapped[str] = mapped_column(String(120))
+    quantity: Mapped[int] = mapped_column(Integer, default=1)
+    unit_fils: Mapped[int] = mapped_column(Integer, default=0)
+    amount_fils: Mapped[int] = mapped_column(Integer, default=0)
+    recurring: Mapped[bool] = mapped_column(Boolean, default=False)
+    refundable: Mapped[bool] = mapped_column(Boolean, default=False)

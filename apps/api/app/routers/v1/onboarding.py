@@ -24,4 +24,4 @@ def go_live(
     db: Db,
     principal: Annotated[Principal, Depends(authorize(Permission.SETTINGS_MANAGE))],
 ) -> GoLiveResult:
-    return onboarding_service.go_live(db, principal, payload.confirm)
+    return onboarding_service.go_live(db, principal, payload)

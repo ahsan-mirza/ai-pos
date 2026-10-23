@@ -1,8 +1,8 @@
 """Practice mode for self-service stores: the "First win" checklist and the one-time Go live reset.
 
-Go live removes every practice transaction (sales, returns, quotes, payments, shifts, ledger and journal entries)
-and the sample products and customers, gives back the stock practice sales took from real products, and restarts
-document numbering, so the books begin clean on the first real sale."""
+Go live removes practice transactions and sample products. Keep configuration leaves the catalog, staff, layout
+and registers, and either keeps opening stock or zeroes it. Start fresh also drops that configuration and reopens
+the setup wizard. Both paths destroy practice tax stamps and restart document numbering."""
 
 from __future__ import annotations
 
@@ -17,47 +17,66 @@ from app.core.deps import Principal
 from app.core.errors import ApiError
 from app.models.accounting import JournalEntry, JournalLine
 from app.models.approval import ApprovalRequest
-from app.models.batch import BatchAllocation, BatchItem, PurchaseBatch
+from app.models.audit_log import AuditLog
+from app.models.banking import BankStatement, BankStatementLine
+from app.models.batch import BatchAllocation, BatchItem, ImportMappingTemplate, PurchaseBatch, Supplier
+from app.models.brand import Brand, ProductModel
+from app.models.business_settings import BusinessSettings
+from app.models.category import Category
+from app.models.channel import ChannelPayout, DeliveryChannel
 from app.models.cheque import Cheque, ChequeEvent
-from app.models.consignment import ConsignmentSettlementLine
+from app.models.consignment import ConsignmentSettlement, ConsignmentSettlementLine
+from app.models.currency import ExchangeRate
 from app.models.customer import Customer, CustomerLedgerEntry
-from app.models.device import Device
+from app.models.device import Device, DeviceActivation
 from app.models.document_sequence import DocumentSequence
-from app.models.einvoice import EInvoice, EInvoiceChain
+from app.models.einvoice import EInvoice, EInvoiceChain, TaxAuthorityCredential
+from app.models.expense import Expense, PettyCashEntry
 from app.models.inventory import InventoryLevel, StockMovement
-from app.models.kitchen import KitchenTicket, KitchenTicketItem
+from app.models.kitchen import KitchenStation, KitchenTicket, KitchenTicketItem
 from app.models.loyalty import LoyaltyEntry
 from app.models.margin import MarginPolicy
+from app.models.markdown import MarkdownEvent, PriceChange
 from app.models.menu import ComboSlot, ComboSlotOption, ModifierGroup, ModifierOption, ProductModifierGroup
 from app.models.messaging import OutboundMessage
-from app.models.payables import SupplierBillLine
-from app.models.payment_intent import PaymentIntent
+from app.models.payables import SupplierBill, SupplierBillLine, SupplierPayment, SupplierPaymentAllocation
+from app.models.payment_intent import PaymentIntent, PaymentRefund, PaymentTerminal
+from app.models.price_list import (
+    CustomerGroup,
+    PriceList,
+    PriceListItem,
+    ScheduledPriceChange,
+    ScheduledPriceChangeLine,
+)
 from app.models.product import Product
+from app.models.product_image import ProductImage
 from app.models.product_price import ProductPrice
-from app.models.promotion import PromotionRedemption
-from app.models.purchasing import GoodsReceiptLine, PurchaseOrderLine
+from app.models.promotion import Promotion, PromotionRedemption
+from app.models.purchasing import GoodsReceipt, GoodsReceiptLine, PurchaseOrder, PurchaseOrderLine
 from app.models.quote_payment import QuotePayment
 from app.models.recipe import ModifierIngredient, Recipe, RecipeLine, RecipeUsage
-from app.models.repair_ticket import RepairLine, RepairTicket
-from app.models.replenishment import DemandDaily, ReplenishmentSuggestion
-from app.models.restaurant import OpenOrder, OpenOrderItem
+from app.models.repair_ticket import RepairAttachment, RepairDeposit, RepairEvent, RepairLine, RepairTicket
+from app.models.replenishment import DemandDaily, ReplenishmentRun, ReplenishmentSuggestion, SeasonalEvent
+from app.models.restaurant import DiningArea, DiningTable, OpenOrder, OpenOrderItem
 from app.models.return_item import ReturnItem
 from app.models.return_tender import ReturnTender
 from app.models.sale import Sale
 from app.models.sale_item import SaleItem
 from app.models.sale_return import SaleReturn
 from app.models.sale_tender import SaleTender
+from app.models.sales_order import DeliveryNote, DeliveryNoteLine, PickList, PickListLine, SalesOrder, SalesOrderLine
 from app.models.serial_number import SerialNumber
 from app.models.shift import CashMovement, RegisterShift
-from app.models.stock_count import StockCountLine
+from app.models.staff import EmployeeProfile, PayrollLine, PayrollRun
+from app.models.stock_count import StockCount, StockCountLine
 from app.models.store import Store
 from app.models.store_credit import StoreCredit, StoreCreditRedemption
-from app.models.sync_event import SyncEvent
+from app.models.time_entry import TimeEntry
 from app.models.trade_in import TradeIn
-from app.models.transfer import StockTransferLine, StockTransferSerial
+from app.models.transfer import StockTransfer, StockTransferLine, StockTransferSerial
 from app.models.user import User
 from app.models.warranty import WarrantyPlan, WarrantyPolicy, WarrantyRegistration
-from app.schemas.onboarding import Checklist, ChecklistItem, GoLiveResult
+from app.schemas.onboarding import Checklist, ChecklistItem, GoLiveRequest, GoLiveResult
 from app.services import batch_ledger
 from app.services.settings_service import load_settings
 
@@ -73,8 +92,39 @@ def store_name(db: Session) -> str:
     settings = load_settings(db)
     if settings.legal_name:
         return settings.legal_name
-    store = db.scalar(select(Store).where(Store.is_warehouse.is_(False)).order_by(Store.created_at).limit(1))
+    store = _primary_store(db)
     return store.name if store else "My store"
+
+
+def _primary_store(db: Session) -> Store | None:
+    store = db.scalar(select(Store).where(Store.is_warehouse.is_(False)).order_by(Store.created_at).limit(1))
+    if store is None:
+        store = db.scalar(select(Store).order_by(Store.created_at).limit(1))
+    return store
+
+
+def opening_stock_units(db: Session) -> int:
+    """On-hand of real products after practice sales are put back: what Keep opening stock would carry."""
+    samples = select(Product.id).where(Product.is_sample.is_(True))
+    on_hand = int(
+        db.scalar(
+            select(func.coalesce(func.sum(InventoryLevel.quantity_on_hand), 0)).where(
+                InventoryLevel.product_id.not_in(samples)
+            )
+        )
+        or 0
+    )
+    # Sale movements are negative, and restore subtracts that quantity, which puts the units back.
+    practice = int(
+        db.scalar(
+            select(func.coalesce(func.sum(StockMovement.quantity), 0)).where(
+                StockMovement.reference_type.in_(PRACTICE_REFERENCES),
+                StockMovement.product_id.not_in(samples),
+            )
+        )
+        or 0
+    )
+    return on_hand - practice
 
 
 def checklist(db: Session) -> Checklist:
@@ -135,7 +185,11 @@ def checklist(db: Session) -> Checklist:
         ),
     ]
     return Checklist(
-        practice_mode=settings.live_at is None, live_at=settings.live_at, store_name=store_name(db), items=items
+        practice_mode=settings.live_at is None,
+        live_at=settings.live_at,
+        store_name=store_name(db),
+        opening_stock_units=opening_stock_units(db),
+        items=items,
     )
 
 
@@ -185,10 +239,58 @@ def _restore_practice_stock(db: Session, sample_ids: set[uuid.UUID]) -> None:
         batch_ledger.refresh_status(db, batches)
 
 
+def _delete_operational_history(db: Session) -> None:
+    """Practice documents that are not master data: orders, bills, counts, repairs, payroll runs, and the rest.
+
+    Suppliers, bank accounts, promotions, price lists, employee profiles, terminals and delivery channels stay.
+    Sync idempotency rows stay too, so a till retry of a practice sale is a duplicate instead of a new live sale.
+    """
+    for model in (
+        ChannelPayout,
+        ReplenishmentSuggestion,
+        ReplenishmentRun,
+        DemandDaily,
+        ConsignmentSettlementLine,
+        ConsignmentSettlement,
+        SupplierPaymentAllocation,
+        SupplierPayment,
+        BankStatementLine,
+        PettyCashEntry,
+        Expense,
+        BankStatement,
+        SupplierBillLine,
+        SupplierBill,
+        StockTransferSerial,
+        StockTransferLine,
+        StockTransfer,
+        StockCountLine,
+        StockCount,
+        RepairAttachment,
+        RepairDeposit,
+        RepairEvent,
+        RepairLine,
+        RepairTicket,
+        TradeIn,
+        PayrollLine,
+        PayrollRun,
+        TimeEntry,
+        DeliveryNoteLine,
+        DeliveryNote,
+        PickListLine,
+        PickList,
+        SalesOrderLine,
+        SalesOrder,
+        GoodsReceiptLine,
+        GoodsReceipt,
+        PurchaseOrderLine,
+        PurchaseOrder,
+    ):
+        db.execute(delete(model))
+
+
 def _delete_practice_transactions(db: Session) -> int:
     sales = int(db.scalar(select(func.count()).select_from(Sale)) or 0)
-    db.execute(update(RepairTicket).values(sale_id=None, warranty_registration_id=None))
-    db.execute(update(TradeIn).values(sale_id=None, store_credit_id=None))
+    _delete_operational_history(db)
     for model in (
         # Restaurant practice: kitchen tickets, ingredient draws and tabs go before the sales that paid them.
         KitchenTicketItem,
@@ -200,6 +302,7 @@ def _delete_practice_transactions(db: Session) -> int:
         StoreCreditRedemption,
         LoyaltyEntry,
         WarrantyRegistration,
+        PaymentRefund,
         PaymentIntent,
         ChequeEvent,
         Cheque,
@@ -217,10 +320,11 @@ def _delete_practice_transactions(db: Session) -> int:
         JournalLine,
         JournalEntry,
         ApprovalRequest,
-        SyncEvent,
         OutboundMessage,
         EInvoice,
         EInvoiceChain,
+        # Practice signing keys must not continue into live invoices. The TRN itself stays on the settings row.
+        TaxAuthorityCredential,
     ):
         db.execute(delete(model))
     db.execute(
@@ -301,23 +405,115 @@ def _delete_samples(db: Session, sample_ids: set[uuid.UUID]) -> tuple[int, int]:
     return len(ids), len(customers)
 
 
-def go_live(db: Session, principal: Principal, confirm: str) -> GoLiveResult:
+def _reset_opening_stock(db: Session) -> None:
+    """Zero on-hand for a physical count. Reorder levels and shelf locations stay on the inventory rows."""
+    db.execute(delete(BatchAllocation))
+    db.execute(delete(StockMovement))
+    db.execute(delete(SerialNumber))
+    db.execute(delete(BatchItem))
+    db.execute(delete(PurchaseBatch))
+    db.execute(update(InventoryLevel).values(quantity_on_hand=0, quantity_reserved=0))
+
+
+def _delete_configuration(db: Session, keeper_id: uuid.UUID) -> None:
+    """Start fresh: drop the practice catalog, layout, registers and staff, and keep the confirming admin."""
+    for model in (
+        ModifierIngredient,
+        RecipeLine,
+        Recipe,
+        ComboSlotOption,
+        ComboSlot,
+        ProductModifierGroup,
+        ModifierOption,
+        ModifierGroup,
+        PriceChange,
+        ScheduledPriceChangeLine,
+        ScheduledPriceChange,
+        PriceListItem,
+        PriceList,
+        WarrantyPlan,
+        WarrantyPolicy,
+        MarginPolicy,
+        ProductPrice,
+        InventoryLevel,
+        ProductImage,
+        Product,
+        ProductModel,
+        MarkdownEvent,
+        SeasonalEvent,
+        Promotion,
+        ImportMappingTemplate,
+        Supplier,
+        DiningTable,
+        DiningArea,
+        KitchenStation,
+        Customer,
+        CustomerGroup,
+        Category,
+        Brand,
+        DocumentSequence,
+        DeviceActivation,
+        PaymentTerminal,
+        Device,
+    ):
+        db.execute(delete(model))
+    kept = _primary_store(db)
+    if kept is not None:
+        db.execute(update(DeliveryChannel).where(DeliveryChannel.store_id != kept.id).values(store_id=kept.id))
+        db.execute(delete(Store).where(Store.id != kept.id))
+    db.execute(update(ExchangeRate).values(created_by_id=keeper_id))
+    db.execute(update(DeliveryChannel).values(created_by_id=keeper_id))
+    settings = db.scalar(select(BusinessSettings))
+    if settings is not None and settings.updated_by_id != keeper_id:
+        settings.updated_by_id = keeper_id
+    db.flush()
+    db.execute(delete(EmployeeProfile).where(EmployeeProfile.user_id != keeper_id))
+    referenced = set(db.scalars(select(AuditLog.user_id).where(AuditLog.user_id.is_not(None))))
+    referenced.update(id for id in db.scalars(select(AuditLog.approver_id).where(AuditLog.approver_id.is_not(None))))
+    referenced.discard(keeper_id)
+    if referenced:
+        db.execute(
+            update(User)
+            .where(User.id.in_(referenced))
+            .values(is_active=False, has_portal_access=False, has_pos_access=False, hashed_pin=None)
+        )
+    removable = select(User.id).where(User.id != keeper_id)
+    if referenced:
+        removable = removable.where(User.id.not_in(referenced))
+    db.execute(delete(User).where(User.id.in_(removable)))
+
+
+def go_live(db: Session, principal: Principal, payload: GoLiveRequest) -> GoLiveResult:
     settings = load_settings(db, lock=True)
     if settings.live_at is not None:
         raise ApiError(409, "already_live", "This store is already live.")
-    if principal.store_id is not None:
+    if principal.user is None or principal.store_id is not None:
         raise ApiError(403, "business_wide_only", "Only a business-wide admin can take the store live.")
+    if not payload.tax_acknowledged:
+        raise ApiError(422, "tax_not_acknowledged", "Confirm that practice tax stamps will be removed.")
+    if payload.mode == "keep" and payload.opening_stock not in ("keep", "reset"):
+        raise ApiError(422, "opening_stock_required", "Choose whether to keep opening stock or reset it to zero.")
     expected = store_name(db)
-    if confirm.strip().lower() != expected.strip().lower():
+    if payload.confirm.strip().lower() != expected.strip().lower():
         raise ApiError(422, "confirm_mismatch", f'Type the store name "{expected}" to confirm.')
+    opening_stock = "reset" if payload.mode == "fresh" else payload.opening_stock
+    assert opening_stock is not None
     sample_ids = set(db.scalars(select(Product.id).where(Product.is_sample.is_(True))))
     _restore_practice_stock(db, sample_ids)
     sales = _delete_practice_transactions(db)
     products, customers = _delete_samples(db, sample_ids)
+    if opening_stock == "reset":
+        _reset_opening_stock(db)
+    if payload.mode == "fresh":
+        _delete_configuration(db, principal.user.id)
+        settings.onboarded_at = None
     settings.live_at = datetime.now(UTC)
+    settings.promoted_from_practice = True
     db.commit()
     return GoLiveResult(
         live_at=settings.live_at,
+        mode=payload.mode,
+        opening_stock=opening_stock,
         sales_removed=sales,
         sample_products_removed=products,
         sample_customers_removed=customers,

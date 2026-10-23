@@ -1,15 +1,53 @@
-import { ShieldCheck } from "lucide-react";
-import { useState, type FormEvent } from "react";
-import { ErrorNote, Field, PrimaryButton } from "../components/ui";
+import { Eye, EyeOff, Lock, Mail, type LucideIcon } from "lucide-react";
+import { useState, type FormEvent, type InputHTMLAttributes } from "react";
 import { errorText } from "../lib/api";
 import { useSession } from "../lib/session";
 
-/** Operators sign in with their email, password and the 6-digit code from their authenticator app. */
+function LoginField({
+  id,
+  label,
+  icon: Icon,
+  type = "text",
+  ...props
+}: InputHTMLAttributes<HTMLInputElement> & { id: string; label: string; icon: LucideIcon }) {
+  const [showPassword, setShowPassword] = useState(false);
+  const isPassword = type === "password";
+  return (
+    <label className="text-sm font-medium" htmlFor={id}>
+      {label}
+      <span className="relative mt-1 block">
+        <Icon className="pointer-events-none absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400" aria-hidden="true" />
+        <input
+          id={id}
+          type={isPassword && showPassword ? "text" : type}
+          {...props}
+          className={`h-12 w-full rounded-2xl border border-line bg-surface pl-10 text-base transition focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500 ${
+            isPassword ? "pr-12" : "pr-4"
+          }`}
+        />
+        {isPassword ? (
+          <button
+            type="button"
+            tabIndex={-1}
+            aria-label={showPassword ? "Hide password" : "Show password"}
+            aria-pressed={showPassword}
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={() => setShowPassword((value) => !value)}
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+          >
+            {showPassword ? <EyeOff className="h-5 w-5" aria-hidden="true" /> : <Eye className="h-5 w-5" aria-hidden="true" />}
+          </button>
+        ) : null}
+      </span>
+    </label>
+  );
+}
+
+/** Operators sign in with the email and password created for the console. */
 export function LoginPage() {
   const { signIn } = useSession();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [code, setCode] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -18,7 +56,7 @@ export function LoginPage() {
     setBusy(true);
     setError(null);
     try {
-      await signIn(email.trim(), password, code.trim());
+      await signIn(email.trim(), password);
     } catch (caught) {
       setError(errorText(caught, "Could not sign in."));
       setBusy(false);
@@ -26,31 +64,60 @@ export function LoginPage() {
   }
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-charcoal p-6">
-      <form onSubmit={(event) => void submit(event)} className="w-full max-w-sm rounded-3xl bg-white p-8 shadow-2xl">
-        <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-accent text-white">
-          <ShieldCheck size={24} aria-hidden="true" />
-        </span>
-        <h1 className="mt-5 text-2xl font-semibold text-charcoal">QIOS Console</h1>
-        <p className="mt-1 text-sm text-charcoal/60">For POS company staff. Every action here is audited.</p>
-        <div className="mt-6 space-y-4">
-          <Field label="Email" type="email" autoComplete="username" value={email} onChange={(event) => setEmail(event.target.value)} required />
-          <Field label="Password" type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} required />
-          <Field
-            label="Authenticator code"
-            inputMode="numeric"
-            autoComplete="one-time-code"
-            maxLength={6}
-            value={code}
-            onChange={(event) => setCode(event.target.value.replace(/\D/g, ""))}
+    <div className="flex min-h-screen flex-col items-center justify-center gap-4 bg-canvas p-4 font-sans text-charcoal">
+      <div className="grid w-full max-w-5xl overflow-hidden rounded-[28px] border border-line bg-white md:grid-cols-2">
+        <section className="flex flex-col justify-between bg-charcoal p-8 text-white">
+          <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-accent text-sm font-bold">ai</div>
+          <div className="mt-16">
+            <p className="text-xs font-medium uppercase tracking-[0.16em] text-white/50">QIOS</p>
+            <h1 className="mt-2 text-3xl font-semibold leading-tight">Console</h1>
+            <p className="mt-3 max-w-xs text-sm text-white/60">
+              For POS company staff. Every action here is audited.
+            </p>
+          </div>
+          <div className="mt-10 inline-flex w-fit rounded-full bg-white/10 px-3 py-1 text-xs text-white/70">
+            Email and password for console operators
+          </div>
+        </section>
+        <form className="flex flex-col justify-center gap-4 p-8" onSubmit={(event) => void submit(event)}>
+          <div>
+            <h2 className="text-2xl font-semibold">Sign in</h2>
+            <p className="text-sm text-charcoal/60">Use the email and password created for this console.</p>
+          </div>
+          <LoginField
+            id="email"
+            label="Email"
+            icon={Mail}
+            type="email"
+            autoComplete="username"
+            value={email}
+            onChange={(event) => setEmail(event.target.value)}
             required
           />
-        </div>
-        <ErrorNote message={error} />
-        <PrimaryButton type="submit" disabled={busy || code.length !== 6} className="mt-6 h-11 w-full">
-          {busy ? "Signing in…" : "Sign in"}
-        </PrimaryButton>
-      </form>
-    </main>
+          <LoginField
+            id="password"
+            label="Password"
+            icon={Lock}
+            type="password"
+            autoComplete="current-password"
+            value={password}
+            onChange={(event) => setPassword(event.target.value)}
+            required
+          />
+          {error ? (
+            <p role="alert" className="rounded-2xl bg-accent/10 px-4 py-3 text-sm text-accent">
+              {error}
+            </p>
+          ) : null}
+          <button
+            type="submit"
+            disabled={busy || email.trim() === "" || password.length === 0}
+            className="h-12 rounded-2xl bg-accent font-semibold text-white disabled:opacity-40"
+          >
+            {busy ? "Signing in…" : "Sign in"}
+          </button>
+        </form>
+      </div>
+    </div>
   );
 }

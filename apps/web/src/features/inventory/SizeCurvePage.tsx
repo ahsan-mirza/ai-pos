@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Select } from "@ai-pos/ui";
 import { ErrorNote, PrimaryButton, TextField } from "../../components/ui/Field";
 import { apiGet } from "../../lib/api";
 import { message } from "../customers/api";
@@ -72,14 +73,14 @@ export function SizeCurvePage() {
       <div className="flex flex-wrap items-end gap-3">
         <label className="text-sm">
           Model
-          <select className="mt-1.5 block rounded-xl bg-surface px-3 py-3 text-sm" value={modelId} onChange={(event) => setModelId(event.target.value)}>
-            <option value="">Choose a model</option>
-            {models.map((model) => (
-              <option key={model.id} value={model.id}>
-                {model.name}
-              </option>
-            ))}
-          </select>
+          <Select
+            className="mt-1.5"
+            aria-label="Model"
+            placeholder="Choose a model"
+            value={modelId}
+            onChange={setModelId}
+            options={models.map((model) => ({ value: model.id, label: model.name }))}
+          />
         </label>
         <TextField label="From" type="date" value={from} onChange={(event) => setFrom(event.target.value)} />
         <TextField label="To" type="date" value={to} onChange={(event) => setTo(event.target.value)} />

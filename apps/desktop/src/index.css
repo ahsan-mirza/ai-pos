@@ -148,8 +148,23 @@
   animation: context-in 180ms ease-out;
 }
 
+.order-setup-panel {
+  max-height: 0;
+  overflow: hidden;
+  transition: max-height 0.3s ease-in-out;
+}
+
+.order-setup-panel.is-open {
+  max-height: min(70vh, 2000px);
+  overflow-y: auto;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .context-swap {
     animation: none;
+  }
+
+  .order-setup-panel {
+    transition: none;
   }
 }

@@ -1,3 +1,4 @@
+import { Select } from "@ai-pos/ui";
 import { Printer, X } from "lucide-react";
 import { useEffect, useId, useState } from "react";
 import { inTauri, savePrinterSettings, type PrinterSettings } from "../../lib/tauri";
@@ -179,17 +180,14 @@ export function PrinterSettingsModal({ sample, onClose, onSaved }: PrinterSettin
             ))}
             <label className="flex items-center justify-between gap-3 px-1 text-sm font-medium">
               Copies per sale
-              <select
-                value={draft.copies}
-                onChange={(event) => patch({ copies: Number(event.target.value) })}
-                className="rounded-xl border border-line dark:border-zinc-800 bg-white dark:bg-zinc-900 px-3 py-1.5 tabular-nums"
-              >
-                {[1, 2, 3].map((count) => (
-                  <option key={count} value={count}>
-                    {count}
-                  </option>
-                ))}
-              </select>
+              <Select
+                size="sm"
+                className="w-24"
+                aria-label="Copies"
+                value={String(draft.copies)}
+                onChange={(value) => patch({ copies: Number(value) })}
+                options={[1, 2, 3].map((count) => ({ value: String(count), label: String(count) }))}
+              />
             </label>
           </div>
 

@@ -1,12 +1,15 @@
 import {
   CAPABILITIES,
   CAPABILITY_GROUP_LABELS,
+  type BillingCatalog,
   type CapabilityGroup,
   type ConsoleCustomer,
   type ModuleState,
   type OverrideState,
+  type StoreSubscription,
   type TenantDetail,
 } from "@ai-pos/shared-types";
+import { Select, billingCycleBadge } from "@ai-pos/ui";
 import { ArrowRightLeft, RefreshCw, ShieldAlert, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate, useOutletContext, useParams } from "react-router-dom";
@@ -296,6 +299,119 @@ function CustomersTab({ detail }: { detail: TenantDetail }) {
   );
 }
 
+function PackageAssign({ tenantId, onSaved }: { tenantId: string; onSaved: () => void }) {
+  const { operator } = useSession();
+  const admin = operator?.role === "ADMIN";
+  const [catalog, setCatalog] = useState<BillingCatalog | null>(null);
+  const [current, setCurrent] = useState<StoreSubscription | null>(null);
+  const [plan, setPlan] = useState("");
+  const [cycle, setCycle] = useState("");
+  const [quantities, setQuantities] = useState<Record<string, string>>({});
+  const [reason, setReason] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    Promise.all([api.get<BillingCatalog>("/billing/catalog"), api.get<StoreSubscription[]>("/subscriptions")])
+      .then(([found, rows]) => {
+        if (cancelled) return;
+        const mine = rows.find((row) => row.tenant_id === tenantId) ?? null;
+        setCatalog(found);
+        setCurrent(mine);
+        setPlan(mine?.plan_code ?? found.plans.find((row) => row.active)?.code ?? "");
+        setCycle(mine?.cycle_code ?? found.cycles.find((row) => row.active)?.code ?? "");
+        setQuantities(Object.fromEntries((mine?.addons ?? []).map((item) => [item.code, String(item.quantity)])));
+      })
+      .catch((caught: unknown) => {
+        if (!cancelled) setError(errorText(caught, "Could not load the package."));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [tenantId]);
+
+  if (!catalog) return <ErrorNote message={error} />;
+  return (
+    <form
+      className="mt-5 rounded-3xl border border-line p-4"
+      onSubmit={(event) => {
+        event.preventDefault();
+        if (!admin) return;
+        setBusy(true);
+        setError(null);
+        api
+          .put<StoreSubscription>(`/tenants/${tenantId}/subscription`, {
+            plan_code: plan,
+            cycle_code: cycle,
+            addons: catalog.addons
+              .map((addon) => ({ code: addon.code, quantity: Number(quantities[addon.code] || 0) }))
+              .filter((item) => item.quantity > 0),
+            reason: reason.trim(),
+          })
+          .then(() => {
+            setReason("");
+            onSaved();
+          })
+          .catch((caught: unknown) => setError(errorText(caught, "Could not assign the package.")))
+          .finally(() => setBusy(false));
+      }}
+    >
+      <p className="text-sm font-semibold">Package</p>
+      <p className="mt-1 text-xs text-charcoal/50">
+        {current
+          ? `${current.plan_name} · ${current.cycle_name} · ${current.status}`
+          : "This store has no subscription yet."}
+      </p>
+      <div className="mt-3 grid gap-3 sm:grid-cols-2">
+        <label className="text-sm font-medium">
+          Package
+          <Select
+            className="mt-1.5"
+            aria-label="Package"
+            value={plan}
+            disabled={!admin}
+            onChange={setPlan}
+            options={catalog.plans.filter((row) => row.active).map((row) => ({ value: row.code, label: row.name }))}
+          />
+        </label>
+        <label className="text-sm font-medium">
+          Cycle
+          <Select
+            className="mt-1.5"
+            aria-label="Billing cycle"
+            value={cycle}
+            disabled={!admin}
+            onChange={setCycle}
+            options={catalog.cycles
+              .filter((row) => row.active)
+              .map((row) => ({ value: row.code, label: row.name, badge: billingCycleBadge(row.code, row.discount_bps) }))}
+          />
+        </label>
+        {catalog.addons.filter((row) => row.active).map((addon) => (
+          <Field
+            key={addon.id}
+            label={`${addon.name} quantity`}
+            value={quantities[addon.code] ?? "0"}
+            inputMode="numeric"
+            disabled={!admin}
+            onChange={(event) => setQuantities({ ...quantities, [addon.code]: event.target.value })}
+          />
+        ))}
+      </div>
+      {admin ? (
+        <div className="mt-3 grid gap-3">
+          <Field label="Reason" value={reason} maxLength={500} onChange={(event) => setReason(event.target.value)} />
+          <PrimaryButton type="submit" disabled={busy || reason.trim().length < 3}>
+            {busy ? "Saving…" : "Assign package"}
+          </PrimaryButton>
+        </div>
+      ) : null}
+      <ErrorNote message={error} />
+    </form>
+  );
+}
+
 /** A tenant's profile, stats, module overrides, requests, audit and break-glass customers. */
 export function TenantDrawer() {
   const { tenantId } = useParams();
@@ -331,10 +447,10 @@ export function TenantDrawer() {
   const tenant = detail?.tenant;
 
   return (
-    <div className="frost fixed inset-0 z-40 flex justify-end bg-black/40 backdrop-blur-sm" role="presentation" onClick={close}>
+    <div className="drawer-backdrop fixed inset-0 z-40 flex justify-end bg-charcoal/40 backdrop-blur-[2px]" role="presentation" onClick={close}>
       <aside
         aria-label="Tenant detail"
-        className="drawer flex h-full w-full max-w-3xl flex-col overflow-y-auto rounded-l-3xl bg-white shadow-2xl"
+        className="drawer-panel flex h-full w-full max-w-3xl flex-col overflow-y-auto bg-white shadow-2xl"
         onClick={(event) => event.stopPropagation()}
       >
         <div className="sticky top-0 z-10 flex items-start gap-4 border-b border-line bg-white/95 px-6 py-5 backdrop-blur">
@@ -345,11 +461,17 @@ export function TenantDrawer() {
                 <span className="font-mono">{tenant.domain}</span>
                 <StatusBadge value={tenant.status} />
                 <span>{tenant.profile_label}</span>
-                <span className="capitalize">· {tenant.plan}</span>
+                <span>· {tenant.plan_name}</span>
+                {tenant.practice_mode ? <span>Practice</span> : null}
               </p>
             ) : null}
           </div>
-          <button type="button" aria-label="Close" onClick={close} className="flex h-9 w-9 items-center justify-center rounded-full hover:bg-surface">
+          <button
+            type="button"
+            aria-label="Close"
+            onClick={close}
+            className="flex h-9 w-9 items-center justify-center rounded-full text-charcoal/70 transition-colors hover:bg-gray-100 hover:text-charcoal"
+          >
             <X size={18} aria-hidden="true" />
           </button>
         </div>
@@ -396,6 +518,7 @@ export function TenantDrawer() {
               <p className="mt-2 text-xs text-charcoal/50">
                 Owner {tenant.owner_email ?? "not set"} · {tenant.stats.onboarded ? "onboarded" : "still onboarding"} · stats from {when(tenant.stats.collected_at)}
               </p>
+              <PackageAssign tenantId={tenant.id} onSaved={changed} />
 
               <div className="mt-6 inline-flex rounded-full bg-surface p-1" role="tablist" aria-label="Tenant sections">
                 {(["modules", "requests", "audit", "customers"] as const).map((value) => (

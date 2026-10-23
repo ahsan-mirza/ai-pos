@@ -13,6 +13,9 @@ import { Modal } from "../../components/ui/Modal";
 import { Toggle } from "../../components/ui/Toggle";
 import { useAuth } from "../../lib/auth";
 import { errorMessage, usersApi } from "./api";
+import { CredentialModal } from "./CredentialModal";
+
+const PIN_REQUIRED = "Set a PIN before enabling POS access.";
 
 interface UserFormModalProps {
   user: User | null;
@@ -20,9 +23,11 @@ interface UserFormModalProps {
   stores: Store[];
   onClose: () => void;
   onSaved: (user: User) => void;
+  /** Updates the staff list while this dialog stays open, used after a PIN is set. */
+  onUpdated?: (user: User) => void;
 }
 
-export function UserFormModal({ user, roles, stores, onClose, onSaved }: UserFormModalProps) {
+export function UserFormModal({ user, roles, stores, onClose, onSaved, onUpdated }: UserFormModalProps) {
   const { user: actor } = useAuth();
   const editing = user !== null;
   const actorStore = actor?.store_id ?? null;
@@ -40,10 +45,12 @@ export function UserFormModal({ user, roles, stores, onClose, onSaved }: UserFor
   const [active, setActive] = useState(user?.is_active ?? true);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [hasPin, setHasPin] = useState(user?.has_pin ?? false);
+  const [settingPin, setSettingPin] = useState(false);
 
   const isSelf = editing && actor?.id === user.id;
   const canEnablePortal = editing ? user.has_password : password.length >= PASSWORD_MIN_LENGTH;
-  const canEnablePos = editing ? user.has_pin : PIN_PATTERN.test(pin);
+  const canEnablePos = editing ? hasPin : PIN_PATTERN.test(pin);
 
   const validate = (): string | null => {
     if (!editing && !/^[a-z0-9][a-z0-9._-]{2,31}$/.test(username.trim().toLowerCase())) {
@@ -56,7 +63,7 @@ export function UserFormModal({ user, roles, stores, onClose, onSaved }: UserFor
     }
     if (!editing && pin !== "" && !PIN_PATTERN.test(pin)) return "PINs are 4 to 6 digits.";
     if (portalAccess && !canEnablePortal) return "Set a password before enabling web portal access.";
-    if (posAccess && !canEnablePos) return "Set a PIN before enabling POS access.";
+    if (posAccess && !canEnablePos) return PIN_REQUIRED;
     return null;
   };
 
@@ -181,7 +188,34 @@ export function UserFormModal({ user, roles, stores, onClose, onSaved }: UserFor
         />
         <Toggle label="Active" description="Disabled users cannot sign in" checked={active} disabled={isSelf} onChange={setActive} />
       </div>
-      <ErrorNote message={error} />
+      {error === PIN_REQUIRED && editing ? (
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-accent/10 px-4 py-3 text-sm text-accent">
+          <p role="alert">{error}</p>
+          <button
+            type="button"
+            onClick={() => setSettingPin(true)}
+            className="h-9 shrink-0 rounded-full bg-accent px-4 text-sm font-semibold text-white hover:bg-accent-hover"
+          >
+            Set PIN
+          </button>
+        </div>
+      ) : (
+        <ErrorNote message={error} />
+      )}
+      {settingPin && user ? (
+        <CredentialModal
+          user={user}
+          kind="pin"
+          elevated
+          onClose={() => setSettingPin(false)}
+          onSaved={(next) => {
+            setHasPin(next.has_pin);
+            setSettingPin(false);
+            setError(null);
+            onUpdated?.(next);
+          }}
+        />
+      ) : null}
     </Modal>
   );
 }

@@ -27,6 +27,7 @@ const steps = [
   { name: "Packages typecheck", cmd: "pnpm", args: ["--filter", "./packages/*", "typecheck"] },
   { name: "Admin portal lint + typecheck", cmd: "pnpm", args: ["--filter", "@ai-pos/web", "lint"] },
   { name: "Console lint + typecheck", cmd: "pnpm", args: ["--filter", "@ai-pos/super-admin", "lint"] },
+  { name: "Marketing site lint + typecheck", cmd: "pnpm", args: ["--filter", "@ai-pos/site", "lint"] },
   { name: "POS lint + typecheck", cmd: "pnpm", args: ["--filter", "@ai-pos/desktop", "lint"] },
   // { name: "POS tests (vitest)", cmd: "pnpm", args: ["--filter", "@ai-pos/desktop", "test"] },
   {
