@@ -78,6 +78,32 @@ def test_nothing_published_is_an_empty_list(client, downloads) -> None:
     assert client.get("/api/v1/downloads", headers=bearer(admin_token(client))).json() == {"releases": []}
 
 
+def test_latest_installer_downloads_without_a_portal_login(client, downloads):
+    exe = b"MZ latest"
+    publish(downloads, "0.9.0", {"AI POS_0.9.0_x64-setup.exe": b"old"})
+    publish(
+        downloads,
+        "1.4.0",
+        {"AI POS_1.4.0_x64-setup.exe": exe},
+        {"files": [{"name": "AI POS_1.4.0_x64-setup.exe", "sha256": hashlib.sha256(exe).hexdigest()}]},
+    )
+    feed = client.get("/api/v1/downloads/latest.json")
+    assert feed.status_code == 200
+    body = feed.json()
+    assert body["version"] == "1.4.0"
+    assert body["sha256"] == hashlib.sha256(exe).hexdigest()
+    assert body["path"] == "/api/download/installer/win"
+    downloaded = client.get(body["path"])
+    assert downloaded.status_code == 200
+    assert downloaded.content == exe
+    assert "AI-POS-Setup-latest.exe" in downloaded.headers["content-disposition"]
+
+
+def test_missing_installer_is_not_found(client, downloads):
+    assert client.get("/api/v1/downloads/latest.json").status_code == 404
+    assert client.get("/api/download/installer/win").status_code == 404
+
+
 def test_only_super_admins_see_downloads(client, downloads) -> None:
     publish(downloads, "1.0.0", {"AI POS_1.0.0_x64-setup.exe": b"MZ"})
     token = admin_token(client)

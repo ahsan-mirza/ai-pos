@@ -10,6 +10,8 @@ import { SettingsPage } from "./pages/SettingsPage";
 import { TenantDrawer } from "./pages/TenantDrawer";
 import { TenantsPage } from "./pages/TenantsPage";
 
+const basename = import.meta.env.BASE_URL === "/" ? undefined : import.meta.env.BASE_URL.replace(/\/$/, "");
+
 function Console() {
   const { status } = useSession();
   if (status === "checking") {
@@ -17,7 +19,7 @@ function Console() {
   }
   if (status === "signed-out") return <LoginPage />;
   return (
-    <BrowserRouter>
+    <BrowserRouter basename={basename}>
       <Routes>
         <Route element={<Shell />}>
           <Route index element={<Navigate to="/tenants" replace />} />

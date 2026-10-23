@@ -26,7 +26,7 @@ def labour_product() -> dict:
     }
 
 
-def test_open_price_lines_need_permission_and_description(client, session) -> None:
+def test_open_price_lines_need_permission(client, session) -> None:
     seed(client)
     assert push(client, [event("labour-product", "product", labour_product())]).status_code == 200
 
@@ -37,9 +37,12 @@ def test_open_price_lines_need_permission_and_description(client, session) -> No
 
     session.add(RolePermission(role_id=uuid.UUID(CASHIER_ROLE_ID), permission="pos:open_price"))
     session.commit()
-    undescribed = push(client, [event("labour-no-desc", "sale", sale([line(LABOUR, 1, 12_000)]))])
-    assert undescribed.status_code == 422
-    assert "description" in undescribed.json()["error"]["message"]
+    blank = sale([line(LABOUR, 1, 12_000)])
+    undescribed = push(client, [event("labour-no-desc", "sale", blank)])
+    assert undescribed.status_code == 200, undescribed.text
+    without_note = session.scalar(select(SaleItem).where(SaleItem.sale_id == uuid.UUID(blank["id"])))
+    assert without_note is not None
+    assert without_note.description is None
 
     body = sale([{**line(LABOUR, 1, 12_000), "description": "Screen swap, iPhone 13"}])
     sold = push(client, [event("labour-sold", "sale", body)])

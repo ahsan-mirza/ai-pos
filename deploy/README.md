@@ -1,6 +1,6 @@
 # Deployment
 
-- **API and admin portal:** `.github/workflows/deploy.yml` runs after `CI` passes on `main` (or by hand from the Actions tab). It builds the portal, copies `apps/api` and `packages/catalog` to the server, installs Python packages, migrates the control and tenant databases, restarts `ai-pos-api`, waits for `/health`, and only then replaces the portal files.
+- **API, admin portal, and console:** `.github/workflows/deploy.yml` runs after `CI` passes on `main` (or by hand from the Actions tab). It builds the portal and the console, copies `apps/api` and `packages/catalog` to the server, installs Python packages, migrates the control and tenant databases, restarts `ai-pos-api`, waits for `/health`, and only then replaces the portal and console files. The console is at `/admin74246/`.
 - **POS installer:** `.github/workflows/release-pos.yml` builds the Windows installers when a `v*.*.*` tag is pushed, attaches the `.exe` and `.msi` to a GitHub Release, and copies them to the server so Super Admins can download them from the portal's **Downloads** page.
 
 Server layout:
@@ -12,6 +12,7 @@ Server layout:
 | `/opt/ai-pos/packages/catalog` | seed data read by `app/seed.py` |
 | `/opt/ai-pos/downloads/pos/<version>` | POS installers and `manifest.json`, published by the release workflow (`DOWNLOADS_DIR`) |
 | `/var/www/ai-pos-admin` | built admin portal |
+| `/var/www/ai-pos-console` | built console, served at `/admin74246/` |
 
 ## First-time server setup
 

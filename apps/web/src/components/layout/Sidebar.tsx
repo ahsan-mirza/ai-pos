@@ -5,7 +5,7 @@ import { useTenant } from "../../context/TenantContext";
 import { useAuth, useIsSuperAdmin } from "../../lib/auth";
 import { useCapabilities } from "../../lib/capabilities";
 import { useCanManageSettings } from "../../lib/currency";
-import { labelOf, navGroups, type NavGroup, type NavItem } from "./navigation";
+import { labelOf, navGroups, settingsTabAllowed, settingsTabs, type NavGroup, type NavItem } from "./navigation";
 import { StoreSwitcher } from "./StoreSwitcher";
 
 function BrandMark() {
@@ -28,18 +28,24 @@ function useVisibleGroups(): { label: NavGroup["label"]; items: VisibleItem[] }[
   const superAdmin = useIsSuperAdmin();
   const capabilities = useCapabilities();
   const tenant = useTenant();
+  const gate = { can, canManageSettings, superAdmin, has: capabilities.has, allows: tenant.allows };
   return navGroups
     .map((group) => ({
       label: group.label,
-      items: group.items
-        .filter(
-          (item) =>
-            tenant.allows(item.profiles) &&
-            (item.capability === undefined || capabilities.has(item.capability)) &&
-            (!item.superAdminOnly || superAdmin) &&
-            (item.settingsOnly ? canManageSettings : can(item.permission)),
-        )
-        .map((item) => ({ ...item, label: labelOf(item, capabilities) })),
+      items: group.items.flatMap((item) => {
+        if (item.hub) {
+          const open = settingsTabs.filter((tab) => settingsTabAllowed(tab, gate));
+          const first = open[0];
+          if (first === undefined) return [];
+          return [{ ...item, to: first.to, label: labelOf(item, capabilities) }];
+        }
+        const visible =
+          tenant.allows(item.profiles) &&
+          (item.capability === undefined || capabilities.has(item.capability)) &&
+          (!item.superAdminOnly || superAdmin) &&
+          (item.settingsOnly ? canManageSettings : can(item.permission));
+        return visible ? [{ ...item, label: labelOf(item, capabilities) }] : [];
+      }),
     }))
     .filter((group) => group.items.length > 0);
 }

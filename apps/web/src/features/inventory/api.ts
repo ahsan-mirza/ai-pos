@@ -140,8 +140,20 @@ export const modelsApi = {
 };
 
 export const labelsApi = {
-  products: (items: { product_id: string; copies: number }[], layout: LabelLayout, showPrice = true) =>
-    openPdf("/api/v1/labels", { items, layout, show_price: showPrice }),
+  products: (
+    items: { product_id: string; copies: number }[],
+    layout: LabelLayout,
+    showPrice = true,
+    options: { showName?: boolean; showVariant?: boolean; showCurrency?: boolean } = {},
+  ) =>
+    openPdf("/api/v1/labels", {
+      items,
+      layout,
+      show_price: showPrice,
+      show_name: options.showName ?? true,
+      show_variant: options.showVariant ?? true,
+      show_currency: options.showCurrency ?? true,
+    }),
   model: (modelId: string, layout: LabelLayout) => openPdf(`/api/v1/labels/models/${modelId}?layout=${layout}`),
   batch: (batchId: string, layout: LabelLayout) => openPdf(`/api/v1/labels/batches/${batchId}?layout=${layout}`),
 };

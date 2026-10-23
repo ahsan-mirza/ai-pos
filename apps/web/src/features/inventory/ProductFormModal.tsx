@@ -2,25 +2,31 @@ import {
   Capability,
   GENDER_LABELS,
   ItemType,
+  Permission,
   VARIANT_ATTRIBUTE_KEYS,
   variantAttributeLabel,
   type Gender,
   type ItemType as ItemTypeId,
   type Product,
   type ProductImage,
+  type ProductSearchHit,
   type TaxCategory,
 } from "@ai-pos/shared-types";
-import { useEffect, useState } from "react";
+import { Zap } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import { ErrorNote, GhostButton, PrimaryButton, SelectField, TextField } from "../../components/ui/Field";
 import { Modal } from "../../components/ui/Modal";
 import { Toggle } from "../../components/ui/Toggle";
 import { apiDelete, apiGet, apiPatch, apiUpload } from "../../lib/api";
+import { cleanCode } from "../../lib/codes";
 import { compressImageToWebp } from "../../lib/imageFile";
 import { useAuth } from "../../lib/auth";
 import { useCapabilities } from "../../lib/capabilities";
-import { useAutoCode } from "../../lib/codes";
 import { useTenant } from "../../context/TenantContext";
-import { inventoryApi, message } from "./api";
+import { brandsApi, categoriesApi, inventoryApi, message, modelsApi } from "./api";
+import { barcodeError, randomCode128, randomEan13, skuFromParts } from "./barcodeDraft";
+import { fieldErrors, useInvalidFocus, type FieldErrors } from "./formErrors";
+import { BarcodePrintFlow } from "./BarcodePrintFlow";
 import { ProductImageDropzone, type ProductPhotoChoice } from "./ProductImageDropzone";
 import { storeOptions, useBrands, useCategories, useModels, useStores } from "./shared";
 import { useUnits } from "./units";
@@ -53,21 +59,29 @@ export function ProductFormModal({
   onClose: () => void;
   onSaved: () => void;
 }) {
-  const { user } = useAuth();
+  const { user, can } = useAuth();
+  const catalogAdmin = can(Permission.PortalInventoryManage) && user?.store_id === null;
   const { isFnB } = useTenant();
-  const { categories } = useCategories();
+  const { categories, reload: reloadCategories } = useCategories();
   const { stores } = useStores();
   const editing = product !== null;
   const [barcode, setBarcode] = useState(product?.barcode ?? "");
+  const [barcodePrefix, setBarcodePrefix] = useState("200");
+  const [autoBarcode, setAutoBarcode] = useState(true);
+  const [barcodeTaken, setBarcodeTaken] = useState(false);
+  const [skuTaken, setSkuTaken] = useState(false);
   const [name, setName] = useState(product?.name ?? "");
   const [nameTouched, setNameTouched] = useState(editing);
-  const { code: sku, setCode: setSku } = useAutoCode(name, product?.sku ?? "", 64);
+  const [skuPrefix, setSkuPrefix] = useState("");
+  const [skuTyped, setSkuTyped] = useState(product?.sku ?? "");
+  const [skuManual, setSkuManual] = useState(editing);
   const [modelNumber, setModelNumber] = useState(product?.model_number ?? "");
   const [categoryId, setCategoryId] = useState(product?.category_id ?? preset?.categoryId ?? "");
   const [subCategoryId, setSubCategoryId] = useState(product?.sub_category_id ?? preset?.subCategoryId ?? "");
   const [brandId, setBrandId] = useState(product?.brand_id ?? preset?.brandId ?? "");
   const [modelId, setModelId] = useState(product?.product_model_id ?? preset?.modelId ?? "");
   const [attributes, setAttributes] = useState<Record<string, string>>(product?.variant_attributes ?? {});
+  const sku = editing || skuManual ? skuTyped : skuFromParts(skuPrefix, name, attributes);
   const [price, setPrice] = useState(product ? (product.price_cents / 100).toFixed(2) : "");
   const [serialized, setSerialized] = useState(product?.is_serialized ?? preset?.serialized ?? false);
   const [taxCategory, setTaxCategory] = useState<TaxCategory>(product?.tax_category ?? "STANDARD");
@@ -93,11 +107,17 @@ export function ProductFormModal({
   const [opening, setOpening] = useState("0");
   const [reorder, setReorder] = useState("0");
   const [error, setError] = useState<string | null>(null);
+  const [serverFields, setServerFields] = useState<FieldErrors>({});
+  const formRef = useRef<HTMLDivElement>(null);
+  const focusInvalid = useInvalidFocus(formRef);
+  const [submitted, setSubmitted] = useState(false);
+  const [touched, setTouched] = useState<Record<string, boolean>>({});
+  const [printProduct, setPrintProduct] = useState<Product | null>(null);
   const [busy, setBusy] = useState(false);
   const [persistedId, setPersistedId] = useState<string | null>(product?.id ?? null);
   const [photo, setPhoto] = useState<ProductPhotoChoice>({ file: null, removed: false });
-  const { brands } = useBrands();
-  const { models } = useModels(subCategoryId || null, brandId || null);
+  const { brands, reload: reloadBrands } = useBrands();
+  const { models, reload: reloadModels } = useModels(subCategoryId || null, brandId || null);
   const category = categories.find((item) => item.id === categoryId);
   const model = models.find((item) => item.id === modelId);
   const attributeKeys = [...PRIMARY_ATTRIBUTES, ...Object.keys(attributes).filter((key) => !PRIMARY_ATTRIBUTES.includes(key))];
@@ -105,6 +125,98 @@ export function ProductFormModal({
   useEffect(() => {
     if (!nameTouched && model && name === "") setName(model.name);
   }, [model, name, nameTouched]);
+
+  useEffect(() => {
+    const value = barcode.trim();
+    if (editing || value === "") {
+      setBarcodeTaken(false);
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      apiGet<ProductSearchHit[]>(`/api/v1/products/search?q=${encodeURIComponent(value)}&limit=5`)
+        .then((hits) => setBarcodeTaken(hits.some((hit) => hit.product.barcode.toLowerCase() === value.toLowerCase())))
+        .catch(() => setBarcodeTaken(false));
+    }, 280);
+    return () => window.clearTimeout(timer);
+  }, [barcode, editing]);
+
+  useEffect(() => {
+    const value = sku.replace(/-$/, "").trim();
+    if (editing || value === "") {
+      setSkuTaken(false);
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      apiGet<ProductSearchHit[]>(`/api/v1/products/search?q=${encodeURIComponent(value)}&limit=5`)
+        .then((hits) => setSkuTaken(hits.some((hit) => hit.product.sku.toLowerCase() === value.toLowerCase())))
+        .catch(() => setSkuTaken(false));
+    }, 280);
+    return () => window.clearTimeout(timer);
+  }, [sku, editing]);
+
+  const touch = (key: string) => setTouched((current) => ({ ...current, [key]: true }));
+  const reveal = (key: string, text: string) => ((submitted || touched[key]) && text !== "" ? text : undefined);
+  const clearServer = (key: string) =>
+    setServerFields((current) => {
+      if (!current[key]) return current;
+      const next = { ...current };
+      delete next[key];
+      return next;
+    });
+  const fieldMessage = (key: string, text: string) => serverFields[key] || reveal(key, text) || undefined;
+
+  const priceMessage = () => {
+    if (price.trim().startsWith("-")) return "Price cannot be negative.";
+    const cents = toCents(price);
+    if (cents === null) return "Enter a price like 49.00.";
+    if (!openPrice && cents <= 0) return "Price must be greater than 0.";
+    return "";
+  };
+
+  const barcodeMessage = () => {
+    if (editing) return "";
+    if (barcode.trim() === "" && autoBarcode) return "";
+    return barcodeError(barcode, barcodeTaken) ?? "";
+  };
+
+  const skuMessage = () => {
+    if (editing) return "";
+    if (sku.replace(/-$/, "") === "") return "SKU is required.";
+    if (skuTaken) return "SKU must be unique.";
+    return "";
+  };
+
+  const pluMessage = () =>
+    byWeight && plu.trim() !== "" && !/^\d{4,6}$/.test(plu.trim()) ? "A scale PLU is 4 to 6 digits." : "";
+
+  const storeMessage = () => {
+    if (editing || serialized || itemType === ItemType.MadeToOrder) return "";
+    if (Number(opening) > 0 && storeId === "") return "Choose the store that holds the opening stock.";
+    return "";
+  };
+
+  const openingMessage = () => {
+    if (editing || opening.trim() === "") return "";
+    const quantity = Number(opening);
+    if (Number.isNaN(quantity) || quantity < 0) return "Opening quantity cannot be negative.";
+    return "";
+  };
+
+  const assignBarcode = async (kind: "ean13" | "code128") => {
+    for (let attempt = 0; attempt < 6; attempt += 1) {
+      const code = kind === "ean13" ? randomEan13(barcodePrefix) : randomCode128(barcodePrefix);
+      const hits = await apiGet<ProductSearchHit[]>(`/api/v1/products/search?q=${encodeURIComponent(code)}&limit=5`).catch(
+        () => [] as ProductSearchHit[],
+      );
+      if (!hits.some((hit) => hit.product.barcode.toLowerCase() === code.toLowerCase())) {
+        setBarcode(code);
+        touch("barcode");
+        return code;
+      }
+    }
+    setError("Could not find a unique barcode. Try another prefix.");
+    return null;
+  };
 
   const suggestName = (modelName: string | undefined, next: Record<string, string>) => {
     if (nameTouched || !modelName) return;
@@ -115,6 +227,71 @@ export function ProductFormModal({
     const next = { ...attributes, [key]: value };
     setAttributes(next);
     suggestName(model?.name, next);
+  };
+
+  const rejectCreate = (caught: unknown, field: string, fallback: string) => {
+    const apiFields = fieldErrors(caught);
+    const text = apiFields.name || apiFields.code || message(caught, fallback);
+    setServerFields((current) => ({ ...current, [field]: text }));
+    setSubmitted(true);
+    focusInvalid();
+  };
+
+  const addCategory = async (label: string) => {
+    try {
+      const created = await categoriesApi.create({ name: label.trim() });
+      await reloadCategories();
+      setCategoryId(created.id);
+      setSubCategoryId("");
+      setModelId("");
+      clearServer("category");
+    } catch (caught) {
+      rejectCreate(caught, "category", "Could not add the category.");
+    }
+  };
+
+  const addSubCategory = async (label: string) => {
+    if (categoryId === "") return;
+    try {
+      const parent = await categoriesApi.createSub(categoryId, { name: label.trim() });
+      await reloadCategories();
+      const created = parent.sub_categories.find((sub) => sub.name.toLowerCase() === label.trim().toLowerCase());
+      if (created) setSubCategoryId(created.id);
+      setModelId("");
+      clearServer("sub");
+    } catch (caught) {
+      rejectCreate(caught, "sub", "Could not add the sub-category.");
+    }
+  };
+
+  const addBrand = async (label: string) => {
+    if (subCategoryId === "") return;
+    try {
+      const created = await brandsApi.create({ name: label.trim(), sub_category_ids: [subCategoryId] });
+      await reloadBrands();
+      setBrandId(created.id);
+      setModelId("");
+      clearServer("brand");
+    } catch (caught) {
+      rejectCreate(caught, "brand", "Could not add the brand.");
+    }
+  };
+
+  const addModel = async (label: string) => {
+    if (brandId === "" || subCategoryId === "") return;
+    try {
+      const created = await modelsApi.create({
+        name: label.trim(),
+        brand_id: brandId,
+        sub_category_id: subCategoryId,
+      });
+      await reloadModels();
+      setModelId(created.id);
+      suggestName(created.name, attributes);
+      clearServer("model");
+    } catch (caught) {
+      rejectCreate(caught, "model", "Could not add the model.");
+    }
   };
 
   const brandOptions = (() => {
@@ -128,22 +305,41 @@ export function ProductFormModal({
   })();
 
   const save = async () => {
+    setSubmitted(true);
     const cents = toCents(price);
-    if (cents === null) return setError("Enter a price like 49.00.");
-    if (categoryId === "") return setError("Choose a category.");
-    if (name.trim() === "") return setError("Product name is required.");
+    const nameProblem = name.trim() === "" ? "Name is required." : "";
+    const priceProblem = priceMessage();
+    const categoryProblem = categoryId || modelId ? "" : "Choose a category or a model.";
+    const skuProblem = skuMessage();
+    const barcodeProblem = barcodeMessage();
+    const pluProblem = pluMessage();
+    const storeProblem = storeMessage();
+    const openingProblem = openingMessage();
+    if (
+      nameProblem ||
+      priceProblem ||
+      categoryProblem ||
+      skuProblem ||
+      barcodeProblem ||
+      pluProblem ||
+      storeProblem ||
+      openingProblem ||
+      cents === null
+    ) {
+      focusInvalid();
+      return;
+    }
     const variant_attributes = Object.fromEntries(
       Object.entries(attributes)
         .map(([key, value]) => [key, value.trim()])
         .filter(([, value]) => value !== ""),
     );
     const classification = {
-      category_id: categoryId,
+      category_id: categoryId || null,
       brand_id: brandId || null,
       product_model_id: modelId || null,
       variant_attributes,
     };
-    if (byWeight && plu.trim() !== "" && !/^\d{4,6}$/.test(plu.trim())) return setError("A scale PLU is 4 to 6 digits.");
     const weighed = weighing
       ? { sold_by_weight: byWeight, plu_code: byWeight && plu.trim() ? plu.trim() : null, tare_grams: byWeight ? Number(tare) || 0 : 0 }
       : {};
@@ -161,6 +357,7 @@ export function ProductFormModal({
     const sellable_units = piecesOnly ? ["PIECE"] : ["PIECE", ...packs];
     setBusy(true);
     setError(null);
+    setServerFields({});
     try {
       let id = persistedId;
       if (id !== null) {
@@ -187,14 +384,19 @@ export function ProductFormModal({
               : byWeight
                 ? Math.round((Number(opening) || 0) * 1000)
                 : Number(opening) || 0;
-        const finalSku = sku.replace(/-$/, "");
-        if (finalSku === "" || barcode.trim() === "") {
-          setBusy(false);
-          return setError("SKU and barcode are required.");
+        let nextBarcode = barcode.trim();
+        if (nextBarcode === "" && autoBarcode) {
+          const generated = await assignBarcode("ean13");
+          if (generated === null) {
+            setBusy(false);
+            return;
+          }
+          nextBarcode = generated;
         }
+        const finalSku = sku.replace(/-$/, "");
         const created = await inventoryApi.createProduct({
           sku: finalSku,
-          barcode: barcode.trim(),
+          barcode: nextBarcode,
           name: name.trim(),
           model_number: modelNumber.trim() || null,
           ...classification,
@@ -224,15 +426,25 @@ export function ProductFormModal({
         const cover = images.find((image) => image.is_primary) ?? images[0];
         if (cover) await apiDelete(`/api/v1/inventory/images/${cover.id}`);
       }
+      if (!editing && id !== null) {
+        const created = await apiGet<Product>(`/api/v1/products/${id}`);
+        setPrintProduct(created);
+        return;
+      }
       onSaved();
     } catch (caught) {
-      setError(message(caught, "Could not save the product."));
+      const apiFields = fieldErrors(caught);
+      if (Object.keys(apiFields).length > 0) {
+        setServerFields(apiFields);
+        focusInvalid();
+      } else setError(message(caught, "Could not save the product."));
     } finally {
       setBusy(false);
     }
   };
 
   return (
+    <>
     <Modal
       title={editing ? `Edit ${product.name}` : model ? `New ${model.name} variant` : "New product"}
       subtitle={
@@ -249,6 +461,7 @@ export function ProductFormModal({
         </>
       }
     >
+      <div ref={formRef}>
       <ProductImageDropzone currentUrl={product?.thumb_url ?? product?.image_url ?? null} onChange={setPhoto} />
       <h3 className="mb-3 text-sm font-semibold">Catalog placement</h3>
       <div className="grid gap-4 md:grid-cols-2">
@@ -256,40 +469,53 @@ export function ProductFormModal({
           label="Category"
           value={categoryId}
           placeholder="Choose a category"
+          error={fieldMessage("category", categoryId || modelId ? "" : "Choose a category or a model.")}
           options={categories.map((item) => ({ value: item.id, label: item.name }))}
+          onCreate={catalogAdmin ? (label) => void addCategory(label) : undefined}
           onChange={(next) => {
             setCategoryId(next);
             setSubCategoryId("");
             setModelId("");
+            touch("category");
+            clearServer("category");
           }}
         />
         <SelectField
           label="Sub-category"
           value={subCategoryId}
-          disabled={!category || category.sub_categories.length === 0}
+          disabled={!category || (!catalogAdmin && category.sub_categories.length === 0)}
+          error={serverFields.sub}
           options={[
             { value: "", label: "None" },
             ...(category?.sub_categories ?? []).map((sub) => ({ value: sub.id, label: sub.name })),
           ]}
+          onCreate={catalogAdmin && category ? (label) => void addSubCategory(label) : undefined}
           onChange={(next) => {
             setSubCategoryId(next);
             setModelId("");
+            clearServer("sub");
           }}
         />
         <SelectField
           label="Brand"
           value={brandId}
+          error={serverFields.brand}
           options={brandOptions}
+          createHint={catalogAdmin && subCategoryId === "" ? "Pick a sub-category first." : undefined}
+          onCreate={catalogAdmin && subCategoryId !== "" ? (label) => void addBrand(label) : undefined}
           onChange={(next) => {
             setBrandId(next);
             setModelId("");
+            clearServer("brand");
           }}
         />
         <SelectField
           label="Model"
           value={modelId}
           disabled={brandId === "" || subCategoryId === ""}
-          placeholder={brandId === "" || subCategoryId === "" ? "Pick a sub-category and brand" : "Choose a model"}
+          placeholder={brandId === "" || subCategoryId === "" ? "Pick a sub-category and brand first." : "Choose a model"}
+          hint={brandId === "" || subCategoryId === "" ? "Pick a sub-category and brand first." : undefined}
+          error={serverFields.model}
           options={[
             { value: "", label: "No model (stand-alone product)" },
             ...models.map((item) => ({
@@ -298,9 +524,12 @@ export function ProductFormModal({
               hint: [item.code, item.release_year].filter(Boolean).join(" · ") || undefined,
             })),
           ]}
+          onCreate={catalogAdmin && brandId !== "" && subCategoryId !== "" ? (label) => void addModel(label) : undefined}
+          createMinLength={1}
           onChange={(next) => {
             setModelId(next);
             suggestName(models.find((item) => item.id === next)?.name, attributes);
+            clearServer("model");
           }}
         />
       </div>
@@ -325,36 +554,156 @@ export function ProductFormModal({
         <TextField
           label="Name"
           value={name}
+          error={fieldMessage("name", name.trim() === "" ? "Name is required." : "")}
           hint={!editing && model && !nameTouched ? "Follows the model and variant until you edit it." : undefined}
+          onBlur={() => touch("name")}
           onChange={(event) => {
             setNameTouched(true);
             setName(event.target.value);
+            clearServer("name");
           }}
         />
         <TextField
           label={byWeight ? "Price per kg" : "Price"}
           inputMode="decimal"
           value={price}
-          onChange={(event) => setPrice(event.target.value)}
+          error={fieldMessage("price", priceMessage())}
+          onBlur={() => touch("price")}
+          onChange={(event) => {
+            setPrice(event.target.value);
+            clearServer("price");
+          }}
         />
-        <TextField
-          label="SKU"
-          value={sku}
-          disabled={editing}
-          placeholder="Generated from the name"
-          className="font-mono"
-          maxLength={64}
-          spellCheck={false}
-          autoComplete="off"
-          hint={editing ? "SKUs are fixed once a product exists." : "Letters, digits and dashes; follows the name until you edit it."}
-          onChange={(event) => setSku(event.target.value)}
-        />
-        <TextField
-          label="Barcode / UPC / EAN"
-          value={barcode}
-          disabled={editing}
-          onChange={(event) => setBarcode(event.target.value)}
-        />
+        <div>
+          <label className="block text-sm font-medium" htmlFor="product-sku">
+            SKU
+            <span className="relative mt-1.5 block">
+              <input
+                id="product-sku"
+                value={sku}
+                disabled={editing}
+                placeholder="Generated from the name"
+                maxLength={64}
+                spellCheck={false}
+                autoComplete="off"
+                aria-invalid={fieldMessage("sku", skuMessage()) ? true : undefined}
+                onBlur={() => touch("sku")}
+                onChange={(event) => {
+                  setSkuManual(true);
+                  setSkuTyped(cleanCode(event.target.value, 64));
+                  clearServer("sku");
+                }}
+                className={`h-12 w-full rounded-xl border bg-surface py-3 pl-4 pr-36 font-mono text-sm focus:bg-white focus:outline-none disabled:text-charcoal/50 ${
+                  fieldMessage("sku", skuMessage())
+                    ? "border-rose-500 bg-rose-50/20 focus:border-rose-500 focus:ring-2 focus:ring-rose-500"
+                    : "border-transparent focus:border-accent"
+                }`}
+              />
+              {editing ? null : (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSkuManual(true);
+                    setSkuTyped(skuFromParts(skuPrefix, name, attributes));
+                  }}
+                  className="absolute right-1.5 top-1/2 inline-flex h-8 -translate-y-1/2 items-center gap-1 rounded-full bg-charcoal px-3 text-xs font-semibold text-white"
+                >
+                  <Zap size={12} aria-hidden="true" />
+                  Auto Generate
+                </button>
+              )}
+            </span>
+          </label>
+          {fieldMessage("sku", skuMessage()) ? (
+            <span role="alert" className="mt-1.5 block text-xs font-medium text-rose-600">
+              {fieldMessage("sku", skuMessage())}
+            </span>
+          ) : (
+            <span className="mt-1.5 block text-xs text-charcoal/50">
+              {editing ? "SKUs are fixed once a product exists." : "Letters, digits and dashes. Follows the name and variant until you edit it."}
+            </span>
+          )}
+          {editing ? null : (
+            <label className="mt-2 block text-xs font-medium text-charcoal/70">
+              SKU prefix
+              <input
+                value={skuPrefix}
+                maxLength={8}
+                placeholder="HP"
+                onChange={(event) => setSkuPrefix(cleanCode(event.target.value, 8))}
+                className="mt-1 h-9 w-full rounded-xl border border-line bg-white px-3 font-mono text-sm uppercase"
+              />
+            </label>
+          )}
+        </div>
+        <div>
+          <label className="block text-sm font-medium" htmlFor="product-barcode">
+            Barcode / UPC / EAN
+            <span className="relative mt-1.5 block">
+              <input
+                id="product-barcode"
+                value={barcode}
+                disabled={editing}
+                aria-invalid={fieldMessage("barcode", barcodeMessage()) ? true : undefined}
+                onBlur={() => touch("barcode")}
+                onChange={(event) => {
+                  setBarcode(event.target.value.trim());
+                  clearServer("barcode");
+                }}
+                className={`h-12 w-full rounded-xl border bg-surface py-3 pl-4 pr-40 font-mono text-sm focus:bg-white focus:outline-none disabled:text-charcoal/50 ${
+                  fieldMessage("barcode", barcodeMessage())
+                    ? "border-rose-500 bg-rose-50/20 focus:border-rose-500 focus:ring-2 focus:ring-rose-500"
+                    : "border-transparent focus:border-accent"
+                }`}
+              />
+              {editing ? null : (
+                <button
+                  type="button"
+                  onClick={() => void assignBarcode("ean13")}
+                  className="absolute right-1.5 top-1/2 inline-flex h-8 -translate-y-1/2 items-center gap-1 rounded-full bg-charcoal px-3 text-xs font-semibold text-white"
+                >
+                  <Zap size={12} aria-hidden="true" />
+                  EAN-13
+                </button>
+              )}
+            </span>
+          </label>
+          {fieldMessage("barcode", barcodeMessage()) ? (
+            <span role="alert" className="mt-1.5 block text-xs font-medium text-rose-600">
+              {fieldMessage("barcode", barcodeMessage())}
+            </span>
+          ) : null}
+          {editing ? null : (
+            <div className="mt-2 flex flex-wrap items-end gap-2">
+              <button
+                type="button"
+                onClick={() => void assignBarcode("code128")}
+                className="inline-flex h-9 items-center gap-1 rounded-full border border-line px-3 text-xs font-semibold"
+              >
+                <Zap size={12} aria-hidden="true" />
+                Code 128
+              </button>
+              <label className="text-xs font-medium text-charcoal/70">
+                Barcode prefix
+                <input
+                  value={barcodePrefix}
+                  maxLength={11}
+                  onChange={(event) => setBarcodePrefix(event.target.value.replace(/[^\dA-Za-z]/g, "").slice(0, 11))}
+                  className="mt-1 h-9 w-28 rounded-xl border border-line bg-white px-3 font-mono text-sm"
+                />
+              </label>
+            </div>
+          )}
+          {editing ? null : (
+            <div className="mt-3">
+              <Toggle
+                label="Auto-assign a unique barcode if left blank"
+                checked={autoBarcode}
+                onChange={setAutoBarcode}
+              />
+            </div>
+          )}
+        </div>
         <TextField
           label="Manufacturer part number"
           value={modelNumber}
@@ -396,7 +745,7 @@ export function ProductFormModal({
         <div className="mt-4">
           <Toggle
             label="Open price"
-            description="Cashiers type the price and a description at the till (labour, unlisted accessories). Not stocked."
+            description="Cashiers type the price and a description at the till. Only staff with Sell open price can ring it up."
             checked={openPrice}
             onChange={setOpenPrice}
           />
@@ -419,7 +768,11 @@ export function ProductFormModal({
                 maxLength={6}
                 placeholder="e.g. 4016"
                 hint="The code the scale prints into its labels."
-                onChange={(event) => setPlu(event.target.value.replace(/\D/g, ""))}
+                error={fieldMessage("plu", pluMessage())}
+                onChange={(event) => {
+                  setPlu(event.target.value.replace(/\D/g, ""));
+                  clearServer("plu");
+                }}
               />
               <TextField
                 label="Tare (grams)"
@@ -499,8 +852,12 @@ export function ProductFormModal({
               label="Opening stock at"
               value={storeId}
               disabled={user?.store_id !== null}
+              error={fieldMessage("store", storeMessage())}
               options={[{ value: "", label: "No branch yet" }, ...storeOptions(stores)]}
-              onChange={setStoreId}
+              onChange={(next) => {
+                setStoreId(next);
+                clearServer("store");
+              }}
             />
             <TextField
               label={byWeight ? "Opening stock (kg)" : "Opening quantity"}
@@ -508,6 +865,7 @@ export function ProductFormModal({
               min={0}
               value={opening}
               disabled={serialized || storeId === ""}
+              error={fieldMessage("opening", openingMessage())}
               onChange={(event) => setOpening(event.target.value)}
             />
             <TextField
@@ -522,6 +880,9 @@ export function ProductFormModal({
         </div>
       ) : null}
       <ErrorNote message={error} />
+      </div>
     </Modal>
+    {printProduct ? <BarcodePrintFlow product={printProduct} onDone={onSaved} /> : null}
+    </>
   );
 }

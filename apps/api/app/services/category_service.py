@@ -5,7 +5,7 @@ from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.core.errors import ApiError
+from app.core.errors import ApiError, field_conflict
 from app.models.category import Category, SubCategory
 from app.models.product import Product
 from app.schemas.inventory import CategoryOut, CategoryUpdate, CategoryWrite, SubCategoryOut
@@ -118,7 +118,8 @@ def _commit(db: Session) -> None:
         db.commit()
     except IntegrityError as exc:
         db.rollback()
-        raise ApiError(409, "conflict", "That name or code is already in use.") from exc
+        message = "That name or code is already in use."
+        raise field_conflict(message, name=message, code=message) from exc
 
 
 def _category(db: Session, category_id: uuid.UUID) -> Category:
@@ -137,7 +138,8 @@ def _sub(db: Session, sub_id: uuid.UUID) -> SubCategory:
 
 def create_category(db: Session, data: CategoryWrite) -> CategoryOut:
     if db.scalar(select(Category.id).where(func.lower(Category.name) == data.name.lower())) is not None:
-        raise ApiError(409, "conflict", "A category with this name already exists.")
+        message = "A category with this name already exists."
+        raise field_conflict(message, name=message)
     category = Category(
         name=data.name,
         code=data.code or _unique_code(db, _code_from(data.name)),
@@ -155,7 +157,8 @@ def update_category(db: Session, category_id: uuid.UUID, data: CategoryUpdate) -
             select(Category.id).where(func.lower(Category.name) == data.name.lower(), Category.id != category.id)
         )
         if clash is not None:
-            raise ApiError(409, "conflict", "A category with this name already exists.")
+            message = "A category with this name already exists."
+            raise field_conflict(message, name=message)
         category.name = data.name
         db.execute(update(Product).where(Product.category_id == category.id).values(category=data.name))
     if data.code is not None:
@@ -182,7 +185,8 @@ def create_sub_category(db: Session, category_id: uuid.UUID, data: CategoryWrite
         )
     )
     if clash is not None:
-        raise ApiError(409, "conflict", f"{category.name} already has a sub-category with this name.")
+        message = f"{category.name} already has a sub-category with this name."
+        raise field_conflict(message, name=message)
     db.add(
         SubCategory(
             category_id=category.id,

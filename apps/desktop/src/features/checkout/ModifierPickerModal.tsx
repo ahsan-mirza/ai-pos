@@ -8,13 +8,14 @@ import {
 } from "@ai-pos/shared-types";
 import { Check, ChefHat, X } from "lucide-react";
 import { useEffect, useId, useMemo, useState } from "react";
+import { QuantityField, parseSellQuantity } from "./QuantityField";
 
 interface ModifierPickerModalProps {
   product: ProductUpsert;
   groups: ModifierGroup[];
   currency: string;
   onClose: () => void;
-  onConfirm: (choices: ModifierChoice[]) => void;
+  onConfirm: (choices: ModifierChoice[], quantity: number) => void;
 }
 
 function choiceOf(group: ModifierGroup, optionId: string): ModifierChoice {
@@ -28,6 +29,7 @@ export function ModifierPickerModal({ product, groups, currency, onClose, onConf
   const [picked, setPicked] = useState<Record<string, string[]>>(() =>
     Object.fromEntries(groups.map((group) => [group.id, group.options.filter((option) => option.is_default).map((option) => option.id)])),
   );
+  const [quantity, setQuantity] = useState("1");
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -82,7 +84,12 @@ export function ModifierPickerModal({ product, groups, currency, onClose, onConf
               setError(problem);
               return;
             }
-            onConfirm(choices);
+            const count = parseSellQuantity(quantity);
+            if (count === null) {
+              setError("Enter a quantity of at least 1.");
+              return;
+            }
+            onConfirm(choices, count);
           }}
         >
           <div className="custom-scrollbar max-h-[55vh] space-y-4 overflow-y-auto pr-1">
@@ -130,6 +137,14 @@ export function ModifierPickerModal({ product, groups, currency, onClose, onConf
               );
             })}
           </div>
+          <QuantityField
+            id="modifier-quantity"
+            value={quantity}
+            onChange={(value) => {
+              setQuantity(value);
+              setError(null);
+            }}
+          />
           {error ? (
             <p role="alert" className="text-sm font-medium text-red-600 dark:text-red-400">
               {error}

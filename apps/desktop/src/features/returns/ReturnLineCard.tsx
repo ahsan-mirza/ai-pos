@@ -7,7 +7,7 @@ import {
   type ReturnReason as Reason,
 } from "@ai-pos/shared-types";
 import { CheckCircle2, Minus, Plus, ScanLine, ShieldCheck } from "lucide-react";
-import { Select } from "../../components/Select";
+import { Select } from "@ai-pos/ui";
 import {
   conditionOptions,
   isFaultyCondition,

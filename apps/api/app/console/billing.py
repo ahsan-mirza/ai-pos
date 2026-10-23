@@ -71,7 +71,7 @@ _PLANS = (
 _CYCLES = (
     ("MONTHLY", "Monthly", 1, 0, 1),
     ("QUARTERLY", "Quarterly", 3, 500, 2),
-    ("HALF_YEARLY", "Half-yearly", 6, 1_200, 3),
+    ("HALF_YEARLY", "Half-Yearly", 6, 1_200, 3),
     ("ANNUAL", "Annual", 12, 2_500, 4),
 )
 _ADDONS = (

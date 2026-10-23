@@ -107,6 +107,25 @@ const mealSlots: ComboSlot[] = [
   },
 ];
 
+describe("selling quantity", () => {
+  it("adds the quantity typed when a product is tapped", () => {
+    const state = run({ type: "add_product", product: cable, quantity: 4 });
+    expect(state.lines[0]?.quantity).toBe(4);
+    const more = applyCart(state, { type: "add_product", product: cable, quantity: 2 }).state;
+    expect(more.lines[0]?.quantity).toBe(6);
+  });
+
+  it("sells an open-price item without a description", () => {
+    const labour: ProductUpsert = { ...cable, id: "labour", sku: "SRV-LABOUR", name: "Repair labour", is_open_price: true, price_cents: 0 };
+    const refused = applyCart(emptyCart, { type: "add_open_price", product: labour, unitPriceCents: 2500, description: "", quantity: 0 });
+    expect(refused.error).toBe("Quantity must be at least 1.");
+    const state = run({ type: "add_open_price", product: labour, unitPriceCents: 2500, description: "", quantity: 3 });
+    expect(state.lines[0]?.description).toBeUndefined();
+    expect(state.lines[0]?.quantity).toBe(3);
+    expect(state.lines[0]?.unitPriceCents).toBe(2500);
+  });
+});
+
 describe("meals", () => {
   it("preselects defaults and validates every slot", () => {
     const defaults = comboDefaults(mealSlots);

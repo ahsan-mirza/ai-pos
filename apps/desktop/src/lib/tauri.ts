@@ -51,6 +51,23 @@ export interface CashierSession {
   unlocked_at: number;
 }
 
+export interface AppUpdate {
+  version: string;
+  notes: string | null;
+  sha256: string;
+  url: string;
+}
+
+/** Null when this version is current, or when the till cannot reach the server. */
+export function checkAppUpdate(): Promise<AppUpdate | null> {
+  return invoke<AppUpdate | null>("check_app_update");
+}
+
+/** Downloads the published installer, runs it silently, then the installer restarts the register. */
+export function installAppUpdate(): Promise<void> {
+  return invoke("install_app_update");
+}
+
 export function pinLogin(username: string, pin: string): Promise<CashierSession> {
   return invoke<CashierSession>("pin_login", { username, pin });
 }

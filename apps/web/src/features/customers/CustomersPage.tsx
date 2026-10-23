@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useConfirm } from "../../components/ui/ConfirmDialog";
 import { DataTable, type DataTableColumn } from "../../components/ui/DataTable";
-import { ErrorNote, PrimaryButton, filterLabel } from "../../components/ui/Field";
+import { ErrorNote, PrimaryButton, SearchField } from "../../components/ui/Field";
 import { SegmentedControl } from "../../components/ui/SegmentedControl";
 import { Toast } from "../../components/ui/Toast";
 import { useCapability } from "../../lib/capabilities";
@@ -217,16 +217,12 @@ export function CustomersPage() {
 
       <div className="overflow-hidden rounded-card border border-line bg-white">
         <div className="flex flex-wrap items-end gap-3 p-6 pb-5">
-          <label className="min-w-[240px] flex-1">
-            <span className={filterLabel}>Search</span>
-            <input
-              type="search"
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder="Company, contact, code, phone, TRN"
-              className="h-11 w-full rounded-full border border-line bg-white px-5 text-sm font-medium text-charcoal transition-all placeholder:font-normal placeholder:text-charcoal/40 hover:border-gray-400 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
-            />
-          </label>
+          <SearchField
+            className="min-w-[240px] flex-1"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Company, contact, code, phone, TRN"
+          />
           <SegmentedControl label="Customer type" value={type} options={typeOptions} onChange={setType} />
           <button
             type="button"

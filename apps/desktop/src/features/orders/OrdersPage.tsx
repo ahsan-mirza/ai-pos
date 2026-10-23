@@ -35,6 +35,7 @@ import { activeStore, useBusinessCurrency } from "../checkout/currency";
 import { combosFor, groupsFor, refreshMenu, useMenu } from "../checkout/menu";
 import { ComboBuilderModal } from "../checkout/ComboBuilderModal";
 import { ModifierPickerModal } from "../checkout/ModifierPickerModal";
+import { QuantityModal } from "../checkout/QuantityModal";
 import { verifyManager } from "../checkout/wholesaleClient";
 import { printKitchenTickets } from "./kitchenPrint";
 import { SplitChecksModal } from "./SplitChecksModal";
@@ -195,6 +196,7 @@ export function OrdersPage({ session }: { session: CashierSession }) {
   const [seat, setSeat] = useState<number | null>(null);
   const [modifierFor, setModifierFor] = useState<ProductUpsert | null>(null);
   const [comboFor, setComboFor] = useState<ProductUpsert | null>(null);
+  const [quantityFor, setQuantityFor] = useState<ProductUpsert | null>(null);
   const [voiding, setVoiding] = useState<{ item: OrderItem | null; reason: string } | null>(null);
   const [mergeFrom, setMergeFrom] = useState<Order | null>(null);
   const [moving, setMoving] = useState<Order | null>(null);
@@ -324,7 +326,7 @@ export function OrdersPage({ session }: { session: CashierSession }) {
     }
   }
 
-  function addDraft(product: ProductUpsert, modifiers: ModifierChoice[], components: ComboChoice[] = []) {
+  function addDraft(product: ProductUpsert, modifiers: ModifierChoice[], components: ComboChoice[] = [], quantity = 1) {
     setDraft((current) => {
       const plain = modifiers.length === 0 && components.length === 0;
       const same = plain
@@ -333,8 +335,8 @@ export function OrdersPage({ session }: { session: CashierSession }) {
               line.product.id === product.id && line.seat === seat && line.modifiers.length === 0 && line.components.length === 0,
           )
         : undefined;
-      if (same) return current.map((line) => (line === same ? { ...line, quantity: line.quantity + 1 } : line));
-      return [...current, { id: crypto.randomUUID(), product, quantity: 1, modifiers, components, seat }];
+      if (same) return current.map((line) => (line === same ? { ...line, quantity: line.quantity + quantity } : line));
+      return [...current, { id: crypto.randomUUID(), product, quantity, modifiers, components, seat }];
     });
   }
 
@@ -345,7 +347,7 @@ export function OrdersPage({ session }: { session: CashierSession }) {
     }
     if (combosFor(menu, product.id).length > 0) setComboFor(product);
     else if (groupsFor(menu, product.id).length > 0) setModifierFor(product);
-    else addDraft(product, []);
+    else setQuantityFor(product);
   }
 
   async function addAndMaybeSend(send: boolean) {
@@ -720,19 +722,29 @@ export function OrdersPage({ session }: { session: CashierSession }) {
         </section>
       </div>
 
+      {quantityFor ? (
+        <QuantityModal
+          product={quantityFor}
+          onClose={() => setQuantityFor(null)}
+          onConfirm={(quantity) => {
+            addDraft(quantityFor, [], [], quantity);
+            return true;
+          }}
+        />
+      ) : null}
       {modifierFor ? (
         <ModifierPickerModal product={modifierFor} groups={groupsFor(menu, modifierFor.id)} currency={currency}
           onClose={() => setModifierFor(null)}
-          onConfirm={(choices) => {
-            addDraft(modifierFor, choices);
+          onConfirm={(choices, quantity) => {
+            addDraft(modifierFor, choices, [], quantity);
             setModifierFor(null);
           }} />
       ) : null}
       {comboFor ? (
         <ComboBuilderModal product={comboFor} slots={combosFor(menu, comboFor.id)} currency={currency}
           onClose={() => setComboFor(null)}
-          onConfirm={(components) => {
-            addDraft(comboFor, [], components);
+          onConfirm={(components, quantity) => {
+            addDraft(comboFor, [], components, quantity);
             setComboFor(null);
           }} />
       ) : null}

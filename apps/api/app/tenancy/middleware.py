@@ -24,6 +24,9 @@ OPEN_PATHS = (
     "/api/v1/site/contact",
     "/api/v1/billing/stripe-webhook",
     "/api/v1/billing/checkout/return",
+    "/api/v1/downloads/latest.json",
+    "/api/v1/downloads/win",
+    "/api/download/installer/win",
 )
 
 

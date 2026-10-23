@@ -13,6 +13,7 @@ import { BrandsPage } from "./features/inventory/BrandsPage";
 import { CategoriesPage } from "./features/inventory/CategoriesPage";
 import { UnitsPage } from "./features/inventory/UnitsPage";
 import { InventoryLayout } from "./features/inventory/InventoryLayout";
+import { SettingsLayout } from "./features/settings/SettingsLayout";
 import { InventoryPage } from "./features/inventory/InventoryPage";
 import { PriceChangesPage } from "./features/inventory/PriceChangesPage";
 import { PriceListsPage } from "./features/inventory/PriceListsPage";
@@ -262,36 +263,11 @@ function Portal() {
               </RequirePermission>
             }
           />
-          <Route path="stores" element={<StoresPage />} />
           <Route
             path="users"
             element={
               <RequirePermission permission={Permission.UsersRead}>
                 <UsersPage />
-              </RequirePermission>
-            }
-          />
-          <Route
-            path="roles"
-            element={
-              <RequirePermission permission={Permission.UsersRead}>
-                <RolesPage />
-              </RequirePermission>
-            }
-          />
-          <Route
-            path="settings"
-            element={
-              <RequirePermission permission={Permission.SettingsManage} businessWide>
-                <SettingsPage />
-              </RequirePermission>
-            }
-          />
-          <Route
-            path="settings/audit-logs"
-            element={
-              <RequirePermission permission={Permission.AuditRead}>
-                <AuditPage />
               </RequirePermission>
             }
           />
@@ -309,30 +285,6 @@ function Portal() {
             element={
               <RequirePermission permission={Permission.PortalReportsRead}>
                 <MarginPage />
-              </RequirePermission>
-            }
-          />
-          <Route
-            path="settings/currencies"
-            element={
-              <RequirePermission permission={Permission.CurrenciesManage}>
-                <RequireCapability capability={Capability.MultiCurrency}><CurrenciesPage /></RequireCapability>
-              </RequirePermission>
-            }
-          />
-          <Route
-            path="settings/channels"
-            element={
-              <RequirePermission permission={Permission.SettingsManage}>
-                <RequireCapability capability={Capability.DeliveryChannels}><ChannelsPage /></RequireCapability>
-              </RequirePermission>
-            }
-          />
-          <Route
-            path="settings/messaging"
-            element={
-              <RequirePermission permission={Permission.MessagingManage}>
-                <MessagingPage />
               </RequirePermission>
             }
           />
@@ -489,22 +441,75 @@ function Portal() {
               </RequirePermission>
             }
           />
-          <Route
-            path="registers"
-            element={
-              <RequirePermission permission={Permission.DevicesManage}>
-                <RegistersPage />
-              </RequirePermission>
-            }
-          />
-          <Route
-            path="downloads"
-            element={
-              <RequireSuperAdmin>
-                <DownloadsPage />
-              </RequireSuperAdmin>
-            }
-          />
+          </Route>
+          <Route element={<SettingsLayout />}>
+            <Route element={<PageFrame />}>
+              <Route path="stores" element={<StoresPage />} />
+              <Route
+                path="roles"
+                element={
+                  <RequirePermission permission={Permission.UsersRead}>
+                    <RolesPage />
+                  </RequirePermission>
+                }
+              />
+              <Route
+                path="settings"
+                element={
+                  <RequirePermission permission={Permission.SettingsManage} businessWide>
+                    <SettingsPage />
+                  </RequirePermission>
+                }
+              />
+              <Route
+                path="settings/audit-logs"
+                element={
+                  <RequirePermission permission={Permission.AuditRead}>
+                    <AuditPage />
+                  </RequirePermission>
+                }
+              />
+              <Route
+                path="settings/currencies"
+                element={
+                  <RequirePermission permission={Permission.CurrenciesManage}>
+                    <RequireCapability capability={Capability.MultiCurrency}><CurrenciesPage /></RequireCapability>
+                  </RequirePermission>
+                }
+              />
+              <Route
+                path="settings/channels"
+                element={
+                  <RequirePermission permission={Permission.SettingsManage}>
+                    <RequireCapability capability={Capability.DeliveryChannels}><ChannelsPage /></RequireCapability>
+                  </RequirePermission>
+                }
+              />
+              <Route
+                path="settings/messaging"
+                element={
+                  <RequirePermission permission={Permission.MessagingManage}>
+                    <MessagingPage />
+                  </RequirePermission>
+                }
+              />
+              <Route
+                path="registers"
+                element={
+                  <RequirePermission permission={Permission.DevicesManage}>
+                    <RegistersPage />
+                  </RequirePermission>
+                }
+              />
+              <Route
+                path="downloads"
+                element={
+                  <RequireSuperAdmin>
+                    <DownloadsPage />
+                  </RequireSuperAdmin>
+                }
+              />
+            </Route>
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>

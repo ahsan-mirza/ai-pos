@@ -1,7 +1,7 @@
 import type { Availability, ProductUpsert } from "@ai-pos/shared-types";
 import { MapPin, Phone, Search, Warehouse, X } from "lucide-react";
 import { useCallback, useEffect, useState, type FormEvent } from "react";
-import { Select } from "../../components/Select";
+import { Select } from "@ai-pos/ui";
 import { branchAvailability } from "../../lib/api";
 import { checkBranchesViaShell, inTauri } from "../../lib/tauri";
 import { store } from "./catalog";

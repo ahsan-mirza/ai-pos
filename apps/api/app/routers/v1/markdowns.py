@@ -43,7 +43,7 @@ def labels(
     _: CanManage,
     layout: Annotated[str, Query()] = "a4_3x8",
 ) -> Response:
-    if layout not in ("a4_3x8", "roll_50x30"):
+    if layout not in labels_service.SHEETS:
         layout = "a4_3x8"
     ids = markdown_service.changed_product_ids(db, event_id)
     pdf = labels_service.for_products(db, [(product_id, 1) for product_id in ids], layout=layout, show_price=True)  # type: ignore[arg-type]

@@ -90,11 +90,13 @@ export interface ConsignmentSettlement {
   created_at: string;
 }
 
-export type LabelLayout = "a4_3x8" | "roll_50x30";
+export type LabelLayout = "a4_3x8" | "roll_50x30" | "roll_50x25" | "roll_38x25";
 
 export const LABEL_LAYOUT_LABELS: Record<LabelLayout, string> = {
   a4_3x8: "A4 sheet · 24 labels (70 × 37 mm)",
   roll_50x30: "Label roll · 50 × 30 mm",
+  roll_50x25: "Standard POS · 50 × 25 mm",
+  roll_38x25: "Compact jewelry · 38 × 25 mm",
 };
 
 /** Letter sizes in wear order, then numeric sizes, then the rest A-Z. Mirrors variant_matrix_service._value_order. */

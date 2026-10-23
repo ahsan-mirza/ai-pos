@@ -1,13 +1,13 @@
 import type { Device, DeviceActivationKey, DeviceKey } from "@ai-pos/shared-types";
 import { Copy, Download, KeyRound, MonitorSmartphone, Plus, RotateCw, ShieldOff } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
-import { Link } from "react-router-dom";
 import { ErrorNote, GhostButton, PrimaryButton, SelectField, TextField } from "../../components/ui/Field";
 import { useConfirm } from "../../components/ui/ConfirmDialog";
 import { Modal } from "../../components/ui/Modal";
 import { Toast } from "../../components/ui/Toast";
+import { env } from "../../config/env";
 import { apiGet, apiPost } from "../../lib/api";
-import { useAuth, useIsSuperAdmin } from "../../lib/auth";
+import { useAuth } from "../../lib/auth";
 import { formatDate, storeOptions, useStores } from "../inventory/shared";
 import { errorMessage } from "../users/api";
 
@@ -21,7 +21,6 @@ function seen(device: Device): { label: string; live: boolean } {
 
 export function RegistersPage() {
   const { user } = useAuth();
-  const superAdmin = useIsSuperAdmin();
   const { stores } = useStores();
   const [devices, setDevices] = useState<Device[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -114,15 +113,13 @@ export function RegistersPage() {
             <p className="text-sm text-charcoal/60">Keys replace the shared API key and bind each till to its branch.</p>
           </div>
           <div className="flex flex-wrap gap-2">
-            {superAdmin ? (
-              <Link
-                to="/downloads"
-                className="inline-flex items-center justify-center rounded-full border border-gray-200 bg-white px-6 py-2.5 text-sm font-medium text-black transition-colors hover:bg-gray-50"
-              >
-                <Download size={16} aria-hidden="true" className="-ml-2 mr-1.5" />
-                Download POS app
-              </Link>
-            ) : null}
+            <a
+              href={`${env.apiBaseUrl}/api/download/installer/win`}
+              className="inline-flex items-center justify-center rounded-full border border-gray-200 bg-white px-6 py-2.5 text-sm font-medium text-black transition-colors hover:bg-gray-50"
+            >
+              <Download size={16} aria-hidden="true" className="-ml-2 mr-1.5" />
+              Download POS app
+            </a>
             <PrimaryButton onClick={() => setCreating(true)}>
               <Plus size={16} aria-hidden="true" className="-ml-2 mr-1.5" />
               Register a till

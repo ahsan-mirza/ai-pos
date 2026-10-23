@@ -82,7 +82,15 @@ def test_sale_is_dated_when_it_happened(client, session) -> None:
     stored = session.get(Sale, uuid.UUID(body["id"]))
     assert stored.created_at.replace(tzinfo=UTC) == when
 
-    future = sale([line(CABLE, 1, 1500)], sold_at=(datetime.now(UTC) + timedelta(hours=2)).isoformat())
+    ahead = datetime.now(UTC) + timedelta(hours=2)
+    skewed = sale([line(CABLE, 1, 1500)], sold_at=ahead.isoformat())
+    assert push(client, [event("skewed-sale", "sale", skewed)]).status_code == 200
+    recorded = session.get(Sale, uuid.UUID(skewed["id"]))
+    recorded_at = recorded.created_at.replace(tzinfo=UTC)
+    assert recorded_at < ahead - timedelta(hours=1)
+    assert abs(recorded_at - datetime.now(UTC)) < timedelta(minutes=1)
+
+    future = sale([line(CABLE, 1, 1500)], sold_at=(datetime.now(UTC) + timedelta(days=2)).isoformat())
     rejected = push(client, [event("future-sale", "sale", future)])
     assert rejected.status_code == 422 and "future" in rejected.json()["error"]["message"]
 

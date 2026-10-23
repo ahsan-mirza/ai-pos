@@ -9,9 +9,7 @@ import {
   Boxes,
   ChefHat,
   Clock,
-  Coins,
   CreditCard,
-  Download,
   FileSpreadsheet,
   FileText,
   Gift,
@@ -20,21 +18,17 @@ import {
   Landmark,
   LayoutDashboard,
   LayoutGrid,
-  MessageCircle,
-  MonitorSmartphone,
   Percent,
   Radar,
   ReceiptText,
   Repeat2,
   RotateCcw,
   ScanBarcode,
-  ScrollText,
   Settings,
   ShieldCheck,
   SlidersHorizontal,
   Smartphone,
   Sparkles,
-  Store,
   Tag,
   TicketPercent,
   Timer,
@@ -68,7 +62,61 @@ export interface NavItem {
   settingsOnly?: boolean;
   /** Platform files (the POS installer) are for the Super Admin role only. */
   superAdminOnly?: boolean;
+  /** Opens the first Store settings tab this user is allowed to see. */
+  hub?: boolean;
   isActive: (pathname: string) => boolean;
+}
+
+/** Pages that live under Store settings. Users and Staff & payroll stay in the sidebar. */
+export interface SettingsTab {
+  to: string;
+  label: string;
+  permission: Permission;
+  capability?: Capability;
+  profiles?: readonly BusinessProfile[];
+  settingsOnly?: boolean;
+  superAdminOnly?: boolean;
+  /** Exact match, so General is not selected on /settings/audit-logs. */
+  end?: boolean;
+}
+
+export const settingsTabs: SettingsTab[] = [
+  { to: "/settings", label: "General", permission: Permission.SettingsManage, settingsOnly: true, end: true },
+  { to: "/stores", label: "Stores", permission: Permission.PortalAccess },
+  { to: "/roles", label: "Roles", permission: Permission.UsersRead },
+  { to: "/registers", label: "Registers", permission: Permission.DevicesManage },
+  { to: "/downloads", label: "Downloads", permission: Permission.PortalAccess, superAdminOnly: true },
+  { to: "/settings/currencies", label: "Currencies", permission: Permission.CurrenciesManage, capability: Capability.MultiCurrency },
+  { to: "/settings/messaging", label: "Messaging", permission: Permission.MessagingManage },
+  {
+    to: "/settings/channels",
+    label: "Delivery channels",
+    permission: Permission.SettingsManage,
+    capability: Capability.DeliveryChannels,
+    profiles: FNB_PROFILES,
+  },
+  { to: "/settings/audit-logs", label: "Audit trail", permission: Permission.AuditRead },
+];
+
+export function settingsTabAllowed(
+  tab: SettingsTab,
+  gate: {
+    can: (permission: Permission) => boolean;
+    canManageSettings: boolean;
+    superAdmin: boolean;
+    has: (capability: Capability) => boolean;
+    allows: (profiles?: readonly BusinessProfile[]) => boolean;
+  },
+): boolean {
+  if (!gate.allows(tab.profiles)) return false;
+  if (tab.capability !== undefined && !gate.has(tab.capability)) return false;
+  if (tab.superAdminOnly && !gate.superAdmin) return false;
+  if (tab.settingsOnly) return gate.canManageSettings;
+  return gate.can(tab.permission);
+}
+
+export function inSettingsHub(pathname: string): boolean {
+  return settingsTabs.some((tab) => pathname === tab.to || pathname.startsWith(`${tab.to}/`));
 }
 
 export interface NavGroup {
@@ -361,63 +409,15 @@ export const navGroups: NavGroup[] = [
   {
     label: "Administration",
     items: [
-      { to: "/stores", label: "Stores", icon: Store, permission: Permission.PortalAccess, isActive: under("/stores") },
       { to: "/users", label: "Users", icon: UserCog, permission: Permission.UsersRead, isActive: under("/users") },
       { to: "/staff", label: "Staff & payroll", icon: Timer, permission: Permission.StaffManage, isActive: under("/staff") },
-      { to: "/roles", label: "Roles", icon: ShieldCheck, permission: Permission.UsersRead, isActive: under("/roles") },
-      {
-        to: "/registers",
-        label: "Registers",
-        icon: MonitorSmartphone,
-        permission: Permission.DevicesManage,
-        isActive: under("/registers"),
-      },
-      {
-        to: "/downloads",
-        label: "Downloads",
-        icon: Download,
-        permission: Permission.PortalAccess,
-        superAdminOnly: true,
-        isActive: under("/downloads"),
-      },
-      {
-        to: "/settings/currencies",
-        label: "Currencies",
-        icon: Coins,
-        permission: Permission.CurrenciesManage,
-        capability: Capability.MultiCurrency,
-        isActive: under("/settings/currencies"),
-      },
-      {
-        to: "/settings/messaging",
-        label: "Messaging",
-        icon: MessageCircle,
-        permission: Permission.MessagingManage,
-        isActive: under("/settings/messaging"),
-      },
-      {
-        to: "/settings/channels",
-        label: "Delivery channels",
-        icon: Truck,
-        permission: Permission.SettingsManage,
-        capability: Capability.DeliveryChannels,
-        profiles: FNB_PROFILES,
-        isActive: under("/settings/channels"),
-      },
-      {
-        to: "/settings/audit-logs",
-        label: "Audit trail",
-        icon: ScrollText,
-        permission: Permission.AuditRead,
-        isActive: under("/settings/audit-logs"),
-      },
       {
         to: "/settings",
         label: settingsLabel,
         icon: Settings,
-        permission: Permission.SettingsManage,
-        settingsOnly: true,
-        isActive: (path) => path === "/settings",
+        permission: Permission.PortalAccess,
+        hub: true,
+        isActive: inSettingsHub,
       },
     ],
   },
@@ -479,20 +479,19 @@ const singlePages: Record<string, Crumb[]> = {
   "/reports/tips": [{ label: "Finance" }, { label: "Tips & service charge" }],
   "/insights": [{ label: "Workspace" }, { label: "AI insights" }],
   "/assistant": [{ label: "Workspace" }, { label: "AI assistant" }],
-  "/stores": [{ label: "Administration" }, { label: "Stores" }],
   "/users": [{ label: "Administration" }, { label: "Users" }],
   "/staff": [{ label: "Administration" }, { label: "Staff, timesheets & payroll" }],
-  "/roles": [{ label: "Administration" }, { label: "Roles & permissions" }],
-  "/registers": [{ label: "Administration" }, { label: "Registers & device keys" }],
-  "/downloads": [{ label: "Administration" }, { label: "Downloads" }],
-  "/settings/audit-logs": [{ label: "Administration" }, { label: "Audit trail" }],
-  "/settings/messaging": [{ label: "Administration" }, { label: "Messaging & jobs" }],
-  "/settings/currencies": [{ label: "Administration" }, { label: "Currencies & exchange rates" }],
-  "/settings/channels": [{ label: "Administration" }, { label: "Delivery channels" }],
 };
 
 export function crumbsFor(pathname: string, ctx: NavContext): Crumb[] {
-  if (pathname === "/settings") return [{ label: "Administration" }, { label: settingsLabel(ctx) }];
+  if (inSettingsHub(pathname)) {
+    const hub = settingsLabel(ctx);
+    const tab = settingsTabs
+      .filter((item) => (item.end ? pathname === item.to : pathname === item.to || pathname.startsWith(`${item.to}/`)))
+      .sort((left, right) => right.to.length - left.to.length)[0];
+    if (tab === undefined || tab.to === "/settings") return [{ label: "Administration" }, { label: hub }];
+    return [{ label: "Administration" }, { label: hub, to: "/settings" }, { label: tab.label }];
+  }
   const exact = singlePages[pathname];
   if (exact) return exact;
   const section = /^\/inventory\/([^/]+)/.exec(pathname)?.[1];

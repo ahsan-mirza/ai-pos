@@ -23,7 +23,7 @@ from app.services.tax import policy as tax_policy
 
 FONTS = Path(__file__).resolve().parent.parent / "assets" / "fonts"
 MAX_LABELS = 2000
-Layout = Literal["a4_3x8", "roll_50x30"]
+Layout = Literal["a4_3x8", "roll_50x30", "roll_50x25", "roll_38x25"]
 
 
 @dataclass(frozen=True)
@@ -39,6 +39,8 @@ class _Sheet:
 SHEETS: dict[str, _Sheet] = {
     "a4_3x8": _Sheet(page=(210, 297), columns=3, rows=8, label=(70, 37), margin=(0, 0.5), gap=(0, 0)),
     "roll_50x30": _Sheet(page=(50, 30), columns=1, rows=1, label=(50, 30), margin=(0, 0), gap=(0, 0)),
+    "roll_50x25": _Sheet(page=(50, 25), columns=1, rows=1, label=(50, 25), margin=(0, 0), gap=(0, 0)),
+    "roll_38x25": _Sheet(page=(38, 25), columns=1, rows=1, label=(38, 25), margin=(0, 0), gap=(0, 0)),
 }
 
 
@@ -65,19 +67,30 @@ def _variant_text(attributes: dict[str, str] | None) -> str:
     return " · ".join(value for value in (attributes or {}).values())
 
 
-def label_data(db: Session, products: list[tuple[Product, int]], show_price: bool) -> list[LabelData]:
+def label_data(
+    db: Session,
+    products: list[tuple[Product, int]],
+    show_price: bool,
+    *,
+    show_name: bool = True,
+    show_variant: bool = True,
+    show_currency: bool = True,
+) -> list[LabelData]:
     tax = tax_policy(db)
     currency = business_currency(db)
     labels: list[LabelData] = []
     for product, copies in products:
         shelf = _shelf_cents(product.price_cents, product.tax_category, tax)
-        price = _money(shelf, currency) if show_price and not product.is_open_price else None
+        amount = f"{shelf / 100:,.2f}"
+        price = None
+        if show_price and not product.is_open_price:
+            price = f"{currency} {amount}" if show_currency else amount
         was = product.compare_at_cents
         if price and was is not None and was > product.price_cents:
             price = f"{price}  was {_money(_shelf_cents(was, product.tax_category, tax), currency)}"
         data = LabelData(
-            name=product.name,
-            variant=_variant_text(product.variant_attributes),
+            name=product.name[:60] if show_name else "",
+            variant=_variant_text(product.variant_attributes) if show_variant else "",
             price=price,
             code=product.barcode,
             sku=product.sku,
@@ -130,13 +143,17 @@ def _draw(pdf: _LabelPdf, label: LabelData, x: float, y: float, size: tuple[floa
     inner = width - pad * 2
     pdf.set_text_color(20, 20, 20)
     pdf.set_fill_color(0, 0, 0)
-    pdf.text_at(x + pad, y + pad, inner, 7.5 if width >= 60 else 6.5, label.name[:60], bold=True)
-    line = y + pad + 3.6
-    if label.variant:
-        pdf.text_at(x + pad, line, inner * 0.62, 6.5 if width >= 60 else 5.5, label.variant)
-    if label.price:
-        pdf.text_at(x + pad, line - 0.4, inner, 10 if width >= 60 else 8, label.price, bold=True, align="R")
-    bar_top = line + 4.2
+    cursor = y + pad
+    if label.name:
+        pdf.text_at(x + pad, cursor, inner, 7.5 if width >= 60 else 6, label.name[:60], bold=True)
+        cursor += 3.4
+    if label.variant or label.price:
+        if label.variant:
+            pdf.text_at(x + pad, cursor, inner * 0.62, 6 if width >= 60 else 5, label.variant)
+        if label.price:
+            pdf.text_at(x + pad, cursor - 0.2, inner, 9 if width >= 60 else 7, label.price, bold=True, align="R")
+        cursor += 3.8
+    bar_top = cursor + 0.4
     bar_height = height - (bar_top - y) - pad - 3.2
     ean = barcodes.is_ean13(label.code)
     modules = barcodes.ean13_modules(label.code) if ean else barcodes.code128_modules(label.code)
@@ -168,13 +185,32 @@ def render(labels: list[LabelData], layout: Layout) -> bytes:
     return bytes(pdf.output())
 
 
-def for_products(db: Session, items: list[tuple[uuid.UUID, int]], *, layout: Layout, show_price: bool) -> bytes:
+def for_products(
+    db: Session,
+    items: list[tuple[uuid.UUID, int]],
+    *,
+    layout: Layout,
+    show_price: bool,
+    show_name: bool = True,
+    show_variant: bool = True,
+    show_currency: bool = True,
+) -> bytes:
     ids = [product_id for product_id, _ in items]
     products = {row.id: row for row in db.scalars(select(Product).where(Product.id.in_(ids)))}
     missing = [str(product_id) for product_id in ids if product_id not in products]
     if missing:
         raise ApiError(404, "not_found", f"{len(missing)} product(s) were not found.")
-    return render(label_data(db, [(products[pid], copies) for pid, copies in items], show_price), layout)
+    return render(
+        label_data(
+            db,
+            [(products[pid], copies) for pid, copies in items],
+            show_price,
+            show_name=show_name,
+            show_variant=show_variant,
+            show_currency=show_currency,
+        ),
+        layout,
+    )
 
 
 def for_batch(db: Session, batch_id: uuid.UUID, *, layout: Layout, show_price: bool) -> bytes:

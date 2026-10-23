@@ -10,7 +10,7 @@ import {
 } from "@ai-pos/shared-types";
 import { ArrowLeft, ClipboardCheck, ClipboardList, Plus, ScanLine } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ErrorNote, FilterSelect, GhostButton, PrimaryButton, TextField } from "../../components/ui/Field";
+import { ErrorNote, FilterSelect, GhostButton, PrimaryButton, SearchField, TextField } from "../../components/ui/Field";
 import { Modal } from "../../components/ui/Modal";
 import { Toast } from "../../components/ui/Toast";
 import { Toggle } from "../../components/ui/Toggle";
@@ -438,15 +438,14 @@ function CountSheet({
             </p>
           </div>
           <div className="flex flex-wrap items-end gap-2">
-            <label className="w-56">
-              <span className="sr-only">Find a product</span>
-              <input
-                value={filter}
-                onChange={(event) => setFilter(event.target.value)}
-                placeholder="Find by name, SKU or barcode"
-                className="w-full rounded-full border border-line bg-white px-4 py-2.5 text-sm focus:border-accent focus:outline-none"
-              />
-            </label>
+            <SearchField
+              hideLabel
+              label="Find a product"
+              className="w-56"
+              value={filter}
+              onChange={(event) => setFilter(event.target.value)}
+              placeholder="Find by name, SKU or barcode"
+            />
             {editable ? (
               <>
                 <GhostButton disabled={busy || dirty === 0} onClick={() => void saveDrafts()}>

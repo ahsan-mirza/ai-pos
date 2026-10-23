@@ -121,6 +121,7 @@ export type CartAction =
       type: "add_product";
       product: ProductUpsert;
       unitType?: UnitType;
+      quantity?: number;
       modifiers?: ModifierChoice[];
       components?: ComboChoice[];
     }
@@ -148,7 +149,7 @@ export type CartAction =
   | { type: "remove_group"; groupId: string }
   | { type: "override_price"; lineIds: string[]; override: PriceOverride }
   | { type: "clear_override"; lineIds: string[] }
-  | { type: "add_open_price"; product: ProductUpsert; unitPriceCents: number; description: string }
+  | { type: "add_open_price"; product: ProductUpsert; unitPriceCents: number; description: string; quantity: number }
   | { type: "approve_floor"; lineIds: string[]; override: PriceOverride }
   /** One discount per line (a cart discount is spread over its lines by the caller). */
   | { type: "set_discounts"; discounts: { lineId: string; discount: ManualDiscount }[] }
@@ -300,12 +301,14 @@ export function applyCart(state: CartState, action: CartAction): CartResult {
       if (product.sku === GIFT_CARD_SKU) return refuse(state, "Use Sell gift card to load a card.");
       if (product.is_serialized) return refuse(state, "Serialized products are added with their IMEIs.");
       if (product.sold_by_weight) return refuse(state, `Weigh the ${product.name} or scan its scale label.`);
+      const packs = action.quantity ?? 1;
+      if (!Number.isInteger(packs) || packs < 1) return refuse(state, "Quantity must be at least 1.");
       const modifiers = action.modifiers?.length ? action.modifiers : undefined;
       const components = action.components?.length ? action.components : undefined;
       if (modifiers || components) {
-        const error = stockError(state.lines, product, 1);
+        const error = stockError(state.lines, product, packs);
         if (error) return refuse(state, error);
-        const line = newLine(product, 1, "PIECE", { modifiers, components });
+        const line = newLine(product, packs, "PIECE", { modifiers, components });
         return ok({ ...state, lines: [...state.lines, line] }, `${product.name} added.`);
       }
       const existing = state.lines.find(
@@ -314,11 +317,12 @@ export function applyCart(state: CartState, action: CartAction): CartResult {
       );
       const unitType = action.unitType ?? existing?.unitType ?? "PIECE";
       const step = unitFactor(product, unitType);
-      const error = stockError(state.lines, product, step);
+      const adding = step * packs;
+      const error = stockError(state.lines, product, adding);
       if (error) return refuse(state, error);
       const lines = existing
-        ? state.lines.map((line) => (line.lineId === existing.lineId ? { ...line, quantity: line.quantity + step } : line))
-        : [...state.lines, newLine(product, step, unitType)];
+        ? state.lines.map((line) => (line.lineId === existing.lineId ? { ...line, quantity: line.quantity + adding } : line))
+        : [...state.lines, newLine(product, adding, unitType)];
       return ok({ ...state, lines }, `${product.name} added.`);
     }
     case "add_serials": {
@@ -386,14 +390,15 @@ export function applyCart(state: CartState, action: CartAction): CartResult {
     case "add_open_price": {
       const description = action.description.trim();
       if (!action.product.is_open_price) return refuse(state, `${action.product.name} has a fixed price.`);
-      if (description.length < 2) return refuse(state, "Describe what was sold.");
+      if (!Number.isInteger(action.quantity) || action.quantity < 1) return refuse(state, "Quantity must be at least 1.");
       if (!Number.isInteger(action.unitPriceCents) || action.unitPriceCents <= 0) return refuse(state, "Enter the price.");
-      const line = newLine(action.product, 1, "PIECE", {
-        description,
+      const line = newLine(action.product, action.quantity, "PIECE", {
+        ...(description ? { description } : {}),
         listPriceCents: action.unitPriceCents,
         unitPriceCents: action.unitPriceCents,
       });
-      return ok({ ...state, lines: [...state.lines, line] }, `${description} added.`);
+      const label = description || action.product.name;
+      return ok({ ...state, lines: [...state.lines, line] }, `${label} added.`);
     }
     case "approve_floor": {
       const ids = new Set(action.lineIds);

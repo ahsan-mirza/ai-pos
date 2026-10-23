@@ -4,7 +4,7 @@ import { Package, Pencil, Plus, Printer, Search, Upload } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { DataTable, type DataTableColumn } from "../../components/ui/DataTable";
-import { PrimaryButton } from "../../components/ui/Field";
+import { PrimaryButton, SearchField } from "../../components/ui/Field";
 import { apiGet } from "../../lib/api";
 import { useAuth } from "../../lib/auth";
 import { useCurrency } from "../../lib/currency";
@@ -246,41 +246,33 @@ export function InventoryPage() {
               </PrimaryButton>
             </div>
           ) : null}
-          <label className="w-full max-w-md text-xs font-medium text-charcoal/60" htmlFor="inventory-search">
-            Search Product, Model, Barcode, or IMEI...
-            <span className="relative mt-1 block">
-              <Search
-                size={16}
-                aria-hidden="true"
-                className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-charcoal/40"
-              />
-              <input
-                id="inventory-search"
-                type="search"
-                autoComplete="off"
-                spellCheck={false}
-                value={query}
-                onChange={(event) => {
-                  setQuery(event.target.value);
-                  setNotice(null);
-                }}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter") {
-                    event.preventDefault();
-                    void submit(event.currentTarget.value);
-                  } else if (event.key === "Escape") {
-                    setQuery("");
-                  }
-                }}
-                placeholder="Search Product, Model, Barcode, or IMEI..."
-                className="h-11 w-full rounded-full border border-line bg-surface pl-10 pr-4 text-sm text-charcoal"
-              />
-            </span>
-          </label>
         </div>
-        {source === "live" ? (
-          <div className="mb-5 flex flex-wrap items-end gap-3">
+        <div className="mb-5 flex flex-wrap items-end gap-3">
+          <SearchField
+            hideLabel
+            id="inventory-search"
+            label="Search Product, Model, Barcode, or IMEI"
+            autoComplete="off"
+            spellCheck={false}
+            value={query}
+            onChange={(event) => {
+              setQuery(event.target.value);
+              setNotice(null);
+            }}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                event.preventDefault();
+                void submit(event.currentTarget.value);
+              } else if (event.key === "Escape") {
+                setQuery("");
+              }
+            }}
+            placeholder="Search Product, Model, Barcode, or IMEI..."
+            className="min-w-[min(100%,18rem)] grow-[2] basis-[22rem]"
+          />
+          {source === "live" ? (
             <BrandModelFilters
+              className="min-w-[9rem] grow basis-40"
               subCategoryId={null}
               brandId={brandId}
               modelId={modelId}
@@ -289,8 +281,8 @@ export function InventoryPage() {
                 setModelId(model);
               }}
             />
-          </div>
-        ) : null}
+          ) : null}
+        </div>
         {notice ? (
           <p className="mb-4 text-sm" role="status">
             {notice}

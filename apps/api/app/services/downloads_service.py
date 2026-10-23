@@ -16,7 +16,7 @@ from pathlib import Path
 
 from app.core.config import Settings
 from app.core.errors import ApiError
-from app.schemas.downloads import AppRelease, DownloadsOut, InstallerFile, InstallerKind
+from app.schemas.downloads import AppRelease, DownloadsOut, InstallerFile, InstallerKind, LatestInstaller
 
 logger = logging.getLogger("ai_pos.downloads")
 
@@ -114,6 +114,28 @@ def list_releases(settings: Settings) -> DownloadsOut:
     ]
     releases.sort(key=lambda release: tuple(int(part) for part in release.version.split(".")), reverse=True)
     return DownloadsOut(releases=releases)
+
+
+def latest_windows(settings: Settings) -> tuple[AppRelease, InstallerFile, Path]:
+    """The newest published NSIS setup. An MSI-only folder is skipped."""
+    missing = ApiError(404, "not_found", "No POS installer has been published yet.")
+    for release in list_releases(settings).releases:
+        chosen = next((item for item in release.files if item.kind == "exe"), None)
+        if chosen is None:
+            continue
+        path, _kind = installer(settings, release.version, chosen.name)
+        return release, chosen, path
+    raise missing
+
+
+def latest_feed(settings: Settings) -> LatestInstaller:
+    release, chosen, _path = latest_windows(settings)
+    return LatestInstaller(
+        version=release.version,
+        notes=release.notes,
+        pub_date=release.published_at,
+        sha256=chosen.sha256,
+    )
 
 
 def installer(settings: Settings, version: str, filename: str) -> tuple[Path, InstallerKind]:

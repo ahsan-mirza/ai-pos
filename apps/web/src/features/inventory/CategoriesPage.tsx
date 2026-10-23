@@ -1,6 +1,6 @@
 import { Permission, type Category, type SubCategory } from "@ai-pos/shared-types";
 import { ChevronRight, FolderPlus, Pencil, Plus, Trash2 } from "lucide-react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useConfirm } from "../../components/ui/ConfirmDialog";
 import { DataTable, type DataTableColumn } from "../../components/ui/DataTable";
 import { ErrorNote, GhostButton, PrimaryButton, TextField } from "../../components/ui/Field";
@@ -9,6 +9,7 @@ import { useAuth } from "../../lib/auth";
 import { useAutoCode } from "../../lib/codes";
 import { categoriesApi, message } from "./api";
 import { CatalogDrilldown, type CatalogPath } from "./CatalogDrilldown";
+import { codeError, fieldErrors, useInvalidFocus, type FieldErrors } from "./formErrors";
 import { useCategories } from "./shared";
 import { IconButton } from "./StockPage";
 
@@ -229,14 +230,33 @@ function CategoryModal({
   const [name, setName] = useState(current?.name ?? "");
   const { code, setCode } = useAutoCode(name, current?.code ?? "");
   const [description, setDescription] = useState(current?.description ?? "");
+  const [fields, setFields] = useState<FieldErrors>({});
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const formRef = useRef<HTMLDivElement>(null);
+  const focusInvalid = useInvalidFocus(formRef);
   const isSub = editing.kind === "sub";
 
+  const clearField = (key: string) =>
+    setFields((currentFields) => {
+      if (!currentFields[key]) return currentFields;
+      const next = { ...currentFields };
+      delete next[key];
+      return next;
+    });
+
   const save = async () => {
-    if (name.trim().length < 2) return setError("Names need at least 2 characters.");
-    setBusy(true);
+    const next: FieldErrors = {};
+    if (name.trim().length < 2) next.name = "Name must be at least 2 characters.";
+    const codeProblem = codeError(code);
+    if (codeProblem) next.code = codeProblem;
+    setFields(next);
     setError(null);
+    if (Object.keys(next).length > 0) {
+      focusInvalid();
+      return;
+    }
+    setBusy(true);
     const body = { name: name.trim(), code: code.replace(/-$/, "") || null, description: description.trim() };
     try {
       if (editing.kind === "category") {
@@ -249,7 +269,11 @@ function CategoryModal({
         );
       }
     } catch (caught) {
-      setError(message(caught, "Could not save."));
+      const apiFields = fieldErrors(caught);
+      if (Object.keys(apiFields).length > 0) {
+        setFields(apiFields);
+        focusInvalid();
+      } else setError(message(caught, "Could not save."));
     } finally {
       setBusy(false);
     }
@@ -270,13 +294,17 @@ function CategoryModal({
         </>
       }
     >
-      <div className="space-y-4">
+      <div ref={formRef} className="space-y-4">
         <TextField
           label="Name"
           value={name}
           autoFocus
           placeholder={isSub ? "e.g. Laptops" : "e.g. Computers"}
-          onChange={(event) => setName(event.target.value)}
+          error={fields.name}
+          onChange={(event) => {
+            setName(event.target.value);
+            clearField("name");
+          }}
         />
         <TextField
           label="Code"
@@ -287,7 +315,11 @@ function CategoryModal({
           spellCheck={false}
           autoComplete="off"
           hint="Optional. Letters, digits and dashes; generated from the name if empty."
-          onChange={(event) => setCode(event.target.value)}
+          error={fields.code}
+          onChange={(event) => {
+            setCode(event.target.value);
+            clearField("code");
+          }}
         />
         <TextField label="Description" value={description} onChange={(event) => setDescription(event.target.value)} />
       </div>

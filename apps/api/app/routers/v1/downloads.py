@@ -9,7 +9,7 @@ from app.core.config import Settings, get_settings
 from app.core.deps import Principal, authorize
 from app.core.errors import ApiError
 from app.core.permissions import SUPER_ADMIN_ROLE_ID, Permission
-from app.schemas.downloads import DownloadsOut
+from app.schemas.downloads import DownloadsOut, LatestInstaller
 from app.services import downloads_service
 
 router = APIRouter()
@@ -30,6 +30,26 @@ Config = Annotated[Settings, Depends(get_settings)]
 @router.get("", response_model=DownloadsOut)
 def list_downloads(_: SuperAdmin, settings: Config) -> DownloadsOut:
     return downloads_service.list_releases(settings)
+
+
+@router.get("/latest.json", response_model=LatestInstaller)
+def latest_installer(settings: Config) -> LatestInstaller:
+    """Public version feed. A register that cannot reach this stays on the installed version."""
+    return downloads_service.latest_feed(settings)
+
+
+@router.get("/win", response_class=FileResponse)
+def latest_windows_installer(settings: Config) -> FileResponse:
+    return latest_windows_file(settings)
+
+
+def latest_windows_file(settings: Settings) -> FileResponse:
+    _release, _chosen, path = downloads_service.latest_windows(settings)
+    return FileResponse(
+        path,
+        media_type=downloads_service.MEDIA_TYPES["exe"],
+        filename="AI-POS-Setup-latest.exe",
+    )
 
 
 @router.get("/pos/{version}/{filename}", response_class=FileResponse)

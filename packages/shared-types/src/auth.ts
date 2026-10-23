@@ -94,6 +94,8 @@ export interface User {
   permissions: Permission[];
   has_pos_access: boolean;
   has_portal_access: boolean;
+  /** Extra grant to type a price on open-price items. A role may already include the same permission. */
+  can_sell_open_price: boolean;
   has_password: boolean;
   has_pin: boolean;
   locked_until: string | null;
@@ -130,6 +132,7 @@ export interface UserCreate {
   pin?: string | null;
   has_pos_access: boolean;
   has_portal_access: boolean;
+  can_sell_open_price?: boolean;
   is_active: boolean;
 }
 
@@ -141,6 +144,7 @@ export interface UserUpdate {
   clear_store?: boolean;
   has_pos_access?: boolean;
   has_portal_access?: boolean;
+  can_sell_open_price?: boolean;
   is_active?: boolean;
 }
 

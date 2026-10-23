@@ -56,11 +56,9 @@ from app.services.identifiers import identifier_hash, identifier_suffix, normali
 from app.services.inventory import level_for, move_stock, transition_serial
 from app.services.numbering import accept_register_number, next_server_number
 from app.services.settings_service import cached_settings
-from app.services.sync_validation import require_cashier, require_store
+from app.services.sync_validation import register_time, require_cashier, require_store
 from app.services.tax import TaxPolicy, for_customer, line_tax
 from app.services.tax import policy as tax_policy_for
-
-FUTURE_SKEW = timedelta(minutes=5)
 
 UNSELLABLE_SERIAL = {
     "defective": "marked defective",
@@ -384,8 +382,6 @@ def price_lines(
         elif product.is_open_price:
             if item.modifiers or item.components:
                 raise SyncRejected("Open-price items do not take modifiers.")
-            if not (item.description or "").strip():
-                raise SyncRejected(f"{product.name} needs a description of what was sold.")
             if cashier is not None and Permission.POS_OPEN_PRICE.value not in cashier.permissions:
                 raise SyncRejected(f"{cashier.full_name} cannot sell open-price items.")
         else:
@@ -647,9 +643,11 @@ def record_sale(
     if db.scalar(select(Sale).where(Sale.client_sale_id == data.client_sale_id)) is not None:
         raise SyncRejected("Client sale id already exists.")
     now = datetime.now(UTC)
-    sold_at = data.sold_at.astimezone(UTC) if data.sold_at is not None else now
-    if sold_at > now + FUTURE_SKEW:
-        raise SyncRejected("The sale is dated in the future. Check the register's clock.")
+    sold_at = register_time(
+        data.sold_at if data.sold_at is not None else now,
+        now=now,
+        message="The sale is dated in the future. Check the register's clock.",
+    )
     if sold_at < now - timedelta(days=settings.sale_max_age_days):
         raise SyncRejected(f"The sale is older than {settings.sale_max_age_days} days and needs a manual entry.")
     customer = require_customer(db, data.customer_id)

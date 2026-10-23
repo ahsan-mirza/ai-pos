@@ -9,7 +9,7 @@ import {
 } from "libphonenumber-js";
 import examples from "libphonenumber-js/mobile/examples";
 import * as flagIcons from "country-flag-icons/react/3x2";
-import { ChevronDown } from "lucide-react";
+import { ChevronDown, Search } from "lucide-react";
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ComponentType, type SVGProps } from "react";
 import { createPortal } from "react-dom";
 
@@ -320,10 +320,12 @@ export function PhoneField({
                 style={{ position: "fixed", top: menuBox.top, left: menuBox.left, width: menuBox.width }}
                 className="z-50 overflow-hidden rounded-xl border border-line bg-white shadow-lg"
               >
-            <div className="border-b border-line p-2">
+            <div className="relative border-b border-line p-2">
+              <Search aria-hidden="true" className="pointer-events-none absolute left-5 top-1/2 z-10 h-4 w-4 -translate-y-1/2 text-charcoal/40" />
               <input
                 ref={searchRef}
                 value={query}
+                type="search"
                 aria-label="Search countries"
                 placeholder="Search country or code"
                 onChange={(event) => {
@@ -343,7 +345,7 @@ export function PhoneField({
                     if (next) choose(next.iso);
                   }
                 }}
-                className="w-full rounded-lg bg-surface px-3 py-2 text-sm font-normal outline-none placeholder:text-charcoal/40 focus:bg-white"
+                className="w-full rounded-lg bg-surface py-2 pl-9 pr-3 text-sm font-normal outline-none placeholder:text-charcoal/40 focus:bg-white [&::-webkit-search-cancel-button]:hidden"
               />
             </div>
             <ul id={listId} role="listbox" aria-label="Countries" className="max-h-60 overflow-y-auto py-1">

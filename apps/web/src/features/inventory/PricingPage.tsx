@@ -11,7 +11,7 @@ import {
 import { Layers, Save, Tags } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { DataTable, type DataTableColumn } from "../../components/ui/DataTable";
-import { ErrorNote, FilterSelect, PrimaryButton, filterLabel } from "../../components/ui/Field";
+import { ErrorNote, FilterSelect, PrimaryButton, SearchField } from "../../components/ui/Field";
 import { Toast } from "../../components/ui/Toast";
 import { useAuth } from "../../lib/auth";
 import { useCurrency } from "../../lib/currency";
@@ -335,16 +335,12 @@ export function PricingPage() {
             options={[{ value: "", label: "All brands" }, ...(matrix?.brands ?? []).map((item) => ({ value: item, label: item }))]}
             onChange={(next) => setBrand(next === "" ? null : next)}
           />
-          <label className="min-w-[220px] flex-1">
-            <span className={filterLabel}>Search</span>
-            <input
-              type="search"
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder="Product name or SKU"
-              className="h-11 w-full rounded-full border border-line bg-white px-5 text-sm font-medium text-charcoal transition-all placeholder:font-normal placeholder:text-charcoal/40 hover:border-gray-400 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
-            />
-          </label>
+          <SearchField
+            className="min-w-[220px] flex-1"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Product name or SKU"
+          />
           {canEdit ? (
             <>
               <button

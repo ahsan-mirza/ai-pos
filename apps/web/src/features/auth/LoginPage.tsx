@@ -60,7 +60,7 @@ export function LoginPage() {
   const { login } = useAuth();
   const [step, setStep] = useState<Step>("sign-in");
   const [storeCode, setStoreCode] = useState(() => (env.needsStoreCode ? (env.tenantDomain ?? "") : ""));
-  const [username, setUsername] = useState("");
+  const [identity, setIdentity] = useState("");
   const [password, setPassword] = useState("");
   const [email, setEmail] = useState("");
   const [code, setCode] = useState("");
@@ -82,7 +82,7 @@ export function LoginPage() {
     setError(null);
     try {
       rememberStore();
-      await login(username.trim(), password);
+      await login(identity.trim(), password);
     } catch (caught) {
       setError(caught instanceof ApiRequestError ? caught.message : "Sign-in failed.");
       setPassword("");
@@ -168,7 +168,9 @@ export function LoginPage() {
             <div>
               <h2 className="text-2xl font-semibold">Sign in</h2>
               <p className="text-sm text-charcoal/60">
-                {env.needsStoreCode ? "Enter the store code, then your portal username and password." : "Use your portal username and password."}
+                {env.needsStoreCode
+                  ? "Enter the store code, then your email or username and password."
+                  : "Use your email or username and password."}
               </p>
             </div>
             {env.needsStoreCode ? (
@@ -185,12 +187,14 @@ export function LoginPage() {
               />
             ) : null}
             <LoginField
-              id="username"
-              label="Username"
+              id="identity"
+              label="Email or username"
               icon={User}
               autoComplete="username"
-              value={username}
-              onChange={(event) => setUsername(event.target.value)}
+              spellCheck={false}
+              value={identity}
+              onChange={(event) => setIdentity(event.target.value)}
+              placeholder="email or username"
               required
             />
             <LoginField
@@ -211,7 +215,7 @@ export function LoginPage() {
             ) : null}
             <button
               type="submit"
-              disabled={busy || !storeReady || username.trim() === "" || password === ""}
+              disabled={busy || !storeReady || identity.trim() === "" || password === ""}
               className="h-12 rounded-2xl bg-accent font-semibold text-white disabled:opacity-40"
             >
               {busy ? "Signing in…" : "Sign in"}
@@ -378,7 +382,7 @@ export function LoginPage() {
       {demoAccountsEnabled ? (
         <DemoAccounts
           onPick={(pickedUsername, pickedPassword) => {
-            setUsername(pickedUsername);
+            setIdentity(pickedUsername);
             setPassword(pickedPassword);
             setError(null);
           }}

@@ -10,19 +10,21 @@ import {
 } from "@ai-pos/shared-types";
 import { Check, UtensilsCrossed, X } from "lucide-react";
 import { useEffect, useId, useMemo, useState } from "react";
+import { QuantityField, parseSellQuantity } from "./QuantityField";
 
 interface ComboBuilderModalProps {
   product: ProductUpsert;
   slots: ComboSlot[];
   currency: string;
   onClose: () => void;
-  onConfirm: (components: ComboChoice[]) => void;
+  onConfirm: (components: ComboChoice[], quantity: number) => void;
 }
 
 /** Build a meal slot by slot (main, side, drink); defaults are preselected so most meals are one tap. */
 export function ComboBuilderModal({ product, slots, currency, onClose, onConfirm }: ComboBuilderModalProps) {
   const titleId = useId();
   const [chosen, setChosen] = useState<ComboChoice[]>(() => comboDefaults(slots));
+  const [quantity, setQuantity] = useState("1");
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -89,7 +91,12 @@ export function ComboBuilderModal({ product, slots, currency, onClose, onConfirm
               setError(problem);
               return;
             }
-            onConfirm(ordered);
+            const count = parseSellQuantity(quantity);
+            if (count === null) {
+              setError("Enter a quantity of at least 1.");
+              return;
+            }
+            onConfirm(ordered, count);
           }}
         >
           <div className="custom-scrollbar max-h-[60vh] space-y-4 overflow-y-auto pr-1">
@@ -136,6 +143,14 @@ export function ComboBuilderModal({ product, slots, currency, onClose, onConfirm
               </fieldset>
             ))}
           </div>
+          <QuantityField
+            id="combo-quantity"
+            value={quantity}
+            onChange={(value) => {
+              setQuantity(value);
+              setError(null);
+            }}
+          />
           {error ? (
             <p role="alert" className="text-sm font-medium text-red-600 dark:text-red-400">
               {error}

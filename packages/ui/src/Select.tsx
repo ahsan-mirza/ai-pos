@@ -1,4 +1,4 @@
-import { Check, ChevronDown, Search, type LucideIcon } from "lucide-react";
+import { Check, ChevronDown, Plus, Search, type LucideIcon } from "lucide-react";
 import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 
@@ -22,19 +22,36 @@ export interface SelectProps<T extends string> {
   /** Id of the visible label; the trigger announces it together with the current value. */
   labelledBy?: string;
   "aria-label"?: string;
-  /** Adds a filter box to the menu. Defaults to on for lists longer than eight options. */
+  /** Adds a filter box to the menu. Defaults to on for lists longer than eight options, and whenever `onCreate` is set. */
   searchable?: boolean;
+  /**
+   * Shown under the search box when the typed name matches nothing.
+   * The menu asks for a sub-category and brand first when `createHint` is set.
+   */
+  onCreate?: (name: string) => void;
+  /** Shortest typed name that can be created. Category names need 2; a model name can be 1. */
+  createMinLength?: number;
+  createHint?: string;
+  /** Marks the trigger `aria-invalid` so a form can focus the first rejected field. */
+  invalid?: boolean;
   className?: string;
   /** `sm` is the 36px toolbar trigger used in the app header. */
   size?: "md" | "sm";
   icon?: LucideIcon;
 }
 
+const CYCLE_LABEL: Record<string, string> = {
+  MONTHLY: "Monthly",
+  QUARTERLY: "Quarterly",
+  HALF_YEARLY: "Half-Yearly",
+  ANNUAL: "Annual",
+};
+
 /** Discount chip for a billing cycle. Monthly stays a plain base-price note. */
 export function billingCycleBadge(code: string, discountBps: number): ReactNode {
   const percent = Math.round(discountBps / 100);
   if (percent <= 0 || code === "MONTHLY") {
-    return <span className="text-xs font-medium text-gray-500">Base price</span>;
+    return <span className="text-xs font-medium text-gray-500">Base Price</span>;
   }
   if (code === "ANNUAL") {
     return (
@@ -48,6 +65,15 @@ export function billingCycleBadge(code: string, discountBps: number): ReactNode 
       Save {percent}%
     </span>
   );
+}
+
+/** Label plus discount chip for the four catalog cycles. Unknown codes keep their stored name. */
+export function billingCycleOption(code: string, name: string, discountBps: number): SelectOption {
+  return {
+    value: code,
+    label: CYCLE_LABEL[code] ?? name,
+    badge: billingCycleBadge(code, discountBps),
+  };
 }
 
 const SEARCH_THRESHOLD = 8;
@@ -100,6 +126,10 @@ export function Select<T extends string>({
   labelledBy,
   "aria-label": ariaLabel,
   searchable,
+  onCreate,
+  createMinLength = 2,
+  createHint,
+  invalid = false,
   className = "",
   size = "md",
   icon: Icon,
@@ -119,9 +149,13 @@ export function Select<T extends string>({
   const [placement, setPlacement] = useState<Placement | null>(null);
   const [query, setQuery] = useState("");
   const [active, setActive] = useState(-1);
-  const withSearch = searchable ?? options.length > SEARCH_THRESHOLD;
+  const withSearch =
+    searchable ?? (onCreate !== undefined || createHint !== undefined || options.length > SEARCH_THRESHOLD);
   const visible = useMemo(() => matching(options, query), [options, query]);
   const selected = options.find((option) => option.value === value);
+  const trimmed = query.trim();
+  const showCreate =
+    trimmed.length >= createMinLength && visible.length === 0 && (onCreate !== undefined || createHint !== undefined);
 
   const close = (refocus: boolean) => {
     setOpen(false);
@@ -141,6 +175,12 @@ export function Select<T extends string>({
   const choose = (option: SelectOption<T> | undefined) => {
     if (option === undefined || option.disabled) return;
     if (option.value !== value) onChange(option.value);
+    close(true);
+  };
+
+  const createNamed = () => {
+    if (onCreate === undefined || createHint !== undefined || trimmed.length < createMinLength) return;
+    onCreate(trimmed);
     close(true);
   };
 
@@ -200,7 +240,8 @@ export function Select<T extends string>({
         return;
       case "Enter":
         event.preventDefault();
-        choose(visible[active]);
+        if (visible[active]) choose(visible[active]);
+        else if (showCreate) createNamed();
         return;
       case "Escape":
         event.preventDefault();
@@ -243,10 +284,15 @@ export function Select<T extends string>({
         aria-expanded={open}
         aria-controls={open ? listId : undefined}
         aria-labelledby={labelledBy ? `${labelledBy} ${valueId}` : undefined}
+        aria-invalid={invalid || undefined}
         aria-label={labelledBy ? undefined : ariaLabel}
         onClick={() => (open ? close(false) : openMenu())}
         onKeyDown={onTriggerKey}
-        className={`flex w-full items-center border border-gray-200 bg-gray-50 text-left font-medium tracking-normal text-charcoal normal-case transition focus:outline-none focus:ring-2 focus:ring-orange-500 disabled:cursor-not-allowed disabled:opacity-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 ${
+        className={`flex w-full items-center border text-left font-medium tracking-normal text-charcoal normal-case transition focus:outline-none focus:ring-2 focus:ring-orange-500 disabled:cursor-not-allowed disabled:opacity-50 dark:text-zinc-100 ${
+          invalid
+            ? "border-rose-500 bg-rose-50/20 dark:border-rose-500 dark:bg-rose-500/10"
+            : "border-gray-200 bg-gray-50 hover:border-gray-300 dark:border-zinc-700 dark:bg-zinc-900"
+        } ${
           size === "sm"
             ? `h-9 rounded-xl pr-8 text-[13px] ${Icon ? "pl-9" : "pl-3"}`
             : `h-11 rounded-2xl pr-10 text-sm ${Icon ? "pl-11" : "pl-4"}`
@@ -314,6 +360,21 @@ export function Select<T extends string>({
                   />
                 </div>
               ) : null}
+              {showCreate ? (
+                createHint ? (
+                  <p className="mb-1.5 px-3 py-2.5 text-sm text-gray-500">{createHint}</p>
+                ) : (
+                  <button
+                    type="button"
+                    className="mb-1.5 flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left text-sm font-semibold text-orange-600 hover:bg-orange-50 dark:hover:bg-orange-500/10"
+                    onMouseDown={(event) => event.preventDefault()}
+                    onClick={createNamed}
+                  >
+                    <Plus aria-hidden="true" className="h-4 w-4 shrink-0" />
+                    Add "{trimmed}"
+                  </button>
+                )
+              ) : null}
               <ul
                 ref={listRef}
                 id={listId}
@@ -356,7 +417,7 @@ export function Select<T extends string>({
                     </li>
                   );
                 })}
-                {visible.length === 0 ? (
+                {visible.length === 0 && !showCreate ? (
                   <li role="presentation" className="px-3 py-2.5 text-sm text-gray-500">
                     No matches
                   </li>

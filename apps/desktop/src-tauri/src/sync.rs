@@ -52,8 +52,8 @@ pub struct SyncReport {
 }
 
 enum PushError {
-    /// The server refused the batch. Retrying the same payload will fail the same way.
-    Rejected(String),
+    /// The server refused the batch. `server_time` is the Date header, when it could be read.
+    Rejected { reason: String, server_time: Option<String> },
     /// Network, auth, or server failure. The batch stays queued.
     Unavailable(String),
 }
@@ -181,7 +181,16 @@ pub fn flush(db: &Db, config: &DesktopConfig) -> Result<SyncReport, String> {
                     .filter(|result| result.status == "duplicate")
                     .count() as i64;
             }
-            Err(PushError::Rejected(reason)) => {
+            Err(PushError::Rejected { reason, server_time }) => {
+                // A register clock ahead of head office keeps failing until the stamp is pulled back.
+                // One correction per batch: a second rejection with the same stamp stays rejected.
+                let realigned = server_time.as_deref().is_some_and(|stamp| {
+                    reason.to_ascii_lowercase().contains("future")
+                        && db.restamp_batch(&batch_id, stamp).unwrap_or(false)
+                });
+                if realigned {
+                    continue;
+                }
                 db.mark_batch(&batch_id, "rejected", Some(&reason))?;
                 rejected += 1;
                 last_rejection = Some(reason);
@@ -336,6 +345,11 @@ fn post_batch(config: &DesktopConfig, events: &[QueuedEvent]) -> Result<PushResp
         .json(&payload)
         .send()
         .map_err(|err| PushError::Unavailable(err.to_string()))?;
+    let server_time = response
+        .headers()
+        .get(reqwest::header::DATE)
+        .and_then(|value| value.to_str().ok())
+        .and_then(http_date_to_iso);
     let status = response.status();
     let body = response
         .text()
@@ -345,9 +359,40 @@ fn post_batch(config: &DesktopConfig, events: &[QueuedEvent]) -> Result<PushResp
     }
     let reason = error_message(&body, status.as_u16());
     match status.as_u16() {
-        409 | 413 | 422 => Err(PushError::Rejected(reason)),
+        409 | 413 | 422 => Err(PushError::Rejected { reason, server_time }),
         _ => Err(PushError::Unavailable(reason)),
     }
+}
+
+/// `Fri, 23 Oct 2026 16:38:59 GMT` → `2026-10-23T16:38:59Z`.
+fn http_date_to_iso(value: &str) -> Option<String> {
+    let comma = value.find(',')?;
+    let mut parts = value[comma + 1..].split_whitespace();
+    let day: u32 = parts.next()?.parse().ok()?;
+    let month = match parts.next()? {
+        "Jan" => 1,
+        "Feb" => 2,
+        "Mar" => 3,
+        "Apr" => 4,
+        "May" => 5,
+        "Jun" => 6,
+        "Jul" => 7,
+        "Aug" => 8,
+        "Sep" => 9,
+        "Oct" => 10,
+        "Nov" => 11,
+        "Dec" => 12,
+        _ => return None,
+    };
+    let year: i32 = parts.next()?.parse().ok()?;
+    let mut clock = parts.next()?.split(':');
+    let hour: u32 = clock.next()?.parse().ok()?;
+    let minute: u32 = clock.next()?.parse().ok()?;
+    let second: u32 = clock.next()?.parse().ok()?;
+    if !(1..=31).contains(&day) || hour > 23 || minute > 59 || second > 59 {
+        return None;
+    }
+    Some(format!("{year:04}-{month:02}-{day:02}T{hour:02}:{minute:02}:{second:02}Z"))
 }
 
 pub(crate) fn client() -> Result<reqwest::blocking::Client, String> {
@@ -364,6 +409,20 @@ fn error_message(body: &str, status: u16) -> String {
         .chars()
         .take(500)
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::http_date_to_iso;
+
+    #[test]
+    fn http_date_becomes_utc_iso() {
+        assert_eq!(
+            http_date_to_iso("Fri, 23 Oct 2026 16:38:59 GMT").as_deref(),
+            Some("2026-10-23T16:38:59Z")
+        );
+        assert_eq!(http_date_to_iso("not a date"), None);
+    }
 }
 
 fn required(name: &str) -> Result<String, String> {

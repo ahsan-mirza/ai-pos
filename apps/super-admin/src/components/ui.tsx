@@ -1,5 +1,6 @@
-import { Eye, EyeOff, Lock, Mail, ShieldCheck, X, type LucideIcon } from "lucide-react";
-import { useEffect, useId, useState, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode } from "react";
+import { inputLeadingIcon } from "@ai-pos/ui";
+import { Eye, EyeOff, X } from "lucide-react";
+import { useEffect, useId, useState, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type TextareaHTMLAttributes } from "react";
 
 export function PrimaryButton({ className = "", ...props }: ButtonHTMLAttributes<HTMLButtonElement>) {
   return (
@@ -21,13 +22,6 @@ export function GhostButton({ className = "", ...props }: ButtonHTMLAttributes<H
   );
 }
 
-function leadingIcon(type: string | undefined, autoComplete: string | undefined): LucideIcon | null {
-  if (type === "password") return Lock;
-  if (type === "email") return Mail;
-  if (autoComplete === "one-time-code") return ShieldCheck;
-  return null;
-}
-
 export function Field({
   label,
   hint,
@@ -39,26 +33,43 @@ export function Field({
   const id = useId();
   const [showPassword, setShowPassword] = useState(false);
   const isPassword = type === "password";
-  const Icon = leadingIcon(type, typeof autoComplete === "string" ? autoComplete : undefined);
+  const multiline = /\bdescription\b/i.test(label);
+  const Icon = inputLeadingIcon({
+    type,
+    autoComplete: typeof autoComplete === "string" ? autoComplete : undefined,
+    inputMode: props.inputMode,
+    name: props.name,
+    id,
+    placeholder: typeof props.placeholder === "string" ? props.placeholder : undefined,
+    label,
+  });
   return (
     <label htmlFor={id} className={`block text-sm font-medium text-charcoal ${className}`}>
       {label}
       <span className="relative mt-1.5 block">
-        {Icon ? (
-          <Icon className="pointer-events-none absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400" aria-hidden="true" />
-        ) : null}
+        <Icon
+          className={`pointer-events-none absolute left-3 h-5 w-5 text-gray-400 ${multiline ? "top-3.5" : "top-1/2 -translate-y-1/2"}`}
+          aria-hidden="true"
+        />
+        {multiline ? (
+          <textarea
+            id={id}
+            rows={3}
+            {...(props as TextareaHTMLAttributes<HTMLTextAreaElement>)}
+            className="min-h-24 w-full resize-y rounded-xl border border-transparent bg-surface py-3 pl-10 pr-4 text-sm font-normal text-charcoal transition placeholder:text-charcoal/40 focus:border-orange-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-orange-500 disabled:cursor-not-allowed disabled:text-charcoal/50"
+          />
+        ) : (
         <input
           id={id}
           type={isPassword && showPassword ? "text" : type}
           autoComplete={autoComplete}
           {...props}
-          className={`w-full rounded-xl border border-transparent bg-surface py-3 text-sm font-normal text-charcoal transition placeholder:text-charcoal/40 focus:bg-white focus:outline-none disabled:cursor-not-allowed disabled:text-charcoal/50 ${
-            Icon
-              ? `pl-10 focus:border-orange-500 focus:ring-2 focus:ring-orange-500 ${isPassword ? "pr-12" : "pr-4"}`
-              : "px-4 focus:border-accent"
+          className={`w-full rounded-xl border border-transparent bg-surface py-3 pl-10 text-sm font-normal text-charcoal transition placeholder:text-charcoal/40 focus:border-orange-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-orange-500 disabled:cursor-not-allowed disabled:text-charcoal/50 ${
+            isPassword ? "pr-12" : "pr-4"
           }`}
         />
-        {isPassword ? (
+        )}
+        {isPassword && !multiline ? (
           <button
             type="button"
             tabIndex={-1}

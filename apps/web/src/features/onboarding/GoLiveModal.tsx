@@ -8,7 +8,7 @@ import type {
   OpeningStockChoice,
 } from "@ai-pos/shared-types";
 import { formatMoney } from "@ai-pos/shared-types";
-import { Select, billingCycleBadge } from "@ai-pos/ui";
+import { Select, billingCycleOption } from "@ai-pos/ui";
 import { Rocket } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { ErrorNote, GhostButton, PrimaryButton, TextField } from "../../components/ui/Field";
@@ -303,11 +303,7 @@ export function GoLiveModal({
               onChange={setCycleCode}
               options={catalog.cycles
                 .filter((row) => row.active)
-                .map((row) => ({
-                  value: row.code,
-                  label: row.name,
-                  badge: billingCycleBadge(row.code, row.discount_bps),
-                }))}
+                .map((row) => billingCycleOption(row.code, row.name, row.discount_bps))}
             />
           </label>
           {catalog.addons.filter((row) => row.active).map((addon) => (

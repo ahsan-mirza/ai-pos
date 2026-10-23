@@ -445,6 +445,58 @@ impl Db {
         Ok(())
     }
 
+    /// Pull a rejected batch's timestamps back to the server clock and queue it again.
+    /// Returns false when the batch is already stamped at `stamp`, or the server clock is not earlier.
+    pub fn restamp_batch(&self, batch_id: &str, stamp: &str) -> Result<bool, String> {
+        self.transaction(|tx| {
+            let mut statement = tx
+                .prepare("SELECT id, occurred_at, payload FROM sync_queue WHERE batch_id = ?1")
+                .map_err(|err| err.to_string())?;
+            let rows = statement
+                .query_map(params![batch_id], |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, String>(1)?,
+                        row.get::<_, String>(2)?,
+                    ))
+                })
+                .map_err(|err| err.to_string())?
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(|err| err.to_string())?;
+            drop(statement);
+            if rows.is_empty() {
+                return Ok(false);
+            }
+            let stamp_key = &stamp[..stamp.len().min(19)];
+            let ahead = rows.iter().any(|(_, occurred, _)| {
+                let key = &occurred[..occurred.len().min(19)];
+                key > stamp_key
+            });
+            if !ahead {
+                return Ok(false);
+            }
+            for (id, _, payload) in &rows {
+                let mut value: serde_json::Value =
+                    serde_json::from_str(payload).map_err(|err| err.to_string())?;
+                if let Some(object) = value.as_object_mut() {
+                    for key in ["sold_at", "processed_at", "occurred_at"] {
+                        if object.get(key).and_then(|item| item.as_str()).is_some() {
+                            object.insert(key.to_string(), serde_json::Value::String(stamp.to_string()));
+                        }
+                    }
+                }
+                let encoded = serde_json::to_string(&value).map_err(|err| err.to_string())?;
+                tx.execute(
+                    "UPDATE sync_queue SET occurred_at = ?1, payload = ?2, status = 'pending', last_error = NULL
+                     WHERE id = ?3",
+                    params![stamp, encoded, id],
+                )
+                .map_err(|err| err.to_string())?;
+            }
+            Ok(true)
+        })
+    }
+
     pub fn record_failure(&self, batch_id: &str, message: &str) -> Result<(), String> {
         let conn = self.lock()?;
         conn.execute(

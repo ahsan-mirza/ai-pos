@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { ConfirmProvider } from "./components/ConfirmDialog";
 import { RegisterShell } from "./components/shell/RegisterShell";
 import type { RegisterView } from "./components/shell/ShellContext";
@@ -14,6 +14,7 @@ import { SettingsPage } from "./features/settings/SettingsPage";
 import { OpenShiftScreen } from "./features/shifts/OpenShiftScreen";
 import { reloadShift, useShift } from "./features/shifts/shift";
 import { useCapabilities } from "./lib/capabilities";
+import { UpdatePrompt } from "./features/updates/UpdatePrompt";
 import { inTauri } from "./lib/tauri";
 
 export function App() {
@@ -40,34 +41,49 @@ export function App() {
     if (session !== null) void reloadShift();
   }, [session]);
 
-  if (needsActivation() || activating) {
-    return <ActivationScreen onCancel={needsActivation() ? undefined : () => setActivating(false)} />;
-  }
-  if (!ready) return <div className="min-h-screen bg-zinc-950" />;
-  if (session === null) return <PinUnlock onUnlocked={setSession} onActivate={() => setActivating(true)} />;
   const onLock = () => {
     void lock().finally(() => {
       setSession(null);
       setView("checkout");
     });
   };
-  if (inTauri() && !shiftState.loaded) return <div className="min-h-screen bg-zinc-950" />;
-  if (inTauri() && shiftState.shift === null) return <OpenShiftScreen session={session} onLock={onLock} />;
+
+  let screen: ReactNode;
+  if (needsActivation() || activating) {
+    screen = <ActivationScreen onCancel={needsActivation() ? undefined : () => setActivating(false)} />;
+  } else if (!ready || session === null) {
+    screen = !ready ? (
+      <div className="min-h-screen bg-zinc-950" />
+    ) : (
+      <PinUnlock onUnlocked={setSession} onActivate={() => setActivating(true)} />
+    );
+  } else if (inTauri() && !shiftState.loaded) {
+    screen = <div className="min-h-screen bg-zinc-950" />;
+  } else if (inTauri() && shiftState.shift === null) {
+    screen = <OpenShiftScreen session={session} onLock={onLock} />;
+  } else {
+    screen = (
+      <ConfirmProvider>
+        <RegisterShell session={session} view={view} onNavigate={setView} onLock={onLock}>
+          {view === "returns" ? (
+            <ReturnsPage session={session} />
+          ) : view === "settings" ? (
+            <SettingsPage />
+          ) : view === "orders" ? (
+            <OrdersPage session={session} />
+          ) : view === "repairs" ? (
+            <RepairsPage session={session} />
+          ) : (
+            <CheckoutPage session={session} />
+          )}
+        </RegisterShell>
+      </ConfirmProvider>
+    );
+  }
   return (
-    <ConfirmProvider>
-      <RegisterShell session={session} view={view} onNavigate={setView} onLock={onLock}>
-        {view === "returns" ? (
-          <ReturnsPage session={session} />
-        ) : view === "settings" ? (
-          <SettingsPage />
-        ) : view === "orders" ? (
-          <OrdersPage session={session} />
-        ) : view === "repairs" ? (
-          <RepairsPage session={session} />
-        ) : (
-          <CheckoutPage session={session} />
-        )}
-      </RegisterShell>
-    </ConfirmProvider>
+    <>
+      {screen}
+      <UpdatePrompt />
+    </>
   );
 }

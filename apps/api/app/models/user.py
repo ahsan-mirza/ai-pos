@@ -6,6 +6,7 @@ from datetime import datetime
 from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Uuid
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from app.core.permissions import Permission
 from app.models.base import Base, TimestampMixin
 from app.models.role import Role
 
@@ -29,6 +30,8 @@ class User(TimestampMixin, Base):
     role_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("roles.id"), index=True)
     has_pos_access: Mapped[bool] = mapped_column(Boolean, default=False)
     has_portal_access: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Extra grant for typing a price on open-price items. The role may already include it.
+    can_sell_open_price: Mapped[bool] = mapped_column(Boolean, default=False)
     failed_login_attempts: Mapped[int] = mapped_column(Integer, default=0)
     locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     token_version: Mapped[int] = mapped_column(Integer, default=0)
@@ -41,4 +44,7 @@ class User(TimestampMixin, Base):
 
     @property
     def permissions(self) -> set[str]:
-        return self.role.permissions
+        granted = set(self.role.permissions)
+        if self.can_sell_open_price:
+            granted.add(Permission.POS_OPEN_PRICE.value)
+        return granted

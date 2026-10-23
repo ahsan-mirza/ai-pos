@@ -68,7 +68,7 @@ export const SEED: PublicCatalog = {
   cycles: [
     { code: "MONTHLY", name: "Monthly", months: 1, discount_bps: 0 },
     { code: "QUARTERLY", name: "Quarterly", months: 3, discount_bps: 500 },
-    { code: "HALF_YEARLY", name: "Half-yearly", months: 6, discount_bps: 1_200 },
+    { code: "HALF_YEARLY", name: "Half-Yearly", months: 6, discount_bps: 1_200 },
     { code: "ANNUAL", name: "Annual", months: 12, discount_bps: 2_500 },
   ],
   addons: [

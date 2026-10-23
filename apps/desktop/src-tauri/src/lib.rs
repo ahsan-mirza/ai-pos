@@ -25,6 +25,7 @@ mod sync_center;
 mod table_sessions;
 mod terminal;
 mod timeclock;
+mod updates;
 
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
@@ -600,6 +601,21 @@ fn audit_status(state: tauri::State<AppState>) -> Result<audit::AuditStatus, Str
 }
 
 #[tauri::command]
+async fn check_app_update(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, AppState>,
+) -> Result<Option<updates::AppUpdate>, String> {
+    let config = state.config.clone();
+    Ok(updates::check(&config, &app.package_info().version.to_string()).await)
+}
+
+#[tauri::command]
+async fn install_app_update(app: tauri::AppHandle, state: tauri::State<'_, AppState>) -> Result<(), String> {
+    let config = state.config.clone();
+    updates::install(&app, &config, &app.package_info().version.to_string()).await
+}
+
+#[tauri::command]
 fn recent_audit_events(
     state: tauri::State<AppState>,
     limit: Option<i64>,
@@ -743,7 +759,9 @@ pub fn run() {
             scale::read_scale,
             menu::refresh_menu,
             restaurant::restaurant_request,
-            retail::retail_request
+            retail::retail_request,
+            check_app_update,
+            install_app_update
         ])
         .run(tauri::generate_context!())
         .expect("ai-pos desktop failed to start");

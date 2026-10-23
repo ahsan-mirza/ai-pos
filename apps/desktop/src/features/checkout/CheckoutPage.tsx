@@ -96,6 +96,7 @@ import { HeldCartsModal } from "./HeldCartsModal";
 import { SerialPickerModal } from "./SerialPickerModal";
 import { ModeSwitch } from "./ModeSwitch";
 import { OpenPriceModal } from "./OpenPriceModal";
+import { QuantityModal } from "./QuantityModal";
 import { WeighModal } from "./WeighModal";
 import { ComboBuilderModal } from "./ComboBuilderModal";
 import { ModifierPickerModal } from "./ModifierPickerModal";
@@ -231,6 +232,7 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
   const [query, setQuery] = useState("");
   const [pendingSerial, setPendingSerial] = useState<ProductUpsert | null>(null);
   const [openPriceFor, setOpenPriceFor] = useState<ProductUpsert | null>(null);
+  const [quantityFor, setQuantityFor] = useState<ProductUpsert | null>(null);
   const [weighFor, setWeighFor] = useState<ProductUpsert | null>(null);
   const [modifierFor, setModifierFor] = useState<ProductUpsert | null>(null);
   const [comboFor, setComboFor] = useState<ProductUpsert | null>(null);
@@ -519,7 +521,7 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
   };
 
   const select = useCallback(
-    (product: ProductUpsert) => {
+    (product: ProductUpsert, askQuantity = false) => {
       if (charging) return;
       if (product.is_open_price) {
         setOpenPriceFor(product);
@@ -540,6 +542,10 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
       if (product.is_serialized) {
         if (cartRef.current.mode === "WHOLESALE") setBulkFor(product);
         else setPendingSerial(product);
+        return;
+      }
+      if (askQuantity) {
+        setQuantityFor(product);
         return;
       }
       dispatch({ type: "add_product", product });
@@ -1401,7 +1407,7 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
                   disabled={charging}
                   menuItem={food}
                   hasModifiers={groupsFor(menu, entry.hit.product.id).length > 0 || combosFor(menu, entry.hit.product.id).length > 0}
-                  onSelect={select}
+                  onSelect={(product) => select(product, true)}
                   onCheckBranches={(product) => setBranchCheck({ product })}
                 />
               ),
@@ -1425,7 +1431,7 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
           onClose={() => setPicker(null)}
           onPick={(product) => {
             setPicker(null);
-            select(product);
+            select(product, true);
           }}
         />
       ) : null}
@@ -1435,8 +1441,8 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
           groups={groupsFor(menu, modifierFor.id)}
           currency={currency}
           onClose={() => setModifierFor(null)}
-          onConfirm={(modifiers) => {
-            if (dispatch({ type: "add_product", product: modifierFor, modifiers })) setModifierFor(null);
+          onConfirm={(modifiers, quantity) => {
+            if (dispatch({ type: "add_product", product: modifierFor, modifiers, quantity })) setModifierFor(null);
           }}
         />
       ) : null}
@@ -1446,8 +1452,8 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
           slots={combosFor(menu, comboFor.id)}
           currency={currency}
           onClose={() => setComboFor(null)}
-          onConfirm={(components) => {
-            if (dispatch({ type: "add_product", product: comboFor, components })) setComboFor(null);
+          onConfirm={(components, quantity) => {
+            if (dispatch({ type: "add_product", product: comboFor, components, quantity })) setComboFor(null);
           }}
         />
       ) : null}
@@ -1461,14 +1467,21 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
           }}
         />
       ) : null}
+      {quantityFor ? (
+        <QuantityModal
+          product={quantityFor}
+          onClose={() => setQuantityFor(null)}
+          onConfirm={(quantity) => dispatch({ type: "add_product", product: quantityFor, quantity })}
+        />
+      ) : null}
       {openPriceFor ? (
         <OpenPriceModal
           product={openPriceFor}
           currency={currency}
           allowed={session.user.permissions.includes(Permission.PosOpenPrice)}
           onClose={() => setOpenPriceFor(null)}
-          onConfirm={(description, unitPriceCents) => {
-            if (dispatch({ type: "add_open_price", product: openPriceFor, unitPriceCents, description })) setOpenPriceFor(null);
+          onConfirm={(description, unitPriceCents, quantity) => {
+            if (dispatch({ type: "add_open_price", product: openPriceFor, unitPriceCents, description, quantity })) setOpenPriceFor(null);
           }}
         />
       ) : null}

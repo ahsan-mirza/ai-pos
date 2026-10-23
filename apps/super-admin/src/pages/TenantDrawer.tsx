@@ -9,7 +9,7 @@ import {
   type StoreSubscription,
   type TenantDetail,
 } from "@ai-pos/shared-types";
-import { Select, billingCycleBadge } from "@ai-pos/ui";
+import { Select, billingCycleOption } from "@ai-pos/ui";
 import { ArrowRightLeft, RefreshCw, ShieldAlert, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate, useOutletContext, useParams } from "react-router-dom";
@@ -385,7 +385,7 @@ function PackageAssign({ tenantId, onSaved }: { tenantId: string; onSaved: () =>
             onChange={setCycle}
             options={catalog.cycles
               .filter((row) => row.active)
-              .map((row) => ({ value: row.code, label: row.name, badge: billingCycleBadge(row.code, row.discount_bps) }))}
+              .map((row) => billingCycleOption(row.code, row.name, row.discount_bps))}
           />
         </label>
         {catalog.addons.filter((row) => row.active).map((addon) => (

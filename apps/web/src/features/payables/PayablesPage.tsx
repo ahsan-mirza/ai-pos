@@ -580,12 +580,13 @@ function BillModal({
         <div className="space-y-2">
           {lines.map((line, index) => (
             <div key={index} className="grid grid-cols-[1fr_5rem_7rem_8rem_2rem] items-center gap-2">
-              <input
+              <textarea
                 aria-label="Description"
+                rows={2}
                 placeholder="What was billed"
                 value={line.description}
                 onChange={(event) => setLines(lines.map((row, at) => (at === index ? { ...row, description: event.target.value } : row)))}
-                className="rounded-xl bg-surface px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-accent/40"
+                className="min-h-16 resize-y rounded-xl bg-surface px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-accent/40"
               />
               <input
                 aria-label="Quantity"

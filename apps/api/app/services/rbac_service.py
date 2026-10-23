@@ -40,7 +40,7 @@ from app.services import audit
 from app.tenancy.context import current_tenant
 
 SUPER_ADMIN_ID = uuid.UUID(SUPER_ADMIN_ROLE_ID)
-INVALID_CREDENTIALS = "Invalid username or credentials."
+INVALID_CREDENTIALS = "Invalid email, username, or password."
 
 
 # --- Serialization -------------------------------------------------------------------------------
@@ -58,6 +58,7 @@ def user_out(user: User) -> UserOut:
         permissions=sorted(user.permissions),
         has_pos_access=user.has_pos_access,
         has_portal_access=user.has_portal_access,
+        can_sell_open_price=user.can_sell_open_price,
         has_password=user.hashed_password is not None,
         has_pin=user.hashed_pin is not None,
         locked_until=_aware(user.locked_until),
@@ -178,7 +179,11 @@ def authenticate(
     secret: str,
     method: Literal["password", "pin"],
 ) -> TokenResponse:
-    user = db.scalar(select(User).where(User.username == username.strip().lower()))
+    normalized = username.strip().lower()
+    if method == "password" and "@" in normalized:
+        user = db.scalar(select(User).where(func.lower(User.email) == normalized))
+    else:
+        user = db.scalar(select(User).where(User.username == normalized))
     stored = None if user is None else (user.hashed_password if method == "password" else user.hashed_pin)
     valid = verify_password(secret, stored) if method == "password" else verify_pin(secret, stored, settings)
     if user is None:
@@ -290,6 +295,8 @@ def create_user(db: Session, settings: Settings, actor: Principal, data: UserCre
     store_id = data.store_id if actor.store_id is None else (data.store_id or actor.store_id)
     _assert_store_scope(actor, store_id)
     _assert_can_grant(actor, role.permissions)
+    if data.can_sell_open_price and Permission.POS_OPEN_PRICE.value not in role.permissions:
+        _assert_can_grant(actor, {Permission.POS_OPEN_PRICE.value})
     _check_store(db, store_id)
     if db.scalar(select(User).where((User.username == data.username) | (User.email == data.email))) is not None:
         raise ApiError(409, "conflict", "Username or email is already in use.")
@@ -304,6 +311,7 @@ def create_user(db: Session, settings: Settings, actor: Principal, data: UserCre
         role_id=role.id,
         has_pos_access=data.has_pos_access,
         has_portal_access=data.has_portal_access,
+        can_sell_open_price=data.can_sell_open_price,
         failed_login_attempts=0,
         token_version=0,
     )
@@ -350,6 +358,11 @@ def update_user(db: Session, actor: Principal, user_id: uuid.UUID, data: UserUpd
         if data.has_pos_access and user.hashed_pin is None:
             raise ApiError(422, "pin_required", "Set a PIN before enabling POS access.")
         user.has_pos_access = data.has_pos_access
+    if data.can_sell_open_price is not None and data.can_sell_open_price != user.can_sell_open_price:
+        if data.can_sell_open_price and Permission.POS_OPEN_PRICE.value not in user.role.permissions:
+            _assert_can_grant(actor, {Permission.POS_OPEN_PRICE.value})
+        user.can_sell_open_price = data.can_sell_open_price
+        user.token_version += 1
 
     still_super_admin = user.role_id == SUPER_ADMIN_ID and user.is_active
     try:

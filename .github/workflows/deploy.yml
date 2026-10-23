@@ -15,7 +15,7 @@ permissions:
   contents: read
 
 jobs:
-  # API plus the static admin portal. System packages are installed once by deploy/server-setup.sh.
+  # API, the static admin portal, and the console at /admin74246/. System packages are installed once by deploy/server-setup.sh.
   # The Windows register is release-pos.yml; this job does not build a desktop app.
   deploy:
     if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
@@ -24,6 +24,7 @@ jobs:
     env:
       APP_DIR: /opt/ai-pos
       WEB_DIR: /var/www/ai-pos-admin
+      CONSOLE_DIR: /var/www/ai-pos-console
     steps:
       - uses: actions/checkout@v4
         with:
@@ -38,11 +39,13 @@ jobs:
       - name: Production build env
         run: test -f .env.production || cp deploy/portal.production.env .env.production
 
-      - name: Build admin portal
+      - name: Build admin portal and console
         run: |
-          pnpm install --frozen-lockfile --filter "@ai-pos/web..."
+          pnpm install --frozen-lockfile --filter "@ai-pos/web..." --filter "@ai-pos/super-admin..."
           pnpm build:admin:prod
+          pnpm build:console:prod
           test -f apps/web/dist/index.html
+          test -f apps/super-admin/dist/index.html
 
       - name: Configure SSH
         env:
@@ -72,7 +75,7 @@ jobs:
 
       - name: Upload API and catalog
         run: |
-          ssh server "mkdir -p $APP_DIR/apps/api $APP_DIR/packages/catalog $WEB_DIR"
+          ssh server "mkdir -p $APP_DIR/apps/api $APP_DIR/packages/catalog $WEB_DIR $CONSOLE_DIR"
           rsync -az --delete \
             --exclude '.venv/' --exclude '.env*' --exclude 'storage/' \
             --exclude '__pycache__/' --exclude 'tests/' --exclude '*.db' \
@@ -118,8 +121,11 @@ jobs:
           .venv/bin/python -m app.tenancy.cli migrate-all
           EOF
 
-      - name: Upload admin portal
-        run: rsync -az --delete apps/web/dist/ server:$WEB_DIR/
+      - name: Upload admin portal and console
+        run: |
+          ssh server "mkdir -p $WEB_DIR $CONSOLE_DIR"
+          rsync -az --delete apps/web/dist/ server:$WEB_DIR/
+          rsync -az --delete apps/super-admin/dist/ server:$CONSOLE_DIR/
 
       - name: Start PM2
         run: |

@@ -8,7 +8,7 @@ import { Hardware } from "./components/Hardware";
 import { Hero } from "./components/Hero";
 import { Pricing } from "./components/Pricing";
 import { WhatsAppButton } from "./components/WhatsAppButton";
-import { apiBaseUrl, signupUrl } from "./env";
+import { apiBaseUrl, installerUrl, signupUrl } from "./env";
 
 export function App() {
   const reduce = useReducedMotion();
@@ -57,6 +57,7 @@ export function App() {
           <a href="#branches">Branches</a>
           <a href="#hardware">Hardware</a>
           <a href="#pricing">Packages</a>
+          <a href={installerUrl()}>Download POS</a>
         </nav>
         <div className="flex items-center gap-2">
           <a href={signupUrl} className="hidden rounded-full border border-white/15 px-3 py-2 text-sm sm:inline">

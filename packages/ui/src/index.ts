@@ -17,8 +17,9 @@ export {
   type DiningTableShapeProps,
   type TableShape,
 } from "./DiningTableShape";
+export { inputLeadingIcon, type InputIconHints } from "./inputIcon";
 export { PageSizeSelect } from "./PageSizeSelect";
-export { Select, billingCycleBadge, type SelectOption, type SelectProps } from "./Select";
+export { Select, billingCycleBadge, billingCycleOption, type SelectOption, type SelectProps } from "./Select";
 export {
   TableGridNode,
   TableSeatGraphic,

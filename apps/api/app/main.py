@@ -2,16 +2,17 @@ import asyncio
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from typing import Annotated
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
 from starlette.requests import Request
 
 from app.core import audit_context
-from app.core.config import get_settings
+from app.core.config import Settings, get_settings
 from app.core.errors import ApiError, unhandled_error
 from app.core.pagination import TOTAL_COUNT_HEADER
 from app.jobs import scheduler
@@ -20,6 +21,7 @@ from app.routers.repair_public import router as repair_public_router
 from app.routers.signup import router as signup_router
 from app.routers.super_admin import router as super_admin_router
 from app.routers.v1 import api_router
+from app.routers.v1.downloads import latest_windows_file
 from app.services import audit as _audit_listeners  # noqa: F401  registers the ORM audit listeners
 from app.tenancy import middleware as tenancy_middleware
 from app.websockets.rooms import bind_loop as bind_room_loop
@@ -120,6 +122,10 @@ def create_app() -> FastAPI:
     @app.get("/health")
     def health() -> dict[str, str]:
         return {"status": "ok"}
+
+    @app.get("/api/download/installer/win", include_in_schema=False)
+    def download_windows_installer(settings: Annotated[Settings, Depends(get_settings)]) -> FileResponse:
+        return latest_windows_file(settings)
 
     app.include_router(api_router, prefix="/api/v1")
     app.include_router(repair_public_router)

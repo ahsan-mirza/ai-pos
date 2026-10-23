@@ -27,6 +27,17 @@ class AppRelease(BaseModel):
     files: list[InstallerFile]
 
 
+class LatestInstaller(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    version: str
+    notes: str | None = None
+    pub_date: datetime
+    sha256: str
+    # Public file. The register joins this to its API host.
+    path: str = "/api/download/installer/win"
+
+
 class DownloadsOut(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

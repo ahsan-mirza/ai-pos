@@ -26,6 +26,9 @@ class LabelRequest(ApiModel):
     items: list[LabelLine] = Field(min_length=1, max_length=500)
     layout: Layout = "a4_3x8"
     show_price: bool = True
+    show_name: bool = True
+    show_variant: bool = True
+    show_currency: bool = True
 
 
 def _pdf(body: bytes, name: str) -> Response:
@@ -36,7 +39,15 @@ def _pdf(body: bytes, name: str) -> Response:
 def print_labels(payload: LabelRequest, db: Db, _: CanPrint) -> Response:
     lines = [(line.product_id, line.copies) for line in payload.items]
     return _pdf(
-        labels_service.for_products(db, lines, layout=payload.layout, show_price=payload.show_price), "labels.pdf"
+        labels_service.for_products(
+            db,
+            lines,
+            layout=payload.layout,
+            show_price=payload.show_price,
+            show_name=payload.show_name,
+            show_variant=payload.show_variant,
+            show_currency=payload.show_currency,
+        ), "labels.pdf"
     )
 
 

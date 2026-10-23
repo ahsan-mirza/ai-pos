@@ -36,6 +36,8 @@ FunctionEnd
 
 Function PosExistingInstallPage
   ${If} ${Silent}
+    ; An update keeps the register database. Only the interactive Reset choice deletes it.
+    StrCpy $PosInstallChoice "recovery"
     Abort
   ${EndIf}
 
@@ -137,6 +139,9 @@ FunctionEnd
 !macroend
 
 !macro NSIS_HOOK_POSTINSTALL
+  ${If} ${Silent}
+    Exec '"$INSTDIR\${MAINBINARYNAME}.exe"'
+  ${EndIf}
   StrCpy $PosHidUninstallKey "0"
   WriteRegStr HKCU "${POS_REG_KEY}" "" "$INSTDIR"
   WriteRegStr HKCU "${POS_REG_KEY}" "InstallLocation" "$INSTDIR"

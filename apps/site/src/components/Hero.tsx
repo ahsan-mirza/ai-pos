@@ -1,7 +1,7 @@
 import { motion, useReducedMotion } from "framer-motion";
 import { useState } from "react";
 import { aed } from "../catalog";
-import { signupUrl } from "../env";
+import { installerUrl, signupUrl } from "../env";
 import { RegisterCanvas } from "./RegisterCanvas";
 
 const UNIT_FILS = 1_850;
@@ -27,6 +27,9 @@ export function Hero({ onDemo }: { onDemo: () => void }) {
           <div className="mt-7 flex flex-wrap gap-3">
             <a href={signupUrl} className="rounded-full bg-cyan-400 px-5 py-3 text-sm font-semibold text-ink">
               Start practice store
+            </a>
+            <a href={installerUrl()} className="rounded-full border border-white/20 px-5 py-3 text-sm font-semibold">
+              Download POS
             </a>
             <button type="button" onClick={onDemo} className="rounded-full border border-white/20 px-5 py-3 text-sm font-semibold">
               Book a demo

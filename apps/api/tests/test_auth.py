@@ -87,7 +87,15 @@ def test_failed_logins_lock_the_account(client) -> None:
 def test_unknown_user_gets_generic_error(client) -> None:
     response = login(client, username="nobody")
     assert response.status_code == 401
-    assert response.json()["error"]["message"] == "Invalid username or credentials."
+    assert response.json()["error"]["message"] == "Invalid email, username, or password."
+
+
+def test_password_login_accepts_email(client) -> None:
+    response = login(client, username="Admin@Example.com")
+    assert response.status_code == 200, response.text
+    assert response.json()["user"]["username"] == "admin"
+    unknown = login(client, username="missing@example.com")
+    assert unknown.status_code == 401
 
 
 def test_pin_login_requires_device_key(client) -> None:

@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session
 from app.core.capabilities import Capability, has_capability
 from app.core.config import Settings
 from app.core.deps import Principal
-from app.core.errors import ApiError, SyncRejected
+from app.core.errors import ApiError, SyncRejected, field_conflict
 from app.core.pagination import count_rows
 from app.core.security import decrypt_value, encrypt_value
 from app.models.base import utcnow
@@ -1120,9 +1120,9 @@ def _classify(
 @portal_errors
 def create_product(db: Session, principal: Principal, data: ProductCreate, currency: str) -> ProductOut:
     if db.scalar(select(Product.id).where(Product.sku == data.sku.strip())) is not None:
-        raise ApiError(409, "conflict", "SKU is already in use.")
+        raise field_conflict("SKU is already in use.", sku="SKU is already in use.")
     if db.scalar(select(Product.id).where(Product.barcode == data.barcode.strip())) is not None:
-        raise ApiError(409, "conflict", "Barcode is already in use.")
+        raise field_conflict("Barcode is already in use.", barcode="Barcode is already in use.")
     store = None
     if data.opening_store_id is not None:
         _require_store_access(principal, data.opening_store_id)
@@ -1150,7 +1150,8 @@ def create_product(db: Session, principal: Principal, data: ProductCreate, curre
         raise ApiError(422, "invalid_request", "Prepared dishes are not stocked. Track their ingredients instead.")
     fashion_attributes.apply(product, data, only_sent=False)
     if product.plu_code and db.scalar(select(Product.id).where(Product.plu_code == product.plu_code)) is not None:
-        raise ApiError(409, "conflict", f"PLU {product.plu_code} is already in use.")
+        message = f"PLU {product.plu_code} is already in use."
+        raise field_conflict(message, plu_code=message)
     product.sellable_units = uom_service.check_sellable(
         db, data.sellable_units, serialized=data.is_serialized, weighed=data.sold_by_weight
     )
@@ -1207,7 +1208,8 @@ def _update_weighing(db: Session, product: Product, data: ProductUpdate) -> None
                 raise ApiError(422, "invalid_request", "Only weighed products carry a scale PLU code.")
             taken = db.scalar(select(Product.id).where(Product.plu_code == data.plu_code, Product.id != product.id))
             if taken is not None:
-                raise ApiError(409, "conflict", f"PLU {data.plu_code} is already in use.")
+                message = f"PLU {data.plu_code} is already in use."
+                raise field_conflict(message, plu_code=message)
         product.plu_code = data.plu_code
     if data.tare_grams is not None and product.sold_by_weight:
         product.tare_grams = data.tare_grams

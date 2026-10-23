@@ -1,6 +1,6 @@
 import type { DiningArea } from "@ai-pos/shared-types";
 import { Select } from "@ai-pos/ui";
-import { Bike, ChevronDown, ChevronUp, Minus, Plus, Soup, UtensilsCrossed } from "lucide-react";
+import { Bike, ChevronDown, ChevronUp, Minus, Plus, Search, Soup, UtensilsCrossed } from "lucide-react";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { staffApi, type RegisterStaff } from "../../../lib/retailClient";
 import type { RegisterCustomer } from "../../../lib/tauri";
@@ -527,23 +527,27 @@ export function OrderModeBar({
             <div className="relative">
               <label htmlFor="delivery-customer" className={labelClass}>
                 Customer
-                <input
-                  id="delivery-customer"
-                  required
-                  role="combobox"
-                  aria-expanded={searchOpen && matches.length > 0}
-                  aria-controls={listId}
-                  aria-autocomplete="list"
-                  value={name}
-                  autoComplete="off"
-                  placeholder="Search name or phone"
-                  onChange={(event) => {
-                    setName(event.target.value);
-                    setSearchOpen(true);
-                  }}
-                  onFocus={() => setSearchOpen(true)}
-                  className={`${field} mt-1`}
-                />
+                <span className="relative mt-1 block">
+                  <Search aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 z-10 h-4 w-4 -translate-y-1/2 text-zinc-400" />
+                  <input
+                    id="delivery-customer"
+                    required
+                    type="search"
+                    role="combobox"
+                    aria-expanded={searchOpen && matches.length > 0}
+                    aria-controls={listId}
+                    aria-autocomplete="list"
+                    value={name}
+                    autoComplete="off"
+                    placeholder="Search name or phone"
+                    onChange={(event) => {
+                      setName(event.target.value);
+                      setSearchOpen(true);
+                    }}
+                    onFocus={() => setSearchOpen(true)}
+                    className={`${field} !pl-9 [&::-webkit-search-cancel-button]:hidden`}
+                  />
+                </span>
               </label>
               {searchOpen && matches.length > 0 ? (
                 <ul id={listId} role="listbox" className="absolute z-20 mt-1 max-h-48 w-full overflow-y-auto rounded-xl border border-zinc-200 bg-white py-1 shadow-lg dark:border-zinc-800 dark:bg-zinc-900">

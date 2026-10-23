@@ -15,6 +15,7 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DEPLOY_USER="${SUDO_USER:-ubuntu}"
 APP_ROOT=/opt/ai-pos
 WEB_ROOT=/var/www/ai-pos-admin
+CONSOLE_ROOT=/var/www/ai-pos-console
 
 echo "==> Packages"
 export DEBIAN_FRONTEND=noninteractive
@@ -38,8 +39,8 @@ done
 netfilter-persistent save
 
 echo "==> Directories"
-mkdir -p "$APP_ROOT/apps/api" "$APP_ROOT/packages" "$APP_ROOT/downloads/pos" "$WEB_ROOT"
-chown -R "$DEPLOY_USER:$DEPLOY_USER" "$APP_ROOT" "$WEB_ROOT"
+mkdir -p "$APP_ROOT/apps/api" "$APP_ROOT/packages" "$APP_ROOT/downloads/pos" "$WEB_ROOT" "$CONSOLE_ROOT"
+chown -R "$DEPLOY_USER:$DEPLOY_USER" "$APP_ROOT" "$WEB_ROOT" "$CONSOLE_ROOT"
 
 if [[ ! -x "$APP_ROOT/apps/api/.venv/bin/python" ]]; then
   echo "==> Python virtual environment"
@@ -47,7 +48,7 @@ if [[ ! -x "$APP_ROOT/apps/api/.venv/bin/python" ]]; then
   sudo -u "$DEPLOY_USER" "$APP_ROOT/apps/api/.venv/bin/pip" install -q --upgrade pip
 fi
 
-echo "==> PM2 (API and admin portal; systemd no longer binds port 8000)"
+echo "==> PM2 (API, admin portal, and console; systemd no longer binds port 8000)"
 if ! command -v pm2 >/dev/null; then
   npm install -g pm2
 fi

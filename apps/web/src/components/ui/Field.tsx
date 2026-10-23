@@ -1,49 +1,70 @@
-import { Eye, EyeOff, Lock, Mail, ShieldCheck, type LucideIcon } from "lucide-react";
-import { useId, useState, type ButtonHTMLAttributes, type InputHTMLAttributes } from "react";
+import { inputLeadingIcon } from "@ai-pos/ui";
+import { Eye, EyeOff, Search } from "lucide-react";
+import { useId, useState, type ButtonHTMLAttributes, type InputHTMLAttributes, type TextareaHTMLAttributes } from "react";
 import { Select, type SelectProps } from "./Select";
 
 const control =
-  "w-full rounded-xl border border-transparent bg-surface py-3 text-sm font-normal text-charcoal transition placeholder:text-charcoal/40 focus:bg-white focus:outline-none disabled:cursor-not-allowed disabled:text-charcoal/50";
-
-function leadingIcon(type: string | undefined, autoComplete: string | undefined): LucideIcon | null {
-  if (type === "password") return Lock;
-  if (type === "email") return Mail;
-  if (autoComplete === "one-time-code") return ShieldCheck;
-  return null;
-}
+  "w-full rounded-xl border bg-surface py-3 text-sm font-normal text-charcoal transition placeholder:text-charcoal/40 focus:bg-white focus:outline-none disabled:cursor-not-allowed disabled:text-charcoal/50";
 
 /** Label above every filter-bar control (store, category, status, search). */
 export const filterLabel = "mb-1.5 block text-[11px] font-semibold uppercase tracking-wider text-[#6B7280]";
 
+function isDescriptionLabel(label: string): boolean {
+  return /\bdescription\b/i.test(label);
+}
+
 export function TextField({
   label,
   hint,
+  error,
   className = "",
   type,
   autoComplete,
   ...props
-}: InputHTMLAttributes<HTMLInputElement> & { label: string; hint?: string }) {
+}: InputHTMLAttributes<HTMLInputElement> & { label: string; hint?: string; error?: string }) {
   const [showPassword, setShowPassword] = useState(false);
   const isPassword = type === "password";
-  const Icon = leadingIcon(type, typeof autoComplete === "string" ? autoComplete : undefined);
+  const Icon = inputLeadingIcon({
+    type,
+    autoComplete: typeof autoComplete === "string" ? autoComplete : undefined,
+    inputMode: props.inputMode,
+    name: props.name,
+    id: props.id,
+    placeholder: typeof props.placeholder === "string" ? props.placeholder : undefined,
+    label,
+  });
+  const multiline = isDescriptionLabel(label);
   return (
     <label className="block text-sm font-medium">
       {label}
       <span className="relative mt-1.5 block">
-        {Icon ? (
-          <Icon className="pointer-events-none absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400" aria-hidden="true" />
-        ) : null}
+        <Icon
+          className={`pointer-events-none absolute left-3 z-10 h-5 w-5 text-gray-400 ${multiline ? "top-3.5" : "top-1/2 -translate-y-1/2"}`}
+          aria-hidden="true"
+        />
+        {multiline ? (
+          <textarea
+            {...(props as TextareaHTMLAttributes<HTMLTextAreaElement>)}
+            rows={3}
+            aria-invalid={error ? true : undefined}
+            className={`${control} min-h-24 resize-y border-transparent py-3 pl-10 pr-4 focus:border-orange-500 focus:ring-2 focus:ring-orange-500 ${
+              error ? "border-rose-500 bg-rose-50/20 focus:border-rose-500 focus:ring-rose-500" : ""
+            } ${className}`}
+          />
+        ) : (
         <input
           {...props}
           type={isPassword && showPassword ? "text" : type}
           autoComplete={autoComplete}
-          className={`${control} ${
-            Icon
-              ? `pl-10 focus:border-orange-500 focus:ring-2 focus:ring-orange-500 ${isPassword ? "pr-12" : "pr-4"}`
-              : "px-4 focus:border-accent"
+          aria-invalid={error ? true : undefined}
+          className={`${control} pl-10 ${
+            error
+              ? `border-rose-500 bg-rose-50/20 focus:border-rose-500 focus:ring-2 focus:ring-rose-500 ${isPassword ? "pr-12" : "pr-4"}`
+              : `border-transparent focus:border-orange-500 focus:ring-2 focus:ring-orange-500 ${isPassword ? "pr-12" : "pr-4"}`
           } ${className}`}
         />
-        {isPassword ? (
+        )}
+        {isPassword && !multiline ? (
           <button
             type="button"
             tabIndex={-1}
@@ -57,7 +78,13 @@ export function TextField({
           </button>
         ) : null}
       </span>
-      {hint ? <span className="mt-1.5 block text-xs font-normal text-charcoal/50">{hint}</span> : null}
+      {error ? (
+        <span role="alert" className="mt-1.5 block text-xs font-medium text-rose-600">
+          {error}
+        </span>
+      ) : hint ? (
+        <span className="mt-1.5 block text-xs font-normal text-charcoal/50">{hint}</span>
+      ) : null}
     </label>
   );
 }
@@ -65,18 +92,56 @@ export function TextField({
 type LabelledSelectProps<T extends string> = Omit<SelectProps<T>, "id" | "labelledBy" | "aria-label"> & {
   label: string;
   hint?: string;
+  error?: string;
 };
 
+/** Filter-bar search. The icon lives here so every list search looks the same. */
+export function SearchField({
+  label = "Search",
+  hideLabel = false,
+  className = "",
+  ...props
+}: Omit<InputHTMLAttributes<HTMLInputElement>, "type"> & { label?: string; hideLabel?: boolean }) {
+  const id = useId();
+  const fieldId = props.id ?? id;
+  return (
+    <label htmlFor={fieldId} className={className}>
+      <span className={hideLabel ? "sr-only" : filterLabel}>{label}</span>
+      <span className="relative block">
+        <Search aria-hidden="true" className="pointer-events-none absolute left-4 top-1/2 z-10 h-4 w-4 -translate-y-1/2 text-charcoal/40" />
+        <input
+          {...props}
+          id={fieldId}
+          type="search"
+          className="h-11 w-full rounded-full border border-line bg-white pl-10 pr-4 text-sm font-medium text-charcoal transition-all placeholder:font-normal placeholder:text-charcoal/40 hover:border-gray-400 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20 [&::-webkit-search-cancel-button]:hidden"
+        />
+      </span>
+    </label>
+  );
+}
+
 /** Select inside a form, labelled like `TextField` so mixed rows line up. */
-export function SelectField<T extends string>({ label, hint, className = "", ...props }: LabelledSelectProps<T>) {
+export function SelectField<T extends string>({ label, hint, error, className = "", ...props }: LabelledSelectProps<T>) {
   const id = useId();
   return (
     <div className={`block ${className}`}>
       <label id={`${id}-label`} htmlFor={id} className="block text-sm font-medium">
         {label}
       </label>
-      <Select {...props} id={id} labelledBy={`${id}-label`} className="mt-1.5" />
-      {hint ? <span className="mt-1.5 block text-xs font-normal text-charcoal/50">{hint}</span> : null}
+      <Select
+        {...props}
+        id={id}
+        labelledBy={`${id}-label`}
+        invalid={Boolean(error)}
+        className="mt-1.5"
+      />
+      {error ? (
+        <span role="alert" className="mt-1.5 block text-xs font-medium text-rose-600">
+          {error}
+        </span>
+      ) : hint ? (
+        <span className="mt-1.5 block text-xs font-normal text-charcoal/50">{hint}</span>
+      ) : null}
     </div>
   );
 }

@@ -2,6 +2,7 @@ import type { InsightItem } from "@ai-pos/shared-types";
 import { Bell, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { Fragment, useEffect, useRef, useState, type RefObject } from "react";
 import { Link, useLocation } from "react-router-dom";
+import { env } from "../../config/env";
 import { apiGet } from "../../lib/api";
 import { useCanManageSettings, useCurrency } from "../../lib/currency";
 import { useCapabilities } from "../../lib/capabilities";
@@ -213,6 +214,12 @@ export function Header({
       </nav>
 
       <div className="flex shrink-0 items-center gap-1.5 md:gap-2">
+        <a
+          href={`${env.apiBaseUrl}/api/download/installer/win`}
+          className="hidden rounded-full border border-gray-200 px-3 py-1.5 text-[13px] font-medium text-charcoal hover:bg-gray-50 md:inline-flex"
+        >
+          Download POS
+        </a>
         <StoreSwitcher className="hidden !w-[230px] md:block" />
         {canManageSettings ? (
           <Link

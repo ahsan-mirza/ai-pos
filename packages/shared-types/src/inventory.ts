@@ -467,7 +467,7 @@ export interface ProductUpdate extends FashionAttributes {
   model_number?: string | null;
   brand?: string | null;
   brand_id?: string | null;
-  category_id?: string;
+  category_id?: string | null;
   sub_category_id?: string;
   clear_sub_category?: boolean;
   /** null detaches the product from its model. */

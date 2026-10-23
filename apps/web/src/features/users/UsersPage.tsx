@@ -2,7 +2,7 @@ import { Permission, type Role, type Store, type User } from "@ai-pos/shared-typ
 import { KeyRound, Pencil, Plus, Smartphone, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { useConfirm } from "../../components/ui/ConfirmDialog";
-import { ErrorNote, PrimaryButton } from "../../components/ui/Field";
+import { ErrorNote, PrimaryButton, SearchField } from "../../components/ui/Field";
 import { useAuth } from "../../lib/auth";
 import { errorMessage, rolesApi, storesApi, usersApi } from "./api";
 import { CredentialModal } from "./CredentialModal";
@@ -132,11 +132,12 @@ export function UsersPage() {
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-3">
-            <input
+            <SearchField
+              hideLabel
+              className="w-64"
               value={query}
               onChange={(event) => setQuery(event.target.value)}
               placeholder="Search name, username, role"
-              className="h-11 w-64 rounded-full border border-line bg-surface px-4 text-sm"
             />
             {can(Permission.UsersCreate) ? (
               <PrimaryButton onClick={() => setDialog({ kind: "form", user: null })}>

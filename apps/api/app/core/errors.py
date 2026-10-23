@@ -21,6 +21,11 @@ class ApiError(Exception):
         super().__init__(message)
 
 
+def field_conflict(message: str, **fields: str) -> ApiError:
+    """409 whose `details.fields` map each rejected input to the text shown under it."""
+    return ApiError(409, "conflict", message, details={"fields": fields})
+
+
 def unhandled_error(exc: Exception, *, debug: bool) -> tuple[int, dict[str, object]]:
     """Status and `{"error": ...}` body for an exception no handler caught. `debug` adds the exception text."""
     if isinstance(exc, ProgrammingError) and (

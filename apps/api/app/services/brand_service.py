@@ -4,7 +4,7 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.core.errors import ApiError
+from app.core.errors import ApiError, field_conflict
 from app.models.brand import Brand, ProductModel
 from app.models.category import SubCategory
 from app.models.product import Product
@@ -33,7 +33,8 @@ def _commit(db: Session) -> None:
         db.commit()
     except IntegrityError as exc:
         db.rollback()
-        raise ApiError(409, "conflict", "That name or code is already in use.") from exc
+        message = "That name or code is already in use."
+        raise field_conflict(message, name=message, code=message) from exc
 
 
 def _brand(db: Session, brand_id: uuid.UUID) -> Brand:
@@ -114,7 +115,8 @@ def list_brands(db: Session, *, sub_category_id: uuid.UUID | None = None) -> lis
 
 def create_brand(db: Session, data: BrandWrite) -> BrandOut:
     if db.scalar(select(Brand.id).where(func.lower(Brand.name) == data.name.lower())) is not None:
-        raise ApiError(409, "conflict", "A brand with this name already exists.")
+        message = "A brand with this name already exists."
+        raise field_conflict(message, name=message)
     brand = Brand(
         name=data.name,
         code=data.code or _unique_code(db, _code_from(data.name)),
@@ -132,7 +134,8 @@ def update_brand(db: Session, brand_id: uuid.UUID, data: CategoryUpdate) -> Bran
     if data.name is not None and data.name != brand.name:
         clash = db.scalar(select(Brand.id).where(func.lower(Brand.name) == data.name.lower(), Brand.id != brand.id))
         if clash is not None:
-            raise ApiError(409, "conflict", "A brand with this name already exists.")
+            message = "A brand with this name already exists."
+            raise field_conflict(message, name=message)
         brand.name = data.name
         for product in db.scalars(select(Product).where(Product.brand_id == brand.id)):
             product.brand = data.name
@@ -247,7 +250,8 @@ def create_model(db: Session, data: ProductModelWrite) -> ProductModelOut:
     brand = _brand(db, data.brand_id)
     sub = _sub(db, data.sub_category_id)
     if _name_taken(db, brand.id, sub.id, data.name, None):
-        raise ApiError(409, "conflict", f"{brand.name} already has a model called {data.name} in {sub.name}.")
+        message = f"{brand.name} already has a model called {data.name} in {sub.name}."
+        raise field_conflict(message, name=message)
     model = ProductModel(
         brand_id=brand.id,
         sub_category_id=sub.id,
@@ -267,7 +271,8 @@ def update_model(db: Session, model_id: uuid.UUID, data: ProductModelUpdate) -> 
     model = _model(db, model_id)
     if data.name is not None:
         if _name_taken(db, model.brand_id, model.sub_category_id, data.name, model.id):
-            raise ApiError(409, "conflict", "Another model in this sub-category already has that name.")
+            message = "Another model in this sub-category already has that name."
+            raise field_conflict(message, name=message)
         model.name = data.name
     if "code" in data.model_fields_set:
         model.code = data.code

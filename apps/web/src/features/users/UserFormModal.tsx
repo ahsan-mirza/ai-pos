@@ -1,6 +1,7 @@
 import {
   PASSWORD_MIN_LENGTH,
   PIN_PATTERN,
+  Permission,
   type Role,
   type Store,
   type User,
@@ -42,6 +43,7 @@ export function UserFormModal({ user, roles, stores, onClose, onSaved, onUpdated
   const [pin, setPin] = useState("");
   const [posAccess, setPosAccess] = useState(user?.has_pos_access ?? true);
   const [portalAccess, setPortalAccess] = useState(user?.has_portal_access ?? false);
+  const [openPriceSale, setOpenPriceSale] = useState(user?.can_sell_open_price ?? false);
   const [active, setActive] = useState(user?.is_active ?? true);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -51,6 +53,8 @@ export function UserFormModal({ user, roles, stores, onClose, onSaved, onUpdated
   const isSelf = editing && actor?.id === user.id;
   const canEnablePortal = editing ? user.has_password : password.length >= PASSWORD_MIN_LENGTH;
   const canEnablePos = editing ? hasPin : PIN_PATTERN.test(pin);
+  const actorCanGrantOpenPrice = actor?.permissions.includes(Permission.PosOpenPrice) ?? false;
+  const roleAllowsOpenPrice = roles.find((role) => role.id === roleId)?.permissions.includes(Permission.PosOpenPrice) ?? false;
 
   const validate = (): string | null => {
     if (!editing && !/^[a-z0-9][a-z0-9._-]{2,31}$/.test(username.trim().toLowerCase())) {
@@ -87,6 +91,7 @@ export function UserFormModal({ user, roles, stores, onClose, onSaved, onUpdated
           pin: pin === "" ? null : pin,
           has_pos_access: posAccess,
           has_portal_access: portalAccess,
+          can_sell_open_price: openPriceSale,
           is_active: active,
         };
         onSaved(await usersApi.create(body));
@@ -102,6 +107,7 @@ export function UserFormModal({ user, roles, stores, onClose, onSaved, onUpdated
       }
       if (posAccess !== user.has_pos_access) body.has_pos_access = posAccess;
       if (portalAccess !== user.has_portal_access) body.has_portal_access = portalAccess;
+      if (openPriceSale !== user.can_sell_open_price) body.can_sell_open_price = openPriceSale;
       if (active !== user.is_active) body.is_active = active;
       onSaved(Object.keys(body).length === 0 ? user : await usersApi.update(user.id, body));
     } catch (caught) {
@@ -177,7 +183,7 @@ export function UserFormModal({ user, roles, stores, onClose, onSaved, onUpdated
           </>
         ) : null}
       </div>
-      <div className="mt-4 grid gap-3 md:grid-cols-3">
+      <div className="mt-4 grid gap-3 md:grid-cols-2">
         <Toggle label="POS access" description="Unlock registers with a PIN" checked={posAccess} onChange={setPosAccess} />
         <Toggle
           label="Web portal access"
@@ -185,6 +191,17 @@ export function UserFormModal({ user, roles, stores, onClose, onSaved, onUpdated
           checked={portalAccess}
           disabled={isSelf}
           onChange={setPortalAccess}
+        />
+        <Toggle
+          label="Sell open price"
+          description={
+            roleAllowsOpenPrice
+              ? "Included in this role."
+              : "Type a price at the till for open-price items."
+          }
+          checked={roleAllowsOpenPrice || openPriceSale}
+          disabled={roleAllowsOpenPrice || !actorCanGrantOpenPrice}
+          onChange={setOpenPriceSale}
         />
         <Toggle label="Active" description="Disabled users cannot sign in" checked={active} disabled={isSelf} onChange={setActive} />
       </div>

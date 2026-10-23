@@ -172,11 +172,14 @@ export function BrandModelFilters({
   brandId,
   modelId,
   onChange,
+  className,
 }: {
   subCategoryId: string | null;
   brandId: string | null;
   modelId: string | null;
   onChange: (brandId: string | null, modelId: string | null) => void;
+  /** Shared width for both dropdowns. Defaults keep the stock-page filter bar compact. */
+  className?: string;
 }) {
   const { brands } = useBrands(subCategoryId);
   const { models } = useModels(brandId ? subCategoryId : null, brandId);
@@ -184,14 +187,14 @@ export function BrandModelFilters({
     <>
       <FilterSelect
         label="Brand"
-        className="min-w-[170px]"
+        className={className ?? "min-w-[170px]"}
         value={brandId ?? ""}
         options={[{ value: "", label: "All brands" }, ...brands.map((brand) => ({ value: brand.id, label: brand.name }))]}
         onChange={(next) => onChange(next === "" ? null : next, null)}
       />
       <FilterSelect
         label="Model"
-        className="min-w-[210px]"
+        className={className ?? "min-w-[210px]"}
         value={modelId ?? ""}
         disabled={brandId === null}
         options={[

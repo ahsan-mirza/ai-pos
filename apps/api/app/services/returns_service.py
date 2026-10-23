@@ -55,7 +55,7 @@ from app.services.analytics_service import load_sales, period_edges, period_star
 from app.services.identifiers import identifier_hash, normalize_identifier
 from app.services.inventory import move_stock, transition_serial
 from app.services.settings_service import pos_policy
-from app.services.sync_validation import parse_payload, require_cashier, require_store
+from app.services.sync_validation import parse_payload, register_time, require_cashier, require_store
 
 OVERRIDE_ACTION = "return.override"
 RETURNABLE_SALE_STATUSES = frozenset({"completed", "partially_refunded"})
@@ -315,10 +315,8 @@ def apply_return(db: Session, settings: Settings, payload: dict[str, object]) ->
         raise SyncRejected("This sale is not eligible for returns.")
 
     skew = timedelta(seconds=MAX_CLOCK_SKEW_SECONDS)
-    processed_at = _as_utc(data.processed_at)
+    processed_at = register_time(data.processed_at, message="Return time is in the future.")
     sold_at = _as_utc(sale.created_at)
-    if processed_at > datetime.now(UTC) + skew:
-        raise SyncRejected("Return time is in the future.")
     if processed_at < sold_at - skew:
         raise SyncRejected("Return time is before the original sale.")
     policy = returns_policy(db)

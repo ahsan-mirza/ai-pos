@@ -9,13 +9,14 @@ import {
   type SubCategory,
 } from "@ai-pos/shared-types";
 import { ChevronRight, Link2, Pencil, Plus, Trash2 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { ErrorNote, GhostButton, PrimaryButton, SelectField, TextField } from "../../components/ui/Field";
 import { useConfirm } from "../../components/ui/ConfirmDialog";
 import { Modal } from "../../components/ui/Modal";
 import { useAuth } from "../../lib/auth";
 import { useCapability } from "../../lib/capabilities";
 import { brandsApi, message, modelsApi } from "./api";
+import { codeError, fieldErrors, useInvalidFocus, type FieldErrors } from "./formErrors";
 import { ModelFashionPanel } from "./ModelFashionPanel";
 import { VariantMatrixPanel } from "./VariantMatrixPanel";
 import { ProductFormModal } from "./ProductFormModal";
@@ -48,6 +49,7 @@ export function CatalogDrilldown({
   const brand = brands.find((item) => item.id === path.brandId);
   const model = models.find((item) => item.id === path.modelId);
   const [dialog, setDialog] = useState<"link" | "model" | null>(null);
+  const [modelBrand, setModelBrand] = useState<Brand | null>(null);
   const [editingModel, setEditingModel] = useState<ProductModel | null>(null);
   const [error, setError] = useState<string | null>(null);
   const confirm = useConfirm();
@@ -199,10 +201,21 @@ export function CatalogDrilldown({
                   footer={`${count} ${count === 1 ? "model" : "models"}`}
                   onOpen={() => onNavigate({ brandId: item.id })}
                   actions={
-                    manage && count === 0 ? (
-                      <IconButton label={`Remove ${item.name} from ${sub.name}`} onClick={() => void unlink(item)}>
-                        <Trash2 size={14} />
-                      </IconButton>
+                    manage ? (
+                      <>
+                        <button
+                          type="button"
+                          className="h-8 rounded-full border border-line bg-white px-2.5 text-xs font-semibold text-charcoal hover:border-charcoal"
+                          onClick={() => setModelBrand(item)}
+                        >
+                          Add model
+                        </button>
+                        {count === 0 ? (
+                          <IconButton label={`Remove ${item.name} from ${sub.name}`} onClick={() => void unlink(item)}>
+                            <Trash2 size={14} />
+                          </IconButton>
+                        ) : null}
+                      </>
                     ) : null
                   }
                 />
@@ -224,18 +237,20 @@ export function CatalogDrilldown({
           }}
         />
       ) : null}
-      {(dialog === "model" && brand) || editingModel ? (
+      {(dialog === "model" && (brand ?? modelBrand)) || modelBrand || editingModel ? (
         <ModelModal
-          brand={brand ?? null}
+          brand={brand ?? modelBrand}
           sub={sub}
           model={editingModel}
           onClose={() => {
             setDialog(null);
             setEditingModel(null);
+            setModelBrand(null);
           }}
           onSaved={async () => {
             setDialog(null);
             setEditingModel(null);
+            setModelBrand(null);
             await refresh();
           }}
         />
@@ -430,19 +445,35 @@ function LinkBrandModal({
   const available = brands.filter((brand) => !linked.some((item) => item.id === brand.id));
   const [brandId, setBrandId] = useState("");
   const [name, setName] = useState("");
+  const [fields, setFields] = useState<FieldErrors>({});
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const formRef = useRef<HTMLDivElement>(null);
+  const focusInvalid = useInvalidFocus(formRef);
 
   const save = async () => {
-    if (brandId === "" && name.trim().length < 2) return setError("Pick a brand or type a new brand name.");
-    setBusy(true);
+    const next: FieldErrors = {};
+    if (brandId === "") {
+      if (name.trim() === "") next.name = "Pick a brand or type a new brand name.";
+      else if (name.trim().length < 2) next.name = "Name must be at least 2 characters.";
+    }
+    setFields(next);
     setError(null);
+    if (Object.keys(next).length > 0) {
+      focusInvalid();
+      return;
+    }
+    setBusy(true);
     try {
       if (brandId !== "") await brandsApi.link(brandId, sub.id);
       else await brandsApi.create({ name: name.trim(), sub_category_ids: [sub.id] });
       await onSaved();
     } catch (caught) {
-      setError(message(caught, "Could not add the brand."));
+      const apiFields = fieldErrors(caught);
+      if (Object.keys(apiFields).length > 0) {
+        setFields(apiFields);
+        focusInvalid();
+      } else setError(message(caught, "Could not add the brand."));
     } finally {
       setBusy(false);
     }
@@ -462,15 +493,32 @@ function LinkBrandModal({
         </>
       }
     >
-      <div className="space-y-4">
+      <div ref={formRef} className="space-y-4">
         <SelectField
           label="Existing brand"
           value={brandId}
           options={[{ value: "", label: "Create a new brand instead" }, ...available.map((brand) => ({ value: brand.id, label: brand.name }))]}
-          onChange={setBrandId}
+          onChange={(next) => {
+            setBrandId(next);
+            setFields({});
+          }}
         />
         {brandId === "" ? (
-          <TextField label="New brand name" value={name} placeholder="e.g. OnePlus" onChange={(event) => setName(event.target.value)} />
+          <TextField
+            label="New brand name"
+            value={name}
+            placeholder="e.g. OnePlus"
+            error={fields.name}
+            onChange={(event) => {
+              setName(event.target.value);
+              setFields((current) => {
+                if (!current.name) return current;
+                const next = { ...current };
+                delete next.name;
+                return next;
+              });
+            }}
+          />
         ) : null}
       </div>
       <ErrorNote message={error} />
@@ -495,24 +543,52 @@ function ModelModal({
   const [code, setCode] = useState(model?.code ?? "");
   const [year, setYear] = useState(model?.release_year ? String(model.release_year) : "");
   const [description, setDescription] = useState(model?.description ?? "");
+  const [fields, setFields] = useState<FieldErrors>({});
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const formRef = useRef<HTMLDivElement>(null);
+  const focusInvalid = useInvalidFocus(formRef);
+
+  const clearField = (key: string) =>
+    setFields((current) => {
+      if (!current[key]) return current;
+      const next = { ...current };
+      delete next[key];
+      return next;
+    });
 
   const save = async () => {
-    if (name.trim() === "") return setError("Model name is required.");
+    const next: FieldErrors = {};
+    if (name.trim() === "") next.name = "Model name is required.";
+    const codeProblem = codeError(code);
+    if (codeProblem) next.code = codeProblem;
     const releaseYear = year.trim() === "" ? null : Number(year);
     if (releaseYear !== null && (!Number.isInteger(releaseYear) || releaseYear < 1980 || releaseYear > 2100)) {
-      return setError("Release year must be between 1980 and 2100.");
+      next.year = "Release year must be between 1980 and 2100.";
     }
-    const body = { name: name.trim(), code: code.trim() || null, release_year: releaseYear, description: description.trim() };
-    setBusy(true);
+    setFields(next);
     setError(null);
+    if (Object.keys(next).length > 0) {
+      focusInvalid();
+      return;
+    }
+    const body = {
+      name: name.trim(),
+      code: code.trim() || null,
+      release_year: releaseYear,
+      description: description.trim(),
+    };
+    setBusy(true);
     try {
       if (model) await modelsApi.update(model.id, body);
       else if (brand) await modelsApi.create({ ...body, brand_id: brand.id, sub_category_id: sub.id });
       await onSaved();
     } catch (caught) {
-      setError(message(caught, "Could not save the model."));
+      const apiFields = fieldErrors(caught);
+      if (Object.keys(apiFields).length > 0) {
+        setFields(apiFields);
+        focusInvalid();
+      } else setError(message(caught, "Could not save the model."));
     } finally {
       setBusy(false);
     }
@@ -532,17 +608,41 @@ function ModelModal({
         </>
       }
     >
-      <div className="grid gap-4 md:grid-cols-2">
-        <TextField label="Model name" value={name} autoFocus placeholder="e.g. iPhone 16 Pro" onChange={(event) => setName(event.target.value)} />
+      <div ref={formRef} className="grid gap-4 md:grid-cols-2">
+        <TextField
+          label="Model name"
+          value={name}
+          autoFocus
+          placeholder="e.g. iPhone 16 Pro"
+          error={fields.name}
+          onChange={(event) => {
+            setName(event.target.value);
+            clearField("name");
+          }}
+        />
         <TextField
           label="Model code"
           value={code}
           className="font-mono"
           placeholder="e.g. SM-S928B"
           hint="Optional manufacturer code."
-          onChange={(event) => setCode(event.target.value)}
+          error={fields.code}
+          onChange={(event) => {
+            setCode(event.target.value);
+            clearField("code");
+          }}
         />
-        <TextField label="Release year" inputMode="numeric" value={year} placeholder="2024" onChange={(event) => setYear(event.target.value)} />
+        <TextField
+          label="Release year"
+          inputMode="numeric"
+          value={year}
+          placeholder="2024"
+          error={fields.year}
+          onChange={(event) => {
+            setYear(event.target.value);
+            clearField("year");
+          }}
+        />
         <TextField label="Description" value={description} onChange={(event) => setDescription(event.target.value)} />
       </div>
       <ErrorNote message={error} />

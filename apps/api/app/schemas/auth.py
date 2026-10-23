@@ -78,7 +78,9 @@ class ResetPasswordRequest(ApiModel):
 
 
 class PasswordLoginRequest(ApiModel):
-    username: str = Field(min_length=1, max_length=64)
+    """`username` is the portal username or the account email."""
+
+    username: str = Field(min_length=1, max_length=254)
     password: str = Field(min_length=1, max_length=128)
 
 
@@ -114,6 +116,7 @@ class UserOut(ApiModel):
     permissions: list[str]
     has_pos_access: bool
     has_portal_access: bool
+    can_sell_open_price: bool
     has_password: bool
     has_pin: bool
     locked_until: datetime | None
@@ -140,6 +143,7 @@ class UserCreate(ApiModel):
     pin: str | None = None
     has_pos_access: bool = False
     has_portal_access: bool = False
+    can_sell_open_price: bool = False
     is_active: bool = True
 
     @field_validator("username")
@@ -174,6 +178,7 @@ class UserUpdate(ApiModel):
     clear_store: bool = False
     has_pos_access: bool | None = None
     has_portal_access: bool | None = None
+    can_sell_open_price: bool | None = None
     is_active: bool | None = None
 
     @field_validator("email")
