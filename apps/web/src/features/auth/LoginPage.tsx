@@ -105,7 +105,7 @@ export function LoginPage() {
           >
             {busy ? "Signing in…" : "Sign in"}
           </button>
-          {env.onTenantHost || env.needsStoreCode ? null : (
+          {env.onTenantHost ? null : (
             <p className="text-center text-sm text-charcoal/60">
               New to AI POS?{" "}
               <a href="/signup" className="font-semibold text-accent hover:underline">
