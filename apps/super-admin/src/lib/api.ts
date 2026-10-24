@@ -11,13 +11,21 @@ const STORAGE_KEY = "qios.console.session";
 export class ConsoleError extends Error {
   readonly status: number;
   readonly code: string | null;
+  readonly api: string | null;
   readonly details: Record<string, unknown> | null;
 
-  constructor(message: string, status: number, code: string | null, details: Record<string, unknown> | null = null) {
+  constructor(
+    message: string,
+    status: number,
+    code: string | null,
+    details: Record<string, unknown> | null = null,
+    api: string | null = null,
+  ) {
     super(message);
     this.status = status;
     this.code = code;
     this.details = details;
+    this.api = api;
   }
 }
 
@@ -61,11 +69,15 @@ async function exchange<T>(method: string, path: string, body?: unknown): Promis
   if (!response.ok) {
     let message = `Request failed (${response.status}).`;
     let code: string | null = null;
+    let api: string | null = null;
     let details: Record<string, unknown> | null = null;
     try {
-      const parsed = (await response.json()) as { error?: { message?: string; code?: string; details?: Record<string, unknown> } };
+      const parsed = (await response.json()) as {
+        error?: { message?: string; code?: string; api?: string; details?: Record<string, unknown> };
+      };
       message = parsed.error?.message ?? message;
       code = parsed.error?.code ?? null;
+      api = parsed.error?.api ?? null;
       details = parsed.error?.details ?? null;
     } catch {
       // Not JSON.
@@ -74,7 +86,7 @@ async function exchange<T>(method: string, path: string, body?: unknown): Promis
       setToken(null);
       onSignedOut?.();
     }
-    throw new ConsoleError(message, response.status, code, details);
+    throw new ConsoleError(message, response.status, code, details, api);
   }
   return { data: (await response.json()) as T, headers: response.headers };
 }

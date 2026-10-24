@@ -9,11 +9,12 @@ from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
+from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.requests import Request
 
 from app.core import audit_context
 from app.core.config import Settings, get_settings
-from app.core.errors import ApiError, unhandled_error
+from app.core.errors import ApiError, api_name, error_payload, http_error, unhandled_error, validation_message
 from app.core.pagination import TOTAL_COUNT_HEADER
 from app.jobs import scheduler
 from app.routers.media import router as media_router
@@ -60,7 +61,11 @@ def create_app() -> FastAPI:
             return await call_next(request)
         except Exception as exc:
             logger.exception("Unhandled error on %s %s", request.method, request.url.path)
-            status, body = unhandled_error(exc, debug=settings.app_env != "production")
+            status, body = unhandled_error(
+                exc,
+                debug=settings.app_env != "production",
+                api=api_name(request.method, request.url.path),
+            )
             return JSONResponse(status_code=status, content=body)
 
     app.add_middleware(
@@ -100,23 +105,36 @@ def create_app() -> FastAPI:
         return response
 
     @app.exception_handler(ApiError)
-    async def handle_api_error(_: Request, exc: ApiError) -> JSONResponse:
-        body: dict[str, object] = {"code": exc.code, "message": exc.message}
-        if exc.details:
-            body["details"] = exc.details
-        return JSONResponse(status_code=exc.status_code, content={"error": body})
+    async def handle_api_error(request: Request, exc: ApiError) -> JSONResponse:
+        return JSONResponse(
+            status_code=exc.status_code,
+            content=error_payload(
+                exc.code,
+                exc.message,
+                api=api_name(request.method, request.url.path),
+                details=exc.details,
+            ),
+        )
 
     @app.exception_handler(RequestValidationError)
-    async def handle_validation(_: Request, exc: RequestValidationError) -> JSONResponse:
+    async def handle_validation(request: Request, exc: RequestValidationError) -> JSONResponse:
+        details = jsonable_encoder(exc.errors())
         return JSONResponse(
             status_code=422,
-            content={
-                "error": {
-                    "code": "invalid_request",
-                    "message": "Request validation failed.",
-                    "details": jsonable_encoder(exc.errors()),
-                }
-            },
+            content=error_payload(
+                "invalid_request",
+                validation_message(details),
+                api=api_name(request.method, request.url.path),
+                details=details,
+            ),
+        )
+
+    @app.exception_handler(StarletteHTTPException)
+    async def handle_http_exception(request: Request, exc: StarletteHTTPException) -> JSONResponse:
+        code, message = http_error(exc.status_code, exc.detail)
+        return JSONResponse(
+            status_code=exc.status_code,
+            content=error_payload(code, message, api=api_name(request.method, request.url.path)),
         )
 
     @app.get("/health")

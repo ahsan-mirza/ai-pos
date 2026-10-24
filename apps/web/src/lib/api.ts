@@ -3,13 +3,21 @@ import { env } from "../config/env";
 export class ApiRequestError extends Error {
   readonly status: number;
   readonly code: string | null;
+  readonly api: string | null;
   readonly details: unknown;
 
-  constructor(message: string, status: number, code: string | null = null, details: unknown = null) {
+  constructor(
+    message: string,
+    status: number,
+    code: string | null = null,
+    details: unknown = null,
+    api: string | null = null,
+  ) {
     super(message);
     this.status = status;
     this.code = code;
     this.details = details;
+    this.api = api;
   }
 }
 
@@ -43,7 +51,7 @@ export function setUnauthorizedHandler(handler: (() => void) | null): void {
 async function parseError(response: Response): Promise<ApiRequestError> {
   try {
     const body = (await response.json()) as {
-      error?: { message?: string; code?: string; details?: unknown };
+      error?: { message?: string; code?: string; api?: string; details?: unknown };
     };
     if (body.error?.message) {
       return new ApiRequestError(
@@ -51,6 +59,7 @@ async function parseError(response: Response): Promise<ApiRequestError> {
         response.status,
         body.error.code ?? null,
         body.error.details ?? null,
+        body.error.api ?? null,
       );
     }
   } catch {

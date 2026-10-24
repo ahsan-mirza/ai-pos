@@ -72,7 +72,7 @@ export function RolesPage() {
     void load();
   }, [load]);
 
-  const isSuperAdmin = draft.is_system && draft.name === "Super Admin";
+  const isSuperAdmin = draft.isSystem && draft.name === "Super Admin";
   const held = useMemo(() => new Set(actor?.permissions ?? []), [actor]);
   const locked = !manage || isSuperAdmin;
 
