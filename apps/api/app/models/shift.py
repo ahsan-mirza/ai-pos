@@ -6,15 +6,17 @@ from datetime import datetime
 from sqlalchemy import JSON, Boolean, CheckConstraint, DateTime, ForeignKey, Integer, String, Text, Uuid
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.models.base import Base, TimestampMixin
+from app.models.base import Base, TenantScoped, TimestampMixin, tenant_unique
 
 
-class RegisterShift(TimestampMixin, Base):
+class RegisterShift(TenantScoped, TimestampMixin, Base):
     """A cashier session on one register, from opening float to the Z report. Created offline by the register."""
 
     __tablename__ = "register_shifts"
-    __table_args__ = (CheckConstraint("opening_float_cents >= 0", name="opening_float_nonnegative"),)
-
+    __table_args__ = (
+        tenant_unique("z_number", name="uq_register_shifts_z_number"),
+        CheckConstraint("opening_float_cents >= 0", name="opening_float_nonnegative"),
+    )
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
     store_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("stores.id"), index=True)
     device_id: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True), ForeignKey("devices.id"), nullable=True)
@@ -29,12 +31,12 @@ class RegisterShift(TimestampMixin, Base):
     expected_cash_cents: Mapped[int | None] = mapped_column(Integer, nullable=True)
     variance_cents: Mapped[int | None] = mapped_column(Integer, nullable=True)
     blind_close: Mapped[bool] = mapped_column(Boolean, default=True)
-    z_number: Mapped[str | None] = mapped_column(String(40), unique=True, nullable=True)
+    z_number: Mapped[str | None] = mapped_column(String(40), nullable=True)
     report: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     notes: Mapped[str] = mapped_column(Text, default="")
 
 
-class CashMovement(Base):
+class CashMovement(TenantScoped, Base):
     """Cash in or out of a drawer outside a sale: pay-ins, pay-outs, drops to the safe, and no-sale opens."""
 
     __tablename__ = "cash_movements"

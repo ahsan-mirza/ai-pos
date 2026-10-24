@@ -6,11 +6,11 @@ from datetime import UTC, datetime
 from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Integer, String, Uuid
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.models.base import Base, TimestampMixin
+from app.models.base import Base, TenantScoped, TimestampMixin
 from app.models.user import User
 
 
-class BusinessSettings(TimestampMixin, Base):
+class BusinessSettings(TenantScoped, TimestampMixin, Base):
     """Single row (BUSINESS_SETTINGS_ID) holding settings that apply to every store and register."""
 
     __tablename__ = "business_settings"

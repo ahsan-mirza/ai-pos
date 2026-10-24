@@ -7,6 +7,7 @@ import {
 } from "@ai-pos/shared-types";
 import { PackagePlus, Plus, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { DataTable, usePagination, type DataTableColumn } from "../../components/ui/DataTable";
 import { ErrorNote, FilterSelect, GhostButton, PrimaryButton, SelectField, TextField } from "../../components/ui/Field";
 import { Modal } from "../../components/ui/Modal";
@@ -32,6 +33,8 @@ export function PurchaseOrdersPage() {
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
+  const [params, setParams] = useSearchParams();
+  const presetProduct = params.get("product");
   const [openId, setOpenId] = useState<string | null>(null);
   const manage = can(Permission.PortalInventoryManage);
 
@@ -137,13 +140,20 @@ export function PurchaseOrdersPage() {
         }}
       />
 
-      {creating ? (
+      {creating || presetProduct ? (
         <CreatePurchaseOrder
           stores={stores}
           pinnedStore={pinned ? storeId : null}
-          onClose={() => setCreating(false)}
+          presetProduct={presetProduct}
+          presetQuantity={params.get("quantity")}
+          presetStore={params.get("store")}
+          onClose={() => {
+            setCreating(false);
+            setParams({});
+          }}
           onCreated={(order) => {
             setCreating(false);
+            setParams({});
             if (pager.page === 1) void load();
             else pager.setPage(1);
             setOrders((current) => [order, ...current.filter((row) => row.id !== order.id)]);
@@ -171,20 +181,31 @@ interface DraftLine {
 function CreatePurchaseOrder({
   stores,
   pinnedStore,
+  presetProduct,
+  presetQuantity,
+  presetStore,
   onClose,
   onCreated,
 }: {
   stores: { id: string; code: string; name: string; is_warehouse?: boolean }[];
   pinnedStore: string | null;
+  presetProduct: string | null;
+  presetQuantity: string | null;
+  presetStore: string | null;
   onClose: () => void;
   onCreated: (order: PurchaseOrder) => void;
 }) {
   const [products, setProducts] = useState<Product[]>([]);
   const [supplier, setSupplier] = useState("");
-  const [destination, setDestination] = useState(pinnedStore ?? stores.find((store) => store.is_warehouse)?.id ?? "");
+  const [destination, setDestination] = useState(
+    presetStore ?? pinnedStore ?? stores.find((store) => store.is_warehouse)?.id ?? "",
+  );
   const [expected, setExpected] = useState("");
   const [notes, setNotes] = useState("");
-  const [lines, setLines] = useState<DraftLine[]>([{ key: crypto.randomUUID(), productId: "", quantity: "1", cost: "" }]);
+  const presetQty = presetQuantity !== null && Number(presetQuantity) >= 1 ? String(Math.floor(Number(presetQuantity))) : "1";
+  const [lines, setLines] = useState<DraftLine[]>([
+    { key: crypto.randomUUID(), productId: presetProduct ?? "", quantity: presetQty, cost: "" },
+  ]);
   const [find, setFind] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);

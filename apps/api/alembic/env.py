@@ -42,6 +42,11 @@ def run_migrations_online() -> None:
     with connectable.connect() as connection:
         context.configure(connection=connection, target_metadata=target_metadata, compare_type=True)
         with context.begin_transaction():
+            # Later revisions run after row-level security is forced on. A local bypass lets DDL
+            # and data moves see every row; request sessions never set this.
+            from app.core.database import bypass_session_tenant
+
+            bypass_session_tenant(connection)
             context.run_migrations()
 
 

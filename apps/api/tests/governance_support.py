@@ -1,13 +1,15 @@
 """A two-store platform (control database plus a database per store) for governance and console tests."""
 
 import os
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import Session, sessionmaker
 
 from app.core.config import get_settings
 from app.core.database import build_engine
@@ -16,6 +18,7 @@ from app.models import Base
 from app.services.rbac_service import ensure_super_admin, ensure_system_roles
 from app.services.settings_service import clear_settings_cache, load_settings
 from app.tenancy import registry
+from app.tenancy.context import TenantRef, use_tenant
 from app.tenancy.models import ControlBase, Tenant
 
 PASSWORDS = {"alpha": "alpha-password-1", "bravo": "bravo-password-1"}
@@ -30,8 +33,17 @@ class Platform:
     def url(self, slug: str) -> str:
         return f"sqlite:///{(self.root / f'{slug}.db').as_posix()}"
 
-    def session(self, slug: str):
-        return sessionmaker(bind=build_engine(self.url(slug)), expire_on_commit=False)()
+    @contextmanager
+    def session(self, slug: str) -> Iterator[Session]:
+        found = registry.lookup(slug, get_settings())
+        if found.tenant is None:
+            raise RuntimeError(f"Tenant {slug} is not registered.")
+        db = sessionmaker(bind=build_engine(self.url(slug)), expire_on_commit=False)()
+        try:
+            with use_tenant(found.tenant):
+                yield db
+        finally:
+            db.close()
 
     def control(self):
         return registry.control_session(get_settings())
@@ -79,7 +91,17 @@ def platform(tmp_path):
         url = f"sqlite:///{(tmp_path / f'{slug}.db').as_posix()}"
         engine = build_engine(url)
         Base.metadata.create_all(engine)
-        with sessionmaker(bind=engine, expire_on_commit=False)() as db:
+        tenant = Tenant(
+            slug=slug,
+            name=f"{slug.title()} Mobiles",
+            status="active",
+            profile="electronics_wholesale",
+            database_url_encrypted=registry.encrypt_database_url(url, settings),
+        )
+        control.add(tenant)
+        control.flush()
+        ref = TenantRef(id=str(tenant.id), slug=slug, name=tenant.name, database_url=url)
+        with use_tenant(ref), sessionmaker(bind=engine, expire_on_commit=False)() as db:
             ensure_system_roles(db)
             ensure_super_admin(
                 db,
@@ -95,15 +117,6 @@ def platform(tmp_path):
             row.onboarded_at = datetime.now(UTC)
             db.commit()
         engine.dispose()
-        control.add(
-            Tenant(
-                slug=slug,
-                name=f"{slug.title()} Mobiles",
-                status="active",
-                profile="electronics_wholesale",
-                database_url_encrypted=registry.encrypt_database_url(url, settings),
-            )
-        )
     control.commit()
     control.close()
     clear_settings_cache()

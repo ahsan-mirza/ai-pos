@@ -6,7 +6,7 @@ from datetime import date, datetime
 from sqlalchemy import Boolean, CheckConstraint, Date, DateTime, ForeignKey, Integer, String, Uuid
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.models.base import Base, TimestampMixin, utcnow
+from app.models.base import Base, TenantScoped, TimestampMixin, tenant_unique, utcnow
 
 EXPENSE_CATEGORIES = (
     "RENT",
@@ -21,18 +21,19 @@ EXPENSE_CATEGORIES = (
 )
 
 
-class Expense(TimestampMixin, Base):
+class Expense(TenantScoped, TimestampMixin, Base):
     """A business expense paid outside supplier bills: petty cash, card or bank. total = net + tax; the tax is
     recoverable input VAT only when the business holds a valid tax invoice for it."""
 
     __tablename__ = "expenses"
     __table_args__ = (
+        tenant_unique("number", name="uq_expenses_number"),
         CheckConstraint("total_cents > 0", name="expense_total_positive"),
         CheckConstraint("tax_cents >= 0 AND tax_cents < total_cents", name="expense_tax_within_total"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    number: Mapped[str] = mapped_column(String(40), unique=True)
+    number: Mapped[str] = mapped_column(String(40))
     store_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("stores.id"), index=True)
     category: Mapped[str] = mapped_column(String(12), index=True)
     description: Mapped[str] = mapped_column(String(200))
@@ -54,7 +55,7 @@ class Expense(TimestampMixin, Base):
     void_reason: Mapped[str] = mapped_column(String(255), default="")
 
 
-class PettyCashEntry(Base):
+class PettyCashEntry(TenantScoped, Base):
     """Append-only petty cash ledger per branch. amount_cents is signed: top-ups add, expenses subtract."""
 
     __tablename__ = "petty_cash_entries"

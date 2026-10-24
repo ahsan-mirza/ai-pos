@@ -5,19 +5,21 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, Integer, String, UniqueConstraint, Uuid
+from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, Integer, String, Uuid
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.models.base import Base, TimestampMixin, utcnow
+from app.models.base import Base, TenantScoped, TimestampMixin, tenant_unique, utcnow
 
 
-class Recipe(TimestampMixin, Base):
+class Recipe(TenantScoped, TimestampMixin, Base):
     __tablename__ = "recipes"
-    __table_args__ = (CheckConstraint("yield_quantity >= 1", name="yield_positive"),)
-
+    __table_args__ = (
+        tenant_unique("product_id", name="uq_recipes_product_id"),
+        CheckConstraint("yield_quantity >= 1", name="yield_positive"),
+    )
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
     product_id: Mapped[uuid.UUID] = mapped_column(
-        Uuid(as_uuid=True), ForeignKey("products.id", ondelete="CASCADE"), unique=True
+        Uuid(as_uuid=True), ForeignKey("products.id", ondelete="CASCADE")
     )
     # How much one batch of the lines makes, in the dish's units (portions, or grams for a dish sold by weight).
     yield_quantity: Mapped[int] = mapped_column(Integer, default=1)
@@ -27,10 +29,10 @@ class Recipe(TimestampMixin, Base):
     )
 
 
-class RecipeLine(Base):
+class RecipeLine(TenantScoped, Base):
     __tablename__ = "recipe_lines"
     __table_args__ = (
-        UniqueConstraint("recipe_id", "ingredient_id", name="uq_recipe_lines_recipe_ingredient"),
+        tenant_unique("recipe_id", "ingredient_id", name="uq_recipe_lines_recipe_ingredient"),
         CheckConstraint("quantity >= 1", name="quantity_positive"),
     )
 
@@ -44,12 +46,12 @@ class RecipeLine(Base):
     position: Mapped[int] = mapped_column(Integer, default=0)
 
 
-class ModifierIngredient(Base):
+class ModifierIngredient(TenantScoped, Base):
     """A modifier option changes what goes in the dish: "extra shot" adds 18 g of coffee, "no cheese" takes 20 g off."""
 
     __tablename__ = "modifier_ingredients"
     __table_args__ = (
-        UniqueConstraint("option_id", "ingredient_id", name="uq_modifier_ingredients_option_ingredient"),
+        tenant_unique("option_id", "ingredient_id", name="uq_modifier_ingredients_option_ingredient"),
         CheckConstraint("quantity <> 0", name="quantity_nonzero"),
     )
 
@@ -62,7 +64,7 @@ class ModifierIngredient(Base):
     quantity: Mapped[int] = mapped_column(Integer)
 
 
-class RecipeUsage(Base):
+class RecipeUsage(TenantScoped, Base):
     """What each sale should have used (theoretical usage) and what stock actually covered; the gap is a shortfall
     the kitchen used without the system holding the stock."""
 

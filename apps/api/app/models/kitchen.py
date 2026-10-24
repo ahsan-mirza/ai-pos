@@ -8,12 +8,12 @@ from datetime import datetime
 from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Index, Integer, String, Uuid
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.models.base import Base, TimestampMixin, utcnow
+from app.models.base import Base, TenantScoped, TimestampMixin, utcnow
 
 TICKET_STATUSES = ("NEW", "PREPARING", "READY", "BUMPED")
 
 
-class KitchenStation(TimestampMixin, Base):
+class KitchenStation(TenantScoped, TimestampMixin, Base):
     __tablename__ = "kitchen_stations"
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -28,7 +28,7 @@ class KitchenStation(TimestampMixin, Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
 
-class KitchenTicket(Base):
+class KitchenTicket(TenantScoped, Base):
     __tablename__ = "kitchen_tickets"
     __table_args__ = (Index("ix_kitchen_tickets_station_status", "station_id", "status"),)
 
@@ -60,7 +60,7 @@ class KitchenTicket(Base):
     )
 
 
-class KitchenTicketItem(Base):
+class KitchenTicketItem(TenantScoped, Base):
     __tablename__ = "kitchen_ticket_items"
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)

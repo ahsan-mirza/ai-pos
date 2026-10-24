@@ -5,16 +5,19 @@ import uuid
 from sqlalchemy import Boolean, String, Uuid
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.models.base import Base, TimestampMixin
+from app.models.base import Base, TenantScoped, TimestampMixin, tenant_unique
 
 
-class Store(TimestampMixin, Base):
+class Store(TenantScoped, TimestampMixin, Base):
     """A retail branch or a central distribution warehouse."""
 
     __tablename__ = "stores"
+    __table_args__ = (
+        tenant_unique("code", name="uq_stores_code"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    code: Mapped[str] = mapped_column(String(32), unique=True)
+    code: Mapped[str] = mapped_column(String(32))
     name: Mapped[str] = mapped_column(String(120))
     currency: Mapped[str] = mapped_column(String(3))
     address: Mapped[str | None] = mapped_column(String(255), nullable=True)

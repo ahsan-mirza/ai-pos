@@ -6,19 +6,23 @@ from datetime import date
 from sqlalchemy import CheckConstraint, Date, ForeignKey, Integer, String, Uuid
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.models.base import Base, TimestampMixin
+from app.models.base import Base, TenantScoped, TimestampMixin, tenant_unique
 
 
-class ConsignmentSettlement(TimestampMixin, Base):
+class ConsignmentSettlement(TenantScoped, TimestampMixin, Base):
     """What the business owes a consignment supplier for units sold up to `period_end`, raised as one supplier bill."""
 
     __tablename__ = "consignment_settlements"
+    __table_args__ = (
+        tenant_unique("number", name="uq_consignment_settlements_number"),
+        tenant_unique("bill_id", name="uq_consignment_settlements_bill_id"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    number: Mapped[str] = mapped_column(String(32), unique=True)
+    number: Mapped[str] = mapped_column(String(32))
     supplier_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("suppliers.id"), index=True)
     period_end: Mapped[date] = mapped_column(Date)
-    bill_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("supplier_bills.id"), unique=True)
+    bill_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("supplier_bills.id"))
     units: Mapped[int] = mapped_column(Integer)
     total_cents: Mapped[int] = mapped_column(Integer)
     created_by_id: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True), ForeignKey("users.id"), nullable=True)
@@ -27,7 +31,7 @@ class ConsignmentSettlement(TimestampMixin, Base):
     )
 
 
-class ConsignmentSettlementLine(TimestampMixin, Base):
+class ConsignmentSettlementLine(TenantScoped, TimestampMixin, Base):
     """Units of one consignment batch item paid for in a settlement. Their sum per item is what has been settled."""
 
     __tablename__ = "consignment_settlement_lines"

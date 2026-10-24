@@ -12,6 +12,7 @@ from app.main import create_app
 from app.models import Base
 from app.services.rbac_service import ensure_super_admin, ensure_system_roles
 from app.tenancy import registry
+from app.tenancy.context import TenantRef, use_tenant
 from app.tenancy.models import ControlBase, Tenant
 
 PASSWORDS = {"alpha": "alpha-password-1", "bravo": "bravo-password-1"}
@@ -31,7 +32,16 @@ def tenants(tmp_path):
         url = f"sqlite:///{(tmp_path / f'{slug}.db').as_posix()}"
         engine = build_engine(url)
         Base.metadata.create_all(engine)
-        with sessionmaker(bind=engine, expire_on_commit=False)() as db:
+        tenant = Tenant(
+            slug=slug,
+            name=f"{slug.title()} Mobiles",
+            status="active",
+            database_url_encrypted=registry.encrypt_database_url(url, settings),
+        )
+        control.add(tenant)
+        control.flush()
+        ref = TenantRef(id=str(tenant.id), slug=slug, name=tenant.name, database_url=url)
+        with use_tenant(ref), sessionmaker(bind=engine, expire_on_commit=False)() as db:
             ensure_system_roles(db)
             ensure_super_admin(
                 db,
@@ -43,14 +53,6 @@ def tenants(tmp_path):
                 pin=None,
             )
             db.commit()
-        control.add(
-            Tenant(
-                slug=slug,
-                name=f"{slug.title()} Mobiles",
-                status="active",
-                database_url_encrypted=registry.encrypt_database_url(url, settings),
-            )
-        )
     control.add(
         Tenant(
             slug="closed",

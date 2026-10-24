@@ -5,13 +5,13 @@ from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import Boolean, CheckConstraint, ForeignKey, Integer, String, UniqueConstraint, Uuid
+from sqlalchemy import Boolean, CheckConstraint, ForeignKey, Integer, String, Uuid
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.models.base import Base, TimestampMixin
+from app.models.base import Base, TenantScoped, TimestampMixin, tenant_unique
 
 
-class ModifierGroup(TimestampMixin, Base):
+class ModifierGroup(TenantScoped, TimestampMixin, Base):
     __tablename__ = "modifier_groups"
     __table_args__ = (
         CheckConstraint("min_select >= 0", name="min_nonnegative"),
@@ -37,7 +37,7 @@ class ModifierGroup(TimestampMixin, Base):
     )
 
 
-class ModifierOption(TimestampMixin, Base):
+class ModifierOption(TenantScoped, TimestampMixin, Base):
     __tablename__ = "modifier_options"
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -53,7 +53,7 @@ class ModifierOption(TimestampMixin, Base):
     group: Mapped[ModifierGroup] = relationship("ModifierGroup", back_populates="options")
 
 
-class ProductModifierGroup(Base):
+class ProductModifierGroup(TenantScoped, Base):
     __tablename__ = "product_modifier_groups"
 
     product_id: Mapped[uuid.UUID] = mapped_column(
@@ -65,7 +65,7 @@ class ProductModifierGroup(Base):
     position: Mapped[int] = mapped_column(Integer, default=0)
 
 
-class ComboSlot(TimestampMixin, Base):
+class ComboSlot(TenantScoped, TimestampMixin, Base):
     """One choice in a meal, e.g. "Side": the cashier picks between min_select and max_select of its options."""
 
     __tablename__ = "combo_slots"
@@ -93,11 +93,11 @@ class ComboSlot(TimestampMixin, Base):
     )
 
 
-class ComboSlotOption(Base):
+class ComboSlotOption(TenantScoped, Base):
     __tablename__ = "combo_slot_options"
     __table_args__ = (
         CheckConstraint("surcharge_cents >= 0", name="surcharge_nonnegative"),
-        UniqueConstraint("slot_id", "product_id", name="uq_combo_slot_options_slot_product"),
+        tenant_unique("slot_id", "product_id", name="uq_combo_slot_options_slot_product"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)

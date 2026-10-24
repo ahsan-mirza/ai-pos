@@ -33,6 +33,7 @@ from app.services.rbac_service import ensure_super_admin, ensure_system_roles
 from app.services.settings_service import business_currency, provision_profile
 from app.services.sync_service import canonical_hash, push_batch
 from app.tenancy.registry import resolve_cli_database_url
+from app.tenancy.scoping import use_database_tenant
 
 
 def catalog_path() -> Path:
@@ -370,9 +371,10 @@ def main() -> None:
     spec = admin_spec(settings)
     if spec.password is None:
         sys.exit("ADMIN_PASSWORD is required.")
-    engine = build_engine(resolve_cli_database_url(settings))
+    url = resolve_cli_database_url(settings)
+    engine = build_engine(url)
     factory = sessionmaker(bind=engine, expire_on_commit=False)
-    with factory() as session:
+    with use_database_tenant(url), factory() as session:
         ensure_system_roles(session)
         admin, created = ensure_super_admin(
             session,

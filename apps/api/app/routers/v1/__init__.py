@@ -32,6 +32,7 @@ from app.routers.v1.insights import router as insights_router
 from app.routers.v1.integrations import router as integrations_router
 from app.routers.v1.inventory import router as inventory_router
 from app.routers.v1.kds import router as kds_router
+from app.routers.v1.kitchen_agent import router as kitchen_agent_router
 from app.routers.v1.labels import router as labels_router
 from app.routers.v1.live_socket import router as live_ws_router
 from app.routers.v1.loyalty import exports_router
@@ -159,6 +160,12 @@ api_router.include_router(
     channels_router, prefix="/channels", tags=["channels"], dependencies=module(Capability.DELIVERY_CHANNELS)
 )
 api_router.include_router(recipes_router, prefix="/recipes", tags=["recipes"], dependencies=module(Capability.RECIPES))
+api_router.include_router(
+    kitchen_agent_router,
+    prefix="/kitchen-agent",
+    tags=["kitchen agent"],
+    dependencies=module(Capability.RECIPES),
+)
 api_router.include_router(
     warranties_router, prefix="/warranties", tags=["warranties"], dependencies=module(Capability.WARRANTY)
 )

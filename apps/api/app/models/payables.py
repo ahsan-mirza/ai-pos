@@ -3,21 +3,23 @@ from __future__ import annotations
 import uuid
 from datetime import date, datetime
 
-from sqlalchemy import CheckConstraint, Date, DateTime, ForeignKey, Integer, String, UniqueConstraint, Uuid
+from sqlalchemy import CheckConstraint, Date, DateTime, ForeignKey, Integer, String, Uuid
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.models.base import Base, TimestampMixin
+from app.models.base import Base, TenantScoped, TimestampMixin, tenant_unique
 
 BILL_STATUSES = ("OPEN", "PARTIAL", "PAID", "VOID")
 
 
-class SupplierBill(TimestampMixin, Base):
+class SupplierBill(TenantScoped, TimestampMixin, Base):
     """A supplier's invoice: what the business owes. Amounts are business-currency cents; tax_cents is the
     input VAT the supplier charged (recoverable when the business is VAT registered)."""
 
     __tablename__ = "supplier_bills"
     __table_args__ = (
-        UniqueConstraint("supplier_id", "number", name="uq_supplier_bills_supplier_number"),
+        tenant_unique("goods_receipt_id", name="uq_supplier_bills_goods_receipt_id"),
+        tenant_unique("purchase_batch_id", name="uq_supplier_bills_purchase_batch_id"),
+        tenant_unique("supplier_id", "number", name="uq_supplier_bills_supplier_number"),
         CheckConstraint("total_cents >= 0", name="bill_total_nonnegative"),
         CheckConstraint("paid_cents >= 0 AND paid_cents <= total_cents", name="bill_paid_within_total"),
     )
@@ -31,10 +33,10 @@ class SupplierBill(TimestampMixin, Base):
         Uuid(as_uuid=True), ForeignKey("purchase_orders.id"), nullable=True
     )
     goods_receipt_id: Mapped[uuid.UUID | None] = mapped_column(
-        Uuid(as_uuid=True), ForeignKey("goods_receipts.id"), nullable=True, unique=True
+        Uuid(as_uuid=True), ForeignKey("goods_receipts.id"), nullable=True
     )
     purchase_batch_id: Mapped[uuid.UUID | None] = mapped_column(
-        Uuid(as_uuid=True), ForeignKey("purchase_batches.id"), nullable=True, unique=True
+        Uuid(as_uuid=True), ForeignKey("purchase_batches.id"), nullable=True
     )
     bill_date: Mapped[date] = mapped_column(Date, index=True)
     due_date: Mapped[date] = mapped_column(Date, index=True)
@@ -51,7 +53,7 @@ class SupplierBill(TimestampMixin, Base):
     )
 
 
-class SupplierBillLine(Base):
+class SupplierBillLine(TenantScoped, Base):
     __tablename__ = "supplier_bill_lines"
     __table_args__ = (CheckConstraint("quantity >= 1", name="bill_line_quantity_positive"),)
 
@@ -70,7 +72,7 @@ class SupplierBillLine(Base):
     line_total_cents: Mapped[int] = mapped_column(Integer)
 
 
-class SupplierPayment(TimestampMixin, Base):
+class SupplierPayment(TenantScoped, TimestampMixin, Base):
     """Money paid to a supplier, allocated to bills. An outgoing cheque stays ISSUED until it clears; cancelling a
     payment voids it and releases its allocations."""
 
@@ -99,7 +101,7 @@ class SupplierPayment(TimestampMixin, Base):
     )
 
 
-class SupplierPaymentAllocation(Base):
+class SupplierPaymentAllocation(TenantScoped, Base):
     __tablename__ = "supplier_payment_allocations"
     __table_args__ = (CheckConstraint("amount_cents > 0", name="allocation_positive"),)
 

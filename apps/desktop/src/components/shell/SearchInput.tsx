@@ -19,6 +19,8 @@ interface SearchInputProps {
   shortcut?: string | null;
   onShortcut?: () => void;
   autoFocus?: boolean;
+  /** "disabled" keeps a barcode-scanner field from opening the touch keyboard. */
+  virtualKeyboard?: "text" | "numeric" | "disabled";
   uppercase?: boolean;
   inputRef?: Ref<HTMLInputElement>;
 }
@@ -40,6 +42,7 @@ export function SearchInput({
   shortcut = "F2",
   onShortcut,
   autoFocus = false,
+  virtualKeyboard,
   uppercase = false,
   inputRef,
 }: SearchInputProps) {
@@ -85,6 +88,7 @@ export function SearchInput({
             ref={setRef}
             id={id}
             type="search"
+            data-virtual-keyboard={virtualKeyboard}
             autoFocus={autoFocus}
             autoComplete="off"
             spellCheck={false}

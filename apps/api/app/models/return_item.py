@@ -6,14 +6,14 @@ from typing import TYPE_CHECKING
 from sqlalchemy import CheckConstraint, ForeignKey, Integer, String, Uuid
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.models.base import Base
+from app.models.base import Base, TenantScoped
 from app.models.product import Product
 
 if TYPE_CHECKING:
     from app.models.sale_return import SaleReturn
 
 
-class ReturnItem(Base):
+class ReturnItem(TenantScoped, Base):
     __tablename__ = "return_items"
     __table_args__ = (
         CheckConstraint("quantity >= 1", name="quantity_positive"),

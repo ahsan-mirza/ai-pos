@@ -236,7 +236,7 @@ class UpsellReport(ApiModel):
 
 
 class InsightItem(ApiModel):
-    kind: Literal["anomaly", "pricing", "shrink"]
+    kind: Literal["anomaly", "pricing", "shrink", "kitchen"]
     severity: Severity
     title: str
     body: str

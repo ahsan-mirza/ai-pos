@@ -15,6 +15,7 @@ import { OpenShiftScreen } from "./features/shifts/OpenShiftScreen";
 import { reloadShift, useShift } from "./features/shifts/shift";
 import { useCapabilities } from "./lib/capabilities";
 import { UpdatePrompt } from "./features/updates/UpdatePrompt";
+import { VirtualKeyboardProvider } from "./hooks/useVirtualKeyboard";
 import { inTauri } from "./lib/tauri";
 
 export function App() {
@@ -64,6 +65,7 @@ export function App() {
   } else {
     screen = (
       <ConfirmProvider>
+        <VirtualKeyboardProvider>
         <RegisterShell session={session} view={view} onNavigate={setView} onLock={onLock}>
           {view === "returns" ? (
             <ReturnsPage session={session} />
@@ -77,6 +79,7 @@ export function App() {
             <CheckoutPage session={session} />
           )}
         </RegisterShell>
+        </VirtualKeyboardProvider>
       </ConfirmProvider>
     );
   }

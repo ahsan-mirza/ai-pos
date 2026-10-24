@@ -8,21 +8,24 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import JSON, Boolean, CheckConstraint, DateTime, ForeignKey, Integer, String, UniqueConstraint, Uuid
+from sqlalchemy import JSON, Boolean, CheckConstraint, DateTime, ForeignKey, Integer, String, Uuid
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.models.base import Base, TimestampMixin, utcnow
+from app.models.base import Base, TenantScoped, TimestampMixin, tenant_unique, utcnow
 
 PRICE_LIST_SCOPES = ("customer", "group", "store", "global")
 PRICE_CHANGE_STATUSES = ("SCHEDULED", "APPLIED", "CANCELLED")
 TAX_TREATMENTS = ("STANDARD", "ZERO_EXPORT", "EXEMPT", "DESIGNATED_ZONE")
 
 
-class CustomerGroup(TimestampMixin, Base):
+class CustomerGroup(TenantScoped, TimestampMixin, Base):
     __tablename__ = "customer_groups"
+    __table_args__ = (
+        tenant_unique("name", name="uq_customer_groups_name"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    name: Mapped[str] = mapped_column(String(80), unique=True)
+    name: Mapped[str] = mapped_column(String(80))
     # Applied to members whose own tier is RETAIL (not set) on wholesale sales.
     default_tier: Mapped[str | None] = mapped_column(String(16), nullable=True)
     # A blanket discount off the tier price for every product, in basis points.
@@ -31,7 +34,7 @@ class CustomerGroup(TimestampMixin, Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
 
-class PriceList(TimestampMixin, Base):
+class PriceList(TenantScoped, TimestampMixin, Base):
     __tablename__ = "price_lists"
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -50,10 +53,10 @@ class PriceList(TimestampMixin, Base):
     )
 
 
-class PriceListItem(Base):
+class PriceListItem(TenantScoped, Base):
     __tablename__ = "price_list_items"
     __table_args__ = (
-        UniqueConstraint("price_list_id", "product_id", name="uq_price_list_items_list_product"),
+        tenant_unique("price_list_id", "product_id", name="uq_price_list_items_list_product"),
         CheckConstraint("(price_cents IS NULL) <> (discount_bps IS NULL)", name="price_or_discount"),
         CheckConstraint("min_qty >= 1", name="min_qty_positive"),
     )
@@ -70,7 +73,7 @@ class PriceListItem(Base):
     volume_breaks: Mapped[list | None] = mapped_column(JSON, nullable=True)
 
 
-class ScheduledPriceChange(TimestampMixin, Base):
+class ScheduledPriceChange(TenantScoped, TimestampMixin, Base):
     """A batch of new retail / tier prices that the price_changes job applies at run_at."""
 
     __tablename__ = "scheduled_price_changes"
@@ -87,7 +90,7 @@ class ScheduledPriceChange(TimestampMixin, Base):
     )
 
 
-class ScheduledPriceChangeLine(Base):
+class ScheduledPriceChangeLine(TenantScoped, Base):
     __tablename__ = "scheduled_price_change_lines"
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)

@@ -3,10 +3,10 @@ from __future__ import annotations
 import uuid
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Column, ForeignKey, Integer, String, Table, UniqueConstraint, Uuid
+from sqlalchemy import Column, ForeignKey, Integer, String, Table, Uuid
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.models.base import Base, TimestampMixin
+from app.models.base import Base, TenantScoped, TimestampMixin, tenant_unique
 
 if TYPE_CHECKING:
     from app.models.category import SubCategory
@@ -24,14 +24,18 @@ sub_category_brands = Table(
 )
 
 
-class Brand(TimestampMixin, Base):
+class Brand(TenantScoped, TimestampMixin, Base):
     """Global manufacturer list; a brand is linked to every sub-category it sells in."""
 
     __tablename__ = "brands"
+    __table_args__ = (
+        tenant_unique("name", name="uq_brands_name"),
+        tenant_unique("code", name="uq_brands_code"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    name: Mapped[str] = mapped_column(String(80), unique=True)
-    code: Mapped[str] = mapped_column(String(32), unique=True)
+    name: Mapped[str] = mapped_column(String(80))
+    code: Mapped[str] = mapped_column(String(32))
     description: Mapped[str] = mapped_column(String(255), default="")
     sub_categories: Mapped[list[SubCategory]] = relationship(
         "SubCategory",
@@ -41,11 +45,11 @@ class Brand(TimestampMixin, Base):
     )
 
 
-class ProductModel(TimestampMixin, Base):
+class ProductModel(TenantScoped, TimestampMixin, Base):
     """A brand's model within one sub-category (e.g. Apple iPhone 16 Pro); its sellable variants are products."""
 
     __tablename__ = "product_models"
-    __table_args__ = (UniqueConstraint("brand_id", "sub_category_id", "name", name="uq_product_models_brand_sub_name"),)
+    __table_args__ = (tenant_unique("brand_id", "sub_category_id", "name", name="uq_product_models_brand_sub_name"),)
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
     brand_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("brands.id"), index=True)

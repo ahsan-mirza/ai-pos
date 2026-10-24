@@ -67,6 +67,7 @@ import {
 import { DiscountModal } from "./DiscountModal";
 import { GiftCardSellModal } from "./GiftCardSellModal";
 import { CartList } from "./CartList";
+import { GuestSuggestions, suggestsForGuests } from "../orders/GuestSuggestions";
 import { CheckoutSidebar } from "./CheckoutSidebar";
 import { loadCatalog, seedProducts, store, type Catalog } from "./catalog";
 import { OrderModeBar } from "./fnb/OrderModeBar";
@@ -1021,6 +1022,27 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
               </>
             }
             cart={
+              <>
+              {suggestsForGuests(capabilities.profile) ? (
+                <GuestSuggestions
+                  storeId={activeStore().id}
+                  customerId={cart.customer?.id ?? null}
+                  productIds={cart.lines.map((line) => line.product.id)}
+                  disabled={charging}
+                  onAdd={(suggestion) => {
+                    const product = catalog.products.find((item) => item.id === suggestion.product_id);
+                    if (!product) {
+                      setNotice(`${suggestion.name} is not on this register yet.`);
+                      return;
+                    }
+                    dispatch({
+                      type: "add_product",
+                      product,
+                      ...(suggestion.modifiers.length > 0 ? { modifiers: suggestion.modifiers } : {}),
+                    });
+                  }}
+                />
+              ) : null}
               <CartList
                 rows={rows}
                 currency={currency}
@@ -1049,6 +1071,7 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
                 }
                 onClearDiscount={(item) => dispatch({ type: "clear_discounts", lineIds: item.lines.map((line) => line.lineId) })}
               />
+              </>
             }
             summary={(foldToggle) => (
               <SaleSummary

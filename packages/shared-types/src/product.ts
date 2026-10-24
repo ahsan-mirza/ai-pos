@@ -45,6 +45,8 @@ export interface ProductPricing {
   care?: string | null;
   /** Price before the active markdown; the register strikes it through. */
   compare_at_cents?: number | null;
+  /** Technical details for this category (processor, capacity, fabric). Portal-managed. */
+  specifications?: Record<string, string>;
 }
 
 /**
@@ -134,6 +136,7 @@ export function productSyncPayload(product: ProductUpsert): Omit<ProductUpsert, 
     fit: _fit,
     care: _care,
     compare_at_cents: _was,
+    specifications: _specs,
     product_model_id: _model,
     model_name: _modelName,
     variant_attributes: _variant,

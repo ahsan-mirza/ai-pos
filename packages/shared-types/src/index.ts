@@ -430,6 +430,8 @@ export {
   variantAttributeLabel,
   variantAttributeLabels,
 } from "./inventory.js";
+export { allSpecKeys, specKey, specSchemaFor, specSummary, titleFromSpecs } from "./specifications.js";
+export type { SpecField, SpecSchema } from "./specifications.js";
 export type {
   AdjustmentMode,
   Availability,
@@ -613,7 +615,7 @@ export type {
   SalesOrderUpdate,
 } from "./salesOrders.js";
 export { ORDER_PROGRESS_LABEL, unpaidItems } from "./orders.js";
-export type { DiningArea, DiningTable, Floor, KitchenStatus, Order, OrderItem, OrderItemInput, OrderProgress, OrderStatus, OrderStatusEvent, ServiceType, TableStatus } from "./orders.js";
+export type { DiningArea, DiningTable, Floor, GuestSuggestion, GuestSuggestionKind, GuestSuggestions, KitchenStatus, Order, OrderItem, OrderItemInput, OrderProgress, OrderStatus, OrderStatusEvent, ServiceType, TableStatus } from "./orders.js";
 export { NEXT_TICKET_STATUS, mergeBoard, ticketAge } from "./kitchen.js";
 export { PAYMENT_PROVIDER_LABELS, PAYMENT_STATUS_LABELS } from "./payments.js";
 export type {
@@ -634,4 +636,5 @@ export type {
 export { ingredientCost } from "./recipes.js";
 export type { ChannelPayout, ChannelSettlementReport, ChannelSettlementRow, ChannelStatus, DeliveryChannel, DeliveryChannelInput, DeliveryChannelSecret } from "./channels.js";
 export type { ModifierIngredientLine, ModifierRecipe, Recipe, RecipeInput, RecipeLine, RecipeLineInput, UsageVarianceReport, UsageVarianceRow } from "./recipes.js";
+export type { KitchenActionIn, KitchenActionName, KitchenActionOut, KitchenBrief, KitchenCard, KitchenKind, KitchenSeverity } from "./kitchenAgent.js";
 export type { KitchenBoard, KitchenStation, KitchenStationInput, KitchenTicket, KitchenTicketItem, TicketAge, TicketStatus } from "./kitchen.js";

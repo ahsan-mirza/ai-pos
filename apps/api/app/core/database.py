@@ -65,9 +65,34 @@ def create_database(server_url: str, name: str) -> bool:
         engine.dispose()
 
 
+def set_session_tenant(connection, tenant_id: str) -> None:
+    """Tell Postgres which store this transaction may see. Ignored on SQLite."""
+    if connection.dialect.name != "postgresql":
+        return
+    connection.exec_driver_sql(  # raw-sql: allowed (RLS)
+        "SELECT set_config('app.tenant_id', %s, true)", (tenant_id,)
+    )
+
+
+def bypass_session_tenant(connection) -> None:
+    """Let a migration or a cross-tenant job read every store in this database. Ignored on SQLite."""
+    if connection.dialect.name != "postgresql":
+        return
+    connection.exec_driver_sql("SELECT set_config('app.bypass_rls', 'on', true)")  # raw-sql: allowed (RLS)
+
+
 def get_db() -> Iterator[Session]:
     session = get_session_factory()()
     try:
         yield session
     finally:
         session.close()
+
+
+def _install_tenant_scope() -> None:
+    from app.tenancy.scoping import install
+
+    install()
+
+
+_install_tenant_scope()

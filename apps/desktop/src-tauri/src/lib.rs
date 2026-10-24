@@ -6,6 +6,7 @@ mod db;
 mod documents;
 mod erp;
 mod held;
+mod keyboard_detector;
 mod margin;
 mod media_cache;
 mod menu;
@@ -679,6 +680,7 @@ pub fn run() {
                 approvals: Arc::new(Mutex::new(Default::default())),
                 checkout_approvals: Arc::new(Mutex::new(Default::default())),
             });
+            keyboard_detector::start(app.handle().clone());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -755,6 +757,7 @@ pub fn run() {
             erp::on_duty,
             erp::foreign_currencies,
             erp::loyalty_settings,
+            keyboard_detector::check_hardware_keyboard_status,
             scale::scale_ports,
             scale::read_scale,
             menu::refresh_menu,

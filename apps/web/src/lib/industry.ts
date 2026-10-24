@@ -10,6 +10,9 @@ export const ELECTRONICS_PROFILES = ["electronics_wholesale"] as const satisfies
 
 export const FASHION_PROFILES = ["retail_fashion"] as const satisfies readonly BusinessProfile[];
 
+/** Catalog models (Apple → iPhone 15 Pro) belong to electronics and fashion, not food service. */
+export const MODEL_PROFILES = ["electronics_wholesale", "retail_fashion"] as const satisfies readonly BusinessProfile[];
+
 export function businessTypeOf(value: string | null | undefined): BusinessProfile {
   return profileSpec(value).id;
 }
@@ -35,10 +38,12 @@ interface IndustryGate {
 /** Longest prefix wins. A typed URL for another industry stops here instead of rendering the page. */
 const GATES: IndustryGate[] = [
   { prefix: "/inventory/serials", profiles: ELECTRONICS_PROFILES },
+  { prefix: "/inventory/models", profiles: MODEL_PROFILES },
   { prefix: "/inventory/batches", profiles: RETAIL_PROFILES },
   { prefix: "/inventory/markdowns", profiles: FASHION_PROFILES },
   { prefix: "/inventory/size-curve", profiles: FASHION_PROFILES },
   { prefix: "/inventory/floor-plan", profiles: FNB_PROFILES },
+  { prefix: "/inventory/kitchen-agent", profiles: FNB_PROFILES },
   { prefix: "/inventory/kitchen", profiles: FNB_PROFILES },
   { prefix: "/inventory/recipes", profiles: FNB_PROFILES },
   { prefix: "/inventory/recipe-usage", profiles: FNB_PROFILES },

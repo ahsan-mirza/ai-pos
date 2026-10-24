@@ -34,6 +34,23 @@ export interface OrderStatusEvent {
   updated_at: string;
 }
 
+export type GuestSuggestionKind = "usual" | "new" | "pair";
+
+/** One dish the server can offer. `modifiers` is set only for a usual order, and nothing here is sent to the kitchen. */
+export interface GuestSuggestion {
+  product_id: string;
+  name: string;
+  price_cents: number;
+  currency: string;
+  kind: GuestSuggestionKind;
+  pitch: string;
+  modifiers: ModifierChoice[];
+}
+
+export interface GuestSuggestions {
+  suggestions: GuestSuggestion[];
+}
+
 export interface OrderItemInput {
   id: string;
   product_id: string;

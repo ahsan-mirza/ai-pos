@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 from sqlalchemy import JSON, Boolean, CheckConstraint, ForeignKey, Integer, String, Uuid
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.models.base import Base
+from app.models.base import Base, TenantScoped, tenant_unique
 from app.models.product import Product
 from app.models.serial_number import SerialNumber
 
@@ -14,9 +14,10 @@ if TYPE_CHECKING:
     from app.models.sale import Sale
 
 
-class SaleItem(Base):
+class SaleItem(TenantScoped, Base):
     __tablename__ = "sale_items"
     __table_args__ = (
+        tenant_unique("gift_card_code", name="uq_sale_items_gift_card_code"),
         CheckConstraint("quantity >= 1", name="quantity_positive"),
         CheckConstraint("unit_price_cents >= 0", name="unit_price_nonnegative"),
         CheckConstraint("tax_cents >= 0", name="tax_nonnegative"),
@@ -65,7 +66,7 @@ class SaleItem(Base):
         Uuid(as_uuid=True), ForeignKey("users.id"), nullable=True
     )
     # The gift card this line sold (a GIFT_CARD store credit with this code).
-    gift_card_code: Mapped[str | None] = mapped_column(String(32), nullable=True, unique=True)
+    gift_card_code: Mapped[str | None] = mapped_column(String(32), nullable=True)
     # Sold as final sale (marked down or flagged); returns need a manager.
     final_sale: Mapped[bool] = mapped_column(Boolean, default=False)
     # Menu modifiers chosen for this line, as sold: [{"group_id", "group", "option_id", "option", "price_delta_cents"}].

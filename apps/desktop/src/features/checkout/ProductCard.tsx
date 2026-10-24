@@ -1,4 +1,4 @@
-import { daysUntil, formatMoney, formatWeight, type ProductUpsert } from "@ai-pos/shared-types";
+import { daysUntil, formatMoney, formatWeight, specSummary, type ProductUpsert } from "@ai-pos/shared-types";
 import { Building2, Package, Scale, ScanLine, UtensilsCrossed } from "lucide-react";
 import { stockPill } from "../../components/shell/tokens";
 import { ProductPhotoFrame } from "./ProductPhoto";
@@ -101,6 +101,11 @@ export function ProductCard({ hit, preview, currency, disabled, menuItem = false
         <span className="mt-1 truncate font-mono text-[11px] text-zinc-500 dark:text-white/40">
           {[product.sku, product.model_number].filter(Boolean).join(" · ")}
         </span>
+        {specSummary(product.specifications) ? (
+          <span className="mt-1 block truncate text-[11px] tabular-nums text-zinc-500 dark:text-white/50">
+            {specSummary(product.specifications)}
+          </span>
+        ) : null}
 
         <span className="mt-auto flex flex-wrap items-center justify-between gap-x-2 gap-y-1.5 pt-3">
           <span className="min-w-0 max-w-full">

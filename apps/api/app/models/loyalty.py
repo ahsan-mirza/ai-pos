@@ -6,10 +6,10 @@ from datetime import datetime
 from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Integer, String, Uuid
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.models.base import Base, utcnow
+from app.models.base import Base, TenantScoped, utcnow
 
 
-class LoyaltyEntry(Base):
+class LoyaltyEntry(TenantScoped, Base):
     """Append-only points ledger. points is signed: earning adds, redeeming and reversals subtract."""
 
     __tablename__ = "loyalty_entries"

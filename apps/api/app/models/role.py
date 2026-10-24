@@ -5,14 +5,17 @@ import uuid
 from sqlalchemy import Boolean, ForeignKey, Integer, String, Uuid
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.models.base import Base, TimestampMixin
+from app.models.base import Base, TenantScoped, TimestampMixin, tenant_unique
 
 
-class Role(TimestampMixin, Base):
+class Role(TenantScoped, TimestampMixin, Base):
     __tablename__ = "roles"
+    __table_args__ = (
+        tenant_unique("name", name="uq_roles_name"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    name: Mapped[str] = mapped_column(String(64), unique=True)
+    name: Mapped[str] = mapped_column(String(64))
     description: Mapped[str] = mapped_column(String(255), default="")
     is_system: Mapped[bool] = mapped_column(Boolean, default=False)
     # Largest discount (basis points of the line) a holder of pos:discount gives without a manager; None uses the
@@ -37,7 +40,7 @@ class Role(TimestampMixin, Base):
             self.permission_rows.append(RolePermission(permission=name))
 
 
-class RolePermission(Base):
+class RolePermission(TenantScoped, Base):
     __tablename__ = "role_permissions"
 
     role_id: Mapped[uuid.UUID] = mapped_column(

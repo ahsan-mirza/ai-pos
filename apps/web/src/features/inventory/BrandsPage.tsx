@@ -1,11 +1,14 @@
 import { Permission, type Brand } from "@ai-pos/shared-types";
 import { Pencil, Plus, Search, Trash2 } from "lucide-react";
 import { useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import { useConfirm } from "../../components/ui/ConfirmDialog";
 import { ErrorNote, GhostButton, PrimaryButton, TextField, filterLabel } from "../../components/ui/Field";
 import { Modal } from "../../components/ui/Modal";
+import { useTenant } from "../../context/TenantContext";
 import { useAuth } from "../../lib/auth";
 import { useAutoCode } from "../../lib/codes";
+import { MODEL_PROFILES } from "../../lib/industry";
 import { brandsApi, message } from "./api";
 import { useBrands, useCategories } from "./shared";
 import { IconButton } from "./StockPage";
@@ -13,6 +16,8 @@ import { IconButton } from "./StockPage";
 /** Global brand list; each brand shows the sub-categories it sells in. */
 export function BrandsPage() {
   const { can, user } = useAuth();
+  const { allows } = useTenant();
+  const modelsTab = allows(MODEL_PROFILES);
   const manage = can(Permission.PortalInventoryManage) && user?.store_id === null;
   const confirm = useConfirm();
   const { brands, error: loadError, reload } = useBrands();
@@ -109,7 +114,18 @@ export function BrandsPage() {
                     {brand.sub_category_ids.length === 0 ? <span className="text-charcoal/40">—</span> : null}
                   </div>
                 </td>
-                <td className="py-3 text-right tabular-nums">{brand.model_count}</td>
+                <td className="py-3 text-right tabular-nums">
+                  {modelsTab ? (
+                    <Link
+                      to={`/inventory/models?brand_id=${brand.id}`}
+                      className="font-semibold text-accent hover:underline"
+                    >
+                      {brand.model_count}
+                    </Link>
+                  ) : (
+                    brand.model_count
+                  )}
+                </td>
                 <td className="py-3 text-right tabular-nums">{brand.product_count}</td>
                 {manage ? (
                   <td className="py-3">

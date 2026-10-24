@@ -3,13 +3,13 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, CheckConstraint, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, Uuid
+from sqlalchemy import Boolean, CheckConstraint, DateTime, ForeignKey, Integer, String, Text, Uuid
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.models.base import Base, utcnow
+from app.models.base import Base, TenantScoped, tenant_unique, utcnow
 
 
-class PaymentIntent(Base):
+class PaymentIntent(TenantScoped, Base):
     """A payment the till asks a provider to collect: a QR the customer scans, an amount pushed to a card
     terminal, or a buy-now-pay-later checkout. The provider (webhook or poll) moves it to PAID; the sale then
     carries a tender pointing at it, and each intent pays for one sale only."""
@@ -51,12 +51,12 @@ class PaymentIntent(Base):
     paid_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
-class PaymentTerminal(Base):
+class PaymentTerminal(TenantScoped, Base):
     """A card machine at a store, known to its provider by `terminal_ref` (N-Genius outlet/terminal id,
     Geidea terminal id). A till sends its card amounts to the terminal assigned to it, else the store's first."""
 
     __tablename__ = "payment_terminals"
-    __table_args__ = (UniqueConstraint("provider", "terminal_ref", name="uq_payment_terminals_ref"),)
+    __table_args__ = (tenant_unique("provider", "terminal_ref", name="uq_payment_terminals_ref"),)
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
     store_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("stores.id"), index=True)
@@ -72,7 +72,7 @@ class PaymentTerminal(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
-class PaymentRefund(Base):
+class PaymentRefund(TenantScoped, Base):
     """Money sent back through the provider that took it. FAILED refunds are retried by a job and from the
     portal; the return itself is already recorded, so the customer's refund never waits on the provider."""
 

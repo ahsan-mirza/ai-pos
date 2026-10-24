@@ -9,17 +9,20 @@ from datetime import date, datetime
 from sqlalchemy import JSON, CheckConstraint, Date, DateTime, ForeignKey, Integer, String, Text, Uuid
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.models.base import Base, TimestampMixin, utcnow
+from app.models.base import Base, TenantScoped, TimestampMixin, tenant_unique, utcnow
 
 ORDER_STATUSES = ("DRAFT", "CONFIRMED", "PICKING", "PARTIALLY_DELIVERED", "DELIVERED", "CLOSED", "CANCELLED")
 ORDER_SOURCES = ("manual", "register", "quote", "b2b", "ecommerce", "rep")
 
 
-class SalesOrder(TimestampMixin, Base):
+class SalesOrder(TenantScoped, TimestampMixin, Base):
     __tablename__ = "sales_orders"
+    __table_args__ = (
+        tenant_unique("number", name="uq_sales_orders_number"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    number: Mapped[str] = mapped_column(String(40), unique=True)
+    number: Mapped[str] = mapped_column(String(40))
     store_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("stores.id"), index=True)
     customer_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("customers.id"), index=True)
     status: Mapped[str] = mapped_column(String(20), default="DRAFT", index=True)
@@ -46,7 +49,7 @@ class SalesOrder(TimestampMixin, Base):
     )
 
 
-class SalesOrderLine(Base):
+class SalesOrderLine(TenantScoped, Base):
     __tablename__ = "sales_order_lines"
     __table_args__ = (
         CheckConstraint("quantity_ordered >= 1", name="ordered_positive"),
@@ -80,11 +83,14 @@ class SalesOrderLine(Base):
         return self.quantity_ordered - self.quantity_delivered - self.quantity_cancelled
 
 
-class PickList(Base):
+class PickList(TenantScoped, Base):
     __tablename__ = "pick_lists"
+    __table_args__ = (
+        tenant_unique("number", name="uq_pick_lists_number"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    number: Mapped[str] = mapped_column(String(40), unique=True)
+    number: Mapped[str] = mapped_column(String(40))
     order_id: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True), ForeignKey("sales_orders.id", ondelete="CASCADE"), index=True
     )
@@ -97,7 +103,7 @@ class PickList(Base):
     )
 
 
-class PickListLine(Base):
+class PickListLine(TenantScoped, Base):
     __tablename__ = "pick_list_lines"
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -111,13 +117,16 @@ class PickListLine(Base):
     position: Mapped[int] = mapped_column(Integer, default=0)
 
 
-class DeliveryNote(Base):
+class DeliveryNote(TenantScoped, Base):
     """One delivery of an order. It is invoiced as it leaves (the sale), then signed for at the customer."""
 
     __tablename__ = "delivery_notes"
+    __table_args__ = (
+        tenant_unique("number", name="uq_delivery_notes_number"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    number: Mapped[str] = mapped_column(String(40), unique=True)
+    number: Mapped[str] = mapped_column(String(40))
     order_id: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True), ForeignKey("sales_orders.id", ondelete="CASCADE"), index=True
     )
@@ -141,7 +150,7 @@ class DeliveryNote(Base):
     )
 
 
-class DeliveryNoteLine(Base):
+class DeliveryNoteLine(TenantScoped, Base):
     __tablename__ = "delivery_note_lines"
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)

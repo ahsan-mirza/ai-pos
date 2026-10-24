@@ -7,16 +7,20 @@ from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Uuid
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.permissions import Permission
-from app.models.base import Base, TimestampMixin
+from app.models.base import Base, TenantScoped, TimestampMixin, tenant_unique
 from app.models.role import Role
 
 
-class User(TimestampMixin, Base):
+class User(TenantScoped, TimestampMixin, Base):
     __tablename__ = "users"
+    __table_args__ = (
+        tenant_unique("username", name="uq_users_username"),
+        tenant_unique("email", name="uq_users_email"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    username: Mapped[str] = mapped_column(String(32), unique=True)
-    email: Mapped[str] = mapped_column(String(254), unique=True)
+    username: Mapped[str] = mapped_column(String(32))
+    email: Mapped[str] = mapped_column(String(254))
     full_name: Mapped[str] = mapped_column(String(120))
     hashed_password: Mapped[str | None] = mapped_column(String(255), nullable=True)
     hashed_pin: Mapped[str | None] = mapped_column(String(255), nullable=True)

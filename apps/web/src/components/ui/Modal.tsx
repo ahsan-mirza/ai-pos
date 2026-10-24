@@ -14,12 +14,29 @@ interface ModalProps {
   onClose: () => void;
   children: ReactNode;
   footer?: ReactNode;
-  width?: "md" | "lg";
+  width?: "md" | "lg" | "xl";
+  /** Extra header row, such as section links on a long form. */
+  headerExtra?: ReactNode;
+  backdropClassName?: string;
+  panelClassName?: string;
   /** Sits above another open modal, such as a confirmation asked from inside one. */
   elevated?: boolean;
 }
 
-export function Modal({ title, subtitle, onClose, children, footer, width = "md", elevated = false }: ModalProps) {
+const widths = { md: "max-w-md", lg: "max-w-2xl", xl: "max-w-4xl" } as const;
+
+export function Modal({
+  title,
+  subtitle,
+  onClose,
+  children,
+  footer,
+  width = "md",
+  headerExtra,
+  backdropClassName = "bg-charcoal/40 backdrop-blur-[8px]",
+  panelClassName = "",
+  elevated = false,
+}: ModalProps) {
   const titleId = useId();
 
   useEffect(() => {
@@ -42,7 +59,7 @@ export function Modal({ title, subtitle, onClose, children, footer, width = "md"
 
   return (
     <div
-      className={`modal-backdrop fixed inset-0 flex items-center justify-center bg-charcoal/40 p-4 backdrop-blur-[8px] ${
+      className={`modal-backdrop fixed inset-0 flex items-center justify-center p-4 ${backdropClassName} ${
         elevated ? "z-[80]" : "z-50"
       }`}
       role="presentation"
@@ -51,25 +68,26 @@ export function Modal({ title, subtitle, onClose, children, footer, width = "md"
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
-        className={`modal-card flex max-h-[90vh] w-full flex-col overflow-hidden rounded-3xl bg-white shadow-2xl ${
-          width === "lg" ? "max-w-2xl" : "max-w-md"
-        }`}
+        className={`modal-card flex max-h-[90vh] w-full flex-col overflow-hidden rounded-3xl border border-gray-100 bg-white shadow-2xl dark:border-gray-800 dark:bg-[#222026] ${widths[width]} ${panelClassName}`}
       >
-        <header className={modalHeader}>
-          <div className="min-w-0">
-            <h2 id={titleId} className="text-xl font-semibold">
-              {title}
-            </h2>
-            {subtitle ? <p className="mt-0.5 text-sm text-charcoal/60">{subtitle}</p> : null}
+        <header className={`${modalHeader} flex-col`}>
+          <div className="flex w-full items-start justify-between gap-4">
+            <div className="min-w-0">
+              <h2 id={titleId} className="text-xl font-semibold">
+                {title}
+              </h2>
+              {subtitle ? <p className="mt-0.5 text-sm text-charcoal/60">{subtitle}</p> : null}
+            </div>
+            <button
+              type="button"
+              aria-label="Close"
+              onClick={onClose}
+              className="-mr-1 -mt-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-charcoal/70 transition-colors hover:bg-gray-100 hover:text-charcoal"
+            >
+              <X size={18} aria-hidden="true" />
+            </button>
           </div>
-          <button
-            type="button"
-            aria-label="Close"
-            onClick={onClose}
-            className="-mr-1 -mt-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-charcoal/70 transition-colors hover:bg-gray-100 hover:text-charcoal"
-          >
-            <X size={18} aria-hidden="true" />
-          </button>
+          {headerExtra}
         </header>
         <div className={modalBody}>{children}</div>
         {footer ? <footer className={modalFooter}>{footer}</footer> : null}

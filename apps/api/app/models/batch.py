@@ -19,23 +19,26 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
-    UniqueConstraint,
     Uuid,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.models.base import Base, TimestampMixin, utcnow
+from app.models.base import Base, TenantScoped, TimestampMixin, tenant_unique, utcnow
 
 IMPORT_SOURCES = ("EXCEL", "CSV", "PDF_INVOICE", "MANUAL")
 BATCH_STATUSES = ("ACTIVE", "PARTIALLY_SOLD", "EXHAUSTED", "REVERSED")
 
 
-class Supplier(TimestampMixin, Base):
+class Supplier(TenantScoped, TimestampMixin, Base):
     __tablename__ = "suppliers"
+    __table_args__ = (
+        tenant_unique("name", name="uq_suppliers_name"),
+        tenant_unique("code", name="uq_suppliers_code"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    name: Mapped[str] = mapped_column(String(120), unique=True)
-    code: Mapped[str] = mapped_column(String(32), unique=True)
+    name: Mapped[str] = mapped_column(String(120))
+    code: Mapped[str] = mapped_column(String(32))
     contact_name: Mapped[str | None] = mapped_column(String(120), nullable=True)
     phone: Mapped[str | None] = mapped_column(String(40), nullable=True)
     email: Mapped[str | None] = mapped_column(String(254), nullable=True)
@@ -52,11 +55,11 @@ class Supplier(TimestampMixin, Base):
     trn: Mapped[str | None] = mapped_column(String(15), nullable=True)
 
 
-class ImportMappingTemplate(TimestampMixin, Base):
+class ImportMappingTemplate(TenantScoped, TimestampMixin, Base):
     """A saved header-to-field mapping, optionally scoped to one supplier's invoice layout."""
 
     __tablename__ = "import_mapping_templates"
-    __table_args__ = (UniqueConstraint("supplier_id", "name", name="uq_import_mapping_templates_supplier_name"),)
+    __table_args__ = (tenant_unique("supplier_id", "name", name="uq_import_mapping_templates_supplier_name"),)
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name: Mapped[str] = mapped_column(String(80))
@@ -69,16 +72,17 @@ class ImportMappingTemplate(TimestampMixin, Base):
     created_by_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("users.id"))
 
 
-class PurchaseBatch(Base):
+class PurchaseBatch(TenantScoped, Base):
     __tablename__ = "purchase_batches"
     __table_args__ = (
+        tenant_unique("batch_number", name="uq_purchase_batches_batch_number"),
         CheckConstraint("total_cost_amount >= 0", name="total_cost_nonnegative"),
         CheckConstraint("total_items_count >= 0", name="total_items_nonnegative"),
         Index("ix_purchase_batches_store_created", "store_id", "created_at"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    batch_number: Mapped[str] = mapped_column(String(32), unique=True)
+    batch_number: Mapped[str] = mapped_column(String(32))
     supplier_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid(as_uuid=True), ForeignKey("suppliers.id"), nullable=True, index=True
     )
@@ -106,7 +110,7 @@ class PurchaseBatch(Base):
     )
 
 
-class BatchItem(Base):
+class BatchItem(TenantScoped, Base):
     __tablename__ = "batch_items"
     __table_args__ = (
         CheckConstraint("quantity_imported >= 0", name="imported_nonnegative"),
@@ -137,7 +141,7 @@ class BatchItem(Base):
     batch: Mapped[PurchaseBatch] = relationship("PurchaseBatch", back_populates="items")
 
 
-class BatchAllocation(Base):
+class BatchAllocation(TenantScoped, Base):
     """Units drawn from one batch item by one stock movement. quantity_returned counts units that came back."""
 
     __tablename__ = "batch_allocations"

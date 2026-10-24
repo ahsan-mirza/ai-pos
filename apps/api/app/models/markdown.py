@@ -7,13 +7,13 @@ from sqlalchemy import Boolean, CheckConstraint, DateTime, ForeignKey, Integer, 
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.types import JSON
 
-from app.models.base import Base, TimestampMixin
+from app.models.base import Base, TenantScoped, TimestampMixin
 
 STATUSES = ("SCHEDULED", "ACTIVE", "ENDED", "CANCELLED")
 REASONS = ("MANUAL", "MARKDOWN", "IMPORT", "BULK")
 
 
-class MarkdownEvent(TimestampMixin, Base):
+class MarkdownEvent(TenantScoped, TimestampMixin, Base):
     """A catalogue-wide retail markdown. Prices live on the product, so an event applies to every branch."""
 
     __tablename__ = "markdown_events"
@@ -38,7 +38,7 @@ class MarkdownEvent(TimestampMixin, Base):
     created_by_id: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True), ForeignKey("users.id"), nullable=True)
 
 
-class PriceChange(TimestampMixin, Base):
+class PriceChange(TenantScoped, TimestampMixin, Base):
     """One retail price movement: a markdown, its restore, or a manual edit."""
 
     __tablename__ = "price_changes"

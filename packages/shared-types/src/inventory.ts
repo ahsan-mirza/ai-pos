@@ -443,6 +443,8 @@ export interface ProductCreate extends FashionAttributes {
   sub_category_id?: string | null;
   product_model_id?: string | null;
   variant_attributes?: VariantAttributes;
+  /** Category-specific technical details. Keys follow the specification template. */
+  specifications?: Record<string, string>;
   price_cents: number;
   is_serialized: boolean;
   tax_category?: TaxCategory;
@@ -473,6 +475,7 @@ export interface ProductUpdate extends FashionAttributes {
   /** null detaches the product from its model. */
   product_model_id?: string | null;
   variant_attributes?: VariantAttributes;
+  specifications?: Record<string, string>;
   price_cents?: number;
   tax_category?: TaxCategory;
   is_open_price?: boolean;

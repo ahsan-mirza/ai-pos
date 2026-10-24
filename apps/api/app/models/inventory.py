@@ -3,10 +3,10 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, Integer, String, UniqueConstraint, Uuid
+from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, Integer, String, Uuid
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.models.base import Base, TimestampMixin, utcnow
+from app.models.base import Base, TenantScoped, TimestampMixin, tenant_unique, utcnow
 
 MOVEMENT_TYPES = (
     "PURCHASE_IN",
@@ -22,12 +22,12 @@ MOVEMENT_TYPES = (
 )
 
 
-class InventoryLevel(TimestampMixin, Base):
+class InventoryLevel(TenantScoped, TimestampMixin, Base):
     """Stock of one product at one branch. Only services.inventory writes quantities."""
 
     __tablename__ = "inventory_levels"
     __table_args__ = (
-        UniqueConstraint("product_id", "store_id", name="uq_inventory_levels_product_store"),
+        tenant_unique("product_id", "store_id", name="uq_inventory_levels_product_store"),
         CheckConstraint("quantity_on_hand >= 0", name="on_hand_nonnegative"),
         CheckConstraint("quantity_reserved >= 0", name="reserved_nonnegative"),
         CheckConstraint("min_reorder_level >= 0", name="min_reorder_nonnegative"),
@@ -47,7 +47,7 @@ class InventoryLevel(TimestampMixin, Base):
         return self.quantity_on_hand - self.quantity_reserved
 
 
-class StockMovement(Base):
+class StockMovement(TenantScoped, Base):
     """Append-only ledger. quantity is signed; quantity_after is the branch on-hand after the movement."""
 
     __tablename__ = "stock_movements"

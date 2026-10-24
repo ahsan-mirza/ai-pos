@@ -7,12 +7,13 @@ from datetime import datetime
 from sqlalchemy import Boolean, CheckConstraint, DateTime, ForeignKey, Integer, String, Uuid
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.models.base import Base, TimestampMixin, utcnow
+from app.models.base import Base, TenantScoped, TimestampMixin, tenant_unique, utcnow
 
 
-class DeliveryChannel(TimestampMixin, Base):
+class DeliveryChannel(TenantScoped, TimestampMixin, Base):
     __tablename__ = "delivery_channels"
     __table_args__ = (
+        tenant_unique("code", name="uq_delivery_channels_code"),
         CheckConstraint("commission_bps >= 0 AND commission_bps <= 10000", name="commission_range"),
         CheckConstraint("price_markup_bps >= 0", name="markup_nonnegative"),
     )
@@ -20,7 +21,7 @@ class DeliveryChannel(TimestampMixin, Base):
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name: Mapped[str] = mapped_column(String(60))
     # In the webhook URL: /api/v1/channels/{code}/orders.
-    code: Mapped[str] = mapped_column(String(32), unique=True)
+    code: Mapped[str] = mapped_column(String(32))
     # The branch its orders arrive at.
     store_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("stores.id"))
     # How webhook bodies are read: "generic" (the normalised format) until named provider adapters ship.
@@ -37,7 +38,7 @@ class DeliveryChannel(TimestampMixin, Base):
     created_by_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("users.id"))
 
 
-class ChannelPayout(Base):
+class ChannelPayout(TenantScoped, Base):
     """Money a channel paid out for its orders: what landed in the bank and the commission it kept."""
 
     __tablename__ = "channel_payouts"

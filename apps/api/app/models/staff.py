@@ -3,13 +3,13 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import JSON, Boolean, CheckConstraint, DateTime, ForeignKey, Integer, String, UniqueConstraint, Uuid
+from sqlalchemy import JSON, Boolean, CheckConstraint, DateTime, ForeignKey, Integer, String, Uuid
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.models.base import Base, TimestampMixin
+from app.models.base import Base, TenantScoped, TimestampMixin, tenant_unique
 
 
-class CommissionRule(TimestampMixin, Base):
+class CommissionRule(TenantScoped, TimestampMixin, Base):
     """Pays rate_bps of a sale line's net sales or gross profit to the cashier who rang it up. A line earns under its
     most specific matching rule (a category rule beats an all-products rule). threshold_cents is per person per
     period: commission starts once their basis under this rule passes it."""
@@ -28,13 +28,16 @@ class CommissionRule(TimestampMixin, Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
 
-class EmployeeProfile(TimestampMixin, Base):
+class EmployeeProfile(TenantScoped, TimestampMixin, Base):
     """Payroll details for a staff member. Amounts are monthly, in the business currency."""
 
     __tablename__ = "employee_profiles"
+    __table_args__ = (
+        tenant_unique("user_id", name="uq_employee_profiles_user_id"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    user_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("users.id"), unique=True)
+    user_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("users.id"))
     employee_code: Mapped[str] = mapped_column(String(20))
     # MOHRE personal number (14 digits) used as the WPS employee ID.
     labour_id: Mapped[str] = mapped_column(String(14))
@@ -50,11 +53,11 @@ class EmployeeProfile(TimestampMixin, Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
 
-class PayrollRun(TimestampMixin, Base):
+class PayrollRun(TenantScoped, TimestampMixin, Base):
     """One month's payroll. DRAFT lines can be adjusted; FINALIZED runs are locked and exported to WPS."""
 
     __tablename__ = "payroll_runs"
-    __table_args__ = (UniqueConstraint("year", "month", name="uq_payroll_runs_period"),)
+    __table_args__ = (tenant_unique("year", "month", name="uq_payroll_runs_period"),)
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
     year: Mapped[int] = mapped_column(Integer)
@@ -69,9 +72,9 @@ class PayrollRun(TimestampMixin, Base):
     )
 
 
-class PayrollLine(Base):
+class PayrollLine(TenantScoped, Base):
     __tablename__ = "payroll_lines"
-    __table_args__ = (UniqueConstraint("run_id", "user_id", name="uq_payroll_lines_run_user"),)
+    __table_args__ = (tenant_unique("run_id", "user_id", name="uq_payroll_lines_run_user"),)
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
     run_id: Mapped[uuid.UUID] = mapped_column(

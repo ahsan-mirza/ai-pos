@@ -2,20 +2,20 @@ from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import JSON, CheckConstraint, ForeignKey, Integer, String, UniqueConstraint, Uuid
+from sqlalchemy import JSON, CheckConstraint, ForeignKey, Integer, String, Uuid
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.models.base import Base, TimestampMixin
+from app.models.base import Base, TenantScoped, TimestampMixin, tenant_unique
 
 
-class ProductPrice(TimestampMixin, Base):
+class ProductPrice(TenantScoped, TimestampMixin, Base):
     """Price for one product at one customer tier. RETAIL falls back to products.price_cents when absent.
 
     volume_discounts is a list of {"min_qty": int, "price_cents": int} breaks, counted in pieces."""
 
     __tablename__ = "product_prices"
     __table_args__ = (
-        UniqueConstraint("product_id", "price_tier", name="uq_product_prices_product_tier"),
+        tenant_unique("product_id", "price_tier", name="uq_product_prices_product_tier"),
         CheckConstraint("price_cents >= 0", name="price_nonnegative"),
         CheckConstraint("min_order_quantity >= 1", name="moq_positive"),
     )

@@ -6,10 +6,10 @@ from datetime import datetime
 from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Integer, String, Uuid
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.models.base import Base, TimestampMixin
+from app.models.base import Base, TenantScoped, TimestampMixin
 
 
-class TimeEntry(TimestampMixin, Base):
+class TimeEntry(TenantScoped, TimestampMixin, Base):
     """One clocked stretch of work. Registers create it at clock-in (OPEN) and close it at clock-out; a manager may
     correct it with a note and then APPROVE it, after which payroll uses it and nothing changes it."""
 

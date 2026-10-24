@@ -6,10 +6,10 @@ from datetime import datetime
 from sqlalchemy import BigInteger, Boolean, CheckConstraint, DateTime, ForeignKey, String, Uuid
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.models.base import Base, TimestampMixin, utcnow
+from app.models.base import Base, TenantScoped, TimestampMixin, utcnow
 
 
-class AcceptedCurrency(TimestampMixin, Base):
+class AcceptedCurrency(TenantScoped, TimestampMixin, Base):
     """A foreign currency registers may take as cash, priced into the business currency at the latest rate."""
 
     __tablename__ = "accepted_currencies"
@@ -19,7 +19,7 @@ class AcceptedCurrency(TimestampMixin, Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
 
-class ExchangeRate(Base):
+class ExchangeRate(TenantScoped, Base):
     """Business-currency units per one foreign unit, times 1,000,000. Append-only: the latest row is in force."""
 
     __tablename__ = "exchange_rates"

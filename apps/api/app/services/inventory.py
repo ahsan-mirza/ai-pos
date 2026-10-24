@@ -417,6 +417,7 @@ def products_out(db: Session, products: list[Product], store_id: uuid.UUID | Non
                 product_model_id=product.product_model_id,
                 model_name=product.product_model.name if product.product_model is not None else None,
                 variant_attributes=product.variant_attributes or {},
+                specifications=product.specifications or {},
                 price_cents=product.price_cents,
                 compare_at_cents=product.compare_at_cents,
                 currency=product.currency,
@@ -1133,6 +1134,7 @@ def create_product(db: Session, principal: Principal, data: ProductCreate, curre
         name=data.name.strip(),
         model_number=(data.model_number or "").strip() or None,
         variant_attributes=data.variant_attributes,
+        specifications=data.specifications,
         price_cents=data.price_cents,
         currency=currency,
         is_serialized=data.is_serialized,
@@ -1224,6 +1226,8 @@ def update_product(db: Session, product_id: uuid.UUID, data: ProductUpdate) -> P
         product.model_number = (data.model_number or "").strip() or None
     if data.variant_attributes is not None:
         product.variant_attributes = data.variant_attributes
+    if data.specifications is not None:
+        product.specifications = data.specifications
     if data.price_cents is not None and data.price_cents != product.price_cents:
         from app.services import markdown_service
 

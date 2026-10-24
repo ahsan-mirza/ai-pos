@@ -114,6 +114,7 @@ function toUpsert(row: Product): ProductUpsert {
     product_model_id: row.product_model_id ?? null,
     model_name: row.model_name ?? null,
     variant_attributes: row.variant_attributes ?? {},
+    specifications: row.specifications ?? {},
     origin: "api",
   };
 }

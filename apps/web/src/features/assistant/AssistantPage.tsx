@@ -1,6 +1,7 @@
 import type { AssistantInfo, AssistantReply, AssistantToolResult, AssistantTurn } from "@ai-pos/shared-types";
 import { SendHorizontal, Sparkles, Trash2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { AiMark } from "../../components/ui/AiMark";
 import { ErrorNote } from "../../components/ui/Field";
 import { apiGet, apiPost } from "../../lib/api";
 import { errorMessage } from "../users/api";
@@ -71,7 +72,9 @@ export function AssistantPage() {
             <Sparkles size={18} aria-hidden="true" />
           </span>
           <div>
-            <h2 className="text-lg font-semibold">Ask your business</h2>
+            <h2 className="flex items-center gap-1.5 text-lg font-semibold">
+              <AiMark size={16} /> Ask your business
+            </h2>
             <p className="text-xs text-charcoal/60">
               English or العربية · answers come only from your reports
               {info ? ` · ${info.provider === "builtin" ? "built-in assistant" : info.provider.replace("openai:", "")}` : ""}
@@ -100,8 +103,9 @@ export function AssistantPage() {
                   type="button"
                   dir={isArabic(item) ? "rtl" : "ltr"}
                   onClick={() => void ask(item)}
-                  className="rounded-full bg-surface px-3.5 py-2 text-sm hover:bg-accent hover:text-white"
+                  className="inline-flex items-center gap-1.5 rounded-full bg-surface px-3.5 py-2 text-sm hover:bg-accent hover:text-white"
                 >
+                  <AiMark size={13} className="text-current" />
                   {item}
                 </button>
               ))}

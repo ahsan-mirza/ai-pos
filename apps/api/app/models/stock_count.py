@@ -3,22 +3,25 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import JSON, Boolean, CheckConstraint, DateTime, ForeignKey, Integer, String, UniqueConstraint, Uuid
+from sqlalchemy import JSON, Boolean, CheckConstraint, DateTime, ForeignKey, Integer, String, Uuid
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.models.base import Base, TimestampMixin
+from app.models.base import Base, TenantScoped, TimestampMixin, tenant_unique
 
 COUNT_STATUSES = ("OPEN", "SUBMITTED", "POSTED", "CANCELLED")
 
 
-class StockCount(TimestampMixin, Base):
+class StockCount(TenantScoped, TimestampMixin, Base):
     """A counting session at one branch: OPEN while staff count, SUBMITTED for review, POSTED once the
     variances are booked to the stock ledger."""
 
     __tablename__ = "stock_counts"
+    __table_args__ = (
+        tenant_unique("number", name="uq_stock_counts_number"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    number: Mapped[str] = mapped_column(String(40), unique=True)
+    number: Mapped[str] = mapped_column(String(40))
     store_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("stores.id"), index=True)
     category_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid(as_uuid=True), ForeignKey("categories.id"), nullable=True
@@ -40,13 +43,13 @@ class StockCount(TimestampMixin, Base):
     )
 
 
-class StockCountLine(TimestampMixin, Base):
+class StockCountLine(TenantScoped, TimestampMixin, Base):
     """expected_qty is the branch on-hand at the moment the line was counted, so sales made during the
     count do not show up as variance."""
 
     __tablename__ = "stock_count_lines"
     __table_args__ = (
-        UniqueConstraint("count_id", "product_id", name="uq_stock_count_lines_count_product"),
+        tenant_unique("count_id", "product_id", name="uq_stock_count_lines_count_product"),
         CheckConstraint("counted_qty IS NULL OR counted_qty >= 0", name="counted_nonnegative"),
     )
 

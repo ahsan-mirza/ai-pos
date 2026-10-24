@@ -14,19 +14,18 @@ from sqlalchemy import (
     Index,
     Integer,
     String,
-    UniqueConstraint,
     Uuid,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.models.base import Base, TimestampMixin, utcnow
+from app.models.base import Base, TenantScoped, TimestampMixin, tenant_unique, utcnow
 
 SERVICE_TYPES = ("DINE_IN", "TAKEAWAY", "DELIVERY")
 ORDER_STATUSES = ("OPEN", "SETTLED", "VOID")
 TABLE_SHAPES = ("square", "round", "rect")
 
 
-class DiningArea(TimestampMixin, Base):
+class DiningArea(TenantScoped, TimestampMixin, Base):
     __tablename__ = "dining_areas"
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -36,10 +35,10 @@ class DiningArea(TimestampMixin, Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
 
-class DiningTable(TimestampMixin, Base):
+class DiningTable(TenantScoped, TimestampMixin, Base):
     __tablename__ = "dining_tables"
     __table_args__ = (
-        UniqueConstraint("area_id", "label", name="uq_dining_tables_area_label"),
+        tenant_unique("area_id", "label", name="uq_dining_tables_area_label"),
         CheckConstraint("seats >= 1", name="seats_positive"),
     )
 
@@ -58,7 +57,7 @@ class DiningTable(TimestampMixin, Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
 
-class OpenOrder(Base):
+class OpenOrder(TenantScoped, Base):
     """A tab: lines are added and sent to the kitchen over time, then settled into one or more sales."""
 
     __tablename__ = "open_orders"
@@ -66,7 +65,7 @@ class OpenOrder(Base):
         Index("ix_open_orders_store_status", "store_id", "status"),
         CheckConstraint("covers >= 0", name="covers_nonnegative"),
         # A delivery app's order arrives once however often its webhook retries.
-        UniqueConstraint("channel_id", "external_ref", name="uq_open_orders_channel_ref"),
+        tenant_unique("channel_id", "external_ref", name="uq_open_orders_channel_ref"),
     )
 
     # Registers mint the id, so an order opened offline keeps it when it syncs.
@@ -106,7 +105,7 @@ class OpenOrder(Base):
     )
 
 
-class OpenOrderItem(Base):
+class OpenOrderItem(TenantScoped, Base):
     __tablename__ = "open_order_items"
     __table_args__ = (CheckConstraint("quantity >= 1", name="quantity_positive"),)
 

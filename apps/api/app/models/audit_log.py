@@ -6,7 +6,7 @@ from datetime import datetime
 from sqlalchemy import JSON, DateTime, ForeignKey, Index, String, Text, Uuid, event
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.models.base import Base, utcnow
+from app.models.base import Base, TenantScoped, tenant_unique, utcnow
 
 AUDIT_ACTION_TYPES = (
     "CREATE",
@@ -41,12 +41,14 @@ SENSITIVE_ACTION_TYPES = (
 CLIENT_DEVICES = ("web", "desktop", "api", "system")
 
 
-class AuditLog(Base):
+class AuditLog(TenantScoped, Base):
     """Append-only ledger. Rows are never updated or deleted (enforced here and by a Postgres trigger)."""
 
     __tablename__ = "audit_logs"
-    __table_args__ = (Index("ix_audit_logs_action_type_occurred_at", "action_type", "occurred_at"),)
-
+    __table_args__ = (
+        tenant_unique("client_event_id", name="uq_audit_logs_client_event_id"),
+        Index("ix_audit_logs_action_type_occurred_at", "action_type", "occurred_at"),
+    )
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid(as_uuid=True), ForeignKey("users.id"), nullable=True, index=True
@@ -73,7 +75,7 @@ class AuditLog(Base):
     user_name: Mapped[str | None] = mapped_column(String(128), nullable=True)
     user_role: Mapped[str | None] = mapped_column(String(64), nullable=True)
     # Desktop events carry their own id so offline batches can be re-sent safely.
-    client_event_id: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True), nullable=True, unique=True)
+    client_event_id: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True), nullable=True)
     occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
 

@@ -6,17 +6,19 @@ from datetime import datetime
 from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Integer, String, Uuid
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.models.base import Base, TimestampMixin
+from app.models.base import Base, TenantScoped, TimestampMixin, tenant_unique
 
 TRANSFER_STATUSES = ("requested", "in_transit", "received", "cancelled")
 
 
-class StockTransfer(TimestampMixin, Base):
+class StockTransfer(TenantScoped, TimestampMixin, Base):
     __tablename__ = "stock_transfers"
-    __table_args__ = (CheckConstraint("source_store_id <> destination_store_id", name="distinct_stores"),)
-
+    __table_args__ = (
+        tenant_unique("number", name="uq_stock_transfers_number"),
+        CheckConstraint("source_store_id <> destination_store_id", name="distinct_stores"),
+    )
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    number: Mapped[str] = mapped_column(String(32), unique=True)
+    number: Mapped[str] = mapped_column(String(32))
     source_store_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("stores.id"), index=True)
     destination_store_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("stores.id"), index=True)
     status: Mapped[str] = mapped_column(String(16), index=True, default="requested")
@@ -39,7 +41,7 @@ class StockTransfer(TimestampMixin, Base):
     )
 
 
-class StockTransferLine(Base):
+class StockTransferLine(TenantScoped, Base):
     __tablename__ = "stock_transfer_lines"
     __table_args__ = (CheckConstraint("quantity >= 1", name="quantity_positive"),)
 
@@ -54,7 +56,7 @@ class StockTransferLine(Base):
     quantity: Mapped[int] = mapped_column(Integer)
 
 
-class StockTransferSerial(Base):
+class StockTransferSerial(TenantScoped, Base):
     """IMEI/serial units assigned to a transfer line when it ships."""
 
     __tablename__ = "stock_transfer_serials"

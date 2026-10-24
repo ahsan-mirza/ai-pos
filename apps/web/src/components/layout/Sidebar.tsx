@@ -5,6 +5,7 @@ import { useTenant } from "../../context/TenantContext";
 import { useAuth, useIsSuperAdmin } from "../../lib/auth";
 import { useCapabilities } from "../../lib/capabilities";
 import { useCanManageSettings } from "../../lib/currency";
+import { AiMark } from "../ui/AiMark";
 import { labelOf, navGroups, settingsTabAllowed, settingsTabs, type NavGroup, type NavItem } from "./navigation";
 import { StoreSwitcher } from "./StoreSwitcher";
 
@@ -185,6 +186,7 @@ function SidebarNav({
                     {active ? (
                       <span aria-hidden="true" className="absolute inset-y-2 left-0 w-[3px] rounded-r-full bg-accent" />
                     ) : null}
+                    {item.ai ? <AiMark size={13} /> : null}
                     <item.icon
                       aria-hidden="true"
                       size={18}

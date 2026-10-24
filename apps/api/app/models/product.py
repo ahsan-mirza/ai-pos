@@ -18,9 +18,10 @@ from sqlalchemy import (
     Uuid,
     func,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.models.base import Base, TimestampMixin
+from app.models.base import Base, TenantScoped, TimestampMixin, tenant_unique
 
 if TYPE_CHECKING:
     from app.models.brand import ProductModel
@@ -63,11 +64,14 @@ def search_haystack(
     return func.lower(joined)
 
 
-class Product(TimestampMixin, Base):
+class Product(TenantScoped, TimestampMixin, Base):
     """Global catalog entry. Per-branch stock lives in inventory_levels; price_cents is the RETAIL price."""
 
     __tablename__ = "products"
     __table_args__ = (
+        tenant_unique("sku", name="uq_products_sku"),
+        tenant_unique("barcode", name="uq_products_barcode"),
+        tenant_unique("plu_code", name="uq_products_plu_code"),
         CheckConstraint("price_cents >= 0", name="price_nonnegative"),
         CheckConstraint("min_order_quantity >= 1", name="moq_positive"),
         CheckConstraint("tare_grams >= 0", name="tare_nonnegative"),
@@ -83,11 +87,12 @@ class Product(TimestampMixin, Base):
             postgresql_using="gin",
             postgresql_ops={"search_text": "gin_trgm_ops"},
         ).ddl_if(dialect="postgresql"),
+        Index("ix_products_specifications", "specifications", postgresql_using="gin").ddl_if(dialect="postgresql"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    sku: Mapped[str] = mapped_column(String(64), unique=True)
-    barcode: Mapped[str] = mapped_column(String(64), unique=True)
+    sku: Mapped[str] = mapped_column(String(64))
+    barcode: Mapped[str] = mapped_column(String(64))
     name: Mapped[str] = mapped_column(String(200))
     model_number: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
     brand: Mapped[str | None] = mapped_column(String(80), nullable=True, index=True)
@@ -143,6 +148,8 @@ class Product(TimestampMixin, Base):
         index=True,
     )
     variant_attributes: Mapped[dict[str, str]] = mapped_column(JSON, default=dict)
+    # Technical details that follow the category (processor, capacity, fabric). JSON on SQLite tests, JSONB in Postgres.
+    specifications: Mapped[dict[str, str]] = mapped_column(JSON().with_variant(JSONB(), "postgresql"), default=dict)
     price_cents: Mapped[int] = mapped_column(Integer)
     # The price before the active markdown; null when the product is not marked down.
     compare_at_cents: Mapped[int | None] = mapped_column(Integer, nullable=True)
@@ -169,7 +176,7 @@ class Product(TimestampMixin, Base):
     # Weighed goods: stock and sale quantities count grams and price_cents is the price per kilogram.
     sold_by_weight: Mapped[bool] = mapped_column(Boolean, default=False)
     # Price-look-up code a scale prints into its EAN-13 labels (4-6 digits).
-    plu_code: Mapped[str | None] = mapped_column(String(6), nullable=True, unique=True)
+    plu_code: Mapped[str | None] = mapped_column(String(6), nullable=True)
     tare_grams: Mapped[int] = mapped_column(Integer, default=0)
     # Practice item loaded at signup; Go live deletes it.
     is_sample: Mapped[bool] = mapped_column(Boolean, default=False)

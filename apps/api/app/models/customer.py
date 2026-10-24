@@ -6,7 +6,7 @@ from datetime import date, datetime
 from sqlalchemy import JSON, Boolean, CheckConstraint, Date, DateTime, ForeignKey, Index, Integer, String, Uuid
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.models.base import Base, TimestampMixin, utcnow
+from app.models.base import Base, TenantScoped, TimestampMixin, tenant_unique, utcnow
 
 CUSTOMER_TYPES = ("RETAIL", "WHOLESALE")
 PRICE_TIERS = ("RETAIL", "TIER_1", "TIER_2", "DISTRIBUTOR")
@@ -15,14 +15,16 @@ TERM_DAYS = {"DUE_ON_RECEIPT": 0, "NET_15": 15, "NET_30": 30, "NET_60": 60}
 LEDGER_ENTRY_TYPES = ("INVOICE", "PAYMENT", "ADJUSTMENT")
 
 
-class Customer(TimestampMixin, Base):
+class Customer(TenantScoped, TimestampMixin, Base):
     """B2B or walk-in account. Only services.ledger_service writes current_balance_cents."""
 
     __tablename__ = "customers"
-    __table_args__ = (CheckConstraint("credit_limit_cents >= 0", name="credit_limit_nonnegative"),)
-
+    __table_args__ = (
+        tenant_unique("code", name="uq_customers_code"),
+        CheckConstraint("credit_limit_cents >= 0", name="credit_limit_nonnegative"),
+    )
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    code: Mapped[str] = mapped_column(String(32), unique=True)
+    code: Mapped[str] = mapped_column(String(32))
     name: Mapped[str] = mapped_column(String(120), index=True)
     phone: Mapped[str | None] = mapped_column(String(40), nullable=True, index=True)
     email: Mapped[str | None] = mapped_column(String(254), nullable=True)
@@ -72,7 +74,7 @@ class Customer(TimestampMixin, Base):
         return self.credit_limit_cents - self.current_balance_cents
 
 
-class CustomerLedgerEntry(Base):
+class CustomerLedgerEntry(TenantScoped, Base):
     """Append-only statement of account. amount_cents is signed: invoices raise the balance, payments lower it."""
 
     __tablename__ = "customer_ledger_entries"

@@ -8,6 +8,7 @@ import {
   ChartColumn,
   Boxes,
   ChefHat,
+  ClipboardList,
   Clock,
   CreditCard,
   FileSpreadsheet,
@@ -65,6 +66,8 @@ export interface NavItem {
   /** Opens the first Store settings tab this user is allowed to see. */
   hub?: boolean;
   isActive: (pathname: string) => boolean;
+  /** Shows the AI mark in front of the label. */
+  ai?: boolean;
 }
 
 /** Pages that live under Store settings. Users and Staff & payroll stay in the sidebar. */
@@ -147,6 +150,7 @@ const inventoryOwn = (pathname: string) =>
     "/inventory/size-curve",
     "/inventory/floor-plan",
     "/inventory/kitchen",
+    "/inventory/kitchen-agent",
     "/inventory/recipes",
     "/inventory/recipe-usage",
   )(pathname);
@@ -158,7 +162,7 @@ export const navGroups: NavGroup[] = [
     items: [
       { to: "/", label: "Dashboard", icon: LayoutDashboard, permission: Permission.PortalReportsRead, isActive: (path) => path === "/" },
       { to: "/assistant", label: "AI assistant", icon: Sparkles, permission: Permission.PortalReportsRead, isActive: under("/assistant") },
-      { to: "/insights", label: "AI insights", icon: Radar, permission: Permission.PortalReportsRead, isActive: under("/insights") },
+      { to: "/insights", label: "AI insights", icon: Radar, ai: true, permission: Permission.PortalReportsRead, isActive: under("/insights") },
       { to: "/m", label: "Manager app", icon: Smartphone, permission: Permission.PortalReportsRead, isActive: under("/m") },
       {
         to: "/inventory",
@@ -348,7 +352,17 @@ export const navGroups: NavGroup[] = [
         permission: Permission.PortalAccess,
         capability: Capability.Kds,
         profiles: FNB_PROFILES,
-        isActive: under("/inventory/kitchen"),
+        isActive: (pathname) => pathname === "/inventory/kitchen" || pathname.startsWith("/inventory/kitchen/"),
+      },
+      {
+        to: "/inventory/kitchen-agent",
+        label: "Kitchen agent",
+        icon: ClipboardList,
+        ai: true,
+        permission: Permission.PortalAccess,
+        capability: Capability.Recipes,
+        profiles: FNB_PROFILES,
+        isActive: under("/inventory/kitchen-agent"),
       },
       {
         to: "/inventory/recipes",
@@ -434,11 +448,13 @@ const inventoryPages: Record<string, string> = {
   pricing: "Pricing",
   categories: "Categories",
   brands: "Brands",
+  models: "Models",
   batches: "Purchase Batches",
   markdowns: "Markdowns",
   "size-curve": "Size & color matrix",
   "floor-plan": "Floor plan & tables",
   kitchen: "Kitchen display",
+  "kitchen-agent": "Kitchen agent",
   recipes: "Recipes & ingredients",
   "recipe-usage": "Ingredient usage",
   expiring: "Expiring stock",

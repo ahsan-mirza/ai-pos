@@ -6,18 +6,21 @@ from datetime import date, datetime
 from sqlalchemy import Boolean, CheckConstraint, Date, DateTime, ForeignKey, Integer, String, Uuid
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.models.base import Base, TimestampMixin, utcnow
+from app.models.base import Base, TenantScoped, TimestampMixin, tenant_unique, utcnow
 
 ACCOUNT_TYPES = ("ASSET", "LIABILITY", "EQUITY", "INCOME", "EXPENSE")
 
 
-class GlAccount(TimestampMixin, Base):
+class GlAccount(TenantScoped, TimestampMixin, Base):
     """A general-ledger account. System accounts are the ones the posting engine maps documents to."""
 
     __tablename__ = "gl_accounts"
+    __table_args__ = (
+        tenant_unique("code", name="uq_gl_accounts_code"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    code: Mapped[str] = mapped_column(String(16), unique=True)
+    code: Mapped[str] = mapped_column(String(16))
     name: Mapped[str] = mapped_column(String(120))
     # ASSET, LIABILITY, EQUITY, INCOME, EXPENSE
     type: Mapped[str] = mapped_column(String(10), index=True)
@@ -25,7 +28,7 @@ class GlAccount(TimestampMixin, Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
 
-class JournalEntry(Base):
+class JournalEntry(TenantScoped, Base):
     """A balanced journal entry. Entries are never edited: a change is a reversal plus a new entry.
 
     Automatic entries carry source_ref (the document, e.g. "sale:<id>") and a fingerprint of their lines; only one
@@ -33,9 +36,12 @@ class JournalEntry(Base):
     for it and the entry had to post into the first open day."""
 
     __tablename__ = "journal_entries"
+    __table_args__ = (
+        tenant_unique("number", name="uq_journal_entries_number"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    number: Mapped[int] = mapped_column(Integer, unique=True)
+    number: Mapped[int] = mapped_column(Integer)
     entry_date: Mapped[date] = mapped_column(Date, index=True)
     original_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     # SALES, COGS, RETURNS, RECEIPTS, STOCK, PURCHASES, PAYMENTS, EXPENSES, TRADEINS, PAYROLL, BANK, CHEQUES,
@@ -56,7 +62,7 @@ class JournalEntry(Base):
     )
 
 
-class JournalLine(Base):
+class JournalLine(TenantScoped, Base):
     __tablename__ = "journal_lines"
     __table_args__ = (
         CheckConstraint("debit_cents >= 0 AND credit_cents >= 0", name="journal_line_nonnegative"),

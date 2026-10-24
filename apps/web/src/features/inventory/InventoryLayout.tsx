@@ -1,11 +1,12 @@
 import { Capability, type BusinessProfile } from "@ai-pos/shared-types";
 import type { CSSProperties } from "react";
 import { NavLink, Outlet } from "react-router-dom";
+import { AiMark } from "../../components/ui/AiMark";
 import { useTenant } from "../../context/TenantContext";
 import { useCapabilities } from "../../lib/capabilities";
-import { ELECTRONICS_PROFILES, FNB_PROFILES, RETAIL_PROFILES } from "../../lib/industry";
+import { ELECTRONICS_PROFILES, FNB_PROFILES, MODEL_PROFILES, RETAIL_PROFILES } from "../../lib/industry";
 
-const tabs: { to: string; label: string; capability?: Capability; profiles?: readonly BusinessProfile[] }[] = [
+const tabs: { to: string; label: string; capability?: Capability; profiles?: readonly BusinessProfile[]; ai?: boolean }[] = [
   { to: "/inventory/stock", label: "Stock" },
   { to: "/inventory/products", label: "Products" },
   { to: "/inventory/pricing", label: "Pricing", capability: Capability.WholesalePricing },
@@ -13,6 +14,7 @@ const tabs: { to: string; label: string; capability?: Capability; profiles?: rea
   { to: "/inventory/price-changes", label: "Price changes" },
   { to: "/inventory/categories", label: "Categories" },
   { to: "/inventory/brands", label: "Brands" },
+  { to: "/inventory/models", label: "Models", profiles: MODEL_PROFILES },
   { to: "/inventory/units", label: "Units" },
   { to: "/inventory/batches", label: "Batches", profiles: RETAIL_PROFILES },
   { to: "/inventory/expiring", label: "Expiring", capability: Capability.Fefo },
@@ -20,6 +22,7 @@ const tabs: { to: string; label: string; capability?: Capability; profiles?: rea
   { to: "/inventory/meals", label: "Meals", capability: Capability.MenuModifiers, profiles: FNB_PROFILES },
   { to: "/inventory/floor-plan", label: "Floor plan", capability: Capability.Tables, profiles: FNB_PROFILES },
   { to: "/inventory/kitchen", label: "Kitchen stations", capability: Capability.Kds, profiles: FNB_PROFILES },
+  { to: "/inventory/kitchen-agent", label: "Kitchen agent", capability: Capability.Recipes, profiles: FNB_PROFILES, ai: true },
   { to: "/inventory/recipes", label: "Recipes", capability: Capability.Recipes, profiles: FNB_PROFILES },
   { to: "/inventory/recipe-usage", label: "Ingredient usage", capability: Capability.Recipes, profiles: FNB_PROFILES },
   { to: "/inventory/replenishment", label: "Replenishment" },
@@ -53,6 +56,7 @@ export function InventoryLayout() {
               }`
             }
           >
+            {tab.ai ? <AiMark size={13} className="mr-1.5 text-accent" /> : null}
             {tab.label}
           </NavLink>
         ))}

@@ -6,10 +6,10 @@ from datetime import datetime
 from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Integer, String, Uuid
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.models.base import Base
+from app.models.base import Base, TenantScoped
 
 
-class QuotePayment(Base):
+class QuotePayment(TenantScoped, Base):
     """A deposit taken against a layaway. Applied as a `deposit` tender when the layaway converts to a sale."""
 
     __tablename__ = "quote_payments"

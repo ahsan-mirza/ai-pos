@@ -15,6 +15,7 @@ import {
 import { Armchair, ChefHat, Radar, ShieldAlert, Sparkles, Tags, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
+import { AiMark } from "../../components/ui/AiMark";
 import { useConfirm } from "../../components/ui/ConfirmDialog";
 import { ErrorNote, PrimaryButton } from "../../components/ui/Field";
 import { apiGet, apiPatch } from "../../lib/api";
@@ -58,7 +59,9 @@ export function InsightsPage() {
             <Radar size={20} aria-hidden="true" />
           </span>
           <div>
-            <h2 className="text-2xl font-semibold">AI insights</h2>
+            <h2 className="flex items-center gap-2 text-2xl font-semibold">
+              <AiMark size={18} /> AI insights
+            </h2>
             <p className="text-sm text-charcoal/60">
               Signals worked out from your sales, refunds, audit trail, shifts and stock movements. Each one says why
               it fired, so you can check it before acting.
@@ -77,6 +80,7 @@ export function InsightsPage() {
                 tab === item.id ? "bg-charcoal text-white" : "bg-surface text-charcoal/70 hover:text-charcoal"
               }`}
             >
+              <AiMark size={13} className="text-current" />
               <item.icon size={15} aria-hidden="true" /> {item.label}
             </button>
           ))}
@@ -318,7 +322,10 @@ function PricingTab({ canApply }: { canApply: boolean }) {
                     <td className="py-3 pl-4 text-right">
                       {canApply ? (
                         <PrimaryButton disabled={busy !== null} onClick={() => void apply(row)}>
-                          {busy === key ? "Applying…" : "Apply"}
+                          <span className="inline-flex items-center gap-1.5">
+                            <AiMark size={14} className="text-white" />
+                            {busy === key ? "Applying…" : "Apply"}
+                          </span>
                         </PrimaryButton>
                       ) : null}
                     </td>

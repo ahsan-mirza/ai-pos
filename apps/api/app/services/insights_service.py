@@ -716,6 +716,22 @@ def _build_feed(db: Session, principal: Principal) -> InsightFeed:
                     to="/insights?tab=shrink",
                 )
             )
+    from app.core.capabilities import Capability, has_capability
+    from app.services import kitchen_agent_service
+
+    if has_capability(db, Capability.RECIPES) and principal.has(Permission.PORTAL_REPORTS_READ):
+        kitchen = kitchen_agent_service.brief(db, principal.store_id)
+        urgent = [card for card in kitchen.cards if card.severity == "high"][:3]
+        for card in urgent:
+            items.append(
+                InsightItem(
+                    kind="kitchen",
+                    severity="HIGH",
+                    title=card.title,
+                    body=card.body,
+                    to="/inventory/kitchen-agent",
+                )
+            )
     items.sort(key=lambda item: item.severity != "HIGH")
     return InsightFeed(items=items[:8])
 

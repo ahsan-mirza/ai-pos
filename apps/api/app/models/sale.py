@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 from sqlalchemy import Boolean, CheckConstraint, DateTime, ForeignKey, Integer, String, Uuid
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.models.base import Base, TimestampMixin
+from app.models.base import Base, TenantScoped, TimestampMixin, tenant_unique
 
 if TYPE_CHECKING:
     from app.models.sale_item import SaleItem
@@ -18,11 +18,13 @@ PAYMENT_STATUSES = ("PAID", "PARTIAL", "ON_ACCOUNT_UNPAID")
 QUOTE_STATUSES = ("OPEN", "CONVERTED", "EXPIRED", "CANCELLED")
 
 
-class Sale(TimestampMixin, Base):
+class Sale(TenantScoped, TimestampMixin, Base):
     """A completed sale, or a proforma quote (status "quote", is_quote_proforma) that only reserves stock."""
 
     __tablename__ = "sales"
     __table_args__ = (
+        tenant_unique("client_sale_id", name="uq_sales_client_sale_id"),
+        tenant_unique("invoice_number", name="uq_sales_invoice_number"),
         CheckConstraint("subtotal_cents >= 0", name="subtotal_nonnegative"),
         CheckConstraint("tax_cents >= 0", name="tax_nonnegative"),
         CheckConstraint("total_cents >= 0", name="total_nonnegative"),
@@ -44,9 +46,9 @@ class Sale(TimestampMixin, Base):
     subtotal_cents: Mapped[int] = mapped_column(Integer)
     tax_cents: Mapped[int] = mapped_column(Integer)
     total_cents: Mapped[int] = mapped_column(Integer)
-    client_sale_id: Mapped[str] = mapped_column(String(64), unique=True)
+    client_sale_id: Mapped[str] = mapped_column(String(64))
     # Tax invoice number for sales, quotation number for quotes; unique across the business.
-    invoice_number: Mapped[str | None] = mapped_column(String(40), unique=True, nullable=True)
+    invoice_number: Mapped[str | None] = mapped_column(String(40), nullable=True)
     device_id: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True), ForeignKey("devices.id"), nullable=True)
     # No foreign key: a register may sync a sale before the shift that rang it (e.g. a rejected open retried).
     shift_id: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True), nullable=True, index=True)

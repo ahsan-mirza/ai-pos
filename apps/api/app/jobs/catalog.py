@@ -2,6 +2,7 @@
 
 from sqlalchemy.orm import Session
 
+from app.core.capabilities import Capability, has_capability
 from app.core.config import Settings
 from app.jobs.runner import Job, register
 from app.services import (
@@ -13,6 +14,7 @@ from app.services import (
     gl_service,
     insights_service,
     integrated_payment_service,
+    kitchen_agent_service,
     loyalty_service,
     markdown_service,
     messaging_service,
@@ -67,6 +69,14 @@ def _gl_posting(db: Session, settings: Settings) -> str:
 
 def _batch_expiry(db: Session, settings: Settings) -> str:
     return expiry_service.run_alert(db)
+
+
+def _kitchen_brief(db: Session, settings: Settings) -> str:
+    if not has_capability(db, Capability.RECIPES):
+        return "recipes module is off"
+    found = kitchen_agent_service.brief(db, None)
+    urgent = sum(1 for card in found.cards if card.severity == "high")
+    return f"{len(found.cards)} kitchen cards, {urgent} urgent"
 
 
 def _anomaly_scan(db: Session, settings: Settings) -> str:
@@ -191,6 +201,14 @@ register(
         "Summarise expired and soon-to-expire batches (expiry-first stock)",
         _batch_expiry,
         {"trigger": "cron", "hour": 6, "minute": 0},
+    )
+)
+register(
+    Job(
+        "kitchen_agent",
+        "Check ingredient stock, recipes, and batch expiry for restaurant and cafe",
+        _kitchen_brief,
+        {"trigger": "cron", "hour": 6, "minute": 15},
     )
 )
 register(

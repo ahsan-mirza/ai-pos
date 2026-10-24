@@ -3,23 +3,24 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Integer, String, UniqueConstraint, Uuid
+from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Integer, String, Uuid
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.models.base import Base, TimestampMixin
+from app.models.base import Base, TenantScoped, TimestampMixin, tenant_unique
 
 CREDIT_KINDS = ("VOUCHER", "GIFT_CARD")
 
 
-class StoreCredit(TimestampMixin, Base):
+class StoreCredit(TenantScoped, TimestampMixin, Base):
     __tablename__ = "store_credits"
     __table_args__ = (
+        tenant_unique("code", name="uq_store_credits_code"),
         CheckConstraint("initial_cents >= 1", name="initial_positive"),
         CheckConstraint("balance_cents >= 0", name="balance_nonnegative"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    code: Mapped[str] = mapped_column(String(32), unique=True)
+    code: Mapped[str] = mapped_column(String(32))
     store_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("stores.id"), index=True)
     # Vouchers come from a refund (return_id) or a trade-in paid out as store credit (no return).
     return_id: Mapped[uuid.UUID | None] = mapped_column(
@@ -41,13 +42,13 @@ class StoreCredit(TimestampMixin, Base):
     note: Mapped[str] = mapped_column(String(255), default="")
 
 
-class StoreCreditRedemption(TimestampMixin, Base):
+class StoreCreditRedemption(TenantScoped, TimestampMixin, Base):
     """Append-only: each sale that spent part of a voucher. balance_cents = initial_cents - sum(amount_cents)."""
 
     __tablename__ = "store_credit_redemptions"
     __table_args__ = (
         CheckConstraint("amount_cents >= 1", name="amount_positive"),
-        UniqueConstraint("store_credit_id", "sale_id", name="uq_store_credit_redemption_sale"),
+        tenant_unique("store_credit_id", "sale_id", name="uq_store_credit_redemption_sale"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)

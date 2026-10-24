@@ -125,6 +125,26 @@ def variant_attributes(value: dict[str, str] | None) -> dict[str, str]:
     return cleaned
 
 
+MAX_SPECIFICATIONS = 16
+
+
+def specifications(value: dict[str, str] | None) -> dict[str, str]:
+    """Category technical details. Blank values are dropped. Keys stay short snake_case names."""
+    cleaned: dict[str, str] = {}
+    for key, raw in (value or {}).items():
+        name = key.strip().lower().replace(" ", "_")
+        if ATTRIBUTE_KEY.fullmatch(name) is None:
+            raise ValueError(f"Specification '{key}' must be 1-24 letters, digits, or underscores.")
+        text = " ".join(str(raw).split())
+        if len(text) > 80:
+            raise ValueError(f"Specification '{key}' must be at most 80 characters.")
+        if text:
+            cleaned[name] = text
+    if len(cleaned) > MAX_SPECIFICATIONS:
+        raise ValueError(f"Use at most {MAX_SPECIFICATIONS} specifications.")
+    return cleaned
+
+
 class BrandOut(ApiModel):
     id: UUID
     name: str
@@ -570,6 +590,7 @@ class ProductCreate(FashionAttributes):
     sub_category_id: UUID | None = None
     product_model_id: UUID | None = None
     variant_attributes: dict[str, str] = Field(default_factory=dict)
+    specifications: dict[str, str] = Field(default_factory=dict)
     price_cents: int = Field(ge=0)
     is_serialized: bool = False
     tax_category: TaxCategory = "STANDARD"
@@ -592,6 +613,11 @@ class ProductCreate(FashionAttributes):
     @classmethod
     def normalize_attributes(cls, value: dict[str, str]) -> dict[str, str]:
         return variant_attributes(value)
+
+    @field_validator("specifications")
+    @classmethod
+    def normalize_specifications(cls, value: dict[str, str]) -> dict[str, str]:
+        return specifications(value)
 
     @model_validator(mode="after")
     def opening_stock(self) -> Self:
@@ -618,6 +644,7 @@ class ProductUpdate(FashionAttributes):
     clear_sub_category: bool = False
     product_model_id: UUID | None = Field(default=None, description="Send null to detach the product from its model.")
     variant_attributes: dict[str, str] | None = None
+    specifications: dict[str, str] | None = None
     price_cents: int | None = Field(default=None, ge=0)
     tax_category: TaxCategory | None = None
     is_open_price: bool | None = None
@@ -633,6 +660,11 @@ class ProductUpdate(FashionAttributes):
     @classmethod
     def normalize_attributes(cls, value: dict[str, str] | None) -> dict[str, str] | None:
         return None if value is None else variant_attributes(value)
+
+    @field_validator("specifications")
+    @classmethod
+    def normalize_specifications(cls, value: dict[str, str] | None) -> dict[str, str] | None:
+        return None if value is None else specifications(value)
 
 
 class StoreUpdate(ApiModel):

@@ -1,5 +1,6 @@
+import type { GuestSuggestion } from "@ai-pos/shared-types";
 import { TableGridNode } from "@ai-pos/ui";
-import { Bell, Receipt } from "lucide-react";
+import { Bell, Receipt, Sparkles } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { ApiRequestError, apiPublicPost, apiTerminal } from "../../lib/api";
 import { emitTableEvent, listenForTableEvents, type TableEvent } from "./live";
@@ -77,6 +78,7 @@ interface MenuItem {
 
 interface OrderItem {
   id: string;
+  product_id: string;
   product_name: string;
   quantity: number;
   unit_price_cents: number;
@@ -89,6 +91,7 @@ interface OrderItem {
 
 interface OpenOrder {
   id: string;
+  customer_id: string | null;
   open_cents: number;
   revision: number;
   bill_requested_at: string | null;
@@ -252,6 +255,7 @@ function Service({ device, onForget }: { device: TableDevice; onForget: () => vo
   const [phone, setPhone] = useState("");
   const [course, setCourse] = useState<(typeof COURSES)[number]>("Mains");
   const [draft, setDraft] = useState<DraftLine[]>([]);
+  const [suggestions, setSuggestions] = useState<GuestSuggestion[]>([]);
   const [picking, setPicking] = useState<MenuItem | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -291,6 +295,32 @@ function Service({ device, onForget }: { device: TableDevice; onForget: () => vo
       .then((body) => setMenu(body.items))
       .catch((caught) => setError(errorText(caught, "Could not load the menu.")));
   }, [device.store_id, device.token, loadFloor]);
+
+  const onCheck = (session?.order?.items ?? [])
+    .filter((item) => item.voided_at === null)
+    .map((item) => item.product_id)
+    .sort()
+    .join(",");
+  useEffect(() => {
+    if (table === null) {
+      setSuggestions([]);
+      return;
+    }
+    const params = new URLSearchParams({ store_id: device.store_id });
+    if (session?.order?.customer_id) params.set("customer_id", session.order.customer_id);
+    for (const id of onCheck ? onCheck.split(",") : []) params.append("product_id", id);
+    let cancelled = false;
+    void apiTerminal<{ suggestions: GuestSuggestion[] }>("GET", `/api/v1/orders/suggestions?${params.toString()}`, device.token)
+      .then((body) => {
+        if (!cancelled) setSuggestions(body.suggestions);
+      })
+      .catch(() => {
+        if (!cancelled) setSuggestions([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [table, device.store_id, device.token, session?.order?.customer_id, onCheck]);
 
   const refreshSession = useCallback(
     async (tableId: string) => {
@@ -398,6 +428,34 @@ function Service({ device, onForget }: { device: TableDevice; onForget: () => vo
     } finally {
       setBusy(false);
     }
+  }
+
+  function offer(suggestion: GuestSuggestion) {
+    const item = menu.find((dish) => dish.id === suggestion.product_id) ?? {
+      id: suggestion.product_id,
+      name: suggestion.name,
+      course: "Mains" as const,
+      price_cents: suggestion.price_cents,
+      currency: suggestion.currency,
+      image_url: null,
+      groups: [],
+    };
+    const modifiers = suggestion.modifiers.map((choice) => ({
+      group_id: choice.group_id,
+      option_id: choice.option_id,
+      group: choice.group ?? "",
+      option: choice.option ?? "",
+      price_delta_cents: choice.price_delta_cents,
+    }));
+    if (modifiers.length > 0) {
+      addDish(item, modifiers);
+      return;
+    }
+    if (item.groups.some((group) => group.min_select > 0)) {
+      setPicking(item);
+      return;
+    }
+    addDish(item, []);
   }
 
   function addDish(item: MenuItem, modifiers: DraftLine["modifiers"]) {
@@ -687,6 +745,26 @@ function Service({ device, onForget }: { device: TableDevice; onForget: () => vo
             </button>
           </div>
         </header>
+        {suggestions.some((item) => !draft.some((line) => line.product_id === item.product_id)) ? (
+          <div className="flex gap-2 overflow-x-auto px-4 pb-3">
+            {suggestions
+              .filter((item) => !draft.some((line) => line.product_id === item.product_id))
+              .map((item) => (
+                <button
+                  key={`${item.kind}-${item.product_id}`}
+                  type="button"
+                  onClick={() => offer(item)}
+                  className="min-w-[11rem] max-w-[16rem] shrink-0 rounded-2xl bg-slate-800 px-3 py-2 text-left"
+                >
+                  <span className="flex items-center gap-1.5 truncate text-sm font-semibold">
+                    <Sparkles size={13} aria-hidden="true" className="shrink-0 text-orange-400" />
+                    <span className="truncate">{item.name}</span>
+                  </span>
+                  <span className="mt-0.5 block text-xs text-slate-400">{item.pitch}</span>
+                </button>
+              ))}
+          </div>
+        ) : null}
         <nav className="sticky top-0 z-10 flex gap-2 overflow-x-auto bg-slate-900/90 px-4 pb-3 backdrop-blur-md">
           {COURSES.map((name) => (
             <button

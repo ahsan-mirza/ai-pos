@@ -6,10 +6,10 @@ from datetime import date, datetime
 from sqlalchemy import CheckConstraint, Date, DateTime, ForeignKey, Integer, String, Uuid
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.models.base import Base, TimestampMixin
+from app.models.base import Base, TenantScoped, TimestampMixin
 
 
-class Cheque(TimestampMixin, Base):
+class Cheque(TenantScoped, TimestampMixin, Base):
     """A customer's cheque, usually post-dated (PDC), from a till tender or an account payment.
 
     The payment is booked when the cheque is received; a bounce or cancellation reverses it on the account."""
@@ -38,7 +38,7 @@ class Cheque(TimestampMixin, Base):
     bounce_fee_cents: Mapped[int] = mapped_column(Integer, default=0)
 
 
-class ChequeEvent(Base):
+class ChequeEvent(TenantScoped, Base):
     """Append-only status history of a cheque."""
 
     __tablename__ = "cheque_events"

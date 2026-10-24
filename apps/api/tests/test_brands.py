@@ -80,6 +80,7 @@ def test_brand_model_variant_hierarchy(client) -> None:
             "name": "iPhone 16 Pro 256GB Desert Titanium",
             "product_model_id": model_id,
             "variant_attributes": {"Storage": "256GB", "color": " Desert Titanium ", "ram": ""},
+            "specifications": {"storage": "256GB", "ram": "8GB", "battery": "5000mAh"},
             "price_cents": 469900,
             "is_serialized": True,
         },
@@ -92,6 +93,7 @@ def test_brand_model_variant_hierarchy(client) -> None:
     assert body["brand"] == "Apple"
     assert body["model_name"] == "iPhone 16 Pro"
     assert body["variant_attributes"] == {"storage": "256GB", "color": "Desert Titanium"}
+    assert body["specifications"] == {"storage": "256GB", "ram": "8GB", "battery": "5000mAh"}
 
     listed = client.get("/api/v1/products", headers=headers, params={"product_model_id": model_id}).json()
     assert [item["sku"] for item in listed] == ["APL-IP16P-256-DST"]

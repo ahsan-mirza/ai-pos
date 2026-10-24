@@ -1,6 +1,7 @@
 import { formatMoney, type KitchenReport, type TableReport, type UpsellReport } from "@ai-pos/shared-types";
 import { useCallback, useEffect, useState } from "react";
 import { ErrorNote } from "../../components/ui/Field";
+import { AiMark } from "../../components/ui/AiMark";
 import { apiGet } from "../../lib/api";
 import { errorMessage } from "../users/api";
 
@@ -217,7 +218,11 @@ export function UpsellTab() {
         <thead className="text-xs uppercase tracking-wide text-charcoal/50">
           <tr>
             <th className="pb-2 font-medium">When they order</th>
-            <th className="pb-2 font-medium">Suggest</th>
+            <th className="pb-2 font-medium">
+              <span className="inline-flex items-center gap-1">
+                <AiMark size={12} /> Suggest
+              </span>
+            </th>
             <th className="pb-2 text-right font-medium">Takes it</th>
             <th className="pb-2 text-right font-medium">Lift</th>
             <th className="pb-2 text-right font-medium">Orders together</th>

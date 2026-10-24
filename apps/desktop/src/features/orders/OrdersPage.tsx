@@ -40,6 +40,7 @@ import { verifyManager } from "../checkout/wholesaleClient";
 import { printKitchenTickets } from "./kitchenPrint";
 import { SplitChecksModal } from "./SplitChecksModal";
 import { IncomingDeliveries, KeyInDeliveryModal } from "./IncomingDeliveries";
+import { GuestSuggestions, suggestsForGuests } from "./GuestSuggestions";
 import { OrderRequestError, channelsApi, ordersApi, queueOfflineOrder } from "./ordersClient";
 import { listenForTableEvents } from "./tableSync";
 import { startSettlement } from "./settlement";
@@ -538,6 +539,34 @@ export function OrdersPage({ session }: { session: CashierSession }) {
                 </div>
               </div>
               <div className="shrink-0 space-y-2 border-t border-zinc-200 px-4 py-3 dark:border-white/10">
+                {suggestsForGuests(capabilities.profile) ? (
+                  <GuestSuggestions
+                    storeId={storeId}
+                    customerId={selected.customer_id}
+                    productIds={[
+                      ...selected.items.filter((item) => item.voided_at === null).map((item) => item.product_id),
+                      ...draft.map((line) => line.product.id),
+                    ]}
+                    disabled={busy}
+                    onAdd={(suggestion) => {
+                      const delta = suggestion.modifiers.reduce((sum, choice) => sum + choice.price_delta_cents, 0);
+                      void write(
+                        () =>
+                          ordersApi.addItems(selected, userId, [
+                            {
+                              id: crypto.randomUUID(),
+                              product_id: suggestion.product_id,
+                              quantity: 1,
+                              unit_price_cents: suggestion.price_cents + delta,
+                              modifiers: suggestion.modifiers,
+                              ...(seat !== null ? { seat } : {}),
+                            },
+                          ]),
+                        `${suggestion.name} added.`,
+                      );
+                    }}
+                  />
+                ) : null}
                 <p className="flex items-baseline justify-between text-sm">
                   <span className="font-semibold">Open to pay</span>
                   <span className="text-2xl font-bold tabular-nums text-primary">{formatMoney(selected.open_cents, currency)}</span>

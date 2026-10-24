@@ -5,10 +5,10 @@ from datetime import datetime
 from sqlalchemy import DateTime, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.models.base import Base
+from app.models.base import Base, TenantScoped
 
 
-class ScheduledJob(Base):
+class ScheduledJob(TenantScoped, Base):
     """One row per background job. The lease columns make a job run on only one API process at a time."""
 
     __tablename__ = "scheduled_jobs"

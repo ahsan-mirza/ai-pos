@@ -220,7 +220,7 @@ export interface UpsellReport {
 }
 
 export interface InsightItem {
-  kind: "anomaly" | "pricing" | "shrink";
+  kind: "anomaly" | "pricing" | "shrink" | "kitchen";
   severity: InsightSeverity;
   title: string;
   body: string;

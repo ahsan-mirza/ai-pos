@@ -6,10 +6,10 @@ from datetime import datetime
 from sqlalchemy import Boolean, CheckConstraint, DateTime, ForeignKey, Integer, String, Text, Uuid
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.models.base import Base, TimestampMixin
+from app.models.base import Base, TenantScoped, TimestampMixin, tenant_unique
 
 
-class WarrantyPolicy(TimestampMixin, Base):
+class WarrantyPolicy(TenantScoped, TimestampMixin, Base):
     """Standard (manufacturer or shop) cover for what is sold. Product beats category beats the default."""
 
     __tablename__ = "warranty_policies"
@@ -27,28 +27,33 @@ class WarrantyPolicy(TimestampMixin, Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
 
-class WarrantyPlan(TimestampMixin, Base):
+class WarrantyPlan(TenantScoped, TimestampMixin, Base):
     """Extended cover sold at the till. Ringing up its service product extends the devices on the same sale."""
 
     __tablename__ = "warranty_plans"
-    __table_args__ = (CheckConstraint("extra_months > 0 AND extra_months <= 60", name="plan_months_range"),)
-
+    __table_args__ = (
+        tenant_unique("product_id", name="uq_warranty_plans_product_id"),
+        CheckConstraint("extra_months > 0 AND extra_months <= 60", name="plan_months_range"),
+    )
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name: Mapped[str] = mapped_column(String(120))
     extra_months: Mapped[int] = mapped_column(Integer)
-    product_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("products.id"), unique=True)
+    product_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("products.id"))
     terms: Mapped[str] = mapped_column(Text, default="")
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
 
-class WarrantyRegistration(TimestampMixin, Base):
+class WarrantyRegistration(TenantScoped, TimestampMixin, Base):
     """Cover for one sold unit, created automatically for serialized sale lines."""
 
     __tablename__ = "warranty_registrations"
+    __table_args__ = (
+        tenant_unique("sale_item_id", name="uq_warranty_registrations_sale_item_id"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
     sale_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("sales.id"), index=True)
-    sale_item_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("sale_items.id"), unique=True)
+    sale_item_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("sale_items.id"))
     serial_number_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid(as_uuid=True), ForeignKey("serial_numbers.id"), nullable=True, index=True
     )

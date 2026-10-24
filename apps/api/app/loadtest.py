@@ -23,6 +23,7 @@ from app.models import Base
 from app.models.product import Product
 from app.services.catalog_service import list_products
 from app.services.product_search import search_products
+from app.tenancy.scoping import active_tenant_id, use_database_tenant
 
 PREFIX = "LT-"
 PAGE = 1000
@@ -36,6 +37,7 @@ SIZES = ("250 G", "500 G", "1 KG", "1 L", "2 L", "6 PACK")
 
 def seed(db: Session, count: int, currency: str) -> None:
     rng = random.Random(20261021)
+    tenant_id = active_tenant_id()
     rows = []
     for index in range(count):
         word, other = rng.choice(WORDS), rng.choice(WORDS)
@@ -53,6 +55,7 @@ def seed(db: Session, count: int, currency: str) -> None:
                 "currency": currency,
                 "variant_attributes": {},
                 "sellable_units": ["PIECE"],
+                "tenant_id": tenant_id,
             }
         )
         if len(rows) == 5_000:
@@ -94,7 +97,7 @@ def run(database_url: str, count: int, currency: str, fresh_schema: bool) -> Non
     if fresh_schema:
         Base.metadata.create_all(engine)
     factory = sessionmaker(bind=engine, expire_on_commit=False)
-    with factory() as db:
+    with use_database_tenant(database_url), factory() as db:
         existing = db.scalar(select(func.count()).select_from(Product).where(Product.sku.startswith(PREFIX))) or 0
         if existing:
             raise SystemExit(f"{existing} {PREFIX} products already exist; delete them first.")

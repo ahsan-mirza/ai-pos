@@ -6,21 +6,23 @@ from typing import Any
 from sqlalchemy import JSON, CheckConstraint, ForeignKey, Integer, String, Text, Uuid
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.models.base import Base, TimestampMixin
+from app.models.base import Base, TenantScoped, TimestampMixin, tenant_unique
 
 TRADE_IN_GRADES = ("A", "B", "C", "D")
 TRADE_IN_PAYOUTS = ("CASH", "STORE_CREDIT", "SALE_CREDIT")
 
 
-class TradeIn(TimestampMixin, Base):
+class TradeIn(TenantScoped, TimestampMixin, Base):
     """A used device bought from a customer. The unit enters stock under a pre-owned SKU for its model and grade,
     costed at the price paid. SALE_CREDIT trade-ins wait (ACCEPTED) until a sale spends them (APPLIED)."""
 
     __tablename__ = "trade_ins"
-    __table_args__ = (CheckConstraint("offer_cents >= 0", name="trade_in_offer_nonnegative"),)
-
+    __table_args__ = (
+        tenant_unique("number", name="uq_trade_ins_number"),
+        CheckConstraint("offer_cents >= 0", name="trade_in_offer_nonnegative"),
+    )
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    number: Mapped[str] = mapped_column(String(40), unique=True)
+    number: Mapped[str] = mapped_column(String(40))
     store_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("stores.id"), index=True)
     # The catalog model the customer brought in, and the pre-owned SKU the unit is stocked under.
     product_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("products.id"))

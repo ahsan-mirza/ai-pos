@@ -9,6 +9,7 @@ from app.core.database import get_db
 from app.core.deps import Principal, authorize
 from app.core.permissions import Permission
 from app.schemas.orders import (
+    GuestSuggestionsOut,
     ItemVoid,
     OrderAction,
     OrderCreate,
@@ -18,7 +19,7 @@ from app.schemas.orders import (
     OrderOut,
     OrderUpdate,
 )
-from app.services import order_service
+from app.services import guest_suggestion_service, order_service
 
 router = APIRouter()
 Db = Annotated[Session, Depends(get_db)]
@@ -35,6 +36,24 @@ def list_orders(
     since: Annotated[datetime | None, Query()] = None,
 ) -> list[OrderOut]:
     return order_service.list_orders(db, principal, store_id=store_id, status=status, since=since)
+
+
+@router.get("/suggestions", response_model=GuestSuggestionsOut)
+def suggestions(
+    db: Db,
+    principal: CanOrder,
+    store_id: uuid.UUID,
+    customer_id: uuid.UUID | None = None,
+    product_id: Annotated[list[uuid.UUID] | None, Query(max_length=50)] = None,
+) -> GuestSuggestionsOut:
+    """Up to three dishes for this guest. Restaurant and cafe only; the caller still adds and sends the line."""
+    return guest_suggestion_service.suggestions(
+        db,
+        principal,
+        store_id=store_id,
+        customer_id=customer_id,
+        product_ids=product_id or [],
+    )
 
 
 @router.post("", response_model=OrderOut, status_code=201)

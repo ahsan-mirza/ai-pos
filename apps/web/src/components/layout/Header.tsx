@@ -8,6 +8,7 @@ import { useCanManageSettings, useCurrency } from "../../lib/currency";
 import { useCapabilities } from "../../lib/capabilities";
 import { useTenant } from "../../context/TenantContext";
 import { industryAllows } from "../../lib/industry";
+import { AiMark, isAiFeature } from "../ui/AiMark";
 import { crumbsFor, settingsLabel } from "./navigation";
 import { StoreSwitcher } from "./StoreSwitcher";
 
@@ -196,8 +197,9 @@ export function Header({
                 ) : null}
                 <li className={`min-w-0 ${last ? "" : "hidden sm:block"}`}>
                   {last ? (
-                    <span aria-current="page" className="block truncate font-semibold text-charcoal">
-                      {crumb.label}
+                    <span aria-current="page" className="flex min-w-0 items-center gap-1.5 truncate font-semibold text-charcoal">
+                      {isAiFeature(crumb.label) ? <AiMark size={13} /> : null}
+                      <span className="truncate">{crumb.label}</span>
                     </span>
                   ) : crumb.to ? (
                     <Link to={crumb.to} className="block truncate text-charcoal/50 transition-colors hover:text-charcoal">

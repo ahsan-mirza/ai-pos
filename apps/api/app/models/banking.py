@@ -3,13 +3,13 @@ from __future__ import annotations
 import uuid
 from datetime import date
 
-from sqlalchemy import Boolean, Date, ForeignKey, Integer, String, UniqueConstraint, Uuid
+from sqlalchemy import Boolean, Date, ForeignKey, Integer, String, Uuid
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.models.base import Base, TimestampMixin
+from app.models.base import Base, TenantScoped, TimestampMixin, tenant_unique
 
 
-class BankAccount(TimestampMixin, Base):
+class BankAccount(TenantScoped, TimestampMixin, Base):
     __tablename__ = "bank_accounts"
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -20,7 +20,7 @@ class BankAccount(TimestampMixin, Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
 
-class BankStatement(TimestampMixin, Base):
+class BankStatement(TenantScoped, TimestampMixin, Base):
     """One imported statement file."""
 
     __tablename__ = "bank_statements"
@@ -37,15 +37,15 @@ class BankStatement(TimestampMixin, Base):
     imported_by_id: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True), ForeignKey("users.id"), nullable=True)
 
 
-class BankStatementLine(TimestampMixin, Base):
+class BankStatementLine(TenantScoped, TimestampMixin, Base):
     """A bank statement line. amount_cents is signed: money into the account is positive. A matched line points at
     one book record by key (e.g. "card:<store>:<date>", "supplier_payment:<id>"); fee_cents is a card-terminal fee
     the bank kept, booked as a bank-fee expense when the line was matched."""
 
     __tablename__ = "bank_statement_lines"
     __table_args__ = (
-        UniqueConstraint("account_id", "line_hash", name="uq_bank_statement_lines_hash"),
-        UniqueConstraint("account_id", "matched_key", name="uq_bank_statement_lines_matched"),
+        tenant_unique("account_id", "line_hash", name="uq_bank_statement_lines_hash"),
+        tenant_unique("account_id", "matched_key", name="uq_bank_statement_lines_matched"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)

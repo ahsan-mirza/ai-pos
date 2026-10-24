@@ -16,10 +16,10 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.models.base import Base, TimestampMixin, utcnow
+from app.models.base import Base, TenantScoped, TimestampMixin, utcnow
 
 
-class DemandDaily(Base):
+class DemandDaily(TenantScoped, Base):
     """Net units sold per product, branch, and day (sales minus returns). Rebuilt nightly for recent days."""
 
     __tablename__ = "demand_daily"
@@ -31,7 +31,7 @@ class DemandDaily(Base):
     units: Mapped[int] = mapped_column(Integer, default=0)
 
 
-class SeasonalEvent(TimestampMixin, Base):
+class SeasonalEvent(TenantScoped, TimestampMixin, Base):
     """A known demand swing (Ramadan, Eid, back to school, DSF). Multiplies forecast demand on its days."""
 
     __tablename__ = "seasonal_events"
@@ -49,7 +49,7 @@ class SeasonalEvent(TimestampMixin, Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
 
-class ReplenishmentRun(Base):
+class ReplenishmentRun(TenantScoped, Base):
     __tablename__ = "replenishment_runs"
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -59,7 +59,7 @@ class ReplenishmentRun(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
 
 
-class ReplenishmentSuggestion(Base):
+class ReplenishmentSuggestion(TenantScoped, Base):
     __tablename__ = "replenishment_suggestions"
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)

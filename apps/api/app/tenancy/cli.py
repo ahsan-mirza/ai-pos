@@ -13,6 +13,7 @@ python -m app.tenancy.cli demo                                  # one demo store
 """
 
 import argparse
+import os
 import sys
 from pathlib import Path
 
@@ -45,16 +46,28 @@ def upgrade_control(settings: Settings) -> None:
     command.upgrade(_alembic("alembic_control", "alembic_control.ini", settings.control_database_url), "head")
 
 
-def upgrade_tenant(url: str) -> None:
-    command.upgrade(_alembic("alembic", "alembic.ini", url), "head")
+def upgrade_tenant(url: str, tenant_id: str | None = None) -> None:
+    previous = os.environ.get("ALEMBIC_TENANT_ID")
+    if tenant_id:
+        os.environ["ALEMBIC_TENANT_ID"] = str(tenant_id)
+    else:
+        os.environ.pop("ALEMBIC_TENANT_ID", None)
+    try:
+        command.upgrade(_alembic("alembic", "alembic.ini", url), "head")
+    finally:
+        if previous is None:
+            os.environ.pop("ALEMBIC_TENANT_ID", None)
+        else:
+            os.environ["ALEMBIC_TENANT_ID"] = previous
 
 
 def _seed_admin(url: str, settings: Settings) -> str:
     from app.seed import admin_spec
+    from app.tenancy.scoping import use_database_tenant
 
     spec = admin_spec(settings)
     factory = sessionmaker(bind=build_engine(url), expire_on_commit=False)
-    with factory() as session:
+    with use_database_tenant(url), factory() as session:
         ensure_system_roles(session)
         admin, created = ensure_super_admin(
             session,
@@ -71,9 +84,10 @@ def _seed_admin(url: str, settings: Settings) -> str:
 
 def _set_profile(url: str, profile: str) -> None:
     from app.services.settings_service import provision_profile
+    from app.tenancy.scoping import use_database_tenant
 
     factory = sessionmaker(bind=build_engine(url), expire_on_commit=False)
-    with factory() as session:
+    with use_database_tenant(url), factory() as session:
         provision_profile(session, profile)
 
 
@@ -123,8 +137,12 @@ def create(args: argparse.Namespace, settings: Settings) -> None:
 def adopt(args: argparse.Namespace, settings: Settings) -> None:
     slug = _check_slug(args.slug)
     url = args.url or registry.tenant_database_url(args.database, settings)
-    upgrade_tenant(url)
+    # The id has to exist before the migration stamps existing rows.
     _register(slug, args.name, url, settings)
+    found = registry.lookup(slug, settings)
+    if found.tenant is None:
+        sys.exit(f"Tenant '{slug}' was not registered.")
+    upgrade_tenant(url, found.tenant.id)
     print(f"Adopted {make_url(url).database} as tenant '{slug}' ({registry.tenant_public_url(slug, settings)}).")
 
 
@@ -136,7 +154,7 @@ def migrate_all(_: argparse.Namespace, settings: Settings) -> None:
         if tenant is None:
             continue
         print(f"Migrating {slug}...")
-        upgrade_tenant(tenant.database_url)
+        upgrade_tenant(tenant.database_url, tenant.id)
     print(f"{len(targets)} tenant database(s) at head.")
 
 

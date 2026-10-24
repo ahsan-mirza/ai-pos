@@ -1,11 +1,13 @@
 import {
+  allSpecKeys,
   Capability,
   GENDER_LABELS,
   ItemType,
   Permission,
-  VARIANT_ATTRIBUTE_KEYS,
-  variantAttributeLabel,
+  specSchemaFor,
+  titleFromSpecs,
   type Gender,
+  type SpecSchema,
   type ItemType as ItemTypeId,
   type Product,
   type ProductImage,
@@ -14,7 +16,7 @@ import {
 } from "@ai-pos/shared-types";
 import { Zap } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { ErrorNote, GhostButton, PrimaryButton, SelectField, TextField } from "../../components/ui/Field";
+import { ErrorNote, GhostButton, SelectField, TextField } from "../../components/ui/Field";
 import { Modal } from "../../components/ui/Modal";
 import { Toggle } from "../../components/ui/Toggle";
 import { apiDelete, apiGet, apiPatch, apiUpload } from "../../lib/api";
@@ -25,6 +27,7 @@ import { useCapabilities } from "../../lib/capabilities";
 import { useTenant } from "../../context/TenantContext";
 import { brandsApi, categoriesApi, inventoryApi, message, modelsApi } from "./api";
 import { barcodeError, randomCode128, randomEan13, skuFromParts } from "./barcodeDraft";
+import { SpecFields } from "./SpecFields";
 import { fieldErrors, useInvalidFocus, type FieldErrors } from "./formErrors";
 import { BarcodePrintFlow } from "./BarcodePrintFlow";
 import { ProductImageDropzone, type ProductPhotoChoice } from "./ProductImageDropzone";
@@ -46,7 +49,25 @@ export interface ProductPreset {
   serialized?: boolean;
 }
 
-const PRIMARY_ATTRIBUTES: readonly string[] = VARIANT_ATTRIBUTE_KEYS;
+function specsToSave(schema: SpecSchema, specs: Record<string, string>): Record<string, string> {
+  const source =
+    schema.id === "OTHER"
+      ? specs
+      : Object.fromEntries(schema.fields.map((field) => [field.key, specs[field.key] ?? ""]));
+  return Object.fromEntries(
+    Object.entries(source)
+      .map(([key, value]) => [key, value.trim()] as const)
+      .filter((entry) => entry[1] !== ""),
+  );
+}
+
+function initialSpecs(product: Product | null): Record<string, string> {
+  const specs = { ...(product?.specifications ?? {}) };
+  for (const [key, value] of Object.entries(product?.variant_attributes ?? {})) {
+    if (value && specs[key] === undefined) specs[key] = value;
+  }
+  return specs;
+}
 
 export function ProductFormModal({
   product,
@@ -80,8 +101,8 @@ export function ProductFormModal({
   const [subCategoryId, setSubCategoryId] = useState(product?.sub_category_id ?? preset?.subCategoryId ?? "");
   const [brandId, setBrandId] = useState(product?.brand_id ?? preset?.brandId ?? "");
   const [modelId, setModelId] = useState(product?.product_model_id ?? preset?.modelId ?? "");
-  const [attributes, setAttributes] = useState<Record<string, string>>(product?.variant_attributes ?? {});
-  const sku = editing || skuManual ? skuTyped : skuFromParts(skuPrefix, name, attributes);
+  const [specs, setSpecs] = useState<Record<string, string>>(() => initialSpecs(product));
+  const sku = editing || skuManual ? skuTyped : skuFromParts(skuPrefix, name, specs);
   const [price, setPrice] = useState(product ? (product.price_cents / 100).toFixed(2) : "");
   const [serialized, setSerialized] = useState(product?.is_serialized ?? preset?.serialized ?? false);
   const [taxCategory, setTaxCategory] = useState<TaxCategory>(product?.tax_category ?? "STANDARD");
@@ -119,8 +140,9 @@ export function ProductFormModal({
   const { brands, reload: reloadBrands } = useBrands();
   const { models, reload: reloadModels } = useModels(subCategoryId || null, brandId || null);
   const category = categories.find((item) => item.id === categoryId);
+  const subCategory = category?.sub_categories.find((item) => item.id === subCategoryId);
+  const schema = specSchemaFor(category?.name ?? product?.category ?? "", subCategory?.name ?? product?.sub_category ?? "");
   const model = models.find((item) => item.id === modelId);
-  const attributeKeys = [...PRIMARY_ATTRIBUTES, ...Object.keys(attributes).filter((key) => !PRIMARY_ATTRIBUTES.includes(key))];
 
   useEffect(() => {
     if (!nameTouched && model && name === "") setName(model.name);
@@ -223,10 +245,26 @@ export function ProductFormModal({
     setName([modelName, ...Object.values(next).filter(Boolean)].join(" "));
   };
 
-  const setAttribute = (key: string, value: string) => {
-    const next = { ...attributes, [key]: value };
-    setAttributes(next);
+  const setSpec = (next: Record<string, string>) => {
+    setSpecs(next);
     suggestName(model?.name, next);
+  };
+
+  const generateFromSpecs = () => {
+    const title = titleFromSpecs({
+      brand: brands.find((item) => item.id === brandId)?.name ?? "",
+      model: model?.name ?? "",
+      schema,
+      specs,
+    });
+    if (title !== "") {
+      setName(title);
+      setNameTouched(true);
+    }
+    if (!editing) {
+      setSkuManual(true);
+      setSkuTyped(skuFromParts(skuPrefix, title || name, {}));
+    }
   };
 
   const rejectCreate = (caught: unknown, field: string, fallback: string) => {
@@ -287,7 +325,7 @@ export function ProductFormModal({
       });
       await reloadModels();
       setModelId(created.id);
-      suggestName(created.name, attributes);
+      suggestName(created.name, specs);
       clearServer("model");
     } catch (caught) {
       rejectCreate(caught, "model", "Could not add the model.");
@@ -329,16 +367,21 @@ export function ProductFormModal({
       focusInvalid();
       return;
     }
-    const variant_attributes = Object.fromEntries(
-      Object.entries(attributes)
-        .map(([key, value]) => [key, value.trim()])
-        .filter(([, value]) => value !== ""),
+    const specifications = specsToSave(schema, specs);
+    const specKeys = allSpecKeys();
+    const kept = Object.fromEntries(
+      Object.entries(product?.variant_attributes ?? {}).filter(([key]) => !specKeys.has(key) && key.trim() !== ""),
     );
+    const variant_attributes = {
+      ...kept,
+      ...Object.fromEntries(schema.variantKeys.map((key) => [key, (specs[key] ?? "").trim()]).filter(([, value]) => value !== "")),
+    };
     const classification = {
       category_id: categoryId || null,
       brand_id: brandId || null,
       product_model_id: modelId || null,
       variant_attributes,
+      specifications,
     };
     const weighed = weighing
       ? { sold_by_weight: byWeight, plu_code: byWeight && plu.trim() ? plu.trim() : null, tare_grams: byWeight ? Number(tare) || 0 : 0 }
@@ -451,19 +494,48 @@ export function ProductFormModal({
         editing ? `${product.sku} · ${product.barcode}` : "Products are shared by every branch; stock is per branch."
       }
       onClose={onClose}
-      width="lg"
+      width="xl"
+      backdropClassName="bg-[#1A191D]/60 backdrop-blur-md"
+      headerExtra={
+        <div className="flex flex-wrap gap-2 pt-3">
+          {[
+            ["product-section-catalog", "Catalog"],
+            ["product-section-specs", "Specifications"],
+            ["product-section-product", "Product"],
+            ["product-section-stock", "Stock"],
+          ].map(([id, label]) => (
+            <button
+              key={id}
+              type="button"
+              onClick={() => {
+                if (id) document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
+              }}
+              className="rounded-full bg-gray-50 px-3 py-1 text-xs font-semibold text-charcoal/70 hover:bg-gray-100 dark:bg-[#2D2A32] dark:text-white/70"
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      }
       footer={
         <>
           <GhostButton onClick={onClose}>Cancel</GhostButton>
-          <PrimaryButton disabled={busy} onClick={() => void save()}>
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => void save()}
+            className="inline-flex items-center justify-center rounded-xl bg-[#FD3706] px-6 py-2.5 text-sm font-bold text-white shadow-lg shadow-[#FD3706]/20 transition-colors hover:bg-[#e02e00] disabled:opacity-40"
+          >
             {busy ? "Saving…" : editing ? "Save changes" : "Create product"}
-          </PrimaryButton>
+          </button>
         </>
       }
     >
       <div ref={formRef}>
       <ProductImageDropzone currentUrl={product?.thumb_url ?? product?.image_url ?? null} onChange={setPhoto} />
-      <h3 className="mb-3 text-sm font-semibold">Catalog placement</h3>
+      <h3 id="product-section-catalog" className="mb-3 scroll-mt-4 text-sm font-semibold">
+        Catalog placement
+      </h3>
       <div className="grid gap-4 md:grid-cols-2">
         <SelectField
           label="Category"
@@ -476,6 +548,7 @@ export function ProductFormModal({
             setCategoryId(next);
             setSubCategoryId("");
             setModelId("");
+            setSpecs({});
             touch("category");
             clearServer("category");
           }}
@@ -493,6 +566,7 @@ export function ProductFormModal({
           onChange={(next) => {
             setSubCategoryId(next);
             setModelId("");
+            setSpecs({});
             clearServer("sub");
           }}
         />
@@ -528,28 +602,33 @@ export function ProductFormModal({
           createMinLength={1}
           onChange={(next) => {
             setModelId(next);
-            suggestName(models.find((item) => item.id === next)?.name, attributes);
+            suggestName(models.find((item) => item.id === next)?.name, specs);
             clearServer("model");
           }}
         />
       </div>
 
-      <h3 className="mb-3 mt-6 text-sm font-semibold">
-        Variant (sub-model){model ? <span className="font-normal text-charcoal/50"> of {model.name}</span> : null}
-      </h3>
-      <div className="grid gap-4 md:grid-cols-3">
-        {attributeKeys.map((key) => (
-          <TextField
-            key={key}
-            label={variantAttributeLabel(key)}
-            value={attributes[key] ?? ""}
-            placeholder={{ storage: "256GB", ram: "8GB", color: "Natural Titanium", processor: "Apple M3", size: "46mm", connectivity: "Wi-Fi" }[key]}
-            onChange={(event) => setAttribute(key, event.target.value)}
-          />
-        ))}
+      <div id="product-section-specs" className="mt-6 scroll-mt-4">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h3 className="text-sm font-semibold">Category specifications & technical details</h3>
+            <p className="text-xs text-charcoal/50">{schema.title}</p>
+          </div>
+          <button
+            type="button"
+            onClick={generateFromSpecs}
+            className="inline-flex h-9 items-center gap-1 rounded-full bg-charcoal px-3 text-xs font-semibold text-white"
+          >
+            <Zap size={12} aria-hidden="true" />
+            Auto-Generate Name & SKU from Specs
+          </button>
+        </div>
+        <SpecFields schema={schema} specs={specs} onChange={setSpec} />
       </div>
 
-      <h3 className="mb-3 mt-6 text-sm font-semibold">Product</h3>
+      <h3 id="product-section-product" className="mb-3 mt-6 scroll-mt-4 text-sm font-semibold">
+        Product
+      </h3>
       <div className="grid gap-4 md:grid-cols-2">
         <TextField
           label="Name"
@@ -593,7 +672,7 @@ export function ProductFormModal({
                   setSkuTyped(cleanCode(event.target.value, 64));
                   clearServer("sku");
                 }}
-                className={`h-12 w-full rounded-xl border bg-surface py-3 pl-4 pr-36 font-mono text-sm focus:bg-white focus:outline-none disabled:text-charcoal/50 ${
+                className={`h-12 w-full rounded-xl border bg-gray-50 py-3 pl-4 pr-36 font-mono text-sm tabular-nums focus:border-[#FD3706] focus:bg-white focus:outline-none focus:ring-1 focus:ring-[#FD3706] disabled:text-charcoal/50 dark:border-gray-700/80 dark:bg-[#2D2A32] ${
                   fieldMessage("sku", skuMessage())
                     ? "border-rose-500 bg-rose-50/20 focus:border-rose-500 focus:ring-2 focus:ring-rose-500"
                     : "border-transparent focus:border-accent"
@@ -604,7 +683,7 @@ export function ProductFormModal({
                   type="button"
                   onClick={() => {
                     setSkuManual(true);
-                    setSkuTyped(skuFromParts(skuPrefix, name, attributes));
+                    setSkuTyped(skuFromParts(skuPrefix, name, specs));
                   }}
                   className="absolute right-1.5 top-1/2 inline-flex h-8 -translate-y-1/2 items-center gap-1 rounded-full bg-charcoal px-3 text-xs font-semibold text-white"
                 >
@@ -840,7 +919,7 @@ export function ProductFormModal({
         </fieldset>
       ) : null}
       {!editing && itemType !== ItemType.MadeToOrder ? (
-        <div className="mt-4 space-y-4">
+        <div id="product-section-stock" className="mt-4 scroll-mt-4 space-y-4">
           <Toggle
             label="Track IMEI / serial numbers"
             description="Serialized stock is added by receiving IMEIs on a purchase order."

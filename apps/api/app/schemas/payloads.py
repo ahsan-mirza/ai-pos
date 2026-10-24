@@ -546,6 +546,7 @@ class ProductOut(ApiModel):
     product_model_id: UUID | None = None
     model_name: str | None = None
     variant_attributes: dict[str, str] = Field(default_factory=dict)
+    specifications: dict[str, str] = Field(default_factory=dict)
     price_cents: int
     compare_at_cents: int | None = None
     currency: str

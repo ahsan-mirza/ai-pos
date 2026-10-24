@@ -188,3 +188,20 @@ class DiningAreaOut(DiningAreaIn):
 class FloorOut(ApiModel):
     store_id: UUID
     areas: list[DiningAreaOut]
+
+
+SuggestionKind = Literal["usual", "new", "pair"]
+
+
+class GuestSuggestionOut(ApiModel):
+    product_id: UUID
+    name: str
+    price_cents: int
+    currency: str
+    kind: SuggestionKind
+    pitch: str
+    modifiers: list[ModifierChoice] = Field(default_factory=list)
+
+
+class GuestSuggestionsOut(ApiModel):
+    suggestions: list[GuestSuggestionOut]

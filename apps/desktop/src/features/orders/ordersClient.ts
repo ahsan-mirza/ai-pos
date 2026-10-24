@@ -3,6 +3,7 @@ import {
   SyncOperation,
   type DeliveryChannel,
   type Floor,
+  type GuestSuggestions,
   type KitchenTicket,
   type Order,
   type OrderItemInput,
@@ -77,6 +78,12 @@ export interface OpenOrderInput {
 
 export const ordersApi = {
   list: (storeId: string) => call<Order[]>("GET", `/api/v1/orders?store_id=${storeId}&status=OPEN`),
+  suggestions: (storeId: string, customerId: string | null, productIds: string[]) => {
+    const params = new URLSearchParams({ store_id: storeId });
+    if (customerId) params.set("customer_id", customerId);
+    for (const id of productIds) params.append("product_id", id);
+    return call<GuestSuggestions>("GET", `/api/v1/orders/suggestions?${params.toString()}`);
+  },
   get: (id: string) => call<Order>("GET", `/api/v1/orders/${id}`),
   create: (input: OpenOrderInput, id: string = crypto.randomUUID()) =>
     call<Order>("POST", "/api/v1/orders", {

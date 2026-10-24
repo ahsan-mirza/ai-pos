@@ -10,6 +10,7 @@ import { CustomersPage } from "./features/customers/CustomersPage";
 import { CustomerStatementPage } from "./features/customers/CustomerStatementPage";
 import { BatchesPage } from "./features/inventory/batches/BatchesPage";
 import { BrandsPage } from "./features/inventory/BrandsPage";
+import { ModelsPage } from "./features/inventory/ModelsPage";
 import { CategoriesPage } from "./features/inventory/CategoriesPage";
 import { UnitsPage } from "./features/inventory/UnitsPage";
 import { InventoryLayout } from "./features/inventory/InventoryLayout";
@@ -26,6 +27,7 @@ import { ExpiringStockPage } from "./features/inventory/ExpiringStockPage";
 import { FloorPlanPage } from "./features/menu/FloorPlanPage";
 import { KitchenStationsPage } from "./features/menu/KitchenStationsPage";
 import { RecipesPage } from "./features/menu/RecipesPage";
+import { KitchenAgentPage } from "./features/inventory/KitchenAgentPage";
 import { RecipeUsagePage } from "./features/menu/RecipeUsagePage";
 import { KdsApp } from "./features/kds/KdsApp";
 import { TableOrderApp } from "./features/table-order/TableOrderApp";
@@ -180,6 +182,7 @@ function Portal() {
               <Route path="price-changes" element={<PriceChangesPage />} />
               <Route path="categories" element={<CategoriesPage />} />
               <Route path="brands" element={<BrandsPage />} />
+              <Route path="models" element={<ModelsPage />} />
               <Route path="units" element={<UnitsPage />} />
               <Route path="purchase-orders" element={<PurchaseOrdersPage />} />
               <Route path="markdowns" element={<RequireCapability capability={Capability.VariantsMatrix}><MarkdownsPage /></RequireCapability>} />
@@ -199,6 +202,7 @@ function Portal() {
               <Route path="floor-plan" element={<RequireCapability capability={Capability.Tables}><FloorPlanPage /></RequireCapability>} />
               <Route path="kitchen" element={<RequireCapability capability={Capability.Kds}><KitchenStationsPage /></RequireCapability>} />
               <Route path="recipes" element={<RequireCapability capability={Capability.Recipes}><RecipesPage /></RequireCapability>} />
+              <Route path="kitchen-agent" element={<RequireCapability capability={Capability.Recipes}><KitchenAgentPage /></RequireCapability>} />
               <Route path="recipe-usage" element={<RequireCapability capability={Capability.Recipes}><RecipeUsagePage /></RequireCapability>} />
               <Route path="transfers" element={<TransfersPage />} />
               <Route path="serials" element={<RequireCapability capability={Capability.SerialTracking}><SerialTrackerPage /></RequireCapability>} />

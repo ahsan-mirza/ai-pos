@@ -6,14 +6,17 @@ from datetime import datetime
 from sqlalchemy import DateTime, String, Uuid
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.models.base import Base
+from app.models.base import Base, TenantScoped, tenant_unique
 
 
-class SyncEvent(Base):
+class SyncEvent(TenantScoped, Base):
     __tablename__ = "sync_events"
+    __table_args__ = (
+        tenant_unique("idempotency_key", name="uq_sync_events_idempotency_key"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    idempotency_key: Mapped[str] = mapped_column(String(128), unique=True)
+    idempotency_key: Mapped[str] = mapped_column(String(128))
     device_id: Mapped[str] = mapped_column(String(64), index=True)
     entity_type: Mapped[str] = mapped_column(String(32))
     entity_id: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True), nullable=True)

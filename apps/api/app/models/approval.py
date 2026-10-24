@@ -6,10 +6,10 @@ from datetime import datetime
 from sqlalchemy import JSON, DateTime, ForeignKey, Integer, String, Uuid
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.models.base import Base, TimestampMixin
+from app.models.base import Base, TenantScoped, TimestampMixin
 
 
-class ApprovalRequest(TimestampMixin, Base):
+class ApprovalRequest(TenantScoped, TimestampMixin, Base):
     """A register asking for a manager's approval remotely (price override, below-floor sale, credit limit,
     refund). The manager approves from the portal or phone; the register then records that manager as the
     approver on the sale, exactly as if they had typed their PIN at the till."""

@@ -2,21 +2,21 @@ from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import CheckConstraint, ForeignKey, Integer, String, UniqueConstraint, Uuid
+from sqlalchemy import CheckConstraint, ForeignKey, Integer, String, Uuid
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.models.base import Base, TimestampMixin
+from app.models.base import Base, TenantScoped, TimestampMixin, tenant_unique
 
 DOC_TYPES = ("INV", "CN", "QUO", "Z", "PDC")
 
 
-class DocumentSequence(TimestampMixin, Base):
+class DocumentSequence(TenantScoped, TimestampMixin, Base):
     """One numbering series. Registers own a series per device so they can number invoices offline;
     the server owns the store-level series (device_id null) for documents it creates itself."""
 
     __tablename__ = "document_sequences"
     __table_args__ = (
-        UniqueConstraint("prefix", name="uq_document_sequences_prefix"),
+        tenant_unique("prefix", name="uq_document_sequences_prefix"),
         CheckConstraint("last_value >= 0", name="last_value_nonnegative"),
     )
 

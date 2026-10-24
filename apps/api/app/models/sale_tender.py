@@ -6,13 +6,13 @@ from typing import TYPE_CHECKING
 from sqlalchemy import BigInteger, CheckConstraint, ForeignKey, Integer, String, Uuid
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.models.base import Base
+from app.models.base import Base, TenantScoped
 
 if TYPE_CHECKING:
     from app.models.sale import Sale
 
 
-class SaleTender(Base):
+class SaleTender(TenantScoped, Base):
     """One payment leg of a sale. on_account legs are the portion booked to the customer's ledger."""
 
     __tablename__ = "sale_tenders"

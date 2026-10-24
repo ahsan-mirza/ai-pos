@@ -6,16 +6,19 @@ from datetime import datetime
 from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Integer, String, Text, Uuid
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.models.base import Base, TimestampMixin, utcnow
+from app.models.base import Base, TenantScoped, TimestampMixin, tenant_unique, utcnow
 
 PURCHASE_ORDER_STATUSES = ("draft", "ordered", "partially_received", "received", "cancelled")
 
 
-class PurchaseOrder(TimestampMixin, Base):
+class PurchaseOrder(TenantScoped, TimestampMixin, Base):
     __tablename__ = "purchase_orders"
+    __table_args__ = (
+        tenant_unique("number", name="uq_purchase_orders_number"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    number: Mapped[str] = mapped_column(String(32), unique=True)
+    number: Mapped[str] = mapped_column(String(32))
     supplier_name: Mapped[str] = mapped_column(String(120))
     supplier_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid(as_uuid=True), ForeignKey("suppliers.id"), nullable=True, index=True
@@ -40,7 +43,7 @@ class PurchaseOrder(TimestampMixin, Base):
     )
 
 
-class PurchaseOrderLine(Base):
+class PurchaseOrderLine(TenantScoped, Base):
     __tablename__ = "purchase_order_lines"
     __table_args__ = (
         CheckConstraint("quantity_ordered >= 1", name="ordered_positive"),
@@ -62,13 +65,16 @@ class PurchaseOrderLine(Base):
     unit_cost_cents: Mapped[int] = mapped_column(Integer, default=0)
 
 
-class GoodsReceipt(Base):
+class GoodsReceipt(TenantScoped, Base):
     """GRN: one delivery against a purchase order, received at the order's destination store."""
 
     __tablename__ = "goods_receipts"
+    __table_args__ = (
+        tenant_unique("number", name="uq_goods_receipts_number"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    number: Mapped[str] = mapped_column(String(32), unique=True)
+    number: Mapped[str] = mapped_column(String(32))
     purchase_order_id: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True),
         ForeignKey("purchase_orders.id"),
@@ -83,7 +89,7 @@ class GoodsReceipt(Base):
     )
 
 
-class GoodsReceiptLine(Base):
+class GoodsReceiptLine(TenantScoped, Base):
     __tablename__ = "goods_receipt_lines"
     __table_args__ = (CheckConstraint("quantity >= 1", name="quantity_positive"),)
 

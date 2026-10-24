@@ -6,13 +6,15 @@ from datetime import datetime
 from sqlalchemy import JSON, CheckConstraint, DateTime, ForeignKey, Integer, String, Text, Uuid
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.models.base import Base, TimestampMixin, utcnow
+from app.models.base import Base, TenantScoped, TimestampMixin, tenant_unique, utcnow
 
 
-class RepairTicket(TimestampMixin, Base):
+class RepairTicket(TenantScoped, TimestampMixin, Base):
     __tablename__ = "repair_tickets"
-    __table_args__ = (CheckConstraint("estimated_cost_cents >= 0", name="estimate_nonnegative"),)
-
+    __table_args__ = (
+        tenant_unique("tracking_token", name="uq_repair_tickets_tracking_token"),
+        CheckConstraint("estimated_cost_cents >= 0", name="estimate_nonnegative"),
+    )
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
     store_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("stores.id"), index=True)
     customer_name: Mapped[str] = mapped_column(String(120))
@@ -59,11 +61,11 @@ class RepairTicket(TimestampMixin, Base):
     approval_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     repair_warranty_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
     # Public status page /track/<token>; issued on first use for tickets booked before it existed.
-    tracking_token: Mapped[str | None] = mapped_column(String(32), nullable=True, unique=True)
+    tracking_token: Mapped[str | None] = mapped_column(String(32), nullable=True)
     picked_up_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
-class RepairAttachment(Base):
+class RepairAttachment(TenantScoped, Base):
     """A photo or document on a ticket (intake condition, diagnosis, finished work), stored under storage/repairs."""
 
     __tablename__ = "repair_attachments"
@@ -84,7 +86,7 @@ class RepairAttachment(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
-class RepairDeposit(Base):
+class RepairDeposit(TenantScoped, Base):
     """Money taken up front. HELD until the invoice credits it as a `deposit` tender (APPLIED), or given back
     (REFUNDED) when the repair does not go ahead."""
 
@@ -110,7 +112,7 @@ class RepairDeposit(Base):
     refunded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
-class RepairEvent(Base):
+class RepairEvent(TenantScoped, Base):
     """Append-only status history of a repair ticket."""
 
     __tablename__ = "repair_events"
@@ -125,7 +127,7 @@ class RepairEvent(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
-class RepairLine(TimestampMixin, Base):
+class RepairLine(TenantScoped, TimestampMixin, Base):
     """A part (a stocked catalog product) or labour (an open-price service product) charged on the ticket.
     unit_price_cents is per piece and follows the business's VAT-inclusive/exclusive setting like any sale line."""
 
