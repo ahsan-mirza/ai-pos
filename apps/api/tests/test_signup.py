@@ -13,7 +13,7 @@ from app.models import Base
 from app.tenancy import provisioning, registry, signup_service
 from app.tenancy.models import ControlBase, SignupRequest, Tenant
 
-PASSWORD = "owner-password-1"
+PASSWORD = "Owner-password-1"
 
 
 def _create_all(url: str) -> None:

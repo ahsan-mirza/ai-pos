@@ -1,4 +1,4 @@
-import { SystemRoleId, hasPermission, type Permission, type TokenResponse, type User } from "@ai-pos/shared-types";
+import { hasPermission, type Permission, type TokenResponse, type User } from "@ai-pos/shared-types";
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { apiGet, apiPublicPost, setAccessToken, setUnauthorizedHandler } from "./api";
 
@@ -114,5 +114,5 @@ export function useAuth(): AuthState {
 
 /** Mirrors the API rule for platform files such as the POS installer: the Super Admin role only. */
 export function useIsSuperAdmin(): boolean {
-  return useAuth().user?.role.id === SystemRoleId.SuperAdmin;
+  return useAuth().user?.role.name === "Super Admin";
 }

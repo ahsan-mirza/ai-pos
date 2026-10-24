@@ -1,5 +1,4 @@
 import logging
-import uuid
 from typing import Annotated
 
 from fastapi import APIRouter, Depends
@@ -8,17 +7,17 @@ from fastapi.responses import FileResponse
 from app.core.config import Settings, get_settings
 from app.core.deps import Principal, authorize
 from app.core.errors import ApiError
-from app.core.permissions import SUPER_ADMIN_ROLE_ID, Permission
+from app.core.permissions import Permission
 from app.schemas.downloads import DownloadsOut, LatestInstaller
 from app.services import downloads_service
+from app.services.rbac_service import holds_super_admin
 
 router = APIRouter()
 logger = logging.getLogger("ai_pos.downloads")
-SUPER_ADMIN_ID = uuid.UUID(SUPER_ADMIN_ROLE_ID)
 
 
 def require_super_admin(principal: Annotated[Principal, Depends(authorize(Permission.PORTAL_ACCESS))]) -> Principal:
-    if principal.user is None or principal.user.role_id != SUPER_ADMIN_ID:
+    if principal.user is None or not holds_super_admin(principal.user):
         raise ApiError(403, "super_admin_only", "Only a Super Admin can download the POS installer.")
     return principal
 

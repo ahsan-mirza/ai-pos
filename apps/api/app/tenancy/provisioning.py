@@ -24,7 +24,7 @@ from app.core.database import build_engine, create_database
 from app.models.store import Store
 from app.models.user import User
 from app.services import sample_data
-from app.services.rbac_service import SUPER_ADMIN_ID, ensure_system_roles
+from app.services.rbac_service import super_admin_role_id
 from app.services.settings_service import load_settings
 from app.tenancy import cli, registry
 from app.tenancy.context import TenantRef, use_tenant
@@ -143,8 +143,8 @@ def _username(db: Session, email: str) -> str:
 
 def step_owner(job: Job) -> None:
     with _tenant_session(job) as db:
-        ensure_system_roles(db)
-        owner = db.scalar(select(User).where(User.email == job.email, User.role_id == SUPER_ADMIN_ID))
+        role_id = super_admin_role_id(db)
+        owner = db.scalar(select(User).where(User.email == job.email, User.role_id == role_id))
         if owner is None:
             owner = User(
                 username=_username(db, job.email),
@@ -154,7 +154,7 @@ def step_owner(job: Job) -> None:
                 hashed_pin=None,
                 is_active=True,
                 store_id=None,
-                role_id=SUPER_ADMIN_ID,
+                role_id=role_id,
                 has_pos_access=False,
                 has_portal_access=True,
                 failed_login_attempts=0,

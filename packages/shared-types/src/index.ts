@@ -531,13 +531,20 @@ export type {
 } from "./audit.js";
 export { buildEmbeddedBarcode, daysUntil, formatWeight, parseEmbeddedBarcode, weighedLineCents } from "./weighed.js";
 export type { EmbeddedBarcode } from "./weighed.js";
-export { SIGNUP_BUSINESS_CARDS, SIGNUP_COUNTRIES, SIGNUP_PASSWORD_MIN_LENGTH } from "./signup.js";
+export {
+  SIGNUP_BUSINESS_CARDS,
+  SIGNUP_COUNTRIES,
+  SIGNUP_PASSWORD_MIN_LENGTH,
+  signupPasswordReady,
+  signupPasswordRules,
+} from "./signup.js";
 export type {
   ProvisionStep,
   ProvisionStepState,
   SignupBusiness,
   SignupBusinessCard,
   SignupCountry,
+  SignupPasswordRule,
   SignupOtpChannel,
   SignupStart,
   SignupStarted,

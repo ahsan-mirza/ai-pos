@@ -28,7 +28,7 @@ from app.models.store import Store
 from app.models.user import User
 from app.schemas.devices import DeviceCreate
 from app.services import device_service
-from app.services.rbac_service import SUPER_ADMIN_ID, ensure_system_roles
+from app.services.rbac_service import ensure_system_roles, holds_super_admin
 from app.tenancy import provisioning, registry
 from app.tenancy.context import TenantRef, use_tenant
 
@@ -91,7 +91,7 @@ def _ensure_staff(db: Session, spec: dict, demo: dict, settings: Settings, store
             role = db.scalar(select(Role).where(Role.name == person["role"]))
             if role is None:
                 sys.exit(f"Role {person['role']} is missing in {spec['slug']}.")
-            business_wide = role.id == SUPER_ADMIN_ID
+            business_wide = role.is_system and role.name == "Super Admin"
             user = User(
                 username=person["username"],
                 email=f"{person['username']}@{spec['slug']}.demo.ai-pos.local",
@@ -108,7 +108,7 @@ def _ensure_staff(db: Session, spec: dict, demo: dict, settings: Settings, store
             )
             db.add(user)
             db.flush()
-        if user.role_id == SUPER_ADMIN_ID and owner is None:
+        if holds_super_admin(user) and owner is None:
             owner = user
     db.commit()
     if owner is None:

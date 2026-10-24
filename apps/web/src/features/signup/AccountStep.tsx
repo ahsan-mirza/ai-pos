@@ -1,4 +1,5 @@
-import { SIGNUP_PASSWORD_MIN_LENGTH, type SignupState } from "@ai-pos/shared-types";
+import { signupPasswordReady, signupPasswordRules, type SignupState } from "@ai-pos/shared-types";
+import { Check } from "lucide-react";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { ErrorNote, TextField } from "../../components/ui/Field";
 import { isValidE164, PhoneField } from "../../components/ui/PhoneField";
@@ -32,7 +33,7 @@ export function AccountStep({ onStarted }: { onStarted: (session: SignupSession)
     email.includes("@") &&
     isValidE164(phone) &&
     fullName.trim().length >= 2 &&
-    password.length >= SIGNUP_PASSWORD_MIN_LENGTH;
+    signupPasswordReady(password);
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
@@ -81,15 +82,31 @@ export function AccountStep({ onStarted }: { onStarted: (session: SignupSession)
           onChange={(event) => setFullName(event.target.value)}
           required
         />
-        <TextField
-          label="Password"
-          type="password"
-          autoComplete="new-password"
-          value={password}
-          onChange={(event) => setPassword(event.target.value)}
-          hint={`At least ${SIGNUP_PASSWORD_MIN_LENGTH} characters.`}
-          required
-        />
+        <div>
+          <TextField
+            label="Password"
+            type="password"
+            autoComplete="new-password"
+            value={password}
+            onChange={(event) => setPassword(event.target.value)}
+            aria-describedby="signup-password-rules"
+            required
+          />
+          <ul id="signup-password-rules" className="mt-2 space-y-1" aria-live="polite">
+            {signupPasswordRules(password).map((rule) => (
+              <li
+                key={rule.id}
+                className={`flex items-center gap-2 text-xs ${rule.met ? "text-emerald-700" : "text-charcoal/50"}`}
+              >
+                <Check size={14} className={rule.met ? "text-emerald-600" : "text-charcoal/30"} aria-hidden="true" />
+                <span>
+                  {rule.label}
+                  <span className="sr-only">{rule.met ? ", met" : ", still needed"}</span>
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
       </div>
       <ErrorNote message={error} />
       <button type="submit" disabled={!ready || busy} className={`${submitClass} mt-6`}>

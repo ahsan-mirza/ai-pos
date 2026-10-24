@@ -12,14 +12,13 @@ from app.core.errors import ApiError
 from app.core.permissions import (
     ALL_PERMISSIONS,
     PERMISSION_GROUPS,
-    SUPER_ADMIN_ROLE_ID,
     SYSTEM_ROLES,
     Permission,
 )
 from app.core.security import create_access_token, hash_password, hash_pin, verify_password, verify_pin
 from app.models.audit_log import AuditLog
 from app.models.base import utcnow
-from app.models.role import Role
+from app.models.role import Role, RolePermission
 from app.models.sale import Sale
 from app.models.sale_return import SaleReturn
 from app.models.store import Store
@@ -38,8 +37,8 @@ from app.schemas.auth import (
 )
 from app.services import audit
 from app.tenancy.context import current_tenant
+from app.tenancy.scoping import DEFAULT_TENANT_ID, active_tenant_id, include_all_tenants
 
-SUPER_ADMIN_ID = uuid.UUID(SUPER_ADMIN_ROLE_ID)
 INVALID_CREDENTIALS = "Invalid email, username, or password."
 
 
@@ -102,25 +101,78 @@ def _aware(value: datetime | None) -> datetime | None:
 # --- System roles and bootstrap ------------------------------------------------------------------
 
 
+def holds_super_admin_role(role: Role) -> bool:
+    return role.is_system and role.name == "Super Admin"
+
+
+def holds_super_admin(user: User) -> bool:
+    return holds_super_admin_role(user.role)
+
+
+def _anywhere(statement):
+    return statement.execution_options(include_all_tenants=True)
+
+
+def _same(value: object, tenant_id: uuid.UUID) -> bool:
+    return str(value) == str(tenant_id)
+
+
+def _claim_role(db: Session, role: Role) -> None:
+    """A migration stamps the seeded roles with the default store. The first real store takes them."""
+    active = active_tenant_id()
+    if active == DEFAULT_TENANT_ID or not _same(role.tenant_id, DEFAULT_TENANT_ID):
+        return
+    with include_all_tenants(db):
+        rows = db.scalars(_anywhere(select(RolePermission).where(RolePermission.role_id == role.id))).all()
+        role.tenant_id = active
+        loaded = {row.permission for row in role.permission_rows}
+        for row in rows:
+            if _same(row.tenant_id, DEFAULT_TENANT_ID):
+                row.tenant_id = active
+            if row.permission not in loaded:
+                role.permission_rows.append(row)
+        db.flush()
+
+
 def ensure_system_roles(db: Session) -> None:
-    """Creates missing system roles and keeps Super Admin holding every permission."""
+    """Creates this store's system roles.
+
+    Migrations seed the fixed ids once. The first store takes those rows. The next store in the same
+    database gets its own copy, so the primary key is not inserted twice.
+    """
+    active = active_tenant_id()
     for spec in SYSTEM_ROLES:
-        role_id = uuid.UUID(str(spec["id"]))
-        role = db.get(Role, role_id)
+        fixed_id = uuid.UUID(str(spec["id"]))
+        name = str(spec["name"])
         permissions = set(spec["permissions"])  # type: ignore[arg-type]
+        role = db.scalar(select(Role).where(Role.is_system.is_(True), Role.name == name))
         if role is None:
-            role = Role(
-                id=role_id,
-                name=str(spec["name"]),
-                description=str(spec["description"]),
-                is_system=True,
-                max_discount_bps=spec.get("max_discount_bps"),  # type: ignore[arg-type]
-            )
-            role.set_permissions(permissions)
-            db.add(role)
-        elif role_id == SUPER_ADMIN_ID:
+            existing = db.scalar(_anywhere(select(Role).where(Role.id == fixed_id)))
+            placeholder = existing is not None and _same(existing.tenant_id, DEFAULT_TENANT_ID)
+            if existing is not None and (placeholder or _same(existing.tenant_id, active)):
+                role = existing
+                _claim_role(db, role)
+            else:
+                role = Role(
+                    id=fixed_id if existing is None else uuid.uuid5(active, name),
+                    name=name,
+                    description=str(spec["description"]),
+                    is_system=True,
+                    max_discount_bps=spec.get("max_discount_bps"),  # type: ignore[arg-type]
+                )
+                role.set_permissions(permissions)
+                db.add(role)
+        if name == "Super Admin":
             role.set_permissions(set(ALL_PERMISSIONS))
     db.flush()
+
+
+def super_admin_role_id(db: Session) -> uuid.UUID:
+    ensure_system_roles(db)
+    role = db.scalar(select(Role).where(Role.is_system.is_(True), Role.name == "Super Admin"))
+    if role is None:
+        raise RuntimeError("Super Admin role is missing.")
+    return role.id
 
 
 def ensure_super_admin(
@@ -144,7 +196,7 @@ def ensure_super_admin(
         hashed_pin=hash_pin(pin, settings) if pin is not None else None,
         is_active=True,
         store_id=None,
-        role_id=SUPER_ADMIN_ID,
+        role_id=super_admin_role_id(db),
         has_pos_access=pin is not None,
         has_portal_access=True,
         failed_login_attempts=0,
@@ -249,7 +301,8 @@ def _assert_can_manage(actor: Principal, target: User) -> None:
 
 
 def _active_super_admins(db: Session) -> int:
-    statement = select(func.count()).select_from(User).where(User.role_id == SUPER_ADMIN_ID, User.is_active.is_(True))
+    super_ids = select(Role.id).where(Role.is_system.is_(True), Role.name == "Super Admin")
+    statement = select(func.count()).select_from(User).where(User.role_id.in_(super_ids), User.is_active.is_(True))
     return db.scalar(statement) or 0
 
 
@@ -325,7 +378,7 @@ def update_user(db: Session, actor: Principal, user_id: uuid.UUID, data: UserUpd
     user = get_user(db, actor, user_id)
     _assert_can_manage(actor, user)
     is_self = actor.user is not None and actor.user.id == user.id
-    was_super_admin = user.role_id == SUPER_ADMIN_ID and user.is_active
+    was_super_admin = holds_super_admin(user) and user.is_active
 
     if data.role_id is not None and data.role_id != user.role_id:
         if is_self:
@@ -364,7 +417,7 @@ def update_user(db: Session, actor: Principal, user_id: uuid.UUID, data: UserUpd
         user.can_sell_open_price = data.can_sell_open_price
         user.token_version += 1
 
-    still_super_admin = user.role_id == SUPER_ADMIN_ID and user.is_active
+    still_super_admin = holds_super_admin(user) and user.is_active
     try:
         db.flush()
     except IntegrityError as exc:
@@ -407,7 +460,7 @@ def delete_user(db: Session, actor: Principal, user_id: uuid.UUID) -> None:
     _assert_can_manage(actor, user)
     if actor.user is not None and actor.user.id == user.id:
         raise ApiError(422, "self_change", "You cannot delete your own account.")
-    if user.role_id == SUPER_ADMIN_ID and user.is_active and _active_super_admins(db) <= 1:
+    if holds_super_admin(user) and user.is_active and _active_super_admins(db) <= 1:
         raise ApiError(422, "last_super_admin", "At least one active Super Admin must remain.")
     if db.scalar(select(func.count()).select_from(Sale).where(Sale.cashier_id == user.id)):
         raise ApiError(409, "user_has_sales", "This user has recorded sales. Disable the account instead.")
@@ -454,7 +507,7 @@ def update_role(db: Session, actor: Principal, role_id: uuid.UUID, data: RoleUpd
     if role is None:
         raise ApiError(404, "not_found", "Role was not found.")
     _assert_can_grant(actor, role.permissions)
-    if role.id == SUPER_ADMIN_ID and data.permissions is not None and set(data.permissions) != ALL_PERMISSIONS:
+    if holds_super_admin_role(role) and data.permissions is not None and set(data.permissions) != ALL_PERMISSIONS:
         raise ApiError(422, "system_role", "Super Admin always holds every permission.")
     if data.name is not None and data.name != role.name:
         if role.is_system:

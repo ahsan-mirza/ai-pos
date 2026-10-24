@@ -11,7 +11,7 @@ from app.models.user import User
 
 
 class BusinessSettings(TenantScoped, TimestampMixin, Base):
-    """Single row (BUSINESS_SETTINGS_ID) holding settings that apply to every store and register."""
+    """One row per store, holding settings that apply to every branch and register."""
 
     __tablename__ = "business_settings"
 

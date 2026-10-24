@@ -90,15 +90,14 @@ function pageHost(): string {
   return typeof window === "undefined" ? "" : window.location.hostname.toLowerCase();
 }
 
-/** The domain stores live under: the bare host we are on, the parent of a store subdomain, or the first configured. */
+/** The domain stores live under: a configured suffix, this host when it is a real domain, or localhost in development. */
 function tenantBaseDomain(): string {
-  const host = pageHost();
-  return (
-    TENANT_BASE_DOMAINS.find((base) => host === base || host.endsWith(`.${base}`)) ??
-    (isIpHost(host) ? host : undefined) ??
-    TENANT_BASE_DOMAINS[0] ??
-    "localhost"
-  );
+  const host = pageHost().replace(/^www\./, "");
+  const configured = TENANT_BASE_DOMAINS.find((base) => host === base || host.endsWith(`.${base}`));
+  if (configured) return configured;
+  if (isIpHost(host)) return host;
+  if (host !== "" && host !== "localhost" && !host.endsWith(".localhost")) return host;
+  return TENANT_BASE_DOMAINS[0] ?? "localhost";
 }
 
 /** A public IP has no store subdomain. The portal stays on this host and sends the store code separately. */

@@ -6,6 +6,30 @@ export type SignupOtpChannel = "log" | "whatsapp" | "sms" | "email";
 
 export const SIGNUP_PASSWORD_MIN_LENGTH = 10;
 
+export interface SignupPasswordRule {
+  id: string;
+  label: string;
+  met: boolean;
+}
+
+/** Live checks for a new signup password: length, an uppercase letter, a number, and a special character. */
+export function signupPasswordRules(password: string): SignupPasswordRule[] {
+  return [
+    {
+      id: "length",
+      label: `At least ${SIGNUP_PASSWORD_MIN_LENGTH} characters`,
+      met: password.length >= SIGNUP_PASSWORD_MIN_LENGTH,
+    },
+    { id: "upper", label: "One uppercase letter", met: /[A-Z]/.test(password) },
+    { id: "number", label: "One number", met: /\d/.test(password) },
+    { id: "special", label: "One special character", met: /[^A-Za-z0-9]/.test(password) },
+  ];
+}
+
+export function signupPasswordReady(password: string): boolean {
+  return signupPasswordRules(password).every((rule) => rule.met);
+}
+
 export interface SignupStart {
   email: string;
   phone: string;

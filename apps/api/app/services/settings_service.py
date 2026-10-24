@@ -24,6 +24,7 @@ from app.schemas.pos_policy import PosPolicy, resolve_pos_policy
 from app.schemas.receipt import ReceiptProfileOut, ReceiptSettings, ReceiptStore, resolve_receipt_settings
 from app.schemas.settings import AppearanceUpdate, BusinessSettingsOut, ProfileUpdate, TaxSettingsUpdate
 from app.services import audit, race
+from app.tenancy.scoping import DEFAULT_TENANT_ID, active_tenant_id, include_all_tenants
 
 CURRENCY_CHANGED = "settings.currency"
 # Commits in this process invalidate at once; the TTL bounds staleness when another API worker changed the row.
@@ -69,10 +70,10 @@ class SettingsSnapshot:
 class _SettingsCache:
     def __init__(self) -> None:
         self._lock = threading.Lock()
-        self._entries: dict[int, tuple[float, SettingsSnapshot]] = {}
+        self._entries: dict[tuple[int, uuid.UUID], tuple[float, SettingsSnapshot]] = {}
         self._generation = 0
 
-    def get(self, key: int) -> SettingsSnapshot | None:
+    def get(self, key: tuple[int, uuid.UUID]) -> SettingsSnapshot | None:
         with self._lock:
             entry = self._entries.get(key)
             if entry is None or entry[0] <= time.monotonic():
@@ -83,7 +84,7 @@ class _SettingsCache:
         with self._lock:
             return self._generation
 
-    def put(self, key: int, snapshot: SettingsSnapshot, generation: int) -> None:
+    def put(self, key: tuple[int, uuid.UUID], snapshot: SettingsSnapshot, generation: int) -> None:
         """Skips the write when settings changed while this snapshot was being read."""
         with self._lock:
             if generation == self._generation:
@@ -127,16 +128,31 @@ def _forget_on_rollback(session: Session) -> None:
 
 
 def _load(db: Session, *, lock: bool) -> tuple[BusinessSettings, bool]:
-    statement = select(BusinessSettings).where(BusinessSettings.id == BUSINESS_SETTINGS_ID)
+    statement = select(BusinessSettings).limit(1)
     if lock and db.get_bind().dialect.name == "postgresql":
         # `updated_by` is eager-joined, and Postgres refuses to lock the nullable side of an outer join.
         statement = statement.with_for_update(of=BusinessSettings)
     row = db.scalar(statement)
     if row is not None:
         return row, False
+    active = active_tenant_id()
+    placeholder = db.scalar(
+        select(BusinessSettings)
+        .where(BusinessSettings.id == BUSINESS_SETTINGS_ID)
+        .execution_options(include_all_tenants=True)
+    )
+    if (
+        placeholder is not None
+        and str(placeholder.tenant_id) == str(DEFAULT_TENANT_ID)
+        and active != DEFAULT_TENANT_ID
+    ):
+        with include_all_tenants(db):
+            placeholder.tenant_id = active
+            db.flush()
+        return placeholder, False
     first_store = db.scalar(select(Store).order_by(Store.created_at).limit(1))
     row = BusinessSettings(
-        id=BUSINESS_SETTINGS_ID,
+        id=BUSINESS_SETTINGS_ID if placeholder is None else uuid.uuid5(active, "business-settings"),
         currency=first_store.currency if first_store is not None else DEFAULT_CURRENCY,
     )
     if not race.add_if_absent(db, [row]):
@@ -227,7 +243,7 @@ def cached_settings(db: Session) -> SettingsSnapshot:
     always reads its own row so it sees them."""
     if _pending_settings_change(db):
         return snapshot_of(load_settings(db))
-    key = id(db.get_bind())
+    key = (id(db.get_bind()), active_tenant_id())
     hit = _cache.get(key)
     if hit is not None:
         return hit

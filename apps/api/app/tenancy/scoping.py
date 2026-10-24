@@ -177,3 +177,17 @@ def use_database_tenant(url: str) -> Iterator[None]:
     """Bind the tenant that owns `url` so new rows are stamped with that store's id."""
     with use_tenant(tenant_ref_for_database(url)):
         yield
+
+
+@contextmanager
+def include_all_tenants(session: Session) -> Iterator[None]:
+    """Lets this session read and write rows that belong to another store.
+
+    A flush that moves a migration's default-store rows onto the real store has to bypass the
+    tenant filter, or the UPDATE looks for a tenant id the row does not have yet.
+    """
+    session.info[INCLUDE_ALL] = True
+    try:
+        yield
+    finally:
+        session.info.pop(INCLUDE_ALL, None)

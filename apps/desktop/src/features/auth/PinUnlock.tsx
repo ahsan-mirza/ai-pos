@@ -1,5 +1,6 @@
 import { Delete } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
+import { version as packagedVersion } from "../../../package.json";
 import { store } from "../checkout/catalog";
 import { DemoCashiers, demoCashiersEnabled } from "./DemoCashiers";
 import { unlock, type CashierSession } from "./session";
@@ -18,6 +19,14 @@ export function PinUnlock({
   const [pin, setPin] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [version, setVersion] = useState(packagedVersion);
+
+  useEffect(() => {
+    void import("@tauri-apps/api/app")
+      .then(({ getVersion }) => getVersion())
+      .then(setVersion)
+      .catch(() => undefined);
+  }, []);
 
   const press = useCallback((key: (typeof keys)[number]) => {
     setError(null);
@@ -133,6 +142,7 @@ export function PinUnlock({
           }}
         />
       ) : null}
+      <p className="pointer-events-none fixed bottom-4 right-5 text-xs tabular-nums text-white/40">v{version}</p>
     </div>
   );
 }

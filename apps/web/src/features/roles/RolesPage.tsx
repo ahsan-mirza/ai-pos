@@ -1,4 +1,4 @@
-import { Permission, SystemRoleId, type PermissionGroup, type Role } from "@ai-pos/shared-types";
+import { Permission, type PermissionGroup, type Role } from "@ai-pos/shared-types";
 import { Lock, Plus, ShieldCheck } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useConfirm } from "../../components/ui/ConfirmDialog";
@@ -72,7 +72,7 @@ export function RolesPage() {
     void load();
   }, [load]);
 
-  const isSuperAdmin = draft.id === SystemRoleId.SuperAdmin;
+  const isSuperAdmin = draft.is_system && draft.name === "Super Admin";
   const held = useMemo(() => new Set(actor?.permissions ?? []), [actor]);
   const locked = !manage || isSuperAdmin;
 

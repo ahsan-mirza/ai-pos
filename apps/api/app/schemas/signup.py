@@ -20,6 +20,17 @@ class SignupStart(ApiModel):
     full_name: str = Field(min_length=2, max_length=120)
     password: str = Field(min_length=PASSWORD_MIN_LENGTH, max_length=128)
 
+    @field_validator("password")
+    @classmethod
+    def _password(cls, value: str) -> str:
+        if not re.search(r"[A-Z]", value):
+            raise ValueError("Password needs an uppercase letter.")
+        if not re.search(r"\d", value):
+            raise ValueError("Password needs a number.")
+        if not re.search(r"[^A-Za-z0-9]", value):
+            raise ValueError("Password needs a special character.")
+        return value
+
     @field_validator("email")
     @classmethod
     def _email(cls, value: str) -> str:
