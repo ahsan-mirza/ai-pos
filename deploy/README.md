@@ -87,8 +87,8 @@ Server layout:
 
 ## Releasing the POS installer
 
-1. Set the new version in `apps/desktop/src-tauri/tauri.conf.json` (and `Cargo.toml`), commit, and push.
-2. Tag and push: `git tag v0.2.0 && git push origin v0.2.0`. The workflow fails if the tag and `tauri.conf.json` disagree.
+1. Set the new version in `apps/desktop/VERSION` only, commit, and push. The release build copies that number into `package.json`, `tauri.conf.json`, and `Cargo.toml` before Tauri reads them.
+2. Tag and push: `git tag v0.2.0 && git push origin v0.2.0`. The workflow fails if the tag and `apps/desktop/VERSION` disagree.
 3. The workflow attaches the installers to the GitHub Release and copies them to `/opt/ai-pos/downloads/pos/<version>/` on the server. Every store's Super Admin then sees the new version under **Administration → Downloads** in the portal (also linked from Registers), with the SHA-256 of each file. Earlier versions stay listed.
 4. The installers are unsigned, so Windows SmartScreen warns on first install until a code-signing certificate is added to the workflow.
 

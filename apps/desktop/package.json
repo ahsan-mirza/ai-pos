@@ -1,7 +1,7 @@
 {
   "name": "@ai-pos/desktop",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.1.1",
   "type": "module",
   "scripts": {
     "dev": "vite --port 1420 --strictPort",
@@ -10,10 +10,11 @@
     "lint": "tsc -p tsconfig.json --noEmit && eslint src",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
-    "tauri:dev": "tauri dev",
-    "tauri:build": "cross-env POS_ENV=production tauri build",
-    "build:win": "cross-env POS_ENV=production tauri build --bundles nsis --target x86_64-pc-windows-msvc && node ../../scripts/stage-pos-setup.mjs",
-    "tauri:build:dev": "cross-env POS_ENV=dev tauri build --config src-tauri/tauri.dev.conf.json"
+    "sync-version": "node ../../scripts/sync-pos-version.mjs",
+    "tauri:dev": "pnpm sync-version && tauri dev",
+    "tauri:build": "pnpm sync-version && cross-env POS_ENV=production tauri build",
+    "build:win": "pnpm sync-version && cross-env POS_ENV=production tauri build --bundles nsis --target x86_64-pc-windows-msvc && node ../../scripts/stage-pos-setup.mjs",
+    "tauri:build:dev": "pnpm sync-version && cross-env POS_ENV=dev tauri build --config src-tauri/tauri.dev.conf.json"
   },
   "dependencies": {
     "@ai-pos/catalog": "workspace:*",

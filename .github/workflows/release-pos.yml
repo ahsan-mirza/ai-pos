@@ -21,13 +21,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Sync POS version
+        run: node scripts/sync-pos-version.mjs
+
       - name: Check tag matches app version
         if: startsWith(github.ref, 'refs/tags/')
         run: |
-          app_version=$(node -p "require('./apps/desktop/src-tauri/tauri.conf.json').version")
+          app_version=$(node scripts/sync-pos-version.mjs --print)
           tag_version="${GITHUB_REF_NAME#v}"
           if [ "$app_version" != "$tag_version" ]; then
-            echo "::error::Tag $GITHUB_REF_NAME does not match tauri.conf.json version $app_version"
+            echo "::error::Tag $GITHUB_REF_NAME does not match apps/desktop/VERSION ($app_version)"
             exit 1
           fi
 
