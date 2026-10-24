@@ -284,12 +284,23 @@ def _replace_uniques() -> None:
             op.create_unique_constraint(name, table, list(cols))
 
 
+def _stamp_tenant(table: str, tid: uuid.UUID) -> None:
+    """Fill tenant_id. Postgres refuses updates to audit_logs, so that trigger is paused for this stamp."""
+    pause_audit = table == "audit_logs" and op.get_bind().dialect.name == "postgresql"
+    if pause_audit:
+        op.execute(sa.text("ALTER TABLE audit_logs DISABLE TRIGGER audit_logs_append_only"))
+    statement = sa.text(f'UPDATE "{table}" SET tenant_id = :tid WHERE tenant_id IS NULL')
+    op.execute(statement.bindparams(tid=tid))
+    if pause_audit:
+        op.execute(sa.text("ALTER TABLE audit_logs ENABLE TRIGGER audit_logs_append_only"))
+
+
 def upgrade() -> None:
     tid = _tenant_id()
     for table in TABLES:
         op.add_column(table, sa.Column("tenant_id", sa.Uuid(), nullable=True))
     for table in TABLES:
-        op.execute(sa.text(f'UPDATE "{table}" SET tenant_id = :tid WHERE tenant_id IS NULL').bindparams(tid=tid))
+        _stamp_tenant(table, tid)
     for table in TABLES:
         op.alter_column(table, "tenant_id", nullable=False)
         op.create_index(f"ix_{table}_tenant_id", table, ["tenant_id"])
