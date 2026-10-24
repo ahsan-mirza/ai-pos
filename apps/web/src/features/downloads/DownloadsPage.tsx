@@ -1,8 +1,8 @@
 import type { AppRelease, DownloadsList, InstallerFile } from "@ai-pos/shared-types";
-import { Check, Copy, Download, KeyRound, MonitorDown, PackageOpen, ShieldAlert } from "lucide-react";
+import { Download, KeyRound, MonitorDown, PackageOpen } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { ErrorNote, GhostButton, PrimaryButton } from "../../components/ui/Field";
+import { ErrorNote } from "../../components/ui/Field";
 import { apiBlob, apiGet } from "../../lib/api";
 import { errorMessage } from "../users/api";
 
@@ -15,30 +15,11 @@ function formatDay(value: string): string {
   return new Date(value).toLocaleDateString(undefined, { dateStyle: "medium" });
 }
 
-const KIND_LABEL: Record<InstallerFile["kind"], { title: string; hint: string }> = {
-  exe: { title: "Windows installer (.exe)", hint: "Recommended. Double-click on the register PC and follow the steps." },
-  msi: { title: "Windows package (.msi)", hint: "For IT teams deploying to many PCs with Group Policy or Intune." },
-};
-
-function CopyHash({ value }: { value: string }) {
-  const [copied, setCopied] = useState(false);
-  return (
-    <button
-      type="button"
-      onClick={() => {
-        void navigator.clipboard.writeText(value).then(() => {
-          setCopied(true);
-          window.setTimeout(() => setCopied(false), 1500);
-        });
-      }}
-      title="Copy SHA-256"
-      className="inline-flex max-w-full items-center gap-1.5 rounded-lg bg-surface px-2 py-1 font-mono text-[11px] text-charcoal/60 hover:text-charcoal"
-    >
-      <span className="truncate">SHA-256 {value.slice(0, 16)}…</span>
-      {copied ? <Check size={12} aria-hidden="true" /> : <Copy size={12} aria-hidden="true" />}
-    </button>
-  );
-}
+const STEPS = [
+  { title: "Install", body: "Run the installer on the Windows PC at the counter." },
+  { title: "Create an activation key", body: "Register the till for its branch and issue a one-time key." },
+  { title: "Activate", body: "Open AI POS, enter the store address and the key. The catalog syncs and the till is ready." },
+] as const;
 
 export function DownloadsPage() {
   const [data, setData] = useState<DownloadsList | null>(null);
@@ -78,87 +59,17 @@ export function DownloadsPage() {
 
   if (data === null) {
     return (
-      <section className="rounded-card border border-line bg-white p-6 text-sm text-charcoal/60">
-        {error ?? "Loading downloads…"}
+      <section className="mx-auto max-w-xl rounded-card border border-line bg-white p-8 text-sm text-charcoal/60">
+        {error ?? "Loading the installer…"}
       </section>
     );
   }
 
-  const [latest, ...older] = data.releases;
+  const latest = data.releases[0];
   return (
-    <section className="space-y-4">
+    <section className="mx-auto max-w-xl">
       {latest ? <LatestRelease release={latest} busy={busy} onDownload={download} /> : <NothingPublished />}
       <ErrorNote message={error} />
-
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-        <div className="rounded-card border border-line bg-white p-6">
-          <h3 className="text-lg font-semibold">Set up a register</h3>
-          <ol className="mt-4 space-y-4 text-sm">
-            {[
-              ["Install", "Run the installer on the Windows PC at the counter. It needs Windows 10 or 11."],
-              [
-                "Create an activation key",
-                "In Registers, register the till for its branch and issue a one-time activation key.",
-              ],
-              [
-                "Activate",
-                "Open AI POS on the PC, enter your store's web address and the key. The till syncs its catalog and is ready.",
-              ],
-            ].map(([title, body], index) => (
-              <li key={title} className="flex gap-3">
-                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-accent/10 text-xs font-bold text-accent">
-                  {index + 1}
-                </span>
-                <span>
-                  <span className="block font-semibold">{title}</span>
-                  <span className="text-charcoal/60">{body}</span>
-                </span>
-              </li>
-            ))}
-          </ol>
-          <Link
-            to="/registers"
-            className="mt-5 inline-flex items-center gap-2 rounded-full border border-line px-4 py-2 text-sm font-medium hover:bg-surface"
-          >
-            <KeyRound size={15} aria-hidden="true" />
-            Go to Registers
-          </Link>
-        </div>
-
-        <div className="rounded-card border border-line bg-white p-6">
-          <h3 className="text-lg font-semibold">Earlier versions</h3>
-          {older.length === 0 ? (
-            <p className="mt-3 text-sm text-charcoal/60">Only the current version has been published.</p>
-          ) : (
-            <ul className="mt-3 divide-y divide-line">
-              {older.map((release) => (
-                <li key={release.version} className="flex flex-wrap items-center justify-between gap-3 py-3">
-                  <span>
-                    <span className="block text-sm font-semibold">Version {release.version}</span>
-                    <span className="text-xs text-charcoal/50">Published {formatDay(release.published_at)}</span>
-                  </span>
-                  <span className="flex flex-wrap gap-2">
-                    {release.files.map((file) => (
-                      <GhostButton
-                        key={file.name}
-                        disabled={busy !== null}
-                        onClick={() => void download(file)}
-                        aria-label={`Download ${file.name}`}
-                      >
-                        <Download size={14} className="mr-1.5" aria-hidden="true" />.{file.kind}
-                      </GhostButton>
-                    ))}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )}
-          <p className="mt-4 flex gap-2 rounded-2xl bg-surface px-4 py-3 text-xs text-charcoal/60">
-            <ShieldAlert size={14} className="mt-0.5 shrink-0" aria-hidden="true" />
-            Older versions are for reinstalling a till that must match others. Registers on any version keep syncing.
-          </p>
-        </div>
-      </div>
     </section>
   );
 }
@@ -172,70 +83,99 @@ function LatestRelease({
   busy: string | null;
   onDownload: (file: InstallerFile) => Promise<void>;
 }) {
+  const installer = release.files.find((file) => file.kind === "exe") ?? release.files[0];
+  const packageFile = release.files.find((file) => file.kind === "msi" && file !== installer);
+
   return (
-    <div className="rounded-card border border-line bg-white p-6">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div className="flex items-center gap-4">
-          <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-accent text-white">
+    <div className="overflow-hidden rounded-card border border-line bg-white shadow-sm">
+      <div className="px-8 pb-8 pt-8">
+        <div className="flex items-start justify-between gap-4">
+          <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-accent text-white shadow-sm shadow-accent/30">
             <MonitorDown size={26} aria-hidden="true" />
           </span>
-          <div>
-            <h2 className="text-2xl font-semibold">AI POS for Windows</h2>
-            <p className="text-sm text-charcoal/60">
-              Version {release.version} · published {formatDay(release.published_at)} · works offline, syncs when online
-            </p>
-          </div>
+          <span className="rounded-full bg-emerald-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-wider text-emerald-700">
+            Latest
+          </span>
         </div>
-        <span className="rounded-full bg-emerald-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-wider text-emerald-700">
-          Latest
-        </span>
+        <h2 className="mt-5 text-2xl font-semibold tracking-tight">AI POS for Windows</h2>
+        <p className="mt-1 text-sm text-charcoal/60">
+          Version {release.version} · {formatDay(release.published_at)} · works offline and syncs when the store is online
+        </p>
+
+        {installer ? (
+          <div className="mt-6">
+            <button
+              type="button"
+              disabled={busy !== null}
+              onClick={() => void onDownload(installer)}
+              className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-full bg-accent text-sm font-semibold text-white shadow-sm shadow-accent/25 transition-colors hover:bg-accent-hover disabled:opacity-40"
+            >
+              <Download size={18} aria-hidden="true" />
+              {busy === installer.download_path ? "Downloading…" : "Download Windows installer"}
+            </button>
+            <p className="mt-2 text-center text-xs text-charcoal/50">.exe · {formatSize(installer.size_bytes)}</p>
+          </div>
+        ) : null}
+
+        {packageFile ? (
+          <p className="mt-4 text-center text-sm text-charcoal/60">
+            <button
+              type="button"
+              disabled={busy !== null}
+              onClick={() => void onDownload(packageFile)}
+              className="font-medium text-charcoal underline-offset-4 hover:underline disabled:opacity-40"
+            >
+              {busy === packageFile.download_path ? "Downloading package…" : "Windows package (.msi)"}
+            </button>
+            <span> · {formatSize(packageFile.size_bytes)} for IT deployment</span>
+          </p>
+        ) : null}
       </div>
 
-      {release.notes ? <p className="mt-4 whitespace-pre-line text-sm text-charcoal/70">{release.notes}</p> : null}
-
-      <div className="mt-6 grid gap-3 md:grid-cols-2">
-        {release.files.map((file) => {
-          const label = KIND_LABEL[file.kind];
-          const downloading = busy === file.download_path;
-          const Button = file.kind === "exe" ? PrimaryButton : GhostButton;
-          return (
-            <div key={file.name} className="flex flex-col justify-between gap-3 rounded-2xl border border-line p-4">
-              <div>
-                <p className="font-semibold">{label.title}</p>
-                <p className="text-xs text-charcoal/60">{label.hint}</p>
-                <p className="mt-2 truncate text-xs text-charcoal/50" title={file.name}>
-                  {file.name} · {formatSize(file.size_bytes)}
-                </p>
-              </div>
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <CopyHash value={file.sha256} />
-                <Button disabled={busy !== null} onClick={() => void onDownload(file)}>
-                  <Download size={16} className="mr-2" aria-hidden="true" />
-                  {downloading ? "Downloading…" : "Download"}
-                </Button>
-              </div>
-            </div>
-          );
-        })}
+      <div className="border-t border-line bg-[#f8fafc] px-8 py-7">
+        <h3 className="text-sm font-semibold uppercase tracking-[0.12em] text-charcoal/45">Set up a register</h3>
+        <ol className="mt-4 space-y-4">
+          {STEPS.map((step, index) => (
+            <li key={step.title} className="flex gap-3">
+              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-white text-xs font-bold text-accent ring-1 ring-accent/20">
+                {index + 1}
+              </span>
+              <span>
+                <span className="block text-sm font-semibold">{step.title}</span>
+                <span className="text-sm text-charcoal/60">{step.body}</span>
+              </span>
+            </li>
+          ))}
+        </ol>
+        <Link
+          to="/registers"
+          className="mt-6 inline-flex h-11 w-full items-center justify-center gap-2 rounded-full bg-charcoal text-sm font-semibold text-white transition-colors hover:bg-charcoal/90"
+        >
+          <KeyRound size={16} aria-hidden="true" />
+          Create an activation key
+        </Link>
       </div>
-      <p className="mt-4 text-xs text-charcoal/50">
-        Windows may show “Windows protected your PC” the first time: choose More info, then Run anyway.
-      </p>
     </div>
   );
 }
 
 function NothingPublished() {
   return (
-    <div className="rounded-card border border-line bg-white p-8">
-      <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-surface text-charcoal/60">
+    <div className="rounded-card border border-line bg-white px-8 py-10 text-center shadow-sm">
+      <span className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-surface text-charcoal/50">
         <PackageOpen size={22} aria-hidden="true" />
       </span>
-      <h2 className="mt-4 text-2xl font-semibold">No POS installer published yet</h2>
-      <p className="mt-2 max-w-2xl text-sm text-charcoal/60">
-        Installers appear here once a release is published. Tagging a version (for example <code>v0.2.0</code>) builds
-        the Windows installer and copies it to this server automatically.
+      <h2 className="mt-4 text-2xl font-semibold tracking-tight">The Windows app is on its way</h2>
+      <p className="mx-auto mt-2 max-w-sm text-sm text-charcoal/60">
+        The installer will show up here as soon as the current release is published. You can still register tills in the meantime.
       </p>
+      <Link
+        to="/registers"
+        className="mt-6 inline-flex h-11 items-center justify-center gap-2 rounded-full bg-accent px-6 text-sm font-semibold text-white hover:bg-accent-hover"
+      >
+        <KeyRound size={16} aria-hidden="true" />
+        Go to registers
+      </Link>
     </div>
   );
 }

@@ -25,7 +25,7 @@ Server layout:
    ssh ubuntu@<server> 'sudo bash ~/deploy/server-setup.sh'
    ```
 
-   The script is safe to re-run. nginx serves HTTP on port 80 immediately. No certificate is required.
+   The script is safe to re-run. nginx serves HTTP on port 80 immediately. When `/etc/letsencrypt/live/axizpos.com/fullchain.pem` and `privkey.pem` are already on the host, the same script also listens on 443 for `axizpos.com` and `www.axizpos.com`. The key is not copied into the repository. A host without those files keeps serving HTTP only.
 
 4. **PostgreSQL:** the tenancy CLI creates one database per store, so the user needs `CREATEDB`.
 
@@ -51,7 +51,7 @@ Server layout:
 
    Keep a copy somewhere safe. Rotating `ENCRYPTION_SECRET` or `PIN_SALT` later makes stored IMEIs and PINs unusable.
 
-6. **TLS:** skip this until a real domain points at the VM. Browsers use `http://<public-ip>` until then. A certificate cannot be issued for a name you do not control.
+6. **TLS:** `axizpos.com` already has a certificate at `/etc/letsencrypt/live/axizpos.com/`. Re-running `server-setup.sh` enables it. Do not run Certbot again, and do not copy `privkey.pem` off the server. Port 80 keeps serving the site and `/.well-known/acme-challenge/` so renewal still works. After HTTPS answers, a redirect can be added on the port 80 server; leave it off until `https://axizpos.com` is reachable, including through the Oracle Cloud security list.
 
 ## GitHub setup
 
