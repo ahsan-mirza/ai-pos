@@ -16,6 +16,7 @@ apps/api/storage/
 *.db
 .DS_Store
 Thumbs.db
+*.rar
 
 # Real env files hold secrets. Templates are committed, and so is the public dev build file
 # (Vite inlines every VITE_ value into the bundle). .env.production holds the live database URL.
