@@ -2,7 +2,7 @@ import type { ProvisionStep, SignupState } from "@ai-pos/shared-types";
 import { Check, Circle, Loader2, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { ErrorNote } from "../../components/ui/Field";
-import { env, saveStoreCode } from "../../config/env";
+import { saveStoreCode } from "../../config/env";
 import { ApiRequestError } from "../../lib/api";
 import { signupApi, type SignupSession } from "./signupApi";
 
@@ -64,18 +64,20 @@ export function ProvisioningStep({
     return () => window.clearInterval(timer);
   }, [active, session]);
 
-  const portal = state.slug ? env.tenantPortalUrl(state.slug) : null;
-
   useEffect(() => {
-    if (state.status !== "READY" || portal === null) return;
+    if (state.status !== "READY" || state.slug === null) return;
     onFinished();
     if (state.handoff_token === null) return;
+    const slug = state.slug;
+    const token = state.handoff_token;
     const timer = window.setTimeout(() => {
-      if (state.slug && env.directHost) saveStoreCode(state.slug);
-      window.location.assign(`${portal}/welcome?handoff=${encodeURIComponent(state.handoff_token ?? "")}`);
+      saveStoreCode(slug);
+      const welcome = new URL("/welcome", window.location.origin);
+      welcome.searchParams.set("handoff", token);
+      window.location.assign(welcome.toString());
     }, 900);
     return () => window.clearTimeout(timer);
-  }, [state.status, state.handoff_token, state.slug, portal, onFinished]);
+  }, [state.status, state.handoff_token, state.slug, onFinished]);
 
   const retry = async () => {
     setRetrying(true);
@@ -103,10 +105,10 @@ export function ProvisioningStep({
       </h2>
       <p className="mt-1 text-sm text-charcoal/60">
         {state.status === "READY"
-          ? "Opening it now…"
+          ? "Opening your dashboard…"
           : state.status === "FAILED"
             ? "Nothing is lost. Try again; finished steps are skipped."
-            : `${env.storeAddressLabel(state.slug ?? "")} — this takes under a minute.`}
+            : "This takes under a minute."}
       </p>
       <div className="mt-6 h-1.5 overflow-hidden rounded-full bg-surface" aria-hidden="true">
         <div className="h-full rounded-full bg-accent transition-all duration-500" style={{ width: `${percent}%` }} />
@@ -139,28 +141,18 @@ export function ProvisioningStep({
           </button>
         </>
       ) : null}
-      {state.status === "READY" && portal ? (
+      {state.status === "READY" && state.slug ? (
         <div className="mt-8 rounded-2xl bg-surface p-4 text-sm">
           <p>
-            Your store lives at{" "}
-            <a className="font-semibold text-accent underline" href={portal}>
-              {portal.replace(/^https?:\/\//, "")}
-            </a>
-            . Sign in there
-            {env.directHost && state.slug ? (
-              <>
-                {" "}
-                with store code <strong>{state.slug}</strong>
-              </>
-            ) : null}{" "}
-            as <strong>{state.owner_username}</strong> with the password you chose.
+            Your dashboard is on <strong>{window.location.host}</strong>. Sign in there with store code{" "}
+            <strong>{state.slug}</strong> as <strong>{state.owner_username}</strong> and the password you chose.
           </p>
           {state.handoff_token === null ? (
             <a
-              href={portal}
+              href={window.location.origin}
               className="mt-4 inline-flex h-11 items-center rounded-2xl bg-accent px-6 font-semibold text-white"
             >
-              Open my store
+              Open my dashboard
             </a>
           ) : null}
         </div>

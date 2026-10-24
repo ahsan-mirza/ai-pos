@@ -36,9 +36,13 @@ function rememberedStoreCode(): string | null {
   return value === "" ? null : value;
 }
 
-/** Subdomain, then the dev default, then the store code saved at sign-in. */
+/** Subdomains stay off until each store has its own host. The slug is a store code on this site. */
+const STORE_SUBDOMAINS = false;
+
+/** A saved store code on this host, then the dev default. A store subdomain is used only when those hosts are on. */
 function tenantDomainNow(): string | null {
-  return tenantHost() ?? configuredTenant ?? rememberedStoreCode();
+  if (STORE_SUBDOMAINS) return tenantHost() ?? rememberedStoreCode() ?? configuredTenant;
+  return rememberedStoreCode() ?? configuredTenant;
 }
 
 /** True on a production IP install: the sign-in screen must collect the store code. */
@@ -106,16 +110,21 @@ function directHost(): boolean {
   return isIpHost(host) || isIpHost(tenantBaseDomain());
 }
 
-/** "client1.qios.ae" on the current scheme and port, or this host itself when it is a public IP. */
+/** A public IP, or this product while store subdomains are off, keeps every store on this host. */
+function storesShareThisHost(): boolean {
+  return !STORE_SUBDOMAINS || directHost();
+}
+
+/** "client1.qios.ae" on the current scheme and port, or this host itself when stores share it. */
 function tenantPortalUrl(slug: string): string {
-  if (directHost()) return window.location.origin;
+  if (storesShareThisHost()) return window.location.origin;
   const { protocol, port } = window.location;
   return `${protocol}//${slug}.${tenantBaseDomain()}${port ? `:${port}` : ""}`;
 }
 
-/** How the signup screen names the new store: a subdomain, or a store code on this IP. */
+/** How the signup screen names the new store: a store code on this host, or a subdomain. */
 function storeAddressLabel(slug: string): string {
-  if (directHost()) return `${slug} at ${window.location.host}`;
+  if (storesShareThisHost()) return slug;
   return `${slug}.${tenantBaseDomain()}`;
 }
 
@@ -141,6 +150,10 @@ export const env = {
   },
   tenantBaseDomain,
   tenantPortalUrl,
+  /** True when every store is opened on this host, with the store code sent to the API. */
+  get storesShareThisHost() {
+    return storesShareThisHost();
+  },
   /** True when stores are reached on this IP, with the store code sent to the API. */
   get directHost() {
     return directHost();

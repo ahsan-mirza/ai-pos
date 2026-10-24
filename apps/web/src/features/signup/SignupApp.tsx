@@ -100,7 +100,7 @@ export function SignupApp() {
           <p className="mt-10 text-xs text-white/50">
             Already have a store?{" "}
             <span className="text-white/70">
-              {env.directHost
+              {env.storesShareThisHost
                 ? `Open ${window.location.host} and enter the store code.`
                 : `Open its address, for example yourstore.${env.tenantBaseDomain()}.`}
             </span>
@@ -133,7 +133,13 @@ export function SignupApp() {
             <WaitlistStep state={state} onBack={() => setStep("business")} />
           ) : null}
           {step === "store" && session ? (
-            <StoreStep session={session} onBack={() => setStep("business")} onSubmitted={advance} />
+            <StoreStep
+              session={session}
+              profile={state?.profile ?? null}
+              subType={state?.sub_type ?? null}
+              onBack={() => setStep("business")}
+              onSubmitted={advance}
+            />
           ) : null}
           {step === "provisioning" && session && state ? (
             <ProvisioningStep session={session} initial={state} onFinished={forget} />

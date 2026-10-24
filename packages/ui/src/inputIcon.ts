@@ -31,11 +31,15 @@ export function inputLeadingIcon(hints: InputIconHints): LucideIcon {
   const type = (hints.type ?? "text").toLowerCase();
   const auto = (hints.autoComplete ?? "").toLowerCase();
   const mode = (hints.inputMode ?? "").toLowerCase();
-  const blob = `${hints.label ?? ""} ${hints.name ?? ""} ${hints.id ?? ""} ${hints.placeholder ?? ""}`.toLowerCase();
+  const label = (hints.label ?? "").toLowerCase();
+  const blob = `${label} ${hints.name ?? ""} ${hints.id ?? ""} ${hints.placeholder ?? ""}`.toLowerCase();
 
   if (type === "password" || auto.includes("password") || /\b(password|pin)\b/.test(blob)) return Lock;
   if (type === "email" || auto === "email" || blob.includes("email")) return Mail;
   if (auto === "one-time-code" || /\b(otp|authenticator)\b/.test(blob)) return ShieldCheck;
+  // The label wins over an example in the placeholder, so "Store name" stays a store even when the
+  // example is "Al Noor Mobiles".
+  if (/\bstore\b/.test(label)) return Store;
   if (type === "tel" || mode === "tel" || auto.includes("tel") || /phone|mobile|whatsapp/.test(blob)) return Phone;
   if (type === "url" || /\b(website|url)\b/.test(blob)) return Link;
   if (type === "search" || /\bsearch\b/.test(blob)) return Search;

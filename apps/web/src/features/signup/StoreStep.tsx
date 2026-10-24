@@ -8,12 +8,39 @@ import { signupApi, slugFromName, type SignupSession } from "./signupApi";
 
 const SLUG_DEBOUNCE_MS = 350;
 
+const STORE_EXAMPLES: Record<string, string> = {
+  electronics_wholesale: "Al Noor Electronics",
+  electronics_retail: "Al Noor Electronics",
+  electronics_b2b: "Al Noor Wholesale",
+  retail_fashion: "Al Noor Boutique",
+  fashion_boutique: "Al Noor Boutique",
+  fashion_chain: "Al Noor Fashion",
+  grocery: "Al Noor Market",
+  restaurant: "Al Noor Restaurant",
+  full_service: "Al Noor Restaurant",
+  restaurant_delivery: "Al Noor Kitchen",
+  cafe: "Al Noor Cafe",
+  counter_cafe: "Al Noor Cafe",
+  sit_down_cafe: "Al Noor Cafe",
+  quick_service: "Al Noor Burger",
+  qsr_counter: "Al Noor Burger",
+  qsr_delivery: "Al Noor Wraps",
+};
+
+function storeExample(profile: string | null, subType: string | null): string {
+  return STORE_EXAMPLES[subType ?? ""] ?? STORE_EXAMPLES[profile ?? ""] ?? "Al Noor Store";
+}
+
 export function StoreStep({
   session,
+  profile,
+  subType,
   onBack,
   onSubmitted,
 }: {
   session: SignupSession;
+  profile: string | null;
+  subType: string | null;
   onBack: () => void;
   onSubmitted: (state: SignupState) => void;
 }) {
@@ -91,7 +118,7 @@ export function StoreStep({
             setStoreName(event.target.value);
             if (!slugEdited) setSlug(slugFromName(event.target.value));
           }}
-          placeholder="Al Noor Mobiles"
+          placeholder={storeExample(profile, subType)}
           required
         />
         <div>
@@ -110,7 +137,7 @@ export function StoreStep({
               aria-describedby="signup-slug-status"
               required
             />
-            {env.directHost ? null : (
+            {env.storesShareThisHost ? null : (
               <span className="shrink-0 text-sm text-charcoal/50">.{env.tenantBaseDomain()}</span>
             )}
             <span className="ml-2 flex w-5 shrink-0 justify-center" aria-hidden="true">
@@ -125,7 +152,11 @@ export function StoreStep({
           </div>
           <p id="signup-slug-status" className="mt-1.5 text-xs" aria-live="polite">
             {checking || check === null ? (
-              <span className="text-charcoal/50">Your staff sign in at this address.</span>
+              <span className="text-charcoal/50">
+                {env.storesShareThisHost
+                  ? "Your staff sign in on this site with this store code."
+                  : "Your staff sign in at this address."}
+              </span>
             ) : check.available ? (
               <span className="text-emerald-700">Available</span>
             ) : (
