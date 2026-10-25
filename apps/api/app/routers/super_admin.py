@@ -37,7 +37,9 @@ from app.schemas.console import (
     MigrationPreflight,
     ModuleOverridesIn,
     ModuleState,
+    OperatorCreate,
     OperatorOut,
+    OperatorUpdate,
     PreflightIn,
     ResolveIn,
     TenantDetail,
@@ -280,6 +282,23 @@ def assign_subscription(
 ) -> SubscriptionOut:
     with registry.control_session(settings) as db:
         return billing.assign_subscription(db, operator, tenant_id, payload)
+
+
+@router.get("/operators", response_model=list[OperatorOut])
+def operators(_: ConsoleAdmin, settings: Config) -> list[OperatorOut]:
+    return auth.list_operators(settings)
+
+
+@router.post("/operators", response_model=OperatorOut, status_code=201)
+def create_operator(payload: OperatorCreate, operator: ConsoleAdmin, settings: Config) -> OperatorOut:
+    return auth.add_operator(settings, operator, payload)
+
+
+@router.patch("/operators/{operator_id}", response_model=OperatorOut)
+def update_operator(
+    operator_id: uuid.UUID, payload: OperatorUpdate, operator: ConsoleAdmin, settings: Config
+) -> OperatorOut:
+    return auth.change_operator(settings, operator, operator_id, payload)
 
 
 @router.get("/me", response_model=OperatorOut)

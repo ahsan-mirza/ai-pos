@@ -57,10 +57,12 @@ def test_validation_error_names_the_field() -> None:
             {"loc": ["body", "password"], "msg": "Value error, Password needs an uppercase letter."},
             {"loc": ["body", "full_name"], "msg": "Field required"},
             {"loc": ["body", "password"], "msg": "String should have at least 10 characters"},
+            {"loc": ["body", "password_set"], "msg": "Extra inputs are not permitted", "type": "extra_forbidden"},
         ]
     )
     assert message == (
-        "Password needs an uppercase letter. Full name is required. Password should have at least 10 characters."
+        "Password needs an uppercase letter. Full name is required. "
+        "Password should have at least 10 characters. Password set cannot be changed here."
     )
 
 

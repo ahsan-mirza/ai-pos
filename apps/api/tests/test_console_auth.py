@@ -128,3 +128,146 @@ def test_ensure_console_admin_creates_keeps_and_replaces_the_password(platform) 
             assert db.scalar(select(Operator.token_version).where(Operator.email == email)) == kept
     finally:
         settings.console_admin_email, settings.console_admin_name, settings.console_admin_password = previous
+
+
+def test_admin_creates_a_support_operator_who_can_sign_in(platform) -> None:  # noqa: F811
+    admin = platform.operator()
+    created = platform.client.post(
+        "/api/v1/super-admin/operators",
+        headers=admin,
+        json={
+            "full_name": "Nora",
+            "email": "Nora@axizpos.com",
+            "role": "SUPPORT",
+            "password": "Support-password-1",
+        },
+    )
+    assert created.status_code == 201, created.text
+    body = created.json()
+    assert body["email"] == "nora@axizpos.com" and body["role"] == "SUPPORT"
+    assert "password" not in body and "password_hash" not in body
+    listed = platform.client.get("/api/v1/super-admin/operators", headers=admin)
+    assert listed.status_code == 200
+    assert any(row["email"] == "nora@axizpos.com" for row in listed.json())
+    session = platform.client.post(
+        "/api/v1/super-admin/auth/login",
+        json={"email": "nora@axizpos.com", "password": "Support-password-1"},
+    )
+    assert session.status_code == 200, session.text
+    assert session.json()["operator"]["role"] == "SUPPORT"
+    duplicate = platform.client.post(
+        "/api/v1/super-admin/operators",
+        headers=admin,
+        json={
+            "full_name": "Nora",
+            "email": "nora@axizpos.com",
+            "role": "SUPPORT",
+            "password": "Support-password-1",
+        },
+    )
+    assert duplicate.status_code == 409
+    with platform.control() as db:
+        created_logs = db.scalars(
+            select(OperatorAuditLog).where(OperatorAuditLog.action == "console.operator_created")
+        )
+        created_log = next((log for log in created_logs if (log.after or {}).get("email") == "nora@axizpos.com"), None)
+        assert created_log is not None and created_log.operator_id is not None
+
+
+def test_support_cannot_list_or_create_operators(platform) -> None:  # noqa: F811
+    support = platform.operator(email="desk@axizpos.com", role="SUPPORT")
+    assert platform.client.get("/api/v1/super-admin/operators", headers=support).status_code == 403
+    created = platform.client.post(
+        "/api/v1/super-admin/operators",
+        headers=support,
+        json={
+            "full_name": "Nora",
+            "email": "nora@axizpos.com",
+            "role": "SUPPORT",
+            "password": "Support-password-1",
+        },
+    )
+    assert created.status_code == 403
+
+
+def test_admin_password_reset_retires_the_old_password_and_session(platform) -> None:  # noqa: F811
+    admin = platform.operator()
+    created = platform.client.post(
+        "/api/v1/super-admin/operators",
+        headers=admin,
+        json={
+            "full_name": "Nora",
+            "email": "nora@axizpos.com",
+            "role": "SUPPORT",
+            "password": "Support-password-1",
+        },
+    )
+    assert created.status_code == 201, created.text
+    operator_id = created.json()["id"]
+    signed_in = platform.client.post(
+        "/api/v1/super-admin/auth/login",
+        json={"email": "nora@axizpos.com", "password": "Support-password-1"},
+    )
+    old_token = {"Authorization": f"Bearer {signed_in.json()['access_token']}"}
+    reset = platform.client.patch(
+        f"/api/v1/super-admin/operators/{operator_id}",
+        headers=admin,
+        json={"password": "Support-password-2"},
+    )
+    assert reset.status_code == 200, reset.text
+    assert platform.client.get("/api/v1/super-admin/me", headers=old_token).status_code == 401
+    old_password = platform.client.post(
+        "/api/v1/super-admin/auth/login",
+        json={"email": "nora@axizpos.com", "password": "Support-password-1"},
+    )
+    assert old_password.status_code == 401
+    new_password = platform.client.post(
+        "/api/v1/super-admin/auth/login",
+        json={"email": "nora@axizpos.com", "password": "Support-password-2"},
+    )
+    assert new_password.status_code == 200, new_password.text
+    with platform.control() as db:
+        reset_log = db.scalar(
+            select(OperatorAuditLog).where(OperatorAuditLog.action == "console.operator_password_reset")
+        )
+        assert reset_log is not None and reset_log.operator_id is not None
+
+
+def test_the_last_admin_cannot_be_demoted(platform) -> None:  # noqa: F811
+    admin = platform.operator()
+    me = platform.client.get("/api/v1/super-admin/me", headers=admin).json()
+    refused = platform.client.patch(
+        f"/api/v1/super-admin/operators/{me['id']}",
+        headers=admin,
+        json={"role": "SUPPORT"},
+    )
+    assert refused.status_code == 409
+    second = platform.client.post(
+        "/api/v1/super-admin/operators",
+        headers=admin,
+        json={
+            "full_name": "Second Admin",
+            "email": "second@axizpos.com",
+            "role": "ADMIN",
+            "password": "Support-password-1",
+        },
+    )
+    assert second.status_code == 201, second.text
+    demoted = platform.client.patch(
+        f"/api/v1/super-admin/operators/{me['id']}",
+        headers=admin,
+        json={"role": "SUPPORT"},
+    )
+    assert demoted.status_code == 200, demoted.text
+    assert demoted.json()["role"] == "SUPPORT"
+    other = platform.client.post(
+        "/api/v1/super-admin/auth/login",
+        json={"email": "second@axizpos.com", "password": "Support-password-1"},
+    )
+    other_headers = {"Authorization": f"Bearer {other.json()['access_token']}"}
+    still_last = platform.client.patch(
+        f"/api/v1/super-admin/operators/{second.json()['id']}",
+        headers=other_headers,
+        json={"role": "SUPPORT"},
+    )
+    assert still_last.status_code == 409

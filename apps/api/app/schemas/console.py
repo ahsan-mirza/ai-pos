@@ -1,8 +1,9 @@
+import re
 from datetime import datetime
-from typing import Literal
+from typing import Literal, Self
 from uuid import UUID
 
-from pydantic import Field
+from pydantic import Field, field_validator, model_validator
 
 from app.schemas.governance import ChangeRequestOut, OverrideState
 from app.schemas.payloads import ApiModel
@@ -23,6 +24,61 @@ class OperatorOut(ApiModel):
     role: OperatorRole
     is_active: bool
     last_login_at: datetime | None
+
+
+_EMAIL = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
+
+class OperatorCreate(ApiModel):
+    full_name: str = Field(min_length=1, max_length=120)
+    email: str = Field(min_length=3, max_length=254)
+    role: OperatorRole
+    password: str = Field(min_length=1, max_length=256)
+
+    @field_validator("full_name")
+    @classmethod
+    def _name(cls, value: str) -> str:
+        cleaned = value.strip()
+        if cleaned == "":
+            raise ValueError("Enter a name.")
+        return cleaned
+
+    @field_validator("email")
+    @classmethod
+    def _email(cls, value: str) -> str:
+        cleaned = value.strip().lower()
+        if _EMAIL.fullmatch(cleaned) is None:
+            raise ValueError("Enter a valid email address.")
+        return cleaned
+
+    @field_validator("password")
+    @classmethod
+    def _password(cls, value: str) -> str:
+        from app.console.auth import validate_operator_password
+
+        validate_operator_password(value)
+        return value
+
+
+class OperatorUpdate(ApiModel):
+    role: OperatorRole | None = None
+    password: str | None = Field(default=None, max_length=256)
+
+    @field_validator("password")
+    @classmethod
+    def _password(cls, value: str | None) -> str | None:
+        from app.console.auth import validate_operator_password
+
+        if value is None or value.strip() == "":
+            return None
+        validate_operator_password(value)
+        return value
+
+    @model_validator(mode="after")
+    def _has_change(self) -> Self:
+        if self.role is None and self.password is None:
+            raise ValueError("Send a role or a new password.")
+        return self
 
 
 class ConsoleSession(ApiModel):

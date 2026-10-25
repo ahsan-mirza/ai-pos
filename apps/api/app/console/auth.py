@@ -5,12 +5,14 @@ import uuid
 from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session
 
 from app.console.security import OperatorPrincipal, audit_operator, issue_token, new_totp_secret
 from app.core.config import Settings
 from app.core.errors import ApiError
 from app.core.security import encrypt_value, hash_password, verify_password
-from app.schemas.console import ConsoleLogin, ConsoleSession, OperatorOut
+from app.schemas.console import ConsoleLogin, ConsoleSession, OperatorCreate, OperatorOut, OperatorUpdate
 from app.tenancy import registry
 from app.tenancy.models import OPERATOR_ROLES, Operator
 
@@ -75,7 +77,14 @@ def validate_operator_password(password: str) -> None:
 
 
 def create_operator(
-    settings: Settings, *, email: str, full_name: str, role: str, password: str, totp_secret: str | None = None
+    settings: Settings,
+    *,
+    email: str,
+    full_name: str,
+    role: str,
+    password: str,
+    totp_secret: str | None = None,
+    actor: OperatorPrincipal | None = None,
 ) -> tuple[OperatorOut, str]:
     """Returns the operator and the TOTP secret to enrol in an authenticator app (shown once)."""
     if role not in OPERATOR_ROLES:
@@ -98,9 +107,77 @@ def create_operator(
             updated_at=_now(),
         )
         db.add(row)
-        audit_operator(db, None, "console.operator_created", after={"email": row.email, "role": role})
-        db.commit()
+        audit_operator(db, actor, "console.operator_created", after={"email": row.email, "role": role})
+        try:
+            db.commit()
+        except IntegrityError:
+            db.rollback()
+            raise ValueError(f"An operator with {email} already exists.") from None
         return operator_out(row), secret
+
+
+def list_operators(settings: Settings) -> list[OperatorOut]:
+    with registry.control_session(settings) as db:
+        rows = db.scalars(select(Operator).order_by(Operator.full_name, Operator.email)).all()
+        return [operator_out(row) for row in rows]
+
+
+def add_operator(settings: Settings, actor: OperatorPrincipal, data: OperatorCreate) -> OperatorOut:
+    try:
+        created, _secret = create_operator(
+            settings,
+            email=data.email,
+            full_name=data.full_name,
+            role=data.role,
+            password=data.password,
+            actor=actor,
+        )
+    except ValueError as error:
+        if "already exists" in str(error):
+            raise ApiError(409, "operator_exists", "An operator with this email already exists.") from error
+        raise ApiError(422, "invalid_operator", str(error)) from error
+    return created
+
+
+def _active_admin_count(db: Session) -> int:
+    return (
+        db.scalar(
+            select(func.count()).select_from(Operator).where(Operator.role == "ADMIN", Operator.is_active.is_(True))
+        )
+        or 0
+    )
+
+
+def change_operator(
+    settings: Settings, actor: OperatorPrincipal, operator_id: uuid.UUID, data: OperatorUpdate
+) -> OperatorOut:
+    """Changes role and, when a password is sent, replaces it and signs that operator's old sessions out."""
+    with registry.control_session(settings) as db:
+        row = db.get(Operator, operator_id)
+        if row is None:
+            raise ApiError(404, "not_found", "That operator does not exist.")
+        if data.role is not None and data.role != row.role:
+            if row.role == "ADMIN" and data.role != "ADMIN" and row.is_active and _active_admin_count(db) <= 1:
+                raise ApiError(409, "last_admin", "The last console admin cannot be changed to Support.")
+            before_role = row.role
+            row.role = data.role
+            row.updated_at = _now()
+            audit_operator(
+                db,
+                actor,
+                "console.operator_role",
+                before={"email": row.email, "role": before_role},
+                after={"email": row.email, "role": row.role},
+            )
+        if data.password:
+            row.password_hash = hash_password(data.password)
+            row.failed_attempts = 0
+            row.locked_until = None
+            row.token_version += 1
+            row.updated_at = _now()
+            audit_operator(db, actor, "console.operator_password_reset", after={"email": row.email})
+        db.commit()
+        return operator_out(row)
 
 
 def ensure_console_admin(settings: Settings) -> OperatorOut | None:

@@ -63,9 +63,11 @@ def _field_label(loc: object) -> str:
     return label[:1].upper() + label[1:]
 
 
-def _validation_sentence(label: str, raw: str) -> str:
+def _validation_sentence(label: str, raw: str, kind: str = "") -> str:
     text = raw.removeprefix("Value error, ").strip().rstrip(".")
     lowered = text.lower()
+    if kind == "extra_forbidden" or lowered == "extra inputs are not permitted":
+        return f"{label} cannot be changed here."
     if lowered == "field required":
         return f"{label} is required."
     stock = _STOCK_TYPE.match(text)
@@ -81,7 +83,11 @@ def validation_message(errors: list[object]) -> str:
     for item in errors:
         if not isinstance(item, dict):
             continue
-        sentence = _validation_sentence(_field_label(item.get("loc")), str(item.get("msg") or "Check this value."))
+        sentence = _validation_sentence(
+            _field_label(item.get("loc")),
+            str(item.get("msg") or "Check this value."),
+            str(item.get("type") or ""),
+        )
         if sentence not in sentences:
             sentences.append(sentence)
     return " ".join(sentences) if sentences else "The request is missing or invalid."

@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
 import { Select } from "@ai-pos/ui";
 import { ErrorNote, Field, PrimaryButton } from "../components/ui";
-import { api, errorText } from "../lib/api";
+import { ConsoleError, api, errorText } from "../lib/api";
 import { useSession } from "../lib/session";
 
 type Security = "ssl" | "starttls" | "none";
+type FieldName = "host" | "port" | "username" | "password" | "from_address" | "from_name" | "reason" | "to";
 
 interface MailSettings {
   enabled: boolean;
@@ -28,6 +29,65 @@ const EMPTY: MailSettings = {
   from_name: "AI POS",
 };
 
+const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+function isEmail(value: string): boolean {
+  return EMAIL.test(value.trim());
+}
+
+function fieldName(loc: unknown): FieldName | null {
+  const parts = Array.isArray(loc) ? loc.map(String) : [];
+  const name = parts.filter((part) => part !== "body" && !/^\d+$/.test(part)).at(-1);
+  if (
+    name === "host" ||
+    name === "port" ||
+    name === "username" ||
+    name === "password" ||
+    name === "from_address" ||
+    name === "from_name" ||
+    name === "reason" ||
+    name === "to"
+  ) {
+    return name;
+  }
+  return null;
+}
+
+function fieldSentence(name: FieldName, raw: string): string {
+  const text = raw.replace(/^Value error,\s*/i, "").trim();
+  if (name === "reason" && /at least 3/i.test(text)) return "Enter a reason of at least 3 characters.";
+  if (name === "to") return "Enter an email address to send the test to.";
+  if (name === "from_address" && /email/i.test(text)) return "Enter a valid From address.";
+  if (name === "host") return "Enter the outgoing server.";
+  if (name === "password") return "Enter the mailbox password.";
+  return text.endsWith(".") ? text : `${text}.`;
+}
+
+function apiFieldErrors(caught: ConsoleError): Partial<Record<FieldName, string>> {
+  const next: Partial<Record<FieldName, string>> = {};
+  if (Array.isArray(caught.details)) {
+    for (const item of caught.details) {
+      if (item === null || typeof item !== "object") continue;
+      const record = item as { loc?: unknown; msg?: unknown };
+      const name = fieldName(record.loc);
+      if (name === null) continue;
+      next[name] = fieldSentence(name, String(record.msg ?? caught.message));
+    }
+  }
+  if (Object.keys(next).length > 0) return next;
+  if (caught.code === "invalid_email" && /test/i.test(caught.message)) {
+    next.to = "Enter an email address to send the test to.";
+  } else if (caught.code === "invalid_email") {
+    next.from_address = "Enter a valid From address.";
+  } else if (caught.code === "mail_incomplete" && /password/i.test(caught.message)) {
+    next.password = "Enter the mailbox password.";
+  } else if (caught.code === "mail_incomplete") {
+    next.host = "Enter the outgoing server.";
+    next.from_address = "Enter the From address.";
+  }
+  return next;
+}
+
 export function MailPage() {
   const { operator } = useSession();
   const admin = operator?.role === "ADMIN";
@@ -36,6 +96,7 @@ export function MailPage() {
   const [reason, setReason] = useState("");
   const [testTo, setTestTo] = useState(operator?.email ?? "");
   const [error, setError] = useState<string | null>(null);
+  const [fields, setFields] = useState<Partial<Record<FieldName, string>>>({});
   const [saved, setSaved] = useState(false);
   const [tested, setTested] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -48,33 +109,85 @@ export function MailPage() {
   }, []);
 
   const patch = (partial: Partial<MailSettings>) => setForm((current) => ({ ...current, ...partial }));
+  const clearField = (name: FieldName) => setFields((current) => ({ ...current, [name]: undefined }));
+
+  const saveErrors = (): Partial<Record<FieldName, string>> => {
+    const next: Partial<Record<FieldName, string>> = {};
+    if (form.enabled && form.host.trim() === "") next.host = "Enter the outgoing server.";
+    if (form.enabled && form.from_address.trim() === "") next.from_address = "Enter the From address.";
+    else if (form.from_address.trim() !== "" && !isEmail(form.from_address)) {
+      next.from_address = "Enter a valid From address.";
+    }
+    if (form.enabled && password === "" && !form.password_set) next.password = "Enter the mailbox password.";
+    if (reason.trim().length > 0 && reason.trim().length < 3) next.reason = "Enter a reason of at least 3 characters.";
+    return next;
+  };
 
   const save = () => {
-    setBusy(true);
+    const local = saveErrors();
+    setFields(local);
     setSaved(false);
+    if (Object.keys(local).length > 0) {
+      setError(null);
+      return;
+    }
+    setBusy(true);
     api
-      .patch<MailSettings>("/mail", { ...form, password, reason: reason.trim() })
+      .patch<MailSettings>("/mail", {
+        enabled: form.enabled,
+        host: form.host,
+        port: form.port,
+        security: form.security,
+        username: form.username,
+        password,
+        from_address: form.from_address,
+        from_name: form.from_name,
+        reason: reason.trim(),
+      })
       .then((row) => {
         setForm(row);
         setPassword("");
         setReason("");
         setError(null);
+        setFields({});
         setSaved(true);
       })
-      .catch((caught: unknown) => setError(errorText(caught, "Could not save the mailbox.")))
+      .catch((caught: unknown) => {
+        const mapped = caught instanceof ConsoleError ? apiFieldErrors(caught) : {};
+        if (Object.keys(mapped).length > 0) {
+          setFields(mapped);
+          setError(null);
+        } else {
+          setError(errorText(caught, "Could not save the mailbox."));
+        }
+      })
       .finally(() => setBusy(false));
   };
 
   const sendTest = () => {
-    setBusy(true);
     setTested(false);
+    if (testTo.trim() === "" || !isEmail(testTo)) {
+      setFields((current) => ({ ...current, to: "Enter an email address to send the test to." }));
+      setError(null);
+      return;
+    }
+    setBusy(true);
     api
       .post<{ sent: boolean }>("/mail/test", { to: testTo.trim() })
       .then(() => {
         setError(null);
+        clearField("to");
         setTested(true);
       })
-      .catch((caught: unknown) => setError(errorText(caught, "The test email was not sent.")))
+      .catch((caught: unknown) => {
+        const mapped = caught instanceof ConsoleError ? apiFieldErrors(caught) : {};
+        if (mapped.to) {
+          setFields((current) => ({ ...current, to: mapped.to }));
+          setError(null);
+        } else {
+          setError(errorText(caught, "The test email was not sent."));
+        }
+      })
       .finally(() => setBusy(false));
   };
 
@@ -100,7 +213,11 @@ export function MailPage() {
           value={form.host}
           placeholder="mail.spacemail.com"
           disabled={!admin}
-          onChange={(event) => patch({ host: event.target.value })}
+          error={fields.host}
+          onChange={(event) => {
+            clearField("host");
+            patch({ host: event.target.value });
+          }}
         />
         <div className="grid grid-cols-2 gap-3">
           <Field
@@ -108,7 +225,11 @@ export function MailPage() {
             type="number"
             value={String(form.port)}
             disabled={!admin}
-            onChange={(event) => patch({ port: Number(event.target.value) || 465 })}
+            error={fields.port}
+            onChange={(event) => {
+              clearField("port");
+              patch({ port: Number(event.target.value) || 465 });
+            }}
           />
           <label className="block text-sm font-medium text-charcoal">
             Security
@@ -134,7 +255,11 @@ export function MailPage() {
           value={form.username}
           autoComplete="off"
           disabled={!admin}
-          onChange={(event) => patch({ username: event.target.value })}
+          error={fields.username}
+          onChange={(event) => {
+            clearField("username");
+            patch({ username: event.target.value });
+          }}
         />
         <Field
           label="Password"
@@ -143,7 +268,11 @@ export function MailPage() {
           autoComplete="new-password"
           placeholder={form.password_set ? "Saved — leave blank to keep it" : ""}
           disabled={!admin}
-          onChange={(event) => setPassword(event.target.value)}
+          error={fields.password}
+          onChange={(event) => {
+            clearField("password");
+            setPassword(event.target.value);
+          }}
         />
         <Field
           label="From address"
@@ -151,17 +280,34 @@ export function MailPage() {
           value={form.from_address}
           placeholder="pos@yourdomain.com"
           disabled={!admin}
-          onChange={(event) => patch({ from_address: event.target.value })}
+          error={fields.from_address}
+          onChange={(event) => {
+            clearField("from_address");
+            patch({ from_address: event.target.value });
+          }}
         />
         <Field
           label="From name"
           value={form.from_name}
           disabled={!admin}
-          onChange={(event) => patch({ from_name: event.target.value })}
+          error={fields.from_name}
+          onChange={(event) => {
+            clearField("from_name");
+            patch({ from_name: event.target.value });
+          }}
         />
         {admin ? (
           <>
-            <Field label="Reason (kept in the audit log)" value={reason} maxLength={500} onChange={(event) => setReason(event.target.value)} />
+            <Field
+              label="Reason (kept in the audit log)"
+              value={reason}
+              maxLength={500}
+              error={fields.reason}
+              onChange={(event) => {
+                clearField("reason");
+                setReason(event.target.value);
+              }}
+            />
             <div className="flex items-center gap-3">
               <PrimaryButton disabled={busy || reason.trim().length < 3} onClick={save}>
                 Save
@@ -169,7 +315,16 @@ export function MailPage() {
               {saved ? <p className="text-sm text-charcoal/60">Saved.</p> : null}
             </div>
             <div className="border-t border-line pt-4">
-              <Field label="Send a test to" type="email" value={testTo} onChange={(event) => setTestTo(event.target.value)} />
+              <Field
+                label="Send a test to"
+                type="email"
+                value={testTo}
+                error={fields.to}
+                onChange={(event) => {
+                  clearField("to");
+                  setTestTo(event.target.value);
+                }}
+              />
               <div className="mt-3 flex items-center gap-3">
                 <PrimaryButton disabled={busy || testTo.trim() === ""} onClick={sendTest}>
                   Send test

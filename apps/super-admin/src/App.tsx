@@ -8,6 +8,7 @@ import { RequestsPage } from "./pages/RequestsPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { TenantDrawer } from "./pages/TenantDrawer";
 import { TenantsPage } from "./pages/TenantsPage";
+import { UsersPage } from "./pages/UsersPage";
 import { WhatsAppPage } from "./pages/WhatsAppPage";
 
 const basename = import.meta.env.BASE_URL === "/" ? undefined : import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -36,6 +37,7 @@ function Console() {
             <Route path="whatsapp" element={<WhatsAppPage />} />
             <Route path="landing" element={<Navigate to="/settings/whatsapp" replace />} />
             <Route path="email" element={<MailPage />} />
+            <Route path="users" element={<UsersPage />} />
           </Route>
           <Route path="landing" element={<Navigate to="/settings/whatsapp" replace />} />
           <Route path="email" element={<Navigate to="/settings/email" replace />} />

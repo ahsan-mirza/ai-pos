@@ -1,24 +1,31 @@
-import { Mail, MessageCircle, type LucideIcon } from "lucide-react";
+import { Mail, MessageCircle, Users, type LucideIcon } from "lucide-react";
 import { NavLink, Navigate, Outlet, useLocation } from "react-router-dom";
+import { useSession } from "../lib/session";
 
-const groups: { title: string; sections: { to: string; label: string; hint: string; icon: LucideIcon }[] }[] = [
-  {
-    title: "Contact & Communication",
-    sections: [
-      {
-        to: "/settings/whatsapp",
-        label: "WhatsApp Sales Contact",
-        hint: "Footer number, email, and the chat button",
-        icon: MessageCircle,
-      },
-      { to: "/settings/email", label: "Email", hint: "Outgoing mailbox for password resets", icon: Mail },
-    ],
-  },
-];
-
-/** WhatsApp and email live here, listed the same way catalog categories are. */
+/** WhatsApp, email, and console users live here, listed the same way catalog categories are. */
 export function SettingsPage() {
   const { pathname } = useLocation();
+  const { operator } = useSession();
+  const groups: { title: string; sections: { to: string; label: string; hint: string; icon: LucideIcon }[] }[] = [
+    {
+      title: "Contact & Communication",
+      sections: [
+        {
+          to: "/settings/whatsapp",
+          label: "WhatsApp Sales Contact",
+          hint: "Footer number, email, and the chat button",
+          icon: MessageCircle,
+        },
+        { to: "/settings/email", label: "Email", hint: "Outgoing mailbox for password resets", icon: Mail },
+      ],
+    },
+  ];
+  if (operator?.role === "ADMIN") {
+    groups.push({
+      title: "Access",
+      sections: [{ to: "/settings/users", label: "Users", hint: "Console operators and their roles", icon: Users }],
+    });
+  }
   if (pathname === "/settings" || pathname === "/settings/landing") return <Navigate to="/settings/whatsapp" replace />;
 
   return (

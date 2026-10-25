@@ -51,6 +51,7 @@ const groups: { label: string; items: NavItem[] }[] = [
 const settingsSections: Record<string, string> = {
   "/settings/whatsapp": "WhatsApp Sales Contact",
   "/settings/email": "Email",
+  "/settings/users": "Users",
 };
 
 const iconButton =
