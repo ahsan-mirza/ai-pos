@@ -7,7 +7,7 @@ python -m app.tenancy.cli adopt demo --name "Demo" --database ai_pos   # registe
 python -m app.tenancy.cli migrate-all                           # upgrade every tenant database
 python -m app.tenancy.cli list
 python -m app.tenancy.cli set-status client1 suspended
-python -m app.tenancy.cli create-operator --email it@qios.ae --name "IT Support" --role ADMIN   # console staff
+python -m app.tenancy.cli create-operator --email it@axizpos.com --name "IT Support" --role ADMIN   # console staff
 python -m app.tenancy.cli collect-stats                         # refresh the console directory (run daily)
 python -m app.tenancy.cli demo                                  # one demo store per business type, with registers
 """

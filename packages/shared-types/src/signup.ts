@@ -37,6 +37,12 @@ export interface SignupStart {
   password: string;
 }
 
+/** Log in to a signup that was already started with this email. */
+export interface SignupResume {
+  email: string;
+  password: string;
+}
+
 export interface SignupStarted {
   id: string;
   /** Sent back as X-Signup-Token on every later step. */
@@ -44,6 +50,8 @@ export interface SignupStarted {
   channel: SignupOtpChannel;
   sent_to: string;
   resend_after_seconds: number;
+  /** Seconds until the emailed code stops working. */
+  expires_in_seconds: number;
   /** Only in development with the log channel. */
   dev_code: string | null;
 }
@@ -121,6 +129,11 @@ export const SIGNUP_BUSINESS_CARDS: readonly SignupBusinessCard[] = [
         id: "electronics_b2b",
         label: "Wholesale & B2B",
         description: "Adds tier prices, customer credit, quotations and cheques.",
+      },
+      {
+        id: "electronics_both",
+        label: "Both",
+        description: "A walk-in shop and wholesale: IMEIs, repairs, tier prices, credit and quotations.",
       },
     ],
   },

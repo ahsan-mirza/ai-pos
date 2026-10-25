@@ -8,12 +8,12 @@ function required(name: keyof ImportMetaEnv): string {
 
 const STORE_CODE_KEY = "ai-pos.store-code";
 
-const TENANT_BASE_DOMAINS = (import.meta.env.VITE_TENANT_BASE_DOMAINS ?? "qios.ae,localhost")
+const TENANT_BASE_DOMAINS = (import.meta.env.VITE_TENANT_BASE_DOMAINS ?? "axizpos.com,localhost")
   .split(",")
   .map((domain) => domain.trim().toLowerCase().replace(/^\./, ""))
   .filter((domain) => domain !== "");
 
-/** "client1.qios.ae", "client1.dev.qios.ae" or "client1.localhost" when the portal is opened on a store subdomain. */
+/** "client1.axizpos.com", "client1.dev.axizpos.com" or "client1.localhost" when the portal is opened on a store subdomain. */
 function tenantHost(): string | null {
   const host = typeof window === "undefined" ? "" : window.location.hostname.toLowerCase();
   for (const base of TENANT_BASE_DOMAINS) {
@@ -115,7 +115,7 @@ function storesShareThisHost(): boolean {
   return !STORE_SUBDOMAINS || directHost();
 }
 
-/** "client1.qios.ae" on the current scheme and port, or this host itself when stores share it. */
+/** "client1.axizpos.com" on the current scheme and port, or this host itself when stores share it. */
 function tenantPortalUrl(slug: string): string {
   if (storesShareThisHost()) return window.location.origin;
   const { protocol, port } = window.location;

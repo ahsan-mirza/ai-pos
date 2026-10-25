@@ -64,13 +64,13 @@ class Settings(BaseSettings):
     database_url: str
     # Multi-tenancy. Unset CONTROL_DATABASE_URL keeps the API single-tenant on DATABASE_URL.
     control_database_url: str | None = None
-    # Hosts like client1.qios.ae or client1.localhost resolve to tenant "client1".
-    tenant_base_domains: str = "qios.ae,localhost"
+    # Hosts like client1.axizpos.com or client1.localhost resolve to tenant "client1".
+    tenant_base_domains: str = "axizpos.com,localhost"
     # Postgres URL for tenant databases; "{database}" is replaced by the tenant's database name.
     # Unset: DATABASE_URL with its database name swapped.
     tenant_database_url_template: str | None = None
     # Public base URL handed to activated registers; "{tenant}" is replaced by the subdomain.
-    tenant_public_url_template: str = "https://{tenant}.qios.ae"
+    tenant_public_url_template: str = "https://{tenant}.axizpos.com"
     # Tenant used for requests that name none (plain localhost in development).
     default_tenant: str | None = None
     jwt_secret: str = Field(min_length=32)
@@ -93,12 +93,12 @@ class Settings(BaseSettings):
     scheduler_enabled: bool = True
     public_base_url: str = "http://localhost:8000"
     # Where tenants send business-type and module change requests.
-    support_email: str = "support@qios.ae"
+    support_email: str = "support@axizpos.com"
     # POS-company console (apps/super-admin). Its tokens are signed with their own secret and audience, so no
     # store token ever opens it; unset, the console API answers 503.
     console_jwt_secret: str | None = Field(default=None, min_length=32)
     console_token_minutes: int = Field(default=60, ge=5, le=12 * 60)
-    # Browser origins of the console app, e.g. https://console.qios.ae,http://localhost:5174.
+    # Browser origins of the console app, e.g. https://console.axizpos.com,http://localhost:5174.
     console_origins: str = ""
     # POS-company billing. Empty uses the recorded-payment simulator for go-live checkout.
     stripe_secret_key: str | None = None
@@ -166,9 +166,10 @@ class Settings(BaseSettings):
     # through the messaging adapters; "log" writes it to the API log and, outside production, returns it.
     signup_enabled: bool = True
     signup_otp_channel: str = Field(default="log", pattern="^(log|whatsapp|sms|email)$")
-    # Fixed 6-digit code. When set, signup accepts this code and does not send a message.
+    # Fixed 6-digit code. Outside development, signup accepts only this code and does not send a message.
+    # In development a fresh code is still emailed, and this code is accepted as well.
     signup_otp_code: str | None = Field(default=None, pattern=r"^\d{6}$")
-    signup_otp_minutes: int = Field(default=10, ge=2, le=60)
+    signup_otp_minutes: int = Field(default=3, ge=2, le=60)
     signup_max_per_hour: int = Field(default=5, ge=1, le=100)
 
     # Installers a Super Admin downloads from the portal. CI publishes each POS release to <dir>/pos/<version>/;
@@ -249,7 +250,7 @@ class Settings(BaseSettings):
 
     @property
     def tenant_origin_regex(self) -> str | None:
-        """Browser origins of tenant portals (https://{tenant}.qios.ae) and of signup on the bare domain itself;
+        """Browser origins of tenant portals (https://{tenant}.axizpos.com) and of signup on the bare domain itself;
         http(s) on localhost."""
         if not self.tenancy_enabled:
             return None

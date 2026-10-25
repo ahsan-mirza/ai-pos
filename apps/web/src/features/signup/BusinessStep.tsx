@@ -1,6 +1,6 @@
 import { SIGNUP_BUSINESS_CARDS, type SignupBusinessCard, type SignupState } from "@ai-pos/shared-types";
 import { Check, Coffee, MailCheck, Sandwich, Shirt, ShoppingCart, Smartphone, UtensilsCrossed, type LucideIcon } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ErrorNote } from "../../components/ui/Field";
 import { ApiRequestError } from "../../lib/api";
 import { signupApi, type SignupSession } from "./signupApi";
@@ -16,13 +16,19 @@ const ICONS: Record<string, LucideIcon> = {
 
 export function BusinessStep({
   session,
+  initialProfile,
+  initialSubType,
   onChosen,
 }: {
   session: SignupSession;
+  initialProfile: string | null;
+  initialSubType: string | null;
   onChosen: (state: SignupState) => void;
 }) {
-  const [card, setCard] = useState<SignupBusinessCard | null>(null);
-  const [subType, setSubType] = useState<string | null>(null);
+  const [card, setCard] = useState<SignupBusinessCard | null>(
+    () => SIGNUP_BUSINESS_CARDS.find((option) => option.profile === initialProfile) ?? null,
+  );
+  const [subType, setSubType] = useState<string | null>(initialSubType);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -43,6 +49,12 @@ export function BusinessStep({
     setSubType(next.subTypes[0]?.id ?? null);
     setError(null);
   };
+
+  useEffect(() => {
+    if (initialProfile === null) return;
+    setCard(SIGNUP_BUSINESS_CARDS.find((option) => option.profile === initialProfile) ?? null);
+    setSubType(initialSubType);
+  }, [initialProfile, initialSubType]);
 
   const comingSoon = card !== null && card.subTypes.length === 0;
 
@@ -94,12 +106,12 @@ export function BusinessStep({
         <section className="mt-5 rounded-3xl border border-line bg-surface/60 p-5" aria-label="Kind of business">
           <p className="text-sm font-semibold">Which fits best?</p>
           <div className="mt-3 grid gap-2 sm:grid-cols-2">
-            {card.subTypes.map((option) => (
+            {card.subTypes.map((option, index) => (
               <label
                 key={option.id}
                 className={`flex cursor-pointer gap-3 rounded-2xl border-2 bg-white p-4 ${
-                  subType === option.id ? "border-accent" : "border-transparent"
-                }`}
+                  card.subTypes.length % 2 === 1 && index === card.subTypes.length - 1 ? "sm:col-span-2" : ""
+                } ${subType === option.id ? "border-accent" : "border-transparent"}`}
               >
                 <input
                   type="radio"

@@ -12,6 +12,10 @@ use crate::sync::DesktopConfig;
 
 const CHECK_TIMEOUT: Duration = Duration::from_secs(3);
 const DOWNLOAD_TIMEOUT: Duration = Duration::from_secs(600);
+/// Quiet period after launch so the register can open before the first lookup.
+const FIRST_CHECK: Duration = Duration::from_secs(20);
+/// How often an open register looks again. The request itself is not shown.
+const CHECK_EVERY: Duration = Duration::from_secs(15 * 60);
 
 #[derive(Debug, Serialize, Clone)]
 pub struct AppUpdate {
@@ -80,6 +84,28 @@ async fn feed(config: &DesktopConfig) -> Result<Option<AppUpdate>, String> {
         sha256: body.sha256.to_ascii_lowercase(),
         url: format!("{}{path}", config.api_base_url),
     }))
+}
+
+/// Looks up the published installer for as long as this window stays open.
+/// A newer version is announced once; the lookup itself never surfaces in the register.
+pub fn watch(app: AppHandle, config: DesktopConfig) {
+    std::thread::Builder::new()
+        .name("update-check".into())
+        .spawn(move || {
+            let mut announced = String::new();
+            std::thread::sleep(FIRST_CHECK);
+            loop {
+                let current = app.package_info().version.to_string();
+                if let Some(update) = tauri::async_runtime::block_on(check(&config, &current)) {
+                    if announced != update.version {
+                        announced = update.version.clone();
+                        let _ = app.emit("app-update-available", update);
+                    }
+                }
+                std::thread::sleep(CHECK_EVERY);
+            }
+        })
+        .ok();
 }
 
 pub async fn check(config: &DesktopConfig, current: &str) -> Option<AppUpdate> {

@@ -17,7 +17,7 @@ pub struct DesktopConfig {
     pub device_id: String,
     /// The branch this terminal sells from; its catalog and stock come from this store only.
     pub store_id: String,
-    /// The tenant subdomain (client1.qios.ae), sent as X-Tenant-Domain.
+    /// The tenant subdomain (client1.axizpos.com), sent as X-Tenant-Domain.
     pub tenant_domain: String,
 }
 

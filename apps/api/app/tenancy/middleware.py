@@ -1,4 +1,4 @@
-"""Binds every request to a tenant from X-Tenant-Domain or the Host subdomain (client1.qios.ae)."""
+"""Binds every request to a tenant from X-Tenant-Domain or the Host subdomain (client1.axizpos.com)."""
 
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse

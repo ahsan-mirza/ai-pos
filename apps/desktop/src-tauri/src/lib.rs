@@ -669,6 +669,7 @@ pub fn run() {
             }
             let db = Db::open(&database).map_err(std::io::Error::other)?;
             let media_dir = directory.join("media");
+            updates::watch(app.handle().clone(), config.clone());
             app.manage(AppState {
                 db: Arc::new(db),
                 config,

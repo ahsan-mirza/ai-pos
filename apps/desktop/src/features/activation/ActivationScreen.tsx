@@ -4,7 +4,7 @@ import { useRegisterLayout } from "../../components/RegisterLayout";
 import { activateTerminal, inTauri, type TerminalStatus } from "../../lib/tauri";
 
 /** Store host for this build: a public IP until DNS exists, otherwise a domain suffix. */
-const BASE_DOMAIN = (import.meta.env.VITE_TENANT_BASE_DOMAIN?.trim() || "qios.ae").replace(/^\./, "").toLowerCase();
+const BASE_DOMAIN = (import.meta.env.VITE_TENANT_BASE_DOMAIN?.trim() || "axizpos.com").replace(/^\./, "").toLowerCase();
 const DIRECT_IP = /^\d{1,3}(?:\.\d{1,3}){3}$/.test(BASE_DOMAIN) || BASE_DOMAIN.includes(":");
 
 /** "ab12cd34ef56" -> "AB12-CD34-EF56" while typing. */

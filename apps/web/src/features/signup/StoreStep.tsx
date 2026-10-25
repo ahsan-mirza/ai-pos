@@ -12,6 +12,7 @@ const STORE_EXAMPLES: Record<string, string> = {
   electronics_wholesale: "Al Noor Electronics",
   electronics_retail: "Al Noor Electronics",
   electronics_b2b: "Al Noor Wholesale",
+  electronics_both: "Al Noor Electronics",
   retail_fashion: "Al Noor Boutique",
   fashion_boutique: "Al Noor Boutique",
   fashion_chain: "Al Noor Fashion",

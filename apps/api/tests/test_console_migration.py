@@ -55,7 +55,7 @@ def test_business_type_migrates_only_after_clean_safety_checks(platform) -> None
 
 def test_migration_needs_admin_matching_slug_and_resolves_the_request(platform) -> None:  # noqa: F811
     admin = platform.operator()
-    support = platform.operator(email="desk@qios.ae", role="SUPPORT")
+    support = platform.operator(email="desk@axizpos.com", role="SUPPORT")
     alpha_id = platform.tenant_id("alpha")
     alpha = platform.headers("alpha")
     request = platform.client.post(

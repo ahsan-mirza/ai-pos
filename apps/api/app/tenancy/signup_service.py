@@ -12,16 +12,17 @@ import uuid
 from datetime import UTC, datetime, timedelta
 
 import jwt
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.core import capabilities as capability_catalog
 from app.core.config import Settings
 from app.core.errors import ApiError
-from app.core.security import hash_password
+from app.core.security import hash_password, verify_password
 from app.schemas.signup import (
     ProvisionStep,
     SignupBusiness,
+    SignupResume,
     SignupStart,
     SignupStarted,
     SignupState,
@@ -32,7 +33,6 @@ from app.services import messaging_providers
 from app.tenancy import registry
 from app.tenancy.models import SignupRequest, Tenant
 
-RESEND_SECONDS = 30
 MAX_OTP_ATTEMPTS = 5
 HANDOFF_MINUTES = 5
 CHANNEL_PROVIDERS = {"log": "log", "whatsapp": "whatsapp_cloud", "sms": "http_sms", "email": "smtp"}
@@ -77,15 +77,32 @@ def _load(settings: Settings, request_id: uuid.UUID, token: str | None) -> tuple
     return db, row
 
 
+def _code_seconds(settings: Settings) -> int:
+    """One window: the code expires then, and a new code can be sent then."""
+    return settings.signup_otp_minutes * 60
+
+
+def _otp_channel(settings: Settings) -> str:
+    """Development always emails the code. Other environments use SIGNUP_OTP_CHANNEL."""
+    if settings.app_env == "development":
+        return "email"
+    return settings.signup_otp_channel
+
+
+def _fixed_code_only(settings: Settings) -> bool:
+    """Production can run on one configured code. Development still emails a fresh one."""
+    return bool(settings.signup_otp_code) and settings.app_env != "development"
+
+
 def _send_code(settings: Settings, row: SignupRequest) -> str:
-    code = settings.signup_otp_code or f"{secrets.randbelow(1_000_000):06d}"
+    code = settings.signup_otp_code if _fixed_code_only(settings) else f"{secrets.randbelow(1_000_000):06d}"
     row.otp_hash = _digest(f"{row.id}:{code}")
     row.otp_expires_at = _now() + timedelta(minutes=settings.signup_otp_minutes)
     row.otp_sent_at = _now()
     row.otp_attempts = 0
-    if settings.signup_otp_code:
+    if _fixed_code_only(settings):
         return code
-    channel = settings.signup_otp_channel
+    channel = _otp_channel(settings)
     to = row.email if channel == "email" else row.phone
     body = f"Your AI POS verification code is {code}. It expires in {settings.signup_otp_minutes} minutes."
     try:
@@ -106,9 +123,40 @@ def _masked(row: SignupRequest, channel: str) -> str:
     return f"{row.phone[:4]}•••{row.phone[-3:]}"
 
 
+def _existing(db: Session, *, email: str | None = None, phone: str | None = None) -> SignupRequest | None:
+    """The newest signup already using this email or mobile."""
+    matched = []
+    if email:
+        matched.append(SignupRequest.email == email)
+    if phone:
+        matched.append(SignupRequest.phone == phone)
+    if not matched:
+        return None
+    return db.scalar(select(SignupRequest).where(or_(*matched)).order_by(SignupRequest.created_at.desc()).limit(1))
+
+
+def _started(settings: Settings, row: SignupRequest, token: str, *, code: str | None, expires_in: int) -> SignupStarted:
+    channel = _otp_channel(settings)
+    return SignupStarted(
+        id=row.id,
+        token=token,
+        channel=channel,
+        sent_to=_masked(row, channel),
+        resend_after_seconds=expires_in,
+        expires_in_seconds=expires_in,
+        dev_code=code if channel == "log" and settings.app_env != "production" else None,
+    )
+
+
 def start(settings: Settings, data: SignupStart) -> SignupStarted:
     _require_enabled(settings)
     with registry.control_session(settings) as db:
+        if _existing(db, email=data.email, phone=data.phone) is not None:
+            raise ApiError(
+                409,
+                "signup_exists",
+                "You already have a signup. Log in to finish where you left off.",
+            )
         since = _now() - timedelta(hours=1)
         recent = db.scalar(
             select(func.count())
@@ -134,15 +182,30 @@ def start(settings: Settings, data: SignupStart) -> SignupStarted:
         db.flush()
         code = _send_code(settings, row)
         db.commit()
-        channel = settings.signup_otp_channel
-        return SignupStarted(
-            id=row.id,
-            token=token,
-            channel=channel,
-            sent_to=_masked(row, channel),
-            resend_after_seconds=RESEND_SECONDS,
-            dev_code=code if channel == "log" and settings.app_env != "production" else None,
-        )
+        return _started(settings, row, token, code=code, expires_in=_code_seconds(settings))
+
+
+def resume(settings: Settings, data: SignupResume) -> SignupStarted:
+    """Checks the saved signup and hands back a token for the step still left to finish."""
+    _require_enabled(settings)
+    with registry.control_session(settings) as db:
+        row = _existing(db, email=data.email)
+        if row is None or not verify_password(data.password, row.password_hash):
+            raise ApiError(401, "signup_login_failed", "That email or password does not match a signup.")
+        token = secrets.token_urlsafe(32)
+        row.access_hash = _digest(token)
+        expires_in = 0
+        code: str | None = None
+        if row.status == "PENDING_OTP":
+            expires = _aware(row.otp_expires_at)
+            remaining = int((expires - _now()).total_seconds()) if expires is not None and expires > _now() else 0
+            if remaining > 0:
+                expires_in = remaining
+            else:
+                code = _send_code(settings, row)
+                expires_in = _code_seconds(settings)
+        db.commit()
+        return _started(settings, row, token, code=code, expires_in=expires_in)
 
 
 def resend(settings: Settings, request_id: uuid.UUID, token: str | None) -> SignupStarted:
@@ -152,17 +215,18 @@ def resend(settings: Settings, request_id: uuid.UUID, token: str | None) -> Sign
         if row.status != "PENDING_OTP":
             raise ApiError(409, "already_verified", "This signup is already verified.")
         sent = _aware(row.otp_sent_at)
-        if sent is not None and (_now() - sent).total_seconds() < RESEND_SECONDS:
-            raise ApiError(429, "resend_too_soon", f"Wait {RESEND_SECONDS} seconds before asking for a new code.")
+        if sent is not None and (_now() - sent).total_seconds() < _code_seconds(settings):
+            raise ApiError(429, "resend_too_soon", "Wait until this code expires before asking for a new one.")
         code = _send_code(settings, row)
         db.commit()
-        channel = settings.signup_otp_channel
+        channel = _otp_channel(settings)
         return SignupStarted(
             id=row.id,
             token=token or "",
             channel=channel,
             sent_to=_masked(row, channel),
-            resend_after_seconds=RESEND_SECONDS,
+            resend_after_seconds=_code_seconds(settings),
+            expires_in_seconds=_code_seconds(settings),
             dev_code=code if channel == "log" and settings.app_env != "production" else None,
         )
 
@@ -178,7 +242,13 @@ def verify(settings: Settings, request_id: uuid.UUID, token: str | None, code: s
             raise ApiError(410, "code_expired", "The code has expired. Ask for a new one.")
         if row.otp_attempts >= MAX_OTP_ATTEMPTS:
             raise ApiError(429, "too_many_attempts", "Too many wrong codes. Ask for a new one.")
-        if not hmac.compare_digest(row.otp_hash, _digest(f"{row.id}:{code}")):
+        sent_ok = hmac.compare_digest(row.otp_hash, _digest(f"{row.id}:{code}"))
+        optional = (
+            settings.app_env == "development"
+            and settings.signup_otp_code is not None
+            and hmac.compare_digest(settings.signup_otp_code, code)
+        )
+        if not sent_ok and not optional:
             row.otp_attempts += 1
             db.commit()
             left = MAX_OTP_ATTEMPTS - row.otp_attempts

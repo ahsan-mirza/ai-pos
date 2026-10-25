@@ -41,7 +41,7 @@ def valid_slug(slug: str) -> bool:
 
 
 def slug_from_domain(value: str | None, settings: Settings) -> str | None:
-    """'client1', 'client1.qios.ae', 'https://client1.qios.ae/x' or 'client1.localhost:5173' -> 'client1'."""
+    """'client1', 'client1.axizpos.com', 'https://client1.axizpos.com/x' or 'client1.localhost:5173' -> 'client1'."""
     if not value:
         return None
     host = value.strip().lower()
@@ -177,7 +177,7 @@ def current_identity(settings: Settings | None = None) -> Identity:
 def tenant_domain_for(slug: str, settings: Settings | None = None) -> str:
     """client1.example.com, or just the store code when the server is reached by a public IP."""
     settings = settings or get_settings()
-    base = settings.tenant_domain_list[0] if settings.tenant_domain_list else "qios.ae"
+    base = settings.tenant_domain_list[0] if settings.tenant_domain_list else "axizpos.com"
     if is_ip_host(base):
         return slug
     return f"{slug}.{base}"

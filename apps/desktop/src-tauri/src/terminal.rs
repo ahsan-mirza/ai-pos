@@ -6,15 +6,15 @@ use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 
-pub const DEFAULT_TENANT_URL_TEMPLATE: &str = "https://{tenant}.qios.ae";
-pub const DEFAULT_TENANT_BASE_DOMAIN: &str = "qios.ae";
+pub const DEFAULT_TENANT_URL_TEMPLATE: &str = "https://{tenant}.axizpos.com";
+pub const DEFAULT_TENANT_BASE_DOMAIN: &str = "axizpos.com";
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct TerminalConfig {
     pub tenant_slug: String,
     pub tenant_name: String,
     pub tenant_domain: String,
-    /// Public portal address the server reported (https://client1.qios.ae).
+    /// Public portal address the server reported (https://client1.axizpos.com).
     pub tenant_url: String,
     /// Where this register sends API calls; the address it was activated against.
     pub api_base_url: String,
@@ -139,7 +139,7 @@ pub fn remove(path: &Path) -> Result<(), String> {
     Ok(())
 }
 
-/// "client1", "client1.qios.ae", or "https://client1.qios.ae/" -> ("client1", "client1.qios.ae").
+/// "client1", "client1.axizpos.com", or "https://client1.axizpos.com/" -> ("client1", "client1.axizpos.com").
 pub fn normalize_subdomain(input: &str) -> Result<(String, String), String> {
     normalize_subdomain_for(input, &base_domain())
 }
@@ -207,7 +207,7 @@ fn base_domain() -> String {
     .to_lowercase()
 }
 
-/// https://{tenant}.qios.ae in production, https://{tenant}.dev.qios.ae in the dev build; developers point
+/// https://{tenant}.axizpos.com in production, https://{tenant}.dev.axizpos.com in the dev build; developers point
 /// TENANT_URL_TEMPLATE at a local API.
 pub fn tenant_api_url(slug: &str) -> String {
     setting(
@@ -378,26 +378,26 @@ mod tests {
 
     #[test]
     fn subdomains_normalise() {
-        let live = |input: &str| normalize_subdomain_for(input, "qios.ae");
+        let live = |input: &str| normalize_subdomain_for(input, "axizpos.com");
         assert_eq!(
             live("Client1").unwrap(),
-            ("client1".into(), "client1.qios.ae".into())
+            ("client1".into(), "client1.axizpos.com".into())
         );
-        assert_eq!(live("https://client1.qios.ae/login").unwrap().0, "client1");
+        assert_eq!(live("https://client1.axizpos.com/login").unwrap().0, "client1");
         assert_eq!(live("demo.localhost:5173").unwrap().0, "demo");
         assert!(live("client1.example.com").is_err());
         assert!(live("bad_name").is_err());
-        let dev = |input: &str| normalize_subdomain_for(input, "dev.qios.ae");
+        let dev = |input: &str| normalize_subdomain_for(input, "dev.axizpos.com");
         assert_eq!(
             dev("client1").unwrap(),
-            ("client1".into(), "client1.dev.qios.ae".into())
+            ("client1".into(), "client1.dev.axizpos.com".into())
         );
-        assert_eq!(dev("https://client1.dev.qios.ae/").unwrap().0, "client1");
-        assert!(dev("client1.qios.ae").is_err());
+        assert_eq!(dev("https://client1.dev.axizpos.com/").unwrap().0, "client1");
+        assert!(dev("client1.axizpos.com").is_err());
         let ip = |input: &str| normalize_subdomain_for(input, "130.210.53.214");
         assert_eq!(ip("Client1").unwrap(), ("client1".into(), "client1".into()));
         assert_eq!(ip("client1.130.210.53.214").unwrap().0, "client1");
-        assert!(ip("client1.qios.ae").is_err());
+        assert!(ip("client1.axizpos.com").is_err());
     }
 
     #[test]

@@ -6,7 +6,7 @@ const envDir = "../../";
 export default defineConfig(({ mode }) => {
   const current = loadEnv(mode, envDir, "VITE_");
   const production = mode === "production" ? current : loadEnv("production", envDir, "VITE_");
-  // A local .env often has no store host, so the activation screen fell back to qios.ae.
+  // A local .env often has no store host, so the activation screen fell back to axizpos.com.
   // Use the production file's host (the VM IP) unless this mode sets its own.
   const tenantDomain = current.VITE_TENANT_BASE_DOMAIN || production.VITE_TENANT_BASE_DOMAIN;
   return {

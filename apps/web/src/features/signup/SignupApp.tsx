@@ -108,38 +108,57 @@ export function SignupApp() {
         </aside>
         <main className="min-h-[560px] p-6 sm:p-10">
           {step === "loading" ? <p className="text-sm text-charcoal/60">Loading…</p> : null}
-          {step === "account" ? (
+          <div hidden={step !== "account"}>
             <AccountStep
               onStarted={(next) => {
                 saveSignupSession(next);
                 setSession(next);
                 setStep("verify");
               }}
-            />
-          ) : null}
-          {step === "verify" && session ? (
-            <VerifyStep
-              session={session}
-              onResent={(next) => {
+              onResumed={(next, current) => {
                 saveSignupSession(next);
                 setSession(next);
+                setState(current);
+                setStep(stepFor(current));
               }}
-              onVerified={advance}
-              onRestart={restart}
             />
+          </div>
+          {session ? (
+            <div hidden={step !== "verify"}>
+              <VerifyStep
+                session={session}
+                onResent={(next) => {
+                  saveSignupSession(next);
+                  setSession(next);
+                }}
+                onVerified={advance}
+                onRestart={restart}
+              />
+            </div>
           ) : null}
-          {step === "business" && session ? <BusinessStep session={session} onChosen={advance} /> : null}
+          {session ? (
+            <div hidden={step !== "business"}>
+              <BusinessStep
+                session={session}
+                initialProfile={state?.profile ?? null}
+                initialSubType={state?.sub_type ?? null}
+                onChosen={advance}
+              />
+            </div>
+          ) : null}
           {step === "waitlist" && session && state ? (
             <WaitlistStep state={state} onBack={() => setStep("business")} />
           ) : null}
-          {step === "store" && session ? (
-            <StoreStep
-              session={session}
-              profile={state?.profile ?? null}
-              subType={state?.sub_type ?? null}
-              onBack={() => setStep("business")}
-              onSubmitted={advance}
-            />
+          {session ? (
+            <div hidden={step !== "store"}>
+              <StoreStep
+                session={session}
+                profile={state?.profile ?? null}
+                subType={state?.sub_type ?? null}
+                onBack={() => setStep("business")}
+                onSubmitted={advance}
+              />
+            </div>
           ) : null}
           {step === "provisioning" && session && state ? (
             <ProvisioningStep session={session} initial={state} onFinished={forget} />

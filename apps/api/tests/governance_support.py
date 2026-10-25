@@ -48,7 +48,7 @@ class Platform:
     def control(self):
         return registry.control_session(get_settings())
 
-    def operator(self, email: str = "it@qios.ae", role: str = "ADMIN") -> dict[str, str]:
+    def operator(self, email: str = "it@axizpos.com", role: str = "ADMIN") -> dict[str, str]:
         """Creates a console operator and signs in; returns its Authorization header."""
         from app.console.auth import create_operator
 
@@ -69,11 +69,11 @@ class Platform:
     def headers(self, slug: str) -> dict[str, str]:
         response = self.client.post(
             "/api/v1/auth/login-password",
-            headers={"X-Tenant-Domain": f"{slug}.qios.ae"},
+            headers={"X-Tenant-Domain": f"{slug}.axizpos.com"},
             json={"username": f"{slug}-admin", "password": PASSWORDS[slug]},
         )
         assert response.status_code == 200, response.text
-        return {"X-Tenant-Domain": f"{slug}.qios.ae", "Authorization": f"Bearer {response.json()['access_token']}"}
+        return {"X-Tenant-Domain": f"{slug}.axizpos.com", "Authorization": f"Bearer {response.json()['access_token']}"}
 
 
 @pytest.fixture()

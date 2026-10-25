@@ -546,6 +546,7 @@ export type {
   SignupCountry,
   SignupPasswordRule,
   SignupOtpChannel,
+  SignupResume,
   SignupStart,
   SignupStarted,
   SignupState,

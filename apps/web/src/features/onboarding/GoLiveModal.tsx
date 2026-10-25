@@ -1,4 +1,5 @@
 import type {
+  BillingAddon,
   BillingCatalog,
   BillingCheckout,
   BillingCheckoutStatus,
@@ -8,8 +9,7 @@ import type {
   OpeningStockChoice,
 } from "@ai-pos/shared-types";
 import { formatMoney } from "@ai-pos/shared-types";
-import { Select, billingCycleOption } from "@ai-pos/ui";
-import { Rocket } from "lucide-react";
+import { Minus, Plus, Rocket, ShieldCheck } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { ErrorNote, GhostButton, PrimaryButton, TextField } from "../../components/ui/Field";
 import { Modal } from "../../components/ui/Modal";
@@ -219,16 +219,23 @@ export function GoLiveModal({
       : step === "stock"
         ? "Opening stock decides day-one inventory value."
         : step === "package"
-          ? "The amount is priced from the company catalog."
+          ? "Choose a package, then add the counter kit if you want hardware with it."
           : "Practice tax stamps cannot be used on live invoices.";
 
   return (
     <Modal
       title="Go live"
       subtitle={subtitle}
+      width={step === "package" ? "xl" : "md"}
       onClose={onClose}
       footer={
         <>
+          {step === "package" && quote ? (
+            <p className="mr-auto text-sm">
+              <span className="text-charcoal/60">Due now</span>
+              <span className="ml-2 text-base font-semibold tabular-nums">{formatMoney(quote.total_fils, quote.currency)}</span>
+            </p>
+          ) : null}
           <GhostButton onClick={stepIndex === 0 ? onClose : () => setStepIndex(stepIndex - 1)} disabled={busy}>
             {stepIndex === 0 ? "Not yet" : "Back"}
           </GhostButton>
@@ -278,73 +285,17 @@ export function GoLiveModal({
         </div>
       ) : null}
       {step === "package" && catalog ? (
-        <div className="grid gap-3">
-          <label className="text-sm font-medium">
-            Package
-            <Select
-              className="mt-1.5"
-              aria-label="Package"
-              value={planCode}
-              onChange={setPlanCode}
-              options={catalog.plans
-                .filter((row) => row.active)
-                .map((row) => ({
-                  value: row.code,
-                  label: `${row.name} · ${formatMoney(row.monthly_fils, "AED")} / month · ${row.included_registers} registers`,
-                }))}
-            />
-          </label>
-          <label className="text-sm font-medium">
-            Billing cycle
-            <Select
-              className="mt-1.5"
-              aria-label="Billing cycle"
-              value={cycleCode}
-              onChange={setCycleCode}
-              options={catalog.cycles
-                .filter((row) => row.active)
-                .map((row) => billingCycleOption(row.code, row.name, row.discount_bps))}
-            />
-          </label>
-          {catalog.addons.filter((row) => row.active).map((addon) => (
-            <label key={addon.id} className="flex items-center justify-between gap-3 text-sm">
-              <span>
-                <span className="font-medium">{addon.name}</span>
-                <span className="mt-0.5 block text-charcoal/60">
-                  {addon.monthly_fils ? `${formatMoney(addon.monthly_fils, "AED")} / month` : ""}
-                  {addon.one_time_fils ? ` · ${formatMoney(addon.one_time_fils, "AED")} once${addon.refundable ? ", refundable" : ""}` : ""}
-                </span>
-              </span>
-              <input
-                className="h-11 w-20 rounded-2xl border border-line px-3 text-right"
-                inputMode="numeric"
-                value={quantities[addon.code] ?? 0}
-                onChange={(event) => setQuantities({ ...quantities, [addon.code]: Math.max(0, Number(event.target.value) || 0) })}
-              />
-            </label>
-          ))}
-          {quote ? (
-            <div className="rounded-2xl bg-surface px-4 py-3 text-sm">
-              <ul className="space-y-1">
-                {quote.lines.map((line) => (
-                  <li key={line.code} className="flex justify-between gap-3">
-                    <span>
-                      {line.label}
-                      {line.quantity > 1 ? ` × ${line.quantity}` : ""}
-                      {line.refundable ? " · refundable" : ""}
-                    </span>
-                    <span className="tabular-nums">{formatMoney(line.amount_fils, quote.currency)}</span>
-                  </li>
-                ))}
-              </ul>
-              <p className="mt-2 flex justify-between border-t border-line pt-2 font-semibold">
-                <span>Due now</span>
-                <span className="tabular-nums">{formatMoney(quote.total_fils, quote.currency)}</span>
-              </p>
-            </div>
-          ) : null}
-          <ErrorNote message={error} />
-        </div>
+        <PackageStep
+          catalog={catalog}
+          planCode={planCode}
+          cycleCode={cycleCode}
+          quantities={quantities}
+          quote={quote}
+          error={error}
+          onPlan={setPlanCode}
+          onCycle={setCycleCode}
+          onQuantity={(code, quantity) => setQuantities({ ...quantities, [code]: quantity })}
+        />
       ) : null}
       {step === "confirm" ? (
         <div>
@@ -402,6 +353,243 @@ function Choice({
       <p className="font-semibold">{title}</p>
       <p className="mt-1 text-charcoal/70">{detail}</p>
     </button>
+  );
+}
+
+const KIT = [
+  { src: "/hardware/pos-terminal.jpg", name: "Touchscreen till", detail: "Cashier screen" },
+  { src: "/hardware/receipt-printer.jpg", name: "Receipt printer", detail: "Prints the slip" },
+  { src: "/hardware/barcode-scanner.jpg", name: "Barcode scanner", detail: "Scans an item" },
+  { src: "/hardware/cash-drawer.jpg", name: "Cash drawer", detail: "Counted each shift" },
+  { src: "/hardware/card-terminal.jpg", name: "Card reader", detail: "Chip, tap and PIN" },
+] as const;
+
+function PackageStep({
+  catalog,
+  planCode,
+  cycleCode,
+  quantities,
+  quote,
+  error,
+  onPlan,
+  onCycle,
+  onQuantity,
+}: {
+  catalog: BillingCatalog;
+  planCode: string;
+  cycleCode: string;
+  quantities: Record<string, number>;
+  quote: BillingQuote | null;
+  error: string | null;
+  onPlan: (code: string) => void;
+  onCycle: (code: string) => void;
+  onQuantity: (code: string, quantity: number) => void;
+}) {
+  const plans = catalog.plans.filter((row) => row.active).sort((a, b) => a.sort_order - b.sort_order);
+  const cycles = catalog.cycles.filter((row) => row.active).sort((a, b) => a.sort_order - b.sort_order);
+  const addons = catalog.addons.filter((row) => row.active).sort((a, b) => a.sort_order - b.sort_order);
+  const plan = plans.find((row) => row.code === planCode);
+
+  return (
+    <div className="grid gap-6">
+      <section>
+        <h3 className="text-sm font-semibold">Package</h3>
+        <div className="mt-2 grid gap-3 sm:grid-cols-3">
+          {plans.map((row) => {
+            const selected = row.code === planCode;
+            return (
+              <button
+                key={row.id}
+                type="button"
+                aria-pressed={selected}
+                onClick={() => onPlan(row.code)}
+                className={`rounded-2xl border px-4 py-3 text-left ${
+                  selected ? "border-accent bg-accent/5 ring-2 ring-accent" : "border-line bg-white hover:bg-surface"
+                }`}
+              >
+                <p className="text-sm font-semibold">{row.name}</p>
+                <p className="mt-1 text-lg font-semibold tabular-nums">
+                  {formatMoney(row.monthly_fils, "AED")}
+                  <span className="text-sm font-normal text-charcoal/60"> / month</span>
+                </p>
+                <p className="mt-1 text-sm text-charcoal/70">
+                  {row.included_registers} {row.included_registers === 1 ? "register" : "registers"} included
+                </p>
+              </button>
+            );
+          })}
+        </div>
+      </section>
+      <section>
+        <h3 className="text-sm font-semibold">Billing cycle</h3>
+        <div className="mt-2 flex flex-wrap gap-2">
+          {cycles.map((row) => {
+            const selected = row.code === cycleCode;
+            return (
+              <button
+                key={row.id}
+                type="button"
+                aria-pressed={selected}
+                onClick={() => onCycle(row.code)}
+                className={`inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-medium ${
+                  selected ? "border-accent bg-accent/5 text-charcoal ring-2 ring-accent" : "border-line bg-white hover:bg-surface"
+                }`}
+              >
+                {row.name}
+                {row.discount_bps > 0 ? (
+                  <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700">
+                    Save {row.discount_bps / 100}%
+                  </span>
+                ) : null}
+              </button>
+            );
+          })}
+        </div>
+      </section>
+      <section className="grid gap-3">
+        <h3 className="text-sm font-semibold">Hardware</h3>
+        {addons.map((addon) => (
+          <AddonCard
+            key={addon.id}
+            addon={addon}
+            quantity={quantities[addon.code] ?? 0}
+            registers={plan?.included_registers ?? 0}
+            planName={plan?.name ?? "your package"}
+            onQuantity={(quantity) => onQuantity(addon.code, quantity)}
+          />
+        ))}
+      </section>
+      {quote ? <QuoteSummary quote={quote} /> : null}
+      <ErrorNote message={error} />
+    </div>
+  );
+}
+
+function AddonCard({
+  addon,
+  quantity,
+  registers,
+  planName,
+  onQuantity,
+}: {
+  addon: BillingAddon;
+  quantity: number;
+  registers: number;
+  planName: string;
+  onQuantity: (quantity: number) => void;
+}) {
+  const kind =
+    addon.code === "hardware_lease"
+      ? "lease"
+      : addon.code === "equipment_protection"
+        ? "protect"
+        : addon.code === "extra_register"
+          ? "register"
+          : "plain";
+  const chosen = quantity > 0;
+  return (
+    <article className={`rounded-2xl border p-4 ${chosen ? "border-accent bg-accent/5" : "border-line bg-white"}`}>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="font-semibold">{addon.name}</p>
+          <p className="mt-0.5 text-sm text-charcoal/70">{addonPrice(addon)}</p>
+        </div>
+        <QtyStepper label={addon.name} value={quantity} onChange={onQuantity} />
+      </div>
+      {kind === "lease" ? (
+        <>
+          <p className="mt-3 text-sm text-charcoal/70">Each kit is rented and includes the pieces below. The one-time amount is a deposit you get back.</p>
+          <ul className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-5">
+            {KIT.map((piece) => (
+              <li key={piece.name} className="overflow-hidden rounded-2xl border border-line bg-white">
+                <img src={piece.src} alt={piece.name} className="aspect-square w-full object-cover" />
+                <p className="px-2 pb-2 pt-1.5 text-xs font-semibold">{piece.name}</p>
+                <p className="px-2 pb-2 text-xs text-charcoal/60">{piece.detail}</p>
+              </li>
+            ))}
+          </ul>
+        </>
+      ) : null}
+      {kind === "protect" ? (
+        <div className="mt-3 flex gap-3">
+          <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-accent" aria-hidden />
+          <div>
+            <p className="text-sm text-charcoal/70">Covers the leased till, printer, scanner, drawer and card reader: drops, spills, and a replacement while a piece is repaired.</p>
+            <div className="mt-3 flex gap-2">
+              {KIT.map((piece) => (
+                <img key={piece.name} src={piece.src} alt="" className="h-14 w-14 rounded-xl border border-line object-cover" />
+              ))}
+            </div>
+          </div>
+        </div>
+      ) : null}
+      {kind === "register" ? (
+        <div className="mt-3 flex gap-3">
+          <img src="/hardware/pos-terminal.jpg" alt="Extra touchscreen till" className="h-28 w-28 shrink-0 rounded-2xl border border-line object-cover" />
+          <p className="text-sm text-charcoal/70">
+            Another till beyond the {registers} {registers === 1 ? "register" : "registers"} already included in {planName}. Same counter screen as the kit.
+          </p>
+        </div>
+      ) : null}
+      {kind === "plain" && addon.description ? <p className="mt-3 text-sm text-charcoal/70">{addon.description}</p> : null}
+    </article>
+  );
+}
+
+function addonPrice(addon: BillingAddon): string {
+  const parts: string[] = [];
+  if (addon.monthly_fils) parts.push(`${formatMoney(addon.monthly_fils, "AED")} / month`);
+  if (addon.one_time_fils) {
+    parts.push(`${formatMoney(addon.one_time_fils, "AED")} once${addon.refundable ? ", refundable" : ""}`);
+  }
+  return parts.join(" · ") || addon.description;
+}
+
+function QtyStepper({ label, value, onChange }: { label: string; value: number; onChange: (next: number) => void }) {
+  return (
+    <div className="inline-flex items-center rounded-full border border-line bg-white">
+      <button
+        type="button"
+        className="grid h-11 w-11 place-items-center rounded-full hover:bg-surface disabled:opacity-30"
+        aria-label={`Remove one ${label}`}
+        disabled={value <= 0}
+        onClick={() => onChange(value - 1)}
+      >
+        <Minus className="h-4 w-4" />
+      </button>
+      <span className="w-8 text-center text-sm font-semibold tabular-nums">{value}</span>
+      <button
+        type="button"
+        className="grid h-11 w-11 place-items-center rounded-full hover:bg-surface"
+        aria-label={`Add one ${label}`}
+        onClick={() => onChange(Math.min(value + 1, 20))}
+      >
+        <Plus className="h-4 w-4" />
+      </button>
+    </div>
+  );
+}
+
+function QuoteSummary({ quote }: { quote: BillingQuote }) {
+  return (
+    <div className="rounded-2xl bg-surface px-4 py-3 text-sm">
+      <ul className="space-y-1">
+        {quote.lines.map((line) => (
+          <li key={line.code} className="flex justify-between gap-3">
+            <span>
+              {line.label}
+              {line.quantity > 1 ? ` × ${line.quantity}` : ""}
+              {line.refundable ? " · refundable" : ""}
+            </span>
+            <span className="tabular-nums">{formatMoney(line.amount_fils, quote.currency)}</span>
+          </li>
+        ))}
+      </ul>
+      <p className="mt-2 flex justify-between border-t border-line pt-2 text-base font-semibold">
+        <span>Due now</span>
+        <span className="tabular-nums">{formatMoney(quote.total_fils, quote.currency)}</span>
+      </p>
+    </div>
   );
 }
 

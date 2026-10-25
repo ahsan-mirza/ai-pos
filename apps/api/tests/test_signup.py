@@ -74,7 +74,7 @@ def _store(slug: str = "alnoor") -> dict:
 
 
 def _tenant_headers(slug: str, token: str | None = None) -> dict[str, str]:
-    headers = {"X-Tenant-Domain": f"{slug}.qios.ae"}
+    headers = {"X-Tenant-Domain": f"{slug}.axizpos.com"}
     if token:
         headers["Authorization"] = f"Bearer {token}"
     return headers
@@ -171,7 +171,7 @@ def test_wrong_codes_lock_the_attempt_until_a_new_code_is_sent(signup: TestClien
 
     too_soon = _post(signup, started, "resend")
     assert (too_soon.status_code, too_soon.json()["error"]["code"]) == (429, "resend_too_soon")
-    monkeypatch.setattr(signup_service, "RESEND_SECONDS", 0)
+    monkeypatch.setattr(signup_service, "_code_seconds", lambda _settings: 0)
     fresh = _post(signup, started, "resend")
     assert fresh.status_code == 200, fresh.text
     assert _post(signup, started, "verify", {"code": fresh.json()["dev_code"]}).json()["status"] == "VERIFIED"
@@ -188,13 +188,57 @@ def test_every_step_needs_the_signup_token(signup: TestClient) -> None:
 
 
 def test_signups_are_rate_limited_per_email_or_phone(signup: TestClient) -> None:
-    for _ in range(3):
-        _start(signup)
-    blocked = signup.post(
+    settings = get_settings()
+    previous = settings.signup_max_per_hour
+    settings.signup_max_per_hour = 0
+    try:
+        blocked = signup.post(
+            "/api/v1/signup/start",
+            json={"email": "rate@alnoor.ae", "phone": "+971 50 000 1888", "full_name": "Sara", "password": PASSWORD},
+        )
+        assert (blocked.status_code, blocked.json()["error"]["code"]) == (429, "too_many_signups")
+    finally:
+        settings.signup_max_per_hour = previous
+
+
+def test_the_same_email_or_phone_resumes_the_saved_signup(signup: TestClient) -> None:
+    started = _verified(signup)
+    chosen = _post(signup, started, "business", {"profile": "electronics_wholesale", "sub_type": "electronics_both"})
+    assert chosen.status_code == 200, chosen.text
+
+    duplicate = signup.post(
+        "/api/v1/signup/start",
+        json={
+            "email": "sara@alnoor.ae",
+            "phone": "+971 50 123 4567",
+            "full_name": "Sara Al Noor",
+            "password": PASSWORD,
+        },
+    )
+    assert (duplicate.status_code, duplicate.json()["error"]["code"]) == (409, "signup_exists")
+    same_phone = signup.post(
         "/api/v1/signup/start",
         json={"email": "other@alnoor.ae", "phone": "+971501234567", "full_name": "Sara", "password": PASSWORD},
     )
-    assert (blocked.status_code, blocked.json()["error"]["code"]) == (429, "too_many_signups")
+    assert same_phone.json()["error"]["code"] == "signup_exists"
+
+    wrong = signup.post("/api/v1/signup/resume", json={"email": "sara@alnoor.ae", "password": "Wrong-password-1"})
+    assert (wrong.status_code, wrong.json()["error"]["code"]) == (401, "signup_login_failed")
+
+    resumed = signup.post("/api/v1/signup/resume", json={"email": "Sara@AlNoor.ae", "password": PASSWORD})
+    assert resumed.status_code == 200, resumed.text
+    body = resumed.json()
+    assert body["id"] == started["id"]
+    stale = signup.get(
+        f"/api/v1/signup/{started['id']}/status", headers={"X-Signup-Token": started["token"]}
+    )
+    assert stale.status_code == 404
+    current = signup.get(f"/api/v1/signup/{body['id']}/status", headers={"X-Signup-Token": body["token"]})
+    assert current.status_code == 200, current.text
+    assert current.json()["status"] == "VERIFIED"
+    assert current.json()["sub_type"] == "electronics_both"
+    with registry.control_session(get_settings()) as db:
+        assert len(db.scalars(select(SignupRequest).where(SignupRequest.email == "sara@alnoor.ae")).all()) == 1
 
 
 def test_store_addresses_must_be_valid_and_free(signup: TestClient) -> None:
@@ -344,6 +388,37 @@ def test_a_failed_step_can_be_retried(signup: TestClient, monkeypatch) -> None:
     with registry.control_session(get_settings()) as db:
         assert len(db.scalars(select(Tenant).where(Tenant.slug == "alnoor")).all()) == 1
         assert db.scalar(select(SignupRequest.tenant_id)) is not None
+
+
+def test_development_emails_a_fresh_code_and_accepts_the_optional_code(signup: TestClient, monkeypatch) -> None:
+    settings = get_settings()
+    previous = (settings.app_env, settings.signup_otp_code, settings.signup_otp_channel)
+    settings.app_env = "development"
+    settings.signup_otp_code = "742466"
+    settings.signup_otp_channel = "email"
+    sent: list[str] = []
+
+    def capture(_settings, provider: str, message) -> str:
+        assert provider == "smtp"
+        sent.append(message.body)
+        return "sent"
+
+    monkeypatch.setattr(signup_service.messaging_providers, "deliver", capture)
+    try:
+        started = _start(signup, email="mail@alnoor.ae", phone="+971 50 000 0002")
+        assert started["channel"] == "email" and started["dev_code"] is None
+        assert started["expires_in_seconds"] == settings.signup_otp_minutes * 60
+        assert started["resend_after_seconds"] == started["expires_in_seconds"]
+        assert sent and "742466" not in sent[0]
+        emailed = sent[0].split("is ", 1)[1][:6]
+        assert _post(signup, started, "verify", {"code": "742466"}).json()["status"] == "VERIFIED"
+
+        again = _start(signup, email="mail2@alnoor.ae", phone="+971 50 000 0003")
+        assert _post(signup, again, "verify", {"code": emailed}).status_code == 422
+        fresh = sent[-1].split("is ", 1)[1][:6]
+        assert _post(signup, again, "verify", {"code": fresh}).json()["status"] == "VERIFIED"
+    finally:
+        settings.app_env, settings.signup_otp_code, settings.signup_otp_channel = previous
 
 
 def test_a_configured_signup_code_is_accepted_without_sending(signup: TestClient, monkeypatch) -> None:

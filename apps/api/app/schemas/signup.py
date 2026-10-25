@@ -48,6 +48,21 @@ class SignupStart(ApiModel):
         return digits if digits.startswith("+") else f"+{digits}"
 
 
+class SignupResume(ApiModel):
+    """Log in to a signup that was already started with this email."""
+
+    email: str = Field(max_length=254)
+    password: str = Field(min_length=1, max_length=128)
+
+    @field_validator("email")
+    @classmethod
+    def _email(cls, value: str) -> str:
+        cleaned = value.strip().lower()
+        if not EMAIL.fullmatch(cleaned):
+            raise ValueError("Enter a valid email address.")
+        return cleaned
+
+
 class SignupStarted(ApiModel):
     id: UUID
     # Sent back on every later call (X-Signup-Token); only its hash is stored.
@@ -55,6 +70,7 @@ class SignupStarted(ApiModel):
     channel: str
     sent_to: str
     resend_after_seconds: int
+    expires_in_seconds: int
     dev_code: str | None = None
 
 

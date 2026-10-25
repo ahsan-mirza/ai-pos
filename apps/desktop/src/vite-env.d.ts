@@ -9,7 +9,7 @@ interface ImportMetaEnv {
   readonly VITE_SYNC_INTERVAL_MS: string;
   readonly VITE_STORE_ID?: string;
   readonly VITE_TENANT_DOMAIN?: string;
-  /** Store domain suffix shown on the activation screen: qios.ae, dev.qios.ae, or localhost. */
+  /** Store domain suffix shown on the activation screen: axizpos.com, dev.axizpos.com, or localhost. */
   readonly VITE_TENANT_BASE_DOMAIN?: string;
   readonly VITE_SHOW_DEMO_ACCOUNTS?: string;
 }

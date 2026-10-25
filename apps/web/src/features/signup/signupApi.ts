@@ -1,5 +1,6 @@
 import type {
   SignupBusiness,
+  SignupResume,
   SignupStart,
   SignupStarted,
   SignupState,
@@ -16,6 +17,19 @@ export interface SignupSession {
   sentTo: string;
   channel: SignupStarted["channel"];
   devCode: string | null;
+  /** Epoch milliseconds when the current code stops working. */
+  expiresAt: number;
+}
+
+export function sessionFromStarted(started: SignupStarted): SignupSession {
+  return {
+    id: started.id,
+    token: started.token,
+    sentTo: started.sent_to,
+    channel: started.channel,
+    devCode: started.dev_code,
+    expiresAt: Date.now() + started.expires_in_seconds * 1000,
+  };
 }
 
 export function readSignupSession(): SignupSession | null {
@@ -34,6 +48,7 @@ export function saveSignupSession(session: SignupSession | null): void {
 
 export const signupApi = {
   start: (body: SignupStart) => apiSignup<SignupStarted>("POST", "/start", { body }),
+  resume: (body: SignupResume) => apiSignup<SignupStarted>("POST", "/resume", { body }),
   status: (session: SignupSession) => apiSignup<SignupState>("GET", `/${session.id}/status`, { token: session.token }),
   resend: (session: SignupSession) =>
     apiSignup<SignupStarted>("POST", `/${session.id}/resend`, { token: session.token }),

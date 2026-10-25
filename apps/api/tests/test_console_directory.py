@@ -18,7 +18,7 @@ def test_directory_lists_stores_with_their_stats(platform) -> None:  # noqa: F81
     rows = platform.client.get(f"{BASE}/tenants", headers=console).json()
     alpha = next(row for row in rows if row["slug"] == "alpha")
     assert (alpha["domain"], alpha["plan"], alpha["profile_label"]) == (
-        "alpha.qios.ae",
+        "alpha.axizpos.com",
         "standard",
         "Electronics & Wholesale",
     )
@@ -46,17 +46,17 @@ def test_suspending_a_store_blocks_it_and_is_audited(platform) -> None:  # noqa:
         "suspended",
         "pro",
     )
-    blocked = platform.client.get("/api/v1/tenant", headers={"X-Tenant-Domain": "alpha.qios.ae"})
+    blocked = platform.client.get("/api/v1/tenant", headers={"X-Tenant-Domain": "alpha.axizpos.com"})
     assert blocked.status_code == 403 and blocked.json()["error"]["code"] == "tenant_suspended"
     # The console still reaches a suspended store.
     assert platform.client.get(f"{BASE}/tenants/{alpha_id}/details", headers=console).status_code == 200
     platform.client.patch(f"{BASE}/tenants/{alpha_id}", headers=console, json={"status": "active", "reason": "Paid"})
-    assert platform.client.get("/api/v1/tenant", headers={"X-Tenant-Domain": "alpha.qios.ae"}).status_code == 200
+    assert platform.client.get("/api/v1/tenant", headers={"X-Tenant-Domain": "alpha.axizpos.com"}).status_code == 200
 
 
 def test_customer_records_are_break_glass(platform) -> None:  # noqa: F811
     admin = platform.operator()
-    support = platform.operator(email="desk@qios.ae", role="SUPPORT")
+    support = platform.operator(email="desk@axizpos.com", role="SUPPORT")
     alpha_id = platform.tenant_id("alpha")
     with platform.session("alpha") as db:
         db.add(Customer(code="C-9", name="Sara Noor", phone="+971501234567", email="sara@example.com"))

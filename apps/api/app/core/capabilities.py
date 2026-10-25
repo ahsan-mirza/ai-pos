@@ -226,6 +226,8 @@ SUB_TYPES: dict[str, dict[str, tuple[Capability, ...]]] = {
             C.BNPL,
         ),
         "electronics_b2b": ELECTRONICS_WHOLESALE,
+        # Retail modules are already inside the wholesale preset, so both is that full set.
+        "electronics_both": ELECTRONICS_WHOLESALE,
     },
     "retail_fashion": {
         "fashion_boutique": (

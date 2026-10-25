@@ -1,8 +1,8 @@
 import { listen } from "@tauri-apps/api/event";
 import { useEffect, useState } from "react";
-import { checkAppUpdate, inTauri, installAppUpdate, type AppUpdate } from "../../lib/tauri";
+import { inTauri, installAppUpdate, type AppUpdate } from "../../lib/tauri";
 
-/** Shown once at startup when the store's server has a newer Windows installer. Offline boots skip this. */
+/** Shown only after a background check finds a newer installer. The check itself stays off screen. */
 export function UpdatePrompt() {
   const [offer, setOffer] = useState<AppUpdate | null>(null);
   const [percent, setPercent] = useState<number | null>(null);
@@ -12,17 +12,17 @@ export function UpdatePrompt() {
   useEffect(() => {
     if (!inTauri()) return;
     let live = true;
-    const unlisten = listen<{ percent: number }>("update-progress", (event) => {
+    const progress = listen<{ percent: number }>("update-progress", (event) => {
       if (live) setPercent(event.payload.percent);
     });
-    checkAppUpdate()
-      .then((found) => {
-        if (live) setOffer(found);
-      })
-      .catch(() => undefined);
+    const available = listen<AppUpdate>("app-update-available", (event) => {
+      if (!live) return;
+      setOffer((current) => (current?.version === event.payload.version ? current : event.payload));
+    });
     return () => {
       live = false;
-      void unlisten.then((stop) => stop());
+      void progress.then((stop) => stop());
+      void available.then((stop) => stop());
     };
   }, []);
 

@@ -8,6 +8,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, Header, Query
 from app.core.config import Settings, get_settings
 from app.schemas.signup import (
     SignupBusiness,
+    SignupResume,
     SignupStart,
     SignupStarted,
     SignupState,
@@ -25,6 +26,11 @@ Token = Annotated[str | None, Header(alias="X-Signup-Token")]
 @router.post("/start", response_model=SignupStarted, status_code=201)
 def start(payload: SignupStart, settings: Config) -> SignupStarted:
     return signup_service.start(settings, payload)
+
+
+@router.post("/resume", response_model=SignupStarted)
+def resume(payload: SignupResume, settings: Config) -> SignupStarted:
+    return signup_service.resume(settings, payload)
 
 
 @router.get("/slug-check", response_model=SlugCheck)

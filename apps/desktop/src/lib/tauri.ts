@@ -139,7 +139,7 @@ interface PreviewTerminal {
 function baseDomain(): string {
   const raw = import.meta.env.VITE_TENANT_BASE_DOMAIN;
   const value = typeof raw === "string" ? raw.trim() : "";
-  return (value || "qios.ae").replace(/^\./, "").toLowerCase();
+  return (value || "axizpos.com").replace(/^\./, "").toLowerCase();
 }
 
 function directIp(host: string): boolean {

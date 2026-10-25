@@ -73,18 +73,18 @@ def tenants(tmp_path):
 def _login(client: TestClient, slug: str, username: str, password: str, **headers: str):
     return client.post(
         "/api/v1/auth/login-password",
-        headers={"X-Tenant-Domain": f"{slug}.qios.ae", **headers},
+        headers={"X-Tenant-Domain": f"{slug}.axizpos.com", **headers},
         json={"username": username, "password": password},
     )
 
 
 def test_tenant_comes_from_header_or_subdomain(tenants: TestClient) -> None:
-    by_header = tenants.get("/api/v1/tenant", headers={"X-Tenant-Domain": "alpha.qios.ae"})
+    by_header = tenants.get("/api/v1/tenant", headers={"X-Tenant-Domain": "alpha.axizpos.com"})
     assert by_header.status_code == 200
     assert by_header.json() == {
         "slug": "alpha",
         "name": "Alpha Mobiles",
-        "url": "https://alpha.qios.ae",
+        "url": "https://alpha.axizpos.com",
         "multi_tenant": True,
     }
     by_host = tenants.get("/api/v1/tenant", headers={"Host": "bravo.localhost:5173"})
@@ -93,7 +93,7 @@ def test_tenant_comes_from_header_or_subdomain(tenants: TestClient) -> None:
 
 
 def test_unknown_missing_invalid_and_suspended_tenants_are_refused(tenants: TestClient) -> None:
-    unknown = tenants.get("/api/v1/tenant", headers={"X-Tenant-Domain": "nobody.qios.ae"})
+    unknown = tenants.get("/api/v1/tenant", headers={"X-Tenant-Domain": "nobody.axizpos.com"})
     assert (unknown.status_code, unknown.json()["error"]["code"]) == (404, "tenant_not_found")
     missing = tenants.get("/api/v1/tenant", headers={"Host": "localhost:8000"})
     assert (missing.status_code, missing.json()["error"]["code"]) == (400, "tenant_required")
@@ -110,11 +110,11 @@ def test_each_tenant_only_sees_its_own_database(tenants: TestClient) -> None:
     assert _login(tenants, "bravo", "alpha-admin", PASSWORDS["alpha"]).status_code == 401
 
     me_alpha = tenants.get(
-        "/api/v1/auth/me", headers={"X-Tenant-Domain": "alpha.qios.ae", "Authorization": f"Bearer {token}"}
+        "/api/v1/auth/me", headers={"X-Tenant-Domain": "alpha.axizpos.com", "Authorization": f"Bearer {token}"}
     )
     assert me_alpha.status_code == 200
     me_bravo = tenants.get(
-        "/api/v1/auth/me", headers={"X-Tenant-Domain": "bravo.qios.ae", "Authorization": f"Bearer {token}"}
+        "/api/v1/auth/me", headers={"X-Tenant-Domain": "bravo.axizpos.com", "Authorization": f"Bearer {token}"}
     )
     assert me_bravo.status_code == 401
 
@@ -123,30 +123,30 @@ def test_tenant_portals_pass_cors(tenants: TestClient) -> None:
     preflight = tenants.options(
         "/api/v1/tenant",
         headers={
-            "Origin": "https://alpha.qios.ae",
+            "Origin": "https://alpha.axizpos.com",
             "Access-Control-Request-Method": "GET",
             "Access-Control-Request-Headers": "x-tenant-domain",
         },
     )
     assert preflight.status_code == 200
-    assert preflight.headers["access-control-allow-origin"] == "https://alpha.qios.ae"
+    assert preflight.headers["access-control-allow-origin"] == "https://alpha.axizpos.com"
     refused = tenants.get(
-        "/api/v1/tenant", headers={"Origin": "https://alpha.qios.ae", "X-Tenant-Domain": "nobody.qios.ae"}
+        "/api/v1/tenant", headers={"Origin": "https://alpha.axizpos.com", "X-Tenant-Domain": "nobody.axizpos.com"}
     )
     assert refused.status_code == 404
-    assert refused.headers.get("access-control-allow-origin") == "https://alpha.qios.ae"
+    assert refused.headers.get("access-control-allow-origin") == "https://alpha.axizpos.com"
 
 
 @pytest.mark.parametrize(
     ("value", "slug"),
     [
         ("client1", "client1"),
-        ("client1.qios.ae", "client1"),
-        ("https://Client1.qios.ae/login", "client1"),
+        ("client1.axizpos.com", "client1"),
+        ("https://Client1.axizpos.com/login", "client1"),
         ("client1.localhost:5173", "client1"),
-        ("qios.ae", None),
-        ("a.b.qios.ae", None),
-        ("www.qios.ae", None),
+        ("axizpos.com", None),
+        ("a.b.axizpos.com", None),
+        ("www.axizpos.com", None),
         ("client1.example.com", None),
     ],
 )
