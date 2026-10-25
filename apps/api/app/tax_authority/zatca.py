@@ -147,7 +147,7 @@ class Credentials:
 
 def credentials(db: Session, settings: Settings, *, seller_name: str, vat_number: str) -> Credentials:
     """The business's signing key, created on first use with a self-signed simulation certificate."""
-    row = db.get(TaxAuthorityCredential, AUTHORITY)
+    row = db.scalar(select(TaxAuthorityCredential).where(TaxAuthorityCredential.authority == AUTHORITY))
     if row is None:
         key = ec.generate_private_key(ec.SECP256K1())
         subject = x509.Name(

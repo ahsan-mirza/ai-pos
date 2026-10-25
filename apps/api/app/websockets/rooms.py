@@ -27,21 +27,30 @@ _members: dict[WebSocket, set[str]] = {}
 _carts: dict[str, dict[str, Any]] = {}
 
 
+def _tenant_prefix() -> str:
+    from app.tenancy.context import current_tenant
+
+    tenant = current_tenant()
+    if tenant is None or not tenant.id:
+        return "unscoped"
+    return tenant.id
+
+
 def kitchen_room(station_id: object) -> str:
-    return f"station:kitchen-{station_id}"
+    return f"{_tenant_prefix()}:station:kitchen-{station_id}"
 
 
 def terminal_room(terminal_id: object) -> str:
-    return f"terminal:{terminal_id}"
+    return f"{_tenant_prefix()}:terminal:{terminal_id}"
 
 
 def customer_display_room(terminal_id: object) -> str:
-    return f"customer-display:{terminal_id}"
+    return f"{_tenant_prefix()}:customer-display:{terminal_id}"
 
 
 def pos_terminals_room(store_id: object) -> str:
-    """Every register watching one store. Scoped by store so another tenant never hears the bell."""
-    return f"pos:terminals:{store_id}"
+    """Every register watching one store. The tenant id keeps another store from joining the room."""
+    return f"{_tenant_prefix()}:pos:terminals:{store_id}"
 
 
 def publish_table_alert(

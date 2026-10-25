@@ -21,6 +21,7 @@ from app.tenancy.context import CONTROL_SESSION, TenantRef, current_tenant, use_
 # Fixed id used by tests and by databases that are not registered in the control plane.
 DEFAULT_TENANT_ID = uuid.UUID("00000000-0000-4000-8000-0000000000a1")
 INCLUDE_ALL = "include_all_tenants"
+REQUEST_SESSION = "request_session"
 
 _installed = False
 _original_get = Session.get
@@ -41,9 +42,15 @@ def _scoped_get(self: Session, entity, ident, **kwargs):
 
 def active_tenant_id() -> uuid.UUID:
     tenant = current_tenant()
-    if tenant is None or not tenant.id:
-        return DEFAULT_TENANT_ID
-    return uuid.UUID(tenant.id)
+    if tenant is not None and tenant.id:
+        return uuid.UUID(tenant.id)
+    # Single-database installs and the SQLite suite have no control plane, so they share one id.
+    # A live multi-tenant process must already have bound a store. Falling back would mix stores.
+    from app.core.config import get_settings
+
+    if get_settings().tenancy_enabled:
+        raise RuntimeError("No tenant is bound to this request or job.")
+    return DEFAULT_TENANT_ID
 
 
 def _as_uuid(value: object) -> uuid.UUID | None:
@@ -58,27 +65,37 @@ def _tenant_bind():
     return bindparam("tenant_scope_id", callable_=active_tenant_id, type_=Uuid(as_uuid=True))
 
 
-def _skipped(session: Session, state: ORMExecuteState | None = None) -> bool:
-    if session.info.get(CONTROL_SESSION):
-        return True
+def _bypass_requested(session: Session, state: ORMExecuteState | None = None) -> bool:
     if session.info.get(INCLUDE_ALL):
         return True
     return state is not None and bool(state.execution_options.get(INCLUDE_ALL))
 
 
+def _skipped(session: Session, state: ORMExecuteState | None = None) -> bool:
+    if session.info.get(CONTROL_SESSION):
+        return True
+    if _bypass_requested(session, state):
+        if session.info.get(REQUEST_SESSION):
+            raise RuntimeError("Request sessions cannot bypass tenant scope.")
+        return True
+    return False
+
+
 def _stamp(session: Session, _flush_context: object, _instances: object) -> None:
     if session.info.get(CONTROL_SESSION):
         return
+    fresh = [obj for obj in session.new if isinstance(obj, TenantScoped)]
+    changed = [obj for obj in session.dirty if isinstance(obj, TenantScoped)]
+    if not fresh and not changed:
+        return
     active = active_tenant_id()
     allow_all = bool(session.info.get(INCLUDE_ALL))
-    for obj in list(session.new):
-        if isinstance(obj, TenantScoped) and obj.tenant_id is None:
+    for obj in fresh:
+        if obj.tenant_id is None:
             obj.tenant_id = active
     if allow_all:
         return
-    for obj in list(session.dirty):
-        if not isinstance(obj, TenantScoped):
-            continue
+    for obj in changed:
         if obj.tenant_id is None:
             obj.tenant_id = active
         elif _as_uuid(obj.tenant_id) != active:
@@ -185,7 +202,10 @@ def include_all_tenants(session: Session) -> Iterator[None]:
 
     A flush that moves a migration's default-store rows onto the real store has to bypass the
     tenant filter, or the UPDATE looks for a tenant id the row does not have yet.
+    HTTP and console store sessions cannot use this.
     """
+    if session.info.get(REQUEST_SESSION):
+        raise RuntimeError("Request sessions cannot bypass tenant scope.")
     session.info[INCLUDE_ALL] = True
     try:
         yield

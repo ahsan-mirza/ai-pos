@@ -70,25 +70,27 @@ class SettingsSnapshot:
 class _SettingsCache:
     def __init__(self) -> None:
         self._lock = threading.Lock()
-        self._entries: dict[tuple[int, uuid.UUID], tuple[float, SettingsSnapshot]] = {}
+        self._entries: dict[tuple[int, uuid.UUID], tuple[float, SettingsSnapshot, str | None]] = {}
         self._generation = 0
 
-    def get(self, key: tuple[int, uuid.UUID]) -> SettingsSnapshot | None:
+    def get(self, key: tuple[int, uuid.UUID]) -> tuple[SettingsSnapshot, str | None] | None:
         with self._lock:
             entry = self._entries.get(key)
             if entry is None or entry[0] <= time.monotonic():
                 return None
-            return entry[1]
+            return entry[1], entry[2]
 
     def generation(self) -> int:
         with self._lock:
             return self._generation
 
-    def put(self, key: tuple[int, uuid.UUID], snapshot: SettingsSnapshot, generation: int) -> None:
+    def put(
+        self, key: tuple[int, uuid.UUID], snapshot: SettingsSnapshot, generation: int, token: str | None
+    ) -> None:
         """Skips the write when settings changed while this snapshot was being read."""
         with self._lock:
             if generation == self._generation:
-                self._entries[key] = (time.monotonic() + CACHE_TTL_SECONDS, snapshot)
+                self._entries[key] = (time.monotonic() + CACHE_TTL_SECONDS, snapshot, token)
 
     def clear(self) -> None:
         with self._lock:
@@ -101,6 +103,19 @@ _cache = _SettingsCache()
 
 def clear_settings_cache() -> None:
     _cache.clear()
+
+
+@event.listens_for(Session, "before_flush")
+def _bump_settings_generation(session: Session, _flush_context: object, _instances: object) -> None:
+    if session.info.get("_bumping_settings"):
+        return
+    session.info["_bumping_settings"] = True
+    try:
+        for obj in list(session.dirty):
+            if isinstance(obj, BusinessSettings):
+                obj.cache_generation = int(obj.cache_generation or 1) + 1
+    finally:
+        session.info.pop("_bumping_settings", None)
 
 
 @event.listens_for(Session, "after_flush")
@@ -116,10 +131,36 @@ def _track_bulk_settings_writes(state: ORMExecuteState) -> None:
             state.session.info[_CHANGED] = True
 
 
+@event.listens_for(Session, "before_commit")
+def _queue_settings_invalidation(session: Session) -> None:
+    if not session.info.get(_CHANGED) or session.info.get("_outbox_written"):
+        return
+    if session.info.get("control_database"):
+        return
+    from app.models.cache import CacheInvalidation
+    from app.tenancy.context import current_tenant
+
+    tenant = current_tenant()
+    if tenant is None:
+        return
+    session.info["_outbox_written"] = True
+    session.add(CacheInvalidation(cache_key=f"tenant:{tenant.id}:settings:token"))
+    session.flush()
+
+
 @event.listens_for(Session, "after_commit")
 def _invalidate_on_commit(session: Session) -> None:
-    if session.info.pop(_CHANGED, False):
-        _cache.clear()
+    changed = session.info.pop(_CHANGED, False)
+    session.info.pop("_outbox_written", None)
+    if not changed:
+        return
+    _cache.clear()
+    from app.core.cache import set_value
+    from app.tenancy.context import current_tenant
+
+    tenant = current_tenant()
+    if tenant is not None:
+        set_value(f"tenant:{tenant.id}:settings:token", str(uuid.uuid4()), 86_400)
 
 
 @event.listens_for(Session, "after_rollback")
@@ -194,7 +235,9 @@ def _tax_portal_pending(row: BusinessSettings) -> bool:
         return True
     from app.models.einvoice import TaxAuthorityCredential
 
-    credential = session.get(TaxAuthorityCredential, adapter.code)
+    credential = session.scalar(
+        select(TaxAuthorityCredential).where(TaxAuthorityCredential.authority == adapter.code)
+    )
     return credential is None or credential.environment != "production"
 
 
@@ -243,15 +286,19 @@ def cached_settings(db: Session) -> SettingsSnapshot:
     always reads its own row so it sees them."""
     if _pending_settings_change(db):
         return snapshot_of(load_settings(db))
-    key = (id(db.get_bind()), active_tenant_id())
+    from app.core.cache import get_value
+
+    tenant_id = active_tenant_id()
+    key = (id(db.get_bind()), tenant_id)
+    token = get_value(f"tenant:{tenant_id}:settings:token")
     hit = _cache.get(key)
-    if hit is not None:
-        return hit
+    if hit is not None and (token is None or hit[1] == token):
+        return hit[0]
     generation = _cache.generation()
     row, created = _load(db, lock=False)
     snapshot = snapshot_of(row)
     if not created:
-        _cache.put(key, snapshot, generation)
+        _cache.put(key, snapshot, generation, token)
     return snapshot
 
 

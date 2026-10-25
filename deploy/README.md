@@ -97,6 +97,38 @@ Running **Release POS** by hand from the Actions tab builds the installers as a 
 
 To publish an installer built elsewhere, copy it into `/opt/ai-pos/downloads/pos/<version>/` (for example `0.2.0`). A `manifest.json` is optional; without one the API computes the hashes itself.
 
+## Shared operational database
+
+New stores are rows in `DATABASE_URL`. The control database (`CONTROL_DATABASE_URL`, `qios_control`) still holds the tenant registry, operators, billing, and site settings. A tenant row with `data_plane=legacy` still opens the encrypted database URL. `shared` ignores that URL and uses `DATABASE_URL`.
+
+The API process should connect as a role that does not own the tables and does not have `BYPASSRLS`. Alembic keeps using the owner role, which sets `app.bypass_rls` only while migrating. Create the application role once, then point `DATABASE_URL` at it:
+
+```bash
+sudo -u postgres psql -d ai_pos_db -c "CREATE ROLE ai_pos_app LOGIN PASSWORD '<strong password>';"
+sudo -u postgres psql -d ai_pos_db -c "GRANT CONNECT ON DATABASE ai_pos_db TO ai_pos_app;"
+sudo -u postgres psql -d ai_pos_db -c "GRANT USAGE ON SCHEMA public TO ai_pos_app;"
+sudo -u postgres psql -d ai_pos_db -c "GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO ai_pos_app;"
+sudo -u postgres psql -d ai_pos_db -c "GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO ai_pos_app;"
+sudo -u postgres psql -d ai_pos_db -c "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO ai_pos_app;"
+```
+
+`REDIS_URL` is required in production. Cache misses fall through to PostgreSQL. Rate limits fail closed when Redis is down. Stock, payments, and the ledger are not cached.
+
+nginx sets `Host` from the request host. The API resolves the store from `Host` or `X-Tenant-Domain` and does not trust `X-Forwarded-Host`. Keep the API bound so only nginx can reach it.
+
+### Cutover
+
+1. Back up the control database and every tenant database.
+2. Deploy this code while every tenant is still `legacy`, and confirm registers and the portal still work.
+3. Run `python -m app.tenancy.cli migrate-all` so `DATABASE_URL` and each legacy database are at head. Create `ai_pos_app`.
+4. Freeze writes for one tenant. Run `python -m app.tenancy.cli merge-shared --tenant <slug>`, then the same command with `--commit`.
+5. Read the JSON report. `--commit` sets `data_plane=shared` only when product counts, sale totals, tender totals, stock on hand, and customer balances match.
+6. Smoke-test login, a sale, stock, and a console view of that tenant.
+7. Repeat per tenant. Leave the legacy database in place until a later, explicit decision to drop it.
+8. Before any sale is written on the shared database, rollback is `UPDATE tenants SET data_plane='legacy' WHERE slug='<slug>'`. After shared writes exist, restore the legacy backup instead of flipping the flag.
+
+`merge-shared` does not drop a database and does not clear `database_url_encrypted`.
+
 ## Operations
 
 ```bash

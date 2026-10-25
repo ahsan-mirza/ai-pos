@@ -8,7 +8,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import or_, update
+from sqlalchemy import or_, select, update
 from sqlalchemy.orm import Session
 
 from app.core.config import Settings
@@ -46,9 +46,13 @@ def register(job: Job) -> None:
     JOBS[job.name] = job
 
 
+def _job_row(db: Session, name: str) -> ScheduledJob | None:
+    return db.scalar(select(ScheduledJob).where(ScheduledJob.name == name))
+
+
 def _acquire(db: Session, name: str, lease_seconds: int) -> bool:
     now = datetime.now(UTC)
-    if db.get(ScheduledJob, name) is None:
+    if _job_row(db, name) is None:
         db.add(ScheduledJob(name=name, run_count=0))
         db.commit()
     result = db.execute(
@@ -76,7 +80,7 @@ def run_job(db: Session, settings: Settings, name: str) -> str:
         db.rollback()
         logger.exception("job %s failed", name)
         status, result = "error", str(exc)
-    row = db.get(ScheduledJob, name)
+    row = _job_row(db, name)
     if row is not None:
         row.locked_until = None
         row.locked_by = None

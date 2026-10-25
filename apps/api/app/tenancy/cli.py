@@ -25,7 +25,7 @@ from sqlalchemy.orm import sessionmaker
 
 from app.core.capabilities import DEFAULT_PROFILE, PROFILES
 from app.core.config import Settings, env_file_name, get_settings
-from app.core.database import build_engine, create_database
+from app.core.database import build_engine
 from app.services.rbac_service import ensure_super_admin, ensure_system_roles
 from app.tenancy import registry
 from app.tenancy.models import TENANT_STATUSES, Tenant
@@ -61,13 +61,13 @@ def upgrade_tenant(url: str, tenant_id: str | None = None) -> None:
             os.environ["ALEMBIC_TENANT_ID"] = previous
 
 
-def _seed_admin(url: str, settings: Settings) -> str:
+def _seed_admin(tenant, settings: Settings) -> str:
     from app.seed import admin_spec
-    from app.tenancy.scoping import use_database_tenant
+    from app.tenancy.context import use_tenant
 
     spec = admin_spec(settings)
-    factory = sessionmaker(bind=build_engine(url), expire_on_commit=False)
-    with use_database_tenant(url), factory() as session:
+    factory = sessionmaker(bind=build_engine(tenant.database_url), expire_on_commit=False)
+    with use_tenant(tenant), factory() as session:
         ensure_system_roles(session)
         admin, created = ensure_super_admin(
             session,
@@ -82,19 +82,26 @@ def _seed_admin(url: str, settings: Settings) -> str:
         return f"Super Admin '{admin.username}' {'created' if created else 'already exists'}"
 
 
-def _set_profile(url: str, profile: str) -> None:
+def _set_profile(tenant, profile: str) -> None:
     from app.services.settings_service import provision_profile
     from app.services.taxonomy_service import ensure_taxonomy
-    from app.tenancy.scoping import use_database_tenant
+    from app.tenancy.context import use_tenant
 
-    factory = sessionmaker(bind=build_engine(url), expire_on_commit=False)
-    with use_database_tenant(url), factory() as session:
+    factory = sessionmaker(bind=build_engine(tenant.database_url), expire_on_commit=False)
+    with use_tenant(tenant), factory() as session:
         provision_profile(session, profile)
         ensure_taxonomy(session, profile)
         session.commit()
 
 
-def _register(slug: str, name: str, url: str, settings: Settings, profile: str = DEFAULT_PROFILE) -> None:
+def _register(
+    slug: str,
+    name: str,
+    url: str,
+    settings: Settings,
+    profile: str = DEFAULT_PROFILE,
+    data_plane: str = "legacy",
+) -> None:
     with registry.control_session(settings) as db:
         if db.scalar(select(Tenant.id).where(Tenant.slug == slug)) is not None:
             sys.exit(f"Tenant '{slug}' already exists.")
@@ -103,6 +110,7 @@ def _register(slug: str, name: str, url: str, settings: Settings, profile: str =
             name=name,
             status="active",
             profile=profile,
+            data_plane=data_plane,
             database_url_encrypted=registry.encrypt_database_url(url, settings),
         )
         db.add(tenant)
@@ -122,17 +130,16 @@ def _check_slug(slug: str) -> str:
 
 
 def create(args: argparse.Namespace, settings: Settings) -> None:
+    """Registers a store on the shared operational database. No new database is created."""
     slug = _check_slug(args.slug)
-    database = args.database or f"qios_{slug.replace('-', '_')}"
-    url = registry.tenant_database_url(database, settings)
-    if make_url(url).get_backend_name() == "postgresql":
-        server = make_url(url).set(database="postgres").render_as_string(hide_password=False)
-        made = create_database(server, database)
-        print(f"Database {database} {'created' if made else 'already existed'}.")
+    url = settings.database_url
     upgrade_tenant(url)
-    _register(slug, args.name, url, settings, args.profile)
-    print(_seed_admin(url, settings))
-    _set_profile(url, args.profile)
+    _register(slug, args.name, url, settings, args.profile, data_plane="shared")
+    found = registry.lookup(slug, settings)
+    if found.tenant is None:
+        sys.exit(f"Tenant '{slug}' was not registered.")
+    print(_seed_admin(found.tenant, settings))
+    _set_profile(found.tenant, args.profile)
     print(f"Business profile {args.profile}; the first admin sign-in runs the onboarding wizard.")
     print(f"Tenant '{slug}' ready at {registry.tenant_public_url(slug, settings)}")
 
@@ -166,25 +173,43 @@ def _apply_taxonomy(tenant) -> int:
 
 
 def migrate_all(_: argparse.Namespace, settings: Settings) -> None:
+    print("Migrating the shared operational database...")
+    upgrade_tenant(settings.database_url)
     with registry.control_session(settings) as db:
         rows = db.scalars(select(Tenant).order_by(Tenant.slug)).all()
-        targets = [(row.slug, registry.lookup(row.slug, settings).tenant) for row in rows]
-    for slug, tenant in targets:
+        slugs = [row.slug for row in rows]
+    seen: set[str] = set()
+    legacy = 0
+    shared = 0
+    for slug in slugs:
+        tenant = registry.lookup(slug, settings).tenant
         if tenant is None:
             continue
-        print(f"Migrating {slug}...")
+        if tenant.data_plane == "shared":
+            shared += 1
+            added = _apply_taxonomy(tenant)
+            if added:
+                print(f"  {slug}: {added} catalog rows added.")
+            continue
+        if tenant.database_url in seen or tenant.database_url == settings.database_url:
+            continue
+        seen.add(tenant.database_url)
+        legacy += 1
+        print(f"Migrating legacy {slug}...")
         upgrade_tenant(tenant.database_url, tenant.id)
         added = _apply_taxonomy(tenant)
         if added:
             print(f"  {slug}: {added} catalog rows added.")
-    print(f"{len(targets)} tenant database(s) at head.")
+    print(f"Shared database at head. {shared} shared tenant(s), {legacy} legacy database(s).")
 
 
 def list_tenants(_: argparse.Namespace, settings: Settings) -> None:
     with registry.control_session(settings) as db:
         for row in db.scalars(select(Tenant).order_by(Tenant.slug)):
-            database = make_url(registry.lookup(row.slug, settings).tenant.database_url).database  # type: ignore[union-attr]
-            print(f"{row.slug:<20} {row.status:<10} {database:<24} {row.name}")
+            found = registry.lookup(row.slug, settings).tenant
+            database = make_url(found.database_url).database if found is not None else "?"  # type: ignore[union-attr]
+            plane = found.data_plane if found is not None else row.data_plane
+            print(f"{row.slug:<20} {row.status:<10} {plane:<8} {database:<24} {row.name}")
 
 
 def set_status(args: argparse.Namespace, settings: Settings) -> None:
@@ -225,6 +250,17 @@ def collect_stats(_: argparse.Namespace, settings: Settings) -> None:
     print(f"Measured {done} tenant(s); {failed} could not be reached.")
 
 
+def merge_shared(args: argparse.Namespace, settings: Settings) -> None:
+    import json
+
+    from app.tenancy.merge import merge_tenant
+
+    report = merge_tenant(settings, args.tenant, commit=args.commit)
+    print(json.dumps(report, indent=2, default=str))
+    if report["status"] not in {"ok", "already_shared"}:
+        sys.exit(1)
+
+
 def demo_stores(args: argparse.Namespace, settings: Settings) -> None:
     from app.tenancy.demo import provision_all, report
 
@@ -256,6 +292,9 @@ def main(argv: list[str] | None = None) -> None:
     operator.add_argument("--name", required=True)
     operator.add_argument("--role", choices=("SUPPORT", "ADMIN"), default="SUPPORT")
     sub.add_parser("collect-stats", help="refresh the console's size and activity snapshot of every tenant")
+    merge = sub.add_parser("merge-shared", help="copy one legacy tenant database into the shared database")
+    merge.add_argument("--tenant", required=True)
+    merge.add_argument("--commit", action="store_true", help="write rows and switch the tenant when checks pass")
     demo = sub.add_parser("demo", help="create or refresh one demo store per business type, with POS registers")
     demo.add_argument("--only", nargs="*", help="subdomains to include (default: all in demo-businesses.json)")
 
@@ -284,6 +323,7 @@ def main(argv: list[str] | None = None) -> None:
         "set-status": set_status,
         "create-operator": create_operator,
         "collect-stats": collect_stats,
+        "merge-shared": merge_shared,
         "demo": demo_stores,
     }[args.command](args, settings)
 

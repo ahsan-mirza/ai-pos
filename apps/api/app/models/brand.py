@@ -8,12 +8,20 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, TenantScoped, TimestampMixin, tenant_unique
 
+
+def _active_tenant_id() -> uuid.UUID:
+    from app.tenancy.scoping import active_tenant_id
+
+    return active_tenant_id()
+
+
 if TYPE_CHECKING:
     from app.models.category import SubCategory
 
 sub_category_brands = Table(
     "sub_category_brands",
     Base.metadata,
+    Column("tenant_id", Uuid(as_uuid=True), primary_key=True, default=_active_tenant_id),
     Column(
         "sub_category_id",
         Uuid(as_uuid=True),

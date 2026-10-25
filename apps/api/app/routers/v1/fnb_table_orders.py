@@ -39,8 +39,15 @@ def _socket_session(websocket: WebSocket) -> Iterator[Session]:
     if settings.tenancy_enabled:
         from app.tenancy import registry
 
-        named = websocket.query_params.get("tenant") or websocket.headers.get("x-tenant-domain")
-        slug = registry.slug_from_domain(named, settings) if named else settings.default_tenant
+        header = websocket.headers.get("x-tenant-domain")
+        query = websocket.query_params.get("tenant")
+        header_slug = registry.slug_from_domain(header, settings) if header else None
+        query_slug = registry.slug_from_domain(query, settings) if query else None
+        if header_slug and query_slug and header_slug != query_slug:
+            raise ApiError(400, "tenant_mismatch", "The store address does not match this connection.")
+        named = header or query
+        slug = header_slug or query_slug or (registry.slug_from_domain(named, settings) if named else None)
+        slug = slug or settings.default_tenant
         found = registry.lookup(slug, settings) if slug else None
         tenant = found.tenant if found is not None else None
         if tenant is None:
@@ -53,6 +60,7 @@ def _socket_session(websocket: WebSocket) -> Iterator[Session]:
             yield from override()
             return
         db = get_session_factory()()
+        db.info["request_session"] = True
         try:
             yield db
         finally:

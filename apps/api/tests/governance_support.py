@@ -1,4 +1,4 @@
-"""A two-store platform (control database plus a database per store) for governance and console tests."""
+"""A two-store platform on one shared SQLite file, plus the control database."""
 
 import os
 from collections.abc import Iterator
@@ -32,14 +32,15 @@ class Platform:
     root: Path
 
     def url(self, slug: str) -> str:
-        return f"sqlite:///{(self.root / f'{slug}.db').as_posix()}"
+        del slug
+        return f"sqlite:///{(self.root / 'shared.db').as_posix()}"
 
     @contextmanager
     def session(self, slug: str) -> Iterator[Session]:
         found = registry.lookup(slug, get_settings())
         if found.tenant is None:
             raise RuntimeError(f"Tenant {slug} is not registered.")
-        db = sessionmaker(bind=build_engine(self.url(slug)), expire_on_commit=False)()
+        db = sessionmaker(bind=build_engine(found.tenant.database_url), expire_on_commit=False)()
         try:
             with use_tenant(found.tenant):
                 yield db
@@ -79,7 +80,10 @@ class Platform:
 
 @pytest.fixture()
 def platform(tmp_path):
+    previous_database = os.environ.get("DATABASE_URL")
+    shared_url = f"sqlite:///{(tmp_path / 'shared.db').as_posix()}"
     control_url = f"sqlite:///{(tmp_path / 'control.db').as_posix()}"
+    os.environ["DATABASE_URL"] = shared_url
     os.environ["CONTROL_DATABASE_URL"] = control_url
     os.environ.setdefault("CONSOLE_JWT_SECRET", "console-test-secret-0123456789-abcdef")
     get_settings.cache_clear()
@@ -87,21 +91,21 @@ def platform(tmp_path):
     registry._control_factory.cache_clear()
     settings = get_settings()
     ControlBase.metadata.create_all(build_engine(control_url))
+    engine = build_engine(shared_url)
+    Base.metadata.create_all(engine)
     control = registry.control_session(settings)
     for slug, password in PASSWORDS.items():
-        url = f"sqlite:///{(tmp_path / f'{slug}.db').as_posix()}"
-        engine = build_engine(url)
-        Base.metadata.create_all(engine)
         tenant = Tenant(
             slug=slug,
             name=f"{slug.title()} Mobiles",
             status="active",
             profile="electronics_wholesale",
-            database_url_encrypted=registry.encrypt_database_url(url, settings),
+            data_plane="shared",
+            database_url_encrypted=registry.encrypt_database_url(shared_url, settings),
         )
         control.add(tenant)
         control.flush()
-        ref = TenantRef(id=str(tenant.id), slug=slug, name=tenant.name, database_url=url)
+        ref = TenantRef(id=str(tenant.id), slug=slug, name=tenant.name, database_url=shared_url, data_plane="shared")
         with use_tenant(ref), sessionmaker(bind=engine, expire_on_commit=False)() as db:
             ensure_system_roles(db)
             ensure_super_admin(
@@ -117,13 +121,17 @@ def platform(tmp_path):
             row.business_profile = "electronics_wholesale"
             row.onboarded_at = datetime.now(UTC)
             db.commit()
-        engine.dispose()
     control.commit()
     control.close()
+    engine.dispose()
     clear_settings_cache()
     invalidate_contact_cache()
     yield Platform(client=TestClient(create_app()), root=tmp_path)
     del os.environ["CONTROL_DATABASE_URL"]
+    if previous_database is None:
+        os.environ.pop("DATABASE_URL", None)
+    else:
+        os.environ["DATABASE_URL"] = previous_database
     get_settings.cache_clear()
     registry.invalidate()
     registry._control_factory.cache_clear()

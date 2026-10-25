@@ -43,6 +43,18 @@ ADMIN_PASSWORD = "root-password-123"
 ADMIN_PIN = "2468"
 
 
+@pytest.fixture(autouse=True)
+def _isolated_limits() -> None:
+    """Login counters and the fake Redis client are process-wide. Each test starts from empty."""
+    from app.core import cache
+    from app.routers.super_admin import _attempts as console_attempts
+    from app.routers.v1.terminals import _attempts as activation_attempts
+
+    console_attempts.clear()
+    activation_attempts.clear()
+    cache.reset()
+
+
 @pytest.fixture()
 def session() -> Session:
     clear_settings_cache()

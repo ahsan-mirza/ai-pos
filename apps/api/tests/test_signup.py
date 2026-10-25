@@ -24,6 +24,8 @@ def _create_all(url: str) -> None:
 
 @pytest.fixture()
 def signup(tmp_path, monkeypatch):
+    previous_database = os.environ.get("DATABASE_URL")
+    os.environ["DATABASE_URL"] = f"sqlite:///{(tmp_path / 'shared.db').as_posix()}"
     os.environ["CONTROL_DATABASE_URL"] = f"sqlite:///{(tmp_path / 'control.db').as_posix()}"
     os.environ["TENANT_DATABASE_URL_TEMPLATE"] = f"sqlite:///{tmp_path.as_posix()}/{{database}}.db"
     os.environ["SIGNUP_MAX_PER_HOUR"] = "3"
@@ -37,6 +39,10 @@ def signup(tmp_path, monkeypatch):
     yield TestClient(create_app())
     for name in ("CONTROL_DATABASE_URL", "TENANT_DATABASE_URL_TEMPLATE", "SIGNUP_MAX_PER_HOUR"):
         del os.environ[name]
+    if previous_database is None:
+        os.environ.pop("DATABASE_URL", None)
+    else:
+        os.environ["DATABASE_URL"] = previous_database
     get_settings.cache_clear()
     registry.invalidate()
     registry._control_factory.cache_clear()

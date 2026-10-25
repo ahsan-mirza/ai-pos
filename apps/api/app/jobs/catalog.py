@@ -243,3 +243,27 @@ register(
         {"trigger": "interval", "minutes": 5},
     )
 )
+
+
+def _drain_cache(db: Session, settings: Settings) -> str:
+    del settings
+    from sqlalchemy import select
+
+    from app.core.cache import delete
+    from app.models.cache import CacheInvalidation
+
+    rows = db.scalars(select(CacheInvalidation)).all()
+    for row in rows:
+        delete(row.cache_key)
+        db.delete(row)
+    return f"{len(rows)} cache keys dropped"
+
+
+register(
+    Job(
+        "cache_invalidation",
+        "Drop cache keys recorded in the same transaction as the change",
+        _drain_cache,
+        {"trigger": "interval", "minutes": 1},
+    )
+)

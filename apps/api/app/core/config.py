@@ -73,6 +73,8 @@ class Settings(BaseSettings):
     tenant_public_url_template: str = "https://{tenant}.axizpos.com"
     # Tenant used for requests that name none (plain localhost in development).
     default_tenant: str | None = None
+    # Cache and rate limits. Required in production. Unset elsewhere uses an in-process stand-in.
+    redis_url: str | None = None
     jwt_secret: str = Field(min_length=32)
     pin_salt: str = Field(min_length=16)
     encryption_secret: str = Field(min_length=32)
@@ -230,6 +232,8 @@ class Settings(BaseSettings):
             problems.append("CONTROL_DATABASE_URL (required: production is multi-tenant)")
         if self.default_tenant:
             problems.append("DEFAULT_TENANT (must be unset: every request names its store)")
+        if not self.redis_url:
+            problems.append("REDIS_URL (required for tenant-scoped cache and rate limits)")
         if self.signup_enabled and self.signup_otp_channel == "log" and not self.signup_otp_code:
             problems.append(
                 "SIGNUP_OTP_CHANNEL (log delivers no code; pick whatsapp, sms or email, "

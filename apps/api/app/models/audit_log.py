@@ -48,6 +48,7 @@ class AuditLog(TenantScoped, Base):
     __table_args__ = (
         tenant_unique("client_event_id", name="uq_audit_logs_client_event_id"),
         Index("ix_audit_logs_action_type_occurred_at", "action_type", "occurred_at"),
+        Index("ix_audit_logs_tenant_occurred", "tenant_id", "occurred_at"),
     )
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID | None] = mapped_column(

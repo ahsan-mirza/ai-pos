@@ -1,7 +1,7 @@
 """Builds a store for a signup, one recorded step at a time, so the signup screen shows real progress.
 
-Steps already done are skipped on retry. Each store gets its own database, exactly as `app.tenancy.cli create`
-does, then the owner account, business settings and a few sample products to practise with."""
+Steps already done are skipped on retry. The store is a row in the shared operational database, then the
+owner account, business settings and a few sample products to practise with."""
 
 from __future__ import annotations
 
@@ -15,12 +15,11 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 
 from sqlalchemy import select
-from sqlalchemy.engine import make_url
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.core import capabilities as capability_catalog
 from app.core.config import Settings
-from app.core.database import build_engine, create_database
+from app.core.database import build_engine
 from app.models.store import Store
 from app.models.user import User
 from app.services import sample_data
@@ -59,7 +58,8 @@ class Job:
 
     @property
     def url(self) -> str:
-        return registry.tenant_database_url(self.database, self.settings)
+        """New stores are rows in the shared operational database, not a new database."""
+        return self.settings.database_url
 
 
 def _mark(settings: Settings, request_id: uuid.UUID, key: str, state: str, **fields: object) -> None:
@@ -76,7 +76,9 @@ def _mark(settings: Settings, request_id: uuid.UUID, key: str, state: str, **fie
 @contextmanager
 def _tenant_session(job: Job) -> Iterator[Session]:
     engine = build_engine(job.url)
-    ref = TenantRef(id=str(job.tenant_id), slug=job.slug, name=job.store_name, database_url=job.url)
+    ref = TenantRef(
+        id=str(job.tenant_id), slug=job.slug, name=job.store_name, database_url=job.url, data_plane="shared"
+    )
     try:
         with sessionmaker(bind=engine, expire_on_commit=False)() as db, use_tenant(ref):
             yield db
@@ -85,21 +87,8 @@ def _tenant_session(job: Job) -> Iterator[Session]:
 
 
 def step_database(job: Job) -> None:
-    url = make_url(job.url)
-    if url.get_backend_name() != "postgresql":
-        return
-    server = url.set(database="postgres").render_as_string(hide_password=False)
-    try:
-        created = create_database(server, job.database)
-    except Exception as error:
-        if "permission denied to create database" in str(error).lower():
-            user = url.username or "the database user"
-            raise RuntimeError(
-                f"permission denied to create database. On the server run: ALTER ROLE {user} CREATEDB;"
-            ) from error
-        raise
-    if not created:
-        raise RuntimeError(f"A database named {job.database} already exists; choose another store address.")
+    """Shared stores do not get a private database. The step remains so signup progress stays stable."""
+    return None
 
 
 def step_migrations(job: Job) -> None:
@@ -115,6 +104,7 @@ def step_register(job: Job) -> None:
                 name=job.store_name,
                 status="active",
                 profile=job.profile,
+                data_plane="shared",
                 database_url_encrypted=registry.encrypt_database_url(job.url, job.settings),
             )
             db.add(existing)

@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import JSON, DateTime, Integer, String, Text, Uuid
+from sqlalchemy import JSON, DateTime, Integer, PrimaryKeyConstraint, String, Text, Uuid
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base, TenantScoped, TimestampMixin, tenant_unique
@@ -48,8 +48,9 @@ class EInvoiceChain(TenantScoped, TimestampMixin, Base):
     """Head of one authority's invoice chain. Locked while an invoice is issued so counters and hashes never fork."""
 
     __tablename__ = "e_invoice_chains"
+    __table_args__ = (PrimaryKeyConstraint("tenant_id", "authority", name="pk_e_invoice_chains"),)
 
-    authority: Mapped[str] = mapped_column(String(8), primary_key=True)
+    authority: Mapped[str] = mapped_column(String(8))
     last_counter: Mapped[int] = mapped_column(Integer, default=0)
     last_hash: Mapped[str] = mapped_column(String(128))
 
@@ -59,8 +60,9 @@ class TaxAuthorityCredential(TenantScoped, TimestampMixin, Base):
     onboarding replaces them with the certificate the authority issues."""
 
     __tablename__ = "tax_authority_credentials"
+    __table_args__ = (PrimaryKeyConstraint("tenant_id", "authority", name="pk_tax_authority_credentials"),)
 
-    authority: Mapped[str] = mapped_column(String(8), primary_key=True)
+    authority: Mapped[str] = mapped_column(String(8))
     environment: Mapped[str] = mapped_column(String(12))
     private_key_encrypted: Mapped[str] = mapped_column(Text)
     certificate_pem: Mapped[str] = mapped_column(Text)

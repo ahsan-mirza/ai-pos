@@ -1,4 +1,4 @@
-"""Database-per-tenant routing: each subdomain reaches only its own database."""
+"""Tenant routing: each subdomain reaches only its own rows in the shared database."""
 
 import os
 
@@ -20,27 +20,30 @@ PASSWORDS = {"alpha": "alpha-password-1", "bravo": "bravo-password-1"}
 
 @pytest.fixture()
 def tenants(tmp_path):
+    previous_database = os.environ.get("DATABASE_URL")
+    shared_url = f"sqlite:///{(tmp_path / 'shared.db').as_posix()}"
     control_url = f"sqlite:///{(tmp_path / 'control.db').as_posix()}"
+    os.environ["DATABASE_URL"] = shared_url
     os.environ["CONTROL_DATABASE_URL"] = control_url
     get_settings.cache_clear()
     registry.invalidate()
     registry._control_factory.cache_clear()
     settings = get_settings()
     ControlBase.metadata.create_all(build_engine(control_url))
+    engine = build_engine(shared_url)
+    Base.metadata.create_all(engine)
     control = registry.control_session(settings)
     for slug, password in PASSWORDS.items():
-        url = f"sqlite:///{(tmp_path / f'{slug}.db').as_posix()}"
-        engine = build_engine(url)
-        Base.metadata.create_all(engine)
         tenant = Tenant(
             slug=slug,
             name=f"{slug.title()} Mobiles",
             status="active",
-            database_url_encrypted=registry.encrypt_database_url(url, settings),
+            data_plane="shared",
+            database_url_encrypted=registry.encrypt_database_url(shared_url, settings),
         )
         control.add(tenant)
         control.flush()
-        ref = TenantRef(id=str(tenant.id), slug=slug, name=tenant.name, database_url=url)
+        ref = TenantRef(id=str(tenant.id), slug=slug, name=tenant.name, database_url=shared_url, data_plane="shared")
         with use_tenant(ref), sessionmaker(bind=engine, expire_on_commit=False)() as db:
             ensure_system_roles(db)
             ensure_super_admin(
@@ -58,13 +61,19 @@ def tenants(tmp_path):
             slug="closed",
             name="Closed Shop",
             status="suspended",
-            database_url_encrypted=registry.encrypt_database_url(f"sqlite:///{(tmp_path / 'alpha.db').as_posix()}"),
+            data_plane="shared",
+            database_url_encrypted=registry.encrypt_database_url(shared_url, settings),
         )
     )
     control.commit()
     control.close()
+    engine.dispose()
     yield TestClient(create_app())
     del os.environ["CONTROL_DATABASE_URL"]
+    if previous_database is None:
+        os.environ.pop("DATABASE_URL", None)
+    else:
+        os.environ["DATABASE_URL"] = previous_database
     get_settings.cache_clear()
     registry.invalidate()
     registry._control_factory.cache_clear()

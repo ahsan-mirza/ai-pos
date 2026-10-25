@@ -71,11 +71,15 @@ def control_session(settings: Settings | None = None) -> Session:
 
 
 def _ref(row: Tenant, settings: Settings) -> TenantRef:
+    plane = row.data_plane if row.data_plane in ("legacy", "shared") else "legacy"
+    # Shared stores all use the one operational database. The encrypted URL is only for legacy stores.
+    url = settings.database_url if plane == "shared" else decrypt_value(row.database_url_encrypted, settings)
     return TenantRef(
         id=str(row.id),
         slug=row.slug,
         name=row.name,
-        database_url=decrypt_value(row.database_url_encrypted, settings),
+        database_url=url,
+        data_plane=plane,
     )
 
 
@@ -84,26 +88,86 @@ def ref_for(row: Tenant, settings: Settings | None = None) -> TenantRef:
     return _ref(row, settings or get_settings())
 
 
+def _remember(slug: str, result: Lookup) -> Lookup:
+    _lookups[slug] = (time.monotonic() + CACHE_SECONDS, result)
+    from app.core.cache import set_value
+
+    tenant = result.tenant
+    if tenant is None:
+        set_value(f"registry:{slug}", "missing", int(CACHE_SECONDS))
+        return result
+    import json
+
+    set_value(
+        f"registry:{slug}",
+        json.dumps(
+            {
+                "id": tenant.id,
+                "slug": tenant.slug,
+                "name": tenant.name,
+                "status": result.status,
+                "data_plane": tenant.data_plane,
+                "database_url": tenant.database_url,
+            }
+        ),
+        int(CACHE_SECONDS),
+    )
+    return result
+
+
+def _from_cache(slug: str, settings: Settings) -> Lookup | None:
+    from app.core.cache import get_value
+
+    raw = get_value(f"registry:{slug}")
+    if raw is None:
+        return None
+    if raw == "missing":
+        return Lookup(tenant=None, status=None)
+    import json
+
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError:
+        return None
+    plane = data.get("data_plane") or "legacy"
+    url = settings.database_url if plane == "shared" else data.get("database_url") or ""
+    tenant = TenantRef(
+        id=data["id"],
+        slug=data["slug"],
+        name=data["name"],
+        database_url=url,
+        data_plane=plane,
+    )
+    return Lookup(tenant=tenant, status=data.get("status"))
+
+
 def lookup(slug: str, settings: Settings | None = None) -> Lookup:
     settings = settings or get_settings()
     now = time.monotonic()
     cached = _lookups.get(slug)
     if cached is not None and cached[0] > now:
         return cached[1]
+    shared = _from_cache(slug, settings)
+    if shared is not None:
+        _lookups[slug] = (now + CACHE_SECONDS, shared)
+        return shared
     with control_session(settings) as db:
         row = db.scalar(select(Tenant).where(Tenant.slug == slug))
         result = (
             Lookup(tenant=None, status=None) if row is None else Lookup(tenant=_ref(row, settings), status=row.status)
         )
-    _lookups[slug] = (now + CACHE_SECONDS, result)
-    return result
+    return _remember(slug, result)
 
 
 def invalidate(slug: str | None = None) -> None:
+    from app.core.cache import clear_prefix, delete
+
     if slug is None:
         _lookups.clear()
+        clear_prefix("registry:")
     else:
         _lookups.pop(slug, None)
+        delete(f"registry:{slug}")
 
 
 def active_tenants(settings: Settings | None = None) -> list[TenantRef]:

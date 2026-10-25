@@ -144,10 +144,13 @@ pub async fn install(app: &AppHandle, config: &DesktopConfig, current: &str) -> 
     if digest != update.sha256 {
         return Err("The downloaded installer did not match the published checksum.".into());
     }
-    let path = std::env::temp_dir().join("AI-POS-Setup-latest.exe");
-    let mut file = std::fs::File::create(&path).map_err(|err| err.to_string())?;
-    file.write_all(&bytes).map_err(|err| err.to_string())?;
-    file.sync_all().map_err(|err| err.to_string())?;
+    let path = std::env::temp_dir().join(format!("AI-POS-Setup-{}.exe", update.version));
+    // Close the file before starting it. Windows will not run an exe that this process still has open.
+    {
+        let mut file = std::fs::File::create(&path).map_err(|err| format!("Could not save the installer: {err}"))?;
+        file.write_all(&bytes).map_err(|err| format!("Could not save the installer: {err}"))?;
+        file.sync_all().map_err(|err| format!("Could not save the installer: {err}"))?;
+    }
     launch_installer(&path)?;
     app.exit(0);
     Ok(())
@@ -159,12 +162,23 @@ fn launch_installer(path: &std::path::Path) -> Result<(), String> {
         use std::os::windows::process::CommandExt;
         // Detach so the silent installer keeps running after this process exits.
         const DETACHED_PROCESS: u32 = 0x0000_0008;
-        std::process::Command::new(path)
-            .arg("/S")
-            .creation_flags(DETACHED_PROCESS)
-            .spawn()
-            .map_err(|err| format!("Could not start the installer: {err}"))?;
-        return Ok(());
+        // A scanner can briefly lock a newly written exe. Sharing error 32 clears once it lets go.
+        let mut locked = String::new();
+        for attempt in 0..8 {
+            match std::process::Command::new(path)
+                .arg("/S")
+                .creation_flags(DETACHED_PROCESS)
+                .spawn()
+            {
+                Ok(_) => return Ok(()),
+                Err(err) if err.raw_os_error() == Some(32) && attempt + 1 < 8 => {
+                    locked = err.to_string();
+                    std::thread::sleep(Duration::from_millis(250));
+                }
+                Err(err) => return Err(format!("Could not start the installer: {err}")),
+            }
+        }
+        return Err(format!("Could not start the installer: {locked}"));
     }
     #[cfg(not(windows))]
     {

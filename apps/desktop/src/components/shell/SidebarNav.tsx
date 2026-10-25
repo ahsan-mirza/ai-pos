@@ -19,8 +19,7 @@ import {
 } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import { BranchCheckModal } from "../../features/checkout/BranchCheckModal";
-import { terminal } from "../../config/terminal";
-import { loadCatalog, store } from "../../features/checkout/catalog";
+import { loadCatalog } from "../../features/checkout/catalog";
 import { openDisplayWindow } from "../../features/display/displayChannel";
 import { ShiftModal } from "../../features/shifts/ShiftModal";
 import { SyncCenterModal } from "../../features/sync/SyncCenterModal";
@@ -88,7 +87,6 @@ const itemActive = "bg-primary-500 text-white shadow-md shadow-primary-500/25";
 /** The register's one navigation sidebar: pages, register tools, cashier and lock. Shared by every page. */
 export function SidebarNav({ busy, onNavigate, onLock }: SidebarNavProps) {
   const { session, view } = useShell();
-  const activation = terminal();
   const { railCollapsed: collapsed, toggleRail } = useRegisterLayout();
   const [tool, setTool] = useState<Tool | null>(null);
   const [products, setProducts] = useState<ProductUpsert[] | null>(null);
@@ -222,22 +220,8 @@ export function SidebarNav({ busy, onNavigate, onLock }: SidebarNavProps) {
           collapsed ? "w-20" : "w-64"
         }`}
       >
-        <div className={`flex h-16 shrink-0 items-center border-b border-zinc-200 dark:border-zinc-800 ${collapsed ? "justify-center gap-1 px-1" : "gap-3 px-4"}`}>
+        <div className={`flex h-16 shrink-0 items-center border-b border-zinc-200 dark:border-zinc-800 ${collapsed ? "justify-center gap-1 px-1" : "justify-between gap-3 px-4"}`}>
           <BrandLogo variant={collapsed ? "mark" : "wordmark"} alt="" className={collapsed ? "h-7 w-7 shrink-0" : "h-8 min-w-0 max-w-[8.5rem] shrink"} />
-          {collapsed ? null : (
-            <span className="min-w-0 flex-1">
-              <span className="block truncate text-sm font-bold tracking-tight" title={activation?.tenant_domain}>
-                {activation?.tenant_name || "AI POS"}
-              </span>
-              <span
-                className="block truncate text-[11px] text-zinc-500 dark:text-zinc-400"
-                title={`${spec.label} · ${store.code} · ${store.name}${activation?.register_code ? ` · ${activation.register_code}` : ""}`}
-              >
-                {spec.shortLabel} · {store.code} · {store.name}
-                {activation?.register_code ? ` · ${activation.register_code}` : ""}
-              </span>
-            </span>
-          )}
           <button
             type="button"
             onClick={toggleRail}

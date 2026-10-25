@@ -64,7 +64,7 @@ def save_currency(db: Session, data: CurrencyWrite) -> list[CurrencyOut]:
     code = data.code.upper()
     if code == business_currency(db):
         raise ApiError(422, "validation_error", f"{code} is the business currency already.")
-    row = db.get(AcceptedCurrency, code)
+    row = db.scalar(select(AcceptedCurrency).where(AcceptedCurrency.code == code))
     if row is None:
         row = AcceptedCurrency(code=code, name=data.name or NAMES.get(code, code))
         db.add(row)
@@ -83,7 +83,7 @@ def save_currency(db: Session, data: CurrencyWrite) -> list[CurrencyOut]:
 
 
 def set_rate(db: Session, code: str, data: RateWrite, user_id: uuid.UUID | None) -> list[CurrencyOut]:
-    if db.get(AcceptedCurrency, code.upper()) is None:
+    if db.scalar(select(AcceptedCurrency).where(AcceptedCurrency.code == code.upper())) is None:
         raise ApiError(404, "not_found", "Add the currency first.")
     db.add(
         ExchangeRate(
@@ -135,7 +135,7 @@ def check_tender(db: Session, settings: Settings, tender: SaleTenderPayload, sal
     code = tender.currency.upper()
     if tender.method != "cash":
         raise SyncRejected("Only cash can be taken in a foreign currency.")
-    accepted = db.get(AcceptedCurrency, code)
+    accepted = db.scalar(select(AcceptedCurrency).where(AcceptedCurrency.code == code))
     if accepted is None or not accepted.is_active:
         raise SyncRejected(f"{code} is not an accepted currency.")
     latest = latest_rate(db, code)

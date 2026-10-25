@@ -240,8 +240,8 @@ def test_go_live_deletes_simulation_tax_stamps(client, session) -> None:
     live = client.post("/api/v1/onboarding/go-live", headers=headers, json=_go("Downtown"))
     assert live.status_code == 200, live.text
     session.expire_all()
-    assert session.get(TaxAuthorityCredential, "zatca") is None
-    assert session.get(EInvoiceChain, "zatca") is None
+    assert session.scalar(select(TaxAuthorityCredential).where(TaxAuthorityCredential.authority == "zatca")) is None
+    assert session.scalar(select(EInvoiceChain).where(EInvoiceChain.authority == "zatca")) is None
     settings = client.get("/api/v1/settings", headers=headers).json()
     assert settings["trn"] == "311111111111113"
     assert settings["tax_portal_pending"] is True

@@ -16,6 +16,8 @@ class BusinessSettings(TenantScoped, TimestampMixin, Base):
     __tablename__ = "business_settings"
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
+    # Bumped when the row changes so cached copies can tell they are stale.
+    cache_generation: Mapped[int] = mapped_column(Integer, default=1)
     currency: Mapped[str] = mapped_column(String(3))
     # VAT. While vat_registered is false the API keeps the register's line tax as sent (legacy behaviour).
     vat_registered: Mapped[bool] = mapped_column(Boolean, default=False)

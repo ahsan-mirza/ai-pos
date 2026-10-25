@@ -35,8 +35,8 @@ def out(record: EInvoice) -> EInvoiceOut:
 
 def summary(db: Session, store_scope: uuid.UUID | None) -> EInvoiceSummary:
     adapter = adapter_for(db)
-    chain = db.get(EInvoiceChain, adapter.code)
-    credential = db.get(TaxAuthorityCredential, adapter.code)
+    chain = db.scalar(select(EInvoiceChain).where(EInvoiceChain.authority == adapter.code))
+    credential = db.scalar(select(TaxAuthorityCredential).where(TaxAuthorityCredential.authority == adapter.code))
     certificate = x509.load_pem_x509_certificate(credential.certificate_pem.encode()) if credential else None
     counts = dict(
         db.execute(

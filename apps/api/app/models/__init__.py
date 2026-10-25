@@ -6,6 +6,7 @@ from app.models.base import Base
 from app.models.batch import BatchAllocation, BatchItem, ImportMappingTemplate, PurchaseBatch, Supplier
 from app.models.brand import Brand, ProductModel
 from app.models.business_settings import BusinessSettings
+from app.models.cache import CacheInvalidation
 from app.models.category import Category, SubCategory
 from app.models.channel import ChannelPayout, DeliveryChannel
 from app.models.cheque import Cheque, ChequeEvent
@@ -79,6 +80,7 @@ __all__ = [
     "BatchAllocation",
     "BatchItem",
     "Brand",
+    "CacheInvalidation",
     "BusinessSettings",
     "CashMovement",
     "Category",

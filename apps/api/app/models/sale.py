@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Boolean, CheckConstraint, DateTime, ForeignKey, Integer, String, Uuid
+from sqlalchemy import Boolean, CheckConstraint, DateTime, ForeignKey, Index, Integer, String, Uuid
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, TenantScoped, TimestampMixin, tenant_unique
@@ -31,6 +31,7 @@ class Sale(TenantScoped, TimestampMixin, Base):
         CheckConstraint("amount_paid_cents >= 0", name="amount_paid_nonnegative"),
         CheckConstraint("due_balance_cents >= 0", name="due_balance_nonnegative"),
         CheckConstraint("amount_paid_cents + due_balance_cents = total_cents", name="paid_plus_due_is_total"),
+        Index("ix_sales_tenant_store_created", "tenant_id", "store_id", "created_at"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)

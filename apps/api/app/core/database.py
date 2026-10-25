@@ -83,6 +83,8 @@ def bypass_session_tenant(connection) -> None:
 
 def get_db() -> Iterator[Session]:
     session = get_session_factory()()
+    # HTTP sessions cannot turn on include_all_tenants. Migrations and the merge command can.
+    session.info["request_session"] = True
     try:
         yield session
     finally:

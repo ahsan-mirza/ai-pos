@@ -10,6 +10,8 @@ class TenantRef:
     slug: str
     name: str
     database_url: str
+    # "shared" uses DATABASE_URL. "legacy" still opens this tenant's own database.
+    data_plane: str = "legacy"
 
 
 # Session.info key on control-database sessions; tenant-only hooks (audit trail, settings cache) skip them.

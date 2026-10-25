@@ -92,7 +92,7 @@ def test_zatca_sales_are_signed_chained_and_reported(client, session: Session) -
     assert 9 in tags, "simplified invoices carry the certificate signature"
     summary = client.get("/api/v1/einvoices/summary", headers=bearer(token)).json()
     assert summary["environment"] == "simulation" and summary["last_counter"] == 2
-    credential = session.get(TaxAuthorityCredential, "zatca")
+    credential = session.scalar(select(TaxAuthorityCredential).where(TaxAuthorityCredential.authority == "zatca"))
     assert verify_signature(credential.certificate_pem, canonical, tags[7].decode())
     assert not verify_signature(credential.certificate_pem, canonical + b" ", tags[7].decode())
     assert '<cbc:InvoiceTypeCode name="0200000">388</cbc:InvoiceTypeCode>' in first.xml

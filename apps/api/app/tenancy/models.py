@@ -17,6 +17,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 TENANT_STATUSES = ("active", "suspended")
+DATA_PLANES = ("legacy", "shared")
 SIGNUP_STATUSES = ("PENDING_OTP", "VERIFIED", "WAITLIST", "PROVISIONING", "READY", "FAILED")
 
 
@@ -47,8 +48,11 @@ class Tenant(ControlBase):
     status: Mapped[str] = mapped_column(String(16), default="active")
     # Business type chosen at provisioning; the tenant's own business_settings row is the source of truth.
     profile: Mapped[str] = mapped_column(String(32), default="electronics_wholesale")
-    # Full SQLAlchemy URL of the tenant database, Fernet-encrypted with ENCRYPTION_SECRET.
+    # Full SQLAlchemy URL of a legacy tenant database, Fernet-encrypted with ENCRYPTION_SECRET.
+    # Shared tenants still store a URL, but requests use DATABASE_URL instead.
     database_url_encrypted: Mapped[str] = mapped_column(Text)
+    # "legacy" keeps a private database. "shared" uses the one operational database.
+    data_plane: Mapped[str] = mapped_column(String(16), default="legacy")
     # Subscription tier shown in the console directory. Matches a billing_plans.code when one is assigned.
     plan: Mapped[str] = mapped_column(String(32), default="standard")
     # Copy of the store's live_at being unset, so the directory does not open every store database.
@@ -360,6 +364,19 @@ class MailSettings(ControlBase):
     from_address: Mapped[str] = mapped_column(String(254), default="")
     from_name: Mapped[str] = mapped_column(String(120), default="AI POS")
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
+
+
+class TenantMergeCheckpoint(ControlBase):
+    """One finished table in a legacy-to-shared copy. A rerun skips tables already recorded."""
+
+    __tablename__ = "tenant_merge_checkpoints"
+    __table_args__ = (UniqueConstraint("tenant_id", "table_name", name="uq_tenant_merge_checkpoints_table"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("tenants.id"), index=True)
+    table_name: Mapped[str] = mapped_column(String(64))
+    row_count: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
 
 class BillingInvoiceLine(ControlBase):

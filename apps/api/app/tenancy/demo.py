@@ -15,11 +15,10 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from sqlalchemy import select
-from sqlalchemy.engine import make_url
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.core.config import Settings
-from app.core.database import build_engine, create_database
+from app.core.database import build_engine
 from app.core.deps import Principal
 from app.core.security import hash_password, hash_pin
 from app.models.device import Device
@@ -73,9 +72,6 @@ def _create(spec: dict, demo: dict, settings: Settings) -> None:
         tenant_id=None,
         owner_username=None,
     )
-    url = make_url(job.url)
-    if url.get_backend_name() == "postgresql":
-        create_database(url.set(database="postgres").render_as_string(hide_password=False), job.database)
     provisioning.step_migrations(job)
     provisioning.step_register(job)
     provisioning.step_settings(job)

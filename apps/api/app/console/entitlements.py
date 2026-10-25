@@ -25,6 +25,7 @@ from app.tenancy.models import Tenant, TenantModuleOverride
 def tenant_session(tenant: Tenant, settings: Settings) -> Iterator[Session]:
     ref = registry.ref_for(tenant, settings)
     with registry.session_factory_for(ref)() as db, use_tenant(ref):
+        db.info["request_session"] = True
         yield db
 
 

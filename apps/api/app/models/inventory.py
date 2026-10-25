@@ -54,6 +54,7 @@ class StockMovement(TenantScoped, Base):
     __table_args__ = (
         CheckConstraint("quantity <> 0", name="quantity_nonzero"),
         Index("ix_stock_movements_product_store_created", "product_id", "store_id", "created_at"),
+        Index("ix_stock_movements_tenant_store_created", "tenant_id", "store_id", "created_at"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
