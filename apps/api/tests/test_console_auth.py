@@ -29,7 +29,9 @@ def test_totp_follows_rfc_6238() -> None:
 
 
 def test_operators_sign_in_with_email_and_password(platform) -> None:  # noqa: F811
-    create_operator(get_settings(), email="Sara@axizpos.com", full_name="Sara", role="SUPPORT", password=OPERATOR_PASSWORD)
+    create_operator(
+        get_settings(), email="Sara@axizpos.com", full_name="Sara", role="SUPPORT", password=OPERATOR_PASSWORD
+    )
     url = "/api/v1/super-admin/auth/login"
     wrong_password = platform.client.post(url, json={"email": "sara@axizpos.com", "password": "nope"})
     assert wrong_password.status_code == 401
@@ -63,7 +65,9 @@ def test_store_and_console_tokens_never_cross(platform) -> None:  # noqa: F811
 
 
 def test_accounts_lock_after_repeated_failures(platform) -> None:  # noqa: F811
-    create_operator(get_settings(), email="lock@axizpos.com", full_name="Lock", role="SUPPORT", password=OPERATOR_PASSWORD)
+    create_operator(
+        get_settings(), email="lock@axizpos.com", full_name="Lock", role="SUPPORT", password=OPERATOR_PASSWORD
+    )
     url = "/api/v1/super-admin/auth/login"
     for _ in range(get_settings().login_max_attempts):
         platform.client.post(url, json={"email": "lock@axizpos.com", "password": "wrong-password"})
