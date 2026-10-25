@@ -172,12 +172,19 @@ def _apply_taxonomy(tenant) -> int:
         return added
 
 
+def _database_name(url: str) -> str:
+    return make_url(url).database or url
+
+
 def migrate_all(_: argparse.Namespace, settings: Settings) -> None:
-    print("Migrating the shared operational database...")
-    upgrade_tenant(settings.database_url)
+    """Upgrade every live store database, then the shared database.
+
+    Existing stores are still `legacy` and keep their own databases. Those are the production
+    databases. `DATABASE_URL` is the shared database for new stores; it may be empty, and a failure
+    there must not skip the databases that are already serving sales.
+    """
     with registry.control_session(settings) as db:
-        rows = db.scalars(select(Tenant).order_by(Tenant.slug)).all()
-        slugs = [row.slug for row in rows]
+        slugs = [row.slug for row in db.scalars(select(Tenant).order_by(Tenant.slug)).all()]
     seen: set[str] = set()
     legacy = 0
     shared = 0
@@ -191,16 +198,22 @@ def migrate_all(_: argparse.Namespace, settings: Settings) -> None:
             if added:
                 print(f"  {slug}: {added} catalog rows added.")
             continue
-        if tenant.database_url in seen or tenant.database_url == settings.database_url:
+        if tenant.database_url in seen:
             continue
         seen.add(tenant.database_url)
         legacy += 1
-        print(f"Migrating legacy {slug}...")
+        print(f"Migrating legacy {slug} ({_database_name(tenant.database_url)})...")
         upgrade_tenant(tenant.database_url, tenant.id)
         added = _apply_taxonomy(tenant)
         if added:
             print(f"  {slug}: {added} catalog rows added.")
-    print(f"Shared database at head. {shared} shared tenant(s), {legacy} legacy database(s).")
+    shared_name = _database_name(settings.database_url)
+    if settings.database_url in seen:
+        print(f"Shared database {shared_name} was migrated with its legacy tenant.")
+    else:
+        print(f"Migrating the shared operational database ({shared_name})...")
+        upgrade_tenant(settings.database_url)
+    print(f"Migrations finished. {shared} shared tenant(s), {legacy} legacy database(s).")
 
 
 def list_tenants(_: argparse.Namespace, settings: Settings) -> None:

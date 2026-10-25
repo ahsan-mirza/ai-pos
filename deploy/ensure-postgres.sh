@@ -59,7 +59,7 @@ user="${rows[0]}"
 printf 'ALTER ROLE "%s" CREATEDB;\n' "$user" | sudo -u postgres psql -v ON_ERROR_STOP=1 -d postgres >/dev/null
 echo "Role ${user} can create databases."
 for database in "${rows[@]:1}"; do
-  printf 'GRANT USAGE, CREATE ON SCHEMA public TO "%s";\n' "$user" \
+  printf 'ALTER SCHEMA public OWNER TO "%s";\nGRANT USAGE, CREATE ON SCHEMA public TO "%s";\n' "$user" "$user" \
     | sudo -u postgres psql -v ON_ERROR_STOP=1 -d "$database" >/dev/null
-  echo "Role ${user} can create tables in ${database}."
+  echo "Role ${user} owns schema public in ${database}."
 done
