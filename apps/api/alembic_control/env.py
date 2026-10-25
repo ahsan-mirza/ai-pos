@@ -11,12 +11,14 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app.core.config import get_settings  # noqa: E402
 from app.tenancy.models import ControlBase  # noqa: E402
+from app.tenancy.registry import control_url  # noqa: E402
 
 config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-url = config.attributes.get("database_url") or get_settings().control_database_url
+settings = get_settings()
+url = config.attributes.get("database_url") or (control_url(settings) if settings.control_database_url else None)
 if not url:
     raise RuntimeError("CONTROL_DATABASE_URL is not configured.")
 config.set_main_option("sqlalchemy.url", url.replace("%", "%%"))

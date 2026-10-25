@@ -43,7 +43,11 @@ def _alembic(script: str, ini: str, url: str) -> Config:
 def upgrade_control(settings: Settings) -> None:
     if not settings.control_database_url:
         sys.exit(f"Set CONTROL_DATABASE_URL in {env_file_name(settings.app_env)} at the repo root first.")
-    command.upgrade(_alembic("alembic_control", "alembic_control.ini", settings.control_database_url), "head")
+    url = registry.control_url(settings)
+    if url != settings.control_database_url:
+        missing = make_url(settings.control_database_url).database
+        print(f"Control database {missing} does not exist. Using {make_url(url).database}.")
+    command.upgrade(_alembic("alembic_control", "alembic_control.ini", url), "head")
 
 
 def upgrade_tenant(url: str, tenant_id: str | None = None) -> None:

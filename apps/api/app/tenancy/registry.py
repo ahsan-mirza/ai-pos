@@ -10,6 +10,7 @@ from urllib.parse import urlparse
 
 from sqlalchemy import select
 from sqlalchemy.engine import Engine, make_url
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.core.config import Settings, get_settings, is_ip_host
@@ -63,11 +64,36 @@ def _control_factory(url: str) -> sessionmaker[Session]:
     return sessionmaker(bind=build_engine(url), expire_on_commit=False, info={CONTROL_SESSION: True})
 
 
-def control_session(settings: Settings | None = None) -> Session:
-    settings = settings or get_settings()
+def _database_exists(url: str) -> bool:
+    engine = build_engine(url)
+    try:
+        with engine.connect():
+            return True
+    except OperationalError as exc:
+        if "does not exist" in str(exc).lower():
+            return False
+        raise
+    finally:
+        engine.dispose()
+
+
+@lru_cache
+def _resolve_control_url(control_url: str, operational_url: str) -> str:
+    """Use the operational database when the named control database was never created."""
+    if control_url == operational_url or _database_exists(control_url):
+        return control_url
+    return operational_url
+
+
+def control_url(settings: Settings) -> str:
     if not settings.control_database_url:
         raise RuntimeError("CONTROL_DATABASE_URL is not configured.")
-    return _control_factory(settings.control_database_url)()
+    return _resolve_control_url(settings.control_database_url, settings.database_url)
+
+
+def control_session(settings: Settings | None = None) -> Session:
+    settings = settings or get_settings()
+    return _control_factory(control_url(settings))()
 
 
 def _ref(row: Tenant, settings: Settings) -> TenantRef:
@@ -164,6 +190,7 @@ def invalidate(slug: str | None = None) -> None:
 
     if slug is None:
         _lookups.clear()
+        _resolve_control_url.cache_clear()
         clear_prefix("registry:")
     else:
         _lookups.pop(slug, None)
