@@ -100,18 +100,19 @@ jobs:
         run: |
           if ssh server "test -f $APP_DIR/.env.production"; then
             echo "Using the env file already on the server."
-            exit 0
+          else
+            if [ -z "$ENV_PRODUCTION" ]; then
+              echo "Missing $APP_DIR/.env.production."
+              echo "Add the contents of the local .env.production file as the ENV_PRODUCTION secret on the production environment."
+              exit 1
+            fi
+            tmp=$(mktemp)
+            printf '%s\n' "$ENV_PRODUCTION" > "$tmp"
+            scp -q "$tmp" "server:$APP_DIR/.env.production"
+            rm -f "$tmp"
+            ssh server "chmod 600 $APP_DIR/.env.production"
           fi
-          if [ -z "$ENV_PRODUCTION" ]; then
-            echo "Missing $APP_DIR/.env.production."
-            echo "Add the contents of the local .env.production file as the ENV_PRODUCTION secret on the production environment."
-            exit 1
-          fi
-          tmp=$(mktemp)
-          printf '%s\n' "$ENV_PRODUCTION" > "$tmp"
-          scp -q "$tmp" "server:$APP_DIR/.env.production"
-          rm -f "$tmp"
-          ssh server "chmod 600 $APP_DIR/.env.production"
+          ssh server "grep -q '^REDIS_URL=' $APP_DIR/.env.production || printf '\nREDIS_URL=redis://127.0.0.1:6379/0\n' >> $APP_DIR/.env.production"
 
       - name: Grant database creation
         run: ssh server "sudo -n bash ~/ai-pos-deploy/ensure-postgres.sh"

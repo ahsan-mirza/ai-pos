@@ -25,11 +25,14 @@ apt-get update
 apt-get install -y \
   git rsync curl build-essential python3.12-venv python3-dev \
   postgresql postgresql-contrib nginx certbot netfilter-persistent iptables-persistent \
-  nodejs
+  redis-server nodejs
 if ! command -v npm >/dev/null; then
   echo "Node.js is installed without npm. Install Node.js 20 from NodeSource; it includes npm." >&2
   exit 1
 fi
+
+echo "==> Redis (localhost only; port 6379 stays closed)"
+systemctl enable --now redis-server
 
 echo "==> Firewall (Oracle images reject everything but SSH by default)"
 for port in 80 443; do

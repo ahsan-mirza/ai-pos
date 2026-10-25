@@ -112,7 +112,7 @@ sudo -u postgres psql -d ai_pos_db -c "GRANT USAGE, SELECT ON ALL SEQUENCES IN S
 sudo -u postgres psql -d ai_pos_db -c "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO ai_pos_app;"
 ```
 
-`REDIS_URL` is required in production. Cache misses fall through to PostgreSQL. Rate limits fail closed when Redis is down. Stock, payments, and the ledger are not cached.
+Production Redis is the `redis-server` package on the API host. It listens on `127.0.0.1:6379` only; port 6379 is not opened in the firewall. `REDIS_URL=redis://127.0.0.1:6379/0` is required. Deploy adds that line to `/opt/ai-pos/.env.production` when it is missing. Cache misses fall through to PostgreSQL. Rate limits fail closed when Redis is down. Stock, payments, and the ledger are not cached.
 
 nginx sets `Host` from the request host. The API resolves the store from `Host` or `X-Tenant-Domain` and does not trust `X-Forwarded-Host`. Keep the API bound so only nginx can reach it.
 
