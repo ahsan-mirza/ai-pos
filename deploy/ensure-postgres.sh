@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Let the API role create databases, and create tables in the shared and control databases.
-# Does not create a role or a database. The password in the env file is never printed or written to disk.
+# Let the API role create databases and tables in the operational database from DATABASE_URL.
+# Does not create a role or a database, and does not require a separate control database.
+# The password in the env file is never printed or written to disk.
 set -euo pipefail
 
 if [[ $EUID -ne 0 ]]; then
@@ -40,26 +41,16 @@ def parts(key):
     return user_name, database
 
 user_name, database = parts("DATABASE_URL")
-names = [database]
-control = values.get("CONTROL_DATABASE_URL", "")
-if control:
-    control_user, control_database = parts("CONTROL_DATABASE_URL")
-    if control_user != user_name:
-        raise SystemExit("CONTROL_DATABASE_URL must use the same role as DATABASE_URL")
-    if control_database not in names:
-        names.append(control_database)
 print(user_name)
-for name in names:
-    print(name)
+print(database)
 PY
 )
 
 mapfile -t rows <<<"$parsed"
 user="${rows[0]}"
+database="${rows[1]}"
 printf 'ALTER ROLE "%s" CREATEDB;\n' "$user" | sudo -u postgres psql -v ON_ERROR_STOP=1 -d postgres >/dev/null
 echo "Role ${user} can create databases."
-for database in "${rows[@]:1}"; do
-  printf 'ALTER SCHEMA public OWNER TO "%s";\nGRANT USAGE, CREATE ON SCHEMA public TO "%s";\n' "$user" "$user" \
-    | sudo -u postgres psql -v ON_ERROR_STOP=1 -d "$database" >/dev/null
-  echo "Role ${user} owns schema public in ${database}."
-done
+printf 'ALTER SCHEMA public OWNER TO "%s";\nGRANT USAGE, CREATE ON SCHEMA public TO "%s";\n' "$user" "$user" \
+  | sudo -u postgres psql -v ON_ERROR_STOP=1 -d "$database" >/dev/null
+echo "Role ${user} owns schema public in ${database}."
