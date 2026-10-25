@@ -1,2 +1,2 @@
 # POS application version. Edit this file only; the build copies it into Tauri and Cargo.
-0.0.4
+0.0.5
