@@ -66,9 +66,11 @@ export function DownloadsPage() {
   }
 
   const latest = data.releases[0];
+  const earlier = data.releases.slice(1);
   return (
     <section className="mx-auto max-w-xl">
       {latest ? <LatestRelease release={latest} busy={busy} onDownload={download} /> : <NothingPublished />}
+      {earlier.length > 0 ? <EarlierReleases releases={earlier} busy={busy} onDownload={download} /> : null}
       <ErrorNote message={error} />
     </section>
   );
@@ -113,7 +115,9 @@ function LatestRelease({
               <Download size={18} aria-hidden="true" />
               {busy === installer.download_path ? "Downloading…" : "Download Windows installer"}
             </button>
-            <p className="mt-2 text-center text-xs text-charcoal/50">.exe · {formatSize(installer.size_bytes)}</p>
+            <p className="mt-2 text-center text-xs text-charcoal/50">
+              Version {release.version} · .exe · {formatSize(installer.size_bytes)}
+            </p>
           </div>
         ) : null}
 
@@ -125,7 +129,9 @@ function LatestRelease({
               onClick={() => void onDownload(packageFile)}
               className="font-medium text-charcoal underline-offset-4 hover:underline disabled:opacity-40"
             >
-              {busy === packageFile.download_path ? "Downloading package…" : "Windows package (.msi)"}
+              {busy === packageFile.download_path
+                ? "Downloading package…"
+                : `Windows package (.msi) · v${release.version}`}
             </button>
             <span> · {formatSize(packageFile.size_bytes)} for IT deployment</span>
           </p>
@@ -155,6 +161,60 @@ function LatestRelease({
           Create an activation key
         </Link>
       </div>
+    </div>
+  );
+}
+
+function EarlierReleases({
+  releases,
+  busy,
+  onDownload,
+}: {
+  releases: AppRelease[];
+  busy: string | null;
+  onDownload: (file: InstallerFile) => Promise<void>;
+}) {
+  return (
+    <div className="mt-4 overflow-hidden rounded-card border border-line bg-white shadow-sm">
+      <h3 className="border-b border-line px-8 py-4 text-sm font-semibold uppercase tracking-[0.12em] text-charcoal/45">
+        Earlier versions
+      </h3>
+      <ul>
+        {releases.map((release) => {
+          const installer = release.files.find((file) => file.kind === "exe") ?? release.files[0];
+          const packageFile = release.files.find((file) => file.kind === "msi" && file !== installer);
+          return (
+            <li key={release.version} className="flex flex-wrap items-center justify-between gap-3 border-b border-line px-8 py-4 last:border-b-0">
+              <span>
+                <span className="block text-sm font-semibold">Version {release.version}</span>
+                <span className="text-xs text-charcoal/50">{formatDay(release.published_at)}</span>
+              </span>
+              <span className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
+                {installer ? (
+                  <button
+                    type="button"
+                    disabled={busy !== null}
+                    onClick={() => void onDownload(installer)}
+                    className="font-medium text-charcoal underline-offset-4 hover:underline disabled:opacity-40"
+                  >
+                    {busy === installer.download_path ? "Downloading…" : `.exe · ${formatSize(installer.size_bytes)}`}
+                  </button>
+                ) : null}
+                {packageFile ? (
+                  <button
+                    type="button"
+                    disabled={busy !== null}
+                    onClick={() => void onDownload(packageFile)}
+                    className="font-medium text-charcoal underline-offset-4 hover:underline disabled:opacity-40"
+                  >
+                    {busy === packageFile.download_path ? "Downloading…" : `.msi · ${formatSize(packageFile.size_bytes)}`}
+                  </button>
+                ) : null}
+              </span>
+            </li>
+          );
+        })}
+      </ul>
     </div>
   );
 }
