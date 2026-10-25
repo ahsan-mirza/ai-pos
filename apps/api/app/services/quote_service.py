@@ -56,7 +56,7 @@ from app.services.tax import line_tax
 from app.services.tax import policy as tax_policy_for
 
 FONT_PATH = Path(__file__).resolve().parent.parent / "assets" / "fonts" / "Archivo.ttf"
-ACCENT = (253, 55, 6)
+ACCENT = (242, 106, 33)
 CHARCOAL = (34, 32, 38)
 MUTED = (122, 120, 126)
 LINE = (232, 229, 225)

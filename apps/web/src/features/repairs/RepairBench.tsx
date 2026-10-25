@@ -13,8 +13,8 @@ const columnLabel: Record<string, string> = {
 };
 
 const priorityClass: Record<RepairBoardCard["priority"], string> = {
-  URGENT: "bg-accent text-white",
-  HIGH: "bg-accent/10 text-accent",
+  URGENT: "bg-danger text-white",
+  HIGH: "bg-warning/10 text-warning",
   NORMAL: "bg-surface text-charcoal/70",
   LOW: "bg-neutral text-charcoal/60",
 };
@@ -30,7 +30,7 @@ export function RepairBench({ onOpen }: { onOpen: (id: string) => void }) {
       .catch((caught: unknown) => setError(message(caught, "Could not load the bench.")));
   }, []);
 
-  if (error) return <p className="text-sm text-accent">{error}</p>;
+  if (error) return <p className="text-sm text-danger">{error}</p>;
   if (board === null) return <p className="text-sm text-charcoal/60">Loading the bench…</p>;
 
   return (
@@ -60,7 +60,7 @@ export function RepairBench({ onOpen }: { onOpen: (id: string) => void }) {
                 <span className="mt-1 block text-sm font-semibold">{card.device_model}</span>
                 <span className="block truncate text-xs text-charcoal/60">{card.customer_name}</span>
                 <span className="mt-2 flex flex-wrap gap-1 text-[10px] font-semibold uppercase">
-                  {card.parts_short ? <span className="rounded-full bg-accent/10 px-2 py-0.5 text-accent">Parts short</span> : null}
+                  {card.parts_short ? <span className="rounded-full bg-warning/10 px-2 py-0.5 text-warning">Parts short</span> : null}
                   {card.approval_status === "PENDING" ? (
                     <span className="rounded-full bg-surface px-2 py-0.5 text-charcoal/70">Estimate out</span>
                   ) : null}

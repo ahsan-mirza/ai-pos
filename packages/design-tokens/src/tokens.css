@@ -4,10 +4,13 @@
 :root {
   /* Primary (accent) color. The admin portal overrides these at runtime from Store Settings → Appearance;
      `--primary-rgb` / `--primary-hover-rgb` are space-separated channels for Tailwind's alpha modifiers. */
-  --primary: #fd3706;
-  --primary-rgb: 253 55 6;
-  --primary-hover-rgb: 224 46 0;
+  --primary: #f26a21;
+  --primary-rgb: 242 106 33;
+  --primary-hover-rgb: 213 93 29;
   --color-accent: var(--primary);
+  /* Conventional status colors. Errors stay red and warnings stay amber, separate from the brand primary. */
+  --danger-rgb: 220 38 38;
+  --warning-rgb: 217 119 6;
   --color-neutral: #cbcece;
   --color-canvas: #eaeaea;
   --color-border: #dbdbdb;

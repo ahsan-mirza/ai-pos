@@ -181,7 +181,7 @@ export function PhotoGallery({ path, canManage, colours = [], fallbackUrl = null
         </ul>
       )}
       {error ? (
-        <p role="alert" className="mt-2 text-sm text-accent">
+        <p role="alert" className="mt-2 text-sm text-danger">
           {error}
         </p>
       ) : null}

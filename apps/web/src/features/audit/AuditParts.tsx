@@ -9,15 +9,15 @@ const badgeStyles: Record<AuditActionType, string> = {
   PRICE_OVERRIDE: "bg-accent text-white",
   CREDIT_LIMIT_OVERRIDE: "bg-accent text-white",
   ROLE_CHANGE: "bg-accent text-white",
-  REFUND_PROCESSED: "bg-accent/10 text-accent",
+  REFUND_PROCESSED: "bg-warning/10 text-warning",
   MANAGER_OVERRIDE: "bg-accent text-white",
   LOGIN_PIN: "bg-charcoal text-white",
   LOGIN_PASSWORD: "bg-charcoal text-white",
   EXPORT_DATA: "bg-charcoal/10 text-charcoal",
-  DRAWER_OPEN: "bg-accent/10 text-accent",
+  DRAWER_OPEN: "bg-warning/10 text-warning",
   CASH_DROP: "bg-charcoal/10 text-charcoal",
-  ITEM_VOID: "bg-accent/10 text-accent",
-  EXPIRED_STOCK_SOLD: "bg-accent/10 text-accent",
+  ITEM_VOID: "bg-warning/10 text-warning",
+  EXPIRED_STOCK_SOLD: "bg-danger/10 text-danger",
 };
 
 const dotStyles: Partial<Record<AuditActionType, string>> = {

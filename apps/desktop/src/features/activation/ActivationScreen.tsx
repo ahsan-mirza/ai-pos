@@ -1,3 +1,4 @@
+import { BrandLogo } from "@ai-pos/ui";
 import { CheckCircle2, KeyRound, Loader2, ShieldCheck, Store } from "lucide-react";
 import { useEffect, useState, type FormEvent } from "react";
 import { useRegisterLayout } from "../../components/RegisterLayout";
@@ -64,8 +65,8 @@ export function ActivationScreen({ onCancel }: { onCancel?: () => void }) {
       <div className="grid w-full max-w-4xl overflow-hidden rounded-3xl border border-zinc-200 bg-white shadow-2xl md:grid-cols-[1fr_1.1fr] dark:border-zinc-800 dark:bg-zinc-900">
         <aside className="flex flex-col justify-between gap-10 bg-zinc-950 p-8 text-white">
           <div>
-            <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-orange-500 text-sm font-bold">ai</span>
-            <p className="mt-8 text-xs font-semibold uppercase tracking-[0.18em] text-white/50">AI POS register</p>
+            <BrandLogo tone="dark" className="h-9 w-auto" />
+            <p className="mt-8 text-xs font-semibold uppercase tracking-[0.18em] text-white/50">Register</p>
             <h1 className="mt-2 text-3xl font-semibold tracking-tight">Activate this register</h1>
             <p className="mt-3 text-sm leading-relaxed text-white/60">
               Connect the till to your store once. Sales keep working offline afterwards and sync when the

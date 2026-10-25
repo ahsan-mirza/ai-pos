@@ -29,7 +29,7 @@ from app.services.settings_service import cached_settings, pos_policy
 from app.tax_authority import adapter_for, einvoice_for
 
 FONTS = Path(__file__).resolve().parent.parent / "assets" / "fonts"
-ACCENT = (253, 55, 6)
+ACCENT = (242, 106, 33)
 CHARCOAL = (34, 32, 38)
 MUTED = (122, 120, 126)
 LINE = (232, 229, 225)

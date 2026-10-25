@@ -219,8 +219,8 @@ export function SettingsPage() {
             </>
           }
         >
-          <div className="flex gap-3 rounded-2xl bg-accent/10 p-4 text-sm text-charcoal">
-            <AlertTriangle size={18} className="mt-0.5 shrink-0 text-accent" aria-hidden="true" />
+          <div className="flex gap-3 rounded-2xl bg-warning/10 p-4 text-sm text-charcoal">
+            <AlertTriangle size={18} className="mt-0.5 shrink-0 text-warning" aria-hidden="true" />
             <p>
               Prices keep their numbers: {formatMoney(PREVIEW_CENTS, currency)} becomes{" "}
               <span className="font-semibold tabular-nums">{formatMoney(PREVIEW_CENTS, choice)}</span>. Make sure every

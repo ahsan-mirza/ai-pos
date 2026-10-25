@@ -621,7 +621,7 @@ function ManualJournalModal({ onClose, onSaved }: { onClose: () => void; onSaved
             + Add line
           </button>
         </div>
-        <p className={`rounded-2xl px-4 py-3 text-sm tabular-nums ${debits === credits ? "bg-surface" : "bg-accent/10 text-accent"}`}>
+        <p className={`rounded-2xl px-4 py-3 text-sm tabular-nums ${debits === credits ? "bg-surface" : "bg-danger/10 text-danger"}`}>
           Debits {formatMoney(debits, currency)} · Credits {formatMoney(credits, currency)}
           {debits !== credits ? ` · out by ${formatMoney(Math.abs(debits - credits), currency)}` : ""}
         </p>

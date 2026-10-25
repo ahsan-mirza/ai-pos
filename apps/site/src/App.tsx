@@ -1,23 +1,28 @@
-import { motion, useReducedMotion, useScroll, useSpring } from "framer-motion";
 import { useEffect, useState } from "react";
 import { loadCatalog, SEED, type PublicCatalog } from "./catalog";
-import { Branches } from "./components/Branches";
+import { Benefits } from "./components/Benefits";
+import { ContactForm } from "./components/ContactForm";
 import { DemoModal } from "./components/DemoModal";
-import { Floor } from "./components/Floor";
-import { Hardware } from "./components/Hardware";
+import { Faq } from "./components/Faq";
+import { Features } from "./components/Features";
+import { Footer } from "./components/Footer";
 import { Hero } from "./components/Hero";
+import { HowItWorks } from "./components/HowItWorks";
+import { Industries } from "./components/Industries";
+import { Navbar } from "./components/Navbar";
 import { Pricing } from "./components/Pricing";
+import { SectionHeading } from "./components/SectionHeading";
+import { Showcase } from "./components/Showcase";
 import { WhatsAppButton } from "./components/WhatsAppButton";
-import { apiBaseUrl, installerUrl, signupUrl } from "./env";
+import { apiBaseUrl } from "./env";
+import { useSiteTheme } from "./theme";
 
 export function App() {
-  const reduce = useReducedMotion();
+  const { theme, toggle } = useSiteTheme();
   const [catalog, setCatalog] = useState<PublicCatalog>(SEED);
   const [live, setLive] = useState(false);
   const [demoOpen, setDemoOpen] = useState(false);
   const [whatsapp, setWhatsapp] = useState("");
-  const { scrollYProgress } = useScroll();
-  const bar = useSpring(scrollYProgress, { stiffness: 120, damping: 24, restDelta: 0.001 });
 
   useEffect(() => {
     let cancelled = false;
@@ -44,39 +49,52 @@ export function App() {
   }, []);
 
   return (
-    <div>
-      {!reduce && (
-        <motion.div style={{ scaleX: bar }} className="fixed left-0 right-0 top-0 z-30 h-0.5 origin-left bg-emerald-400" />
-      )}
-      <header className="sticky top-0 z-20 flex items-center justify-between gap-4 border-b border-white/10 bg-ink/80 px-5 py-3 backdrop-blur-xl lg:px-8">
-        <a href="#top" className="font-semibold tracking-tight">
-          AxizPOS
-        </a>
-        <nav className="hidden items-center gap-5 text-sm text-mist md:flex">
-          <a href="#floor">Floor</a>
-          <a href="#branches">Branches</a>
-          <a href="#hardware">Hardware</a>
-          <a href="#pricing">Packages</a>
-          <a href={installerUrl()}>Download POS</a>
-        </nav>
-        <div className="flex items-center gap-2">
-          <a href={signupUrl} className="hidden rounded-full border border-white/15 px-3 py-2 text-sm sm:inline">
-            Practice store
-          </a>
-          <button type="button" onClick={() => setDemoOpen(true)} className="rounded-full bg-cyan-400 px-3 py-2 text-sm font-semibold text-ink">
-            Book a demo
-          </button>
-        </div>
-      </header>
-      <main id="top">
+    <div className="min-h-screen bg-canvas text-charcoal">
+      <a href="#top" className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:rounded-2xl focus:bg-card focus:px-4 focus:py-2">
+        Skip to content
+      </a>
+      <Navbar theme={theme} onToggleTheme={toggle} onDemo={() => setDemoOpen(true)} />
+      <main>
         <Hero onDemo={() => setDemoOpen(true)} />
-        <Floor />
-        <Branches />
-        <Hardware />
+        <Industries />
+        <Features />
+        <HowItWorks />
+        <Showcase />
+        <Benefits />
         <Pricing catalog={catalog} live={live} />
+        <Faq />
+        <section id="contact" className="border-t border-line bg-charcoal text-canvas">
+          <div className="mx-auto grid max-w-page gap-10 px-4 py-16 sm:px-6 lg:grid-cols-[1fr_1fr] lg:px-8 lg:py-20">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-primary">Next step</p>
+              <h2 className="mt-2 text-3xl font-semibold tracking-tight sm:text-4xl">Ready to Run Your Business Smarter?</h2>
+              <p className="mt-3 max-w-md text-base leading-7 text-canvas/80">
+                Discover how AxizPOS can simplify your daily operations and help you manage your business with greater clarity.
+              </p>
+              <div className="mt-6 flex flex-col gap-3 sm:flex-row">
+                <button
+                  type="button"
+                  onClick={() => setDemoOpen(true)}
+                  className="inline-flex h-12 items-center justify-center rounded-2xl bg-primary px-5 text-sm font-semibold text-white hover:bg-primary-hover"
+                >
+                  Book a Demo
+                </button>
+                <a href="#demo-form" className="inline-flex h-12 items-center justify-center rounded-2xl border border-canvas/30 px-5 text-sm font-semibold text-canvas">
+                  Contact Sales
+                </a>
+              </div>
+            </div>
+            <div id="demo-form" className="rounded-card bg-card p-5 text-charcoal">
+              <SectionHeading kicker="Contact" title="Request a walkthrough" />
+              <div className="mt-4">
+                <ContactForm whatsapp={whatsapp} />
+              </div>
+            </div>
+          </div>
+        </section>
       </main>
-      <footer className="px-5 py-10 text-sm text-mist lg:px-8">AxizPOS · axizpos.com</footer>
-      {demoOpen && <DemoModal onClose={() => setDemoOpen(false)} />}
+      <Footer whatsapp={whatsapp} />
+      {demoOpen ? <DemoModal whatsapp={whatsapp} onClose={() => setDemoOpen(false)} /> : null}
       <WhatsAppButton number={whatsapp} />
     </div>
   );

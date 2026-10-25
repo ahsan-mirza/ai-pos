@@ -247,8 +247,8 @@ function CustomersTab({ detail }: { detail: TenantDetail }) {
 
   return (
     <div>
-      <div className="flex gap-3 rounded-2xl bg-accent/10 p-4 text-sm text-charcoal">
-        <ShieldAlert size={18} className="mt-0.5 shrink-0 text-accent" aria-hidden="true" />
+      <div className="flex gap-3 rounded-2xl bg-warning/10 p-4 text-sm text-charcoal">
+        <ShieldAlert size={18} className="mt-0.5 shrink-0 text-warning" aria-hidden="true" />
         <p>Customer records are personal data. Each look is logged with your reason; contacts stay masked unless a console admin reveals them.</p>
       </div>
       <div className="mt-3 flex flex-wrap items-end gap-3">

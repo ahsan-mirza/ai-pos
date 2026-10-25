@@ -1024,6 +1024,7 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
             cart={
               <>
               {suggestsForGuests(capabilities.profile) ? (
+                <div className="px-4 pt-2">
                 <GuestSuggestions
                   storeId={activeStore().id}
                   customerId={cart.customer?.id ?? null}
@@ -1042,6 +1043,7 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
                     });
                   }}
                 />
+                </div>
               ) : null}
               <CartList
                 rows={rows}

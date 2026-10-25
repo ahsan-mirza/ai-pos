@@ -197,7 +197,6 @@ export function OrderModeBar({
       }
       if (document.querySelector(".modal-backdrop")) return;
       if (event.key === "Escape" && cartSheetOpen()) return;
-      if (!seated) return;
       if (event.key === "Escape") {
         const target = event.target;
         if (
@@ -213,7 +212,7 @@ export function OrderModeBar({
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [pending, seated]);
+  }, [pending]);
 
   const ticketKey =
     session && session.order_mode === mode
@@ -302,42 +301,9 @@ export function OrderModeBar({
 
   const zones = zone && !(DELIVERY_ZONES as readonly string[]).includes(zone) ? [zone, ...DELIVERY_ZONES] : [...DELIVERY_ZONES];
   const drivers = driver && !staff.some((member) => member.full_name === driver) ? [driver, ...staff.map((member) => member.full_name)] : staff.map((member) => member.full_name);
-  const modeLabel = MODES.find((item) => item.id === mode)?.label ?? "Dine-in";
 
   return (
     <section className="rounded-2xl border border-zinc-200 bg-white p-3 dark:border-zinc-800 dark:bg-zinc-900">
-      {seated && session && !expanded ? (
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="rounded-full bg-primary-500 px-3 py-1 text-sm font-semibold text-white">{modeLabel}</span>
-          <span className="rounded-full bg-zinc-100 px-3 py-1 text-sm font-medium text-zinc-800 dark:bg-zinc-800 dark:text-zinc-100">
-            {summaryDetail(session, floors)}
-          </span>
-          <button
-            type="button"
-            onClick={() => setExpanded(true)}
-            className="h-9 rounded-full border border-zinc-200 px-3 text-sm font-semibold text-zinc-700 hover:bg-zinc-50 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-800"
-          >
-            {mode === "dine_in" ? "Change table" : "Change type"}
-          </button>
-          <span className="ml-auto hidden items-center gap-1 sm:flex">
-            <kbd className="kbd">Esc</kbd>
-            <kbd className="kbd">F2</kbd>
-          </span>
-          <button
-            type="button"
-            aria-expanded={false}
-            aria-controls="order-setup-panel"
-            aria-keyshortcuts="Escape F2"
-            aria-label="Expand order setup"
-            onClick={() => setExpanded(true)}
-            className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-zinc-200 text-zinc-600 hover:bg-zinc-50 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
-          >
-            <ChevronDown size={16} aria-hidden="true" />
-          </button>
-        </div>
-      ) : null}
-      <div id="order-setup-panel" className={`order-setup-panel ${expanded ? "is-open" : ""}`}>
-      <div inert={expanded ? undefined : true}>
       <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Order type">
         {MODES.map((item) => {
           const Icon = item.icon;
@@ -357,25 +323,30 @@ export function OrderModeBar({
             </button>
           );
         })}
-        {session ? (
+        {!expanded && seated && session ? (
+          <span className="rounded-full bg-zinc-100 px-3 py-1 text-sm font-medium text-zinc-800 dark:bg-zinc-800 dark:text-zinc-100">
+            {summaryDetail(session, floors)}
+          </span>
+        ) : null}
+        {expanded && session ? (
           <span className="ml-auto rounded-full bg-primary-500/10 px-3 py-1.5 text-sm font-semibold text-primary-700 dark:text-primary-300">
             {sessionHeading(session)}
           </span>
         ) : null}
-        {seated ? (
-          <button
-            type="button"
-            aria-expanded
-            aria-controls="order-setup-panel"
-            aria-keyshortcuts="Escape F2"
-            aria-label="Collapse order setup"
-            onClick={() => setExpanded(false)}
-            className={`${session ? "" : "ml-auto "}inline-flex h-9 w-9 items-center justify-center rounded-full border border-zinc-200 text-zinc-600 hover:bg-zinc-50 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800`}
-          >
-            <ChevronUp size={16} aria-hidden="true" />
-          </button>
-        ) : null}
+        <button
+          type="button"
+          aria-expanded={expanded}
+          aria-controls="order-setup-panel"
+          aria-keyshortcuts="Escape F2"
+          aria-label={expanded ? "Collapse order setup" : "Expand order setup"}
+          onClick={() => setExpanded((open) => !open)}
+          className={`${expanded && session ? "" : "ml-auto "}inline-flex h-9 w-9 items-center justify-center rounded-full border border-zinc-200 text-zinc-600 hover:bg-zinc-50 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800`}
+        >
+          {expanded ? <ChevronUp size={16} aria-hidden="true" /> : <ChevronDown size={16} aria-hidden="true" />}
+        </button>
       </div>
+      <div id="order-setup-panel" className={`order-setup-panel ${expanded ? "is-open" : ""}`}>
+      <div className="order-setup-inner" inert={expanded ? undefined : true}>
 
       {session && session.items.length > 0 ? (
         <ul className="mt-3 flex flex-wrap gap-2" aria-label="Items on this order">

@@ -1,5 +1,7 @@
 export const colors = {
-  accent: "#FD3706",
+  accent: "#F26A21",
+  danger: "#DC2626",
+  warning: "#D97706",
   neutral: "#CBCECE",
   canvas: "#EAEAEA",
   border: "#DBDBDB",

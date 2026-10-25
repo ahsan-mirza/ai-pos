@@ -1,4 +1,5 @@
 import { Capability, profileSpec, type ProductUpsert } from "@ai-pos/shared-types";
+import { BrandLogo } from "@ai-pos/ui";
 import {
   Boxes,
   ChefHat,
@@ -175,9 +176,7 @@ export function SidebarNav({ busy, onNavigate, onLock }: SidebarNavProps) {
   return (
     <>
       <header className="flex shrink-0 items-center gap-1 overflow-x-auto border-b border-zinc-200 bg-white px-3 py-2 md:hidden dark:border-zinc-800 dark:bg-zinc-900">
-        <span className="mr-1 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary-500 text-sm font-bold text-white">
-          ai
-        </span>
+        <BrandLogo variant="mark" alt="" className="mr-1 h-10 w-10 shrink-0" />
         {pages.map(({ id, label, icon: Icon }) => (
           <button
             key={`${id}-${label}`}
@@ -223,25 +222,21 @@ export function SidebarNav({ busy, onNavigate, onLock }: SidebarNavProps) {
           collapsed ? "w-20" : "w-64"
         }`}
       >
-        <div className={`flex h-16 shrink-0 items-center gap-3 border-b border-zinc-200 dark:border-zinc-800 ${collapsed ? "justify-center px-2" : "px-4"}`}>
+        <div className={`flex h-16 shrink-0 items-center border-b border-zinc-200 dark:border-zinc-800 ${collapsed ? "justify-center gap-1 px-1" : "gap-3 px-4"}`}>
+          <BrandLogo variant={collapsed ? "mark" : "wordmark"} alt="" className={collapsed ? "h-7 w-7 shrink-0" : "h-8 min-w-0 max-w-[8.5rem] shrink"} />
           {collapsed ? null : (
-            <>
-              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary-500 text-sm font-bold text-white">
-                ai
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-sm font-bold tracking-tight" title={activation?.tenant_domain}>
+                {activation?.tenant_name || "AI POS"}
               </span>
-              <span className="min-w-0 flex-1">
-                <span className="block truncate text-sm font-bold tracking-tight" title={activation?.tenant_domain}>
-                  {activation?.tenant_name || "AI POS"}
-                </span>
-                <span
-                  className="block truncate text-[11px] text-zinc-500 dark:text-zinc-400"
-                  title={`${spec.label} · ${store.code} · ${store.name}${activation?.register_code ? ` · ${activation.register_code}` : ""}`}
-                >
-                  {spec.shortLabel} · {store.code} · {store.name}
-                  {activation?.register_code ? ` · ${activation.register_code}` : ""}
-                </span>
+              <span
+                className="block truncate text-[11px] text-zinc-500 dark:text-zinc-400"
+                title={`${spec.label} · ${store.code} · ${store.name}${activation?.register_code ? ` · ${activation.register_code}` : ""}`}
+              >
+                {spec.shortLabel} · {store.code} · {store.name}
+                {activation?.register_code ? ` · ${activation.register_code}` : ""}
               </span>
-            </>
+            </span>
           )}
           <button
             type="button"

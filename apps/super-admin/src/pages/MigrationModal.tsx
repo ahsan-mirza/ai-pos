@@ -117,9 +117,9 @@ export function MigrationModal({
             </div>
           </div>
           {check.blockers.length > 0 ? (
-            <ul className="space-y-1.5 rounded-2xl bg-accent/10 p-4">
+            <ul className="space-y-1.5 rounded-2xl bg-danger/10 p-4">
               {check.blockers.map((item) => (
-                <li key={item.code} className="flex gap-2 text-accent">
+                <li key={item.code} className="flex gap-2 text-danger">
                   <OctagonX size={16} className="mt-0.5 shrink-0" aria-hidden="true" /> {item.message}
                 </li>
               ))}

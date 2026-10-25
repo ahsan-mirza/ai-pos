@@ -420,8 +420,8 @@ export function BusinessProfileSettings() {
             </>
           }
         >
-          <div className="flex gap-3 rounded-2xl bg-accent/10 p-4 text-sm text-charcoal">
-            <AlertTriangle size={18} className="mt-0.5 shrink-0 text-accent" aria-hidden="true" />
+          <div className="flex gap-3 rounded-2xl bg-warning/10 p-4 text-sm text-charcoal">
+            <AlertTriangle size={18} className="mt-0.5 shrink-0 text-warning" aria-hidden="true" />
             <p>
               These pages and register controls are hidden for everyone. Nothing is deleted: existing records stay and
               come back when you switch the module on again, and sales registers took offline still sync.

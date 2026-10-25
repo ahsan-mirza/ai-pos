@@ -145,7 +145,7 @@ export function SpecFields({
           </button>
         </div>
         {draftProblem ? (
-          <p role="alert" className="text-xs font-medium text-rose-600">
+          <p role="alert" className="text-xs font-medium text-danger">
             {draftProblem}
           </p>
         ) : null}

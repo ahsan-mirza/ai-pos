@@ -20,7 +20,7 @@ function DaysLeft({ row }: { row: ExpiringStockRow }) {
   if (row.expired) {
     return <span className="rounded-full bg-accent px-2 py-0.5 text-xs font-semibold text-white">Expired {-row.days_left}d ago</span>;
   }
-  const tone = row.days_left <= 3 ? "bg-accent/10 text-accent" : "bg-charcoal/5 text-charcoal/70";
+  const tone = row.days_left <= 3 ? "bg-warning/10 text-warning" : "bg-charcoal/5 text-charcoal/70";
   return <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${tone}`}>{row.days_left === 0 ? "Today" : `${row.days_left}d left`}</span>;
 }
 

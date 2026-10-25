@@ -1,3 +1,4 @@
+import { BrandLogo } from "@ai-pos/ui";
 import { Delete } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { version as packagedVersion } from "../../../package.json";
@@ -65,7 +66,7 @@ export function PinUnlock({
     <div className="flex min-h-screen flex-col items-center justify-center bg-charcoal p-6 font-sans text-white">
       <div className="grid w-full max-w-3xl gap-8 md:grid-cols-[1fr_340px]">
         <section className="flex flex-col justify-between">
-          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-primary text-sm font-bold">ai</div>
+          <BrandLogo tone="dark" className="h-10 w-auto" />
           <div className="mt-12">
             <p className="text-xs font-medium uppercase tracking-[0.18em] text-white/50">{store.name}</p>
             <h1 className="mt-2 text-4xl font-semibold leading-tight">Unlock register</h1>

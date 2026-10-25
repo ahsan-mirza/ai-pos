@@ -91,7 +91,7 @@ export function Field({
 export function ErrorNote({ message }: { message: string | null }) {
   if (!message) return null;
   return (
-    <p role="alert" className="mt-4 rounded-2xl bg-accent/10 px-4 py-3 text-sm text-accent">
+    <p role="alert" className="mt-4 rounded-2xl bg-danger/10 px-4 py-3 text-sm text-danger">
       {message}
     </p>
   );
@@ -169,7 +169,7 @@ export function Modal({
 
 const STATUS_TONE: Record<string, string> = {
   active: "bg-emerald-50 text-emerald-700",
-  suspended: "bg-accent/10 text-accent",
+  suspended: "bg-danger/10 text-danger",
   PENDING: "bg-amber-50 text-amber-700",
   RESOLVED: "bg-emerald-50 text-emerald-700",
   REJECTED: "bg-surface text-charcoal/60",

@@ -98,6 +98,9 @@ importers:
 
   apps/site:
     dependencies:
+      '@ai-pos/design-tokens':
+        specifier: workspace:*
+        version: link:../../packages/design-tokens
       '@ai-pos/shared-types':
         specifier: workspace:*
         version: link:../../packages/shared-types

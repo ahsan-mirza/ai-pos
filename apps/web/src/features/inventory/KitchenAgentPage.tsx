@@ -20,7 +20,7 @@ const groups: { kind: KitchenKind; label: string }[] = [
 ];
 
 const tone: Record<KitchenCard["severity"], string> = {
-  high: "bg-accent/10 text-accent",
+  high: "bg-danger/10 text-danger",
   medium: "bg-amber-100 text-amber-800",
   low: "bg-charcoal/5 text-charcoal/70",
 };

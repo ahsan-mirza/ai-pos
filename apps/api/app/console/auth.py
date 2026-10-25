@@ -103,5 +103,41 @@ def create_operator(
         return operator_out(row), secret
 
 
+def ensure_console_admin(settings: Settings) -> OperatorOut | None:
+    """Create or repair the console ADMIN from CONSOLE_ADMIN_EMAIL and CONSOLE_ADMIN_PASSWORD.
+
+    Unset email or password does nothing, so development and tests stay unchanged. A matching password
+    leaves the existing row alone. A different password becomes the ADMIN login and signs old sessions out.
+    """
+    email = (settings.console_admin_email or "").strip()
+    password = settings.console_admin_password or ""
+    if email == "" or password == "":
+        return None
+    name = (settings.console_admin_name or "").strip() or "Ahsan Khalil"
+    with registry.control_session(settings) as db:
+        row = db.scalar(select(Operator).where(func.lower(Operator.email) == email.lower()))
+        if row is not None and verify_password(password, row.password_hash):
+            return operator_out(row)
+        if row is not None:
+            validate_operator_password(password)
+            row.password_hash = hash_password(password)
+            row.role = "ADMIN"
+            row.is_active = True
+            row.failed_attempts = 0
+            row.locked_until = None
+            row.token_version += 1
+            row.updated_at = _now()
+            audit_operator(db, None, "console.operator_password_reset", after={"email": row.email, "role": "ADMIN"})
+            db.commit()
+            return operator_out(row)
+    try:
+        operator, _secret = create_operator(settings, email=email, full_name=name, role="ADMIN", password=password)
+    except ValueError as error:
+        if "already exists" not in str(error):
+            raise
+        return ensure_console_admin(settings)
+    return operator
+
+
 def random_password() -> str:
     return secrets.token_urlsafe(18)

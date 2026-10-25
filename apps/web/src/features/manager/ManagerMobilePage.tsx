@@ -96,7 +96,7 @@ export function ManagerMobilePage() {
       </header>
 
       <main className="flex-1 space-y-4 px-4 pb-28 pt-4">
-        {error ? <p className="rounded-2xl bg-accent/10 px-4 py-3 text-sm font-medium text-accent">{error}</p> : null}
+        {error ? <p className="rounded-2xl bg-danger/10 px-4 py-3 text-sm font-medium text-danger">{error}</p> : null}
         {tab === "today" ? <TodayView board={board} onOpen={setTab} /> : null}
         {tab === "approvals" ? <ApprovalsView approvals={approvals} currency={board?.currency ?? "AED"} onChanged={() => void loadApprovals()} /> : null}
         {tab === "staff" ? <TimesheetsView onChanged={() => void loadBoard()} /> : null}
@@ -320,7 +320,7 @@ function ApprovalCard({ request, currency, onChanged }: { request: ApprovalReque
         onChange={(event) => setNote(event.target.value)}
         className="mt-2 w-full rounded-xl bg-surface px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-accent/40"
       />
-      {error ? <p className="mt-2 text-xs font-medium text-accent">{error}</p> : null}
+      {error ? <p className="mt-2 text-xs font-medium text-danger">{error}</p> : null}
       <div className="mt-3 grid grid-cols-2 gap-2">
         <button
           type="button"
@@ -374,7 +374,7 @@ function TimesheetsView({ onChanged }: { onChanged: () => void }) {
   if (entries === null) return <p className="py-10 text-center text-sm text-charcoal/60">Loading timesheets…</p>;
   return (
     <section className="space-y-3">
-      {error ? <p className="text-sm font-medium text-accent">{error}</p> : null}
+      {error ? <p className="text-sm font-medium text-danger">{error}</p> : null}
       {entries.length === 0 ? <p className="rounded-card border border-line bg-white px-6 py-12 text-center text-sm text-charcoal/60">Every finished shift is approved.</p> : null}
       <ul className="divide-y divide-line rounded-card border border-line bg-white">
         {entries.map((entry) => (
@@ -447,7 +447,7 @@ function CreditView({ currency, onChanged }: { currency: string; onChanged: () =
   if (rows === null) return <p className="py-10 text-center text-sm text-charcoal/60">Loading…</p>;
   return (
     <section className="space-y-3">
-      {error ? <p className="text-sm font-medium text-accent">{error}</p> : null}
+      {error ? <p className="text-sm font-medium text-danger">{error}</p> : null}
       {rows.length === 0 ? <p className="rounded-card border border-line bg-white px-6 py-12 text-center text-sm text-charcoal/60">No customer is on credit hold.</p> : null}
       {rows.map((row) => (
         <article key={row.customer_id} className="rounded-card border border-line bg-white p-4">

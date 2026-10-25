@@ -524,7 +524,7 @@ export function ProductFormModal({
             type="button"
             disabled={busy}
             onClick={() => void save()}
-            className="inline-flex items-center justify-center rounded-xl bg-[#FD3706] px-6 py-2.5 text-sm font-bold text-white shadow-lg shadow-[#FD3706]/20 transition-colors hover:bg-[#e02e00] disabled:opacity-40"
+            className="inline-flex items-center justify-center rounded-xl bg-accent px-6 py-2.5 text-sm font-bold text-white shadow-lg shadow-accent/20 transition-colors hover:bg-accent-hover disabled:opacity-40"
           >
             {busy ? "Saving…" : editing ? "Save changes" : "Create product"}
           </button>
@@ -672,9 +672,9 @@ export function ProductFormModal({
                   setSkuTyped(cleanCode(event.target.value, 64));
                   clearServer("sku");
                 }}
-                className={`h-12 w-full rounded-xl border bg-gray-50 py-3 pl-4 pr-36 font-mono text-sm tabular-nums focus:border-[#FD3706] focus:bg-white focus:outline-none focus:ring-1 focus:ring-[#FD3706] disabled:text-charcoal/50 dark:border-gray-700/80 dark:bg-[#2D2A32] ${
+                className={`h-12 w-full rounded-xl border bg-gray-50 py-3 pl-4 pr-36 font-mono text-sm tabular-nums focus:border-accent focus:bg-white focus:outline-none focus:ring-1 focus:ring-accent disabled:text-charcoal/50 dark:border-gray-700/80 dark:bg-[#2D2A32] ${
                   fieldMessage("sku", skuMessage())
-                    ? "border-rose-500 bg-rose-50/20 focus:border-rose-500 focus:ring-2 focus:ring-rose-500"
+                    ? "border-danger bg-danger/10 focus:border-danger focus:ring-2 focus:ring-danger"
                     : "border-transparent focus:border-accent"
                 }`}
               />
@@ -694,7 +694,7 @@ export function ProductFormModal({
             </span>
           </label>
           {fieldMessage("sku", skuMessage()) ? (
-            <span role="alert" className="mt-1.5 block text-xs font-medium text-rose-600">
+            <span role="alert" className="mt-1.5 block text-xs font-medium text-danger">
               {fieldMessage("sku", skuMessage())}
             </span>
           ) : (
@@ -731,7 +731,7 @@ export function ProductFormModal({
                 }}
                 className={`h-12 w-full rounded-xl border bg-surface py-3 pl-4 pr-40 font-mono text-sm focus:bg-white focus:outline-none disabled:text-charcoal/50 ${
                   fieldMessage("barcode", barcodeMessage())
-                    ? "border-rose-500 bg-rose-50/20 focus:border-rose-500 focus:ring-2 focus:ring-rose-500"
+                    ? "border-danger bg-danger/10 focus:border-danger focus:ring-2 focus:ring-danger"
                     : "border-transparent focus:border-accent"
                 }`}
               />
@@ -748,7 +748,7 @@ export function ProductFormModal({
             </span>
           </label>
           {fieldMessage("barcode", barcodeMessage()) ? (
-            <span role="alert" className="mt-1.5 block text-xs font-medium text-rose-600">
+            <span role="alert" className="mt-1.5 block text-xs font-medium text-danger">
               {fieldMessage("barcode", barcodeMessage())}
             </span>
           ) : null}

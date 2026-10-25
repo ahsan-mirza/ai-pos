@@ -193,7 +193,7 @@ export function VatSettings() {
             />
           </div>
           {inclusiveChanged ? (
-            <p className="rounded-2xl bg-accent/10 px-4 py-3 text-sm text-charcoal">
+            <p className="rounded-2xl bg-warning/10 px-4 py-3 text-sm text-charcoal">
               Switching this reinterprets every catalog price: {formatMoney(SAMPLE, currency)} will{" "}
               {form.prices_include_vat ? "already include" : "have VAT added on top of"} its VAT. Sync every register
               first.

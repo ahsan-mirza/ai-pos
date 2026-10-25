@@ -77,7 +77,7 @@ def render_statement(db: Session, customer_id: uuid.UUID) -> bytes:
         pdf.font(9, bold=True)
         pdf.cell(widths[4], 6, money(invoice.due_balance_cents, currency), align="R")
         overdue = invoice.days_overdue > 0
-        pdf.font(9, bold=overdue, color=(253, 55, 6) if overdue else (122, 120, 126))
+        pdf.font(9, bold=overdue, color=(220, 38, 38) if overdue else (122, 120, 126))
         pdf.cell(widths[5], 6, f"  {invoice.days_overdue} days overdue" if overdue else "  Current")
         pdf.ln(6)
     if not data.open_invoices:

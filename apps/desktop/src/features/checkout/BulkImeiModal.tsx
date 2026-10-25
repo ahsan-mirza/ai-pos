@@ -268,7 +268,7 @@ export function BulkImeiModal({ product, inCart, initialQuantity = 10, onClose, 
                 key={`${slot.value}-${index}`}
                 title={statusText[slot.status]}
                 className={`group relative flex h-14 flex-col justify-center rounded-2xl px-3 pr-8 ${
-                  bad ? "bg-primary text-white" : warn ? "border border-primary/60 bg-white dark:bg-zinc-900" : "bg-surface dark:bg-zinc-800/60"
+                  bad ? "bg-danger text-white" : warn ? "border border-warning bg-warning/10 dark:bg-zinc-900" : "bg-surface dark:bg-zinc-800/60"
                 }`}
               >
                 <span className={`text-[10px] font-semibold uppercase tracking-wide ${bad ? "text-white/80" : "text-charcoal/50 dark:text-zinc-400"}`}>

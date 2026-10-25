@@ -1,4 +1,5 @@
 import type { SignupState } from "@ai-pos/shared-types";
+import { BrandLogo } from "@ai-pos/ui";
 import { Check } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { env } from "../../config/env";
@@ -72,9 +73,8 @@ export function SignupApp() {
       <div className="grid w-full max-w-5xl overflow-hidden rounded-[28px] border border-line bg-white md:grid-cols-[300px_1fr]">
         <aside className="flex flex-col justify-between bg-charcoal p-8 text-white">
           <div>
-            <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-accent text-sm font-bold">ai</div>
-            <p className="mt-10 text-xs font-medium uppercase tracking-[0.16em] text-white/50">AI POS</p>
-            <h1 className="mt-2 text-2xl font-semibold leading-tight">Open your store</h1>
+            <BrandLogo tone="dark" className="h-9 w-auto" />
+            <h1 className="mt-10 text-2xl font-semibold leading-tight">Open your store</h1>
             <p className="mt-2 text-sm text-white/60">About two minutes. Practise with sample items before you go live.</p>
           </div>
           <ol className="mt-10 space-y-4" aria-label="Signup progress">

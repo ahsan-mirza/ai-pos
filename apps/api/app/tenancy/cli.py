@@ -84,11 +84,14 @@ def _seed_admin(url: str, settings: Settings) -> str:
 
 def _set_profile(url: str, profile: str) -> None:
     from app.services.settings_service import provision_profile
+    from app.services.taxonomy_service import ensure_taxonomy
     from app.tenancy.scoping import use_database_tenant
 
     factory = sessionmaker(bind=build_engine(url), expire_on_commit=False)
     with use_database_tenant(url), factory() as session:
         provision_profile(session, profile)
+        ensure_taxonomy(session, profile)
+        session.commit()
 
 
 def _register(slug: str, name: str, url: str, settings: Settings, profile: str = DEFAULT_PROFILE) -> None:
@@ -146,6 +149,22 @@ def adopt(args: argparse.Namespace, settings: Settings) -> None:
     print(f"Adopted {make_url(url).database} as tenant '{slug}' ({registry.tenant_public_url(slug, settings)}).")
 
 
+def _apply_taxonomy(tenant) -> int:
+    """Fill a store's category tree from the profile already saved on its settings."""
+    from app.models.business_settings import BusinessSettings
+    from app.services.taxonomy_service import ensure_taxonomy
+    from app.tenancy.context import use_tenant
+
+    factory = sessionmaker(bind=build_engine(tenant.database_url), expire_on_commit=False)
+    with factory() as session, use_tenant(tenant):
+        row = session.scalar(select(BusinessSettings).limit(1))
+        if row is None or not row.business_profile:
+            return 0
+        added = ensure_taxonomy(session, row.business_profile)
+        session.commit()
+        return added
+
+
 def migrate_all(_: argparse.Namespace, settings: Settings) -> None:
     with registry.control_session(settings) as db:
         rows = db.scalars(select(Tenant).order_by(Tenant.slug)).all()
@@ -155,6 +174,9 @@ def migrate_all(_: argparse.Namespace, settings: Settings) -> None:
             continue
         print(f"Migrating {slug}...")
         upgrade_tenant(tenant.database_url, tenant.id)
+        added = _apply_taxonomy(tenant)
+        if added:
+            print(f"  {slug}: {added} catalog rows added.")
     print(f"{len(targets)} tenant database(s) at head.")
 
 
@@ -241,7 +263,15 @@ def main(argv: list[str] | None = None) -> None:
     settings = get_settings()
     if args.command == "init":
         upgrade_control(settings)
+        from app.console.auth import ensure_console_admin
+
+        try:
+            admin = ensure_console_admin(settings)
+        except ValueError as error:
+            sys.exit(str(error))
         print("Control database is at head.")
+        if admin is not None:
+            print(f"Console admin {admin.email} is ready.")
         return
     if not settings.tenancy_enabled:
         file_name = env_file_name(settings.app_env)

@@ -17,6 +17,7 @@ export {
   type DiningTableShapeProps,
   type TableShape,
 } from "./DiningTableShape";
+export { BrandLogo } from "./BrandLogo";
 export { inputLeadingIcon, type InputIconHints } from "./inputIcon";
 export { PageSizeSelect } from "./PageSizeSelect";
 export { SearchableSpecSelect, type SearchableSpecSelectProps } from "./SearchableSpecSelect";

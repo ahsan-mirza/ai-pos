@@ -275,11 +275,11 @@ export function SearchableSpecSelect({
                           searchRef.current?.focus();
                         }
                       }}
-                      className="h-10 min-w-0 flex-1 rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm focus:bg-white focus:outline-none focus:ring-2 focus:ring-orange-500 dark:border-gray-700 dark:bg-[#2D2A32] dark:text-white"
+                      className="h-10 min-w-0 flex-1 rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm focus:bg-white focus:outline-none focus:ring-2 focus:ring-accent dark:border-gray-700 dark:bg-[#2D2A32] dark:text-white"
                     />
                     <button
                       type="submit"
-                      className="h-10 shrink-0 rounded-xl bg-[#FD3706] px-3 text-sm font-semibold text-white"
+                      className="h-10 shrink-0 rounded-xl bg-accent px-3 text-sm font-semibold text-white"
                     >
                       Add
                     </button>

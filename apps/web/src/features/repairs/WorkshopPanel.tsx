@@ -64,7 +64,7 @@ export function WorkshopPanel({
       </div>
 
       {ticket.parts_short ? (
-        <p className="rounded-xl bg-accent/10 px-3 py-2 text-xs font-medium text-accent">
+        <p className="rounded-xl bg-warning/10 px-3 py-2 text-xs font-medium text-warning">
           A part is short. The rest is held in stock until it arrives.
         </p>
       ) : null}
@@ -221,7 +221,7 @@ export function WorkshopPanel({
           Mark collected
         </PrimaryButton>
       ) : null}
-      {localError ? <p className="text-sm text-accent">{localError}</p> : null}
+      {localError ? <p className="text-sm text-danger">{localError}</p> : null}
     </div>
   );
 }

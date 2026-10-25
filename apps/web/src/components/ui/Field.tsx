@@ -48,7 +48,7 @@ export function TextField({
             rows={3}
             aria-invalid={error ? true : undefined}
             className={`${control} min-h-24 resize-y border-transparent py-3 pl-10 pr-4 focus:border-orange-500 focus:ring-2 focus:ring-orange-500 ${
-              error ? "border-rose-500 bg-rose-50/20 focus:border-rose-500 focus:ring-rose-500" : ""
+              error ? "border-danger bg-danger/10 focus:border-danger focus:ring-danger" : ""
             } ${className}`}
           />
         ) : (
@@ -59,7 +59,7 @@ export function TextField({
           aria-invalid={error ? true : undefined}
           className={`${control} pl-10 ${
             error
-              ? `border-rose-500 bg-rose-50/20 focus:border-rose-500 focus:ring-2 focus:ring-rose-500 ${isPassword ? "pr-12" : "pr-4"}`
+              ? `border-danger bg-danger/10 focus:border-danger focus:ring-2 focus:ring-danger ${isPassword ? "pr-12" : "pr-4"}`
               : `border-transparent focus:border-orange-500 focus:ring-2 focus:ring-orange-500 ${isPassword ? "pr-12" : "pr-4"}`
           } ${className}`}
         />
@@ -79,7 +79,7 @@ export function TextField({
         ) : null}
       </span>
       {error ? (
-        <span role="alert" className="mt-1.5 block text-xs font-medium text-rose-600">
+        <span role="alert" className="mt-1.5 block text-xs font-medium text-danger">
           {error}
         </span>
       ) : hint ? (
@@ -136,7 +136,7 @@ export function SelectField<T extends string>({ label, hint, error, className = 
         className="mt-1.5"
       />
       {error ? (
-        <span role="alert" className="mt-1.5 block text-xs font-medium text-rose-600">
+        <span role="alert" className="mt-1.5 block text-xs font-medium text-danger">
           {error}
         </span>
       ) : hint ? (
@@ -187,7 +187,7 @@ export function GhostButton({ children, ...props }: ButtonHTMLAttributes<HTMLBut
 export function ErrorNote({ message }: { message: string | null }) {
   if (message === null) return null;
   return (
-    <p role="alert" className="mt-4 rounded-2xl bg-accent/10 px-4 py-3 text-sm text-accent">
+    <p role="alert" className="mt-4 rounded-2xl bg-danger/10 px-4 py-3 text-sm text-danger">
       {message}
     </p>
   );

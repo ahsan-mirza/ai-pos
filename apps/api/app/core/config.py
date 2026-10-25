@@ -100,6 +100,10 @@ class Settings(BaseSettings):
     console_token_minutes: int = Field(default=60, ge=5, le=12 * 60)
     # Browser origins of the console app, e.g. https://console.axizpos.com,http://localhost:5174.
     console_origins: str = ""
+    # Console Super Admin kept by `python -m app.tenancy.cli init` when email and password are both set.
+    console_admin_email: str | None = None
+    console_admin_name: str = "Ahsan Khalil"
+    console_admin_password: str | None = None
     # POS-company billing. Empty uses the recorded-payment simulator for go-live checkout.
     stripe_secret_key: str | None = None
     stripe_webhook_secret: str | None = None

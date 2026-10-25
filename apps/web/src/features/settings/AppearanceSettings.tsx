@@ -164,7 +164,7 @@ export function AppearanceSettings() {
                   if (typed) choose(typed);
                   else setHexText(effective);
                 }}
-                placeholder="#FD3706"
+                placeholder="#F26A21"
                 aria-invalid={typed === null}
                 className={`h-11 w-36 rounded-full border bg-white px-4 font-mono text-sm uppercase tabular-nums focus:outline-none focus:ring-2 ${
                   typed === null

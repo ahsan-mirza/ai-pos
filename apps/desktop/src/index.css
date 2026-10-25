@@ -5,19 +5,19 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Register default accent (Vibrant Orange #FF4500); src/lib/theme.ts overwrites these from POS Settings. */
+/* Register default accent (#F26A21); src/lib/theme.ts overwrites these from POS Settings. */
 :root {
-  --primary: #ff4500;
-  --primary-rgb: 255 69 0;
-  --primary-hover-rgb: 219 59 0;
-  --primary-50-rgb: 255 240 235;
-  --primary-100-rgb: 255 225 214;
-  --primary-200-rgb: 255 195 173;
-  --primary-300-rgb: 255 153 115;
-  --primary-400-rgb: 255 110 56;
-  --primary-500-rgb: 255 69 0;
-  --primary-600-rgb: 219 59 0;
-  --primary-700-rgb: 184 50 0;
+  --primary: #f26a21;
+  --primary-rgb: 242 106 33;
+  --primary-hover-rgb: 208 91 28;
+  --primary-50-rgb: 254 243 237;
+  --primary-100-rgb: 253 231 219;
+  --primary-200-rgb: 251 207 184;
+  --primary-300-rgb: 248 173 133;
+  --primary-400-rgb: 245 139 82;
+  --primary-500-rgb: 242 106 33;
+  --primary-600-rgb: 208 91 28;
+  --primary-700-rgb: 174 76 24;
 }
 
 @layer components {
@@ -205,14 +205,22 @@
 }
 
 .order-setup-panel {
-  max-height: 0;
-  overflow: hidden;
-  transition: max-height 0.3s ease-in-out;
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.25s ease;
 }
 
 .order-setup-panel.is-open {
-  max-height: min(70vh, 2000px);
-  overflow-y: auto;
+  grid-template-rows: 1fr;
+}
+
+.order-setup-inner {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.order-setup-panel.is-open .order-setup-inner {
+  overflow: visible;
 }
 
 @media (prefers-reduced-motion: reduce) {

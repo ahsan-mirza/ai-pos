@@ -1,9 +1,9 @@
 /** Runtime primary (accent) color for the admin portal; the business setting lives on the API. */
 
-export const DEFAULT_PRIMARY = "#FD3706";
+export const DEFAULT_PRIMARY = "#F26A21";
 
 export const PRIMARY_PRESETS = [
-  { name: "Vibrant Orange", hex: "#FF4500" },
+  { name: "Brand orange", hex: "#F26A21" },
   { name: "Royal Blue", hex: "#2563EB" },
   { name: "Emerald Green", hex: "#10B981" },
   { name: "Deep Purple", hex: "#8B5CF6" },

@@ -209,10 +209,10 @@ export function BrandModelFilters({
 
 const badgeStyles: Record<StockStatus, string> = {
   ok: "bg-charcoal text-white",
-  low: "bg-accent text-white",
-  out: "bg-accent/10 text-accent ring-1 ring-accent/40",
+  low: "bg-warning/10 text-warning",
+  out: "bg-danger/10 text-danger ring-1 ring-danger/40",
   over: "bg-surface text-charcoal ring-1 ring-line",
-  unavailable: "bg-accent/10 text-accent ring-1 ring-accent/40",
+  unavailable: "bg-danger/10 text-danger ring-1 ring-danger/40",
 };
 
 export function StatusBadge({ status }: { status: StockStatus }) {

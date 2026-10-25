@@ -110,7 +110,7 @@ export function ResourceView<T>({
   }
   if (resource.state === "error") {
     return (
-      <div className="flex items-center gap-3 rounded-2xl bg-accent/10 px-5 py-6 text-sm text-accent" role="alert">
+      <div className="flex items-center gap-3 rounded-2xl bg-danger/10 px-5 py-6 text-sm text-danger" role="alert">
         <ShieldAlert size={16} aria-hidden="true" className="shrink-0" />
         {resource.message}
       </div>
@@ -365,7 +365,7 @@ const serialStyles: Record<SerialStatus, string> = {
   reserved: "bg-surface text-charcoal ring-1 ring-line",
   in_transit: "bg-accent/10 text-accent ring-1 ring-accent/40",
   sold: "bg-accent text-white",
-  defective: "bg-accent/10 text-accent ring-1 ring-accent/40",
+  defective: "bg-danger/10 text-danger ring-1 ring-danger/40",
   repair: "bg-surface text-charcoal ring-1 ring-charcoal/30",
   quarantine: "bg-surface text-charcoal/60 ring-1 ring-line",
   scrapped: "bg-surface text-charcoal/40 line-through ring-1 ring-line",

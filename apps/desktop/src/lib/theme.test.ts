@@ -19,9 +19,9 @@ describe("primary accent", () => {
     }
   });
 
-  it("offers the six presets with Vibrant Orange as the default", () => {
+  it("offers the six presets with brand orange as the default", () => {
     expect(PRIMARY_PRESETS.map((preset) => preset.hex)).toEqual([
-      "#FF4500",
+      "#F26A21",
       "#2563EB",
       "#10B981",
       "#8B5CF6",

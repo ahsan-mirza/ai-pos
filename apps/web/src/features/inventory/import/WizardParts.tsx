@@ -52,7 +52,7 @@ export function StepProgress({ step }: { step: number }) {
 const rowStyles: Record<ImportRowStatus, string> = {
   NEW: "bg-accent text-white",
   EXISTING: "bg-charcoal text-white",
-  ERROR: "bg-accent/10 text-accent ring-1 ring-accent/40",
+  ERROR: "bg-danger/10 text-danger ring-1 ring-danger/40",
 };
 
 const rowLabels: Record<ImportRowStatus, string> = { NEW: "New", EXISTING: "Existing", ERROR: "Error" };

@@ -303,7 +303,7 @@ export function AuditPage() {
         </div>
       </div>
       {exportError ? (
-        <p role="alert" className="rounded-2xl bg-accent/10 px-4 py-3 text-sm text-accent">
+        <p role="alert" className="rounded-2xl bg-danger/10 px-4 py-3 text-sm text-danger">
           {exportError}
         </p>
       ) : null}
@@ -455,7 +455,7 @@ export function AuditPage() {
       <div className="flex items-start gap-6">
         <div className="min-w-0 flex-1 space-y-3">
           {page.state === "error" ? (
-            <p role="alert" className="rounded-2xl bg-accent/10 px-4 py-3 text-sm text-accent">
+            <p role="alert" className="rounded-2xl bg-danger/10 px-4 py-3 text-sm text-danger">
               {page.message}
             </p>
           ) : null}

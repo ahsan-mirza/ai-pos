@@ -1,19 +1,21 @@
+import preset from "@ai-pos/design-tokens/tailwind-preset";
 import type { Config } from "tailwindcss";
 
 export default {
+  presets: [preset as Config],
   content: ["./index.html", "./src/**/*.{ts,tsx}"],
+  darkMode: "class",
   theme: {
     extend: {
       colors: {
-        ink: "#090d16",
-        mist: "#c5d0dc",
-        glow: "#67e8f9",
-      },
-      fontFamily: {
-        sans: ["Archivo", "sans-serif"],
+        canvas: "var(--color-canvas)",
+        line: "var(--color-border)",
+        charcoal: "var(--color-charcoal)",
+        card: "var(--color-card)",
+        surface: "var(--color-surface)",
       },
       maxWidth: {
-        page: "1120px",
+        page: "72rem",
       },
     },
   },

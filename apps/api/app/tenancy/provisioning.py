@@ -26,6 +26,7 @@ from app.models.user import User
 from app.services import sample_data
 from app.services.rbac_service import super_admin_role_id
 from app.services.settings_service import load_settings
+from app.services.taxonomy_service import ensure_taxonomy
 from app.tenancy import cli, registry
 from app.tenancy.context import TenantRef, use_tenant
 from app.tenancy.models import SignupRequest, Tenant
@@ -182,6 +183,7 @@ def step_settings(job: Job) -> None:
         row.live_at = None
         if db.scalar(select(Store.id).limit(1)) is None:
             db.add(Store(code="MAIN", name=job.store_name, currency=job.currency, is_warehouse=False, is_active=True))
+        ensure_taxonomy(db, job.profile)
         db.commit()
 
 

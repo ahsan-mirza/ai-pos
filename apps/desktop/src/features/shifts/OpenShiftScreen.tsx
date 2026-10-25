@@ -1,4 +1,5 @@
 import { formatMoney } from "@ai-pos/shared-types";
+import { BrandLogo } from "@ai-pos/ui";
 import { Lock } from "lucide-react";
 import { useState } from "react";
 import { openShift } from "../../lib/tauri";
@@ -41,7 +42,7 @@ export function OpenShiftScreen({ session, onLock }: { session: CashierSession; 
     <div className="flex min-h-screen items-center justify-center bg-charcoal p-6 font-sans text-white">
       <div className="w-full max-w-lg rounded-[28px] bg-white/5 p-8">
         <div className="flex items-center justify-between">
-          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-primary text-sm font-bold">ai</div>
+          <BrandLogo tone="dark" className="h-10 w-auto" />
           <button
             type="button"
             onClick={onLock}

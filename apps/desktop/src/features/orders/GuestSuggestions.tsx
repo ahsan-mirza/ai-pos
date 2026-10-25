@@ -53,7 +53,7 @@ export function GuestSuggestions({
             type="button"
             disabled={disabled}
             onClick={() => onAdd(item)}
-            className="min-w-[9.5rem] max-w-[14rem] shrink-0 rounded-2xl border border-zinc-200 px-2.5 py-2 text-left hover:border-primary disabled:opacity-50 dark:border-white/10"
+            className="min-w-[9.5rem] flex-1 rounded-2xl border border-zinc-200 px-3 py-2.5 text-left hover:border-primary disabled:opacity-50 dark:border-white/10"
           >
             <span className="flex items-center gap-1 truncate text-xs font-semibold">
               <Sparkles size={12} aria-hidden="true" className="shrink-0 text-primary" />

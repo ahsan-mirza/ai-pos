@@ -206,7 +206,7 @@ export function UserFormModal({ user, roles, stores, onClose, onSaved, onUpdated
         <Toggle label="Active" description="Disabled users cannot sign in" checked={active} disabled={isSelf} onChange={setActive} />
       </div>
       {error === PIN_REQUIRED && editing ? (
-        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-accent/10 px-4 py-3 text-sm text-accent">
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-warning/10 px-4 py-3 text-sm text-warning">
           <p role="alert">{error}</p>
           <button
             type="button"

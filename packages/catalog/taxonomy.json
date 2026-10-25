@@ -1,0 +1,1078 @@
+{
+  "electronics_wholesale": {
+    "categories": [
+      {
+        "name": "Phones",
+        "description": "Mobile handsets, tracked by IMEI.",
+        "sub_categories": [
+          "Smartphones",
+          "Feature Phones",
+          "Refurbished Phones",
+          "Rugged Phones"
+        ]
+      },
+      {
+        "name": "Tablets",
+        "description": "Tablets and e-readers.",
+        "sub_categories": [
+          "iPads",
+          "Android Tablets",
+          "Kids Tablets",
+          "E-Readers"
+        ]
+      },
+      {
+        "name": "Computers",
+        "description": "Portable and desktop computers and displays.",
+        "sub_categories": [
+          "Laptops",
+          "Desktops",
+          "Monitors",
+          "Keyboards & Mice"
+        ]
+      },
+      {
+        "name": "Wearables",
+        "description": "Watches and fitness devices.",
+        "sub_categories": [
+          "Smartwatches",
+          "Fitness Trackers",
+          "Watch Straps"
+        ]
+      },
+      {
+        "name": "Audio",
+        "description": "Personal and portable audio.",
+        "sub_categories": [
+          "Earbuds",
+          "Headphones",
+          "Bluetooth Speakers",
+          "Wired Earphones"
+        ]
+      },
+      {
+        "name": "Accessories",
+        "description": "Protection, power, and connectivity add-ons.",
+        "sub_categories": [
+          "Cases",
+          "Screen Protectors",
+          "Cables",
+          "Chargers & Adapters",
+          "Power Banks",
+          "Car Accessories",
+          "Mounts & Holders",
+          "Memory Cards",
+          "Miscellaneous"
+        ]
+      },
+      {
+        "name": "Smart Home",
+        "description": "Connected devices for the home.",
+        "sub_categories": [
+          "Smart Speakers",
+          "Security Cameras",
+          "Smart Plugs & Lighting",
+          "Routers & Mesh Wi-Fi"
+        ]
+      },
+      {
+        "name": "Gaming",
+        "description": "Consoles, controllers, and gaming gear.",
+        "sub_categories": [
+          "Consoles",
+          "Controllers",
+          "Gaming Headsets",
+          "Gaming Accessories"
+        ]
+      },
+      {
+        "name": "Repair Parts",
+        "description": "Spare parts used by the repair desk.",
+        "sub_categories": [
+          "Screens & Displays",
+          "Batteries",
+          "Charging Ports",
+          "Cameras",
+          "Back Glass & Housings"
+        ]
+      },
+      {
+        "name": "SIM & Connectivity",
+        "description": "SIM cards, recharge, and mobile data.",
+        "sub_categories": [
+          "SIM Cards",
+          "Prepaid Recharge",
+          "Mobile Hotspots"
+        ]
+      },
+      {
+        "name": "Services",
+        "description": "Labour and other non-stock services.",
+        "sub_categories": [
+          "Repairs"
+        ]
+      }
+    ],
+    "brands": [
+      {
+        "name": "Apple",
+        "description": "iPhone, iPad, Mac, Apple Watch, and AirPods.",
+        "models": [
+          {
+            "name": "iPhone 16 Pro Max",
+            "category": "Phones",
+            "sub_category": "Smartphones",
+            "release_year": 2024
+          },
+          {
+            "name": "iPhone 16 Pro",
+            "category": "Phones",
+            "sub_category": "Smartphones",
+            "release_year": 2024
+          },
+          {
+            "name": "iPhone 16",
+            "category": "Phones",
+            "sub_category": "Smartphones",
+            "release_year": 2024
+          },
+          {
+            "name": "iPhone 15",
+            "category": "Phones",
+            "sub_category": "Smartphones",
+            "release_year": 2023
+          },
+          {
+            "name": "MacBook Air 13 (M3)",
+            "category": "Computers",
+            "sub_category": "Laptops",
+            "release_year": 2024
+          },
+          {
+            "name": "MacBook Pro 14 (M4)",
+            "category": "Computers",
+            "sub_category": "Laptops",
+            "release_year": 2024
+          },
+          {
+            "name": "iPad Air 11 (M2)",
+            "category": "Tablets",
+            "sub_category": "iPads",
+            "release_year": 2024
+          },
+          {
+            "name": "Apple Watch Series 10",
+            "category": "Wearables",
+            "sub_category": "Smartwatches",
+            "release_year": 2024
+          },
+          {
+            "name": "AirPods Pro 2 (USB-C)",
+            "category": "Audio",
+            "sub_category": "Earbuds",
+            "release_year": 2023
+          },
+          {
+            "name": "20W USB-C Power Adapter",
+            "category": "Accessories",
+            "sub_category": "Chargers & Adapters",
+            "release_year": 2020
+          }
+        ]
+      },
+      {
+        "name": "Samsung",
+        "description": "Galaxy phones, tablets, wearables, and accessories.",
+        "models": [
+          {
+            "name": "Galaxy S24 Ultra",
+            "category": "Phones",
+            "sub_category": "Smartphones",
+            "release_year": 2024,
+            "code": "SM-S928B"
+          },
+          {
+            "name": "Galaxy S24",
+            "category": "Phones",
+            "sub_category": "Smartphones",
+            "release_year": 2024,
+            "code": "SM-S921B"
+          },
+          {
+            "name": "Galaxy A55 5G",
+            "category": "Phones",
+            "sub_category": "Smartphones",
+            "release_year": 2024,
+            "code": "SM-A556E"
+          },
+          {
+            "name": "Galaxy Z Fold6",
+            "category": "Phones",
+            "sub_category": "Smartphones",
+            "release_year": 2024,
+            "code": "SM-F956B"
+          },
+          {
+            "name": "Galaxy Z Flip6",
+            "category": "Phones",
+            "sub_category": "Smartphones",
+            "release_year": 2024,
+            "code": "SM-F741B"
+          },
+          {
+            "name": "Galaxy Tab S9 FE",
+            "category": "Tablets",
+            "sub_category": "Android Tablets",
+            "release_year": 2023,
+            "code": "SM-X510"
+          },
+          {
+            "name": "Galaxy Watch7",
+            "category": "Wearables",
+            "sub_category": "Smartwatches",
+            "release_year": 2024,
+            "code": "SM-L310"
+          },
+          {
+            "name": "Galaxy Buds3 Pro",
+            "category": "Audio",
+            "sub_category": "Earbuds",
+            "release_year": 2024,
+            "code": "SM-R630"
+          },
+          {
+            "name": "25W Super Fast Charger",
+            "category": "Accessories",
+            "sub_category": "Chargers & Adapters",
+            "release_year": 2021,
+            "code": "EP-TA800"
+          }
+        ]
+      },
+      {
+        "name": "Google",
+        "description": "Pixel phones.",
+        "models": [
+          {
+            "name": "Pixel 9",
+            "category": "Phones",
+            "sub_category": "Smartphones",
+            "release_year": 2024
+          },
+          {
+            "name": "Pixel 9 Pro",
+            "category": "Phones",
+            "sub_category": "Smartphones",
+            "release_year": 2024
+          }
+        ]
+      },
+      {
+        "name": "Xiaomi",
+        "description": "Xiaomi and Redmi phones.",
+        "models": [
+          {
+            "name": "Xiaomi 14T Pro",
+            "category": "Phones",
+            "sub_category": "Smartphones",
+            "release_year": 2024
+          },
+          {
+            "name": "Redmi Note 13 Pro",
+            "category": "Phones",
+            "sub_category": "Smartphones",
+            "release_year": 2024
+          }
+        ]
+      },
+      {
+        "name": "Nokia",
+        "description": "Feature phones by HMD.",
+        "models": [
+          {
+            "name": "Nokia 105 (2023)",
+            "category": "Phones",
+            "sub_category": "Feature Phones",
+            "release_year": 2023
+          },
+          {
+            "name": "Nokia 3210 4G",
+            "category": "Phones",
+            "sub_category": "Feature Phones",
+            "release_year": 2024
+          }
+        ]
+      },
+      {
+        "name": "Dell",
+        "description": "XPS and Inspiron laptops.",
+        "models": [
+          {
+            "name": "XPS 13 (9340)",
+            "category": "Computers",
+            "sub_category": "Laptops",
+            "release_year": 2024
+          },
+          {
+            "name": "Inspiron 15 (3520)",
+            "category": "Computers",
+            "sub_category": "Laptops",
+            "release_year": 2023
+          }
+        ]
+      },
+      {
+        "name": "HP",
+        "description": "Pavilion laptops.",
+        "models": [
+          {
+            "name": "Pavilion 15",
+            "category": "Computers",
+            "sub_category": "Laptops",
+            "release_year": 2023
+          }
+        ]
+      },
+      {
+        "name": "Lenovo",
+        "description": "ThinkPad and IdeaPad laptops.",
+        "models": [
+          {
+            "name": "ThinkPad X1 Carbon Gen 12",
+            "category": "Computers",
+            "sub_category": "Laptops",
+            "release_year": 2024
+          },
+          {
+            "name": "IdeaPad Slim 5 14",
+            "category": "Computers",
+            "sub_category": "Laptops",
+            "release_year": 2024
+          }
+        ]
+      },
+      {
+        "name": "ASUS",
+        "description": "ROG gaming and Zenbook laptops.",
+        "models": [
+          {
+            "name": "ROG Zephyrus G14 (2024)",
+            "category": "Computers",
+            "sub_category": "Laptops",
+            "release_year": 2024
+          },
+          {
+            "name": "Zenbook 14 OLED",
+            "category": "Computers",
+            "sub_category": "Laptops",
+            "release_year": 2024
+          }
+        ]
+      },
+      {
+        "name": "Sony",
+        "description": "Headphones and audio.",
+        "models": [
+          {
+            "name": "WH-1000XM5",
+            "category": "Audio",
+            "sub_category": "Headphones",
+            "release_year": 2022
+          }
+        ]
+      },
+      {
+        "name": "Anker",
+        "description": "Chargers and power banks.",
+        "models": [
+          {
+            "name": "Nano 20W USB-C Charger",
+            "category": "Accessories",
+            "sub_category": "Chargers & Adapters",
+            "release_year": 2022
+          },
+          {
+            "name": "PowerCore 10000 PD Redux",
+            "category": "Accessories",
+            "sub_category": "Power Banks",
+            "release_year": 2021
+          }
+        ]
+      },
+      {
+        "name": "Volt",
+        "description": "House-brand cables.",
+        "models": [
+          {
+            "name": "USB-C Cable",
+            "category": "Accessories",
+            "sub_category": "Cables",
+            "release_year": 2025
+          }
+        ]
+      },
+      {
+        "name": "Shield",
+        "description": "House-brand cases.",
+        "models": [
+          {
+            "name": "Slim Silicone Case",
+            "category": "Accessories",
+            "sub_category": "Cases",
+            "release_year": 2025
+          }
+        ]
+      }
+    ]
+  },
+  "retail_fashion": {
+    "categories": [
+      {
+        "name": "Women",
+        "description": "Women's clothing.",
+        "sub_categories": [
+          "Dresses",
+          "Tops",
+          "Bottoms",
+          "Outerwear"
+        ]
+      },
+      {
+        "name": "Men",
+        "description": "Men's clothing.",
+        "sub_categories": [
+          "Shirts",
+          "Trousers",
+          "Outerwear"
+        ]
+      },
+      {
+        "name": "Kids",
+        "description": "Children's clothing.",
+        "sub_categories": [
+          "Boys",
+          "Girls"
+        ]
+      },
+      {
+        "name": "Footwear",
+        "description": "Shoes and sandals.",
+        "sub_categories": [
+          "Sneakers",
+          "Sandals",
+          "Formal"
+        ]
+      },
+      {
+        "name": "Bags",
+        "description": "Handbags and backpacks.",
+        "sub_categories": [
+          "Handbags",
+          "Backpacks"
+        ]
+      },
+      {
+        "name": "Accessories",
+        "description": "Belts, watches, and sunglasses.",
+        "sub_categories": [
+          "Belts",
+          "Watches",
+          "Sunglasses"
+        ]
+      }
+    ],
+    "brands": [
+      {
+        "name": "Nike",
+        "description": "Sportswear and sneakers.",
+        "models": [
+          {
+            "name": "Air Force 1",
+            "category": "Footwear",
+            "sub_category": "Sneakers"
+          },
+          {
+            "name": "Air Max 90",
+            "category": "Footwear",
+            "sub_category": "Sneakers"
+          },
+          {
+            "name": "Sportswear Tee",
+            "category": "Men",
+            "sub_category": "Shirts"
+          }
+        ]
+      },
+      {
+        "name": "Adidas",
+        "description": "Sportswear and sneakers.",
+        "models": [
+          {
+            "name": "Samba",
+            "category": "Footwear",
+            "sub_category": "Sneakers"
+          },
+          {
+            "name": "Stan Smith",
+            "category": "Footwear",
+            "sub_category": "Sneakers"
+          }
+        ]
+      },
+      {
+        "name": "Zara",
+        "description": "Contemporary clothing.",
+        "models": [
+          {
+            "name": "Basic T-Shirt",
+            "category": "Women",
+            "sub_category": "Tops"
+          },
+          {
+            "name": "Wide Leg Trousers",
+            "category": "Women",
+            "sub_category": "Bottoms"
+          },
+          {
+            "name": "City Handbag",
+            "category": "Bags",
+            "sub_category": "Handbags"
+          }
+        ]
+      },
+      {
+        "name": "H&M",
+        "description": "Everyday clothing.",
+        "models": [
+          {
+            "name": "Cotton Dress",
+            "category": "Women",
+            "sub_category": "Dresses"
+          },
+          {
+            "name": "Kids Hoodie",
+            "category": "Kids",
+            "sub_category": "Boys"
+          }
+        ]
+      },
+      {
+        "name": "Levi's",
+        "description": "Denim.",
+        "models": [
+          {
+            "name": "501",
+            "category": "Men",
+            "sub_category": "Trousers"
+          },
+          {
+            "name": "511",
+            "category": "Men",
+            "sub_category": "Trousers"
+          }
+        ]
+      }
+    ]
+  },
+  "grocery": {
+    "categories": [
+      {
+        "name": "Produce",
+        "description": "Fresh fruit and vegetables.",
+        "sub_categories": [
+          "Fruit",
+          "Vegetables",
+          "Herbs"
+        ]
+      },
+      {
+        "name": "Dairy",
+        "description": "Milk, yogurt, and cheese.",
+        "sub_categories": [
+          "Milk",
+          "Yogurt",
+          "Cheese"
+        ]
+      },
+      {
+        "name": "Bakery",
+        "description": "Bread and pastries.",
+        "sub_categories": [
+          "Bread",
+          "Pastries"
+        ]
+      },
+      {
+        "name": "Meat & Poultry",
+        "description": "Fresh meat and poultry.",
+        "sub_categories": [
+          "Chicken",
+          "Beef",
+          "Lamb"
+        ]
+      },
+      {
+        "name": "Frozen",
+        "description": "Frozen meals and ice cream.",
+        "sub_categories": [
+          "Frozen Meals",
+          "Ice Cream"
+        ]
+      },
+      {
+        "name": "Beverages",
+        "description": "Water, soft drinks, and juice.",
+        "sub_categories": [
+          "Water",
+          "Soft Drinks",
+          "Juice"
+        ]
+      },
+      {
+        "name": "Pantry",
+        "description": "Dry and canned groceries.",
+        "sub_categories": [
+          "Rice & Pasta",
+          "Cooking Oil",
+          "Canned Goods"
+        ]
+      },
+      {
+        "name": "Household",
+        "description": "Cleaning and paper goods.",
+        "sub_categories": [
+          "Cleaning",
+          "Paper Goods"
+        ]
+      }
+    ],
+    "brands": [
+      {
+        "name": "Al Ain",
+        "description": "Bottled water.",
+        "models": [
+          {
+            "name": "Al Ain Water",
+            "category": "Beverages",
+            "sub_category": "Water"
+          }
+        ]
+      },
+      {
+        "name": "Almarai",
+        "description": "Dairy.",
+        "models": [
+          {
+            "name": "Fresh Milk",
+            "category": "Dairy",
+            "sub_category": "Milk"
+          },
+          {
+            "name": "Laban",
+            "category": "Dairy",
+            "sub_category": "Milk"
+          }
+        ]
+      },
+      {
+        "name": "Sadia",
+        "description": "Chicken.",
+        "models": [
+          {
+            "name": "Griller Chicken",
+            "category": "Meat & Poultry",
+            "sub_category": "Chicken"
+          },
+          {
+            "name": "Chicken Nuggets",
+            "category": "Frozen",
+            "sub_category": "Frozen Meals"
+          }
+        ]
+      },
+      {
+        "name": "Nestlé",
+        "description": "Pantry and dairy staples.",
+        "models": [
+          {
+            "name": "Nido",
+            "category": "Dairy",
+            "sub_category": "Milk"
+          },
+          {
+            "name": "Maggi",
+            "category": "Pantry",
+            "sub_category": "Rice & Pasta"
+          }
+        ]
+      },
+      {
+        "name": "Pepsi",
+        "description": "Soft drinks.",
+        "models": [
+          {
+            "name": "Pepsi",
+            "category": "Beverages",
+            "sub_category": "Soft Drinks"
+          },
+          {
+            "name": "7UP",
+            "category": "Beverages",
+            "sub_category": "Soft Drinks"
+          }
+        ]
+      }
+    ]
+  },
+  "restaurant": {
+    "categories": [
+      {
+        "name": "Starters",
+        "description": "Soups, salads, and mezze.",
+        "sub_categories": [
+          "Soups",
+          "Salads",
+          "Mezze"
+        ]
+      },
+      {
+        "name": "Grill",
+        "description": "Grilled meat and kebabs.",
+        "sub_categories": [
+          "Kebabs",
+          "Mixed grill"
+        ]
+      },
+      {
+        "name": "Mains",
+        "description": "Rice dishes and pasta.",
+        "sub_categories": [
+          "Rice dishes",
+          "Pasta"
+        ]
+      },
+      {
+        "name": "Seafood",
+        "description": "Fish and prawns.",
+        "sub_categories": [
+          "Fish",
+          "Prawns"
+        ]
+      },
+      {
+        "name": "Sides",
+        "description": "Bread and vegetables.",
+        "sub_categories": [
+          "Bread",
+          "Vegetables"
+        ]
+      },
+      {
+        "name": "Desserts",
+        "description": "Cakes and ice cream.",
+        "sub_categories": [
+          "Cakes",
+          "Ice cream"
+        ]
+      },
+      {
+        "name": "Hot drinks",
+        "description": "Tea and coffee.",
+        "sub_categories": [
+          "Tea",
+          "Coffee"
+        ]
+      },
+      {
+        "name": "Cold drinks",
+        "description": "Soft drinks and juices.",
+        "sub_categories": [
+          "Soft drinks",
+          "Juices"
+        ]
+      }
+    ],
+    "brands": [
+      {
+        "name": "House",
+        "description": "Dishes prepared in the kitchen.",
+        "models": [
+          {
+            "name": "Hummus",
+            "category": "Starters",
+            "sub_category": "Mezze"
+          },
+          {
+            "name": "Mixed Grill",
+            "category": "Grill",
+            "sub_category": "Mixed grill"
+          },
+          {
+            "name": "Chicken Biryani",
+            "category": "Mains",
+            "sub_category": "Rice dishes"
+          },
+          {
+            "name": "Grilled Hammour",
+            "category": "Seafood",
+            "sub_category": "Fish"
+          },
+          {
+            "name": "Arabic Bread",
+            "category": "Sides",
+            "sub_category": "Bread"
+          },
+          {
+            "name": "Chocolate Cake",
+            "category": "Desserts",
+            "sub_category": "Cakes"
+          },
+          {
+            "name": "Karak",
+            "category": "Hot drinks",
+            "sub_category": "Tea"
+          },
+          {
+            "name": "Arabic Coffee",
+            "category": "Hot drinks",
+            "sub_category": "Coffee"
+          }
+        ]
+      },
+      {
+        "name": "Lipton",
+        "description": "Tea.",
+        "models": [
+          {
+            "name": "Yellow Label",
+            "category": "Hot drinks",
+            "sub_category": "Tea"
+          }
+        ]
+      },
+      {
+        "name": "Coca-Cola",
+        "description": "Soft drinks.",
+        "models": [
+          {
+            "name": "Coca-Cola",
+            "category": "Cold drinks",
+            "sub_category": "Soft drinks"
+          }
+        ]
+      },
+      {
+        "name": "Pepsi",
+        "description": "Soft drinks.",
+        "models": [
+          {
+            "name": "Pepsi",
+            "category": "Cold drinks",
+            "sub_category": "Soft drinks"
+          }
+        ]
+      }
+    ]
+  },
+  "cafe": {
+    "categories": [
+      {
+        "name": "Coffee",
+        "description": "Espresso and milk coffee.",
+        "sub_categories": [
+          "Espresso",
+          "Milk coffee"
+        ]
+      },
+      {
+        "name": "Tea",
+        "description": "Black and herbal tea.",
+        "sub_categories": [
+          "Black tea",
+          "Herbal"
+        ]
+      },
+      {
+        "name": "Bakery",
+        "description": "Pastries and cakes.",
+        "sub_categories": [
+          "Pastries",
+          "Cakes"
+        ]
+      },
+      {
+        "name": "Sandwiches",
+        "description": "Hot and cold sandwiches.",
+        "sub_categories": [
+          "Hot sandwiches",
+          "Cold sandwiches"
+        ]
+      },
+      {
+        "name": "Cold drinks",
+        "description": "Iced coffee and soft drinks.",
+        "sub_categories": [
+          "Iced coffee",
+          "Soft drinks"
+        ]
+      }
+    ],
+    "brands": [
+      {
+        "name": "House",
+        "description": "Drinks and food made in the cafe.",
+        "models": [
+          {
+            "name": "Espresso",
+            "category": "Coffee",
+            "sub_category": "Espresso"
+          },
+          {
+            "name": "Latte",
+            "category": "Coffee",
+            "sub_category": "Milk coffee"
+          },
+          {
+            "name": "Cappuccino",
+            "category": "Coffee",
+            "sub_category": "Milk coffee"
+          },
+          {
+            "name": "Croissant",
+            "category": "Bakery",
+            "sub_category": "Pastries"
+          },
+          {
+            "name": "Club Sandwich",
+            "category": "Sandwiches",
+            "sub_category": "Cold sandwiches"
+          }
+        ]
+      },
+      {
+        "name": "Ahmad Tea",
+        "description": "Tea.",
+        "models": [
+          {
+            "name": "English Breakfast",
+            "category": "Tea",
+            "sub_category": "Black tea"
+          }
+        ]
+      },
+      {
+        "name": "Coca-Cola",
+        "description": "Soft drinks.",
+        "models": [
+          {
+            "name": "Coca-Cola",
+            "category": "Cold drinks",
+            "sub_category": "Soft drinks"
+          }
+        ]
+      }
+    ]
+  },
+  "quick_service": {
+    "categories": [
+      {
+        "name": "Burgers",
+        "description": "Beef and chicken burgers.",
+        "sub_categories": [
+          "Beef",
+          "Chicken burgers"
+        ]
+      },
+      {
+        "name": "Chicken",
+        "description": "Fried and grilled chicken.",
+        "sub_categories": [
+          "Fried chicken",
+          "Grilled chicken"
+        ]
+      },
+      {
+        "name": "Wraps",
+        "description": "Chicken and beef wraps.",
+        "sub_categories": [
+          "Chicken wraps",
+          "Beef wraps"
+        ]
+      },
+      {
+        "name": "Sides",
+        "description": "Fries and other sides.",
+        "sub_categories": [
+          "Fries",
+          "Other sides"
+        ]
+      },
+      {
+        "name": "Desserts",
+        "description": "Ice cream and cookies.",
+        "sub_categories": [
+          "Ice cream",
+          "Cookies"
+        ]
+      },
+      {
+        "name": "Drinks",
+        "description": "Soft drinks and shakes.",
+        "sub_categories": [
+          "Soft drinks",
+          "Shakes"
+        ]
+      }
+    ],
+    "brands": [
+      {
+        "name": "House",
+        "description": "Menu items made in the kitchen.",
+        "models": [
+          {
+            "name": "Classic Burger",
+            "category": "Burgers",
+            "sub_category": "Beef"
+          },
+          {
+            "name": "Crispy Chicken",
+            "category": "Chicken",
+            "sub_category": "Fried chicken"
+          },
+          {
+            "name": "Chicken Wrap",
+            "category": "Wraps",
+            "sub_category": "Chicken wraps"
+          },
+          {
+            "name": "Fries",
+            "category": "Sides",
+            "sub_category": "Fries"
+          }
+        ]
+      },
+      {
+        "name": "Coca-Cola",
+        "description": "Soft drinks.",
+        "models": [
+          {
+            "name": "Coca-Cola",
+            "category": "Drinks",
+            "sub_category": "Soft drinks"
+          }
+        ]
+      },
+      {
+        "name": "Pepsi",
+        "description": "Soft drinks.",
+        "models": [
+          {
+            "name": "Pepsi",
+            "category": "Drinks",
+            "sub_category": "Soft drinks"
+          }
+        ]
+      }
+    ]
+  }
+}

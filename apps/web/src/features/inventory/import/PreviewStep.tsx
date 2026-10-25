@@ -299,7 +299,7 @@ export function PreviewStep({
         </table>
       </div>
       {errors ? (
-        <p className="flex items-start gap-2 rounded-2xl bg-accent/10 px-4 py-3 text-sm text-accent" role="status">
+        <p className="flex items-start gap-2 rounded-2xl bg-danger/10 px-4 py-3 text-sm text-danger" role="status">
           <AlertTriangle size={16} className="mt-0.5 shrink-0" aria-hidden="true" />
           {errors} included row{errors === 1 ? " has" : "s have"} errors. Fix them in the grid and re-check, or untick
           them to leave them out of this batch.

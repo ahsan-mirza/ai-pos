@@ -175,7 +175,7 @@ export function VariantMatrixPanel({
                           className={`flex h-14 flex-col items-center justify-center rounded-xl border text-center ${
                             out ? "border-red-200 bg-red-50" : "border-line"
                           }`}
-                          style={out ? undefined : { backgroundColor: `rgba(253, 55, 6, ${0.04 + heat * 0.22})` }}
+                          style={out ? undefined : { backgroundColor: `rgb(var(--primary-rgb) / ${0.04 + heat * 0.22})` }}
                         >
                           <span className={`text-base font-semibold tabular-nums ${out ? "text-red-700" : ""}`}>{cell.on_hand}</span>
                           <span className="text-[10px] text-charcoal/60 tabular-nums">{cell.sold_90d} sold</span>

@@ -3,7 +3,7 @@ import time
 from sqlalchemy import select
 from tests.governance_support import OPERATOR_PASSWORD, platform  # noqa: F401
 
-from app.console.auth import create_operator, validate_operator_password
+from app.console.auth import create_operator, ensure_console_admin, validate_operator_password
 from app.console.security import totp, verify_totp
 from app.core.config import get_settings
 from app.tenancy.models import Operator, OperatorAuditLog
@@ -73,3 +73,58 @@ def test_accounts_lock_after_repeated_failures(platform) -> None:  # noqa: F811
         platform.client.post(url, json={"email": "lock@axizpos.com", "password": "wrong-password"})
     locked = platform.client.post(url, json={"email": "lock@axizpos.com", "password": OPERATOR_PASSWORD})
     assert locked.status_code == 423
+
+
+def test_ensure_console_admin_creates_keeps_and_replaces_the_password(platform) -> None:  # noqa: F811
+    from datetime import UTC, datetime, timedelta
+
+    from sqlalchemy import func
+
+    from app.core.security import hash_password, verify_password
+
+    settings = get_settings()
+    previous = (settings.console_admin_email, settings.console_admin_name, settings.console_admin_password)
+    email = "console-owner@example.com"
+    password = "Console-admin-1"
+    settings.console_admin_email = email
+    settings.console_admin_name = "Console Owner"
+    settings.console_admin_password = password
+    try:
+        assert ensure_console_admin(get_settings().model_copy(update={"console_admin_email": None})) is None
+        created = ensure_console_admin(settings)
+        assert created is not None and created.email == email and created.role == "ADMIN"
+        again = ensure_console_admin(settings)
+        assert again is not None and again.id == created.id
+        with platform.control() as db:
+            row = db.scalar(select(Operator).where(Operator.email == email))
+            assert row is not None
+            version = row.token_version
+            row.password_hash = hash_password("Other-admin-1")
+            row.role = "SUPPORT"
+            row.is_active = False
+            row.failed_attempts = 4
+            row.locked_until = datetime.now(UTC) + timedelta(hours=1)
+            db.commit()
+        replaced = ensure_console_admin(settings)
+        assert replaced is not None and replaced.role == "ADMIN" and replaced.is_active
+        with platform.control() as db:
+            rows = list(db.scalars(select(Operator).where(func.lower(Operator.email) == email)))
+            assert len(rows) == 1
+            row = rows[0]
+            assert verify_password(password, row.password_hash)
+            assert row.role == "ADMIN" and row.is_active
+            assert row.failed_attempts == 0 and row.locked_until is None
+            assert row.token_version == version + 1
+        login = platform.client.post(
+            "/api/v1/super-admin/auth/login",
+            json={"email": email, "password": password},
+        )
+        assert login.status_code == 200, login.text
+        assert login.json()["operator"]["role"] == "ADMIN"
+        with platform.control() as db:
+            kept = db.scalar(select(Operator.token_version).where(Operator.email == email))
+        ensure_console_admin(settings)
+        with platform.control() as db:
+            assert db.scalar(select(Operator.token_version).where(Operator.email == email)) == kept
+    finally:
+        settings.console_admin_email, settings.console_admin_name, settings.console_admin_password = previous

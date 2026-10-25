@@ -263,7 +263,7 @@ export function AuditDiffDrawer({
               <p className="mt-1 text-sm text-charcoal">{row.reason_notes}</p>
             </div>
           ) : row.sensitive ? (
-            <p className="rounded-2xl border border-dashed border-accent/40 px-4 py-3 text-sm text-accent">
+            <p className="rounded-2xl border border-dashed border-warning/40 px-4 py-3 text-sm text-warning">
               No reason was recorded for this sensitive action.
             </p>
           ) : null}
@@ -304,7 +304,7 @@ export function AuditDiffDrawer({
               </button>
             </div>
             {loaded.state === "error" ? (
-              <p className="rounded-2xl bg-accent/10 px-4 py-3 text-sm text-accent" role="alert">
+              <p className="rounded-2xl bg-danger/10 px-4 py-3 text-sm text-danger" role="alert">
                 {loaded.message}
               </p>
             ) : entry === null ? (

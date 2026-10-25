@@ -46,7 +46,7 @@ function ExpiryChip({ date }: { date: string }) {
     <span
       title={`Soonest batch expires ${date}`}
       className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase ${
-        days <= 3 ? "bg-primary text-white" : "bg-amber-500/15 text-amber-700 dark:text-amber-300"
+        days <= 3 ? "bg-danger text-white" : "bg-warning/15 text-warning dark:text-warning"
       }`}
     >
       {label}

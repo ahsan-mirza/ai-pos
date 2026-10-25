@@ -1,4 +1,5 @@
 import { PASSWORD_MIN_LENGTH } from "@ai-pos/shared-types";
+import { BrandLogo } from "@ai-pos/ui";
 import { Eye, EyeOff, Lock, Mail, ShieldCheck, Store, User, type LucideIcon } from "lucide-react";
 import { useState, type FormEvent, type InputHTMLAttributes } from "react";
 import { env, saveStoreCode } from "../../config/env";
@@ -151,10 +152,9 @@ export function LoginPage() {
     <div className="flex min-h-screen flex-col items-center justify-center gap-4 bg-canvas p-4 font-sans text-charcoal">
       <div className="grid w-full max-w-5xl overflow-hidden rounded-[28px] border border-line bg-white md:grid-cols-2">
         <section className="flex flex-col justify-between bg-charcoal p-8 text-white">
-          <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-accent text-sm font-bold">ai</div>
+          <BrandLogo tone="dark" className="h-9 w-auto" />
           <div className="mt-16">
-            <p className="text-xs font-medium uppercase tracking-[0.16em] text-white/50">AI POS</p>
-            <h1 className="mt-2 text-3xl font-semibold leading-tight">Admin portal</h1>
+            <h1 className="text-3xl font-semibold leading-tight">Admin portal</h1>
             <p className="mt-3 max-w-xs text-sm text-white/60">
               Manage stores, inventory, repairs, staff, and role permissions.
             </p>
@@ -209,7 +209,7 @@ export function LoginPage() {
             />
             {notice ? <p className="rounded-2xl bg-emerald-500/10 px-4 py-3 text-sm text-emerald-800">{notice}</p> : null}
             {error ? (
-              <p role="alert" className="rounded-2xl bg-accent/10 px-4 py-3 text-sm text-accent">
+              <p role="alert" className="rounded-2xl bg-danger/10 px-4 py-3 text-sm text-danger">
                 {error}
               </p>
             ) : null}
@@ -338,7 +338,7 @@ export function LoginPage() {
             ) : null}
             {notice && step === "code" ? <p className="rounded-2xl bg-emerald-500/10 px-4 py-3 text-sm text-emerald-800">{notice}</p> : null}
             {error ? (
-              <p role="alert" className="rounded-2xl bg-accent/10 px-4 py-3 text-sm text-accent">
+              <p role="alert" className="rounded-2xl bg-danger/10 px-4 py-3 text-sm text-danger">
                 {error}
               </p>
             ) : null}

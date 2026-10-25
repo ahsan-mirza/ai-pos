@@ -122,7 +122,7 @@ Each business type switches on its own modules (Store Settings → Business prof
 
 - `apps/api` — FastAPI, SQLAlchemy, Alembic. Routers for `/auth`, `/users`, `/roles`, and `/sync`. `POST /api/v1/sync/push` applies a batch in one transaction and treats idempotency keys as replay-safe.
 - `apps/desktop` — Tauri 2, React, and SQLite. PIN unlock screen, offline credential cache, and the sale queue. The Rust process holds `API_KEY`.
-- `apps/web` — React admin dashboard using the shared Archivo / `#FD3706` / `#222026` tokens, with Users and Roles management.
+- `apps/web` — React admin dashboard using the shared Archivo / `#F26A21` / `#222026` tokens, with Users and Roles management.
 - `packages/shared-types` — permission enums plus user, role, product, serial, sale, repair, and sync contracts.
 - `packages/design-tokens` — brand CSS variables and the Tailwind preset.
 - `packages/catalog` — shared demo store and products.

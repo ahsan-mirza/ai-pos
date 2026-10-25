@@ -269,7 +269,7 @@ function ChequeActionModal({
     >
       <div className="space-y-4">
         {reverses ? (
-          <p className="rounded-2xl bg-accent/10 px-4 py-3 text-sm text-accent">
+          <p className="rounded-2xl bg-warning/10 px-4 py-3 text-sm text-warning">
             The payment is reversed: {formatMoney(cheque.amount_cents, cheque.currency)} goes back on the customer's account
             {action === "bounce" ? " and the account is put on credit hold" : ""}.
           </p>

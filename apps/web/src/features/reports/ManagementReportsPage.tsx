@@ -276,7 +276,7 @@ export function ManagementReportsPage() {
                         <span className="block text-xs text-charcoal/50">
                           <span
                             className={`mr-1.5 rounded-full px-2 py-0.5 text-[10px] font-semibold ${
-                              row.status === "DEAD" ? "bg-charcoal text-white" : "bg-accent/10 text-accent"
+                              row.status === "DEAD" ? "bg-charcoal text-white" : "bg-warning/10 text-warning"
                             }`}
                           >
                             {row.status === "DEAD" ? "Dead" : "Slow"}

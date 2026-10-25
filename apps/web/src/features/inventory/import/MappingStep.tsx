@@ -192,7 +192,7 @@ export function MappingStep({
         </div>
 
         {missing.length ? (
-          <p className="flex items-start gap-2 rounded-2xl bg-accent/10 px-4 py-3 text-sm text-accent" role="status">
+          <p className="flex items-start gap-2 rounded-2xl bg-warning/10 px-4 py-3 text-sm text-warning" role="status">
             <AlertTriangle size={16} className="mt-0.5 shrink-0" aria-hidden="true" />
             Map a column for {missing.join(", ")}.
           </p>

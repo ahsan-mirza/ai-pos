@@ -501,7 +501,7 @@ export function ProductDetailDrawer({
           aria-label={tabs.find((item) => item.id === active)?.label}
         >
           {detail.product.state === "error" ? (
-            <p className="mb-4 rounded-2xl bg-accent/10 px-4 py-3 text-sm text-accent" role="alert">
+            <p className="mb-4 rounded-2xl bg-danger/10 px-4 py-3 text-sm text-danger" role="alert">
               {detail.product.message}{" "}
               <button type="button" className="font-semibold underline" onClick={detail.reload}>
                 Retry

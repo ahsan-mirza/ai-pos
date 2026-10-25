@@ -1,4 +1,5 @@
 import { formatMoney } from "@ai-pos/shared-types";
+import { BrandLogo } from "@ai-pos/ui";
 import { CheckCircle2, ScanLine } from "lucide-react";
 import QRCode from "qrcode";
 import { useEffect, useState } from "react";
@@ -23,7 +24,7 @@ export function CustomerDisplay() {
   if (state === null || (state.lines.length === 0 && !state.thanks)) {
     return (
       <main className="flex min-h-screen flex-col items-center justify-center bg-charcoal p-10 font-sans text-white">
-        <div className="flex h-20 w-20 items-center justify-center rounded-3xl bg-primary text-2xl font-bold">ai</div>
+        <BrandLogo tone="dark" className="h-16 w-auto" />
         <h1 className="mt-8 text-5xl font-semibold tracking-tight">{state?.storeName ?? "Welcome"}</h1>
         <p className="mt-3 text-xl text-white/60">مرحبا · Your items will appear here</p>
       </main>

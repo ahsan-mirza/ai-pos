@@ -1,3 +1,4 @@
+import { BrandLogo } from "@ai-pos/ui";
 import { LogOut, X } from "lucide-react";
 import { useEffect, useRef, useState, type FocusEvent, type MouseEvent, type ReactNode } from "react";
 import { Link, useLocation } from "react-router-dom";
@@ -8,17 +9,6 @@ import { useCanManageSettings } from "../../lib/currency";
 import { AiMark } from "../ui/AiMark";
 import { labelOf, navGroups, settingsTabAllowed, settingsTabs, type NavGroup, type NavItem } from "./navigation";
 import { StoreSwitcher } from "./StoreSwitcher";
-
-function BrandMark() {
-  return (
-    <span
-      aria-hidden="true"
-      className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-accent text-[14px] font-bold lowercase tracking-tight text-white shadow-sm shadow-accent/30"
-    >
-      ai
-    </span>
-  );
-}
 
 type VisibleItem = NavItem & { label: string };
 
@@ -216,13 +206,9 @@ function SidebarBrand({ collapsed }: { collapsed: boolean }) {
     <Link
       to="/"
       aria-label="AI POS home"
-      className="flex h-16 shrink-0 items-center gap-3 overflow-hidden border-b border-line px-[22px] outline-none focus-visible:bg-charcoal/[0.03]"
+      className={`flex h-16 shrink-0 items-center overflow-hidden border-b border-line outline-none focus-visible:bg-charcoal/[0.03] ${collapsed ? "justify-center px-2" : "px-[22px]"}`}
     >
-      <BrandMark />
-      <span className={`min-w-0 transition-opacity duration-200 ${collapsed ? "opacity-0" : "opacity-100"}`}>
-        <span className="block whitespace-nowrap text-[15px] font-bold leading-tight tracking-tight">AI POS</span>
-        <span className="block whitespace-nowrap text-[11px] font-medium text-charcoal/45">Admin portal</span>
-      </span>
+      <BrandLogo variant={collapsed ? "mark" : "wordmark"} tone="light" alt="" className={collapsed ? "h-8 w-8" : "h-8 max-w-full"} />
     </Link>
   );
 }

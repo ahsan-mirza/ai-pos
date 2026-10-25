@@ -115,7 +115,7 @@ export function ProductImageDropzone({
           <span className="text-xs text-charcoal/50">PNG or JPG, up to 5 MB</span>
         </button>
       )}
-      {error ? <p className="mt-2 text-sm text-accent">{error}</p> : null}
+      {error ? <p className="mt-2 text-sm text-danger">{error}</p> : null}
       <input
         ref={input}
         type="file"
