@@ -101,6 +101,8 @@ To publish an installer built elsewhere, copy it into `/opt/ai-pos/downloads/pos
 
 New stores are rows in `DATABASE_URL`. The control database (`CONTROL_DATABASE_URL`, `qios_control`) still holds the tenant registry, operators, billing, and site settings. A tenant row with `data_plane=legacy` still opens the encrypted database URL. `shared` ignores that URL and uses `DATABASE_URL`.
 
+`deploy/ensure-postgres.sh` grants the `DATABASE_URL` role `CREATE` on schema `public` in both databases. Postgres 15 does not give that privilege to a role that does not own the database, and Alembic cannot create `alembic_version` without it.
+
 The API process should connect as a role that does not own the tables and does not have `BYPASSRLS`. Alembic keeps using the owner role, which sets `app.bypass_rls` only while migrating. Create the application role once, then point `DATABASE_URL` at it:
 
 ```bash
