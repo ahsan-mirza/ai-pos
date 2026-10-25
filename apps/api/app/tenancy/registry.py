@@ -79,7 +79,7 @@ def _database_exists(url: str) -> bool:
 
 @lru_cache
 def _resolve_control_url(control_url: str, operational_url: str) -> str:
-    """Use the operational database when the named control database was never created."""
+    """The console registry lives in DATABASE_URL when its old database, qios_control, is gone."""
     if control_url == operational_url or _database_exists(control_url):
         return control_url
     return operational_url
