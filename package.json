@@ -20,6 +20,7 @@
     "build:admin:prod": "pnpm --filter @ai-pos/web build",
     "build:console:dev": "pnpm --filter @ai-pos/super-admin build:dev",
     "build:console:prod": "pnpm --filter @ai-pos/super-admin build",
+    "build:site:prod": "pnpm --filter @ai-pos/site build",
     "build:pos:dev": "pnpm --filter @ai-pos/desktop tauri:build:dev",
     "build:pos:prod": "pnpm --filter @ai-pos/desktop tauri:build",
     "build:win": "pnpm --filter @ai-pos/desktop build:win",

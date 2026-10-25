@@ -1,54 +1,81 @@
+import { motion } from "framer-motion";
+import { IconBadge, type MarkName } from "./icons";
+import { lift, rise, stagger, viewport } from "./motion";
 import { SectionHeading } from "./SectionHeading";
 
-const INDUSTRIES = [
+const INDUSTRIES: { title: string; href: string; link: string; icon: MarkName; points: string[] }[] = [
   {
     title: "Restaurant POS",
+    href: "/restaurant-pos",
+    link: "Restaurant POS system",
+    icon: "utensils",
     points: ["Take orders and check out from the register.", "Run the menu, tables, and kitchen display on the restaurant profile.", "Split bills and add service charge where that profile is on."],
   },
   {
     title: "Café POS",
+    href: "/cafe-pos",
+    link: "Café POS software",
+    icon: "coffee",
     points: ["Move counter sales through the register.", "Price drink sizes and add-ons with menu modifiers.", "Keep open tabs and send tickets to the kitchen display."],
   },
   {
     title: "Retail POS",
+    href: "/retail-pos",
+    link: "Retail POS system",
+    icon: "bag",
     points: ["Sell from a product catalog and record stock.", "Scan barcodes at the register.", "Review sales from the dashboard and VAT report."],
   },
   {
     title: "Wholesale POS",
+    href: "/wholesale-pos",
+    link: "Wholesale POS software",
+    icon: "boxes",
     points: ["The Electronics & Wholesale profile sells in tiers and on account.", "Create sales orders and deliver them in parts.", "Track customer credit, statements, and cheques."],
   },
   {
     title: "Fashion POS",
+    href: "/fashion-pos",
+    link: "Fashion store POS system",
+    icon: "shirt",
     points: ["Build size and colour grids on the fashion profile.", "See which variants are in stock.", "Check out and read the same sales reports as other stores."],
   },
   {
     title: "Electronics POS",
+    href: "/electronics-pos",
+    link: "Electronics store POS software",
+    icon: "phone",
     points: ["Keep a catalog of brands, models, and stock.", "Track IMEI and serial numbers, warranties, and repair tickets.", "Record each unit through checkout and transfers."],
   },
-] as const;
+];
 
 export function Industries() {
   return (
     <section id="solutions" className="border-t border-line bg-surface">
       <div id="industries" className="mx-auto max-w-page px-4 py-16 sm:px-6 lg:px-8 lg:py-20">
         <SectionHeading kicker="Solutions" title="A profile for the way you sell.">
-          Each business type starts with its own modules. Restaurant tables stay off a fashion shop. Serial tracking stays on electronics.
+          Each business type starts with its own modules. Restaurant tables stay off a fashion shop. Serial tracking stays on electronics. Businesses selling in the UAE use the same register for checkout, stock, and the VAT report.
         </SectionHeading>
-        <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <p className="mt-4">
+          <a href="/pos-software-uae" className="text-sm font-semibold text-primary">
+            POS software for businesses in the UAE
+          </a>
+        </p>
+        <motion.div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3" initial="hidden" whileInView="show" viewport={viewport} variants={stagger}>
           {INDUSTRIES.map((item) => (
-            <article key={item.title} className="flex flex-col rounded-card border border-line bg-card p-5">
+            <motion.article key={item.title} variants={rise} whileHover={lift} className="flex flex-col rounded-card border border-line bg-card p-5">
+              <IconBadge name={item.icon} />
               <h3 className="text-lg font-semibold text-charcoal">{item.title}</h3>
               <ul className="mt-3 flex-1 space-y-2 text-sm leading-6 text-charcoal/75">
                 {item.points.map((point) => (
                   <li key={point}>{point}</li>
                 ))}
               </ul>
-              <a href="#contact" className="mt-4 inline-flex h-11 items-center text-sm font-semibold text-primary">
-                Talk to sales
+              <a href={item.href} className="mt-4 inline-flex h-11 items-center text-sm font-semibold text-primary">
+                {item.link}
               </a>
-            </article>
+            </motion.article>
           ))}
-        </div>
+        </motion.div>
       </div>
     </section>
   );

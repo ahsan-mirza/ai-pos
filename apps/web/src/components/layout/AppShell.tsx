@@ -5,6 +5,7 @@ import { useTenant } from "../../context/TenantContext";
 import { FirstWinChecklist } from "../../features/onboarding/FirstWinChecklist";
 import { PracticeBanner, PracticeProvider, TaxPortalBanner } from "../../features/onboarding/practice";
 import { industryAllows } from "../../lib/industry";
+import { portalHomePath } from "../../lib/portal-home";
 import { StoreScopeProvider } from "../../lib/storeScope";
 import { Header } from "./Header";
 import { Sidebar } from "./Sidebar";
@@ -74,7 +75,7 @@ function IndustryGate() {
       <section className="m-6 max-w-lg rounded-card border border-line bg-white p-8">
         <h1 className="text-xl font-semibold">Not part of this portal</h1>
         <p className="mt-2 text-sm text-charcoal/70">{name} does not use this page.</p>
-        <Link to="/" className="mt-4 inline-block text-sm font-semibold text-accent">
+        <Link to={portalHomePath()} className="mt-4 inline-block text-sm font-semibold text-accent">
           Back to the dashboard
         </Link>
       </section>

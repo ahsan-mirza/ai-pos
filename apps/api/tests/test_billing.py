@@ -11,12 +11,13 @@ from sqlalchemy.orm import Session
 
 from app.console.billing import cycle_amount, ensure_catalog, quote_for
 from app.console.security import OperatorPrincipal
-from app.console.site import normalize_whatsapp, set_contact
+from app.console.site import invalidate_contact_cache, normalize_whatsapp, set_contact
 from app.core.config import get_settings
 from app.core.database import build_engine
 from app.core.errors import ApiError
 from app.main import create_app
 from app.schemas.billing import AddonQty
+from app.schemas.site import SiteContactIn
 from app.tenancy import registry
 from app.tenancy.models import BillingPlan, ControlBase, Operator
 
@@ -90,6 +91,7 @@ def test_public_catalog_lists_the_seed_plans_without_a_tenant(tmp_path) -> None:
             os.environ.pop("CONTROL_DATABASE_URL", None)
         else:
             os.environ["CONTROL_DATABASE_URL"] = previous
+        invalidate_contact_cache()
         get_settings.cache_clear()
         registry.invalidate()
         registry._control_factory.cache_clear()
@@ -131,7 +133,7 @@ def test_public_contact_shows_the_number_saved_for_the_landing_page(tmp_path) ->
                 id=operator_id, email="it@axizpos.com", full_name="IT", role="ADMIN", ip=None
             )
             with Session(engine) as db:
-                set_contact(db, operator, "+971 50 123 4567", "Landing page chat")
+                set_contact(db, operator, SiteContactIn(whatsapp="+971 50 123 4567", reason="Landing page chat"))
             saved = client.get("/api/v1/site/contact")
             assert saved.status_code == 200, saved.text
             assert saved.json()["whatsapp"] == "971501234567"
@@ -141,6 +143,7 @@ def test_public_contact_shows_the_number_saved_for_the_landing_page(tmp_path) ->
             os.environ.pop("CONTROL_DATABASE_URL", None)
         else:
             os.environ["CONTROL_DATABASE_URL"] = previous
+        invalidate_contact_cache()
         get_settings.cache_clear()
         registry.invalidate()
         registry._control_factory.cache_clear()

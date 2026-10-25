@@ -3,6 +3,11 @@ import { SectionHeading } from "./SectionHeading";
 
 const ITEMS = [
   {
+    question: "What does the AI do?",
+    answer:
+      "Managers with report access can ask the assistant about sales, profit, stock, staff, expenses, customer balances, credit risk, and what to reorder. AI insights flag unusual cashier activity, prices to change, and shrink, and each signal says why it fired. Restaurant and café profiles also get a kitchen agent for what to order, use first, or take off the menu. The numbers come from that store. The assistant does not invent a figure.",
+  },
+  {
     question: "What is AxizPOS?",
     answer:
       "AxizPOS is a point of sale register and an admin portal. Staff sell at the till. Managers look after products, stock, customers, users, and the reports the store has recorded.",

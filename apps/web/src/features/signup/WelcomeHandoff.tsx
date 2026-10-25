@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { ApiRequestError } from "../../lib/api";
 import { useAuth } from "../../lib/auth";
+import { portalHomePath, portalSignInPath } from "../../lib/portal-home";
 
 /** Opened from signup on the new store's address; asks the checklist to start open. */
 export const CHECKLIST_OPEN_KEY = "ai-pos.checklist-open";
@@ -26,7 +27,7 @@ export function WelcomeHandoff({ onDone }: { onDone: () => void }) {
     pending
       .then(() => {
         sessionStorage.setItem(CHECKLIST_OPEN_KEY, "1");
-        window.history.replaceState(null, "", "/");
+        window.history.replaceState(null, "", portalHomePath());
         onDone();
       })
       .catch((caught: unknown) => {
@@ -47,8 +48,7 @@ export function WelcomeHandoff({ onDone }: { onDone: () => void }) {
             <h1 className="text-xl font-semibold">Sign in to continue</h1>
             <p className="mt-2 text-sm text-charcoal/60">{error}</p>
             <a
-              href="/"
-              onClick={() => window.history.replaceState(null, "", "/")}
+              href={portalSignInPath()}
               className="mt-6 inline-flex h-11 items-center rounded-2xl bg-accent px-6 font-semibold text-white"
             >
               Go to sign-in

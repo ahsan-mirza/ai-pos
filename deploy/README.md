@@ -1,6 +1,6 @@
 # Deployment
 
-- **API, admin portal, and console:** `.github/workflows/deploy.yml` runs after `CI` passes on `main` (or by hand from the Actions tab). It builds the portal and the console, copies `apps/api` and `packages/catalog` to the server, installs Python packages, migrates the control and tenant databases, restarts `ai-pos-api`, waits for `/health`, and only then replaces the portal and console files. The console is at `/admin74246/`.
+- **API, admin portal, landing page, and console:** `.github/workflows/deploy.yml` runs after `CI` passes on `main` (or by hand from the Actions tab). It builds the portal, the marketing site, and the console, copies `apps/api` and `packages/catalog` to the server, installs Python packages, migrates the control and tenant databases, restarts `ai-pos-api`, waits for `/health`, and only then replaces the portal, landing page, and console files. `https://axizpos.com/` is the landing page. Sign-in is `https://axizpos.com/login` and signup is `https://axizpos.com/signup`. The console is at `/admin74246/`.
 - **POS installer:** `.github/workflows/release-pos.yml` builds the Windows installers when a `v*.*.*` tag is pushed, attaches the `.exe` and `.msi` to a GitHub Release, and copies them to the server so Super Admins can download them from the portal's **Downloads** page.
 
 Server layout:
@@ -12,6 +12,7 @@ Server layout:
 | `/opt/ai-pos/packages/catalog` | seed data read by `app/seed.py` |
 | `/opt/ai-pos/downloads/pos/<version>` | POS installers and `manifest.json`, published by the release workflow (`DOWNLOADS_DIR`) |
 | `/var/www/ai-pos-admin` | built admin portal |
+| `/var/www/ai-pos-site` | built landing page, served at `https://axizpos.com/` |
 | `/var/www/ai-pos-console` | built console, served at `/admin74246/` |
 
 ## First-time server setup
@@ -83,7 +84,7 @@ Server layout:
    APP_ENV=production .venv/bin/python -m app.tenancy.cli create client1 --name "Client One"
    ```
 
-   The portal is then at `http://<public-ip>/`. Sign in with store code `client1` and the Super Admin from `ADMIN_*` in `/opt/ai-pos/.env.production`.
+   On the public IP, the portal is at `http://<public-ip>/`. On `axizpos.com`, the landing page is `/` and sign-in is `/login`. Sign in with store code `client1` and the Super Admin from `ADMIN_*` in `/opt/ai-pos/.env.production`.
 
 ## Releasing the POS installer
 
@@ -105,3 +106,13 @@ cd /opt/ai-pos/apps/api && APP_ENV=production .venv/bin/python -m app.tenancy.cl
 ```
 
 To roll back, re-run **Deploy** from the Actions tab on an earlier successful run. Migrations are not reversed automatically.
+
+## Search Console
+
+The public site is `https://axizpos.com/`. Canonical URLs use that origin. `www.axizpos.com` serves the same files today; add the `https://axizpos.com` property in Google Search Console, not a localhost or staging host.
+
+Verification is optional and is not configured in this repository. To add an HTML-tag token, set `VITE_GOOGLE_SITE_VERIFICATION` in the production build environment and redeploy the landing page. The token is written only into `<meta name="google-site-verification">`. Do not commit the token. This repository does not install an analytics tag.
+
+After the property is verified, submit `https://axizpos.com/sitemap.xml`. The sitemap lists the homepage and the public industry pages. It does not list `/login`, `/signup`, or `/admin74246/`. The portal shell sends `noindex`. The console already sends `noindex`. `robots.txt` disallows `/admin74246/` and `/api/` and still allows the marketing pages and their CSS and JavaScript.
+
+Search Console setup and indexing are manual. A deploy does not verify the property or submit the sitemap.

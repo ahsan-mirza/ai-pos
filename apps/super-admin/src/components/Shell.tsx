@@ -49,7 +49,7 @@ const groups: { label: string; items: NavItem[] }[] = [
 ];
 
 const settingsSections: Record<string, string> = {
-  "/settings/landing": "Landing",
+  "/settings/whatsapp": "WhatsApp Sales Contact",
   "/settings/email": "Email",
 };
 

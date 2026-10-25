@@ -20,6 +20,7 @@ export {
 export { BrandLogo } from "./BrandLogo";
 export { inputLeadingIcon, type InputIconHints } from "./inputIcon";
 export { PageSizeSelect } from "./PageSizeSelect";
+export { isValidE164, PhoneField } from "./PhoneField";
 export { SearchableSpecSelect, type SearchableSpecSelectProps } from "./SearchableSpecSelect";
 export { Select, billingCycleBadge, billingCycleOption, type SelectOption, type SelectProps } from "./Select";
 export {

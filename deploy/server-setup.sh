@@ -16,6 +16,7 @@ DEPLOY_USER="${SUDO_USER:-ubuntu}"
 APP_ROOT=/opt/ai-pos
 WEB_ROOT=/var/www/ai-pos-admin
 CONSOLE_ROOT=/var/www/ai-pos-console
+SITE_ROOT=/var/www/ai-pos-site
 
 echo "==> Packages"
 export DEBIAN_FRONTEND=noninteractive
@@ -39,8 +40,8 @@ done
 netfilter-persistent save
 
 echo "==> Directories"
-mkdir -p "$APP_ROOT/apps/api" "$APP_ROOT/packages" "$APP_ROOT/downloads/pos" "$WEB_ROOT" "$CONSOLE_ROOT"
-chown -R "$DEPLOY_USER:$DEPLOY_USER" "$APP_ROOT" "$WEB_ROOT" "$CONSOLE_ROOT"
+mkdir -p "$APP_ROOT/apps/api" "$APP_ROOT/packages" "$APP_ROOT/downloads/pos" "$WEB_ROOT" "$CONSOLE_ROOT" "$SITE_ROOT"
+chown -R "$DEPLOY_USER:$DEPLOY_USER" "$APP_ROOT" "$WEB_ROOT" "$CONSOLE_ROOT" "$SITE_ROOT"
 
 if [[ ! -x "$APP_ROOT/apps/api/.venv/bin/python" ]]; then
   echo "==> Python virtual environment"
@@ -68,12 +69,15 @@ echo "==> nginx (HTTP, plus HTTPS when the existing certificate is on this host)
 install -d /etc/nginx/snippets /var/www/html
 SITE=/etc/nginx/sites-available/ai-pos.conf
 SHARED=/etc/nginx/snippets/ai-pos.shared.conf
+APEX=/etc/nginx/snippets/ai-pos.apex.conf
 HTTPS_SNIPPET=/etc/nginx/snippets/ai-pos.https.conf
 backup="$(mktemp -d)"
 [[ -f "$SITE" ]] && cp "$SITE" "$backup/site"
 [[ -f "$SHARED" ]] && cp "$SHARED" "$backup/shared"
+[[ -f "$APEX" ]] && cp "$APEX" "$backup/apex"
 [[ -f "$HTTPS_SNIPPET" ]] && cp "$HTTPS_SNIPPET" "$backup/https"
 cp "$HERE/nginx/ai-pos.shared.conf" "$SHARED"
+cp "$HERE/nginx/ai-pos.apex.conf" "$APEX"
 CERT=/etc/letsencrypt/live/axizpos.com/fullchain.pem
 KEY=/etc/letsencrypt/live/axizpos.com/privkey.pem
 if [[ -f "$CERT" && -f "$KEY" ]]; then
@@ -102,6 +106,7 @@ if ! nginx -t; then
   echo "nginx config test failed; the running site is unchanged." >&2
   [[ -f "$backup/site" ]] && cp "$backup/site" "$SITE" || rm -f "$SITE"
   [[ -f "$backup/shared" ]] && cp "$backup/shared" "$SHARED" || rm -f "$SHARED"
+  [[ -f "$backup/apex" ]] && cp "$backup/apex" "$APEX" || rm -f "$APEX"
   [[ -f "$backup/https" ]] && cp "$backup/https" "$HTTPS_SNIPPET" || rm -f "$HTTPS_SNIPPET"
   for name in "${disabled[@]}"; do
     [[ -f "$backup/$name" ]] && mv "$backup/$name" "/etc/nginx/sites-enabled/$name"

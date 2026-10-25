@@ -113,43 +113,137 @@ export function aed(fils: number): string {
   }).format(fils / 100);
 }
 
+export const STORE_MIN = 1;
+export const STORE_MAX = 24;
+
 export interface Estimate {
+  stores: number;
   registers: number;
-  software: number;
-  lease: number | null;
-  deposit: number | null;
-  saving: number | null;
+  cycle: Cycle;
+  /** Discounted package for every store over this cycle. */
+  packageFils: number;
+  /** Same package with the cycle discount removed. */
+  packageListFils: number;
+  /** Package list minus the discounted package. Hardware, fees, and deposits are excluded. */
+  savingFils: number;
+  /** Face-value hardware rent for one month, one lease per included register. */
+  leaseMonthlyFils: number | null;
+  /** Face-value hardware rent for the whole cycle. The cycle discount does not apply. */
+  leaseCycleFils: number | null;
+  depositFils: number | null;
+  protectionMonthlyFils: number | null;
+  protectionCycleFils: number | null;
+  /** Onboarding once per store, the same count the payback figure already used. */
+  onboardingFils: number | null;
+  onboardingUnitFils: number | null;
+  recurringCycleFils: number;
+  dueNowFils: number;
+  nextCycleFils: number;
+  /** Discounted package for one store for the whole cycle. */
+  perStoreFils: number;
+  discountPercent: number;
   paybackMonths: number | null;
-  discountPercent: number | null;
-  cycleName: string | null;
-  onboarding: number | null;
+  /** Cycle with the lowest effective monthly package price, when it beats paying monthly. */
+  bestValueCode: string | null;
 }
 
-export function estimate(plan: Plan, stores: number, catalog: PublicCatalog): Estimate {
-  const hardware = catalog.addons.find((addon) => addon.code === "hardware_lease");
-  const onboarding = catalog.fees.find((fee) => fee.code === "onboarding");
-  const annual = catalog.cycles.find((cycle) => cycle.code === "ANNUAL");
-  const registers = plan.included_registers * stores;
-  let saving: number | null = null;
-  let paybackMonths: number | null = null;
-  if (annual && annual.months > 0) {
-    const list = plan.monthly_fils * annual.months * stores;
-    const paid = cycleAmount(plan.monthly_fils, annual.months, annual.discount_bps) * stores;
-    saving = list - paid;
-    const perMonth = saving / annual.months;
-    if (onboarding && perMonth > 0) paybackMonths = (onboarding.amount_fils * stores) / perMonth;
+function clampStores(stores: number): number {
+  if (!Number.isFinite(stores)) return STORE_MIN;
+  return Math.min(STORE_MAX, Math.max(STORE_MIN, Math.trunc(stores)));
+}
+
+/** Lowest effective monthly package price. A tie prefers the longer cycle. */
+export function bestValueCycle(plan: Plan, cycles: Cycle[]): string | null {
+  let best: { code: string; monthly: number; months: number } | null = null;
+  for (const cycle of cycles) {
+    if (cycle.months < 1) continue;
+    const monthly = cycleAmount(plan.monthly_fils, cycle.months, cycle.discount_bps) / cycle.months;
+    const cheaper = best === null || monthly < best.monthly - 1e-6;
+    const tie = best !== null && Math.abs(monthly - best.monthly) <= 1e-6 && cycle.months > best.months;
+    if (cheaper || tie) best = { code: cycle.code, monthly, months: cycle.months };
   }
+  if (best === null) return null;
+  const undiscounted = cycles.find((cycle) => cycle.months === 1 && cycle.discount_bps === 0);
+  if (undiscounted && best.code === undiscounted.code) return null;
+  return best.code;
+}
+
+export function estimate(
+  plan: Plan,
+  stores: number,
+  catalog: PublicCatalog,
+  cycleCode: string,
+  options?: { protection?: boolean },
+): Estimate {
+  const count = clampStores(stores);
+  const cycle =
+    catalog.cycles.find((item) => item.code === cycleCode) ??
+    catalog.cycles.find((item) => item.code === "ANNUAL") ??
+    catalog.cycles[0] ??
+    { code: "MONTHLY", name: "Monthly", months: 1, discount_bps: 0 };
+  const hardware = catalog.addons.find((addon) => addon.code === "hardware_lease");
+  const protection = catalog.addons.find((addon) => addon.code === "equipment_protection");
+  const onboarding = catalog.fees.find((fee) => fee.code === "onboarding");
+  const registers = plan.included_registers * count;
+  const perStoreFils = cycleAmount(plan.monthly_fils, cycle.months, cycle.discount_bps);
+  const packageFils = perStoreFils * count;
+  const packageListFils = plan.monthly_fils * cycle.months * count;
+  const savingFils = packageListFils - packageFils;
+  const leaseMonthlyFils = hardware ? hardware.monthly_fils * registers : null;
+  const leaseCycleFils = leaseMonthlyFils === null ? null : leaseMonthlyFils * cycle.months;
+  const depositFils = hardware && hardware.one_time_fils > 0 ? hardware.one_time_fils * registers : null;
+  const protectionOn = options?.protection === true && protection !== undefined;
+  const protectionMonthlyFils = protectionOn ? protection.monthly_fils * registers : null;
+  const protectionCycleFils = protectionMonthlyFils === null ? null : protectionMonthlyFils * cycle.months;
+  const onboardingUnitFils = onboarding?.amount_fils ?? null;
+  const onboardingFils = onboardingUnitFils === null ? null : onboardingUnitFils * count;
+  const recurringCycleFils = packageFils + (leaseCycleFils ?? 0) + (protectionCycleFils ?? 0);
+  const dueNowFils = recurringCycleFils + (onboardingFils ?? 0) + (depositFils ?? 0);
+  const perMonth = cycle.months > 0 ? savingFils / cycle.months : 0;
+  const paybackMonths =
+    onboardingUnitFils !== null && perMonth > 0 ? (onboardingUnitFils * count) / perMonth : null;
   return {
+    stores: count,
     registers,
-    software: plan.monthly_fils * stores,
-    lease: hardware ? hardware.monthly_fils * registers : null,
-    deposit: hardware && hardware.one_time_fils > 0 ? hardware.one_time_fils * registers : null,
-    saving,
+    cycle,
+    packageFils,
+    packageListFils,
+    savingFils,
+    leaseMonthlyFils,
+    leaseCycleFils,
+    depositFils,
+    protectionMonthlyFils,
+    protectionCycleFils,
+    onboardingFils,
+    onboardingUnitFils,
+    recurringCycleFils,
+    dueNowFils,
+    nextCycleFils: recurringCycleFils,
+    perStoreFils,
+    discountPercent: cycle.discount_bps / 100,
     paybackMonths,
-    discountPercent: annual ? annual.discount_bps / 100 : null,
-    cycleName: annual?.name ?? null,
-    onboarding: onboarding?.amount_fils ?? null,
+    bestValueCode: bestValueCycle(plan, catalog.cycles),
   };
+}
+
+/** Short note for the existing demo form. Not a binding quote. */
+export function estimateNote(plan: Plan, quote: Estimate): string {
+  const storeWord = quote.stores === 1 ? "store" : "stores";
+  const registerWord = quote.registers === 1 ? "register" : "registers";
+  const lines = [
+    "AxizPOS estimate, not a final quote.",
+    `${plan.name}, ${quote.stores} ${storeWord}, ${quote.registers} included ${registerWord}, ${quote.cycle.name} (${quote.discountPercent}% off the package).`,
+    `Package this cycle: ${aed(quote.packageFils)}.`,
+    quote.leaseCycleFils !== null ? `Hardware lease this cycle: ${aed(quote.leaseCycleFils)}.` : "",
+    quote.protectionCycleFils !== null ? `Equipment protection this cycle: ${aed(quote.protectionCycleFils)}.` : "",
+    quote.onboardingFils !== null ? `Onboarding: ${aed(quote.onboardingFils)} once.` : "",
+    quote.depositFils !== null ? `Refundable deposit: ${aed(quote.depositFils)}.` : "",
+    `Due at the start: ${aed(quote.dueNowFils)}.`,
+    quote.savingFils > 0
+      ? `Package saving vs monthly over ${quote.cycle.months} ${quote.cycle.months === 1 ? "month" : "months"}: ${aed(quote.savingFils)}.`
+      : "",
+  ];
+  return lines.filter((line) => line.length > 0).join(" ").slice(0, 500);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

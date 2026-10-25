@@ -25,15 +25,18 @@ export function GhostButton({ className = "", ...props }: ButtonHTMLAttributes<H
 export function Field({
   label,
   hint,
+  error,
   className = "",
   type,
   autoComplete,
+  multiline = false,
+  rows = 4,
   ...props
-}: InputHTMLAttributes<HTMLInputElement> & { label: string; hint?: string }) {
+}: InputHTMLAttributes<HTMLInputElement> & { label: string; hint?: string; error?: string; multiline?: boolean; rows?: number }) {
   const id = useId();
   const [showPassword, setShowPassword] = useState(false);
   const isPassword = type === "password";
-  const multiline = /\bdescription\b/i.test(label);
+  const isMultiline = multiline || /\bdescription\b/i.test(label);
   const Icon = inputLeadingIcon({
     type,
     autoComplete: typeof autoComplete === "string" ? autoComplete : undefined,
@@ -48,14 +51,16 @@ export function Field({
       {label}
       <span className="relative mt-1.5 block">
         <Icon
-          className={`pointer-events-none absolute left-3 h-5 w-5 text-gray-400 ${multiline ? "top-3.5" : "top-1/2 -translate-y-1/2"}`}
+          className={`pointer-events-none absolute left-3 h-5 w-5 text-gray-400 ${isMultiline ? "top-3.5" : "top-1/2 -translate-y-1/2"}`}
           aria-hidden="true"
         />
-        {multiline ? (
+        {isMultiline ? (
           <textarea
             id={id}
-            rows={3}
+            rows={rows}
             {...(props as TextareaHTMLAttributes<HTMLTextAreaElement>)}
+            aria-invalid={error ? true : undefined}
+            aria-describedby={error ? `${id}-error` : undefined}
             className="min-h-24 w-full resize-y rounded-xl border border-transparent bg-surface py-3 pl-10 pr-4 text-sm font-normal text-charcoal transition placeholder:text-charcoal/40 focus:border-orange-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-orange-500 disabled:cursor-not-allowed disabled:text-charcoal/50"
           />
         ) : (
@@ -64,12 +69,14 @@ export function Field({
           type={isPassword && showPassword ? "text" : type}
           autoComplete={autoComplete}
           {...props}
+          aria-invalid={error ? true : undefined}
+          aria-describedby={error ? `${id}-error` : undefined}
           className={`w-full rounded-xl border border-transparent bg-surface py-3 pl-10 text-sm font-normal text-charcoal transition placeholder:text-charcoal/40 focus:border-orange-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-orange-500 disabled:cursor-not-allowed disabled:text-charcoal/50 ${
             isPassword ? "pr-12" : "pr-4"
           }`}
         />
         )}
-        {isPassword && !multiline ? (
+        {isPassword && !isMultiline ? (
           <button
             type="button"
             tabIndex={-1}
@@ -83,7 +90,13 @@ export function Field({
           </button>
         ) : null}
       </span>
-      {hint ? <span className="mt-1.5 block text-xs font-normal text-charcoal/50">{hint}</span> : null}
+      {error ? (
+        <span id={`${id}-error`} className="mt-1.5 block text-xs font-normal text-danger">
+          {error}
+        </span>
+      ) : hint ? (
+        <span className="mt-1.5 block text-xs font-normal text-charcoal/50">{hint}</span>
+      ) : null}
     </label>
   );
 }

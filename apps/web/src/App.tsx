@@ -6,6 +6,7 @@ import { ConfirmProvider } from "./components/ui/ConfirmDialog";
 import { DashboardPage } from "./features/analytics/DashboardPage";
 import { AuditPage } from "./features/audit/AuditPage";
 import { LoginPage } from "./features/auth/LoginPage";
+import { portalHomePath } from "./lib/portal-home";
 import { CustomersPage } from "./features/customers/CustomersPage";
 import { CustomerStatementPage } from "./features/customers/CustomerStatementPage";
 import { BatchesPage } from "./features/inventory/batches/BatchesPage";
@@ -140,6 +141,14 @@ function RequireCapability({ capability, children }: { capability: Capability; c
   );
 }
 
+function DashboardRoute() {
+  return (
+    <RequirePermission permission={Permission.PortalReportsRead}>
+      <DashboardPage />
+    </RequirePermission>
+  );
+}
+
 function Portal() {
   const { status } = useAuth();
   const [welcoming, setWelcoming] = useState(isWelcomeHandoff);
@@ -217,14 +226,8 @@ function Portal() {
             />
           </Route>
           <Route element={<PageFrame />}>
-          <Route
-            index
-            element={
-              <RequirePermission permission={Permission.PortalReportsRead}>
-                <DashboardPage />
-              </RequirePermission>
-            }
-          />
+          <Route index element={<DashboardRoute />} />
+          <Route path="dashboard" element={<DashboardRoute />} />
           <Route
             path="customers"
             element={
@@ -515,7 +518,7 @@ function Portal() {
               />
             </Route>
           </Route>
-          <Route path="*" element={<Navigate to="/" replace />} />
+          <Route path="*" element={<Navigate to={portalHomePath()} replace />} />
         </Route>
       </Routes>
     </BrowserRouter>

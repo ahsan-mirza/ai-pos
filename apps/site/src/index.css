@@ -23,3 +23,239 @@ html.dark {
     scroll-behavior: auto;
   }
 }
+
+/* Gemini-style aurora. Color lives on the layer; motion is transform only. */
+.ai-ambient {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+  mask-image: linear-gradient(to bottom, #000 70%, transparent 100%);
+}
+
+.ai-ambient-mesh {
+  position: absolute;
+  top: -30%;
+  left: -10%;
+  width: 120%;
+  height: 150%;
+  background: conic-gradient(
+    from 120deg at 40% 40%,
+    rgb(242 106 33 / 0.55),
+    rgb(99 102 241 / 0.45),
+    rgb(56 189 248 / 0.28),
+    rgb(217 70 239 / 0.35),
+    rgb(251 191 36 / 0.4),
+    rgb(242 106 33 / 0.55)
+  );
+  filter: blur(72px);
+  mix-blend-mode: screen;
+  opacity: 0.55;
+  animation: ai-mesh 18s linear infinite;
+  will-change: transform;
+}
+
+.ai-ambient-field {
+  position: absolute;
+  border-radius: 9999px;
+  filter: blur(28px);
+  mix-blend-mode: screen;
+  will-change: transform;
+}
+
+.ai-ambient-orange {
+  top: -12rem;
+  left: -8rem;
+  width: 36rem;
+  height: 36rem;
+  background: radial-gradient(circle, rgb(242 106 33 / 0.85) 0%, rgb(249 115 22 / 0.28) 42%, transparent 70%);
+  animation: ai-drift-orange 11s ease-in-out infinite alternate;
+}
+
+.ai-ambient-violet {
+  top: -4rem;
+  right: -6rem;
+  width: 32rem;
+  height: 32rem;
+  background: radial-gradient(circle, rgb(139 92 246 / 0.75) 0%, rgb(99 102 241 / 0.22) 46%, transparent 72%);
+  animation: ai-drift-violet 13s ease-in-out infinite alternate;
+}
+
+.ai-ambient-blue {
+  top: 30%;
+  left: 28%;
+  width: 26rem;
+  height: 26rem;
+  background: radial-gradient(circle, rgb(56 189 248 / 0.55) 0%, rgb(99 102 241 / 0.16) 50%, transparent 72%);
+  animation: ai-drift-blue 9s ease-in-out infinite alternate;
+}
+
+.ai-ambient-amber {
+  right: 8%;
+  bottom: -8rem;
+  width: 28rem;
+  height: 28rem;
+  background: radial-gradient(circle, rgb(251 191 36 / 0.55) 0%, rgb(242 106 33 / 0.16) 48%, transparent 70%);
+  animation: ai-drift-amber 15s ease-in-out infinite alternate;
+}
+
+.hero-accent {
+  background-image: linear-gradient(100deg, #fb923c 0%, #fde68a 22%, #e9d5ff 48%, #7dd3fc 68%, #fdba74 100%);
+  background-size: 220% 100%;
+  background-clip: text;
+  -webkit-background-clip: text;
+  color: transparent;
+  animation: hero-shimmer 6s ease-in-out infinite;
+}
+
+.ai-ambient-grain {
+  position: absolute;
+  inset: 0;
+  opacity: 0.04;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.55'/%3E%3C/svg%3E");
+  background-size: 160px 160px;
+  mix-blend-mode: soft-light;
+}
+
+html.dark .ai-ambient-grain,
+.hero-showcase .ai-ambient-grain {
+  opacity: 0.07;
+}
+
+.walkthrough-card {
+  color-scheme: light;
+}
+
+.walkthrough-card input,
+.walkthrough-card select,
+.walkthrough-card textarea {
+  background-color: rgb(248 250 252 / 0.8);
+  color: #0f172a;
+}
+
+.walkthrough-card input:focus,
+.walkthrough-card select:focus,
+.walkthrough-card textarea:focus {
+  background-color: #fff;
+}
+
+.walkthrough-select {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='none' stroke='%2364748b' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 6l4 4 4-4'/%3E%3C/svg%3E");
+  background-position: right 1rem center;
+  background-repeat: no-repeat;
+  background-size: 1rem;
+}
+
+.hero-caret {
+  animation: hero-caret 1s steps(1) infinite;
+}
+
+.hero-device {
+  transform: perspective(1200px) rotateY(-8deg) rotateX(4deg);
+  transform-origin: center center;
+}
+
+@keyframes hero-caret {
+  0%,
+  45% {
+    opacity: 1;
+  }
+  50%,
+  100% {
+    opacity: 0;
+  }
+}
+
+@media (max-width: 1023px) {
+  .hero-device {
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hero-caret {
+    animation: none;
+  }
+}
+
+@keyframes ai-mesh {
+  from {
+    transform: rotate(0deg) scale(1);
+  }
+  to {
+    transform: rotate(360deg) scale(1.08);
+  }
+}
+
+@keyframes ai-drift-orange {
+  from {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  to {
+    transform: translate3d(18%, 14%, 0) scale(1.18);
+  }
+}
+
+@keyframes ai-drift-violet {
+  from {
+    transform: translate3d(0, 0, 0) scale(1.05);
+  }
+  to {
+    transform: translate3d(-16%, 18%, 0) scale(0.9);
+  }
+}
+
+@keyframes ai-drift-blue {
+  from {
+    transform: translate3d(0, 0, 0) scale(0.92);
+  }
+  to {
+    transform: translate3d(12%, -16%, 0) scale(1.15);
+  }
+}
+
+@keyframes ai-drift-amber {
+  from {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  to {
+    transform: translate3d(-14%, -12%, 0) scale(1.16);
+  }
+}
+
+@keyframes hero-shimmer {
+  0%,
+  100% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+}
+
+@media (max-width: 639px) {
+  .ai-ambient-amber,
+  .ai-ambient-blue {
+    display: none;
+  }
+
+  .ai-ambient-orange,
+  .ai-ambient-violet {
+    width: 22rem;
+    height: 22rem;
+  }
+
+  .ai-ambient-mesh {
+    animation: none;
+    filter: blur(40px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ai-ambient-field,
+  .ai-ambient-mesh,
+  .hero-accent {
+    animation: none;
+  }
+}

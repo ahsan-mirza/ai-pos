@@ -3,6 +3,7 @@ import { FlaskConical, ShieldAlert } from "lucide-react";
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { useLocation } from "react-router-dom";
 import { apiGet } from "../../lib/api";
+import { portalHomePath } from "../../lib/portal-home";
 import { useCanManageSettings, useCurrency } from "../../lib/currency";
 import { GoLiveModal } from "./GoLiveModal";
 
@@ -57,7 +58,7 @@ export function PracticeProvider({ children }: { children: ReactNode }) {
     apiGet<BusinessSettings>("/api/v1/settings")
       .then(applySettings)
       .catch(() => undefined)
-      .finally(() => window.location.assign("/"));
+      .finally(() => window.location.assign(portalHomePath()));
   }, [applySettings]);
 
   const value = useMemo<PracticeState>(

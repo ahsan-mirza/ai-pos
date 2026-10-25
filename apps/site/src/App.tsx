@@ -9,20 +9,25 @@ import { Footer } from "./components/Footer";
 import { Hero } from "./components/Hero";
 import { HowItWorks } from "./components/HowItWorks";
 import { Industries } from "./components/Industries";
+import { Intelligence } from "./components/Intelligence";
 import { Navbar } from "./components/Navbar";
 import { Pricing } from "./components/Pricing";
-import { SectionHeading } from "./components/SectionHeading";
 import { Showcase } from "./components/Showcase";
 import { WhatsAppButton } from "./components/WhatsAppButton";
-import { apiBaseUrl } from "./env";
+import { apiBaseUrl, signupUrl } from "./env";
 import { useSiteTheme } from "./theme";
+import { IndustryPage } from "./pages/IndustryPage";
+import { seoPage } from "./seo";
+import { EMPTY_WHATSAPP, parsePublicWhatsApp, type PublicWhatsApp } from "./whatsapp";
 
 export function App() {
   const { theme, toggle } = useSiteTheme();
   const [catalog, setCatalog] = useState<PublicCatalog>(SEED);
   const [live, setLive] = useState(false);
   const [demoOpen, setDemoOpen] = useState(false);
-  const [whatsapp, setWhatsapp] = useState("");
+  const [quoteDraft, setQuoteDraft] = useState<string | null>(null);
+  const [contact, setContact] = useState<PublicWhatsApp>(EMPTY_WHATSAPP);
+  const [contactStatus, setContactStatus] = useState<"loading" | "ready" | "unavailable">("loading");
 
   useEffect(() => {
     let cancelled = false;
@@ -33,69 +38,92 @@ export function App() {
     });
     fetch(`${apiBaseUrl}/api/v1/site/contact`)
       .then(async (response) => {
-        if (!response.ok) return "";
-        const body = (await response.json()) as { whatsapp?: unknown };
-        return typeof body.whatsapp === "string" ? body.whatsapp : "";
+        if (!response.ok) throw new Error("contact");
+        return parsePublicWhatsApp(await response.json());
       })
-      .then((number) => {
-        if (!cancelled) setWhatsapp(number);
+      .then((next) => {
+        if (cancelled) return;
+        setContact(next);
+        setContactStatus("ready");
       })
       .catch(() => {
-        if (!cancelled) setWhatsapp("");
+        if (cancelled) return;
+        setContact(EMPTY_WHATSAPP);
+        setContactStatus("unavailable");
       });
     return () => {
       cancelled = true;
     };
   }, []);
 
+  const industry = seoPage(document.documentElement.dataset.page ?? "home");
+  const atHome = industry === undefined || industry.id === "home";
+
   return (
     <div className="min-h-screen bg-canvas text-charcoal">
-      <a href="#top" className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:rounded-2xl focus:bg-card focus:px-4 focus:py-2">
+      <a href="#content" className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:rounded-2xl focus:bg-card focus:px-4 focus:py-2">
         Skip to content
       </a>
-      <Navbar theme={theme} onToggleTheme={toggle} onDemo={() => setDemoOpen(true)} />
-      <main>
+      <Navbar atHome={atHome} theme={theme} onToggleTheme={toggle} onDemo={() => setDemoOpen(true)} />
+      <main id="content">
+        {industry && industry.id !== "home" ? (
+          <IndustryPage page={industry} contact={contact} contactStatus={contactStatus} onDemo={() => setDemoOpen(true)} />
+        ) : (
+          <>
         <Hero onDemo={() => setDemoOpen(true)} />
+        <Intelligence />
         <Industries />
         <Features />
         <HowItWorks />
         <Showcase />
         <Benefits />
-        <Pricing catalog={catalog} live={live} />
+        <Pricing
+          catalog={catalog}
+          live={live}
+          onDemo={(note) => {
+            setQuoteDraft(note);
+            setDemoOpen(true);
+          }}
+          onQuote={(note) => {
+            setQuoteDraft(note);
+            document.getElementById("contact")?.scrollIntoView({ behavior: "smooth" });
+          }}
+        />
         <Faq />
         <section id="contact" className="border-t border-line bg-charcoal text-canvas">
-          <div className="mx-auto grid max-w-page gap-10 px-4 py-16 sm:px-6 lg:grid-cols-[1fr_1fr] lg:px-8 lg:py-20">
+          <div className="mx-auto grid max-w-page gap-10 px-4 py-16 sm:px-6 lg:grid-cols-[minmax(0,20rem)_minmax(0,1fr)] lg:items-start lg:gap-12 lg:px-8 lg:py-20">
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.14em] text-primary">Next step</p>
-              <h2 className="mt-2 text-3xl font-semibold tracking-tight sm:text-4xl">Ready to Run Your Business Smarter?</h2>
+              <h2 className="mt-2 text-3xl font-semibold tracking-tight sm:text-4xl">Ready to ask the store?</h2>
               <p className="mt-3 max-w-md text-base leading-7 text-canvas/80">
-                Discover how AxizPOS can simplify your daily operations and help you manage your business with greater clarity.
+                Book a walkthrough of the register, the assistant, and the insights that read the sales you already record.
               </p>
-              <div className="mt-6 flex flex-col gap-3 sm:flex-row">
+              <div className="mt-6 flex flex-wrap gap-3">
                 <button
                   type="button"
                   onClick={() => setDemoOpen(true)}
-                  className="inline-flex h-12 items-center justify-center rounded-2xl bg-primary px-5 text-sm font-semibold text-white hover:bg-primary-hover"
+                  className="inline-flex h-12 shrink-0 items-center justify-center whitespace-nowrap rounded-2xl bg-primary px-5 text-sm font-semibold text-white hover:bg-primary-hover"
                 >
                   Book a Demo
                 </button>
-                <a href="#demo-form" className="inline-flex h-12 items-center justify-center rounded-2xl border border-canvas/30 px-5 text-sm font-semibold text-canvas">
-                  Contact Sales
+                <a href={signupUrl} className="inline-flex h-12 shrink-0 items-center justify-center whitespace-nowrap rounded-2xl border border-canvas/30 px-5 text-sm font-semibold text-canvas">
+                  Create a store
                 </a>
               </div>
             </div>
-            <div id="demo-form" className="rounded-card bg-card p-5 text-charcoal">
-              <SectionHeading kicker="Contact" title="Request a walkthrough" />
-              <div className="mt-4">
-                <ContactForm whatsapp={whatsapp} />
-              </div>
+            <div id="demo-form" className="walkthrough-card w-full rounded-3xl border border-slate-100 bg-white p-6 text-slate-900 shadow-2xl shadow-slate-900/10 sm:p-8">
+              <ContactForm contact={contact} contactStatus={contactStatus} draft={quoteDraft} />
             </div>
           </div>
         </section>
+          </>
+        )}
       </main>
-      <Footer whatsapp={whatsapp} />
-      {demoOpen ? <DemoModal whatsapp={whatsapp} onClose={() => setDemoOpen(false)} /> : null}
-      <WhatsAppButton number={whatsapp} />
+      <Footer atHome={atHome} contact={contact} />
+      {demoOpen ? (
+        <DemoModal contact={contact} contactStatus={contactStatus} draft={quoteDraft} onClose={() => setDemoOpen(false)} />
+      ) : null}
+      {demoOpen ? null : <WhatsAppButton contact={contact} />}
     </div>
   );
 }

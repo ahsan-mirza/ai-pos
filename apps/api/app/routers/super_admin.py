@@ -213,7 +213,7 @@ def site_contact(_: CurrentOperator, settings: Config) -> SiteContactOut:
 @router.patch("/site/contact", response_model=SiteContactOut)
 def set_site_contact(payload: SiteContactIn, operator: ConsoleAdmin, settings: Config) -> SiteContactOut:
     with registry.control_session(settings) as db:
-        return site.set_contact(db, operator, payload.whatsapp, payload.reason)
+        return site.set_contact(db, operator, payload)
 
 
 @router.get("/mail", response_model=MailSettingsOut)

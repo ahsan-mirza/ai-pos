@@ -321,13 +321,26 @@ class BillingInvoice(ControlBase):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
 
+# Prefilled chat text for a new marketing-site row. Migrations freeze their own copy of this sentence.
+WHATSAPP_MESSAGE_DEFAULT = (
+    "Hello AxizPOS Sales Team! I would like to learn more about your POS solutions for my business."
+)
+WHATSAPP_TOOLTIP_DEFAULT = "Chat with Sales"
+
+
 class SiteSettings(ControlBase):
     """One row for the public marketing site. The WhatsApp number is digits with the country code, or blank."""
 
     __tablename__ = "site_settings"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    # Digits with the country code, no leading plus. Blank hides the button.
     whatsapp: Mapped[str] = mapped_column(String(16), default="")
+    message: Mapped[str] = mapped_column(String(500), default=WHATSAPP_MESSAGE_DEFAULT)
+    tooltip: Mapped[str] = mapped_column(String(40), default=WHATSAPP_TOOLTIP_DEFAULT)
+    # Public sales address for the site footer. Blank hides the link. Not the outgoing mailbox.
+    email: Mapped[str] = mapped_column(String(254), default="")
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
 
 

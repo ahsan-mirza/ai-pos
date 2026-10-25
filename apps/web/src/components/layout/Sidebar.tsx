@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, type FocusEvent, type MouseEvent, type Rea
 import { Link, useLocation } from "react-router-dom";
 import { useTenant } from "../../context/TenantContext";
 import { useAuth, useIsSuperAdmin } from "../../lib/auth";
+import { portalHomePath } from "../../lib/portal-home";
 import { useCapabilities } from "../../lib/capabilities";
 import { useCanManageSettings } from "../../lib/currency";
 import { AiMark } from "../ui/AiMark";
@@ -204,7 +205,7 @@ function SidebarNav({
 function SidebarBrand({ collapsed }: { collapsed: boolean }) {
   return (
     <Link
-      to="/"
+      to={portalHomePath()}
       aria-label="AI POS home"
       className={`flex h-16 shrink-0 items-center overflow-hidden border-b border-line outline-none focus-visible:bg-charcoal/[0.03] ${collapsed ? "justify-center px-2" : "px-[22px]"}`}
     >

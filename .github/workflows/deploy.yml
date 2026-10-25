@@ -25,6 +25,7 @@ jobs:
       APP_DIR: /opt/ai-pos
       WEB_DIR: /var/www/ai-pos-admin
       CONSOLE_DIR: /var/www/ai-pos-console
+      SITE_DIR: /var/www/ai-pos-site
     steps:
       - uses: actions/checkout@v4
         with:
@@ -39,13 +40,23 @@ jobs:
       - name: Production build env
         run: test -f .env.production || cp deploy/portal.production.env .env.production
 
-      - name: Build admin portal and console
+      - name: Build admin portal, console, and landing page
         run: |
-          pnpm install --frozen-lockfile --filter "@ai-pos/web..." --filter "@ai-pos/super-admin..."
+          pnpm install --frozen-lockfile --filter "@ai-pos/web..." --filter "@ai-pos/super-admin..." --filter "@ai-pos/site..."
           pnpm build:admin:prod
           pnpm build:console:prod
+          pnpm build:site:prod
           test -f apps/web/dist/index.html
           test -f apps/super-admin/dist/index.html
+          test -f apps/site/dist/index.html
+          test -d apps/site/dist/site-assets
+          test -f apps/site/dist/pos/register.jpg
+          test -f apps/site/dist/sitemap.xml
+          test -f apps/site/dist/robots.txt
+          test -f apps/site/dist/restaurant-pos/index.html
+          test -f apps/site/dist/pos-software-uae/index.html
+          grep -q 'rel="canonical" href="https://axizpos.com/"' apps/site/dist/index.html
+          grep -q 'Restaurant POS System' apps/site/dist/restaurant-pos/index.html
 
       - name: Configure SSH
         env:
@@ -75,7 +86,7 @@ jobs:
 
       - name: Upload API and catalog
         run: |
-          ssh server "mkdir -p $APP_DIR/apps/api $APP_DIR/packages/catalog $WEB_DIR $CONSOLE_DIR"
+          ssh server "mkdir -p $APP_DIR/apps/api $APP_DIR/packages/catalog $WEB_DIR $CONSOLE_DIR $SITE_DIR"
           rsync -az --delete \
             --exclude '.venv/' --exclude '.env*' --exclude 'storage/' \
             --exclude '__pycache__/' --exclude 'tests/' --exclude '*.db' \
@@ -121,11 +132,12 @@ jobs:
           .venv/bin/python -m app.tenancy.cli migrate-all
           EOF
 
-      - name: Upload admin portal and console
+      - name: Upload admin portal, console, and landing page
         run: |
-          ssh server "mkdir -p $WEB_DIR $CONSOLE_DIR"
+          ssh server "mkdir -p $WEB_DIR $CONSOLE_DIR $SITE_DIR"
           rsync -az --delete apps/web/dist/ server:$WEB_DIR/
           rsync -az --delete apps/super-admin/dist/ server:$CONSOLE_DIR/
+          rsync -az --delete apps/site/dist/ server:$SITE_DIR/
 
       - name: Start PM2
         run: |

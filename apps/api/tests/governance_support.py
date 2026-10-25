@@ -11,6 +11,7 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session, sessionmaker
 
+from app.console.site import invalidate_contact_cache
 from app.core.config import get_settings
 from app.core.database import build_engine
 from app.main import create_app
@@ -120,9 +121,11 @@ def platform(tmp_path):
     control.commit()
     control.close()
     clear_settings_cache()
+    invalidate_contact_cache()
     yield Platform(client=TestClient(create_app()), root=tmp_path)
     del os.environ["CONTROL_DATABASE_URL"]
     get_settings.cache_clear()
     registry.invalidate()
     registry._control_factory.cache_clear()
     clear_settings_cache()
+    invalidate_contact_cache()

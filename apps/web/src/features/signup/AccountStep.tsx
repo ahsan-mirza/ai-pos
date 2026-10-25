@@ -2,7 +2,7 @@ import { signupPasswordReady, signupPasswordRules, type SignupState } from "@ai-
 import { Check } from "lucide-react";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { ErrorNote, TextField } from "../../components/ui/Field";
-import { isValidE164, PhoneField } from "../../components/ui/PhoneField";
+import { isValidE164, PhoneField } from "@ai-pos/ui";
 import { ApiRequestError } from "../../lib/api";
 import { sessionFromStarted, signupApi, type SignupSession } from "./signupApi";
 

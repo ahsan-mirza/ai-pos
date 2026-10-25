@@ -12,6 +12,7 @@ import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { apiGet, apiPost } from "../../lib/api";
 import { useAuth } from "../../lib/auth";
+import { portalHomePath } from "../../lib/portal-home";
 import { errorMessage } from "../users/api";
 
 type Tab = "today" | "approvals" | "staff" | "credit";
@@ -86,7 +87,7 @@ export function ManagerMobilePage() {
           <p className="text-sm font-semibold">{user?.full_name}</p>
         </div>
         <div className="flex items-center gap-1">
-          <Link to="/" aria-label="Open the full portal" className="rounded-full p-2 text-charcoal/60 hover:bg-surface">
+          <Link to={portalHomePath()} aria-label="Open the full portal" className="rounded-full p-2 text-charcoal/60 hover:bg-surface">
             <Monitor size={18} aria-hidden="true" />
           </Link>
           <button type="button" aria-label="Sign out" onClick={logout} className="rounded-full p-2 text-charcoal/60 hover:bg-surface">

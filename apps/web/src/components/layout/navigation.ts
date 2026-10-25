@@ -42,6 +42,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { ELECTRONICS_PROFILES, FASHION_PROFILES, FNB_PROFILES, RETAIL_PROFILES } from "../../lib/industry";
+import { portalHomePath } from "../../lib/portal-home";
 
 /** What the navigation adapts to: the business type (for names) and its switched-on modules (for visibility). */
 export interface NavContext {
@@ -160,7 +161,7 @@ export const navGroups: NavGroup[] = [
   {
     label: "Workspace",
     items: [
-      { to: "/", label: "Dashboard", icon: LayoutDashboard, permission: Permission.PortalReportsRead, isActive: (path) => path === "/" },
+      { to: portalHomePath(), label: "Dashboard", icon: LayoutDashboard, permission: Permission.PortalReportsRead, isActive: (path) => path === "/" || path === "/dashboard" },
       { to: "/assistant", label: "AI assistant", icon: Sparkles, permission: Permission.PortalReportsRead, isActive: under("/assistant") },
       { to: "/insights", label: "AI insights", icon: Radar, ai: true, permission: Permission.PortalReportsRead, isActive: under("/insights") },
       { to: "/m", label: "Manager app", icon: Smartphone, permission: Permission.PortalReportsRead, isActive: under("/m") },
@@ -469,6 +470,7 @@ const inventoryPages: Record<string, string> = {
 
 const singlePages: Record<string, Crumb[]> = {
   "/": [{ label: "Dashboard" }],
+  "/dashboard": [{ label: "Dashboard" }],
   "/customers": [{ label: "Suppliers & CRM" }, { label: "Customers & B2B ledger" }],
   "/returns": [{ label: "Sales" }, { label: "Returns & fraud monitoring" }],
   "/payments": [{ label: "Sales" }, { label: "Card, QR & pay-later payments" }],
