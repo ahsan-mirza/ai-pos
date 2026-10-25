@@ -26,7 +26,7 @@ function subdomainOf(raw: string): string {
 const input =
   "h-12 w-full rounded-xl border border-zinc-200 bg-white px-4 text-base text-zinc-900 placeholder:text-zinc-400 focus:border-orange-500 focus:outline-none focus:ring-4 focus:ring-orange-500/15 dark:border-zinc-800 dark:bg-zinc-900/60 dark:text-zinc-100 dark:placeholder:text-zinc-500";
 
-/** First run: binds this register to a store subdomain with a one-time key from the admin portal. */
+/** First run: binds this register to a store code with a one-time key from the admin portal. */
 export function ActivationScreen({ onCancel }: { onCancel?: () => void }) {
   const { theme } = useRegisterLayout();
   const [subdomain, setSubdomain] = useState("");
@@ -79,15 +79,10 @@ export function ActivationScreen({ onCancel }: { onCancel?: () => void }) {
                 icon: Store,
                 text: DIRECT_IP
                   ? `Open the admin portal at http://${BASE_DOMAIN} and sign in with the store code.`
-                  : `Open your admin portal at yourstore.${BASE_DOMAIN}.`,
+                  : "Open the admin portal and sign in with the store code.",
               },
               { icon: KeyRound, text: "Registers › choose this till › Generate activation key." },
-              {
-                icon: ShieldCheck,
-                text: DIRECT_IP
-                  ? "Enter the store code and key here. The key works once, for 24 hours."
-                  : "Enter the subdomain and key here. The key works once, for 24 hours.",
-              },
+              { icon: ShieldCheck, text: "Enter the store code and key here. The key works once, for 24 hours." },
             ].map(({ icon: Icon, text }) => (
               <li key={text} className="flex gap-3">
                 <Icon size={18} aria-hidden="true" className="mt-0.5 shrink-0 text-orange-400" />
@@ -107,7 +102,7 @@ export function ActivationScreen({ onCancel }: { onCancel?: () => void }) {
               <dl className="mt-5 divide-y divide-zinc-200 rounded-2xl border border-zinc-200 text-sm dark:divide-zinc-800 dark:border-zinc-800">
                 {[
                   ["Business", done.tenant_name],
-                  ["Subdomain", done.tenant_domain],
+                  ["Store code", done.tenant_domain],
                   ["Branch", `${done.store_code} · ${done.store_name}`],
                   ["Register", `${done.register_code} · ${done.register_name}`],
                 ].map(([label, value]) => (
@@ -127,34 +122,23 @@ export function ActivationScreen({ onCancel }: { onCancel?: () => void }) {
               <div>
                 <h2 className="text-xl font-semibold">Store connection</h2>
                 <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
-                  {DIRECT_IP ? "Ask your manager for the store code and key." : "Ask your manager for the subdomain and key."}
+                  Ask your manager for the store code and key.
                 </p>
               </div>
               <label className="block">
-                <span className="mb-1.5 block text-sm font-semibold">{DIRECT_IP ? "Store code" : "Store subdomain"}</span>
-                <span className="flex overflow-hidden rounded-xl border border-zinc-200 focus-within:border-orange-500 focus-within:ring-4 focus-within:ring-orange-500/15 dark:border-zinc-800">
-                  <input
-                    autoFocus
-                    autoComplete="off"
-                    spellCheck={false}
-                    value={subdomain}
-                    onChange={(event) => setSubdomain(event.target.value)}
-                    placeholder="client1"
-                    className="h-12 min-w-0 flex-1 bg-white px-4 text-base text-zinc-900 placeholder:text-zinc-400 focus:outline-none dark:bg-zinc-900/60 dark:text-zinc-100 dark:placeholder:text-zinc-500"
-                  />
-                  {DIRECT_IP ? null : (
-                    <span className="flex items-center border-l border-zinc-200 bg-zinc-50 px-4 text-sm font-medium text-zinc-500 dark:border-zinc-800 dark:bg-zinc-800/60 dark:text-zinc-400">
-                      .{BASE_DOMAIN}
-                    </span>
-                  )}
-                </span>
-                {DIRECT_IP ? (
+                <span className="mb-1.5 block text-sm font-semibold">Store code</span>
+                <input
+                  autoFocus
+                  autoComplete="off"
+                  spellCheck={false}
+                  value={subdomain}
+                  onChange={(event) => setSubdomain(event.target.value)}
+                  placeholder="baristo"
+                  className={input}
+                />
+                {slug ? (
                   <span className="mt-1.5 block text-xs text-zinc-500 dark:text-zinc-400">
-                    Connects to <span className="font-mono">http://{BASE_DOMAIN}</span>
-                  </span>
-                ) : slug ? (
-                  <span className="mt-1.5 block text-xs text-zinc-500 dark:text-zinc-400">
-                    Connects to <span className="font-mono">{slug}.{BASE_DOMAIN}</span>
+                    Connects as store code <span className="font-mono">{slug}</span>
                   </span>
                 ) : null}
               </label>

@@ -139,7 +139,8 @@ pub fn remove(path: &Path) -> Result<(), String> {
     Ok(())
 }
 
-/// "client1", "client1.axizpos.com", or "https://client1.axizpos.com/" -> ("client1", "client1.axizpos.com").
+/// "client1", "client1.axizpos.com", or "https://client1.axizpos.com/" -> ("client1", "client1").
+/// The second value is the store code sent as X-Tenant-Domain. Stores share one host, so it is not a subdomain.
 pub fn normalize_subdomain(input: &str) -> Result<(String, String), String> {
     normalize_subdomain_for(input, &base_domain())
 }
@@ -158,14 +159,7 @@ fn normalize_subdomain_for(input: &str, base: &str) -> Result<(String, String), 
     let slug = match host.split_once('.') {
         None => host.clone(),
         Some((label, rest)) if rest == base || rest == "localhost" => label.to_string(),
-        Some(_) => {
-            let message = if base.parse::<std::net::IpAddr>().is_ok() {
-                "Enter your store code, e.g. client1.".to_string()
-            } else {
-                format!("Enter your store subdomain, e.g. client1 or client1.{base}.")
-            };
-            return Err(message);
-        }
+        Some(_) => return Err("Enter your store code, e.g. client1.".into()),
     };
     let valid = !slug.is_empty()
         && slug.len() <= 32
@@ -175,15 +169,9 @@ fn normalize_subdomain_for(input: &str, base: &str) -> Result<(String, String), 
         && !slug.starts_with('-')
         && !slug.ends_with('-');
     if !valid {
-        return Err("Subdomains use lowercase letters, digits, and dashes.".into());
+        return Err("Store codes use lowercase letters, digits, and dashes.".into());
     }
-    // On a public IP the portal has no store subdomain. The store code is the tenant.
-    let domain = if base.parse::<std::net::IpAddr>().is_ok() {
-        slug.clone()
-    } else {
-        format!("{slug}.{base}")
-    };
-    Ok((slug, domain))
+    Ok((slug.clone(), slug))
 }
 
 /// A runtime environment variable wins (LAN testing), then the value build.rs baked in from
@@ -247,7 +235,7 @@ pub fn activate(subdomain: &str, activation_key: &str) -> Result<TerminalConfig,
         .header("X-Tenant-Domain", &domain)
         .json(&serde_json::json!({ "activation_key": key, "machine_name": machine_name() }))
         .send()
-        .map_err(|err| format!("Could not reach {api_base_url}. Check the subdomain and the internet connection. ({err})"))?;
+        .map_err(|err| format!("Could not reach {api_base_url}. Check the store code and the internet connection. ({err})"))?;
     let status = response.status();
     let body = response.text().map_err(|err| err.to_string())?;
     if !status.is_success() {
@@ -379,24 +367,27 @@ mod tests {
     #[test]
     fn subdomains_normalise() {
         let live = |input: &str| normalize_subdomain_for(input, "axizpos.com");
+        assert_eq!(live("Client1").unwrap(), ("client1".into(), "client1".into()));
         assert_eq!(
-            live("Client1").unwrap(),
-            ("client1".into(), "client1.axizpos.com".into())
+            live("https://client1.axizpos.com/login").unwrap(),
+            ("client1".into(), "client1".into())
         );
-        assert_eq!(live("https://client1.axizpos.com/login").unwrap().0, "client1");
-        assert_eq!(live("demo.localhost:5173").unwrap().0, "demo");
+        assert_eq!(live("demo.localhost:5173").unwrap(), ("demo".into(), "demo".into()));
         assert!(live("client1.example.com").is_err());
         assert!(live("bad_name").is_err());
         let dev = |input: &str| normalize_subdomain_for(input, "dev.axizpos.com");
+        assert_eq!(dev("client1").unwrap(), ("client1".into(), "client1".into()));
         assert_eq!(
-            dev("client1").unwrap(),
-            ("client1".into(), "client1.dev.axizpos.com".into())
+            dev("https://client1.dev.axizpos.com/").unwrap(),
+            ("client1".into(), "client1".into())
         );
-        assert_eq!(dev("https://client1.dev.axizpos.com/").unwrap().0, "client1");
         assert!(dev("client1.axizpos.com").is_err());
         let ip = |input: &str| normalize_subdomain_for(input, "130.210.53.214");
         assert_eq!(ip("Client1").unwrap(), ("client1".into(), "client1".into()));
-        assert_eq!(ip("client1.130.210.53.214").unwrap().0, "client1");
+        assert_eq!(
+            ip("client1.130.210.53.214").unwrap(),
+            ("client1".into(), "client1".into())
+        );
         assert!(ip("client1.axizpos.com").is_err());
     }
 

@@ -170,7 +170,8 @@ export async function activateTerminal(subdomain: string, activationKey: string)
   if (inTauri()) return invoke<TerminalStatus>("activate_terminal", { subdomain, activationKey });
   const slug = subdomain.trim().toLowerCase();
   const host = baseDomain();
-  const domain = directIp(host) ? slug : `${slug}.${host}`;
+  // Stores share one host. The API tenant is the store code, not slug.axizpos.com.
+  const domain = slug;
   const apiBaseUrl = directIp(host) ? `http://${host}` : env.apiBaseUrl;
   const key = activationKey.toUpperCase().replace(/[^A-Z0-9]/g, "");
   let response: Response;
