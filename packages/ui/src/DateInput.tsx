@@ -148,7 +148,21 @@ export function DateInput({
         max={maxIso || undefined}
         name={name}
         disabled={disabled}
-        className="sr-only"
+        className="pointer-events-none"
+        style={{
+          position: "absolute",
+          width: 1,
+          height: 1,
+          minWidth: 0,
+          minHeight: 0,
+          margin: 0,
+          padding: 0,
+          border: 0,
+          opacity: 0,
+          overflow: "hidden",
+          pointerEvents: "none",
+          clipPath: "inset(50%)",
+        }}
         onChange={(event) => {
           const iso = event.target.value;
           setText(isoToDisplay(iso, withTime));

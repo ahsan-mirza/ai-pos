@@ -24,9 +24,11 @@ describe("date input format", () => {
 
   it("renders DD-MM-YYYY while the calendar keeps the ISO value", () => {
     const date = renderToStaticMarkup(createElement(DateInput, { value: "2026-10-26" }));
+    expect(date).toContain('type="text"');
     expect(date).toContain('value="26-10-2026"');
     expect(date).toContain('placeholder="DD-MM-YYYY"');
     expect(date).toContain('value="2026-10-26"');
+    expect(date).toContain("opacity:0");
 
     const stamp = renderToStaticMarkup(createElement(DateInput, { value: "2026-10-26T14:30", withTime: true }));
     expect(stamp).toContain('value="26-10-2026 14:30"');
