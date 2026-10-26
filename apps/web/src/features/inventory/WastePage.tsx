@@ -40,7 +40,9 @@ export function WastePage() {
   const [busy, setBusy] = useState(false);
 
   const load = () => {
-    void apiGet<WasteSource[]>("/api/v1/inventory/waste/sources").then(setSources).catch((caught: unknown) => setError(errorMessage(caught)));
+    void apiGet<WasteSource[]>("/api/v1/inventory/waste/sources")
+      .then(setSources)
+      .catch((caught: unknown) => setError(errorMessage(caught, "Could not load waste batches.")));
     void apiGet<WasteRow[]>("/api/v1/inventory/waste").then(setHistory).catch(() => undefined);
   };
 
@@ -63,7 +65,7 @@ export function WastePage() {
       setNote("");
       load();
     } catch (caught) {
-      setError(errorMessage(caught));
+      setError(errorMessage(caught, "Could not record waste."));
     } finally {
       setBusy(false);
     }
@@ -92,7 +94,7 @@ export function WastePage() {
         />
         <SelectField label="Reason" value={reason} options={REASONS} onChange={setReason} />
         <TextField label="Note" value={note} onChange={(event) => setNote(event.target.value)} />
-        {error ? <ErrorNote>{error}</ErrorNote> : null}
+        <ErrorNote message={error} />
         <PrimaryButton disabled={busy || batchItemId === ""} onClick={() => void submit()}>
           {busy ? "Saving…" : "Record waste"}
         </PrimaryButton>

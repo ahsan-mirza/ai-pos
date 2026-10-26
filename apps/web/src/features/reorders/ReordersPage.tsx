@@ -365,7 +365,8 @@ function PlanForm({
     try {
       if (plan) await apiPatch(`/api/v1/reorders/plans/${plan.id}`, shared);
       else {
-        const { clear_end: _ignored, ...created } = shared;
+        const { clear_end, ...created } = shared;
+        void clear_end;
         await apiPost("/api/v1/reorders/plans", { customer_id: chosenCustomer, ...created });
       }
       onSaved();
