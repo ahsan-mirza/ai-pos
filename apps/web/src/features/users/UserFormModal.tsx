@@ -9,10 +9,12 @@ import {
   type UserUpdate,
 } from "@ai-pos/shared-types";
 import { useState } from "react";
+import { emailError, requiredError } from "@ai-pos/ui";
 import { ErrorNote, GhostButton, PrimaryButton, SelectField, TextField } from "../../components/ui/Field";
 import { Modal } from "../../components/ui/Modal";
 import { Toggle } from "../../components/ui/Toggle";
 import { useAuth } from "../../lib/auth";
+import { fieldErrors, type FieldErrors } from "../inventory/formErrors";
 import { errorMessage, usersApi } from "./api";
 import { CredentialModal } from "./CredentialModal";
 
@@ -46,6 +48,7 @@ export function UserFormModal({ user, roles, stores, onClose, onSaved, onUpdated
   const [openPriceSale, setOpenPriceSale] = useState(user?.can_sell_open_price ?? false);
   const [active, setActive] = useState(user?.is_active ?? true);
   const [error, setError] = useState<string | null>(null);
+  const [errors, setErrors] = useState<FieldErrors>({});
   const [busy, setBusy] = useState(false);
   const [hasPin, setHasPin] = useState(user?.has_pin ?? false);
   const [settingPin, setSettingPin] = useState(false);
@@ -56,25 +59,30 @@ export function UserFormModal({ user, roles, stores, onClose, onSaved, onUpdated
   const actorCanGrantOpenPrice = actor?.permissions.includes(Permission.PosOpenPrice) ?? false;
   const roleAllowsOpenPrice = roles.find((role) => role.id === roleId)?.permissions.includes(Permission.PosOpenPrice) ?? false;
 
-  const validate = (): string | null => {
+  const validate = (): FieldErrors => {
+    const next: FieldErrors = {};
     if (!editing && !/^[a-z0-9][a-z0-9._-]{2,31}$/.test(username.trim().toLowerCase())) {
-      return "Username must be 3-32 characters: lowercase letters, digits, dot, dash, underscore.";
+      next.username = "Username must be 3-32 characters: lowercase letters, digits, dot, dash, underscore.";
     }
-    if (fullName.trim() === "") return "Full name is required.";
-    if (roleId === "") return "Choose a role.";
+    const nameProblem = requiredError(fullName, "the full name");
+    if (nameProblem) next.full_name = nameProblem;
+    const mailProblem = emailError(email, false);
+    if (mailProblem) next.email = mailProblem;
+    if (roleId === "") next.role_id = "Choose a role.";
     if (!editing && password !== "" && password.length < PASSWORD_MIN_LENGTH) {
-      return `Passwords need at least ${PASSWORD_MIN_LENGTH} characters.`;
+      next.password = `Passwords need at least ${PASSWORD_MIN_LENGTH} characters.`;
     }
-    if (!editing && pin !== "" && !PIN_PATTERN.test(pin)) return "PINs are 4 to 6 digits.";
-    if (portalAccess && !canEnablePortal) return "Set a password before enabling web portal access.";
-    if (posAccess && !canEnablePos) return PIN_REQUIRED;
-    return null;
+    if (!editing && pin !== "" && !PIN_PATTERN.test(pin)) next.pin = "PINs are 4 to 6 digits.";
+    if (portalAccess && !canEnablePortal) next.password = "Set a password before enabling web portal access.";
+    if (posAccess && !canEnablePos) next.pin = PIN_REQUIRED;
+    return next;
   };
 
   const save = async () => {
     const problem = validate();
-    if (problem) {
-      setError(problem);
+    setErrors(problem);
+    if (Object.keys(problem).length > 0) {
+      setError(problem.pin === PIN_REQUIRED ? PIN_REQUIRED : null);
       return;
     }
     setBusy(true);
@@ -111,7 +119,9 @@ export function UserFormModal({ user, roles, stores, onClose, onSaved, onUpdated
       if (active !== user.is_active) body.is_active = active;
       onSaved(Object.keys(body).length === 0 ? user : await usersApi.update(user.id, body));
     } catch (caught) {
-      setError(errorMessage(caught, "Could not save the user."));
+      const fields = fieldErrors(caught);
+      setErrors(fields);
+      setError(Object.keys(fields).length > 0 ? null : errorMessage(caught, "Could not save the user."));
     } finally {
       setBusy(false);
     }
@@ -135,16 +145,41 @@ export function UserFormModal({ user, roles, stores, onClose, onSaved, onUpdated
       <div className="grid gap-4 md:grid-cols-2">
         <TextField
           label="Username"
+          required={!editing}
           value={username}
           disabled={editing}
           autoComplete="off"
-          onChange={(event) => setUsername(event.target.value)}
+          error={errors.username}
+          onChange={(event) => {
+            setUsername(event.target.value);
+            setErrors((current) => ({ ...current, username: "" }));
+          }}
         />
-        <TextField label="Full name" value={fullName} onChange={(event) => setFullName(event.target.value)} />
-        <TextField label="Email" type="email" value={email} onChange={(event) => setEmail(event.target.value)} />
+        <TextField
+          label="Full name"
+          required
+          value={fullName}
+          error={errors.full_name}
+          onChange={(event) => {
+            setFullName(event.target.value);
+            setErrors((current) => ({ ...current, full_name: "" }));
+          }}
+        />
+        <TextField
+          label="Email"
+          type="email"
+          value={email}
+          error={errors.email}
+          onChange={(event) => {
+            setEmail(event.target.value);
+            setErrors((current) => ({ ...current, email: "" }));
+          }}
+        />
         <SelectField
           label="Role"
+          required
           value={roleId}
+          error={errors.role_id}
           disabled={isSelf}
           placeholder="Choose a role"
           options={grantable.map((role) => ({ value: role.id, label: role.name }))}
@@ -167,8 +202,12 @@ export function UserFormModal({ user, roles, stores, onClose, onSaved, onUpdated
               type="password"
               autoComplete="new-password"
               value={password}
+              error={errors.password}
               hint={`Web portal sign-in. At least ${PASSWORD_MIN_LENGTH} characters.`}
-              onChange={(event) => setPassword(event.target.value)}
+              onChange={(event) => {
+                setPassword(event.target.value);
+                setErrors((current) => ({ ...current, password: "" }));
+              }}
             />
             <TextField
               label="POS PIN"
@@ -177,8 +216,12 @@ export function UserFormModal({ user, roles, stores, onClose, onSaved, onUpdated
               autoComplete="off"
               maxLength={6}
               value={pin}
+              error={errors.pin === PIN_REQUIRED ? undefined : errors.pin}
               hint="Register unlock. 4 to 6 digits."
-              onChange={(event) => setPin(event.target.value.replace(/\D/g, ""))}
+              onChange={(event) => {
+                setPin(event.target.value.replace(/\D/g, ""));
+                setErrors((current) => ({ ...current, pin: "" }));
+              }}
             />
           </>
         ) : null}

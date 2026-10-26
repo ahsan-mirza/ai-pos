@@ -7,12 +7,13 @@ import json
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
 from fastapi.responses import HTMLResponse
+from sqlalchemy import select
 
-from app.console import billing
+from app.console import billing, transfers
 from app.core.config import Settings, get_settings
-from app.core.deps import Principal, authorize
+from app.core.deps import Principal, authorize, get_principal
 from app.core.errors import ApiError
 from app.core.permissions import Permission
 from app.schemas.billing import CatalogOut, CheckoutIn, CheckoutOut, CheckoutStatus, QuoteIn, QuoteOut
@@ -39,6 +40,18 @@ def _tenant_id(settings: Settings) -> uuid.UUID:
         if row is None:
             raise ApiError(404, "tenant_not_found", "This store is not registered.")
         return row.id
+
+
+def _stores(settings: Settings, tenant_id: uuid.UUID) -> dict[uuid.UUID, str]:
+    from app.console.entitlements import tenant_session
+    from app.models.store import Store
+
+    with registry.control_session(settings) as db:
+        tenant = db.get(Tenant, tenant_id)
+        if tenant is None:
+            return {}
+    with tenant_session(tenant, settings) as store_db:
+        return {row.id: row.name for row in store_db.scalars(select(Store))}
 
 
 def _active_catalog(found: CatalogOut) -> CatalogOut:
@@ -80,9 +93,10 @@ def catalog(
 def quote(
     payload: QuoteIn, _: Annotated[Principal, Depends(authorize(Permission.SETTINGS_MANAGE))], settings: Config
 ) -> QuoteOut:
-    _tenant_id(settings)
+    tenant_id = _tenant_id(settings)
+    stores = _stores(settings, tenant_id)
     with registry.control_session(settings) as db:
-        return billing.quote_for(db, payload.plan_code, payload.cycle_code, payload.addons)
+        return billing.quote_for(db, payload.plan_code, payload.cycle_code, payload.addons, payload.hardware, stores)
 
 
 @router.post("/checkout", response_model=CheckoutOut)
@@ -97,7 +111,7 @@ def checkout(
     with registry.control_session(settings) as db:
         row = db.get(Tenant, tenant_id)
         assert row is not None
-        return billing.create_checkout(db, settings, row, principal.user.id, payload)
+        return billing.create_checkout(db, settings, row, principal.user.id, payload, _stores(settings, tenant_id))
 
 
 @router.get("/checkout/return", response_class=HTMLResponse)
@@ -125,6 +139,50 @@ def simulate(
     tenant_id = _tenant_id(settings)
     with registry.control_session(settings) as db:
         return billing.simulate_checkout(db, settings, tenant_id, checkout_id)
+
+
+@router.get("/access")
+def access_status(principal: Annotated[Principal, Depends(get_principal)], settings: Config) -> dict[str, str | bool]:
+    """Request-time entitlement. A delayed job cannot extend access past this answer."""
+    del principal
+    tenant_id = _tenant_id(settings)
+    with registry.control_session(settings) as db:
+        state = transfers.access_state(db, tenant_id)
+        return {"state": state, "ai_allowed": transfers.ai_allowed(db, tenant_id)}
+
+
+@router.post("/transfers")
+async def submit_transfer(
+    principal: Annotated[Principal, Depends(authorize(Permission.SETTINGS_MANAGE))],
+    settings: Config,
+    invoice_id: Annotated[uuid.UUID, Form()],
+    amount_fils: Annotated[int, Form()],
+    transferred_on: Annotated[str, Form()],
+    idempotency_key: Annotated[str, Form()],
+    receipt: Annotated[UploadFile, File()],
+    bank_reference: Annotated[str, Form()] = "",
+    sending_bank: Annotated[str, Form()] = "",
+    note: Annotated[str, Form()] = "",
+) -> dict[str, str]:
+    """Stores the receipt for review. The invoice stays unpaid until an administrator approves it."""
+    del principal
+    tenant_id = _tenant_id(settings)
+    body = await receipt.read()
+    with registry.control_session(settings) as db:
+        row = transfers.submit_transfer(
+            db,
+            tenant_id=tenant_id,
+            invoice_id=invoice_id,
+            amount_fils=amount_fils,
+            transferred_on=transferred_on,
+            bank_reference=bank_reference,
+            sending_bank=sending_bank,
+            note=note,
+            idempotency_key=idempotency_key,
+            filename=receipt.filename or "receipt",
+            body=body,
+        )
+        return {"id": str(row.id), "status": row.status}
 
 
 @router.post("/stripe-webhook")

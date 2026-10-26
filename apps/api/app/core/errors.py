@@ -39,6 +39,7 @@ def error_payload(
     *,
     api: str | None = None,
     details: object | None = None,
+    field_errors: dict[str, str] | None = None,
 ) -> dict[str, object]:
     """Every API error: a stable code, a sentence, and the API that failed."""
     error: dict[str, object] = {"code": code, "message": message}
@@ -46,7 +47,31 @@ def error_payload(
         error["api"] = api
     if details not in (None, {}, []):
         error["details"] = details
+    if field_errors:
+        error["field_errors"] = field_errors
     return {"error": error}
+
+
+def field_error_map(errors: list[object]) -> dict[str, str]:
+    """Last path segment of each Pydantic error, in request order. The first message for a field wins."""
+    found: dict[str, str] = {}
+    for item in errors:
+        if not isinstance(item, dict):
+            continue
+        loc = item.get("loc")
+        parts = [str(part) for part in loc] if isinstance(loc, list | tuple) else []
+        names = [part for part in parts if part not in _LOC_SKIP and not part.isdigit()]
+        if not names:
+            continue
+        key = names[-1]
+        if key in found:
+            continue
+        found[key] = _validation_sentence(
+            _field_label(loc),
+            str(item.get("msg") or "Check this value."),
+            str(item.get("type") or ""),
+        )
+    return found
 
 
 _LOC_SKIP = {"body", "query", "path", "header", "cookie"}

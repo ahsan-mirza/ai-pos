@@ -1,5 +1,5 @@
 import { PAYMENT_TERMS_LABELS, PRICE_TIERS, PRICE_TIER_LABELS, Permission, type PaymentTerms, type PriceTier } from "@ai-pos/shared-types";
-import { Select } from "@ai-pos/ui";
+import { PhoneField, Select, phoneError } from "@ai-pos/ui";
 import { Building2, UserRound, X } from "lucide-react";
 import { useEffect, useId, useState } from "react";
 import type { RegisterCustomer } from "../../lib/tauri";
@@ -38,6 +38,7 @@ export function QuickAddCustomerModal({ session, query, onClose, onCreated }: Qu
   const [terms, setTerms] = useState<PaymentTerms>("NET_30");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [phoneProblem, setPhoneProblem] = useState<string | undefined>();
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -50,6 +51,9 @@ export function QuickAddCustomerModal({ session, query, onClose, onCreated }: Qu
   const save = async () => {
     const wholesale = kind === "WHOLESALE";
     if (wholesale && !company.trim()) return setError("Enter the company name.");
+    const phoneProblemNext = phoneError(phone);
+    setPhoneProblem(phoneProblemNext);
+    if (phoneProblemNext) return setError(null);
     if (!name.trim() && !phone.trim()) return setError("Enter a name or a phone number.");
     if (trn.trim() && !/^\d{15}$/.test(trn.trim())) return setError("A UAE TRN is 15 digits.");
     const creditCents = Math.round(Number(credit || "0") * 100);
@@ -138,18 +142,7 @@ export function QuickAddCustomerModal({ session, query, onClose, onCreated }: Qu
                 className={field}
               />
             </label>
-            <label className="block text-sm font-medium">
-              Phone
-              <input
-                autoFocus={kind === "RETAIL" && phoneFirst}
-                inputMode="tel"
-                value={phone}
-                maxLength={40}
-                placeholder="05x xxx xxxx"
-                onChange={(event) => setPhone(event.target.value)}
-                className={field}
-              />
-            </label>
+            <PhoneField label="Phone" value={phone} error={phoneProblem} onChange={setPhone} />
           </div>
           {kind === "RETAIL" ? (
             <label className="block text-sm font-medium">

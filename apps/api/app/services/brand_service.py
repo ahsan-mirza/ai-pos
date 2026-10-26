@@ -16,7 +16,7 @@ from app.schemas.inventory import (
     ProductModelUpdate,
     ProductModelWrite,
 )
-from app.services import fashion_attributes
+from app.services import fashion_attributes, list_cache
 from app.services.category_service import _code_from
 
 
@@ -144,6 +144,7 @@ def update_brand(db: Session, brand_id: uuid.UUID, data: CategoryUpdate) -> Bran
     if data.description is not None:
         brand.description = data.description.strip()
     _commit(db)
+    list_cache.bump("models")
     return _one_brand(db, brand)
 
 
@@ -226,13 +227,20 @@ def list_models(
     sub_category_id: uuid.UUID | None = None,
     brand_id: uuid.UUID | None = None,
 ) -> list[ProductModelOut]:
-    statement = select(ProductModel).order_by(ProductModel.release_year.desc().nulls_last(), ProductModel.name)
-    if sub_category_id is not None:
-        statement = statement.where(ProductModel.sub_category_id == sub_category_id)
-    if brand_id is not None:
-        statement = statement.where(ProductModel.brand_id == brand_id)
-    variants = _variant_counts(db)
-    return [_model_out(row, variants) for row in db.scalars(statement).unique().all()]
+    fingerprint = f"{brand_id or ''}|{sub_category_id or ''}"
+
+    def load() -> list[dict[str, object]]:
+        statement = select(ProductModel).order_by(ProductModel.release_year.desc().nulls_last(), ProductModel.name)
+        if sub_category_id is not None:
+            statement = statement.where(ProductModel.sub_category_id == sub_category_id)
+        if brand_id is not None:
+            statement = statement.where(ProductModel.brand_id == brand_id)
+        variants = _variant_counts(db)
+        rows = [_model_out(row, variants) for row in db.scalars(statement).unique().all()]
+        return [row.model_dump(mode="json") for row in rows]
+
+    cached = list_cache.remember("models", fingerprint, 30, load)
+    return [ProductModelOut.model_validate(row) for row in cached]
 
 
 def _name_taken(db: Session, brand_id: uuid.UUID, sub_id: uuid.UUID, name: str, exclude: uuid.UUID | None) -> bool:
@@ -264,6 +272,7 @@ def create_model(db: Session, data: ProductModelWrite) -> ProductModelOut:
     link(brand, sub)
     db.add(model)
     _commit(db)
+    list_cache.bump("models")
     return model_out(db, model)
 
 
@@ -284,6 +293,7 @@ def update_model(db: Session, model_id: uuid.UUID, data: ProductModelUpdate) -> 
         db.flush()
         fashion_attributes.push_to_variants(db, model)
     _commit(db)
+    list_cache.bump("models")
     return model_out(db, model)
 
 
@@ -293,3 +303,4 @@ def delete_model(db: Session, model_id: uuid.UUID) -> None:
         raise ApiError(409, "model_in_use", "Delete or move this model's variants first.")
     db.delete(model)
     db.commit()
+    list_cache.bump("models")

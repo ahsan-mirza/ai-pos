@@ -1,9 +1,11 @@
 import { Permission, type ProductModel } from "@ai-pos/shared-types";
+import { downloadCsv, type DataTableColumn } from "@ai-pos/ui";
 import { Pencil, Plus, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useConfirm } from "../../components/ui/ConfirmDialog";
-import { ErrorNote, FilterSelect, PrimaryButton, SearchField } from "../../components/ui/Field";
+import { DataTable } from "../../components/ui/DataTable";
+import { ErrorNote, FilterSelect, GhostButton, PrimaryButton, SearchField } from "../../components/ui/Field";
 import { useAuth } from "../../lib/auth";
 import { message, modelsApi } from "./api";
 import { ModelFormModal } from "./ModelFormModal";
@@ -28,16 +30,20 @@ export function ModelsPage() {
   const brandId = params.get("brand_id") ?? "";
   const [query, setQuery] = useState("");
   const [models, setModels] = useState<ProductModel[]>([]);
+  const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState<ProductModel | "new" | null>(null);
 
   const reload = useCallback(async () => {
+    setLoading(true);
     try {
       setModels(await modelsApi.list({ brand_id: brandId || null }));
       setLoadError(null);
     } catch (caught) {
       setLoadError(message(caught, "Could not load models."));
+    } finally {
+      setLoading(false);
     }
   }, [brandId]);
 
@@ -54,6 +60,77 @@ export function ModelsPage() {
       }),
     [models, needle],
   );
+
+  const columns = useMemo<DataTableColumn<ProductModel>[]>(() => {
+    const defined: DataTableColumn<ProductModel>[] = [
+      { id: "name", header: "Model name", sortValue: (row) => row.name, cell: (row) => <span className="font-semibold">{row.name}</span> },
+      {
+        id: "brand",
+        header: "Brand",
+        sortValue: (row) => row.brand_name,
+        cell: (row) => (
+          <span className="rounded-full bg-surface px-2.5 py-0.5 text-xs font-semibold text-charcoal/80">{row.brand_name}</span>
+        ),
+      },
+      {
+        id: "category",
+        header: "Category / sub-category",
+        sortValue: (row) => `${row.category_name} ${row.sub_category_name}`,
+        cell: (row) => (
+          <span className="text-charcoal/80">
+            {row.category_name} &gt; {row.sub_category_name}
+          </span>
+        ),
+      },
+      {
+        id: "spec",
+        header: "Release / year / spec code",
+        sortValue: (row) => specLabel(row),
+        cell: (row) => <span className="font-mono text-xs text-charcoal/70">{specLabel(row)}</span>,
+      },
+      {
+        id: "linked",
+        header: "Linked products",
+        align: "right",
+        sortValue: (row) => row.variant_count,
+        cell: (row) => row.variant_count,
+      },
+    ];
+    if (manage) {
+      defined.push({
+        id: "actions",
+        header: "Actions",
+        align: "right",
+        cell: (row) => (
+          <div className="flex justify-end gap-1">
+            <IconButton label={`Edit ${row.name}`} onClick={() => setEditing(row)}>
+              <Pencil size={14} />
+            </IconButton>
+            <IconButton label={`Delete ${row.name}`} onClick={() => void remove(row)}>
+              <Trash2 size={14} />
+            </IconButton>
+          </div>
+        ),
+      });
+    }
+    return defined;
+  }, [manage]);
+
+  const exportModels = () => {
+    downloadCsv(
+      "models.csv",
+      ["Model", "Brand", "Category", "Sub-category", "Release", "Code", "Linked products"],
+      visible.map((row) => [
+        row.name,
+        row.brand_name,
+        row.category_name,
+        row.sub_category_name,
+        row.release_year ? String(row.release_year) : "",
+        row.code ?? "",
+        String(row.variant_count),
+      ]),
+    );
+  };
 
   const setBrand = (next: string) => {
     setParams(next ? { brand_id: next } : {}, { replace: true });
@@ -105,6 +182,9 @@ export function ModelsPage() {
             options={[{ value: "", label: "All brands" }, ...brands.map((brand) => ({ value: brand.id, label: brand.name }))]}
             onChange={setBrand}
           />
+          <GhostButton type="button" onClick={exportModels} disabled={visible.length === 0}>
+            Export
+          </GhostButton>
           {manage ? (
             <PrimaryButton onClick={() => setEditing("new")}>
               <span className="inline-flex items-center gap-2">
@@ -114,51 +194,19 @@ export function ModelsPage() {
           ) : null}
         </div>
       </div>
-      <ErrorNote message={error ?? loadError ?? brandsError ?? categoriesError} />
-      <div className="overflow-x-auto">
-        <table className="w-full min-w-[880px] text-left text-sm">
-          <thead className="text-xs uppercase tracking-wide text-charcoal/50">
-            <tr>
-              <th className="pb-3 font-medium">Model name</th>
-              <th className="pb-3 font-medium">Brand</th>
-              <th className="pb-3 font-medium">Category / sub-category</th>
-              <th className="pb-3 font-medium">Release / year / spec code</th>
-              <th className="pb-3 text-right font-medium">Linked products</th>
-              {manage ? <th className="pb-3 text-right font-medium">Actions</th> : null}
-            </tr>
-          </thead>
-          <tbody>
-            {visible.map((model) => (
-              <tr key={model.id} className="border-t border-line">
-                <td className="py-3 font-semibold">{model.name}</td>
-                <td className="py-3">
-                  <span className="rounded-full bg-surface px-2.5 py-0.5 text-xs font-semibold text-charcoal/80">
-                    {model.brand_name}
-                  </span>
-                </td>
-                <td className="py-3 text-charcoal/80">
-                  {model.category_name} &gt; {model.sub_category_name}
-                </td>
-                <td className="py-3 font-mono text-xs text-charcoal/70">{specLabel(model)}</td>
-                <td className="py-3 text-right tabular-nums">{model.variant_count}</td>
-                {manage ? (
-                  <td className="py-3">
-                    <div className="flex justify-end gap-1">
-                      <IconButton label={`Edit ${model.name}`} onClick={() => setEditing(model)}>
-                        <Pencil size={14} />
-                      </IconButton>
-                      <IconButton label={`Delete ${model.name}`} onClick={() => void remove(model)}>
-                        <Trash2 size={14} />
-                      </IconButton>
-                    </div>
-                  </td>
-                ) : null}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        {visible.length === 0 && !loadError ? <p className="py-8 text-sm text-charcoal/60">No models match.</p> : null}
-      </div>
+      <ErrorNote message={error ?? brandsError ?? categoriesError} />
+      <DataTable
+        aria-label="Models"
+        minWidth="880px"
+        columns={columns}
+        data={visible}
+        getRowId={(row) => row.id}
+        isLoading={loading}
+        error={loadError}
+        onRetry={() => void reload()}
+        pagination={{ mode: "client", resetKey: `${brandId}:${needle}` }}
+        emptyState={{ title: "No models match", description: "Try another brand or search." }}
+      />
       {editing !== null ? (
         <ModelFormModal
           model={editing === "new" ? null : editing}

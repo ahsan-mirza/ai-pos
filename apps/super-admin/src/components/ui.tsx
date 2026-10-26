@@ -1,4 +1,4 @@
-import { inputLeadingIcon } from "@ai-pos/ui";
+import { DateInput, inputLeadingIcon } from "@ai-pos/ui";
 import { Eye, EyeOff, X } from "lucide-react";
 import { useEffect, useId, useState, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type TextareaHTMLAttributes } from "react";
 
@@ -85,17 +85,31 @@ export function Field({
   label,
   hint,
   error,
+  required = false,
   className = "",
   type,
   autoComplete,
   multiline = false,
   rows = 4,
   ...props
-}: InputHTMLAttributes<HTMLInputElement> & { label: string; hint?: string; error?: string; multiline?: boolean; rows?: number }) {
+}: InputHTMLAttributes<HTMLInputElement> & {
+  label: string;
+  hint?: string;
+  error?: string;
+  required?: boolean;
+  multiline?: boolean;
+  rows?: number;
+}) {
   const id = useId();
+  const describedBy =
+    [props["aria-describedby"], error ? `${id}-error` : hint ? `${id}-hint` : undefined].filter(Boolean).join(" ") || undefined;
   const [showPassword, setShowPassword] = useState(false);
   const isPassword = type === "password";
   const isMultiline = multiline || /\bdescription\b/i.test(label);
+  const isDate = type === "date" || type === "datetime-local";
+  const fieldClass = `w-full rounded-xl border bg-surface py-3 pl-10 text-sm font-normal text-charcoal transition placeholder:text-charcoal/40 focus:bg-white focus:outline-none focus:ring-2 disabled:cursor-not-allowed disabled:text-charcoal/50 ${
+    error ? "border-danger bg-danger/10 focus:border-danger focus:ring-danger" : "border-transparent focus:border-orange-500 focus:ring-orange-500"
+  } ${isPassword ? "pr-12" : "pr-4"}`;
   const Icon = inputLeadingIcon({
     type,
     autoComplete: typeof autoComplete === "string" ? autoComplete : undefined,
@@ -108,6 +122,12 @@ export function Field({
   return (
     <label htmlFor={id} className={`block text-sm font-medium text-charcoal ${className}`}>
       {label}
+      {required ? (
+        <span className="text-danger" aria-hidden="true">
+          {" "}
+          *
+        </span>
+      ) : null}
       <span className="relative mt-1.5 block">
         <Icon
           className={`pointer-events-none absolute left-3 h-5 w-5 text-gray-400 ${isMultiline ? "top-3.5" : "top-1/2 -translate-y-1/2"}`}
@@ -118,9 +138,24 @@ export function Field({
             id={id}
             rows={rows}
             {...(props as TextareaHTMLAttributes<HTMLTextAreaElement>)}
+            aria-required={required || undefined}
             aria-invalid={error ? true : undefined}
-            aria-describedby={error ? `${id}-error` : undefined}
-            className="min-h-24 w-full resize-y rounded-xl border border-transparent bg-surface py-3 pl-10 pr-4 text-sm font-normal text-charcoal transition placeholder:text-charcoal/40 focus:border-orange-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-orange-500 disabled:cursor-not-allowed disabled:text-charcoal/50"
+            aria-describedby={describedBy}
+            className={`min-h-24 w-full resize-y rounded-xl border bg-surface py-3 pl-10 pr-4 text-sm font-normal text-charcoal transition placeholder:text-charcoal/40 focus:bg-white focus:outline-none focus:ring-2 disabled:cursor-not-allowed disabled:text-charcoal/50 ${
+              error ? "border-danger focus:border-danger focus:ring-danger" : "border-transparent focus:border-orange-500 focus:ring-orange-500"
+            }`}
+          />
+        ) : isDate ? (
+          <DateInput
+            id={id}
+            withTime={type === "datetime-local"}
+            autoComplete={autoComplete}
+            {...props}
+            value={typeof props.value === "string" ? props.value : ""}
+            aria-required={required || undefined}
+            aria-invalid={error ? true : undefined}
+            aria-describedby={describedBy}
+            className={fieldClass}
           />
         ) : (
         <input
@@ -128,11 +163,11 @@ export function Field({
           type={isPassword && showPassword ? "text" : type}
           autoComplete={autoComplete}
           {...props}
+          required={undefined}
+          aria-required={required || undefined}
           aria-invalid={error ? true : undefined}
-          aria-describedby={error ? `${id}-error` : undefined}
-          className={`w-full rounded-xl border border-transparent bg-surface py-3 pl-10 text-sm font-normal text-charcoal transition placeholder:text-charcoal/40 focus:border-orange-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-orange-500 disabled:cursor-not-allowed disabled:text-charcoal/50 ${
-            isPassword ? "pr-12" : "pr-4"
-          }`}
+          aria-describedby={describedBy}
+          className={fieldClass}
         />
         )}
         {isPassword && !isMultiline ? (
@@ -150,11 +185,13 @@ export function Field({
         ) : null}
       </span>
       {error ? (
-        <span id={`${id}-error`} className="mt-1.5 block text-xs font-normal text-danger">
+        <span id={`${id}-error`} role="alert" className="mt-1.5 block text-xs font-normal text-danger">
           {error}
         </span>
       ) : hint ? (
-        <span className="mt-1.5 block text-xs font-normal text-charcoal/50">{hint}</span>
+        <span id={`${id}-hint`} className="mt-1.5 block text-xs font-normal text-charcoal/50">
+          {hint}
+        </span>
       ) : null}
     </label>
   );

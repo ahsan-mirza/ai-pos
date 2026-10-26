@@ -209,10 +209,29 @@ class Plan:
     args: dict[str, Any]
 
 
+def _close_to(token: str, word: str) -> bool:
+    """A whole word, its singular, or the same letters in a different order. "slae" reaches "sales"."""
+    if " " in word or len(word) < 4 or not word.isascii() or not token.isascii() or token[0] != word[0]:
+        return False
+    stems = (word, word[:-1]) if word.endswith("s") and len(word) > 4 else (word,)
+    return any(len(token) == len(stem) >= 4 and sorted(token) == sorted(stem) for stem in stems)
+
+
+def _intent(text: str) -> str | None:
+    exact = next((name for name, words in INTENTS if any(word in text for word in words)), None)
+    if exact is not None:
+        return exact
+    tokens = [token for token in re.findall(r"[a-z]+", text) if len(token) >= 4]
+    for name, words in INTENTS:
+        if any(_close_to(token, word) for token in tokens for word in words):
+            return name
+    return None
+
+
 def plan(question: str, store_codes: list[str]) -> Plan | None:
     """The built-in provider's reading of a question: which report, which period, which branch."""
     text = question.lower()
-    tool = next((name for name, words in INTENTS if any(word in text for word in words)), None)
+    tool = _intent(text)
     if tool is None:
         return None
     args: dict[str, Any] = {}

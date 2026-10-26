@@ -1,4 +1,5 @@
 import { Capability, formatMoney, type PaymentsConfig, type ProductUpsert } from "@ai-pos/shared-types";
+import { DateInput } from "@ai-pos/ui";
 import {
   ArrowLeftRight,
   Banknote,
@@ -515,9 +516,8 @@ export function TenderPanel({
           </label>
           <label className="col-span-2 block text-xs font-medium text-zinc-600 dark:text-white/60" htmlFor="cheque-date">
             Date on the cheque
-            <input
+            <DateInput
               id="cheque-date"
-              type="date"
               value={draft.chequeDate}
               onChange={(event) => onChange({ ...draft, chequeDate: event.target.value })}
               className={`${darkInput} mt-1.5 text-sm [color-scheme:dark]`}

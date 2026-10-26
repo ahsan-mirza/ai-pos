@@ -29,6 +29,8 @@ export interface DataTableColumn<T> {
   className?: string;
   /** Extra classes on the header cell; defaults to `className` so responsive visibility stays in sync. */
   headerClassName?: string;
+  /** Client mode and unpaged tables sort by this value when the header is clicked. */
+  sortValue?: (row: T) => string | number | null;
 }
 
 interface PaginationBase {
@@ -81,6 +83,9 @@ export interface DataTableProps<T> {
   isLoading?: boolean;
   /** Keeps rows visible but dims them under a thin progress bar (background refresh). */
   isFetching?: boolean;
+  /** Replaces the body when a load failed and there are no rows to keep on screen. */
+  error?: string | null;
+  onRetry?: () => void;
   pagination?: DataTablePagination | false;
   onRowClick?: (row: T, index: number) => void;
   isRowActive?: (row: T) => boolean;
@@ -120,6 +125,8 @@ export function DataTable<T>({
   getRowId,
   isLoading = false,
   isFetching = false,
+  error = null,
+  onRetry,
   pagination = false,
   onRowClick,
   isRowActive,
@@ -148,14 +155,33 @@ export function DataTable<T>({
     onClientPage.current?.(1);
   }, [resetSignature]);
 
+  const [sort, setSort] = useState<{ id: string; direction: "asc" | "desc" } | null>(null);
+  const clientSort = pagination === false || pagination.mode === "client";
+  const rows = useMemo(() => {
+    if (!clientSort || sort === null) return data;
+    const column = columns.find((item, index) => columnKey(item, index) === sort.id);
+    if (!column?.sortValue) return data;
+    const read = column.sortValue;
+    const factor = sort.direction === "asc" ? 1 : -1;
+    return [...data].sort((left, right) => {
+      const a = read(left);
+      const b = read(right);
+      if (a === b) return 0;
+      if (a === null) return 1;
+      if (b === null) return -1;
+      if (typeof a === "number" && typeof b === "number") return (a - b) * factor;
+      return String(a).localeCompare(String(b)) * factor;
+    });
+  }, [clientSort, columns, data, sort]);
+
   const view = useMemo(() => {
     if (pagination === false) {
-      return { rows: data, page: 1, pageSize: data.length, totalRecords: data.length, totalPages: 1 };
+      return { rows, page: 1, pageSize: rows.length, totalRecords: rows.length, totalPages: 1 };
     }
     if (pagination.mode === "server") {
       const totalPages = pagination.totalPages ?? pageCount(pagination.totalRecords, pagination.pageSize);
       return {
-        rows: data,
+        rows,
         page: clampPage(pagination.currentPage, totalPages),
         pageSize: pagination.pageSize,
         totalRecords: pagination.totalRecords,
@@ -163,11 +189,11 @@ export function DataTable<T>({
       };
     }
     const pageSize = pagination.pageSize ?? innerSize;
-    const totalPages = pageCount(data.length, pageSize);
+    const totalPages = pageCount(rows.length, pageSize);
     const page = clampPage(pagination.currentPage ?? innerPage, totalPages);
     const start = (page - 1) * pageSize;
-    return { rows: data.slice(start, start + pageSize), page, pageSize, totalRecords: data.length, totalPages };
-  }, [data, pagination, innerPage, innerSize]);
+    return { rows: rows.slice(start, start + pageSize), page, pageSize, totalRecords: rows.length, totalPages };
+  }, [rows, pagination, innerPage, innerSize]);
 
   const changePage = (page: number) => {
     const next = clampPage(page, view.totalPages);
@@ -228,12 +254,35 @@ export function DataTable<T>({
                 <th
                   key={columnKey(column, index)}
                   scope="col"
+                  aria-sort={
+                    sort?.id === columnKey(column, index) ? (sort.direction === "asc" ? "ascending" : "descending") : column.sortValue && clientSort ? "none" : undefined
+                  }
                   style={widthStyle(column.width)}
                   className={`${cellX} h-10 whitespace-nowrap font-semibold ${alignClass[column.align ?? "left"]} ${
                     column.headerClassName ?? column.className ?? ""
                   }`}
                 >
-                  {column.header}
+                  {column.sortValue && clientSort ? (
+                    <button
+                      type="button"
+                      className="inline-flex items-center gap-1 rounded outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+                      onClick={() => {
+                        const id = columnKey(column, index);
+                        setSort((current) =>
+                          current?.id === id
+                            ? { id, direction: current.direction === "asc" ? "desc" : "asc" }
+                            : { id, direction: "asc" },
+                        );
+                      }}
+                    >
+                      {column.header}
+                      <span aria-hidden="true" className="text-[10px] text-charcoal/40 dark:text-zinc-500">
+                        {sort?.id === columnKey(column, index) ? (sort.direction === "asc" ? "↑" : "↓") : "↕"}
+                      </span>
+                    </button>
+                  ) : (
+                    column.header
+                  )}
                 </th>
               ))}
             </tr>
@@ -259,14 +308,33 @@ export function DataTable<T>({
                   </tr>
                 ))
               : null}
-            {!isLoading && view.rows.length === 0 ? (
+            {!isLoading && error ? (
+              <tr>
+                <td colSpan={columns.length} className="px-6 py-14 text-center">
+                  <div className="mx-auto flex max-w-sm flex-col items-center">
+                    <p className="text-sm font-semibold">Could not load this list</p>
+                    <p className="mt-1 text-sm text-charcoal/50 dark:text-zinc-400">{error}</p>
+                    {onRetry ? (
+                      <button
+                        type="button"
+                        onClick={onRetry}
+                        className="mt-4 rounded-full border border-line px-4 py-2 text-sm font-semibold outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+                      >
+                        Try again
+                      </button>
+                    ) : null}
+                  </div>
+                </td>
+              </tr>
+            ) : null}
+            {!isLoading && !error && view.rows.length === 0 ? (
               <tr>
                 <td colSpan={columns.length} className="px-6 py-14 text-center">
                   {isEmptyState(emptyState) ? <EmptyState {...emptyState} /> : emptyState}
                 </td>
               </tr>
             ) : null}
-            {!isLoading
+            {!isLoading && !error
               ? view.rows.map((row, index) => {
                   const active = isRowActive?.(row) ?? false;
                   const rowId = getRowId(row, index);

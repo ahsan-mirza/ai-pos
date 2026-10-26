@@ -2,13 +2,16 @@ import { BrandLogo } from "@ai-pos/ui";
 import {
   Building2,
   CreditCard,
+  LayoutDashboard,
   Inbox,
   LogOut,
+  MonitorSmartphone,
   Package,
   PanelLeftClose,
   PanelLeftOpen,
   Puzzle,
   Receipt,
+  Landmark,
   Settings,
   X,
   type LucideIcon,
@@ -29,6 +32,7 @@ const groups: { label: string; items: NavItem[] }[] = [
   {
     label: "Stores",
     items: [
+      { to: "/overview", label: "Overview", icon: LayoutDashboard },
       { to: "/tenants", label: "Tenants", icon: Building2 },
       { to: "/requests", label: "Change requests", icon: Inbox },
     ],
@@ -39,7 +43,9 @@ const groups: { label: string; items: NavItem[] }[] = [
       { to: "/packages", label: "Packages", icon: Package },
       { to: "/billing", label: "Billing", icon: Receipt },
       { to: "/addons", label: "Add-ons", icon: Puzzle },
+      { to: "/hardware", label: "Hardware", icon: MonitorSmartphone },
       { to: "/subscriptions", label: "Subscriptions", icon: CreditCard },
+      { to: "/payments", label: "Payments", icon: Landmark },
     ],
   },
   {
@@ -113,7 +119,7 @@ function initialsOf(name: string): string {
 function SidebarBrand({ collapsed }: { collapsed: boolean }) {
   return (
     <Link
-      to="/tenants"
+      to="/overview"
       aria-label="QIOS Console home"
       className={`flex h-16 shrink-0 items-center overflow-hidden border-b border-line outline-none focus-visible:bg-charcoal/[0.03] ${collapsed ? "justify-center px-2" : "px-[22px]"}`}
     >

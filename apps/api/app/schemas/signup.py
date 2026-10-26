@@ -16,7 +16,7 @@ EMAIL = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
 class SignupStart(ApiModel):
     email: str = Field(max_length=254)
-    phone: str = Field(min_length=8, max_length=20)
+    phone: str = Field(min_length=8, max_length=32)
     full_name: str = Field(min_length=2, max_length=120)
     password: str = Field(min_length=PASSWORD_MIN_LENGTH, max_length=128)
 
@@ -42,10 +42,12 @@ class SignupStart(ApiModel):
     @field_validator("phone")
     @classmethod
     def _phone(cls, value: str) -> str:
-        digits = re.sub(r"[\s()-]", "", value.strip())
-        if not re.fullmatch(r"\+?\d{8,15}", digits):
-            raise ValueError("Enter a mobile number with country code, e.g. +971 50 123 4567.")
-        return digits if digits.startswith("+") else f"+{digits}"
+        from app.services.phone_numbers import normalize_phone
+
+        normalized = normalize_phone(value, required=True)
+        if normalized is None:
+            raise ValueError("Enter a phone number.")
+        return normalized
 
 
 class SignupResume(ApiModel):

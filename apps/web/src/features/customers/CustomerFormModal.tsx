@@ -1,3 +1,4 @@
+import { PhoneField, emailError, moneyError, phoneError, requiredError } from "@ai-pos/ui";
 import {
   PAYMENT_TERMS_LABELS,
   PRICE_TIER_LABELS,
@@ -10,12 +11,13 @@ import {
   type PriceTier,
   type TaxTreatment,
 } from "@ai-pos/shared-types";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ErrorNote, GhostButton, PrimaryButton, SelectField, TextField } from "../../components/ui/Field";
 import { Modal } from "../../components/ui/Modal";
 import { SegmentedControl } from "../../components/ui/SegmentedControl";
 import { Toggle } from "../../components/ui/Toggle";
 import { priceListsApi } from "../inventory/priceListsApi";
+import { fieldErrors, useInvalidFocus, type FieldErrors } from "../inventory/formErrors";
 import { centsText, customersApi, message, toCents } from "./api";
 
 const typeOptions = [
@@ -71,22 +73,43 @@ export function CustomerFormModal({ customer, currency, onClose, onSaved, prefil
   const [certificateExpiry, setCertificateExpiry] = useState(customer?.tax_certificate_expiry ?? "");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [errors, setErrors] = useState<FieldErrors>({});
+  const formRef = useRef<HTMLDivElement>(null);
+  const focusInvalid = useInvalidFocus(formRef);
   const wholesale = customerType === "WHOLESALE";
+
+  const problems = (): FieldErrors => {
+    const next: FieldErrors = {};
+    const nameProblem = requiredError(name, "the contact name");
+    if (nameProblem) next.name = nameProblem;
+    const phoneProblem = phoneError(phone, consent.whatsapp_opt_in || consent.sms_opt_in);
+    if (phoneProblem) next.phone = phoneProblem;
+    const emailProblem = emailError(email, consent.email_opt_in);
+    if (emailProblem) next.email = emailProblem;
+    if (wholesale) {
+      const limitProblem = moneyError(limit, "the credit limit");
+      if (limitProblem) next.limit = limitProblem;
+    }
+    return next;
+  };
+
+  const show = (next: FieldErrors) => {
+    setErrors(next);
+    if (Object.keys(next).length > 0) focusInvalid();
+  };
 
   useEffect(() => {
     void priceListsApi.groups().then(setGroups).catch(() => undefined);
   }, []);
 
   const save = async () => {
-    const limitCents = wholesale ? toCents(limit) : 0;
-    if (name.trim() === "") {
-      setError("Enter the contact name.");
+    const next = problems();
+    if (Object.keys(next).length > 0) {
+      show(next);
+      setError(null);
       return;
     }
-    if (limitCents === null) {
-      setError("Enter the credit limit as an amount such as 5000.00.");
-      return;
-    }
+    const limitCents = wholesale ? (toCents(limit) ?? 0) : 0;
     const body = {
       name: name.trim(),
       customer_type: customerType,
@@ -115,7 +138,9 @@ export function CustomerFormModal({ customer, currency, onClose, onSaved, prefil
     try {
       onSaved(editing ? await customersApi.update(customer.id, body) : await customersApi.create(body));
     } catch (caught) {
-      setError(message(caught, "Could not save the customer."));
+      const fields = fieldErrors(caught);
+      if (Object.keys(fields).length > 0) show(fields);
+      setError(Object.keys(fields).length > 0 ? null : message(caught, "Could not save the customer."));
     } finally {
       setBusy(false);
     }
@@ -136,17 +161,48 @@ export function CustomerFormModal({ customer, currency, onClose, onSaved, prefil
         </>
       }
     >
+      <div ref={formRef}>
       <SegmentedControl label="Customer type" value={customerType} options={typeOptions} onChange={setCustomerType} />
       <div className="mt-5 grid gap-4 md:grid-cols-2">
-        <TextField label="Contact name" value={name} onChange={(event) => setName(event.target.value)} />
+        <TextField
+          label="Contact name"
+          required
+          value={name}
+          error={errors.name}
+          onBlur={() => setErrors((current) => ({ ...current, name: requiredError(name, "the contact name") ?? "" }))}
+          onChange={(event) => {
+            setName(event.target.value);
+            setErrors((current) => ({ ...current, name: requiredError(event.target.value, "the contact name") ?? "" }));
+          }}
+        />
         <TextField
           label="Company name"
           value={company}
           placeholder={wholesale ? "Registered trading name" : "Optional"}
           onChange={(event) => setCompany(event.target.value)}
         />
-        <TextField label="Phone" value={phone} onChange={(event) => setPhone(event.target.value)} />
-        <TextField label="Email" type="email" value={email} onChange={(event) => setEmail(event.target.value)} />
+        <PhoneField
+          label="Phone"
+          value={phone}
+          error={errors.phone}
+          required={consent.whatsapp_opt_in || consent.sms_opt_in}
+          onChange={(next) => {
+            setPhone(next);
+            setErrors((current) => ({ ...current, phone: phoneError(next, consent.whatsapp_opt_in || consent.sms_opt_in) ?? "" }));
+          }}
+        />
+        <TextField
+          label="Email"
+          type="email"
+          value={email}
+          required={consent.email_opt_in}
+          error={errors.email}
+          onBlur={() => setErrors((current) => ({ ...current, email: emailError(email, consent.email_opt_in) ?? "" }))}
+          onChange={(event) => {
+            setEmail(event.target.value);
+            setErrors((current) => ({ ...current, email: emailError(event.target.value, consent.email_opt_in) ?? "" }));
+          }}
+        />
         <TextField
           label="TRN / VAT number"
           value={trn}
@@ -183,10 +239,16 @@ export function CustomerFormModal({ customer, currency, onClose, onSaved, prefil
           <SelectField label="Payment terms" value={terms} options={termOptions} onChange={setTerms} />
           <TextField
             label={`Credit limit (${currency})`}
+            required
             inputMode="decimal"
             value={limit}
+            error={errors.limit}
             className="bg-white tabular-nums"
-            onChange={(event) => setLimit(event.target.value)}
+            onBlur={() => setErrors((current) => ({ ...current, limit: moneyError(limit, "the credit limit") ?? "" }))}
+            onChange={(event) => {
+              setLimit(event.target.value);
+              setErrors((current) => ({ ...current, limit: moneyError(event.target.value, "the credit limit") ?? "" }));
+            }}
           />
         </div>
       ) : null}
@@ -254,6 +316,7 @@ export function CustomerFormModal({ customer, currency, onClose, onSaved, prefil
         </div>
       ) : null}
       <ErrorNote message={error} />
+      </div>
     </Modal>
   );
 }

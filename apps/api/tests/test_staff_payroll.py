@@ -60,16 +60,29 @@ def test_payroll_run_with_overtime_commission_and_wps_file(client, session) -> N
     client.post("/api/v1/timesheets/approve", headers=headers, json={"entry_ids": [entry]})
 
     profile = {
-        "employee_code": "E001",
         "labour_id": "10012345678901",
         "bank_routing_code": "803320101",
         "iban": "AE070331234567890123456",
+        "job_title": "Cashier",
+        "nationality": "Indian",
         "basic_salary_cents": 360_000,
         "housing_allowance_cents": 100_000,
         "transport_allowance_cents": 40_000,
     }
     saved = client.put(f"/api/v1/staff/employees/{CASHIER_ID}", headers=headers, json=profile)
     assert saved.status_code == 200, saved.text
+    person = next(row for row in saved.json() if row["user_id"] == CASHIER_ID)
+    assert person["profile"]["employee_code"] == "EMP0001"
+    assert person["profile"]["job_title"] == "Cashier"
+    typed = client.put(
+        f"/api/v1/staff/employees/{CASHIER_ID}",
+        headers=headers,
+        json={**profile, "employee_code": "E999"},
+    )
+    assert typed.status_code == 422
+    again = client.put(f"/api/v1/staff/employees/{CASHIER_ID}", headers=headers, json=profile)
+    kept = next(row for row in again.json() if row["user_id"] == CASHIER_ID)
+    assert kept["profile"]["employee_code"] == "EMP0001"
     bad_iban = client.put(f"/api/v1/staff/employees/{CASHIER_ID}", headers=headers, json={**profile, "iban": "GB00"})
     assert bad_iban.status_code == 422
 

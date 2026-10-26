@@ -1,7 +1,7 @@
 from datetime import date, datetime
 from uuid import UUID
 
-from pydantic import Field
+from pydantic import Field, field_validator
 
 from app.schemas.payloads import ApiModel
 
@@ -40,6 +40,13 @@ class ChannelSecretOut(ApiModel):
 class ChannelCustomer(ApiModel):
     name: str | None = Field(default=None, max_length=120)
     phone: str | None = Field(default=None, max_length=40)
+
+    @field_validator("phone")
+    @classmethod
+    def normalize_channel_phone(cls, value: str | None) -> str | None:
+        from app.services.phone_numbers import normalize_phone
+
+        return normalize_phone(value)
     address: str | None = Field(default=None, max_length=255)
 
 

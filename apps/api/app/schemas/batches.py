@@ -2,7 +2,7 @@ from datetime import date, datetime
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 ImportSource = Literal["EXCEL", "CSV", "PDF_INVOICE", "MANUAL"]
 BatchStatus = Literal["ACTIVE", "PARTIALLY_SOLD", "EXHAUSTED", "REVERSED"]
@@ -34,6 +34,20 @@ class SupplierCreate(ApiModel):
     contact_name: str | None = Field(default=None, max_length=120)
     phone: str | None = Field(default=None, max_length=40)
     email: str | None = Field(default=None, max_length=254)
+
+    @field_validator("phone")
+    @classmethod
+    def normalize_supplier_phone(cls, value: str | None) -> str | None:
+        from app.services.phone_numbers import normalize_phone
+
+        return normalize_phone(value)
+
+    @field_validator("email")
+    @classmethod
+    def normalize_supplier_email(cls, value: str | None) -> str | None:
+        from app.services.phone_numbers import optional_email
+
+        return optional_email(value)
 
 
 class SupplierOut(ApiModel):

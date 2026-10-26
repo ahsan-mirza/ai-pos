@@ -8,6 +8,7 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     Integer,
+    LargeBinary,
     MetaData,
     String,
     Text,
@@ -322,6 +323,8 @@ class BillingInvoice(ControlBase):
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
     result: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     paid_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Bank instructions copied when the invoice was issued. Later account edits do not rewrite this.
+    bank_snapshot: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
 
@@ -376,6 +379,191 @@ class TenantMergeCheckpoint(ControlBase):
     tenant_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("tenants.id"), index=True)
     table_name: Mapped[str] = mapped_column(String(64))
     row_count: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
+class PlatformBankAccount(ControlBase):
+    """Payment instructions printed on invoices. A later edit does not change invoices already issued."""
+
+    __tablename__ = "platform_bank_accounts"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    display_name: Mapped[str] = mapped_column(String(80))
+    bank_name: Mapped[str] = mapped_column(String(120))
+    holder_name: Mapped[str] = mapped_column(String(120))
+    account_number: Mapped[str] = mapped_column(String(40), default="")
+    iban: Mapped[str] = mapped_column(String(40), default="")
+    swift: Mapped[str] = mapped_column(String(16), default="")
+    country: Mapped[str] = mapped_column(String(2), default="AE")
+    currency: Mapped[str] = mapped_column(String(3), default="AED")
+    instructions: Mapped[str] = mapped_column(Text, default="")
+    active: Mapped[bool] = mapped_column(Boolean, default=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
+
+
+class BillingPolicy(ControlBase):
+    """One row. Grace is applied at request time from the paid-through date, not only by a scheduler."""
+
+    __tablename__ = "billing_policy"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    grace_days: Mapped[int] = mapped_column(Integer, default=5)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
+
+
+class BillingTransfer(ControlBase):
+    """A tenant's claim that they paid. The receipt is evidence. It is not a verified payment."""
+
+    __tablename__ = "billing_transfers"
+    __table_args__ = (UniqueConstraint("tenant_id", "idempotency_key", name="uq_billing_transfers_idempotency"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("tenants.id"), index=True)
+    invoice_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("billing_invoices.id"), index=True)
+    status: Mapped[str] = mapped_column(String(20), default="pending_review", index=True)
+    amount_fils: Mapped[int] = mapped_column(Integer)
+    transferred_on: Mapped[str] = mapped_column(String(10))
+    bank_reference: Mapped[str] = mapped_column(String(80), default="")
+    sending_bank: Mapped[str] = mapped_column(String(120), default="")
+    note: Mapped[str] = mapped_column(Text, default="")
+    idempotency_key: Mapped[str] = mapped_column(String(80))
+    filename: Mapped[str] = mapped_column(String(120))
+    content_type: Mapped[str] = mapped_column(String(40))
+    body: Mapped[bytes] = mapped_column(LargeBinary)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    reviewed_by: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True), nullable=True)
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    decision_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class BillingPayment(ControlBase):
+    """A bank credit an administrator verified. One submission can produce at most one payment."""
+
+    __tablename__ = "billing_payments"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("tenants.id"), index=True)
+    invoice_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("billing_invoices.id"), index=True)
+    submission_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("billing_transfers.id"), unique=True
+    )
+    amount_fils: Mapped[int] = mapped_column(Integer)
+    bank_reference: Mapped[str | None] = mapped_column(String(80), nullable=True, unique=True)
+    recorded_by: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
+class HardwareCategory(ControlBase):
+    """A catalogue group such as receipt printers. Administrators can add more without a code change."""
+
+    __tablename__ = "hardware_categories"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    name: Mapped[str] = mapped_column(String(80), unique=True)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    active: Mapped[bool] = mapped_column(Boolean, default=True)
+
+
+class HardwareItem(ControlBase):
+    """One product a tenant may lease or buy. Prices are fils. A later edit does not rewrite an issued invoice."""
+
+    __tablename__ = "hardware_items"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    sku: Mapped[str] = mapped_column(String(32), unique=True)
+    name: Mapped[str] = mapped_column(String(120))
+    category_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("hardware_categories.id"), index=True)
+    description: Mapped[str] = mapped_column(Text, default="")
+    image_url: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    manufacturer: Mapped[str] = mapped_column(String(80), default="")
+    model: Mapped[str] = mapped_column(String(80), default="")
+    lease_available: Mapped[bool] = mapped_column(Boolean, default=True)
+    purchase_available: Mapped[bool] = mapped_column(Boolean, default=False)
+    monthly_fils: Mapped[int] = mapped_column(Integer, default=0)
+    deposit_fils: Mapped[int] = mapped_column(Integer, default=0)
+    fee_fils: Mapped[int] = mapped_column(Integer, default=0)
+    purchase_fils: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    delivery_fils: Mapped[int] = mapped_column(Integer, default=0)
+    currency: Mapped[str] = mapped_column(String(3), default="AED")
+    min_qty: Mapped[int] = mapped_column(Integer, default=1)
+    max_qty: Mapped[int] = mapped_column(Integer, default=20)
+    stock_qty: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    counts_as_register: Mapped[bool] = mapped_column(Boolean, default=False)
+    compatibility: Mapped[str] = mapped_column(Text, default="")
+    active: Mapped[bool] = mapped_column(Boolean, default=True)
+    archived: Mapped[bool] = mapped_column(Boolean, default=False)
+    effective_from: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    effective_to: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    internal_notes: Mapped[str] = mapped_column(Text, default="")
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
+
+
+class HardwareOrder(ControlBase):
+    """A tenant's hardware selection. Payment status and fulfillment status are independent."""
+
+    __tablename__ = "hardware_orders"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    reference: Mapped[str] = mapped_column(String(20), unique=True)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("tenants.id"), index=True)
+    invoice_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("billing_invoices.id"), index=True
+    )
+    payment_status: Mapped[str] = mapped_column(String(24), default="awaiting_payment", index=True)
+    fulfillment_status: Mapped[str] = mapped_column(String(24), default="awaiting_payment", index=True)
+    monthly_fils: Mapped[int] = mapped_column(Integer, default=0)
+    deposit_fils: Mapped[int] = mapped_column(Integer, default=0)
+    one_time_fils: Mapped[int] = mapped_column(Integer, default=0)
+    currency: Mapped[str] = mapped_column(String(3), default="AED")
+    notes: Mapped[str] = mapped_column(Text, default="")
+    assigned_operator_id: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
+
+
+class HardwareOrderLine(ControlBase):
+    __tablename__ = "hardware_order_lines"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    order_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("hardware_orders.id"), index=True)
+    item_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("hardware_items.id"), index=True)
+    sku: Mapped[str] = mapped_column(String(32))
+    name: Mapped[str] = mapped_column(String(120))
+    store_id: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True), nullable=True, index=True)
+    store_label: Mapped[str] = mapped_column(String(80), default="")
+    mode: Mapped[str] = mapped_column(String(16))
+    quantity: Mapped[int] = mapped_column(Integer)
+    monthly_fils: Mapped[int] = mapped_column(Integer, default=0)
+    deposit_fils: Mapped[int] = mapped_column(Integer, default=0)
+    fee_fils: Mapped[int] = mapped_column(Integer, default=0)
+    purchase_fils: Mapped[int] = mapped_column(Integer, default=0)
+    delivery_fils: Mapped[int] = mapped_column(Integer, default=0)
+    fulfilled_qty: Mapped[int] = mapped_column(Integer, default=0)
+    serials: Mapped[list] = mapped_column(JSON, default=list)
+
+
+class HardwareAssignment(ControlBase):
+    """A leased unit after payment. Paying the invoice does not mark it delivered or refund the deposit."""
+
+    __tablename__ = "hardware_assignments"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("tenants.id"), index=True)
+    order_line_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("hardware_order_lines.id"), index=True
+    )
+    item_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("hardware_items.id"))
+    store_id: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True), nullable=True)
+    store_label: Mapped[str] = mapped_column(String(80), default="")
+    serial: Mapped[str] = mapped_column(String(64), default="")
+    quantity: Mapped[int] = mapped_column(Integer)
+    monthly_fils: Mapped[int] = mapped_column(Integer, default=0)
+    deposit_fils: Mapped[int] = mapped_column(Integer, default=0)
+    status: Mapped[str] = mapped_column(String(16), default="active", index=True)
+    delivered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    returned_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    condition_note: Mapped[str] = mapped_column(Text, default="")
+    deposit_decision: Mapped[str] = mapped_column(String(24), default="held")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
 

@@ -1,8 +1,10 @@
 import { Permission, type Brand } from "@ai-pos/shared-types";
+import type { DataTableColumn } from "@ai-pos/ui";
 import { Pencil, Plus, Search, Trash2 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useConfirm } from "../../components/ui/ConfirmDialog";
+import { DataTable } from "../../components/ui/DataTable";
 import { ErrorNote, GhostButton, PrimaryButton, TextField, filterLabel } from "../../components/ui/Field";
 import { Modal } from "../../components/ui/Modal";
 import { useTenant } from "../../context/TenantContext";
@@ -36,6 +38,66 @@ export function BrandsPage() {
 
   const needle = query.trim().toLowerCase();
   const visible = brands.filter((brand) => needle === "" || `${brand.name} ${brand.code}`.toLowerCase().includes(needle));
+
+  const columns: DataTableColumn<Brand>[] = [
+    {
+      id: "brand",
+      header: "Brand",
+      sortValue: (row) => row.name,
+      cell: (row) => (
+        <span>
+          <span className="block font-medium">{row.name}</span>
+          <span className="block font-mono text-[11px] text-charcoal/50">{row.code}</span>
+        </span>
+      ),
+    },
+    {
+      id: "sold-in",
+      header: "Sold in",
+      cell: (row) => (
+        <div className="flex flex-wrap gap-1.5">
+          {row.sub_category_ids.map((id) => (
+            <span key={id} className="rounded-full bg-surface px-2.5 py-0.5 text-xs text-charcoal/80">
+              {subNames.get(id) ?? "…"}
+            </span>
+          ))}
+          {row.sub_category_ids.length === 0 ? <span className="text-charcoal/40">—</span> : null}
+        </div>
+      ),
+    },
+    {
+      id: "models",
+      header: "Models",
+      align: "right",
+      sortValue: (row) => row.model_count,
+      cell: (row) =>
+        modelsTab ? (
+          <Link to={`/inventory/models?brand_id=${row.id}`} className="font-semibold text-accent hover:underline">
+            {row.model_count}
+          </Link>
+        ) : (
+          row.model_count
+        ),
+    },
+    { id: "products", header: "Products", align: "right", sortValue: (row) => row.product_count, cell: (row) => row.product_count },
+  ];
+  if (manage) {
+    columns.push({
+      id: "actions",
+      header: "Actions",
+      align: "right",
+      cell: (row) => (
+        <div className="flex justify-end gap-1">
+          <IconButton label={`Edit ${row.name}`} onClick={() => setEditing(row)}>
+            <Pencil size={14} />
+          </IconButton>
+          <IconButton label={`Delete ${row.name}`} onClick={() => void remove(row)}>
+            <Trash2 size={14} />
+          </IconButton>
+        </div>
+      ),
+    });
+  }
 
   const remove = async (brand: Brand) => {
     const accepted = await confirm({
@@ -85,66 +147,18 @@ export function BrandsPage() {
           ) : null}
         </div>
       </div>
-      <ErrorNote message={error ?? loadError} />
-      <div className="overflow-x-auto">
-        <table className="w-full min-w-[760px] text-left text-sm">
-          <thead className="text-xs uppercase tracking-wide text-charcoal/50">
-            <tr>
-              <th className="pb-3 font-medium">Brand</th>
-              <th className="pb-3 font-medium">Sold in</th>
-              <th className="pb-3 text-right font-medium">Models</th>
-              <th className="pb-3 text-right font-medium">Products</th>
-              {manage ? <th className="pb-3 text-right font-medium">Actions</th> : null}
-            </tr>
-          </thead>
-          <tbody>
-            {visible.map((brand) => (
-              <tr key={brand.id} className="border-t border-line align-top">
-                <td className="py-3">
-                  <span className="block font-medium">{brand.name}</span>
-                  <span className="block font-mono text-[11px] text-charcoal/50">{brand.code}</span>
-                </td>
-                <td className="py-3">
-                  <div className="flex flex-wrap gap-1.5">
-                    {brand.sub_category_ids.map((id) => (
-                      <span key={id} className="rounded-full bg-surface px-2.5 py-0.5 text-xs text-charcoal/80">
-                        {subNames.get(id) ?? "…"}
-                      </span>
-                    ))}
-                    {brand.sub_category_ids.length === 0 ? <span className="text-charcoal/40">—</span> : null}
-                  </div>
-                </td>
-                <td className="py-3 text-right tabular-nums">
-                  {modelsTab ? (
-                    <Link
-                      to={`/inventory/models?brand_id=${brand.id}`}
-                      className="font-semibold text-accent hover:underline"
-                    >
-                      {brand.model_count}
-                    </Link>
-                  ) : (
-                    brand.model_count
-                  )}
-                </td>
-                <td className="py-3 text-right tabular-nums">{brand.product_count}</td>
-                {manage ? (
-                  <td className="py-3">
-                    <div className="flex justify-end gap-1">
-                      <IconButton label={`Edit ${brand.name}`} onClick={() => setEditing(brand)}>
-                        <Pencil size={14} />
-                      </IconButton>
-                      <IconButton label={`Delete ${brand.name}`} onClick={() => void remove(brand)}>
-                        <Trash2 size={14} />
-                      </IconButton>
-                    </div>
-                  </td>
-                ) : null}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        {visible.length === 0 ? <p className="py-8 text-sm text-charcoal/60">No brands match.</p> : null}
-      </div>
+      <ErrorNote message={error} />
+      <DataTable
+        aria-label="Brands"
+        minWidth="760px"
+        columns={columns}
+        data={visible}
+        getRowId={(row) => row.id}
+        error={loadError}
+        onRetry={() => void reload()}
+        pagination={{ mode: "client", resetKey: needle }}
+        emptyState={{ title: "No brands match", description: "Try another name or code." }}
+      />
       {editing !== null ? (
         <BrandModal
           brand={editing === "new" ? null : editing}

@@ -1,4 +1,5 @@
 import { formatMoney } from "@ai-pos/shared-types";
+import { isoToDisplay } from "@ai-pos/ui";
 
 export function bytes(value: number | null): string {
   if (value === null) return "—";
@@ -17,9 +18,9 @@ export function money(cents: number, currency: string | null): string {
 }
 
 export function date(value: string | null): string {
-  return value ? value.slice(0, 10) : "—";
+  return value ? isoToDisplay(value) || "—" : "—";
 }
 
 export function when(value: string | null): string {
-  return value ? value.slice(0, 16).replace("T", " ") : "—";
+  return value ? isoToDisplay(value, true) || "—" : "—";
 }

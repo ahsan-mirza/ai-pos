@@ -10,7 +10,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query, Request, Response
 
-from app.console import auth, billing, directory, entitlements, mail, migration, site, stats
+from app.console import auth, billing, directory, entitlements, hardware, mail, migration, site, stats, transfers
 from app.console.security import ConsoleAdmin, CurrentOperator
 from app.core.config import Settings, get_settings
 from app.core.errors import ApiError
@@ -18,15 +18,22 @@ from app.core.pagination import Offset, set_total
 from app.schemas.billing import (
     AddonIn,
     AddonOut,
+    BankAccountIn,
+    BankAccountOut,
     CatalogOut,
     CycleIn,
     CycleOut,
     FeeIn,
     FeeOut,
+    GraceIn,
+    OverviewOut,
+    PaymentOut,
     PlanIn,
     PlanOut,
+    RejectIn,
     SubscriptionAssign,
     SubscriptionOut,
+    TransferOut,
 )
 from app.schemas.console import (
     ConsoleChangeRequest,
@@ -47,6 +54,7 @@ from app.schemas.console import (
     TenantStatsOut,
     TenantUpdate,
 )
+from app.schemas.hardware import DepositDecisionIn, FulfillmentIn, HardwareCategoryIn, HardwareItemIn
 from app.schemas.mail import MailSettingsIn, MailSettingsOut, MailTestIn, MailTestOut
 from app.schemas.site import SiteContactIn, SiteContactOut
 from app.tenancy import registry
@@ -268,6 +276,185 @@ def billing_addon(addon_id: uuid.UUID, payload: AddonIn, operator: ConsoleAdmin,
 def billing_fee(fee_id: uuid.UUID, payload: FeeIn, operator: ConsoleAdmin, settings: Config) -> FeeOut:
     with registry.control_session(settings) as db:
         return billing.update_fee(db, operator, fee_id, payload)
+
+
+@router.get("/hardware/categories")
+def hardware_categories(_: CurrentOperator, settings: Config):
+    with registry.control_session(settings) as db:
+        found = hardware.list_categories(db)
+        db.commit()
+        return found
+
+
+@router.post("/hardware/categories", status_code=201)
+def hardware_category_create(payload: HardwareCategoryIn, operator: ConsoleAdmin, settings: Config):
+    with registry.control_session(settings) as db:
+        return hardware.create_category(db, operator, payload)
+
+
+@router.get("/hardware/items")
+def hardware_items(_: CurrentOperator, settings: Config):
+    with registry.control_session(settings) as db:
+        found = hardware.list_items(db, include_notes=True)
+        db.commit()
+        return found
+
+
+@router.post("/hardware/items", status_code=201)
+def hardware_item_create(payload: HardwareItemIn, operator: ConsoleAdmin, settings: Config):
+    with registry.control_session(settings) as db:
+        return hardware.create_item(db, operator, payload)
+
+
+@router.patch("/hardware/items/{item_id}")
+def hardware_item_update(item_id: uuid.UUID, payload: HardwareItemIn, operator: ConsoleAdmin, settings: Config):
+    with registry.control_session(settings) as db:
+        return hardware.update_item(db, operator, item_id, payload)
+
+
+@router.get("/hardware/orders")
+def hardware_orders(
+    response: Response,
+    _: CurrentOperator,
+    settings: Config,
+    offset: Offset,
+    limit: Annotated[int, Query(ge=1, le=100)] = 50,
+    q: str | None = None,
+    payment: str | None = None,
+    fulfillment: str | None = None,
+):
+    with registry.control_session(settings) as db:
+        rows, total = hardware.list_orders(
+            db, query=q, payment=payment, fulfillment=fulfillment, limit=limit, offset=offset
+        )
+        set_total(response, total)
+        return rows
+
+
+@router.get("/hardware/orders/{order_id}")
+def hardware_order(order_id: uuid.UUID, _: CurrentOperator, settings: Config):
+    with registry.control_session(settings) as db:
+        return hardware.get_order(db, order_id)
+
+
+@router.post("/hardware/orders/{order_id}/fulfill")
+def hardware_fulfill(order_id: uuid.UUID, payload: FulfillmentIn, operator: ConsoleAdmin, settings: Config):
+    with registry.control_session(settings) as db:
+        return hardware.fulfill(db, operator, order_id, payload)
+
+
+@router.post("/hardware/deposits")
+def hardware_deposit(payload: DepositDecisionIn, operator: ConsoleAdmin, settings: Config) -> dict[str, str]:
+    with registry.control_session(settings) as db:
+        hardware.decide_deposit(db, operator, payload)
+        return {"status": "saved"}
+
+
+@router.get("/overview", response_model=OverviewOut)
+def overview(_: CurrentOperator, settings: Config) -> OverviewOut:
+    with registry.control_session(settings) as db:
+        return billing.overview(db)
+
+
+def _bank_out(row) -> BankAccountOut:
+    return BankAccountOut(
+        id=row.id,
+        display_name=row.display_name,
+        bank_name=row.bank_name,
+        holder_name=row.holder_name,
+        account_number=row.account_number,
+        iban=row.iban,
+        swift=row.swift,
+        country=row.country,
+        currency=row.currency,
+        instructions=row.instructions,
+        active=row.active,
+    )
+
+
+def _transfer_out(db, row) -> TransferOut:
+    from app.tenancy.models import BillingInvoice, Tenant
+
+    tenant = db.get(Tenant, row.tenant_id)
+    invoice = db.get(BillingInvoice, row.invoice_id)
+    return TransferOut(
+        id=row.id,
+        tenant_id=row.tenant_id,
+        tenant_name=tenant.name if tenant else "",
+        invoice_id=row.invoice_id,
+        status=row.status,
+        amount_fils=row.amount_fils,
+        invoice_total_fils=invoice.total_fils if invoice else 0,
+        currency=invoice.currency if invoice else "AED",
+        transferred_on=row.transferred_on,
+        bank_reference=row.bank_reference,
+        created_at=row.created_at,
+        decision_reason=row.decision_reason,
+    )
+
+
+@router.get("/billing/bank-accounts", response_model=list[BankAccountOut])
+def bank_accounts(_: CurrentOperator, settings: Config) -> list[BankAccountOut]:
+    with registry.control_session(settings) as db:
+        return [_bank_out(row) for row in transfers.list_accounts(db)]
+
+
+@router.post("/billing/bank-accounts", response_model=BankAccountOut, status_code=201)
+def create_bank_account(payload: BankAccountIn, operator: ConsoleAdmin, settings: Config) -> BankAccountOut:
+    with registry.control_session(settings) as db:
+        return _bank_out(transfers.save_account(db, operator, payload.model_dump(), None))
+
+
+@router.patch("/billing/bank-accounts/{account_id}", response_model=BankAccountOut)
+def update_bank_account(
+    account_id: uuid.UUID, payload: BankAccountIn, operator: ConsoleAdmin, settings: Config
+) -> BankAccountOut:
+    with registry.control_session(settings) as db:
+        return _bank_out(transfers.save_account(db, operator, payload.model_dump(), account_id))
+
+
+@router.get("/billing/grace")
+def read_grace(_: CurrentOperator, settings: Config) -> dict[str, int]:
+    with registry.control_session(settings) as db:
+        return {"grace_days": transfers.grace_days(db)}
+
+
+@router.put("/billing/grace")
+def write_grace(payload: GraceIn, operator: ConsoleAdmin, settings: Config) -> dict[str, int]:
+    with registry.control_session(settings) as db:
+        return {"grace_days": transfers.set_grace_days(db, operator, payload.grace_days)}
+
+
+@router.get("/billing/transfers", response_model=list[TransferOut])
+def transfer_queue(_: CurrentOperator, settings: Config, status: str | None = None) -> list[TransferOut]:
+    with registry.control_session(settings) as db:
+        return [_transfer_out(db, row) for row in transfers.list_transfers(db, status)]
+
+
+@router.get("/billing/transfers/{transfer_id}/receipt")
+def transfer_receipt(transfer_id: uuid.UUID, _: CurrentOperator, settings: Config) -> Response:
+    with registry.control_session(settings) as db:
+        row = transfers.receipt_bytes(db, transfer_id, None)
+        return Response(content=row.body, media_type=row.content_type)
+
+
+@router.post("/billing/transfers/{transfer_id}/approve", response_model=PaymentOut)
+def approve_transfer(transfer_id: uuid.UUID, operator: ConsoleAdmin, settings: Config) -> PaymentOut:
+    with registry.control_session(settings) as db:
+        payment = transfers.approve(db, operator, transfer_id)
+        return PaymentOut(
+            id=payment.id,
+            invoice_id=payment.invoice_id,
+            amount_fils=payment.amount_fils,
+            bank_reference=payment.bank_reference,
+        )
+
+
+@router.post("/billing/transfers/{transfer_id}/reject", response_model=TransferOut)
+def reject_transfer(transfer_id: uuid.UUID, payload: RejectIn, operator: ConsoleAdmin, settings: Config) -> TransferOut:
+    with registry.control_session(settings) as db:
+        row = transfers.reject(db, operator, transfer_id, payload.reason)
+        return _transfer_out(db, row)
 
 
 @router.get("/subscriptions", response_model=list[SubscriptionOut])

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import calendar
+import re
 import uuid
 from collections import defaultdict
 from datetime import UTC, date, datetime, time, timedelta
@@ -24,6 +25,7 @@ from app.schemas.staff import (
     CommissionRuleOut,
     CommissionRuleWrite,
     EmployeeOut,
+    EmployeeProfileOut,
     EmployeeProfileWrite,
     PayrollLineOut,
     PayrollLineWrite,
@@ -199,6 +201,38 @@ def save_payroll_settings(db: Session, data: PayrollSettings) -> PayrollSettings
     return data
 
 
+def _profile_out(profile: EmployeeProfile) -> EmployeeProfileOut:
+    return EmployeeProfileOut(
+        employee_code=profile.employee_code,
+        labour_id=profile.labour_id,
+        bank_routing_code=profile.bank_routing_code,
+        iban=profile.iban,
+        job_title=profile.job_title,
+        nationality=profile.nationality,
+        phone=profile.phone,
+        emirates_id=profile.emirates_id,
+        passport_number=profile.passport_number,
+        joined_on=profile.joined_on,
+        date_of_birth=profile.date_of_birth,
+        basic_salary_cents=profile.basic_salary_cents,
+        housing_allowance_cents=profile.housing_allowance_cents,
+        transport_allowance_cents=profile.transport_allowance_cents,
+        other_allowance_cents=profile.other_allowance_cents,
+        overtime_rate_pct=profile.overtime_rate_pct,
+        is_active=profile.is_active,
+    )
+
+
+def _next_employee_code(db: Session) -> str:
+    """The next EMP0001-style code. Codes already saved, including older typed ones, stay as they are."""
+    highest = 0
+    for code in db.scalars(select(EmployeeProfile.employee_code)):
+        match = re.fullmatch(r"EMP(\d+)", code or "")
+        if match:
+            highest = max(highest, int(match.group(1)))
+    return f"EMP{highest + 1:04d}"
+
+
 def employees(db: Session) -> list[EmployeeOut]:
     profiles = {row.user_id: row for row in db.scalars(select(EmployeeProfile))}
     out = []
@@ -210,20 +244,7 @@ def employees(db: Session) -> list[EmployeeOut]:
                 name=user.full_name,
                 role_name=user.role.name if user.role else "",
                 store_id=user.store_id,
-                profile=EmployeeProfileWrite(
-                    employee_code=profile.employee_code,
-                    labour_id=profile.labour_id,
-                    bank_routing_code=profile.bank_routing_code,
-                    iban=profile.iban,
-                    basic_salary_cents=profile.basic_salary_cents,
-                    housing_allowance_cents=profile.housing_allowance_cents,
-                    transport_allowance_cents=profile.transport_allowance_cents,
-                    other_allowance_cents=profile.other_allowance_cents,
-                    overtime_rate_pct=profile.overtime_rate_pct,
-                    is_active=profile.is_active,
-                )
-                if profile
-                else None,
+                profile=_profile_out(profile) if profile else None,
             )
         )
     return out
@@ -234,7 +255,7 @@ def save_profile(db: Session, user_id: uuid.UUID, data: EmployeeProfileWrite) ->
         raise ApiError(404, "not_found", "That person was not found.")
     profile = db.scalar(select(EmployeeProfile).where(EmployeeProfile.user_id == user_id))
     if profile is None:
-        profile = EmployeeProfile(user_id=user_id)
+        profile = EmployeeProfile(user_id=user_id, employee_code=_next_employee_code(db))
         db.add(profile)
     for key, value in data.model_dump().items():
         setattr(profile, key, value)

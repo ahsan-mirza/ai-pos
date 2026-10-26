@@ -1,4 +1,5 @@
 import { AUDIT_ACTION_LABELS, AuditActionType, type AuditLogRow } from "@ai-pos/shared-types";
+import { DateInput } from "@ai-pos/ui";
 import {
   Activity,
   FileDown,
@@ -403,8 +404,7 @@ export function AuditPage() {
             <>
               <label className="block">
                 <span className={filterLabel}>From</span>
-                <input
-                  type="date"
+                <DateInput
                   value={filters.customFrom}
                   max={filters.customTo || undefined}
                   onChange={(event) => update({ customFrom: event.target.value })}
@@ -413,8 +413,7 @@ export function AuditPage() {
               </label>
               <label className="block">
                 <span className={filterLabel}>To</span>
-                <input
-                  type="date"
+                <DateInput
                   value={filters.customTo}
                   min={filters.customFrom || undefined}
                   onChange={(event) => update({ customTo: event.target.value })}

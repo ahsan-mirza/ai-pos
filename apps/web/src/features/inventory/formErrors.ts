@@ -1,9 +1,11 @@
+import { fieldErrorsFrom, focusFirstInvalid } from "@ai-pos/ui";
 import { useEffect, useState } from "react";
 import { ApiRequestError } from "../../lib/api";
 
 export type FieldErrors = Record<string, string>;
 
 const FIELD_ALIASES: Record<string, string> = {
+  credit_limit_cents: "limit",
   price_cents: "price",
   category_id: "category",
   sub_category_id: "sub",
@@ -28,32 +30,12 @@ function assign(target: FieldErrors, field: string, message: string): void {
   if (!target[name]) target[name] = sentence(message);
 }
 
-/** Pydantic `loc`/`msg` entries and catalog `details.fields` become `{ field: message }`. */
+/** Pydantic `loc`/`msg` entries, `field_errors`, and catalog `details.fields` become `{ field: message }`. */
 export function fieldErrors(error: unknown): FieldErrors {
-  if (!(error instanceof ApiRequestError) || error.details == null) return {};
-  const details = error.details;
+  if (!(error instanceof ApiRequestError)) return {};
+  const parsed = fieldErrorsFrom(error.details, error.fieldErrors);
   const out: FieldErrors = {};
-  if (details !== null && typeof details === "object" && !Array.isArray(details) && "fields" in details) {
-    const fields = details.fields;
-    if (fields && typeof fields === "object") {
-      for (const [key, value] of Object.entries(fields)) {
-        if (typeof value === "string") assign(out, key, value);
-      }
-    }
-    return out;
-  }
-  if (!Array.isArray(details)) return out;
-  for (const item of details) {
-    if (!item || typeof item !== "object") continue;
-    const loc = "loc" in item ? item.loc : undefined;
-    const msg = "msg" in item ? item.msg : undefined;
-    if (!Array.isArray(loc) || typeof msg !== "string") continue;
-    const parts = loc.filter(
-      (part): part is string => typeof part === "string" && part !== "body" && part !== "query" && part !== "path",
-    );
-    const field = parts[parts.length - 1];
-    if (field) assign(out, field, msg);
-  }
+  for (const [key, value] of Object.entries(parsed)) assign(out, key, value);
   return out;
 }
 
@@ -64,9 +46,7 @@ export function codeError(value: string): string {
   return "";
 }
 
-export function focusFirstInvalid(root: ParentNode | null): void {
-  root?.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus();
-}
+export { focusFirstInvalid };
 
 /** Call the returned function in the same update as the field errors so focus lands after they render. */
 export function useInvalidFocus(root: { current: HTMLElement | null }): () => void {

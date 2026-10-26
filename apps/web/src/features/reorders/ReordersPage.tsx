@@ -1,3 +1,4 @@
+import { DateInput } from "@ai-pos/ui";
 import { ApiRequestError, apiGet, apiGetPage, apiPatch, apiPost } from "../../lib/api";
 import { ErrorNote, PrimaryButton, SearchField } from "../../components/ui/Field";
 import { useCallback, useEffect, useState, type FormEvent } from "react";
@@ -408,8 +409,8 @@ function PlanForm({
             <option value="CUSTOM_DAYS">Selected days</option>
           </select>
         </label>
-        <label className="text-sm font-medium">Starts<input type="date" value={start} onChange={(event) => setStart(event.target.value)} className="mt-1 h-10 w-full rounded-xl border border-line px-3" required /></label>
-        <label className="text-sm font-medium">Ends<input type="date" value={end} onChange={(event) => setEnd(event.target.value)} className="mt-1 h-10 w-full rounded-xl border border-line px-3" /></label>
+        <label className="text-sm font-medium">Starts<DateInput value={start} onChange={(event) => setStart(event.target.value)} className="mt-1 h-10 w-full rounded-xl border border-line px-3" required /></label>
+        <label className="text-sm font-medium">Ends<DateInput value={end} onChange={(event) => setEnd(event.target.value)} className="mt-1 h-10 w-full rounded-xl border border-line px-3" /></label>
         <label className="text-sm font-medium">Preferred time<input type="time" value={time} onChange={(event) => setTime(event.target.value)} className="mt-1 h-10 w-full rounded-xl border border-line px-3" /></label>
         <label className="text-sm font-medium">Remind this many days ahead<input type="number" min={0} max={14} value={lead} onChange={(event) => setLead(event.target.value)} className="mt-1 h-10 w-full rounded-xl border border-line px-3" /></label>
         <label className="text-sm font-medium">Handover

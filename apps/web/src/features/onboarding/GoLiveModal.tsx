@@ -4,6 +4,7 @@ import type {
   BillingCheckout,
   BillingCheckoutStatus,
   BillingQuote,
+  HardwarePick,
   GoLiveMode,
   GoLiveResult,
   OpeningStockChoice,
@@ -13,7 +14,7 @@ import { Minus, Plus, Rocket, ShieldCheck } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { ErrorNote, GhostButton, PrimaryButton, TextField } from "../../components/ui/Field";
 import { Modal } from "../../components/ui/Modal";
-import { ApiRequestError, apiGet, apiPost } from "../../lib/api";
+import { ApiRequestError, apiGet, apiPost, apiUpload } from "../../lib/api";
 
 const KEEP_CLEARED = [
   "Every practice sale, return, order, bill, shift and journal entry",
@@ -73,8 +74,16 @@ export function GoLiveModal({
   const [planCode, setPlanCode] = useState("");
   const [cycleCode, setCycleCode] = useState("");
   const [quantities, setQuantities] = useState<Record<string, number>>({});
+  const [stores, setStores] = useState<{ id: string; name: string }[]>([]);
+  const [picks, setPicks] = useState<HardwarePick[]>([]);
   const [quote, setQuote] = useState<BillingQuote | null>(null);
   const [watching, setWatching] = useState<string | null>(null);
+  const [transfer, setTransfer] = useState<BillingCheckout | null>(null);
+  const [receiptFile, setReceiptFile] = useState<File | null>(null);
+  const [transferDate, setTransferDate] = useState("");
+  const [transferRef, setTransferRef] = useState("");
+  const [receiptSent, setReceiptSent] = useState(false);
+  const [idempotencyKey] = useState(() => crypto.randomUUID());
 
   useEffect(() => {
     let cancelled = false;
@@ -100,6 +109,12 @@ export function GoLiveModal({
     };
   }, []);
 
+  useEffect(() => {
+    apiGet<{ id: string; name: string }[]>("/api/v1/stores?limit=50")
+      .then((rows) => setStores(rows.map((row) => ({ id: row.id, name: row.name }))))
+      .catch(() => setStores([]));
+  }, []);
+
   const steps: Step[] = ["mode"];
   if (mode === "keep") steps.push("stock");
   if (catalog) steps.push("package");
@@ -118,12 +133,12 @@ export function GoLiveModal({
   useEffect(() => {
     if (!catalog || step !== "package" || !planCode || !cycleCode) return;
     const timer = window.setTimeout(() => {
-      apiPost<BillingQuote>("/api/v1/billing/quote", { plan_code: planCode, cycle_code: cycleCode, addons })
+      apiPost<BillingQuote>("/api/v1/billing/quote", { plan_code: planCode, cycle_code: cycleCode, addons, hardware: picks })
         .then(setQuote)
         .catch((caught: unknown) => setError(caught instanceof ApiRequestError ? caught.message : "Could not price this package."));
     }, 200);
     return () => window.clearTimeout(timer);
-  }, [catalog, step, planCode, cycleCode, addons]);
+  }, [catalog, step, planCode, cycleCode, addons, picks]);
 
   useEffect(() => {
     if (!watching) return;
@@ -163,6 +178,7 @@ export function GoLiveModal({
         plan_code: planCode,
         cycle_code: cycleCode,
         addons,
+        hardware: picks,
         mode,
         opening_stock: mode === "keep" ? openingStock : "reset",
         confirm,
@@ -185,6 +201,132 @@ export function GoLiveModal({
       setBusy(false);
     }
   };
+
+  const payByTransfer = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const checkout = await apiPost<BillingCheckout>("/api/v1/billing/checkout", {
+        plan_code: planCode,
+        cycle_code: cycleCode,
+        addons,
+        hardware: picks,
+        mode,
+        opening_stock: mode === "keep" ? openingStock : "reset",
+        confirm,
+        tax_acknowledged: true,
+        payment: "transfer",
+      });
+      setTransfer(checkout);
+    } catch (caught) {
+      setError(caught instanceof ApiRequestError ? caught.message : "Could not issue the invoice.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const sendReceipt = async () => {
+    if (transfer === null || receiptFile === null || transferDate === "") return;
+    setBusy(true);
+    setError(null);
+    try {
+      const form = new FormData();
+      form.set("invoice_id", transfer.checkout_id);
+      form.set("amount_fils", String(transfer.quote.total_fils));
+      form.set("transferred_on", transferDate);
+      form.set("idempotency_key", idempotencyKey);
+      form.set("bank_reference", transferRef);
+      form.set("receipt", receiptFile);
+      await apiUpload<{ id: string; status: string }>("/api/v1/billing/transfers", form);
+      setReceiptSent(true);
+    } catch (caught) {
+      setError(caught instanceof ApiRequestError ? caught.message : "Could not submit the receipt.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (transfer !== null) {
+    const bank = transfer.bank;
+    return (
+      <Modal
+        title={receiptSent ? "Receipt received" : "Pay by bank transfer"}
+        subtitle="Uploading a receipt does not pay the invoice. An administrator checks the bank credit first."
+        onClose={onClose}
+        footer={
+          receiptSent ? (
+            <PrimaryButton onClick={onClose}>Close</PrimaryButton>
+          ) : (
+            <>
+              <GhostButton onClick={() => setTransfer(null)} disabled={busy}>
+                Back
+              </GhostButton>
+              <PrimaryButton onClick={() => void sendReceipt()} disabled={busy || receiptFile === null || transferDate === ""}>
+                {busy ? "Submitting…" : "Submit receipt"}
+              </PrimaryButton>
+            </>
+          )
+        }
+      >
+        <ErrorNote message={error} />
+        <p className="text-sm text-charcoal/70">
+          Invoice {transfer.checkout_id.slice(0, 8)} · {formatMoney(transfer.quote.total_fils, transfer.quote.currency)}
+        </p>
+        {bank ? (
+          <dl className="mt-4 grid gap-1 text-sm">
+            <div>
+              <dt className="inline text-charcoal/50">Beneficiary </dt>
+              <dd className="inline">{bank.holder_name}</dd>
+            </div>
+            <div>
+              <dt className="inline text-charcoal/50">Bank </dt>
+              <dd className="inline">{bank.bank_name}</dd>
+            </div>
+            <div>
+              <dt className="inline text-charcoal/50">IBAN </dt>
+              <dd className="inline font-mono">{bank.iban}</dd>
+            </div>
+            {bank.instructions ? <p className="mt-2 text-charcoal/70">{bank.instructions}</p> : null}
+          </dl>
+        ) : (
+          <p className="mt-4 text-sm text-charcoal/70">Bank details were not copied onto this invoice.</p>
+        )}
+        {receiptSent ? (
+          <p className="mt-4 rounded-2xl bg-amber-50 p-4 text-sm text-amber-950">
+            The transfer is awaiting verification. The store stays on the unpaid plan until it is approved.
+          </p>
+        ) : (
+          <div className="mt-4 grid gap-3">
+            <label className="grid gap-1 text-sm">
+              Transfer date
+              <input
+                type="date"
+                value={transferDate}
+                onChange={(event) => setTransferDate(event.target.value)}
+                className="h-10 rounded-xl border border-line px-3"
+              />
+            </label>
+            <label className="grid gap-1 text-sm">
+              Bank reference
+              <input
+                value={transferRef}
+                onChange={(event) => setTransferRef(event.target.value)}
+                className="h-10 rounded-xl border border-line px-3"
+              />
+            </label>
+            <label className="grid gap-1 text-sm">
+              Receipt (PNG, JPEG, or PDF)
+              <input
+                type="file"
+                accept="image/png,image/jpeg,application/pdf"
+                onChange={(event) => setReceiptFile(event.target.files?.[0] ?? null)}
+              />
+            </label>
+          </div>
+        )}
+      </Modal>
+    );
+  }
 
   if (result !== null) {
     const stockNote =
@@ -244,9 +386,16 @@ export function GoLiveModal({
               Continue
             </PrimaryButton>
           ) : (
-            <PrimaryButton onClick={() => void goLive()} disabled={!matches || !taxAck || busy || watching !== null}>
-              {watching ? "Waiting for payment…" : busy ? "Going live…" : catalog ? "Pay and go live" : "Go live"}
-            </PrimaryButton>
+            <>
+              {catalog ? (
+                <GhostButton onClick={() => void payByTransfer()} disabled={!matches || !taxAck || busy || watching !== null}>
+                  Bank transfer
+                </GhostButton>
+              ) : null}
+              <PrimaryButton onClick={() => void goLive()} disabled={!matches || !taxAck || busy || watching !== null}>
+                {watching ? "Waiting for payment…" : busy ? "Going live…" : catalog ? "Pay and go live" : "Go live"}
+              </PrimaryButton>
+            </>
           )}
         </>
       }
@@ -295,6 +444,9 @@ export function GoLiveModal({
           onPlan={setPlanCode}
           onCycle={setCycleCode}
           onQuantity={(code, quantity) => setQuantities({ ...quantities, [code]: quantity })}
+          stores={stores}
+          picks={picks}
+          onPicks={setPicks}
         />
       ) : null}
       {step === "confirm" ? (
@@ -374,6 +526,9 @@ function PackageStep({
   onPlan,
   onCycle,
   onQuantity,
+  stores,
+  picks,
+  onPicks,
 }: {
   catalog: BillingCatalog;
   planCode: string;
@@ -384,6 +539,9 @@ function PackageStep({
   onPlan: (code: string) => void;
   onCycle: (code: string) => void;
   onQuantity: (code: string, quantity: number) => void;
+  stores: { id: string; name: string }[];
+  picks: HardwarePick[];
+  onPicks: (next: HardwarePick[]) => void;
 }) {
   const plans = catalog.plans.filter((row) => row.active).sort((a, b) => a.sort_order - b.sort_order);
   const cycles = catalog.cycles.filter((row) => row.active).sort((a, b) => a.sort_order - b.sort_order);
@@ -447,7 +605,7 @@ function PackageStep({
         </div>
       </section>
       <section className="grid gap-3">
-        <h3 className="text-sm font-semibold">Hardware</h3>
+        <h3 className="text-sm font-semibold">Add-ons</h3>
         {addons.map((addon) => (
           <AddonCard
             key={addon.id}
@@ -459,9 +617,172 @@ function PackageStep({
           />
         ))}
       </section>
+      <HardwarePicker items={catalog.hardware ?? []} stores={stores} picks={picks} onPicks={onPicks} />
       {quote ? <QuoteSummary quote={quote} /> : null}
       <ErrorNote message={error} />
     </div>
+  );
+}
+
+function HardwarePicker({
+  items,
+  stores,
+  picks,
+  onPicks,
+}: {
+  items: NonNullable<BillingCatalog["hardware"]>;
+  stores: { id: string; name: string }[];
+  picks: HardwarePick[];
+  onPicks: (next: HardwarePick[]) => void;
+}) {
+  const [query, setQuery] = useState("");
+  const [category, setCategory] = useState("");
+  const categories = [...new Set(items.map((item) => item.category_name))];
+  const visible = items.filter((item) => {
+    const text = `${item.name} ${item.model} ${item.sku} ${item.manufacturer}`.toLowerCase();
+    return (category === "" || item.category_name === category) && text.includes(query.trim().toLowerCase());
+  });
+  if (items.length === 0) {
+    return (
+      <section>
+        <h3 className="text-sm font-semibold">Hardware for your stores</h3>
+        <p className="mt-1 text-sm text-charcoal/60">Hardware is optional. Nothing is selected, and no bundle is added for you.</p>
+      </section>
+    );
+  }
+  const add = (itemId: string) => {
+    const item = items.find((row) => row.id === itemId);
+    if (!item) return;
+    onPicks([
+      ...picks,
+      {
+        item_id: itemId,
+        quantity: item.min_qty,
+        mode: item.lease_available ? "lease" : "purchase",
+        store_id: null,
+        store_label: "Pending store",
+      },
+    ]);
+  };
+  return (
+    <section className="grid gap-3">
+      <div>
+        <h3 className="text-sm font-semibold">Hardware for your stores</h3>
+        <p className="mt-1 text-sm text-charcoal/60">
+          Choose what each store needs. Lease rent and refundable deposits are shown separately. You can skip this.
+        </p>
+      </div>
+      <div className="grid gap-2 sm:grid-cols-[1fr_12rem]">
+        <input
+          className="rounded-xl border border-line bg-white px-3 py-2 text-sm"
+          placeholder="Search hardware"
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+        />
+        <select
+          className="rounded-xl border border-line bg-white px-3 py-2 text-sm"
+          value={category}
+          onChange={(event) => setCategory(event.target.value)}
+        >
+          <option value="">All categories</option>
+          {categories.map((name) => (
+            <option key={name} value={name}>
+              {name}
+            </option>
+          ))}
+        </select>
+      </div>
+      {visible.length === 0 ? <p className="text-sm text-charcoal/60">No hardware matches that search.</p> : null}
+      {visible.map((item) => (
+        <article key={item.id} className="rounded-2xl border border-line bg-white p-4">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <p className="font-semibold">{item.name}</p>
+              <p className="text-sm text-charcoal/60">
+                {item.manufacturer} {item.model} · {item.sku} · {item.category_name}
+              </p>
+              {item.lease_available ? (
+                <p className="mt-1 text-sm">
+                  {formatMoney(item.monthly_fils, item.currency)} / month
+                  {item.deposit_fils ? ` · ${formatMoney(item.deposit_fils, item.currency)} refundable deposit` : ""}
+                </p>
+              ) : null}
+              {item.purchase_available && item.purchase_fils != null ? (
+                <p className="text-sm">Buy for {formatMoney(item.purchase_fils, item.currency)}</p>
+              ) : null}
+              {item.compatibility ? <p className="mt-1 text-xs text-charcoal/60">{item.compatibility}</p> : null}
+            </div>
+            <button type="button" className="rounded-full border border-line px-3 py-1.5 text-sm" onClick={() => add(item.id)}>
+              Add
+            </button>
+          </div>
+        </article>
+      ))}
+      {picks.map((pick, index) => {
+        const item = items.find((row) => row.id === pick.item_id);
+        return (
+          <div key={`${pick.item_id}-${index}`} className="grid gap-2 rounded-2xl bg-surface p-3 sm:grid-cols-4">
+            <p className="text-sm font-medium sm:col-span-4">{item?.name ?? "Hardware"}</p>
+            <label className="text-xs">
+              Store
+              <select
+                className="mt-1 w-full rounded-xl border border-line bg-white px-2 py-2 text-sm"
+                value={pick.store_id ?? ""}
+                onChange={(event) => {
+                  const next = [...picks];
+                  next[index] = { ...pick, store_id: event.target.value || null, store_label: event.target.value ? "" : "Pending store" };
+                  onPicks(next);
+                }}
+              >
+                <option value="">Pending store</option>
+                {stores.map((store) => (
+                  <option key={store.id} value={store.id}>
+                    {store.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="text-xs">
+              Quantity
+              <input
+                className="mt-1 w-full rounded-xl border border-line bg-white px-2 py-2 text-sm"
+                type="number"
+                min={item?.min_qty ?? 1}
+                max={item?.max_qty ?? 20}
+                value={pick.quantity}
+                onChange={(event) => {
+                  const next = [...picks];
+                  next[index] = { ...pick, quantity: Number(event.target.value) || 1 };
+                  onPicks(next);
+                }}
+              />
+            </label>
+            <label className="text-xs">
+              Offer
+              <select
+                className="mt-1 w-full rounded-xl border border-line bg-white px-2 py-2 text-sm"
+                value={pick.mode}
+                onChange={(event) => {
+                  const next = [...picks];
+                  next[index] = { ...pick, mode: event.target.value === "purchase" ? "purchase" : "lease" };
+                  onPicks(next);
+                }}
+              >
+                {item?.lease_available ? <option value="lease">Lease</option> : null}
+                {item?.purchase_available ? <option value="purchase">Purchase</option> : null}
+              </select>
+            </label>
+            <button
+              type="button"
+              className="self-end text-sm text-danger"
+              onClick={() => onPicks(picks.filter((_, itemIndex) => itemIndex !== index))}
+            >
+              Remove
+            </button>
+          </div>
+        );
+      })}
+    </section>
   );
 }
 
@@ -585,6 +906,22 @@ function QuoteSummary({ quote }: { quote: BillingQuote }) {
           </li>
         ))}
       </ul>
+      {quote.deposit_fils ? (
+        <p className="mt-2 flex justify-between text-charcoal/70">
+          <span>Refundable deposits</span>
+          <span className="tabular-nums">{formatMoney(quote.deposit_fils, quote.currency)}</span>
+        </p>
+      ) : null}
+      {quote.hardware_monthly_fils ? (
+        <p className="mt-1 flex justify-between text-charcoal/70">
+          <span>Hardware lease each month</span>
+          <span className="tabular-nums">{formatMoney(quote.hardware_monthly_fils, quote.currency)}</span>
+        </p>
+      ) : null}
+      <p className="mt-2 flex justify-between text-charcoal/70">
+        <span>Recurring this period</span>
+        <span className="tabular-nums">{formatMoney(quote.recurring_fils, quote.currency)}</span>
+      </p>
       <p className="mt-2 flex justify-between border-t border-line pt-2 text-base font-semibold">
         <span>Due now</span>
         <span className="tabular-nums">{formatMoney(quote.total_fils, quote.currency)}</span>

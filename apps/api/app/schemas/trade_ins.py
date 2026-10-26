@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
-from pydantic import Field
+from pydantic import Field, field_validator
 
 from app.schemas.payloads import ApiModel, SerialKind
 
@@ -46,6 +46,16 @@ class TradeInCreate(ApiModel):
     notes: str = Field(default="", max_length=500)
     seller_name: str = Field(min_length=2, max_length=120)
     seller_phone: str = Field(min_length=5, max_length=40)
+
+    @field_validator("seller_phone")
+    @classmethod
+    def normalize_seller_phone(cls, value: str) -> str:
+        from app.services.phone_numbers import normalize_phone
+
+        normalized = normalize_phone(value, required=True)
+        if normalized is None:
+            raise ValueError("Enter a phone number.")
+        return normalized
     seller_id_number: str = Field(min_length=5, max_length=40)
     customer_id: UUID | None = None
     offer_cents: int = Field(ge=0, le=100_000_000)

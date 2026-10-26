@@ -54,6 +54,9 @@ def test_plans_questions_in_english_and_arabic() -> None:
     }
     assert plan("profit in September", []).args == {"month": 9}
     assert plan("What's the weather?", []) is None
+    assert plan("hello", []) is None
+    assert plan("what is my net slae", []).__dict__ == {"tool": "sales_summary", "args": {}}
+    assert plan("what is my net sales", []).__dict__ == {"tool": "sales_summary", "args": {}}
     assert plan("How much do we owe suppliers?", []).tool == "payables_due"
 
 

@@ -75,6 +75,15 @@ def delete(key: str) -> None:
         log.warning("cache delete failed")
 
 
+def increment(key: str) -> int:
+    """Moves a counter forward. A Redis outage returns 0 so callers fall back to the database."""
+    try:
+        return int(_client_for().incr(key))
+    except RedisError:
+        log.warning("cache increment failed")
+        return 0
+
+
 def hit(key: str, *, limit: int, window_seconds: int) -> None:
     """Counts one hit. Raises 429 when the window is full, and 503 when Redis cannot be reached."""
     scoped = f"rate:{key}"

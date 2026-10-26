@@ -1,20 +1,12 @@
-import {
-  formatIncompletePhoneNumber,
-  getCountries,
-  getCountryCallingCode,
-  getExampleNumber,
-  isValidPhoneNumber,
-  parsePhoneNumberFromString,
-  type CountryCode,
-} from "libphonenumber-js";
-import examples from "libphonenumber-js/mobile/examples";
+import { getCountries, getCountryCallingCode, parsePhoneNumberFromString, type CountryCode } from "libphonenumber-js";
 import * as flagIcons from "country-flag-icons/react/3x2";
 import { ChevronDown, Phone, Search } from "lucide-react";
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ComponentType, type SVGProps } from "react";
 import { createPortal } from "react-dom";
+import { formatLocal, isValidE164, nationalDigits, placeholderFor, readPhone, toE164 } from "./phone";
 
 /** Countries shown before the alphabetical list. Gulf first, then the other numbers people type here. */
-const PINNED: CountryCode[] = ["AE", "SA", "QA", "OM", "BH", "PK", "IN", "US", "GB"];
+const PINNED: CountryCode[] = ["AE", "SA", "QA", "KW", "BH", "OM", "PK", "IN", "US", "GB"];
 
 const ALIASES: Partial<Record<CountryCode, string[]>> = {
   AE: ["uae", "emirates"],
@@ -22,6 +14,7 @@ const ALIASES: Partial<Record<CountryCode, string[]>> = {
   QA: ["qat"],
   OM: ["omn"],
   BH: ["bhr"],
+  KW: ["kwt"],
   PK: ["pak"],
   IN: ["ind"],
   US: ["usa"],
@@ -63,37 +56,6 @@ const COUNTRIES: CountryOption[] = getCountries()
 
 const BY_ISO = new Map(COUNTRIES.map((country) => [country.iso, country]));
 
-const trunkCache = new Map<CountryCode, string>();
-
-/** Trunk "0" is part of the national print, not the number we store. */
-function trunkPrefix(country: CountryCode): string {
-  const cached = trunkCache.get(country);
-  if (cached !== undefined) return cached;
-  const example = getExampleNumber(country, examples);
-  const national = example?.formatNational() ?? "";
-  const trunk = national.startsWith("0") && example && !example.nationalNumber.startsWith("0") ? "0" : "";
-  trunkCache.set(country, trunk);
-  return trunk;
-}
-
-function nationalDigits(raw: string): string {
-  return raw.replace(/\D/g, "").replace(/^0+/, "");
-}
-
-function formatLocal(country: CountryCode, digits: string): string {
-  if (!digits) return "";
-  const trunk = trunkPrefix(country);
-  const formatted = formatIncompletePhoneNumber(`${trunk}${digits}`, country);
-  if (trunk && formatted.startsWith(trunk)) return formatted.slice(trunk.length).trimStart();
-  return formatted;
-}
-
-function placeholderFor(country: CountryCode): string {
-  const example = getExampleNumber(country, examples);
-  if (!example) return "";
-  return formatLocal(country, example.nationalNumber);
-}
-
 function caretAfterDigits(formatted: string, digitCount: number): number {
   if (digitCount <= 0) return 0;
   let seen = 0;
@@ -124,19 +86,6 @@ function listed(query: string): { pinned: CountryOption[]; rest: CountryOption[]
   }
   const found = COUNTRIES.filter((country) => matches(country, query));
   return { pinned: [], rest: found };
-}
-
-/** True when `value` is a complete E.164 number, for example `+971501234567`. */
-export function isValidE164(value: string): boolean {
-  return value.startsWith("+") && isValidPhoneNumber(value);
-}
-
-function readValue(value: string, fallback: CountryCode): { country: CountryCode; national: string } {
-  if (!value) return { country: fallback, national: "" };
-  const parsed = parsePhoneNumberFromString(value);
-  const country = parsed?.country ?? fallback;
-  const digits = parsed?.nationalNumber ?? nationalDigits(value);
-  return { country, national: formatLocal(country, digits) };
 }
 
 export function PhoneField({
@@ -171,7 +120,7 @@ export function PhoneField({
   const searchRef = useRef<HTMLInputElement>(null);
   const emitted = useRef(value);
   const caretDigits = useRef<number | null>(null);
-  const initial = readValue(value, defaultCountry);
+  const initial = readPhone(value, defaultCountry);
   const [country, setCountry] = useState<CountryCode>(initial.country);
   const [national, setNational] = useState(initial.national);
   const [open, setOpen] = useState(false);
@@ -183,15 +132,25 @@ export function PhoneField({
   const selected = BY_ISO.get(country) ?? COUNTRIES[0];
   const groups = useMemo(() => listed(query), [query]);
   const options = useMemo(() => [...groups.pinned, ...groups.rest], [groups]);
-  const invalid = Boolean(error) || (touched && value !== "" && !isValidE164(value));
+  const ownError =
+    touched && required && value === ""
+      ? "Enter a phone number."
+      : touched && value !== "" && !isValidE164(value)
+        ? "Enter a valid phone number."
+        : undefined;
+  const message = error || ownError;
+  const invalid = Boolean(message);
 
   useEffect(() => {
     if (value === emitted.current) return;
-    emitted.current = value;
-    const next = readValue(value, defaultCountry);
+    const canonical = !value || isValidE164(value) ? value : toE164(value, defaultCountry);
+    const shown = canonical || value;
+    emitted.current = shown;
+    const next = readPhone(shown, defaultCountry);
     setCountry(next.country);
     setNational(next.national);
-  }, [value, defaultCountry]);
+    if (canonical && canonical !== value) onChange(canonical);
+  }, [value, defaultCountry, onChange]);
 
   useLayoutEffect(() => {
     const digits = caretDigits.current;
@@ -257,7 +216,7 @@ export function PhoneField({
     setCountry(next);
     setOpen(false);
     setQuery("");
-    emit(next, nationalDigits(national));
+    emit(next, nationalDigits(national, next));
     inputRef.current?.focus();
   };
 
@@ -271,8 +230,8 @@ export function PhoneField({
         return;
       }
     }
-    const digits = nationalDigits(raw);
-    caretDigits.current = nationalDigits(raw.slice(0, caret)).length;
+    const digits = nationalDigits(raw, country);
+    caretDigits.current = nationalDigits(raw.slice(0, caret), country).length
     emit(country, digits);
   };
 
@@ -284,6 +243,12 @@ export function PhoneField({
     <div ref={rootRef} className={marketing ? "block" : "block text-sm font-medium"}>
       <label htmlFor={inputId} className={marketing ? "mb-1.5 block text-xs font-semibold text-slate-700" : undefined}>
         {label}
+        {required ? (
+          <span className={marketing ? "text-red-600" : "text-danger"} aria-hidden="true">
+            {" "}
+            *
+          </span>
+        ) : null}
       </label>
       <div
         ref={fieldRef}
@@ -328,10 +293,10 @@ export function PhoneField({
           type="tel"
           inputMode="tel"
           autoComplete="tel-national"
-          required={required}
           disabled={disabled}
+          aria-required={required || undefined}
           aria-invalid={invalid || undefined}
-          aria-describedby={error ? `${inputId}-error` : undefined}
+          aria-describedby={message ? `${inputId}-error` : hint ? `${inputId}-hint` : undefined}
           placeholder={placeholderFor(country)}
           value={national}
           onBlur={() => setTouched(true)}
@@ -415,12 +380,14 @@ export function PhoneField({
             )
           : null}
       </div>
-      {error ? (
-        <p id={`${inputId}-error`} className={marketing ? "mt-1.5 text-xs font-medium text-red-600" : "mt-1.5 text-xs font-normal text-danger"}>
-          {error}
+      {message ? (
+        <p id={`${inputId}-error`} role="alert" className={marketing ? "mt-1.5 text-xs font-medium text-red-600" : "mt-1.5 text-xs font-normal text-danger"}>
+          {message}
         </p>
       ) : hint ? (
-        <p className={marketing ? "mt-1.5 text-xs font-normal text-slate-500" : "mt-1.5 text-xs font-normal text-charcoal/50"}>{hint}</p>
+        <p id={`${inputId}-hint`} className={marketing ? "mt-1.5 text-xs font-normal text-slate-500" : "mt-1.5 text-xs font-normal text-charcoal/50"}>
+          {hint}
+        </p>
       ) : null}
     </div>
   );

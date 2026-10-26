@@ -12,7 +12,7 @@ import {
 } from "@ai-pos/shared-types";
 import { Banknote, FileInput, Plus, Trash2, UserPlus } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
-import { Select } from "@ai-pos/ui";
+import { PhoneField, Select, emailError, phoneError, requiredError } from "@ai-pos/ui";
 import { ErrorNote, FilterSelect, GhostButton, PrimaryButton, TextField } from "../../components/ui/Field";
 import { Modal } from "../../components/ui/Modal";
 import { SegmentedControl } from "../../components/ui/SegmentedControl";
@@ -22,6 +22,7 @@ import { useAuth } from "../../lib/auth";
 import { useCurrency } from "../../lib/currency";
 import { toCents } from "../customers/api";
 import { storeOptions, useStores } from "../inventory/shared";
+import { fieldErrors } from "../inventory/formErrors";
 import { errorMessage } from "../users/api";
 
 type Tab = "suppliers" | "bills" | "payments" | "receipts";
@@ -451,14 +452,30 @@ function SupplierModal({ onClose, onSaved }: { onClose: () => void; onSaved: (na
   const [email, setEmail] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [nameError, setNameError] = useState<string | undefined>();
+  const [phoneErrorText, setPhoneErrorText] = useState<string | undefined>();
+  const [emailErrorText, setEmailErrorText] = useState<string | undefined>();
   const save = async () => {
-    if (name.trim().length < 2) return setError("Enter the supplier's name.");
+    const nextName = name.trim().length < 2 ? "Enter the supplier's name." : requiredError(name, "the supplier's name");
+    const nextPhone = phoneError(phone);
+    const nextEmail = emailError(email);
+    setNameError(nextName);
+    setPhoneErrorText(nextPhone);
+    setEmailErrorText(nextEmail);
+    if (nextName || nextPhone || nextEmail) {
+      setError(null);
+      return;
+    }
     setBusy(true);
     try {
       await apiPost("/api/v1/payables/suppliers", { name: name.trim(), phone: phone.trim() || null, email: email.trim() || null });
       onSaved(name.trim());
     } catch (caught) {
-      setError(errorMessage(caught, "Could not add the supplier."));
+      const fields = fieldErrors(caught);
+      setNameError(fields.name);
+      setPhoneErrorText(fields.phone);
+      setEmailErrorText(fields.email);
+      setError(fields.name || fields.phone || fields.email ? null : errorMessage(caught, "Could not add the supplier."));
     } finally {
       setBusy(false);
     }
@@ -478,10 +495,37 @@ function SupplierModal({ onClose, onSaved }: { onClose: () => void; onSaved: (na
       }
     >
       <div className="space-y-4">
-        <TextField label="Name" value={name} maxLength={120} onChange={(event) => setName(event.target.value)} />
+        <TextField
+          label="Name"
+          required
+          value={name}
+          maxLength={120}
+          error={nameError}
+          onChange={(event) => {
+            setName(event.target.value);
+            setNameError(undefined);
+          }}
+        />
         <div className="grid gap-4 md:grid-cols-2">
-          <TextField label="Phone (optional)" value={phone} onChange={(event) => setPhone(event.target.value)} />
-          <TextField label="Email (optional)" value={email} onChange={(event) => setEmail(event.target.value)} />
+          <PhoneField
+            label="Phone"
+            value={phone}
+            error={phoneErrorText}
+            onChange={(next) => {
+              setPhone(next);
+              setPhoneErrorText(undefined);
+            }}
+          />
+          <TextField
+            label="Email"
+            type="email"
+            value={email}
+            error={emailErrorText}
+            onChange={(event) => {
+              setEmail(event.target.value);
+              setEmailErrorText(undefined);
+            }}
+          />
         </div>
       </div>
       <ErrorNote message={error} />

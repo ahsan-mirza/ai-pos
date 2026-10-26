@@ -32,6 +32,7 @@ from app.schemas.wholesale import (
     StatementOut,
 )
 from app.services import cheque_service, ledger_service
+from app.services.phone_numbers import search_terms
 from app.services.settings_service import business_currency
 
 
@@ -209,12 +210,15 @@ def list_customers(
         statement = statement.where(Customer.is_active.is_(True))
     if query:
         like = f"%{query.strip().lower()}%"
+        phone_match = [func.coalesce(Customer.phone, "").like(like)]
+        for term in search_terms(query):
+            phone_match.append(func.coalesce(Customer.phone, "").like(f"%{term}%"))
         statement = statement.where(
             or_(
                 func.lower(Customer.name).like(like),
                 func.lower(func.coalesce(Customer.company_name, "")).like(like),
                 func.lower(Customer.code).like(like),
-                func.coalesce(Customer.phone, "").like(like),
+                *phone_match,
                 func.lower(func.coalesce(Customer.trn_vat_number, "")).like(like),
             )
         )

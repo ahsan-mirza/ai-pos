@@ -14,7 +14,15 @@ from starlette.requests import Request
 
 from app.core import audit_context
 from app.core.config import Settings, get_settings
-from app.core.errors import ApiError, api_name, error_payload, http_error, unhandled_error, validation_message
+from app.core.errors import (
+    ApiError,
+    api_name,
+    error_payload,
+    field_error_map,
+    http_error,
+    unhandled_error,
+    validation_message,
+)
 from app.core.pagination import TOTAL_COUNT_HEADER
 from app.jobs import scheduler
 from app.routers.media import router as media_router
@@ -126,6 +134,7 @@ def create_app() -> FastAPI:
                 validation_message(details),
                 api=api_name(request.method, request.url.path),
                 details=details,
+                field_errors=field_error_map(details),
             ),
         )
 

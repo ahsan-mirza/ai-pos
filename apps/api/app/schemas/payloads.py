@@ -373,6 +373,16 @@ class RepairPayload(ApiModel):
     store_id: UUID
     customer_name: str = Field(min_length=1, max_length=120)
     customer_phone: str = Field(min_length=3, max_length=40)
+
+    @field_validator("customer_phone")
+    @classmethod
+    def normalize_repair_phone(cls, value: str) -> str:
+        from app.services.phone_numbers import normalize_phone
+
+        normalized = normalize_phone(value, required=True)
+        if normalized is None:
+            raise ValueError("Enter a phone number.")
+        return normalized
     device_model: str = Field(min_length=1, max_length=120)
     identifier_kind: SerialKind
     identifier_value: str = Field(min_length=1, max_length=64)

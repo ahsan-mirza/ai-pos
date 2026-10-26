@@ -2,7 +2,10 @@ import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { Shell } from "./components/Shell";
 import { SessionProvider, useSession } from "./lib/session";
 import { AddonsPage, BillingPage, PackagesPage, SubscriptionsPage } from "./pages/CommercialPage";
+import { HardwarePage } from "./pages/HardwarePage";
+import { PaymentsPage } from "./pages/PaymentsPage";
 import { MailPage } from "./pages/MailPage";
+import { OverviewPage } from "./pages/OverviewPage";
 import { LoginPage } from "./pages/LoginPage";
 import { RequestsPage } from "./pages/RequestsPage";
 import { SettingsPage } from "./pages/SettingsPage";
@@ -23,7 +26,8 @@ function Console() {
     <BrowserRouter basename={basename}>
       <Routes>
         <Route element={<Shell />}>
-          <Route index element={<Navigate to="/tenants" replace />} />
+          <Route index element={<Navigate to="/overview" replace />} />
+          <Route path="overview" element={<OverviewPage />} />
           <Route path="tenants" element={<TenantsPage />}>
             <Route path=":tenantId" element={<TenantDrawer />} />
           </Route>
@@ -31,7 +35,9 @@ function Console() {
           <Route path="packages" element={<PackagesPage />} />
           <Route path="billing" element={<BillingPage />} />
           <Route path="addons" element={<AddonsPage />} />
+          <Route path="hardware" element={<HardwarePage />} />
           <Route path="subscriptions" element={<SubscriptionsPage />} />
+          <Route path="payments" element={<PaymentsPage />} />
           <Route path="settings" element={<SettingsPage />}>
             <Route index element={<Navigate to="whatsapp" replace />} />
             <Route path="whatsapp" element={<WhatsAppPage />} />

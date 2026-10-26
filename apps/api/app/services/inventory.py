@@ -1187,6 +1187,9 @@ def create_product(db: Session, principal: Principal, data: ProductCreate, curre
             )
     db.commit()
     db.refresh(product)
+    from app.services import list_cache
+
+    list_cache.bump("models")
     return products_out(db, [product], store.id if store is not None else None)[0]
 
 
@@ -1286,6 +1289,9 @@ def update_product(
         fashion_attributes.apply(product, data, only_sent=True)
     db.commit()
     db.refresh(product)
+    from app.services import list_cache
+
+    list_cache.bump("models")
     return products_out(db, [product], None)[0]
 
 

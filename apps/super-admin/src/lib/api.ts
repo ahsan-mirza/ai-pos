@@ -91,6 +91,16 @@ async function exchange<T>(method: string, path: string, body?: unknown): Promis
   return { data: (await response.json()) as T, headers: response.headers };
 }
 
+export async function consoleBlob(path: string): Promise<Blob> {
+  const headers: Record<string, string> = {};
+  if (token) headers.Authorization = `Bearer ${token}`;
+  const response = await fetch(`${apiBase()}${PREFIX}${path}`, { headers });
+  if (!response.ok) {
+    throw new ConsoleError(`Request failed (${response.status}).`, response.status, null);
+  }
+  return response.blob();
+}
+
 export const api = {
   get: async <T>(path: string) => (await exchange<T>("GET", path)).data,
   post: async <T>(path: string, body: unknown) => (await exchange<T>("POST", path, body)).data,

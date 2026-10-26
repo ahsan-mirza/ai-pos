@@ -1,6 +1,7 @@
 import { BrandLogo } from "@ai-pos/ui";
 import { Eye, EyeOff, Lock, Mail, type LucideIcon } from "lucide-react";
 import { useState, type FormEvent, type InputHTMLAttributes } from "react";
+import { emailError, requiredError } from "@ai-pos/ui";
 import { errorText } from "../lib/api";
 import { useSession } from "../lib/session";
 
@@ -9,8 +10,9 @@ function LoginField({
   label,
   icon: Icon,
   type = "text",
+  error,
   ...props
-}: InputHTMLAttributes<HTMLInputElement> & { id: string; label: string; icon: LucideIcon }) {
+}: InputHTMLAttributes<HTMLInputElement> & { id: string; label: string; icon: LucideIcon; error?: string }) {
   const [showPassword, setShowPassword] = useState(false);
   const isPassword = type === "password";
   return (
@@ -22,9 +24,11 @@ function LoginField({
           id={id}
           type={isPassword && showPassword ? "text" : type}
           {...props}
-          className={`h-12 w-full rounded-2xl border border-line bg-surface pl-10 text-base transition focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500 ${
-            isPassword ? "pr-12" : "pr-4"
-          }`}
+          aria-invalid={error ? true : undefined}
+          aria-describedby={error ? `${id}-error` : undefined}
+          className={`h-12 w-full rounded-2xl border bg-surface pl-10 text-base transition focus:outline-none focus:ring-2 ${
+            error ? "border-danger focus:border-danger focus:ring-danger" : "border-line focus:border-orange-500 focus:ring-orange-500"
+          } ${isPassword ? "pr-12" : "pr-4"}`}
         />
         {isPassword ? (
           <button
@@ -40,6 +44,11 @@ function LoginField({
           </button>
         ) : null}
       </span>
+      {error ? (
+        <span id={`${id}-error`} role="alert" className="mt-1.5 block text-xs font-medium text-danger">
+          {error}
+        </span>
+      ) : null}
     </label>
   );
 }
@@ -51,9 +60,16 @@ export function LoginPage() {
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [emailErrorText, setEmailErrorText] = useState<string | undefined>();
+  const [passwordError, setPasswordError] = useState<string | undefined>();
 
   async function submit(event: FormEvent) {
     event.preventDefault();
+    const nextEmail = emailError(email, true);
+    const nextPassword = requiredError(password, "your password");
+    setEmailErrorText(nextEmail);
+    setPasswordError(nextPassword);
+    if (nextEmail || nextPassword) return;
     setBusy(true);
     setError(null);
     try {
@@ -91,6 +107,7 @@ export function LoginPage() {
             type="email"
             autoComplete="username"
             value={email}
+            error={emailErrorText}
             onChange={(event) => setEmail(event.target.value)}
             required
           />
@@ -101,6 +118,7 @@ export function LoginPage() {
             type="password"
             autoComplete="current-password"
             value={password}
+            error={passwordError}
             onChange={(event) => setPassword(event.target.value)}
             required
           />
@@ -111,7 +129,7 @@ export function LoginPage() {
           ) : null}
           <button
             type="submit"
-            disabled={busy || email.trim() === "" || password.length === 0}
+            disabled={busy}
             className="h-12 rounded-2xl bg-accent font-semibold text-white disabled:opacity-40"
           >
             {busy ? "Signing in…" : "Sign in"}

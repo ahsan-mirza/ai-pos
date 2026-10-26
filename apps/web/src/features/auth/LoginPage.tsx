@@ -14,8 +14,9 @@ function LoginField({
   label,
   icon: Icon,
   type = "text",
+  error,
   ...props
-}: InputHTMLAttributes<HTMLInputElement> & { id: string; label: string; icon: LucideIcon }) {
+}: InputHTMLAttributes<HTMLInputElement> & { id: string; label: string; icon: LucideIcon; error?: string }) {
   const [showPassword, setShowPassword] = useState(false);
   const isPassword = type === "password";
   return (
@@ -27,9 +28,11 @@ function LoginField({
           id={id}
           type={isPassword && showPassword ? "text" : type}
           {...props}
-          className={`h-12 w-full rounded-2xl border border-line bg-surface pl-10 text-base transition focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500 ${
-            isPassword ? "pr-12" : "pr-4"
-          }`}
+          aria-invalid={error ? true : undefined}
+          aria-describedby={error ? `${id}-error` : undefined}
+          className={`h-12 w-full rounded-2xl border bg-surface pl-10 text-base transition focus:outline-none focus:ring-2 ${
+            error ? "border-danger focus:border-danger focus:ring-danger" : "border-line focus:border-orange-500 focus:ring-orange-500"
+          } ${isPassword ? "pr-12" : "pr-4"}`}
         />
         {isPassword ? (
           <button
@@ -45,6 +48,11 @@ function LoginField({
           </button>
         ) : null}
       </span>
+      {error ? (
+        <span id={`${id}-error`} role="alert" className="mt-1.5 block text-xs font-medium text-danger">
+          {error}
+        </span>
+      ) : null}
     </label>
   );
 }
@@ -68,6 +76,7 @@ export function LoginPage() {
   const [confirm, setConfirm] = useState("");
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [fieldError, setFieldError] = useState<{ store?: string; identity?: string; password?: string; email?: string; confirm?: string }>({});
   const [busy, setBusy] = useState(false);
   const store = storeCode.trim().toLowerCase();
   const storeReady = !env.needsStoreCode || STORE_CODE.test(store);
@@ -78,7 +87,12 @@ export function LoginPage() {
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
-    if (!storeReady) return;
+    const next: { store?: string; identity?: string; password?: string } = {};
+    if (!storeReady) next.store = "Enter the store code.";
+    if (identity.trim() === "") next.identity = "Enter your email or username.";
+    if (password === "") next.password = "Enter your password.";
+    setFieldError(next);
+    if (Object.keys(next).length > 0) return;
     setBusy(true);
     setError(null);
     try {
@@ -128,7 +142,8 @@ export function LoginPage() {
 
   const reset = async () => {
     if (password !== confirm) {
-      setError("The two passwords do not match.");
+      setFieldError({ confirm: "The two passwords do not match." });
+      setError(null);
       return;
     }
     setBusy(true);
@@ -181,6 +196,7 @@ export function LoginPage() {
                 autoComplete="off"
                 spellCheck={false}
                 value={storeCode}
+                error={fieldError.store}
                 onChange={(event) => setStoreCode(event.target.value.toLowerCase())}
                 placeholder="client1"
                 required
@@ -193,6 +209,7 @@ export function LoginPage() {
               autoComplete="username"
               spellCheck={false}
               value={identity}
+              error={fieldError.identity}
               onChange={(event) => setIdentity(event.target.value)}
               placeholder="email or username"
               required
@@ -204,6 +221,7 @@ export function LoginPage() {
               type="password"
               autoComplete="current-password"
               value={password}
+              error={fieldError.password}
               onChange={(event) => setPassword(event.target.value)}
               required
             />
@@ -215,7 +233,7 @@ export function LoginPage() {
             ) : null}
             <button
               type="submit"
-              disabled={busy || !storeReady || identity.trim() === "" || password === ""}
+              disabled={busy}
               className="h-12 rounded-2xl bg-accent font-semibold text-white disabled:opacity-40"
             >
               {busy ? "Signing in…" : "Sign in"}
@@ -330,6 +348,7 @@ export function LoginPage() {
                   type="password"
                   autoComplete="new-password"
                   value={confirm}
+                  error={fieldError.confirm}
                   onChange={(event) => setConfirm(event.target.value)}
                   minLength={PASSWORD_MIN_LENGTH}
                   required

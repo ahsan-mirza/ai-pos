@@ -65,10 +65,18 @@ export interface CommissionReport {
 }
 
 export interface EmployeeProfile {
+  /** Assigned by the server the first time the profile is saved. */
   employee_code: string;
   labour_id: string;
   bank_routing_code: string;
   iban: string;
+  job_title: string;
+  nationality: string;
+  phone: string;
+  emirates_id: string;
+  passport_number: string;
+  joined_on: string | null;
+  date_of_birth: string | null;
   basic_salary_cents: number;
   housing_allowance_cents: number;
   transport_allowance_cents: number;

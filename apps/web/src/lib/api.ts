@@ -5,6 +5,7 @@ export class ApiRequestError extends Error {
   readonly code: string | null;
   readonly api: string | null;
   readonly details: unknown;
+  readonly fieldErrors: Record<string, string> | null;
 
   constructor(
     message: string,
@@ -12,12 +13,14 @@ export class ApiRequestError extends Error {
     code: string | null = null,
     details: unknown = null,
     api: string | null = null,
+    fieldErrors: Record<string, string> | null = null,
   ) {
     super(message);
     this.status = status;
     this.code = code;
     this.details = details;
     this.api = api;
+    this.fieldErrors = fieldErrors;
   }
 }
 
@@ -51,7 +54,13 @@ export function setUnauthorizedHandler(handler: (() => void) | null): void {
 async function parseError(response: Response): Promise<ApiRequestError> {
   try {
     const body = (await response.json()) as {
-      error?: { message?: string; code?: string; api?: string; details?: unknown };
+      error?: {
+        message?: string;
+        code?: string;
+        api?: string;
+        details?: unknown;
+        field_errors?: Record<string, string>;
+      };
     };
     if (body.error?.message) {
       return new ApiRequestError(
@@ -60,6 +69,7 @@ async function parseError(response: Response): Promise<ApiRequestError> {
         body.error.code ?? null,
         body.error.details ?? null,
         body.error.api ?? null,
+        body.error.field_errors ?? null,
       );
     }
   } catch {

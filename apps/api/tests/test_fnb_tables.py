@@ -51,8 +51,8 @@ def test_waiter_rounds_reach_the_cashier_and_payment_closes_the_table(client) ->
         assert started.status_code == 200, started.text
         session = started.json()
         assert session["status"] == "OCCUPIED"
-        assert session["phone"] == "0551234567"
-        assert session["customer_name"] == "Guest 0551234567"
+        assert session["phone"] == "+971551234567"
+        assert session["customer_name"] == "Guest +971551234567"
         assert session["order"]["covers"] == 3
         order_id = session["order"]["id"]
 

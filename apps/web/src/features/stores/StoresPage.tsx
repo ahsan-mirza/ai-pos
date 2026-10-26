@@ -1,5 +1,6 @@
 import seed from "@ai-pos/catalog/seed.json";
 import { EMIRATE_LABELS, Permission, type Emirate, type Store } from "@ai-pos/shared-types";
+import { PhoneField, phoneError, requiredError } from "@ai-pos/ui";
 import { MapPin, Phone, Warehouse } from "lucide-react";
 import { useEffect, useState } from "react";
 import { ErrorNote, GhostButton, PrimaryButton, SelectField, TextField } from "../../components/ui/Field";
@@ -9,6 +10,7 @@ import { apiGet } from "../../lib/api";
 import { useAuth } from "../../lib/auth";
 import { useCurrency } from "../../lib/currency";
 import { message, storesApi } from "../inventory/api";
+import { fieldErrors, type FieldErrors } from "../inventory/formErrors";
 
 const stamped = "2026-10-19T00:00:00.000Z";
 const sampleStores: Store[] = [seed.store, ...seed.branches].map((store) => ({
@@ -125,9 +127,17 @@ function StoreModal({
   const [warehouse, setWarehouse] = useState(store.is_warehouse ?? false);
   const [active, setActive] = useState(store.is_active ?? true);
   const [error, setError] = useState<string | null>(null);
+  const [errors, setErrors] = useState<FieldErrors>({});
   const [busy, setBusy] = useState(false);
 
   const save = async () => {
+    const next: FieldErrors = {};
+    const nameProblem = requiredError(name, "the branch name");
+    if (nameProblem) next.name = nameProblem;
+    const phoneProblem = phoneError(phone);
+    if (phoneProblem) next.phone = phoneProblem;
+    setErrors(next);
+    if (Object.keys(next).length > 0) return;
     setBusy(true);
     setError(null);
     try {
@@ -140,7 +150,9 @@ function StoreModal({
       });
       onSaved();
     } catch (caught) {
-      setError(message(caught, "Could not save the branch."));
+      const fields = fieldErrors(caught);
+      setErrors(fields);
+      setError(Object.keys(fields).length > 0 ? null : message(caught, "Could not save the branch."));
     } finally {
       setBusy(false);
     }
@@ -160,9 +172,26 @@ function StoreModal({
       }
     >
       <div className="space-y-4">
-        <TextField label="Name" value={name} onChange={(event) => setName(event.target.value)} />
+        <TextField
+          label="Name"
+          required
+          value={name}
+          error={errors.name}
+          onChange={(event) => {
+            setName(event.target.value);
+            setErrors((current) => ({ ...current, name: "" }));
+          }}
+        />
         <TextField label="Address" value={address} onChange={(event) => setAddress(event.target.value)} />
-        <TextField label="Phone" value={phone} onChange={(event) => setPhone(event.target.value)} />
+        <PhoneField
+          label="Phone"
+          value={phone}
+          error={errors.phone}
+          onChange={(next) => {
+            setPhone(next);
+            setErrors((current) => ({ ...current, phone: "" }));
+          }}
+        />
         <SelectField<Emirate | "">
           label="Emirate"
           hint="Printed on tax invoices and used for the VAT return's per-emirate boxes."

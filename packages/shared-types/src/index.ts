@@ -211,6 +211,9 @@ export type {
   BillingFee,
   BillingPlan,
   BillingQuote,
+  HardwareItem,
+  HardwarePick,
+  ConsoleOverview,
   QuoteLine,
   StoreSubscription,
 } from "./billing.js";

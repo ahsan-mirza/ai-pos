@@ -2,7 +2,7 @@ import { signupPasswordReady, signupPasswordRules, type SignupState } from "@ai-
 import { Check } from "lucide-react";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { ErrorNote, TextField } from "../../components/ui/Field";
-import { isValidE164, PhoneField } from "@ai-pos/ui";
+import { PhoneField, emailError, phoneError, requiredError } from "@ai-pos/ui";
 import { ApiRequestError } from "../../lib/api";
 import { sessionFromStarted, signupApi, type SignupSession } from "./signupApi";
 
@@ -44,15 +44,22 @@ export function AccountStep({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [existing, setExisting] = useState(false);
-
-  const ready =
-    email.includes("@") &&
-    isValidE164(phone) &&
-    fullName.trim().length >= 2 &&
-    signupPasswordReady(password);
+  const [emailProblem, setEmailProblem] = useState<string | undefined>();
+  const [phoneProblem, setPhoneProblem] = useState<string | undefined>();
+  const [nameProblem, setNameProblem] = useState<string | undefined>();
+  const [passwordProblem, setPasswordProblem] = useState<string | undefined>();
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
+    const nextEmail = emailError(email, true);
+    const nextPhone = phoneError(phone, true);
+    const nextName = fullName.trim().length < 2 ? "Enter your name." : requiredError(fullName, "your name");
+    const nextPassword = signupPasswordReady(password) ? undefined : "Choose a password that meets every requirement.";
+    setEmailProblem(nextEmail);
+    setPhoneProblem(nextPhone);
+    setNameProblem(nextName);
+    setPasswordProblem(nextPassword);
+    if (nextEmail || nextPhone || nextName || nextPassword) return;
     setBusy(true);
     setError(null);
     try {
@@ -138,12 +145,14 @@ export function AccountStep({
           type="email"
           autoComplete="email"
           value={email}
+          error={emailProblem}
           onChange={(event) => setEmail(event.target.value)}
           required
         />
         <PhoneField
           label="Mobile number"
           value={phone}
+          error={phoneProblem}
           onChange={setPhone}
           hint="Saved on your account. The code is sent by email."
           required
@@ -171,6 +180,7 @@ export function AccountStep({
           label="Your name"
           autoComplete="name"
           value={fullName}
+          error={nameProblem}
           onChange={(event) => setFullName(event.target.value)}
           required
         />
@@ -180,6 +190,7 @@ export function AccountStep({
             type="password"
             autoComplete="new-password"
             value={password}
+            error={passwordProblem}
             onChange={(event) => setPassword(event.target.value)}
             aria-describedby="signup-password-rules"
             required
@@ -201,7 +212,7 @@ export function AccountStep({
         </div>
       </div>
       <ErrorNote message={error} />
-      <button type="submit" disabled={!ready || busy} className={`${submitClass} mt-6`}>
+      <button type="submit" disabled={busy} className={`${submitClass} mt-6`}>
         {busy ? "Sending code…" : "Continue"}
       </button>
     </form>

@@ -1,5 +1,6 @@
 import type { BillingAddon, BillingCatalog, BillingCycle, BillingFee, BillingPlan, StoreSubscription } from "@ai-pos/shared-types";
-import { useCallback, useEffect, useState } from "react";
+import { DataTable, type DataTableColumn } from "@ai-pos/ui";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { ErrorNote, Field, GhostButton, Modal, PrimaryButton } from "../components/ui";
 import { api, errorText } from "../lib/api";
 import { money, when } from "../lib/format";
@@ -408,56 +409,106 @@ function AddonEditor({ addon, onClose, onSaved }: { addon: BillingAddon; onClose
 
 export function SubscriptionsPage() {
   const [rows, setRows] = useState<StoreSubscription[]>([]);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  useEffect(() => {
+  const [query, setQuery] = useState("");
+  const [status, setStatus] = useState("");
+  const load = useCallback(() => {
+    setLoading(true);
     api
       .get<StoreSubscription[]>("/subscriptions")
-      .then(setRows)
-      .catch((caught: unknown) => setError(errorText(caught, "Could not load subscriptions.")));
+      .then((found) => {
+        setRows(found);
+        setError(null);
+      })
+      .catch((caught: unknown) => setError(errorText(caught, "Could not load subscriptions.")))
+      .finally(() => setLoading(false));
   }, []);
+  useEffect(() => {
+    load();
+  }, [load]);
+  const needle = query.trim().toLowerCase();
+  const visible = useMemo(
+    () =>
+      rows.filter((row) => {
+        if (status !== "" && row.status !== status) return false;
+        if (needle === "") return true;
+        return `${row.tenant_name} ${row.tenant_slug} ${row.plan_name}`.toLowerCase().includes(needle);
+      }),
+    [needle, rows, status],
+  );
+  const columns: DataTableColumn<StoreSubscription>[] = [
+    {
+      id: "store",
+      header: "Store",
+      sortValue: (row) => row.tenant_name,
+      cell: (row) => (
+        <span>
+          <span className="block font-semibold">{row.tenant_name}</span>
+          <span className="font-mono text-xs text-charcoal/50">{row.tenant_slug}</span>
+        </span>
+      ),
+    },
+    { id: "package", header: "Package", sortValue: (row) => row.plan_name, cell: (row) => row.plan_name },
+    { id: "cycle", header: "Cycle", sortValue: (row) => row.cycle_name, cell: (row) => row.cycle_name },
+    {
+      id: "status",
+      header: "Status",
+      sortValue: (row) => row.status,
+      cell: (row) => (
+        <span className="capitalize">
+          {row.status.replace("_", " ")}
+          {row.practice_mode ? " · practice" : ""}
+        </span>
+      ),
+    },
+    { id: "trial", header: "Trial ends", cell: (row) => when(row.trial_ends_at) },
+    {
+      id: "next",
+      header: "Next",
+      align: "right",
+      sortValue: (row) => row.next_recurring_fils,
+      cell: (row) => aed(row.next_recurring_fils),
+    },
+  ];
   return (
     <section>
       <h1 className="text-2xl font-semibold">Subscriptions</h1>
       <p className="mt-1 text-sm text-charcoal/60">Assign a package from the store's drawer. The next amount uses today's catalog.</p>
-      <ErrorNote message={error} />
-      <div className="mt-6 overflow-x-auto rounded-3xl border border-line bg-white">
-        <table className="w-full text-left text-sm">
-          <thead className="text-xs uppercase text-charcoal/50">
-            <tr>
-              <th className="px-4 py-3 font-semibold">Store</th>
-              <th className="px-4 py-3 font-semibold">Package</th>
-              <th className="px-4 py-3 font-semibold">Cycle</th>
-              <th className="px-4 py-3 font-semibold">Status</th>
-              <th className="px-4 py-3 font-semibold">Trial ends</th>
-              <th className="px-4 py-3 text-right font-semibold">Next</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((row) => (
-              <tr key={row.tenant_id} className="border-t border-line">
-                <td className="px-4 py-3">
-                  <span className="block font-semibold">{row.tenant_name}</span>
-                  <span className="font-mono text-xs text-charcoal/50">{row.tenant_slug}</span>
-                </td>
-                <td className="px-4 py-3">{row.plan_name}</td>
-                <td className="px-4 py-3">{row.cycle_name}</td>
-                <td className="px-4 py-3 capitalize">
-                  {row.status}
-                  {row.practice_mode ? " · practice" : ""}
-                </td>
-                <td className="px-4 py-3">{when(row.trial_ends_at)}</td>
-                <td className="px-4 py-3 text-right tabular-nums">{aed(row.next_recurring_fils)}</td>
-              </tr>
-            ))}
-            {rows.length === 0 ? (
-              <tr>
-                <td colSpan={6} className="px-4 py-8 text-center text-charcoal/50">
-                  No subscriptions yet.
-                </td>
-              </tr>
-            ) : null}
-          </tbody>
-        </table>
+      <div className="mt-4 flex flex-wrap gap-3">
+        <input
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder="Search store or package"
+          aria-label="Search subscriptions"
+          className="h-10 w-64 rounded-full border border-line px-4 text-sm"
+        />
+        <select
+          aria-label="Subscription status"
+          value={status}
+          onChange={(event) => setStatus(event.target.value)}
+          className="h-10 rounded-full border border-line bg-white px-3 text-sm"
+        >
+          <option value="">All statuses</option>
+          <option value="trialing">Trialing</option>
+          <option value="active">Active</option>
+          <option value="past_due">Past due</option>
+          <option value="canceled">Canceled</option>
+        </select>
+      </div>
+      <div className="mt-4">
+        <DataTable
+          aria-label="Subscriptions"
+          minWidth="760px"
+          columns={columns}
+          data={visible}
+          getRowId={(row) => row.tenant_id}
+          isLoading={loading}
+          error={error}
+          onRetry={load}
+          pagination={{ mode: "client", resetKey: `${needle}:${status}` }}
+          emptyState={{ title: "No subscriptions match", description: "Try another status or search." }}
+        />
       </div>
     </section>
   );

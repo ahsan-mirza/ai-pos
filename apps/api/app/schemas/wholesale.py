@@ -21,6 +21,7 @@ from app.schemas.payloads import (
     VolumeBreak,
     _currency,
 )
+from app.services.phone_numbers import normalize_phone, optional_email
 
 TaxTreatment = Literal["STANDARD", "ZERO_EXPORT", "EXEMPT", "DESIGNATED_ZONE"]
 LedgerEntryType = Literal["INVOICE", "PAYMENT", "ADJUSTMENT"]
@@ -63,10 +64,20 @@ class CustomerWrite(ApiModel):
     notes: str | None = Field(default=None, max_length=500)
     tags: list[str] = Field(default_factory=list, max_length=20)
 
-    @field_validator("phone", "email", "company_name", "trn_vat_number", "address", "tax_certificate_ref", "notes")
+    @field_validator("company_name", "trn_vat_number", "address", "tax_certificate_ref", "notes")
     @classmethod
     def blank_to_none(cls, value: str | None) -> str | None:
         return _blank_to_none(value)
+
+    @field_validator("phone")
+    @classmethod
+    def normalize_customer_phone(cls, value: str | None) -> str | None:
+        return normalize_phone(value)
+
+    @field_validator("email")
+    @classmethod
+    def normalize_customer_email(cls, value: str | None) -> str | None:
+        return optional_email(value)
 
     @model_validator(mode="after")
     def retail_has_no_credit(self) -> Self:
@@ -108,10 +119,20 @@ class CustomerUpdate(ApiModel):
     notes: str | None = Field(default=None, max_length=500)
     tags: list[str] | None = Field(default=None, max_length=20)
 
-    @field_validator("phone", "email", "company_name", "trn_vat_number", "address", "tax_certificate_ref", "notes")
+    @field_validator("company_name", "trn_vat_number", "address", "tax_certificate_ref", "notes")
     @classmethod
     def blank_to_none(cls, value: str | None) -> str | None:
         return _blank_to_none(value)
+
+    @field_validator("phone")
+    @classmethod
+    def normalize_customer_phone(cls, value: str | None) -> str | None:
+        return normalize_phone(value)
+
+    @field_validator("email")
+    @classmethod
+    def normalize_customer_email(cls, value: str | None) -> str | None:
+        return optional_email(value)
 
 
 class CustomerOut(ApiModel):

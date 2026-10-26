@@ -36,7 +36,7 @@ def test_register_adds_a_customer_offline_and_sells_to_it_in_the_same_batch(clie
     assert [row["status"] for row in pushed.json()["results"]] == ["applied", "applied"]
 
     stored = session.get(Customer, uuid.UUID(customer["id"]))
-    assert stored.phone == "0557526684" and stored.code.startswith("WALK-")
+    assert stored.phone == "+971557526684" and stored.code.startswith("WALK-")
     listed = client.get("/api/v1/customers/sync", headers=device()).json()
     assert customer["id"] in {row["id"] for row in listed}
 

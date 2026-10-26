@@ -324,8 +324,14 @@ def test_a_profile_missing_from_sub_types_still_joins_the_waitlist(signup: TestC
     assert (blocked.status_code, blocked.json()["error"]["code"]) == (409, "wrong_step")
 
 
+def _mobile(seed: str) -> str:
+    """A valid UAE mobile. Slug length must not change the digit count."""
+    number = sum((index + 1) * ord(char) for index, char in enumerate(seed)) % 10_000_000
+    return f"+97150{number:07d}"
+
+
 def _food_store(signup: TestClient, slug: str, profile: str, sub_type: str) -> tuple[str, dict]:
-    started = _verified(signup, email=f"owner@{slug}.ae", phone=f"+97150{len(slug)}111111")
+    started = _verified(signup, email=f"owner@{slug}.ae", phone=_mobile(slug))
     chosen = _post(signup, started, "business", {"profile": profile, "sub_type": sub_type})
     assert chosen.json()["status"] == "VERIFIED", chosen.text
     assert _post(signup, started, "store", {**_store(slug), "store_name": slug.title()}).status_code == 200

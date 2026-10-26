@@ -676,6 +676,13 @@ class StoreUpdate(ApiModel):
     name: str | None = Field(default=None, min_length=1, max_length=120)
     address: str | None = Field(default=None, max_length=255)
     phone: str | None = Field(default=None, max_length=40)
+
+    @field_validator("phone")
+    @classmethod
+    def normalize_store_phone(cls, value: str | None) -> str | None:
+        from app.services.phone_numbers import normalize_phone
+
+        return normalize_phone(value)
     emirate: Emirate | None = None
     is_warehouse: bool | None = None
     is_active: bool | None = None

@@ -235,7 +235,9 @@ export function PayrollTab({ onToast }: { onToast: (text: string) => void }) {
                   >
                     <span className="min-w-0">
                       <span className="block truncate font-medium">{person.name}</span>
-                      <span className="block text-xs text-charcoal/50">{person.role_name}</span>
+                      <span className="block truncate text-xs text-charcoal/50">
+                        {[person.profile?.employee_code, person.profile?.job_title, person.role_name].filter(Boolean).join(" · ")}
+                      </span>
                     </span>
                     <span className={`shrink-0 text-xs tabular-nums ${person.profile ? "" : "font-semibold text-accent"}`}>
                       {person.profile ? money(person.profile.basic_salary_cents) : "Add details"}
@@ -279,7 +281,13 @@ const amount = (value: number | undefined) => (value ? (value / 100).toFixed(2) 
 
 function EmployeeModal({ employee, onClose, onSaved }: { employee: Employee; onClose: () => void; onSaved: (people: Employee[]) => void }) {
   const profile = employee.profile;
-  const [code, setCode] = useState(profile?.employee_code ?? "");
+  const [jobTitle, setJobTitle] = useState(profile?.job_title ?? "");
+  const [nationality, setNationality] = useState(profile?.nationality ?? "");
+  const [phone, setPhone] = useState(profile?.phone ?? "");
+  const [joined, setJoined] = useState(profile?.joined_on ?? "");
+  const [birth, setBirth] = useState(profile?.date_of_birth ?? "");
+  const [emiratesId, setEmiratesId] = useState(profile?.emirates_id ?? "");
+  const [passport, setPassport] = useState(profile?.passport_number ?? "");
   const [labour, setLabour] = useState(profile?.labour_id ?? "");
   const [routing, setRouting] = useState(profile?.bank_routing_code ?? "");
   const [iban, setIban] = useState(profile?.iban ?? "AE");
@@ -291,8 +299,14 @@ function EmployeeModal({ employee, onClose, onSaved }: { employee: Employee; onC
   const [error, setError] = useState<string | null>(null);
 
   const save = async () => {
-    const body: EmployeeProfile = {
-      employee_code: code.trim(),
+    const body: Omit<EmployeeProfile, "employee_code"> = {
+      job_title: jobTitle.trim(),
+      nationality: nationality.trim(),
+      phone: phone.trim(),
+      joined_on: joined || null,
+      date_of_birth: birth || null,
+      emirates_id: emiratesId.replace(/\D/g, ""),
+      passport_number: passport.trim(),
       labour_id: labour.trim(),
       bank_routing_code: routing.trim(),
       iban: iban.replace(/\s/g, "").toUpperCase(),
@@ -313,7 +327,7 @@ function EmployeeModal({ employee, onClose, onSaved }: { employee: Employee; onC
   return (
     <Modal
       title={`${employee.name} · payroll`}
-      subtitle="Monthly amounts. The labour ID, routing code and IBAN go into the WPS file."
+      subtitle="The employee code is assigned here and stays the same. Labour ID, routing code and IBAN go into the WPS file."
       width="lg"
       onClose={onClose}
       footer={
@@ -324,7 +338,19 @@ function EmployeeModal({ employee, onClose, onSaved }: { employee: Employee; onC
       }
     >
       <div className="grid gap-4 md:grid-cols-2">
-        <TextField label="Employee code" value={code} maxLength={20} onChange={(event) => setCode(event.target.value)} />
+        <div className="md:col-span-2">
+          <p className="text-sm font-medium">Employee code</p>
+          <p className="mt-1.5 font-mono text-sm text-charcoal/70">{profile?.employee_code ?? "Assigned when you save"}</p>
+        </div>
+        <p className="md:col-span-2 text-xs font-semibold uppercase tracking-wide text-charcoal/45">Employee</p>
+        <TextField label="Job title" value={jobTitle} maxLength={80} onChange={(event) => setJobTitle(event.target.value)} />
+        <TextField label="Nationality" value={nationality} maxLength={60} onChange={(event) => setNationality(event.target.value)} />
+        <TextField label="Phone" value={phone} maxLength={20} onChange={(event) => setPhone(event.target.value)} />
+        <TextField label="Date of birth" type="date" value={birth} onChange={(event) => setBirth(event.target.value)} />
+        <TextField label="Date joined" type="date" value={joined} onChange={(event) => setJoined(event.target.value)} />
+        <TextField label="Emirates ID" value={emiratesId} maxLength={18} inputMode="numeric" onChange={(event) => setEmiratesId(event.target.value)} />
+        <TextField label="Passport number" value={passport} maxLength={20} onChange={(event) => setPassport(event.target.value.toUpperCase())} />
+        <p className="md:col-span-2 text-xs font-semibold uppercase tracking-wide text-charcoal/45">Pay</p>
         <TextField label="MOHRE personal number (14 digits)" value={labour} maxLength={14} onChange={(event) => setLabour(event.target.value.replace(/\D/g, ""))} />
         <TextField label="Bank routing code (9 digits)" value={routing} maxLength={9} onChange={(event) => setRouting(event.target.value.replace(/\D/g, ""))} />
         <TextField label="IBAN" value={iban} maxLength={27} onChange={(event) => setIban(event.target.value.toUpperCase())} />

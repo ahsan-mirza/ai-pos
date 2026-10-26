@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 
-from sqlalchemy import JSON, Boolean, CheckConstraint, DateTime, ForeignKey, Integer, String, Uuid
+from sqlalchemy import JSON, Boolean, CheckConstraint, Date, DateTime, ForeignKey, Integer, String, Uuid
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, TenantScoped, TimestampMixin, tenant_unique
@@ -38,7 +38,15 @@ class EmployeeProfile(TenantScoped, TimestampMixin, Base):
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("users.id"))
+    # Assigned when the profile is first saved. Later edits keep the same code.
     employee_code: Mapped[str] = mapped_column(String(20))
+    job_title: Mapped[str] = mapped_column(String(80), default="")
+    nationality: Mapped[str] = mapped_column(String(60), default="")
+    phone: Mapped[str] = mapped_column(String(20), default="")
+    emirates_id: Mapped[str] = mapped_column(String(15), default="")
+    passport_number: Mapped[str] = mapped_column(String(20), default="")
+    joined_on: Mapped[date | None] = mapped_column(Date, nullable=True)
+    date_of_birth: Mapped[date | None] = mapped_column(Date, nullable=True)
     # MOHRE personal number (14 digits) used as the WPS employee ID.
     labour_id: Mapped[str] = mapped_column(String(14))
     # Routing code of the employee's bank (9 digits) and their IBAN.

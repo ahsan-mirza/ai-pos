@@ -1,6 +1,7 @@
 import { profileSpec } from "@ai-pos/shared-types";
 import { useCallback, useEffect, useState } from "react";
 import { Link, Outlet, useLocation } from "react-router-dom";
+import { apiGet } from "../../lib/api";
 import { useTenant } from "../../context/TenantContext";
 import { FirstWinChecklist } from "../../features/onboarding/FirstWinChecklist";
 import { PracticeBanner, PracticeProvider, TaxPortalBanner } from "../../features/onboarding/practice";
@@ -53,6 +54,7 @@ export function AppShell() {
           <div className="flex min-w-0 flex-1 flex-col">
             <PracticeBanner />
             <TaxPortalBanner />
+            <SubscriptionNotice />
             <Header collapsed={collapsed} onToggleCollapsed={toggleCollapsed} onOpenMobile={() => setMobileOpen(true)} />
             <main className="relative min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
               <IndustryGate />
@@ -62,6 +64,31 @@ export function AppShell() {
         <FirstWinChecklist />
       </PracticeProvider>
     </StoreScopeProvider>
+  );
+}
+
+function SubscriptionNotice() {
+  const [state, setState] = useState<string | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    apiGet<{ state: string; ai_allowed: boolean }>("/api/v1/billing/access")
+      .then((found) => {
+        if (!cancelled) setState(found.state);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  if (state !== "grace" && state !== "restricted") return null;
+  const text =
+    state === "grace"
+      ? "Your AxizPOS subscription payment is overdue. Complete the bank transfer and submit the receipt before the grace period ends."
+      : "This subscription is past its grace period. Billing and receipt upload stay open so the store can pay and recover.";
+  return (
+    <p className="border-b border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-950" role="status">
+      {text}
+    </p>
   );
 }
 

@@ -3,7 +3,7 @@
 from typing import Literal
 from uuid import UUID
 
-from pydantic import Field
+from pydantic import Field, field_validator
 
 from app.schemas.menu import ModifierGroupOut
 from app.schemas.orders import OrderOut
@@ -15,6 +15,13 @@ Course = Literal["Starters", "Mains", "Beverages", "Desserts"]
 class SessionStart(ApiModel):
     phone: str | None = Field(default=None, max_length=40)
     covers: int = Field(default=1, ge=1, le=200)
+
+    @field_validator("phone")
+    @classmethod
+    def normalize_guest_phone(cls, value: str | None) -> str | None:
+        from app.services.phone_numbers import normalize_phone
+
+        return normalize_phone(value)
     user_id: UUID | None = None
 
 

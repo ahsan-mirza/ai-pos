@@ -5,13 +5,14 @@ rewrite an old invoice. The cycle discount applies to recurring amounts only. De
 stay at their face value.
 """
 
+import calendar
 import hashlib
 import hmac
 import uuid
 from datetime import UTC, datetime, timedelta
 
 import httpx
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from app.console.entitlements import get_tenant, tenant_session
@@ -32,10 +33,13 @@ from app.schemas.billing import (
     CycleOut,
     FeeIn,
     FeeOut,
+    OverviewOut,
     PlanIn,
     PlanOut,
+    PlanRevenue,
     QuoteLine,
     QuoteOut,
+    StatusCount,
     SubscriptionAssign,
     SubscriptionOut,
 )
@@ -53,6 +57,8 @@ from app.tenancy.models import (
     Subscription,
     SubscriptionItem,
     Tenant,
+    TenantChangeRequest,
+    TenantStats,
 )
 
 _PLANS = (
@@ -231,11 +237,14 @@ def fee_out(row: BillingFee) -> FeeOut:
 
 def catalog(db: Session) -> CatalogOut:
     ensure_catalog(db)
+    from app.console import hardware
+
     return CatalogOut(
         plans=[plan_out(row) for row in _plans(db)],
         cycles=[cycle_out(row) for row in _cycles(db)],
         addons=[addon_out(row) for row in _addons(db)],
         fees=[fee_out(row) for row in _fees(db)],
+        hardware=hardware.list_items(db, sellable_only=True),
     )
 
 
@@ -341,7 +350,14 @@ def _active_cycle(db: Session, code: str) -> BillingCycle:
     return row
 
 
-def quote_for(db: Session, plan_code: str, cycle_code: str, addons: list[AddonQty]) -> QuoteOut:
+def quote_for(
+    db: Session,
+    plan_code: str,
+    cycle_code: str,
+    addons: list[AddonQty],
+    hardware: list | None = None,
+    stores: dict | None = None,
+) -> QuoteOut:
     ensure_catalog(db)
     plan = _active_plan(db, plan_code)
     cycle = _active_cycle(db, cycle_code)
@@ -407,6 +423,17 @@ def quote_for(db: Session, plan_code: str, cycle_code: str, addons: list[AddonQt
                     refundable=False,
                 )
             )
+    from app.console import hardware as hardware_catalog
+
+    hardware_lines, hardware_monthly, deposit = hardware_catalog.price_selection(
+        db,
+        list(hardware or []),
+        months=cycle.months,
+        discount_bps=cycle.discount_bps,
+        included_registers=plan.included_registers,
+        stores=stores,
+    )
+    lines.extend(hardware_lines)
     recurring = sum(line.amount_fils for line in lines if line.recurring)
     once = sum(line.amount_fils for line in lines if not line.recurring)
     return QuoteOut(
@@ -421,6 +448,8 @@ def quote_for(db: Session, plan_code: str, cycle_code: str, addons: list[AddonQt
         recurring_fils=recurring,
         one_time_fils=once,
         total_fils=recurring + once,
+        hardware_monthly_fils=hardware_monthly,
+        deposit_fils=deposit,
     )
 
 
@@ -454,6 +483,119 @@ def subscription_out(db: Session, tenant: Tenant) -> SubscriptionOut | None:
         practice_mode=tenant.practice_mode,
         next_recurring_fils=nxt,
         addons=chosen,
+    )
+
+
+def add_calendar_months(start: datetime, months: int) -> datetime:
+    """Moves a timestamp forward by calendar months. 31 January plus one month is 28 or 29 February."""
+    if months < 1:
+        return start
+    index = start.month - 1 + months
+    year = start.year + index // 12
+    month = index % 12 + 1
+    day = min(start.day, calendar.monthrange(year, month)[1])
+    return start.replace(year=year, month=month, day=day)
+
+
+def _monthly_equivalent(monthly_fils: int, months: int, discount_bps: int) -> int:
+    """The billed cycle, spread across its months. Same integer rule as `cycle_amount`."""
+    if months < 1:
+        return 0
+    return cycle_amount(monthly_fils, months, discount_bps) // months
+
+
+def overview(db: Session) -> OverviewOut:
+    """Control-plane health. Trialing subscriptions are counted, and they are not included in MRR."""
+    now = datetime.now(UTC)
+    soon = now + timedelta(days=14)
+    tenants = db.scalar(select(func.count()).select_from(Tenant)) or 0
+    active_tenants = db.scalar(select(func.count()).select_from(Tenant).where(Tenant.status == "active")) or 0
+    suspended = db.scalar(select(func.count()).select_from(Tenant).where(Tenant.status == "suspended")) or 0
+    practice = db.scalar(select(func.count()).select_from(Tenant).where(Tenant.practice_mode.is_(True))) or 0
+    cutoff = now - timedelta(days=30)
+    recent = db.scalar(select(func.count()).select_from(Tenant).where(Tenant.created_at >= cutoff)) or 0
+    stores = db.scalar(select(func.coalesce(func.sum(TenantStats.stores), 0))) or 0
+    registers = db.scalar(select(func.coalesce(func.sum(TenantStats.registers), 0))) or 0
+    unpaid = db.scalar(
+        select(func.coalesce(func.sum(BillingInvoice.total_fils), 0)).where(BillingInvoice.status == "pending")
+    ) or 0
+    unpaid_count = db.scalar(
+        select(func.count()).select_from(BillingInvoice).where(BillingInvoice.status == "pending")
+    ) or 0
+    open_requests = db.scalar(
+        select(func.count()).select_from(TenantChangeRequest).where(TenantChangeRequest.status == "PENDING")
+    ) or 0
+
+    rows = db.execute(
+        select(Subscription, BillingPlan, BillingCycle).join(BillingPlan, BillingPlan.id == Subscription.plan_id).join(
+            BillingCycle, BillingCycle.id == Subscription.cycle_id
+        )
+    ).all()
+    item_rows = list(db.scalars(select(SubscriptionItem)))
+    addons = {row.code: row for row in db.scalars(select(BillingAddon))}
+    by_sub: dict[uuid.UUID, list[SubscriptionItem]] = {}
+    for item in item_rows:
+        by_sub.setdefault(item.subscription_id, []).append(item)
+
+    counts: dict[str, int] = {status: 0 for status in ("trialing", "active", "past_due", "canceled")}
+    plans: dict[str, PlanRevenue] = {}
+    mrr = 0
+    ending = 0
+    for subscription, plan, cycle in rows:
+        counts[subscription.status] = counts.get(subscription.status, 0) + 1
+        if (
+            subscription.status == "trialing"
+            and subscription.trial_ends_at is not None
+            and now <= subscription.trial_ends_at <= soon
+        ):
+            ending += 1
+        if subscription.status not in ("active", "past_due"):
+            continue
+        monthly = plan.monthly_fils
+        for item in by_sub.get(subscription.id, []):
+            addon = addons.get(item.addon_code)
+            if addon is not None:
+                monthly += addon.monthly_fils * item.quantity
+        share = _monthly_equivalent(monthly, cycle.months, cycle.discount_bps)
+        mrr += share
+        bucket = plans.get(plan.code)
+        if bucket is None:
+            plans[plan.code] = PlanRevenue(
+                plan_code=plan.code, plan_name=plan.name, paying_tenants=1, mrr_fils=share
+            )
+        else:
+            plans[plan.code] = bucket.model_copy(
+                update={"paying_tenants": bucket.paying_tenants + 1, "mrr_fils": bucket.mrr_fils + share}
+            )
+
+    return OverviewOut(
+        tenants=int(tenants),
+        active_tenants=int(active_tenants),
+        suspended_tenants=int(suspended),
+        practice_tenants=int(practice),
+        new_tenants_30d=int(recent),
+        stores=int(stores),
+        registers=int(registers),
+        paying_subscriptions=counts.get("active", 0),
+        trialing=counts.get("trialing", 0),
+        trials_ending_14d=ending,
+        past_due=counts.get("past_due", 0),
+        canceled=counts.get("canceled", 0),
+        mrr_fils=mrr,
+        arr_fils=mrr * 12,
+        unpaid_checkouts_fils=int(unpaid),
+        unpaid_checkouts=int(unpaid_count),
+        open_change_requests=int(open_requests),
+        by_status=[StatusCount(status=status, tenants=count) for status, count in counts.items()],
+        by_plan=sorted(plans.values(), key=lambda row: row.plan_name.lower()),
+        definitions=[
+            "MRR is the monthly equivalent of active and past-due subscriptions, after the billing-cycle discount.",
+            "Trials are excluded from MRR until they convert.",
+            "One-time fees and refundable deposits are excluded from MRR.",
+            "ARR is MRR times 12. It is not a separate contract value.",
+            "Unpaid checkouts are pending go-live invoices, not a general receivables ledger.",
+            "Store and register counts come from the last collected tenant stats.",
+        ],
     )
 
 
@@ -536,13 +678,18 @@ def _stripe_configured(settings: Settings) -> bool:
 
 
 def create_checkout(
-    db: Session, settings: Settings, tenant: Tenant, actor_id: uuid.UUID, data: CheckoutIn
+    db: Session,
+    settings: Settings,
+    tenant: Tenant,
+    actor_id: uuid.UUID,
+    data: CheckoutIn,
+    stores: dict | None = None,
 ) -> CheckoutOut:
     if not data.tax_acknowledged:
         raise ApiError(422, "tax_not_acknowledged", "Confirm that practice tax stamps will be removed.")
     if data.mode == "keep" and data.opening_stock not in ("keep", "reset"):
         raise ApiError(422, "opening_stock_required", "Choose whether to keep opening stock or reset it to zero.")
-    priced = quote_for(db, data.plan_code, data.cycle_code, data.addons)
+    priced = quote_for(db, data.plan_code, data.cycle_code, data.addons, data.hardware, stores)
     if priced.recurring_fils <= 0:
         raise ApiError(422, "nothing_to_bill", "The package has no recurring price.")
     invoice = BillingInvoice(
@@ -561,6 +708,19 @@ def create_checkout(
     db.add(invoice)
     db.flush()
     _snapshot_lines(db, invoice.id, priced)
+    from app.console import hardware as hardware_catalog
+
+    hardware_catalog.open_order(
+        db, tenant_id=tenant.id, invoice_id=invoice.id, picks=list(data.hardware), stores=stores
+    )
+    from app.console import transfers
+
+    invoice.bank_snapshot = transfers.active_bank_snapshot(db)
+    if data.payment == "transfer":
+        if invoice.bank_snapshot is None:
+            raise ApiError(422, "bank_not_configured", "Bank transfer details have not been published yet.")
+        db.commit()
+        return CheckoutOut(checkout_id=invoice.id, mode="transfer", url=None, quote=priced, bank=invoice.bank_snapshot)
     mode = "stripe" if _stripe_configured(settings) else "simulator"
     url = _stripe_session(settings, invoice, priced) if mode == "stripe" else None
     db.commit()
@@ -611,7 +771,15 @@ def checkout_status(db: Session, tenant_id: uuid.UUID, checkout_id: uuid.UUID) -
     row = db.get(BillingInvoice, checkout_id)
     if row is None or row.tenant_id != tenant_id:
         raise ApiError(404, "not_found", "Checkout was not found.")
-    return CheckoutStatus(checkout_id=row.id, status=row.status, error=row.error, result=row.result)  # type: ignore[arg-type]
+    return CheckoutStatus(
+        checkout_id=row.id,
+        status=row.status,  # type: ignore[arg-type]
+        error=row.error,
+        result=row.result,
+        total_fils=row.total_fils,
+        currency=row.currency,
+        bank=row.bank_snapshot,
+    )
 
 
 def simulate_checkout(db: Session, settings: Settings, tenant_id: uuid.UUID, checkout_id: uuid.UUID) -> CheckoutStatus:
@@ -708,13 +876,16 @@ def _complete(db: Session, settings: Settings, invoice: BillingInvoice) -> None:
     tenant.practice_mode = False
     tenant.plan = invoice.plan_code
     _activate(db, tenant, invoice)
+    from app.console import hardware as hardware_catalog
+
+    hardware_catalog.mark_paid(db, invoice.id)
 
 
 def _activate(db: Session, tenant: Tenant, invoice: BillingInvoice) -> None:
     plan = db.scalar(select(BillingPlan).where(BillingPlan.code == invoice.plan_code))
     cycle = db.scalar(select(BillingCycle).where(BillingCycle.code == invoice.cycle_code))
     if plan is None or cycle is None:
-        return
+        raise ApiError(422, "catalog_missing", f"Missing {invoice.plan_code}/{invoice.cycle_code}.")
     row = db.scalar(select(Subscription).where(Subscription.tenant_id == tenant.id))
     if row is None:
         row = Subscription(tenant_id=tenant.id, plan_id=plan.id, cycle_id=cycle.id)
@@ -723,7 +894,12 @@ def _activate(db: Session, tenant: Tenant, invoice: BillingInvoice) -> None:
     row.plan_id = plan.id
     row.cycle_id = cycle.id
     row.status = "active"
-    row.current_period_end = datetime.now(UTC) + timedelta(days=30 * cycle.months)
+    now = datetime.now(UTC)
+    end = row.current_period_end
+    if end is not None and end.tzinfo is None:
+        end = end.replace(tzinfo=UTC)
+    base = end if end is not None and end > now else now
+    row.current_period_end = add_calendar_months(base, cycle.months)
     invoice.subscription_id = row.id
     db.execute(delete(SubscriptionItem).where(SubscriptionItem.subscription_id == row.id))
     lines = db.scalars(select(BillingInvoiceLine).where(BillingInvoiceLine.invoice_id == invoice.id))

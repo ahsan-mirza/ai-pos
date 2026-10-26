@@ -7,6 +7,7 @@ import {
   type BatchItemUpdate,
   type RollbackResult,
 } from "@ai-pos/shared-types";
+import { DateInput } from "@ai-pos/ui";
 import {
   Download,
   FilePlus2,
@@ -477,9 +478,8 @@ export function BatchDrawer({
                             </td>
                             <td className="py-2.5 pl-2 pr-5 text-right tabular-nums">
                               {editing && draft ? (
-                                <input
+                                <DateInput
                                   aria-label={`Expiry date for ${item.product_name}`}
-                                  type="date"
                                   value={draft.expiry}
                                   onChange={(event) => setDraft(item.id, { expiry: event.target.value })}
                                   className={`${editInput} text-left`}

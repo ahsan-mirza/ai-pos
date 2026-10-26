@@ -1,4 +1,4 @@
-import { inputLeadingIcon } from "@ai-pos/ui";
+import { DateInput, inputLeadingIcon } from "@ai-pos/ui";
 import { Eye, EyeOff, Search } from "lucide-react";
 import { useId, useState, type ButtonHTMLAttributes, type InputHTMLAttributes, type TextareaHTMLAttributes } from "react";
 import { Select, type SelectProps } from "./Select";
@@ -17,11 +17,17 @@ export function TextField({
   label,
   hint,
   error,
+  required = false,
   className = "",
   type,
   autoComplete,
   ...props
-}: InputHTMLAttributes<HTMLInputElement> & { label: string; hint?: string; error?: string }) {
+}: InputHTMLAttributes<HTMLInputElement> & { label: string; hint?: string; error?: string; required?: boolean }) {
+  const id = useId();
+  const fieldId = props.id ?? id;
+  const describedBy =
+    [props["aria-describedby"], error ? `${fieldId}-error` : hint ? `${fieldId}-hint` : undefined].filter(Boolean).join(" ") ||
+    undefined;
   const [showPassword, setShowPassword] = useState(false);
   const isPassword = type === "password";
   const Icon = inputLeadingIcon({
@@ -34,9 +40,21 @@ export function TextField({
     label,
   });
   const multiline = isDescriptionLabel(label);
+  const isDate = type === "date" || type === "datetime-local";
+  const controlClass = `${control} pl-10 ${
+    error
+      ? `border-danger bg-danger/10 focus:border-danger focus:ring-2 focus:ring-danger ${isPassword ? "pr-12" : "pr-4"}`
+      : `border-transparent focus:border-orange-500 focus:ring-2 focus:ring-orange-500 ${isPassword ? "pr-12" : "pr-4"}`
+  } ${className}`;
   return (
-    <label className="block text-sm font-medium">
+    <label htmlFor={multiline ? undefined : fieldId} className="block text-sm font-medium">
       {label}
+      {required ? (
+        <span className="text-danger" aria-hidden="true">
+          {" "}
+          *
+        </span>
+      ) : null}
       <span className="relative mt-1.5 block">
         <Icon
           className={`pointer-events-none absolute left-3 z-10 h-5 w-5 text-gray-400 ${multiline ? "top-3.5" : "top-1/2 -translate-y-1/2"}`}
@@ -45,23 +63,38 @@ export function TextField({
         {multiline ? (
           <textarea
             {...(props as TextareaHTMLAttributes<HTMLTextAreaElement>)}
+            id={fieldId}
             rows={3}
+            aria-required={required || undefined}
             aria-invalid={error ? true : undefined}
+            aria-describedby={describedBy}
             className={`${control} min-h-24 resize-y border-transparent py-3 pl-10 pr-4 focus:border-orange-500 focus:ring-2 focus:ring-orange-500 ${
               error ? "border-danger bg-danger/10 focus:border-danger focus:ring-danger" : ""
             } ${className}`}
           />
+        ) : isDate ? (
+          <DateInput
+            {...props}
+            id={fieldId}
+            withTime={type === "datetime-local"}
+            value={typeof props.value === "string" ? props.value : ""}
+            autoComplete={autoComplete}
+            aria-required={required || undefined}
+            aria-invalid={error ? true : undefined}
+            aria-describedby={describedBy}
+            className={controlClass}
+          />
         ) : (
         <input
           {...props}
+          id={fieldId}
           type={isPassword && showPassword ? "text" : type}
           autoComplete={autoComplete}
+          required={undefined}
+          aria-required={required || undefined}
           aria-invalid={error ? true : undefined}
-          className={`${control} pl-10 ${
-            error
-              ? `border-danger bg-danger/10 focus:border-danger focus:ring-2 focus:ring-danger ${isPassword ? "pr-12" : "pr-4"}`
-              : `border-transparent focus:border-orange-500 focus:ring-2 focus:ring-orange-500 ${isPassword ? "pr-12" : "pr-4"}`
-          } ${className}`}
+          aria-describedby={describedBy}
+          className={controlClass}
         />
         )}
         {isPassword && !multiline ? (
@@ -79,11 +112,13 @@ export function TextField({
         ) : null}
       </span>
       {error ? (
-        <span role="alert" className="mt-1.5 block text-xs font-medium text-danger">
+        <span id={`${fieldId}-error`} role="alert" className="mt-1.5 block text-xs font-medium text-danger">
           {error}
         </span>
       ) : hint ? (
-        <span className="mt-1.5 block text-xs font-normal text-charcoal/50">{hint}</span>
+        <span id={`${fieldId}-hint`} className="mt-1.5 block text-xs font-normal text-charcoal/50">
+          {hint}
+        </span>
       ) : null}
     </label>
   );
@@ -121,12 +156,25 @@ export function SearchField({
 }
 
 /** Select inside a form, labelled like `TextField` so mixed rows line up. */
-export function SelectField<T extends string>({ label, hint, error, className = "", ...props }: LabelledSelectProps<T>) {
+export function SelectField<T extends string>({
+  label,
+  hint,
+  error,
+  required = false,
+  className = "",
+  ...props
+}: LabelledSelectProps<T> & { required?: boolean }) {
   const id = useId();
   return (
     <div className={`block ${className}`}>
       <label id={`${id}-label`} htmlFor={id} className="block text-sm font-medium">
         {label}
+        {required ? (
+          <span className="text-danger" aria-hidden="true">
+            {" "}
+            *
+          </span>
+        ) : null}
       </label>
       <Select
         {...props}
@@ -136,11 +184,13 @@ export function SelectField<T extends string>({ label, hint, error, className = 
         className="mt-1.5"
       />
       {error ? (
-        <span role="alert" className="mt-1.5 block text-xs font-medium text-danger">
+        <span id={`${id}-error`} role="alert" className="mt-1.5 block text-xs font-medium text-danger">
           {error}
         </span>
       ) : hint ? (
-        <span className="mt-1.5 block text-xs font-normal text-charcoal/50">{hint}</span>
+        <span id={`${id}-hint`} className="mt-1.5 block text-xs font-normal text-charcoal/50">
+          {hint}
+        </span>
       ) : null}
     </div>
   );

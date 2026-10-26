@@ -55,10 +55,16 @@ class PayrollSettings(ApiModel):
 
 
 class EmployeeProfileWrite(ApiModel):
-    employee_code: str = Field(min_length=1, max_length=20)
     labour_id: str = Field(pattern=r"^\d{14}$")
     bank_routing_code: str = Field(pattern=r"^\d{9}$")
     iban: str = Field(min_length=23, max_length=23)
+    job_title: str = Field(default="", max_length=80)
+    nationality: str = Field(default="", max_length=60)
+    phone: str = Field(default="", max_length=20)
+    emirates_id: str = Field(default="", max_length=18)
+    passport_number: str = Field(default="", max_length=20)
+    joined_on: date | None = None
+    date_of_birth: date | None = None
     basic_salary_cents: int = Field(ge=0, le=100_000_000)
     housing_allowance_cents: int = Field(default=0, ge=0, le=100_000_000)
     transport_allowance_cents: int = Field(default=0, ge=0, le=100_000_000)
@@ -74,13 +80,38 @@ class EmployeeProfileWrite(ApiModel):
             raise ValueError("Enter a UAE IBAN: AE followed by 21 digits.")
         return cleaned
 
+    @field_validator("job_title", "nationality", "phone", "passport_number")
+    @classmethod
+    def trimmed(cls, value: str) -> str:
+        return value.strip()
+
+    @field_validator("emirates_id")
+    @classmethod
+    def emirates(cls, value: str) -> str:
+        digits = value.replace("-", "").replace(" ", "")
+        if digits and (len(digits) != 15 or not digits.isdigit()):
+            raise ValueError("An Emirates ID is 15 digits.")
+        return digits
+
+    @field_validator("passport_number")
+    @classmethod
+    def passport(cls, value: str) -> str:
+        cleaned = value.strip().upper()
+        if cleaned and not cleaned.replace(" ", "").isalnum():
+            raise ValueError("A passport number uses letters and digits.")
+        return cleaned.replace(" ", "")
+
+
+class EmployeeProfileOut(EmployeeProfileWrite):
+    employee_code: str
+
 
 class EmployeeOut(ApiModel):
     user_id: UUID
     name: str
     role_name: str
     store_id: UUID | None
-    profile: EmployeeProfileWrite | None
+    profile: EmployeeProfileOut | None
 
 
 class PayrollLineWrite(ApiModel):
