@@ -9,7 +9,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base, TenantScoped, TimestampMixin, tenant_unique, utcnow
 
-PROMOTION_KINDS = ("PERCENT_OFF", "BUY_X_GET_Y", "MIX_MATCH", "BUNDLE")
+PROMOTION_KINDS = ("PERCENT_OFF", "BUY_X_GET_Y", "MIX_MATCH", "BUNDLE", "AMOUNT_OFF")
 
 
 class Promotion(TenantScoped, TimestampMixin, Base):
@@ -49,4 +49,7 @@ class PromotionRedemption(TenantScoped, Base):
     store_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("stores.id"))
     discount_cents: Mapped[int] = mapped_column(Integer)
     coupon_code: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    customer_coupon_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("customer_coupons.id"), nullable=True, index=True
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)

@@ -10,12 +10,21 @@ from app.core.capabilities import Capability, has_capability
 from app.core.deps import Principal
 from app.core.errors import ApiError
 from app.models.batch import BatchItem, PurchaseBatch
+from app.models.inventory import StockMovement
 from app.models.product import Product
 from app.models.store import Store
-from app.schemas.expiry import ExpiringRow, ExpiryWriteOff, ExpiryWriteOffOut
+from app.schemas.expiry import (
+    ExpiringRow,
+    ExpiryWriteOff,
+    ExpiryWriteOffOut,
+    WasteHistoryRow,
+    WasteOut,
+    WasteSource,
+    WasteWrite,
+)
 from app.services import audit
 from app.services.batch_ledger import today
-from app.services.inventory import MANUAL_REFERENCE, level_for, move_stock, portal_errors
+from app.services.inventory import DAMAGE_REASONS, MANUAL_REFERENCE, WASTE_REASONS, level_for, move_stock, portal_errors
 from app.services.settings_service import cached_settings
 
 
@@ -119,6 +128,139 @@ def write_off(db: Session, principal: Principal, data: ExpiryWriteOff) -> Expiry
     return ExpiryWriteOffOut(
         batch_item_id=item.id, written_off=before - level.quantity_on_hand, quantity_remaining=item.quantity_remaining
     )
+
+
+def _waste_result(db: Session, item: BatchItem, adjustment_id: uuid.UUID, *, duplicate: bool) -> WasteOut:
+    movement = db.scalar(
+        select(StockMovement).where(
+            StockMovement.reference_type == MANUAL_REFERENCE,
+            StockMovement.reference_id == adjustment_id,
+        )
+    )
+    written = abs(movement.quantity) if movement is not None else 0
+    return WasteOut(
+        adjustment_id=adjustment_id,
+        batch_item_id=item.id,
+        written_off=written,
+        quantity_remaining=item.quantity_remaining,
+        duplicate=duplicate,
+    )
+
+
+@portal_errors
+def record_waste(db: Session, principal: Principal, data: WasteWrite) -> WasteOut:
+    """Removes units from one batch through the stock ledger. Replaying adjustment_id does not deduct again."""
+    if principal.user is None:
+        raise ApiError(403, "forbidden", "This action requires a signed-in user.")
+    if not has_capability(db, Capability.FEFO):
+        raise ApiError(403, "module_off", "Expiry-first stock is turned off.")
+    item = db.get(BatchItem, data.batch_item_id)
+    if item is None:
+        raise ApiError(404, "not_found", "Batch line was not found.")
+    if principal.store_id is not None and item.store_id != principal.store_id:
+        raise ApiError(403, "store_scope", "You can only write off your own store's stock.")
+    product = db.get(Product, item.product_id)
+    assert product is not None
+    if product.is_serialized:
+        raise ApiError(422, "serialized", "Write serialized units off one by one from Stock adjustments.")
+    existing = db.scalar(
+        select(StockMovement).where(
+            StockMovement.reference_type == MANUAL_REFERENCE,
+            StockMovement.reference_id == data.adjustment_id,
+        )
+    )
+    if existing is not None:
+        return _waste_result(db, item, data.adjustment_id, duplicate=True)
+    if data.quantity > item.quantity_remaining:
+        raise ApiError(422, "nothing_left", "This batch line does not have that many units left.")
+    level = level_for(db, product.id, item.store_id)
+    before = level.quantity_on_hand
+    move_stock(
+        db,
+        product_id=product.id,
+        store_id=item.store_id,
+        quantity=-data.quantity,
+        movement_type="DAMAGE_SHRINKAGE" if data.reason_code in DAMAGE_REASONS else "AUDIT_ADJUSTMENT",
+        reference_type=MANUAL_REFERENCE,
+        reference_id=data.adjustment_id,
+        user_id=principal.user.id,
+        reason_code=data.reason_code,
+        note=data.note or data.reason_code.replace("_", " ").title(),
+        batch_item_id=item.id,
+    )
+    audit.log_stock_adjustment(
+        db,
+        level_id=level.id,
+        product_id=product.id,
+        store_id=item.store_id,
+        quantity_before=before,
+        quantity_after=level.quantity_on_hand,
+        reason=data.reason_code,
+        details={"batch_item_id": str(item.id), "produce_waste": True},
+    )
+    db.commit()
+    return _waste_result(db, item, data.adjustment_id, duplicate=False)
+
+
+def waste_sources(db: Session, principal: Principal, *, store_id: uuid.UUID | None) -> list[WasteSource]:
+    if principal.store_id is not None:
+        if store_id is not None and store_id != principal.store_id:
+            raise ApiError(403, "store_scope", "You can only see your own store's stock.")
+        store_id = principal.store_id
+    statement = (
+        select(BatchItem, PurchaseBatch, Product)
+        .join(PurchaseBatch, PurchaseBatch.id == BatchItem.batch_id)
+        .join(Product, Product.id == BatchItem.product_id)
+        .where(BatchItem.quantity_remaining > 0, PurchaseBatch.status != "REVERSED")
+        .order_by(Product.name, BatchItem.expiry_date)
+        .limit(200)
+    )
+    if store_id is not None:
+        statement = statement.where(BatchItem.store_id == store_id)
+    return [
+        WasteSource(
+            batch_item_id=item.id,
+            batch_number=batch.batch_number,
+            product_id=product.id,
+            product_name=product.name,
+            sku=product.sku,
+            store_id=item.store_id,
+            quantity_remaining=item.quantity_remaining,
+            expiry_date=item.expiry_date,
+        )
+        for item, batch, product in db.execute(statement).all()
+    ]
+
+
+def waste_history(db: Session, principal: Principal, *, store_id: uuid.UUID | None) -> list[WasteHistoryRow]:
+    if principal.store_id is not None:
+        if store_id is not None and store_id != principal.store_id:
+            raise ApiError(403, "store_scope", "You can only see your own store's stock.")
+        store_id = principal.store_id
+    statement = (
+        select(StockMovement, Product)
+        .join(Product, Product.id == StockMovement.product_id)
+        .where(StockMovement.reason_code.in_(WASTE_REASONS), StockMovement.quantity < 0)
+        .order_by(StockMovement.created_at.desc())
+        .limit(50)
+    )
+    if store_id is not None:
+        statement = statement.where(StockMovement.store_id == store_id)
+    return [
+        WasteHistoryRow(
+            id=movement.id,
+            adjustment_id=movement.reference_id,
+            product_id=product.id,
+            product_name=product.name,
+            sku=product.sku,
+            store_id=movement.store_id,
+            quantity=abs(movement.quantity),
+            reason_code=movement.reason_code or "",
+            note=movement.note,
+            created_at=movement.created_at,
+        )
+        for movement, product in db.execute(statement).all()
+    ]
 
 
 def run_alert(db: Session) -> str:

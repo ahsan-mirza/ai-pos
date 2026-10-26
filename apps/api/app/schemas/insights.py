@@ -66,6 +66,12 @@ class PriceSuggestion(ApiModel):
     cover_days: int | None
     expiry_date: date | None
     sold_by_weight: bool
+    #: Evidence for RAISE_ON_DEMAND. Null on the other actions.
+    baseline_units: int | None = None
+    #: Recent units / baseline units, after the baseline window is scaled to the same number of days.
+    growth: float | None = None
+    recent_daily: float | None = None
+    baseline_daily: float | None = None
 
 
 class PricingReport(ApiModel):

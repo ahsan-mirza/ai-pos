@@ -37,6 +37,16 @@ def promotion(client, headers, **overrides) -> dict:
     return response.json()
 
 
+def test_amount_off_and_percent_cap_stop_at_the_eligible_subtotal() -> None:
+    small = [Line(line_id="a", product_id="p", category_id=None, unit_price_cents=100, quantity=1)]
+    amount = apply_promotions(small, [Rule(id="amount", kind="AMOUNT_OFF", amount_cents=500)])
+    assert sum(row.discount_cents for row in amount) == 100
+    percent = apply_promotions(
+        small, [Rule(id="percent", kind="PERCENT_OFF", percent_bps=5000, max_discount_cents=30)]
+    )
+    assert sum(row.discount_cents for row in percent) == 30
+
+
 def test_synced_sales_are_checked_against_the_rules(client, session) -> None:
     seed(client)
     headers, _ = admin(client)

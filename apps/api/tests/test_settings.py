@@ -47,6 +47,7 @@ def test_registers_and_portal_read_the_business_currency(client) -> None:
     body = client.get("/api/v1/settings", headers=device()).json()
     assert body["currency"] == "USD"
     assert "AED" in body["supported_currencies"]
+    assert "CNY" in body["supported_currencies"]
     assert client.get("/api/v1/settings").status_code == 401
 
 

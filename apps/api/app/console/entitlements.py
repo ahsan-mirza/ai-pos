@@ -84,6 +84,16 @@ def apply_managed(
         if reset_selection:
             row.capabilities = None
         row.managed_capabilities = managed or None
+        from app.core.capabilities import Capability, resolve
+        from app.services.reorder_service import has_open_plans
+
+        resolved = resolve(row.business_profile, row.capabilities, managed_of(row))
+        if Capability.CUSTOMER_REORDERS not in resolved.enabled and has_open_plans(db):
+            raise ApiError(
+                409,
+                "module_in_use",
+                "Customer reorder plans still exist. Archive them before changing the business type.",
+            )
         audit.record(
             db,
             action_type="UPDATE",

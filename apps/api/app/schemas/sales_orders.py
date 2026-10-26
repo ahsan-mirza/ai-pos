@@ -7,7 +7,7 @@ from pydantic import Field
 from app.schemas.payloads import ApiModel, PaymentMethod, SaleTenderPayload
 
 OrderStatus = Literal["DRAFT", "CONFIRMED", "PICKING", "PARTIALLY_DELIVERED", "DELIVERED", "CLOSED", "CANCELLED"]
-OrderSource = Literal["manual", "register", "quote", "b2b", "ecommerce", "rep"]
+OrderSource = Literal["manual", "register", "quote", "b2b", "ecommerce", "rep", "reorder"]
 
 
 class SalesOrderLineIn(ApiModel):

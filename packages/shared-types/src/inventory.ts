@@ -453,6 +453,8 @@ export interface ProductCreate extends FashionAttributes {
   sold_by_weight?: boolean;
   plu_code?: string | null;
   tare_grams?: number;
+  /** Till asks before payment when set. Null means anyone can buy it. */
+  minimum_age?: number | null;
   /** Recipes module: stocked for dishes only; registers do not sell it. */
   is_ingredient?: boolean;
   /** Prepared dishes are not stocked. Ingredients and packaged goods are. */
@@ -483,6 +485,8 @@ export interface ProductUpdate extends FashionAttributes {
   /** null clears the PLU. */
   plu_code?: string | null;
   tare_grams?: number;
+  /** null clears the age check. */
+  minimum_age?: number | null;
   is_ingredient?: boolean;
   item_type?: ItemType;
   sellable_units?: string[];

@@ -76,6 +76,10 @@ class Product(TenantScoped, TimestampMixin, Base):
         CheckConstraint("min_order_quantity >= 1", name="moq_positive"),
         CheckConstraint("tare_grams >= 0", name="tare_nonnegative"),
         CheckConstraint(
+            "minimum_age IS NULL OR (minimum_age >= 1 AND minimum_age <= 120)",
+            name="ck_products_minimum_age",
+        ),
+        CheckConstraint(
             "item_type IN ('MADE_TO_ORDER', 'RAW_INGREDIENT', 'PRE_PACKAGED')",
             name="ck_products_item_type",
         ),
@@ -178,6 +182,8 @@ class Product(TenantScoped, TimestampMixin, Base):
     # Price-look-up code a scale prints into its EAN-13 labels (4-6 digits).
     plu_code: Mapped[str | None] = mapped_column(String(6), nullable=True)
     tare_grams: Mapped[int] = mapped_column(Integer, default=0)
+    # Set only for products that need an age check at the till. Null means unrestricted. No country default.
+    minimum_age: Mapped[int | None] = mapped_column(Integer, nullable=True)
     # Practice item loaded at signup; Go live deletes it.
     is_sample: Mapped[bool] = mapped_column(Boolean, default=False)
     # Sold as final sale (no refund or exchange without a manager); markdown events can set it.

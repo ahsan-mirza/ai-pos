@@ -1,4 +1,4 @@
-import { Capability, activeRules, applyPromotions, type Promotion } from "@ai-pos/shared-types";
+import { Capability, activeRules, applyPromotions, type Promotion, type PromotionKind } from "@ai-pos/shared-types";
 import { env, previewHeaders } from "../../config/env";
 import { hasCapability } from "../../lib/capabilities";
 import { inTauri } from "../../lib/tauri";
@@ -40,16 +40,59 @@ export async function loadPromotions(): Promise<Promotion[]> {
   return cached();
 }
 
-/** Retail carts get the best promotions; each discounted line carries its promotion. Wholesale carts are left alone. */
+export interface IssuedVoucher {
+  code: string;
+  status: string;
+  promotion_id: string;
+  promotion_name: string;
+  kind: PromotionKind;
+  amount_cents: number | null;
+  percent_bps: number | null;
+  min_spend_cents: number;
+  product_ids: string[];
+  category_ids: string[];
+  expires_at: string | null;
+}
+
+function enteredVoucher(vouchers: IssuedVoucher[], coupon: string | null): Promotion | null {
+  const code = coupon?.trim().toUpperCase();
+  const voucher = code ? vouchers.find((row) => row.status === "issued" && row.code === code) : undefined;
+  if (!voucher) return null;
+  return {
+    id: voucher.promotion_id,
+    name: voucher.promotion_name,
+    description: "",
+    kind: voucher.kind,
+    product_ids: voucher.product_ids,
+    category_ids: voucher.category_ids,
+    percent_bps: voucher.percent_bps,
+    amount_cents: voucher.amount_cents,
+    min_spend_cents: voucher.min_spend_cents,
+    customer_issued: false,
+    coupon_code: voucher.code,
+    is_active: true,
+    starts_at: null,
+    ends_at: voucher.expires_at,
+    store_ids: [],
+    max_uses: null,
+    uses_count: 0,
+    discount_given_cents: 0,
+  };
+}
+
+/** Retail carts get the best promotions. A typed customer voucher also applies on a wholesale cart. */
 export function withPromotions(
   state: Pick<CartState, "mode" | "lines">,
   promotions: Promotion[],
   coupon: string | null,
+  vouchers: IssuedVoucher[] = [],
   at: Date = new Date(),
 ): CartLine[] {
   const cleared = state.lines.map((line) => (line.promotion ? { ...line, promotion: null } : line));
-  if (state.mode !== "RETAIL" || promotions.length === 0) return cleared;
-  const rules = activeRules(promotions, at, env.storeId, coupon);
+  const personal = enteredVoucher(vouchers, coupon);
+  const pool = state.mode === "RETAIL" ? [...promotions, ...(personal ? [personal] : [])] : personal ? [personal] : [];
+  if (pool.length === 0) return cleared;
+  const rules = activeRules(pool, at, env.storeId, coupon);
   if (rules.length === 0) return cleared;
   const eligible = cleared.filter(
     (line) => !line.product.is_open_price && !line.product.is_service && !line.product.sold_by_weight && line.override === null,
@@ -64,7 +107,7 @@ export function withPromotions(
     })),
     rules,
   );
-  const names = new Map(promotions.map((promo) => [promo.id, promo.name]));
+  const names = new Map(pool.map((promo) => [promo.id, promo.name]));
   const byLine = new Map(awards.map((award) => [award.line_id, award]));
   return cleared.map((line) => {
     const award = byLine.get(line.lineId);

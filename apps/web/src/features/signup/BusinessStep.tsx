@@ -1,5 +1,5 @@
 import { SIGNUP_BUSINESS_CARDS, type SignupBusinessCard, type SignupState } from "@ai-pos/shared-types";
-import { Check, Coffee, MailCheck, Sandwich, Shirt, ShoppingCart, Smartphone, UtensilsCrossed, type LucideIcon } from "lucide-react";
+import { Check, Coffee, MailCheck, Sandwich, Shirt, ShoppingCart, Smartphone, Store, UtensilsCrossed, type LucideIcon } from "lucide-react";
 import { useEffect, useState } from "react";
 import { ErrorNote } from "../../components/ui/Field";
 import { ApiRequestError } from "../../lib/api";
@@ -7,6 +7,7 @@ import { signupApi, type SignupSession } from "./signupApi";
 
 const ICONS: Record<string, LucideIcon> = {
   electronics_wholesale: Smartphone,
+  wholesale_retail: Store,
   retail_fashion: Shirt,
   grocery: ShoppingCart,
   restaurant: UtensilsCrossed,

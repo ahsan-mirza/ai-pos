@@ -112,6 +112,7 @@ export function ProductFormModal({
   const [byWeight, setByWeight] = useState(product?.sold_by_weight ?? false);
   const [plu, setPlu] = useState(product?.plu_code ?? "");
   const [tare, setTare] = useState(String(product?.tare_grams ?? 0));
+  const [minimumAge, setMinimumAge] = useState(product?.minimum_age != null ? String(product.minimum_age) : "");
   const recipesOn = has(Capability.Recipes);
   const [ingredient, setIngredient] = useState(product?.is_ingredient ?? false);
   const [itemType, setItemType] = useState<ItemTypeId>(
@@ -383,6 +384,11 @@ export function ProductFormModal({
       variant_attributes,
       specifications,
     };
+    const ageValue = minimumAge.trim() === "" ? null : Number(minimumAge);
+    if (ageValue !== null && (!Number.isInteger(ageValue) || ageValue < 1 || ageValue > 120)) {
+      setError("Minimum age is a whole number from 1 to 120, or blank.");
+      return;
+    }
     const weighed = weighing
       ? { sold_by_weight: byWeight, plu_code: byWeight && plu.trim() ? plu.trim() : null, tare_grams: byWeight ? Number(tare) || 0 : 0 }
       : {};
@@ -413,6 +419,7 @@ export function ProductFormModal({
           tax_category: taxCategory,
           is_open_price: openPrice && !(product?.is_serialized ?? false),
           ...weighed,
+          minimum_age: ageValue,
           ...recipes,
           ...fashion,
           sellable_units,
@@ -449,6 +456,7 @@ export function ProductFormModal({
           tax_category: taxCategory,
           is_open_price: openPrice && !serialized,
           ...weighed,
+          minimum_age: ageValue,
           ...recipes,
           ...fashion,
           sellable_units,
@@ -865,6 +873,16 @@ export function ProductFormModal({
           ) : null}
         </div>
       ) : null}
+      <div className="mt-4 max-w-xs">
+        <TextField
+          label="Minimum age"
+          value={minimumAge}
+          inputMode="numeric"
+          placeholder="Blank if anyone can buy it"
+          hint="The till asks before payment. Leave blank when no check is required."
+          onChange={(event) => setMinimumAge(event.target.value)}
+        />
+      </div>
       {isFnB && !(editing ? product.is_serialized : serialized) ? (
         <div className="mt-4">
           <SelectField

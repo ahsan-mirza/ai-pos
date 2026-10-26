@@ -12,7 +12,7 @@ from app.models.channel import ChannelPayout, DeliveryChannel
 from app.models.cheque import Cheque, ChequeEvent
 from app.models.consignment import ConsignmentSettlement, ConsignmentSettlementLine
 from app.models.currency import AcceptedCurrency, ExchangeRate
-from app.models.customer import Customer, CustomerLedgerEntry
+from app.models.customer import Customer, CustomerCoupon, CustomerLedgerEntry
 from app.models.device import Device, DeviceActivation
 from app.models.document_sequence import DocumentSequence
 from app.models.einvoice import EInvoice, EInvoiceChain, TaxAuthorityCredential
@@ -40,6 +40,7 @@ from app.models.promotion import Promotion, PromotionRedemption
 from app.models.purchasing import GoodsReceipt, GoodsReceiptLine, PurchaseOrder, PurchaseOrderLine
 from app.models.quote_payment import QuotePayment
 from app.models.recipe import ModifierIngredient, Recipe, RecipeLine, RecipeUsage
+from app.models.reorder import CustomerReorderOccurrence, CustomerReorderPlan, CustomerReorderPlanItem
 from app.models.repair_ticket import RepairAttachment, RepairDeposit, RepairEvent, RepairLine, RepairTicket
 from app.models.replenishment import DemandDaily, ReplenishmentRun, ReplenishmentSuggestion, SeasonalEvent
 from app.models.restaurant import DiningArea, DiningTable, OpenOrder, OpenOrderItem
@@ -95,6 +96,7 @@ __all__ = [
     "PayrollLine",
     "PayrollRun",
     "Customer",
+    "CustomerCoupon",
     "CustomerLedgerEntry",
     "DemandDaily",
     "Device",
@@ -149,6 +151,9 @@ __all__ = [
     "Recipe",
     "RecipeLine",
     "RecipeUsage",
+    "CustomerReorderPlan",
+    "CustomerReorderPlanItem",
+    "CustomerReorderOccurrence",
     "RegisterShift",
     "RepairAttachment",
     "RepairDeposit",

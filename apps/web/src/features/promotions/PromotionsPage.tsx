@@ -17,12 +17,15 @@ const kindLabels: Record<PromotionKind, string> = {
   BUY_X_GET_Y: "Buy X get Y",
   MIX_MATCH: "Mix & match",
   BUNDLE: "Bundle",
+  AMOUNT_OFF: "Amount off",
 };
 
 function summary(promo: Promotion, currency: string): string {
   switch (promo.kind) {
     case "PERCENT_OFF":
       return `${(promo.percent_bps ?? 0) / 100}% off`;
+    case "AMOUNT_OFF":
+      return `${formatMoney(promo.amount_cents ?? 0, currency)} off`;
     case "BUY_X_GET_Y":
       return promo.get_discount_bps === 10000 || promo.get_discount_bps == null
         ? `Buy ${promo.buy_qty}, get ${promo.get_qty} free`
@@ -58,11 +61,13 @@ export function PromotionsPage() {
   const [editing, setEditing] = useState<Promotion | "new" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  const [vouchers, setVouchers] = useState<{ issued: number; redeemed: number; discount_cents: number } | null>(null);
   const dismissToast = useCallback(() => setToast(null), []);
 
   const load = useCallback(async () => {
     try {
       setRows(await apiGet<Promotion[]>("/api/v1/promotions"));
+      setVouchers(await apiGet("/api/v1/promotions/coupon-report"));
       setError(null);
     } catch (caught) {
       setError(errorMessage(caught, "Could not load promotions."));
@@ -102,6 +107,11 @@ export function PromotionsPage() {
           <div>
             <h2 className="text-xl font-semibold">Promotions</h2>
             <p className="text-sm text-charcoal/60">Retail only. Registers apply the best promotion to each line automatically, online or offline.</p>
+            {vouchers ? (
+              <p className="mt-1 text-sm text-charcoal/60">
+                Customer vouchers: {vouchers.issued} issued, {vouchers.redeemed} redeemed, {formatMoney(vouchers.discount_cents, currency)} discount on sales that carry a redemption.
+              </p>
+            ) : null}
           </div>
           <PrimaryButton onClick={() => setEditing("new")}>
             <Plus size={16} aria-hidden="true" className="-ml-1 mr-1.5" /> New promotion
@@ -250,6 +260,18 @@ function PromotionModal({ promotion, onClose, onSaved }: { promotion: Promotion 
   const [coupon, setCoupon] = useState(promotion?.coupon_code ?? "");
   const [maxUses, setMaxUses] = useState(promotion?.max_uses ? String(promotion.max_uses) : "");
   const [minSpend, setMinSpend] = useState(promotion?.min_spend_cents ? (promotion.min_spend_cents / 100).toFixed(2) : "");
+  const [amountOff, setAmountOff] = useState(promotion?.amount_cents != null ? (promotion.amount_cents / 100).toFixed(2) : "");
+  const [maxPercentOff, setMaxPercentOff] = useState(
+    promotion?.max_discount_cents != null ? (promotion.max_discount_cents / 100).toFixed(2) : "",
+  );
+  const [personal, setPersonal] = useState(promotion?.customer_issued ?? false);
+  const [segment, setSegment] = useState(promotion?.segment ?? "repeat");
+  const [repeatCount, setRepeatCount] = useState(String(promotion?.repeat_count ?? 2));
+  const [windowDays, setWindowDays] = useState(String(promotion?.window_days ?? 90));
+  const [quietDays, setQuietDays] = useState(String(promotion?.quiet_days ?? 30));
+  const [visitCount, setVisitCount] = useState(promotion?.visit_count ? String(promotion.visit_count) : "");
+  const [spend, setSpend] = useState(promotion?.spend_cents != null ? (promotion.spend_cents / 100).toFixed(2) : "");
+  const [notify, setNotify] = useState(promotion?.notify ?? false);
   const [active, setActive] = useState(promotion?.is_active ?? true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -263,11 +285,24 @@ function PromotionModal({ promotion, onClose, onSaved }: { promotion: Promotion 
       category_ids: kind === "BUNDLE" || !categoryId ? [] : [categoryId],
       starts_at: startsAt ? new Date(startsAt).toISOString() : null,
       ends_at: endsAt ? new Date(endsAt).toISOString() : null,
-      coupon_code: coupon.trim() || null,
+      coupon_code: personal ? null : coupon.trim() || null,
+      customer_issued: personal,
+      segment: personal ? segment : null,
+      notify: personal ? notify : false,
       max_uses: maxUses ? Number(maxUses) : null,
       min_spend_cents: minSpend ? (toCents(minSpend) ?? 0) : 0,
     };
-    if (kind === "PERCENT_OFF") body.percent_bps = Math.round(Number(percent) * 100);
+    if (kind === "PERCENT_OFF") {
+      body.percent_bps = Math.round(Number(percent) * 100);
+      if (maxPercentOff) body.max_discount_cents = toCents(maxPercentOff);
+    }
+    if (kind === "AMOUNT_OFF") body.amount_cents = toCents(amountOff);
+    if (personal && segment === "repeat") Object.assign(body, { repeat_count: Number(repeatCount), window_days: Number(windowDays) });
+    if (personal && segment === "win_back") body.quiet_days = Number(quietDays);
+    if (personal && segment === "milestone") {
+      if (visitCount) body.visit_count = Number(visitCount);
+      if (spend) body.spend_cents = toCents(spend);
+    }
     if (kind === "BUY_X_GET_Y") Object.assign(body, { buy_qty: Number(buy), get_qty: Number(get), get_discount_bps: Math.round(Number(getPercent) * 100) });
     if (kind === "MIX_MATCH") Object.assign(body, { group_qty: Number(groupQty), group_price_cents: toCents(groupPrice) });
     if (kind === "BUNDLE") Object.assign(body, { components: components.map((row) => ({ product_id: row.id, quantity: 1 })), bundle_price_cents: toCents(bundlePrice) });
@@ -300,7 +335,15 @@ function PromotionModal({ promotion, onClose, onSaved }: { promotion: Promotion 
       <div className="space-y-4">
         <TextField label="Name" value={name} maxLength={80} placeholder="Eid accessory sale" onChange={(event) => setName(event.target.value)} />
         <SegmentedControl label="Deal" value={kind} options={(Object.keys(kindLabels) as PromotionKind[]).map((value) => ({ value, label: kindLabels[value] }))} onChange={setKind} />
-        {kind === "PERCENT_OFF" ? <TextField label="Percent off" inputMode="decimal" value={percent} onChange={(event) => setPercent(event.target.value)} /> : null}
+        {kind === "PERCENT_OFF" ? (
+          <div className="grid gap-4 md:grid-cols-2">
+            <TextField label="Percent off" inputMode="decimal" value={percent} onChange={(event) => setPercent(event.target.value)} />
+            <TextField label="Maximum discount (optional)" inputMode="decimal" value={maxPercentOff} onChange={(event) => setMaxPercentOff(event.target.value)} />
+          </div>
+        ) : null}
+        {kind === "AMOUNT_OFF" ? (
+          <TextField label="Amount off" inputMode="decimal" value={amountOff} onChange={(event) => setAmountOff(event.target.value)} />
+        ) : null}
         {kind === "BUY_X_GET_Y" ? (
           <div className="grid gap-4 md:grid-cols-3">
             <TextField label="Buy" inputMode="numeric" value={buy} onChange={(event) => setBuy(event.target.value)} />
@@ -335,11 +378,36 @@ function PromotionModal({ promotion, onClose, onSaved }: { promotion: Promotion 
           <TextField label="Ends (optional)" type="datetime-local" value={endsAt} onChange={(event) => setEndsAt(event.target.value)} />
         </div>
         <div className="grid gap-4 md:grid-cols-3">
-          <TextField label="Coupon code (optional)" value={coupon} maxLength={32} onChange={(event) => setCoupon(event.target.value.toUpperCase())} />
+          <TextField label="Coupon code (optional)" value={coupon} maxLength={32} disabled={personal} onChange={(event) => setCoupon(event.target.value.toUpperCase())} />
           <TextField label="Max uses (optional)" inputMode="numeric" value={maxUses} onChange={(event) => setMaxUses(event.target.value.replace(/\D/g, ""))} />
           <TextField label="Minimum spend (optional)" inputMode="decimal" value={minSpend} onChange={(event) => setMinSpend(event.target.value)} />
         </div>
-        <Toggle checked={active} onChange={setActive} label="Promotion on" description="Switch off to stop it at every register on their next refresh." />
+        <Toggle checked={personal} onChange={setPersonal} label="Issue to customers" description="Each matching customer gets their own code. Registers do not apply it until that code is entered." />
+        {personal ? (
+          <div className="grid gap-4 md:grid-cols-2">
+            <FilterSelect
+              label="Who qualifies"
+              value={segment}
+              options={[
+                { value: "repeat", label: "Bought this again" },
+                { value: "win_back", label: "Has not visited" },
+                { value: "category", label: "Bought a listed product" },
+                { value: "basket", label: "Spent the minimum" },
+                { value: "milestone", label: "First sale, visits, or spend" },
+                { value: "loyalty", label: "Has loyalty points" },
+                { value: "birthday", label: "Birthday" },
+              ]}
+              onChange={setSegment}
+            />
+            {segment === "repeat" ? <TextField label="Times bought" inputMode="numeric" value={repeatCount} onChange={(event) => setRepeatCount(event.target.value)} /> : null}
+            {segment === "repeat" ? <TextField label="Within days" inputMode="numeric" value={windowDays} onChange={(event) => setWindowDays(event.target.value)} /> : null}
+            {segment === "win_back" ? <TextField label="Quiet days" inputMode="numeric" value={quietDays} onChange={(event) => setQuietDays(event.target.value)} /> : null}
+            {segment === "milestone" ? <TextField label="Visit count (optional)" inputMode="numeric" value={visitCount} onChange={(event) => setVisitCount(event.target.value)} /> : null}
+            {segment === "milestone" ? <TextField label="Spend (optional)" inputMode="decimal" value={spend} onChange={(event) => setSpend(event.target.value)} /> : null}
+          </div>
+        ) : null}
+        {personal ? <Toggle checked={notify} onChange={setNotify} label="Send the code" description="Only by email or WhatsApp when the customer has opted in." /> : null}
+        <Toggle checked={active} onChange={setActive} label="Promotion on" description="Switch off to pause it. A past end date means it has expired." />
       </div>
       <ErrorNote message={error} />
     </Modal>

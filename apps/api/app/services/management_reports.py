@@ -40,7 +40,7 @@ from app.schemas.management import (
     ValuationReport,
     ValuationRow,
 )
-from app.services import consignment_service, costing, expense_service, margin_service, weighed
+from app.services import consignment_service, costing, expense_service, margin_service, sales_velocity, weighed
 from app.services.settings_service import cached_settings, pos_policy
 from app.services.tax import div_half_up
 from app.services.tax import policy as tax_policy
@@ -308,20 +308,30 @@ def _consigned_value(db: Session, store_id: uuid.UUID | None) -> int:
     return int(db.scalar(query) or 0)
 
 
-def _value(on_hand: int, layers: list[tuple[int, int]], fallback: int | None) -> tuple[int, int, bool]:
+def _value(
+    on_hand: int, layers: list[tuple[int, int]], fallback: int | None, *, scale: int = 1
+) -> tuple[int, int, bool, bool]:
     """Cost of on-hand units: newest layers first (FIFO leaves the newest), the rest at the latest purchase cost.
-    Returns (cost value, units at an estimated cost, estimated?)."""
+
+    ``scale`` is 1000 for weighed goods (grams on hand, cost per kilogram) and 1 otherwise.
+    Returns (cost value, units at an estimated cost, estimated?, cost missing?).
+    Cost is missing when uncovered units have no fallback. A real zero fallback is not missing.
+    """
     left = on_hand
     value = 0
     for remaining, cost in layers:
         take = min(left, remaining)
-        value += take * cost
+        value += weighed.amount(take, cost, scale)
         left -= take
         if left <= 0:
             break
+    missing = False
     if left > 0:
-        value += left * (fallback or 0)
-    return value, max(left, 0), left > 0
+        if fallback is None:
+            missing = True
+        else:
+            value += weighed.amount(left, fallback, scale)
+    return value, max(left, 0), left > 0, missing
 
 
 def valuation(db: Session, *, store_id: uuid.UUID | None) -> ValuationReport:
@@ -343,7 +353,10 @@ def valuation(db: Session, *, store_id: uuid.UUID | None) -> ValuationReport:
     for level, product, store_code in db.execute(query).unique():
         supplier_owned = min(level.quantity_on_hand, consigned.get((product.id, level.store_id), 0))
         owned = level.quantity_on_hand - supplier_owned
-        value, guessed, estimated = _value(owned, layers.get((product.id, level.store_id), []), fallback(product.id))
+        scale = weighed.scale_of(product)
+        value, guessed, estimated, _missing = _value(
+            owned, layers.get((product.id, level.store_id), []), fallback(product.id), scale=scale
+        )
         estimated_units += guessed
         rows.append(
             ValuationRow(
@@ -354,7 +367,7 @@ def valuation(db: Session, *, store_id: uuid.UUID | None) -> ValuationReport:
                 store_id=level.store_id,
                 store_code=store_code,
                 on_hand=level.quantity_on_hand,
-                unit_cost_cents=value // owned if owned else 0,
+                unit_cost_cents=(value * scale // owned) if owned else 0,
                 cost_value_cents=value,
                 retail_value_cents=level.quantity_on_hand * product.price_cents,
                 estimated=estimated,
@@ -418,6 +431,40 @@ def clearance_price(price: int, unit_cost: int, floor: int | None, bps: int) -> 
     return rounded, round((price - rounded) * 100 / price)
 
 
+def _classification_reason(
+    *,
+    status: str,
+    last: datetime | None,
+    days_since_sale: int | None,
+    days_in_stock: int | None,
+    cover: int | None,
+    slow_days: int,
+    dead_days: int,
+) -> str:
+    if last is None and days_in_stock is None:
+        return "On hand with no sale and no receipt date."
+    parts: list[str] = []
+    if last is None:
+        parts.append(f"Never sold; received {days_in_stock} days ago")
+    elif days_since_sale is not None and days_since_sale >= slow_days:
+        parts.append(f"No qualifying sale for {days_since_sale} days")
+    if cover is not None and cover > sales_velocity.COVER_SLOW_DAYS:
+        parts.append(
+            f"{cover} days of cover on the last {sales_velocity.VELOCITY_WINDOW_DAYS} days of net sales"
+        )
+    if status == "DEAD":
+        parts.append(f"Dead after {dead_days} days")
+    elif status == "SLOW":
+        parts.append(f"Slow after {slow_days} days without a sale, or {sales_velocity.COVER_SLOW_DAYS} days of cover")
+    return "; ".join(parts)
+
+
+def _expected_margin_bps(price: int | None, unit_cost: int | None) -> int | None:
+    if price is None or price <= 0 or unit_cost is None:
+        return None
+    return round((price - unit_cost) * 10_000 / price)
+
+
 def aged_stock(
     db: Session,
     *,
@@ -425,39 +472,42 @@ def aged_stock(
     slow_days: int,
     dead_days: int,
     carrying_rate_bps: int = 2500,
+    q: str | None = None,
+    status: str | None = None,
+    category: str | None = None,
+    sort: str = "cost",
+    limit: int | None = None,
+    offset: int = 0,
 ) -> AgedStockReport:
     """Slow and dead stock, what it costs to keep (capital, space, shrink: `carrying_rate_bps` a year of cost value)
-    and a clearance price that respects the margin floors."""
+    and a clearance price that respects the margin floors.
+
+    Totals cover every row that matches the filters. ``rows`` is that list, or one page when ``limit`` is set.
+    """
     if not 1 <= slow_days < dead_days <= 3650:
         raise ApiError(422, "validation_error", "Slow must be fewer days than dead, and both at most 10 years.")
     if not 0 <= carrying_rate_bps <= 10_000:
         raise ApiError(422, "validation_error", "The carrying rate is 0-100% a year.")
+    if status is not None and status not in ("SLOW", "DEAD"):
+        raise ApiError(422, "validation_error", "Status is slow or dead.")
+    if sort not in ("cost", "idle", "cover", "name"):
+        raise ApiError(422, "validation_error", "Sort by cost, idle, cover, or name.")
+    if limit is not None and not 1 <= limit <= 500:
+        raise ApiError(422, "validation_error", "Limit is 1 to 500.")
+    if offset < 0:
+        raise ApiError(422, "validation_error", "Offset cannot be negative.")
     settings = cached_settings(db)
     now = datetime.now(UTC)
-    window = now - timedelta(days=90)
-    last_sold: dict[tuple[uuid.UUID, uuid.UUID], datetime] = {}
-    sold_90: dict[tuple[uuid.UUID, uuid.UUID], int] = defaultdict(int)
-    sales = (
-        select(SaleItem.product_id, Sale.store_id, func.max(Sale.created_at))
-        .join(Sale, Sale.id == SaleItem.sale_id)
-        .where(Sale.is_quote_proforma.is_(False), Sale.status.in_(POSTED))
-        .group_by(SaleItem.product_id, Sale.store_id)
-    )
-    recent = (
-        select(SaleItem.product_id, Sale.store_id, func.coalesce(func.sum(SaleItem.quantity), 0))
-        .join(Sale, Sale.id == SaleItem.sale_id)
-        .where(Sale.is_quote_proforma.is_(False), Sale.status.in_(POSTED), Sale.created_at >= window)
-        .group_by(SaleItem.product_id, Sale.store_id)
-    )
+    window = now - timedelta(days=sales_velocity.VELOCITY_WINDOW_DAYS)
+    last_sold = sales_velocity.last_qualifying_sale(db, store_id=store_id)
+    sold_90 = sales_velocity.net_units_by_store(db, since=window, until=now, store_id=store_id)
     first_stocked = (
         select(StockMovement.product_id, StockMovement.store_id, func.min(StockMovement.created_at))
         .where(StockMovement.quantity > 0)
         .group_by(StockMovement.product_id, StockMovement.store_id)
     )
-    for product_id, store, moment in db.execute(sales):
-        last_sold[(product_id, store)] = _aware(moment)
-    for product_id, store, units in db.execute(recent):
-        sold_90[(product_id, store)] = int(units)
+    if store_id is not None:
+        first_stocked = first_stocked.where(StockMovement.store_id == store_id)
     stocked = {(product_id, store): _aware(moment) for product_id, store, moment in db.execute(first_stocked)}
 
     query = (
@@ -477,65 +527,137 @@ def aged_stock(
     for level, product, store_code in db.execute(query).unique():
         key = (product.id, level.store_id)
         last = last_sold.get(key)
-        since = last or stocked.get(key)
-        idle = (now - since).days if since else None
+        received = stocked.get(key)
+        days_since_sale = (now - last).days if last else None
+        days_in_stock = (now - received).days if received else None
+        idle = days_since_sale if last is not None else days_in_stock
         units = sold_90.get(key, 0)
-        cover = round(level.quantity_on_hand / (units / 90)) if units else None
-        if idle is not None and idle >= dead_days:
-            status = "DEAD"
-        elif (idle is not None and idle >= slow_days) or (cover is not None and cover > 180):
-            status = "SLOW"
+        cover = sales_velocity.cover_days(level.quantity_on_hand, units, sales_velocity.VELOCITY_WINDOW_DAYS)
+        if last is None and received is None:
+            row_status = "DEAD"
+        elif idle is not None and idle >= dead_days:
+            row_status = "DEAD"
+        elif (idle is not None and idle >= slow_days) or (cover is not None and cover > sales_velocity.COVER_SLOW_DAYS):
+            row_status = "SLOW"
         else:
             continue
         owned = level.quantity_on_hand - min(level.quantity_on_hand, consigned.get(key, 0))
-        value, _, _ = _value(owned, layers.get(key, []), fallback(product.id))
-        unit_cost = value // owned if owned else fallback(product.id) or 0
+        scale = weighed.scale_of(product)
+        fallback_cost = fallback(product.id)
+        value, _, estimated, missing = _value(owned, layers.get(key, []), fallback_cost, scale=scale)
         floor = (
             margin_service.floor_for(db, product, level.store_id, tax, policies) if policies != (None, {}, {}) else None
         )
-        bps = markdown_bps(status, idle, dead_days)
+        bps = markdown_bps(row_status, idle, dead_days)
         price = product.price_cents
-        suggested, markdown = clearance_price(price, unit_cost, floor.floor_cents if floor else None, bps)
+        target_pct = bps // 100
+        unit_cost: int | None = None
+        suggested: int | None = None
+        markdown = 0
+        review = False
+        limited = False
         holding_month = div_half_up(value * carrying_rate_bps, 10_000 * 12)
         holding_to_date = div_half_up(value * carrying_rate_bps * (idle or 0), 10_000 * 365)
-        if suggested is not None:
-            action = f"Mark down {markdown}% to {suggested / 100:,.2f}"
-            suggestion = (
-                f"{action} or return it to the supplier; it costs {holding_month / 100:,.2f} a month to hold."
-                if status == "DEAD"
-                else f"Stop reordering; {action.lower()} or move units to a branch that sells it."
-            )
+        if owned <= 0:
+            suggestion = "Supplier-owned stock. Return it to the supplier or stop replenishing it."
+        elif missing:
+            review = True
+            suggestion = "Cost is missing. Review the purchase cost before discounting."
         else:
-            suggestion = (
-                "Already priced at its floor: return it to the supplier or bundle it with a faster seller."
-                if status == "DEAD"
-                else "Stop reordering, and move units to a branch that sells it."
-            )
+            unit_cost = value * scale // owned
+            floor_cents = floor.floor_cents if floor else None
+            suggested, markdown = clearance_price(price, unit_cost, floor_cents, bps)
+            lowest = max(floor_cents or 0, unit_cost)
+            limited = price > lowest and (suggested is None or markdown < target_pct)
+            if suggested is not None:
+                action = f"Mark down {markdown}% to {suggested / 100:,.2f}"
+                if limited:
+                    action = f"{action} (the {target_pct}% target stops at the cost or margin floor)"
+                suggestion = (
+                    f"{action} or return it to the supplier; it costs {holding_month / 100:,.2f} a month to hold."
+                    if row_status == "DEAD"
+                    else f"Stop reordering; {action[0].lower()}{action[1:]} or move units to a branch that sells it."
+                )
+            elif limited:
+                suggestion = (
+                    f"The {target_pct}% markdown could not be applied: "
+                    "the price is already at cost or the margin floor. "
+                    "Return it to the supplier or bundle it with a faster seller."
+                    if row_status == "DEAD"
+                    else "The markdown could not be applied: the price is already at cost or the margin floor. "
+                    "Stop reordering, and move units to a branch that sells it."
+                )
+            else:
+                suggestion = (
+                    "Already priced at its floor: return it to the supplier or bundle it with a faster seller."
+                    if row_status == "DEAD"
+                    else "Stop reordering, and move units to a branch that sells it."
+                )
+        if last is None and received is None:
+            suggestion = "On hand with no sale and no receipt date. Review the stock history before discounting."
         rows.append(
             AgedStockRow(
                 product_id=product.id,
                 sku=product.sku,
                 name=product.name,
                 category=product.category,
+                brand=product.brand,
+                sold_by_weight=product.sold_by_weight,
                 store_id=level.store_id,
                 store_code=store_code,
                 on_hand=level.quantity_on_hand,
                 cost_value_cents=value,
                 last_sold_at=last,
-                days_since_sale=idle,
+                days_since_sale=days_since_sale,
+                days_in_stock=days_in_stock,
                 units_sold_90d=units,
                 cover_days=cover,
-                status=status,  # type: ignore[arg-type]
+                status=row_status,  # type: ignore[arg-type]
+                reason=_classification_reason(
+                    status=row_status,
+                    last=last,
+                    days_since_sale=days_since_sale,
+                    days_in_stock=days_in_stock,
+                    cover=cover,
+                    slow_days=slow_days,
+                    dead_days=dead_days,
+                ),
                 suggestion=suggestion,
                 holding_cost_month_cents=holding_month,
                 holding_cost_to_date_cents=holding_to_date,
                 price_cents=price,
                 suggested_price_cents=suggested,
                 markdown_pct=markdown,
+                target_markdown_pct=target_pct,
                 floor_cents=floor.floor_cents if floor else None,
+                expected_margin_bps=_expected_margin_bps(suggested, unit_cost),
+                cost_estimated=estimated and not missing,
+                review_required=review,
+                discount_limited=limited,
             )
         )
-    rows.sort(key=lambda row: (row.status != "DEAD", -row.cost_value_cents))
+    needle = q.strip().lower() if q and q.strip() else None
+    if needle is not None:
+        rows = [row for row in rows if needle in row.name.lower() or needle in row.sku.lower()]
+    if status is not None:
+        rows = [row for row in rows if row.status == status]
+    category_name = category.strip().lower() if category and category.strip() else None
+    if category_name is not None:
+        rows = [row for row in rows if row.category.lower() == category_name]
+    if sort == "idle":
+        rows.sort(
+            key=lambda row: -(
+                (row.days_since_sale if row.days_since_sale is not None else row.days_in_stock) or -1
+            )
+        )
+    elif sort == "cover":
+        rows.sort(key=lambda row: -(row.cover_days if row.cover_days is not None else -1))
+    elif sort == "name":
+        rows.sort(key=lambda row: row.name.lower())
+    else:
+        rows.sort(key=lambda row: (row.status != "DEAD", -row.cost_value_cents))
+    total = len(rows)
+    page = rows[offset:] if limit is None else rows[offset : offset + limit]
     return AgedStockReport(
         as_of=now,
         currency=settings.currency,
@@ -546,7 +668,8 @@ def aged_stock(
         carrying_rate_bps=carrying_rate_bps,
         holding_cost_month_cents=sum(row.holding_cost_month_cents for row in rows),
         holding_cost_to_date_cents=sum(row.holding_cost_to_date_cents for row in rows),
-        rows=rows,
+        total=total,
+        rows=page,
     )
 
 
@@ -788,6 +911,11 @@ def aged_csv(report: AgedStockReport) -> str:
             "price",
             "suggested_price",
             "markdown_pct",
+            "target_markdown_pct",
+            "expected_margin_pct",
+            "days_in_stock",
+            "reason",
+            "review_required",
         ]
     )
     for row in report.rows:
@@ -807,6 +935,11 @@ def aged_csv(report: AgedStockReport) -> str:
                 _money(row.price_cents),
                 _money(row.suggested_price_cents) if row.suggested_price_cents is not None else "",
                 row.markdown_pct,
+                row.target_markdown_pct,
+                f"{row.expected_margin_bps / 100:.2f}" if row.expected_margin_bps is not None else "",
+                row.days_in_stock if row.days_in_stock is not None else "",
+                row.reason,
+                "yes" if row.review_required else "",
             ]
         )
     return buffer.getvalue()

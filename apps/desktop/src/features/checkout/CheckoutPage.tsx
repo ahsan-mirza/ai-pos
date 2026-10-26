@@ -68,6 +68,7 @@ import { DiscountModal } from "./DiscountModal";
 import { GiftCardSellModal } from "./GiftCardSellModal";
 import { CartList } from "./CartList";
 import { GuestSuggestions, suggestsForGuests } from "../orders/GuestSuggestions";
+import { GrocerySuggestions } from "./GrocerySuggestions";
 import { CheckoutSidebar } from "./CheckoutSidebar";
 import { loadCatalog, seedProducts, store, type Catalog } from "./catalog";
 import { OrderModeBar } from "./fnb/OrderModeBar";
@@ -108,7 +109,8 @@ import { TipRow } from "../orders/TipRow";
 import { PriceOverrideModal } from "./PriceOverrideModal";
 import { ProductCard, type TierPreview } from "./ProductCard";
 import { CouponRow } from "./CouponRow";
-import { loadPromotions, withPromotions } from "./promotions";
+import { customerCoupons } from "../../lib/api";
+import { loadPromotions, withPromotions, type IssuedVoucher } from "./promotions";
 import { QuoteModal } from "./QuoteModal";
 import { buildSalesOrder, submitSalesOrder } from "./salesOrder";
 import { buildQuote, type ChargeRequest } from "./queue";
@@ -227,6 +229,7 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
   const [creditApproval, setCreditApproval] = useState<CreditApprovalState | null>(null);
   const [askCredit, setAskCredit] = useState(false);
   const [overrideRow, setOverrideRow] = useState<CartRow | null>(null);
+  const [ageLines, setAgeLines] = useState<CartLine[] | null>(null);
   const [discountFor, setDiscountFor] = useState<{ lines: CartLine[]; title: string } | null>(null);
   const [giftCardOpen, setGiftCardOpen] = useState(false);
   const [notice, setNotice] = useState("Search the catalog.");
@@ -260,14 +263,20 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
 
   const [promotions, setPromotions] = useState<Promotion[]>([]);
   const [coupon, setCoupon] = useState<string | null>(null);
+  const [vouchers, setVouchers] = useState<IssuedVoucher[]>([]);
   const tier = cartTier(cart);
-  const pricedLines = useMemo(() => withPromotions(cart, promotions, coupon), [cart, promotions, coupon]);
+  const pricedLines = useMemo(
+    () => withPromotions(cart, promotions, coupon, vouchers),
+    [cart, promotions, coupon, vouchers],
+  );
   const totals = useMemo(() => cartTotals(pricedLines, customerTax(cart.customer)), [pricedLines, cart.customer]);
   const rows = useMemo(() => cartRows(pricedLines), [pricedLines]);
   const promoSavings = pricedLines.reduce((sum, line) => sum + (line.promotion?.discountCents ?? 0), 0);
   const manualSavings = pricedLines.reduce((sum, line) => sum + manualDiscountCents(line), 0);
   const discountable = pricedLines.filter((line) => !line.giftCardCode && !line.product.sold_by_weight && !line.orderItemId);
-  const couponsOffered = cart.mode === "RETAIL" && promotions.some((promo) => promo.coupon_code !== null);
+  const couponsOffered =
+    vouchers.some((row) => row.status === "issued") ||
+    (cart.mode === "RETAIL" && promotions.some((promo) => promo.coupon_code !== null));
   const capabilities = useCapabilities();
   const food = capabilities.foodAndBeverage;
   const [orderMode, setOrderMode] = useState<OrderMode>("dine_in");
@@ -412,6 +421,17 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
   useEffect(() => {
     void loadPromotions().then(setPromotions);
   }, [promotionsOn]);
+
+  useEffect(() => {
+    const customerId = cart.customer?.id;
+    if (!customerId) {
+      setVouchers([]);
+      return;
+    }
+    void customerCoupons(customerId)
+      .then(setVouchers)
+      .catch(() => setVouchers([]));
+  }, [cart.customer?.id]);
 
   useEffect(() => {
     if (!wholesaleOn && cart.mode === "WHOLESALE") dispatch({ type: "set_mode", mode: "RETAIL" });
@@ -730,7 +750,14 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
 
   const charge = async () => {
     if (chargeBlocked) return;
-    const chargedCart = { ...cartRef.current, lines: withPromotions(cartRef.current, promotions, coupon) };
+    const pendingAge = cartRef.current.lines.filter(
+      (line) => line.product.minimum_age != null && line.ageCheck?.confirmed !== true,
+    );
+    if (pendingAge.length > 0) {
+      setAgeLines(pendingAge);
+      return;
+    }
+    const chargedCart = { ...cartRef.current, lines: withPromotions(cartRef.current, promotions, coupon, vouchers) };
     const request: ChargeRequest = {
       cart: chargedCart,
       couponCode: coupon,
@@ -1023,6 +1050,42 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
             }
             cart={
               <>
+              {capabilities.profile === "grocery" ? (
+                <div className="px-4 pt-2">
+                  <GrocerySuggestions
+                    storeId={activeStore().id}
+                    productIds={cart.lines.map((line) => line.product.id)}
+                    disabled={charging}
+                    onAdd={(suggestion) => {
+                      const product = catalog.products.find((item) => item.id === suggestion.product_id);
+                      if (!product) {
+                        setNotice(`${suggestion.name} is not on this register yet.`);
+                        return;
+                      }
+                      dispatch({ type: "add_product", product });
+                    }}
+                  />
+                </div>
+              ) : null}
+              {capabilities.modules.bags.enabled && capabilities.modules.bags.fee_cents > 0 ? (
+                <div className="px-4 pt-2">
+                  <button
+                    type="button"
+                    disabled={charging}
+                    onClick={() => {
+                      const bag = catalog.products.find((item) => item.sku === "BAG-FEE");
+                      if (!bag) {
+                        setNotice("Reload the catalogue to add a bag.");
+                        return;
+                      }
+                      dispatch({ type: "add_product", product: bag });
+                    }}
+                    className="h-12 rounded-2xl border border-zinc-200 px-4 text-sm font-semibold dark:border-white/10"
+                  >
+                    Add bag · {formatMoney(capabilities.modules.bags.fee_cents, currency)}
+                  </button>
+                </div>
+              ) : null}
               {suggestsForGuests(capabilities.profile) ? (
                 <div className="px-4 pt-2">
                 <GuestSuggestions
@@ -1366,7 +1429,10 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
           </div>
 
           {(() => {
-            const preferred = categoryChips(capabilities.profile);
+            const departmentKeys = capabilities.profile === "grocery" ? capabilities.modules.department_keys.keys : [];
+            const preferred = departmentKeys.length
+              ? departmentKeys.map((key) => ({ value: key.label, label: key.label }))
+              : categoryChips(capabilities.profile);
             const extra = categories
               .filter((name) => !preferred.some((chip) => chip.value === name))
               .map((name) => ({ value: name, label: name }));
@@ -1556,6 +1622,40 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
             setGiftCardOpen(false);
           }}
         />
+      ) : null}
+      {ageLines ? (
+        <ManagerApprovalModal
+          reasons={ageLines.map((line) => `${line.product.name} requires age ${line.product.minimum_age}+`)}
+          subtitle="Confirm the customer is old enough, or ask a manager to override with a reason. No identity document is stored."
+          verify={(username, pin) => verifyManager(session, username, pin, Permission.PosPriceOverride)}
+          approveLabel="Manager override"
+          onClose={() => setAgeLines(null)}
+          onApproved={(approver, note) => {
+            dispatch({
+              type: "confirm_age",
+              lineIds: ageLines.map((line) => line.lineId),
+              check: { confirmed: true, overrideById: approver.id, reason: note.trim() },
+            });
+            setAgeLines(null);
+            void charge();
+          }}
+        >
+          <button
+            type="button"
+            className="h-12 w-full rounded-2xl bg-primary-500 text-sm font-semibold text-white"
+            onClick={() => {
+              dispatch({
+                type: "confirm_age",
+                lineIds: ageLines.map((line) => line.lineId),
+                check: { confirmed: true },
+              });
+              setAgeLines(null);
+              void charge();
+            }}
+          >
+            Customer is old enough
+          </button>
+        </ManagerApprovalModal>
       ) : null}
       {overrideRow ? (
         <PriceOverrideModal

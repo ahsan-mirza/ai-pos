@@ -1,5 +1,5 @@
 import { Capability, PAYMENT_TERMS_LABELS, PRICE_TIER_LABELS, formatMoney, type Customer } from "@ai-pos/shared-types";
-import { FileSpreadsheet, Plus, Send, SquarePen, Users } from "lucide-react";
+import { FileSpreadsheet, Plus, Repeat2, Send, SquarePen, Users } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useConfirm } from "../../components/ui/ConfirmDialog";
@@ -24,6 +24,7 @@ const typeOptions = [
 export function CustomersPage() {
   const { currency } = useCurrency();
   const creditModule = useCapability(Capability.B2bCredit);
+  const reorderModule = useCapability(Capability.CustomerReorders);
   const [type, setType] = useState<TypeFilter>("all");
   const [query, setQuery] = useState("");
   const [debounced, setDebounced] = useState("");
@@ -179,6 +180,15 @@ export function CustomersPage() {
             <FileSpreadsheet size={14} aria-hidden="true" />
             Statement
           </Link>
+          {reorderModule ? (
+            <Link
+              to={`/reorders?customer=${row.id}`}
+              className="flex h-9 items-center rounded-full border border-line px-3.5 text-xs font-semibold hover:border-accent hover:text-accent"
+            >
+              <Repeat2 size={14} aria-hidden="true" />
+              Reorders
+            </Link>
+          ) : null}
           <button
             type="button"
             aria-label={`Edit ${row.company_name ?? row.name}`}

@@ -1,7 +1,7 @@
 import { profileSpec, type BusinessProfile } from "@ai-pos/shared-types";
 
 /** Retail trade profiles. Stored ids match BusinessProfile in shared-types. */
-export const RETAIL_PROFILES = ["electronics_wholesale", "retail_fashion", "grocery"] as const satisfies readonly BusinessProfile[];
+export const RETAIL_PROFILES = ["electronics_wholesale", "wholesale_retail", "retail_fashion", "grocery"] as const satisfies readonly BusinessProfile[];
 
 /** Food and beverage profiles. */
 export const FNB_PROFILES = ["restaurant", "cafe", "quick_service"] as const satisfies readonly BusinessProfile[];

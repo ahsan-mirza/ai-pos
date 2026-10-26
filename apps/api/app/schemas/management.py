@@ -79,19 +79,33 @@ class AgedStockRow(ApiModel):
     on_hand: int
     cost_value_cents: int
     last_sold_at: datetime | None
+    #: Whole UTC days since the last qualifying sale. Null when the product has never had one.
     days_since_sale: int | None
     units_sold_90d: int
     cover_days: int | None
     status: Literal["SLOW", "DEAD"]
     suggestion: str
-    # Carrying cost at the report's annual rate: per month from now, and accrued since the last sale.
+    reason: str = ""
+    brand: str | None = None
+    sold_by_weight: bool = False
+    #: Whole UTC days since the first positive stock movement. Null when that date is unknown.
+    days_in_stock: int | None = None
+    # Carrying cost at the report's annual rate: per month from now, and accrued over the idle clock
+    # (last qualifying sale, otherwise the first receipt). Not a fabricated age when both dates are missing.
     holding_cost_month_cents: int = 0
     holding_cost_to_date_cents: int = 0
     price_cents: int = 0
     #: Clearance price: a markdown that grows with idle time, never below the margin floor (or cost).
+    #: Null when the shelf price is already at the floor, the cost is missing, or the stock is supplier-owned.
     suggested_price_cents: int | None = None
     markdown_pct: int = 0
+    target_markdown_pct: int = 0
     floor_cents: int | None = None
+    expected_margin_bps: int | None = None
+    cost_estimated: bool = False
+    review_required: bool = False
+    #: The target markdown could not be applied in full because of cost or the margin floor.
+    discount_limited: bool = False
 
 
 class AgedStockReport(ApiModel):
@@ -104,6 +118,8 @@ class AgedStockReport(ApiModel):
     carrying_rate_bps: int = 2500
     holding_cost_month_cents: int = 0
     holding_cost_to_date_cents: int = 0
+    #: Rows matching the filters, before the page slice.
+    total: int = 0
     rows: list[AgedStockRow]
 
 

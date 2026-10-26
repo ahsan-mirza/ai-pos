@@ -119,6 +119,11 @@ INTENTS = (
             "markdown",
             "under the floor",
             "below cost",
+            "fast mover",
+            "fast selling",
+            "selling faster",
+            "demand outrunning",
+            "outrunning stock",
         ),
     ),
     ("price_suggestions", ("تسعير", "الأسعار", "الاسعار", "رفع السعر", "تخفيض السعر", "تخفيضات")),
@@ -126,7 +131,7 @@ INTENTS = (
     ("credit_risk", ("مخاطر الائتمان", "مخاطر", "متعثر", "تصنيف العميل")),
     ("reorder_forecast", ("reorder", "re-order", "forecast", "what should i order", "what to order", "restock")),
     ("reorder_forecast", ("إعادة الطلب", "اعادة الطلب", "توقع", "توقعات", "ماذا أطلب", "ماذا اطلب")),
-    ("slow_stock", ("slow", "dead stock", "not selling", "aged stock", "ageing", "aging", "holding cost")),
+    ("slow_stock", ("slow", "dead stock", "not selling", "not sold", "aged stock", "ageing", "aging", "holding cost")),
     ("slow_stock", ("راكد", "بطيء", "بطيئة", "لا يباع")),
     ("stock_value", ("stock value", "inventory value", "value of stock", "worth", "قيمة المخزون", "المخزون")),
     ("payables_due", ("supplier", "payable", "bills due", "we owe", "الموردين", "المورد", "مستحقات")),
@@ -246,6 +251,32 @@ def plan(question: str, store_codes: list[str]) -> Plan | None:
         args["limit"] = int(count.group(1))
     if tool == "top_products" and any(word in text for word in ("units", "quantity", "pieces", "كمية", "قطعة", "عدد")):
         args["by"] = "quantity"
+    if tool == "slow_stock":
+        named = re.search(
+            r"(?:not sold|no sale|have not sold|haven't sold|has not sold|dead(?: stock)?(?: for)?|"
+            r"slow(?: stock)?(?: for)?|راكد|بطيء)[^\d]{0,40}(\d{1,4})",
+            text,
+        )
+        if named:
+            count = max(1, min(int(named.group(1)), 3650))
+            dead_words = (
+                "dead",
+                "not sold",
+                "no sale",
+                "have not sold",
+                "haven't sold",
+                "has not sold",
+                "راكد",
+                "لا يباع",
+            )
+            if any(word in text for word in ("slow", "بطيء", "بطيئة")) and not any(word in text for word in dead_words):
+                args["slow_days"] = count
+            else:
+                args["dead_days"] = count
+    if tool == "price_suggestions" and any(
+        word in text for word in ("fast mover", "fast selling", "selling faster", "demand", "outrunning")
+    ):
+        args["action"] = "RAISE_ON_DEMAND"
     return Plan(tool, args)
 
 
@@ -331,16 +362,24 @@ def _phrase(result: ToolResult, language: str) -> str:
         )
     if result.tool == "slow_stock":
         if ar:
+            review = ""
+            if facts.get("needs_cost_review"):
+                review = f" {facts['needs_cost_review']} تحتاج مراجعة التكلفة قبل التخفيض."
             return (
                 f"{facts['items']} صنفًا بطيء الحركة أو راكد: {facts['slow_value']} بطيء "
                 f"(أكثر من {facts['slow_after_days']} يومًا) و{facts['dead_value']} راكد "
-                f"(أكثر من {facts['dead_after_days']} يومًا) بسعر التكلفة."
+                f"(أكثر من {facts['dead_after_days']} يومًا) بسعر التكلفة.{review}"
             )
+        review = ""
+        if facts.get("needs_cost_review"):
+            review = f" {facts['needs_cost_review']} need a cost review before discounting."
         return (
             f"{facts['items']} lines are slow or dead: {facts['slow_value']} slow "
-            f"(no sale in {facts['slow_after_days']}+ days) and {facts['dead_value']} dead "
+            f"(no qualifying sale in {facts['slow_after_days']}+ days, or over "
+            f"{facts['cover_slow_days']} days of cover "
+            f"on {facts['velocity_window_days']} days of net sales) and {facts['dead_value']} dead "
             f"({facts['dead_after_days']}+ days), at cost. Holding them costs about "
-            f"{facts['holding_cost_per_month']} a month ({facts['carrying_rate']})."
+            f"{facts['holding_cost_per_month']} a month ({facts['carrying_rate']}).{review}"
         )
     if result.tool == "credit_risk":
         riskiest = facts["riskiest"]
@@ -413,6 +452,23 @@ def _phrase(result: ToolResult, language: str) -> str:
             f"({facts['high']} high). Most urgent: {facts['top']}"
         )
     if result.tool == "price_suggestions":
+        if facts.get("filtered_action") == "RAISE_ON_DEMAND":
+            if not facts["total"]:
+                if ar:
+                    return "لا توجد أصناف سريعة البيع تستوفي شرط رفع السعر."
+                return (
+                    "No products sold at least 10 units in the last 28 days, at least 1.5 times the prior 8 weeks' "
+                    "daily rate, with 14 days of cover or less."
+                )
+            if ar:
+                return (
+                    f"{facts['total']} صنفًا يبيع أسرع من الأسابيع الثمانية السابقة مع مخزون يغطي 14 يومًا أو أقل. "
+                    f"أول اقتراح: {facts['first_product']}، {facts['first']}"
+                )
+            return (
+                f"{facts['total']} products are selling at least 1.5× the prior 8 weeks' daily rate with 14 days of "
+                f"cover or less. First: {facts['first_product']}, {facts['first']}"
+            )
         if not facts["total"]:
             return "لا توجد اقتراحات أسعار الآن." if ar else "No price changes to suggest right now."
         if ar:

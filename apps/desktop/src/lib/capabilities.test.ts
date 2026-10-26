@@ -9,9 +9,9 @@ import {
 import { describe, expect, it } from "vitest";
 
 describe("business profiles", () => {
-  it("ships the six presets in two groups", () => {
+  it("ships the seven presets in two groups", () => {
     expect(Object.keys(PROFILE_PRESETS).sort()).toEqual(
-      ["cafe", "electronics_wholesale", "grocery", "quick_service", "restaurant", "retail_fashion"].sort(),
+      ["cafe", "electronics_wholesale", "grocery", "quick_service", "restaurant", "retail_fashion", "wholesale_retail"].sort(),
     );
     const groups = Object.values(PROFILE_PRESETS).map((profile) => profile.group);
     expect(groups.filter((group) => group === "food_beverage")).toHaveLength(3);

@@ -1,6 +1,7 @@
 """Configuration of the optional modules, stored as one JSON document on business_settings.module_settings."""
 
 from typing import Literal
+from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -76,12 +77,41 @@ class RepairSettings(_Section):
     )
 
 
+class BagSettings(_Section):
+    """A cashier adds bags from the till. Nothing here is applied on its own."""
+
+    enabled: bool = False
+    fee_cents: int = Field(default=0, ge=0, le=100_000)
+    tax_category: Literal["STANDARD", "ZERO", "EXEMPT"] = "STANDARD"
+
+
+class DepartmentKey(_Section):
+    category_id: UUID
+    label: str = Field(min_length=1, max_length=40)
+
+
+class DepartmentKeysSettings(_Section):
+    keys: list[DepartmentKey] = Field(default_factory=list, max_length=16)
+
+    @field_validator("keys")
+    @classmethod
+    def unique_categories(cls, value: list[DepartmentKey]) -> list[DepartmentKey]:
+        seen: set[UUID] = set()
+        for key in value:
+            if key.category_id in seen:
+                raise ValueError("Each department key uses a different category.")
+            seen.add(key.category_id)
+        return value
+
+
 class ModuleSettings(_Section):
     fefo: FefoSettings = Field(default_factory=FefoSettings)
     weighed_items: WeighedItemsSettings = Field(default_factory=WeighedItemsSettings)
     tips_service_charge: ServiceChargeSettings = Field(default_factory=ServiceChargeSettings)
     kds: KdsSettings = Field(default_factory=KdsSettings)
     repairs: RepairSettings = Field(default_factory=RepairSettings)
+    bags: BagSettings = Field(default_factory=BagSettings)
+    department_keys: DepartmentKeysSettings = Field(default_factory=DepartmentKeysSettings)
 
 
 def resolve_module_settings(raw: dict | None) -> ModuleSettings:

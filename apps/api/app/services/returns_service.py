@@ -46,6 +46,7 @@ from app.services import (
     batch_ledger,
     combo_service,
     integrated_payment_service,
+    ledger_service,
     loyalty_service,
     recipe_service,
     warranty_service,
@@ -535,6 +536,14 @@ def apply_return(db: Session, settings: Settings, payload: dict[str, object]) ->
         if owner is not None:
             loyalty_service.reverse_for_return(
                 db, owner, return_id=data.id, refund_cents=data.total_refund_cents, user_id=cashier.id
+            )
+            ledger_service.credit_return(
+                db,
+                owner,
+                sale,
+                return_id=data.id,
+                refund_cents=data.total_refund_cents,
+                user_id=cashier.id,
             )
 
     override = data.override if approver is not None else None

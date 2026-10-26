@@ -28,6 +28,7 @@ from app.routers.v1.expiry import router as expiry_router
 from app.routers.v1.fnb_table_orders import router as fnb_table_orders_router
 from app.routers.v1.fnb_table_orders import ws_router as fnb_table_ws_router
 from app.routers.v1.gift_cards import router as gift_cards_router
+from app.routers.v1.grocery import router as grocery_router
 from app.routers.v1.insights import router as insights_router
 from app.routers.v1.integrations import router as integrations_router
 from app.routers.v1.inventory import router as inventory_router
@@ -55,6 +56,7 @@ from app.routers.v1.promotions import router as promotions_router
 from app.routers.v1.quotes import router as quotes_router
 from app.routers.v1.recipes import router as recipes_router
 from app.routers.v1.register import router as register_router
+from app.routers.v1.reorders import router as reorders_router
 from app.routers.v1.repair_workshop import router as repair_workshop_router
 from app.routers.v1.repairs import router as repairs_router
 from app.routers.v1.replenishment import router as replenishment_router
@@ -104,6 +106,7 @@ api_router.include_router(inventory_router, prefix="/inventory", tags=["inventor
 api_router.include_router(register_router, prefix="/inventory", tags=["inventory"])
 api_router.include_router(batches_router, prefix="/inventory", tags=["purchase batches"])
 api_router.include_router(expiry_router, prefix="/inventory", tags=["expiry"], dependencies=module(Capability.FEFO))
+api_router.include_router(grocery_router, prefix="/grocery", tags=["grocery"])
 api_router.include_router(
     pricing_router, prefix="/pricing", tags=["pricing"], dependencies=module(Capability.WHOLESALE_PRICING)
 )
@@ -118,6 +121,12 @@ api_router.include_router(
     prefix="/sales-orders",
     tags=["sales orders"],
     dependencies=module(Capability.SALES_ORDERS),
+)
+api_router.include_router(
+    reorders_router,
+    prefix="/reorders",
+    tags=["reorders"],
+    dependencies=module(Capability.CUSTOMER_REORDERS),
 )
 api_router.include_router(returns_router, prefix="/returns", tags=["returns"])
 api_router.include_router(

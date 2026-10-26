@@ -42,6 +42,10 @@ class SaleItem(TenantScoped, Base):
     list_price_cents: Mapped[int | None] = mapped_column(Integer, nullable=True)
     tax_rate_bps: Mapped[int | None] = mapped_column(Integer, nullable=True)
     description: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    # What was sold, copied at the till so a later rename or price change does not rewrite history.
+    product_name: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    sku: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    variant_attributes: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     # FIFO cost of the units drawn (falls back to the latest purchase cost for unbatched stock).
     cost_cents: Mapped[int | None] = mapped_column(Integer, nullable=True)
     cost_estimated: Mapped[bool] = mapped_column(Boolean, default=False)

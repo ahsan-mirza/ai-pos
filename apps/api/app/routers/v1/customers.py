@@ -1,4 +1,5 @@
 import uuid
+from datetime import datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query, Response
@@ -12,6 +13,7 @@ from app.core.pagination import Offset, set_total
 from app.core.permissions import Permission
 from app.schemas.dunning import DunningResult, StatementSend
 from app.schemas.payloads import CustomerType, SaleOut
+from app.schemas.promotions import CustomerCouponOut
 from app.schemas.wholesale import (
     CreditHoldWrite,
     CreditRiskOut,
@@ -26,6 +28,7 @@ from app.schemas.wholesale import (
 )
 from app.services import (
     catalog_service,
+    coupon_service,
     credit_risk_service,
     credit_service,
     customer_service,
@@ -107,9 +110,16 @@ def history(
     customer_id: uuid.UUID,
     db: Db,
     _: AtRegister,
-    limit: Annotated[int, Query(ge=1, le=20)] = 10,
+    limit: Annotated[int, Query(ge=1, le=200)] = 20,
+    sold_from: Annotated[datetime | None, Query(alias="from")] = None,
+    sold_to: Annotated[datetime | None, Query(alias="to")] = None,
 ) -> list[CustomerHistoryLine]:
-    return customer_service.purchase_history(db, customer_id, limit)
+    return customer_service.purchase_history(db, customer_id, limit, sold_from=sold_from, sold_to=sold_to)
+
+
+@router.get("/{customer_id}/coupons", response_model=list[CustomerCouponOut])
+def coupons(customer_id: uuid.UUID, db: Db, _: AtRegister) -> list[CustomerCouponOut]:
+    return [CustomerCouponOut.model_validate(row) for row in coupon_service.list_for_customer(db, customer_id)]
 
 
 @router.get("/{customer_id}", response_model=CustomerOut)
@@ -141,12 +151,12 @@ def customer_sales(
     )
 
 
-@router.post("/{customer_id}/payments", response_model=PaymentOut, status_code=201)
+@router.post("/{customer_id}/payments", response_model=PaymentOut, status_code=201, dependencies=[CreditModule])
 def receive_payment(customer_id: uuid.UUID, payload: PaymentCreate, db: Db, principal: CanManage) -> PaymentOut:
     return customer_service.receive_payment(db, customer_id, payload, _user_id(principal))
 
 
-@router.post("/{customer_id}/credit-hold", response_model=CustomerOut)
+@router.post("/{customer_id}/credit-hold", response_model=CustomerOut, dependencies=[CreditModule])
 def credit_hold(
     customer_id: uuid.UUID,
     payload: CreditHoldWrite,
@@ -160,6 +170,6 @@ def credit_hold(
     return customer_service.customer_detail(db, customer.id)
 
 
-@router.post("/{customer_id}/adjustments", response_model=CustomerOut, status_code=201)
+@router.post("/{customer_id}/adjustments", response_model=CustomerOut, status_code=201, dependencies=[CreditModule])
 def adjust_balance(customer_id: uuid.UUID, payload: LedgerAdjustment, db: Db, principal: CanManage) -> CustomerOut:
     return customer_service.adjust_balance(db, customer_id, payload, _user_id(principal))

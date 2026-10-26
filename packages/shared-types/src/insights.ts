@@ -75,6 +75,12 @@ export interface PriceSuggestion {
   cover_days: number | null;
   expiry_date: string | null;
   sold_by_weight: boolean;
+  /** Units in the prior 56 days. Set on demand suggestions. */
+  baseline_units?: number | null;
+  /** Recent daily rate divided by the baseline daily rate. */
+  growth?: number | null;
+  recent_daily?: number | null;
+  baseline_daily?: number | null;
 }
 
 export interface PricingReport {

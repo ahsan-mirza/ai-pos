@@ -1,7 +1,10 @@
 import {
   EXPENSE_CATEGORY_LABELS,
+  Permission,
   formatMoney,
+  formatWeight,
   type AgedStockReport,
+  type AgedStockRow,
   type DiscountReport,
   type ExpenseCategory,
   type PnlReport,
@@ -11,10 +14,12 @@ import {
 } from "@ai-pos/shared-types";
 import { Download } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { Select } from "@ai-pos/ui";
-import { ErrorNote, FilterSelect, GhostButton, TextField } from "../../components/ui/Field";
+import { useConfirm } from "../../components/ui/ConfirmDialog";
+import { ErrorNote, FilterSelect, GhostButton, PrimaryButton, TextField } from "../../components/ui/Field";
 import { SegmentedControl } from "../../components/ui/SegmentedControl";
-import { apiBlob, apiGet } from "../../lib/api";
+import { apiBlob, apiGet, apiPatch } from "../../lib/api";
 import { useAuth } from "../../lib/auth";
 import { useCurrency } from "../../lib/currency";
 import { storeOptions, useStores } from "../inventory/shared";
@@ -44,8 +49,12 @@ function Kpi({ label, value, hint, tone }: { label: string; value: string; hint:
   );
 }
 
+const AGED_PAGE = 50;
+
 export function ManagementReportsPage() {
-  const { user } = useAuth();
+  const { user, can } = useAuth();
+  const confirm = useConfirm();
+  const managePrices = can(Permission.PortalInventoryManage);
   const { currency } = useCurrency();
   const { stores } = useStores();
   const [tab, setTab] = useState<Tab>("pnl");
@@ -56,6 +65,13 @@ export function ManagementReportsPage() {
   const [valuation, setValuation] = useState<ValuationReport | null>(null);
   const [aged, setAged] = useState<AgedStockReport | null>(null);
   const [carryingRate, setCarryingRate] = useState(25);
+  const [agedQuery, setAgedQuery] = useState("");
+  const [agedStatus, setAgedStatus] = useState("");
+  const [agedSort, setAgedSort] = useState("cost");
+  const [slowDays, setSlowDays] = useState(60);
+  const [deadDays, setDeadDays] = useState(180);
+  const [agedPage, setAgedPage] = useState(0);
+  const [applying, setApplying] = useState<string | null>(null);
   const [staff, setStaff] = useState<StaffSalesReport | null>(null);
   const [discounts, setDiscounts] = useState<DiscountReport | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -67,7 +83,18 @@ export function ManagementReportsPage() {
       if (tab === "pnl") setPnl(await apiGet<PnlReport>(`/api/v1/reports/management/pnl?from=${from}&to=${to}${scope}`));
       if (tab === "valuation") setValuation(await apiGet<ValuationReport>(`/api/v1/reports/management/valuation?x=1${scope}`));
       if (tab === "aged-stock") {
-        setAged(await apiGet<AgedStockReport>(`/api/v1/reports/management/aged-stock?carrying_rate_pct=${carryingRate}${scope}`));
+        const params = new URLSearchParams({
+          carrying_rate_pct: String(carryingRate),
+          slow_days: String(slowDays),
+          dead_days: String(deadDays),
+          sort: agedSort,
+          limit: String(AGED_PAGE),
+          offset: String(agedPage * AGED_PAGE),
+        });
+        if (storeId) params.set("store_id", storeId);
+        if (agedQuery.trim()) params.set("q", agedQuery.trim());
+        if (agedStatus) params.set("status", agedStatus);
+        setAged(await apiGet<AgedStockReport>(`/api/v1/reports/management/aged-stock?${params.toString()}`));
       }
       if (tab === "staff") setStaff(await apiGet<StaffSalesReport>(`/api/v1/reports/management/staff?from=${from}&to=${to}${scope}`));
       if (tab === "discounts") {
@@ -77,7 +104,7 @@ export function ManagementReportsPage() {
     } catch (caught) {
       setError(errorMessage(caught, "Could not build the report."));
     }
-  }, [tab, from, to, scope, carryingRate]);
+  }, [tab, from, to, scope, carryingRate, agedQuery, agedStatus, agedSort, slowDays, deadDays, agedPage, storeId]);
 
   useEffect(() => {
     void load();
@@ -85,13 +112,22 @@ export function ManagementReportsPage() {
 
   const download = async () => {
     try {
-      const blob = await apiBlob(
-        `/api/v1/reports/management/${tab}.csv?from=${from}&to=${to}&carrying_rate_pct=${carryingRate}${scope}`,
-      );
+      const params = new URLSearchParams({
+        from,
+        to,
+        carrying_rate_pct: String(carryingRate),
+        slow_days: String(slowDays),
+        dead_days: String(deadDays),
+        sort: agedSort,
+      });
+      if (storeId) params.set("store_id", storeId);
+      if (tab === "aged-stock" && agedQuery.trim()) params.set("q", agedQuery.trim());
+      if (tab === "aged-stock" && agedStatus) params.set("status", agedStatus);
+      const blob = await apiBlob(`/api/v1/reports/management/${tab}.csv?${params.toString()}`);
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
-      link.download = `${tab}-${from}-${to}.csv`;
+      link.download = tab === "aged-stock" ? "aged-stock.csv" : `${tab}-${from}-${to}.csv`;
       link.click();
       URL.revokeObjectURL(url);
     } catch (caught) {
@@ -99,7 +135,27 @@ export function ManagementReportsPage() {
     }
   };
 
+  const applyClearance = async (row: AgedStockRow) => {
+    if (row.suggested_price_cents == null || row.review_required) return;
+    const accepted = await confirm({
+      title: "Change price",
+      message: `Change ${row.name} from ${money(row.price_cents ?? 0)} to ${money(row.suggested_price_cents)} at every branch?`,
+      confirmLabel: "Change price",
+    });
+    if (!accepted) return;
+    setApplying(`${row.product_id}-${row.store_id}`);
+    try {
+      await apiPatch(`/api/v1/products/${row.product_id}`, { price_cents: row.suggested_price_cents });
+      await load();
+    } catch (caught) {
+      setError(errorMessage(caught, "Could not change the price."));
+    } finally {
+      setApplying(null);
+    }
+  };
+
   const dated = tab === "pnl" || tab === "staff" || tab === "discounts";
+  const agedTotal = aged?.total ?? aged?.rows.length ?? 0;
 
   return (
     <section className="space-y-4">
@@ -226,17 +282,76 @@ export function ManagementReportsPage() {
       {tab === "aged-stock" && aged ? (
         <>
           <div className="grid gap-4 md:grid-cols-4">
-            <Kpi tone="dark" label="Dead stock" value={money(aged.dead_value_cents)} hint={`Not sold for ${aged.dead_days}+ days, at cost`} />
-            <Kpi tone="accent" label="Slow stock" value={money(aged.slow_value_cents)} hint={`No sale in ${aged.slow_days} days, or over 6 months of cover`} />
+            <Kpi tone="dark" label="Dead stock" value={money(aged.dead_value_cents)} hint={`No qualifying sale for ${aged.dead_days}+ days, at cost`} />
+            <Kpi tone="accent" label="Slow stock" value={money(aged.slow_value_cents)} hint={`No qualifying sale in ${aged.slow_days} days, or over 180 days of cover`} />
             <Kpi
               tone="light"
               label="Holding cost / month"
               value={money(aged.holding_cost_month_cents ?? 0)}
-              hint={`${(aged.carrying_rate_bps ?? 2500) / 100}% a year of cost; ${money(aged.holding_cost_to_date_cents ?? 0)} since last sale`}
+              hint={`${(aged.carrying_rate_bps ?? 2500) / 100}% a year of cost; ${money(aged.holding_cost_to_date_cents ?? 0)} since last sale or receipt`}
             />
-            <Kpi tone="light" label="Lines to act on" value={String(aged.rows.length)} hint="Sorted by value, dead first" />
+            <Kpi tone="light" label="Lines to act on" value={String(agedTotal)} hint="Dead first, then cost, unless you sort another way" />
           </div>
-          <div className="flex flex-wrap items-center gap-3 text-sm text-charcoal/70">
+          <div className="flex flex-wrap items-end gap-3 text-sm text-charcoal/70">
+            <TextField
+              label="Search"
+              value={agedQuery}
+              onChange={(event) => {
+                setAgedPage(0);
+                setAgedQuery(event.target.value);
+              }}
+              placeholder="Name or SKU"
+              className="w-48"
+            />
+            <Select
+              size="sm"
+              aria-label="Classification"
+              value={agedStatus}
+              onChange={(value) => {
+                setAgedPage(0);
+                setAgedStatus(value);
+              }}
+              options={[
+                { value: "", label: "Slow and dead" },
+                { value: "DEAD", label: "Dead" },
+                { value: "SLOW", label: "Slow" },
+              ]}
+            />
+            <Select
+              size="sm"
+              aria-label="Sort"
+              value={agedSort}
+              onChange={(value) => {
+                setAgedPage(0);
+                setAgedSort(value);
+              }}
+              options={[
+                { value: "cost", label: "Highest cost" },
+                { value: "idle", label: "Longest idle" },
+                { value: "cover", label: "Most cover" },
+                { value: "name", label: "Name" },
+              ]}
+            />
+            <TextField
+              label="Slow after"
+              type="number"
+              value={String(slowDays)}
+              onChange={(event) => {
+                setAgedPage(0);
+                setSlowDays(Math.max(1, Number(event.target.value) || 60));
+              }}
+              className="w-24"
+            />
+            <TextField
+              label="Dead after"
+              type="number"
+              value={String(deadDays)}
+              onChange={(event) => {
+                setAgedPage(0);
+                setDeadDays(Math.max(2, Number(event.target.value) || 180));
+              }}
+              className="w-24"
+            />
             <label className="flex items-center gap-2">
               Annual carrying rate
               <Select
@@ -249,7 +364,7 @@ export function ManagementReportsPage() {
               />
             </label>
             <span className="text-xs text-charcoal/50">
-              Capital, space, insurance and shrink as a share of stock cost. Markdowns never go below the margin floor, or cost.
+              Capital, space, insurance and shrink as a share of stock cost. Markdowns never go below the margin floor, or cost. A missing cost is left for review.
             </span>
           </div>
           <article className="rounded-card border border-line bg-white p-6">
@@ -272,7 +387,9 @@ export function ManagementReportsPage() {
                   {aged.rows.map((row) => (
                     <tr key={`${row.product_id}-${row.store_id}`} className="border-t border-line align-top">
                       <td className="py-2.5">
-                        <span className="block font-medium">{row.name}</span>
+                        <Link to={`/inventory/products?product=${row.product_id}`} className="block font-medium hover:underline">
+                          {row.name}
+                        </Link>
                         <span className="block text-xs text-charcoal/50">
                           <span
                             className={`mr-1.5 rounded-full px-2 py-0.5 text-[10px] font-semibold ${
@@ -282,27 +399,56 @@ export function ManagementReportsPage() {
                             {row.status === "DEAD" ? "Dead" : "Slow"}
                           </span>
                           {row.sku}
+                          {row.brand ? ` · ${row.brand}` : ""}
+                          {row.category ? ` · ${row.category}` : ""}
                         </span>
+                        {row.reason ? <span className="mt-1 block text-[11px] text-charcoal/50">{row.reason}</span> : null}
                       </td>
                       <td className="py-2.5">{row.store_code}</td>
-                      <td className="py-2.5 text-right tabular-nums">{row.on_hand}</td>
-                      <td className="py-2.5 text-right font-semibold tabular-nums">{money(row.cost_value_cents)}</td>
+                      <td className="py-2.5 text-right tabular-nums">
+                        {row.sold_by_weight ? formatWeight(row.on_hand) : row.on_hand.toLocaleString()}
+                      </td>
+                      <td className="py-2.5 text-right font-semibold tabular-nums">
+                        {money(row.cost_value_cents)}
+                        {row.cost_estimated ? <span className="block text-[11px] font-normal text-charcoal/40">partly estimated</span> : null}
+                      </td>
                       <td className="py-2.5 text-right tabular-nums">
                         {row.days_since_sale === null ? "Never" : `${row.days_since_sale}d ago`}
-                        <span className="block text-[11px] text-charcoal/50">{row.units_sold_90d} sold in 90d</span>
+                        <span className="block text-[11px] text-charcoal/50">
+                          {row.units_sold_90d} net in 90d
+                          {row.days_in_stock != null && row.days_since_sale === null ? ` · on hand ${row.days_in_stock}d` : ""}
+                        </span>
                       </td>
                       <td className="py-2.5 text-right tabular-nums">{row.cover_days === null ? "—" : `${row.cover_days.toLocaleString()}d`}</td>
                       <td className="py-2.5 text-right tabular-nums">{money(row.holding_cost_month_cents ?? 0)}</td>
                       <td className="py-2.5 text-right tabular-nums">
-                        {row.suggested_price_cents ? (
+                        {row.review_required ? (
+                          <span className="text-xs text-charcoal/50">Needs cost review</span>
+                        ) : row.suggested_price_cents != null ? (
                           <>
                             <span className="font-semibold">{money(row.suggested_price_cents)}</span>
                             <span className="block text-[11px] text-charcoal/50">
                               −{row.markdown_pct}% from {money(row.price_cents ?? 0)}
+                              {row.expected_margin_bps != null ? ` · margin ${percent(row.expected_margin_bps)}` : ""}
                             </span>
+                            {row.discount_limited ? (
+                              <span className="block text-[11px] text-charcoal/50">
+                                {row.target_markdown_pct}% target stopped by the floor
+                              </span>
+                            ) : null}
+                            {managePrices ? (
+                              <div className="mt-2">
+                                <PrimaryButton
+                                  disabled={applying !== null}
+                                  onClick={() => void applyClearance(row)}
+                                >
+                                  {applying === `${row.product_id}-${row.store_id}` ? "Applying…" : "Apply"}
+                                </PrimaryButton>
+                              </div>
+                            ) : null}
                           </>
                         ) : (
-                          <span className="text-xs text-charcoal/50">At floor</span>
+                          <span className="text-xs text-charcoal/50">{row.discount_limited ? "At floor" : "No price"}</span>
                         )}
                       </td>
                       <td className="py-2.5 pl-6 text-xs text-charcoal/70">{row.suggestion}</td>
@@ -310,7 +456,29 @@ export function ManagementReportsPage() {
                   ))}
                 </tbody>
               </table>
-              {aged.rows.length === 0 ? <p className="py-8 text-sm text-charcoal/60">Everything on the shelves is selling.</p> : null}
+              {aged.rows.length === 0 ? (
+                <p className="py-8 text-sm text-charcoal/60">
+                  {agedQuery || agedStatus ? "No stock matches these filters." : "Everything on the shelves is selling."}
+                </p>
+              ) : null}
+              {agedTotal > AGED_PAGE ? (
+                <div className="mt-4 flex items-center justify-between text-sm">
+                  <span className="text-charcoal/60">
+                    {agedPage * AGED_PAGE + 1}–{Math.min(agedTotal, (agedPage + 1) * AGED_PAGE)} of {agedTotal}
+                  </span>
+                  <div className="flex gap-2">
+                    <GhostButton disabled={agedPage === 0} onClick={() => setAgedPage((page) => page - 1)}>
+                      Previous
+                    </GhostButton>
+                    <GhostButton
+                      disabled={(agedPage + 1) * AGED_PAGE >= agedTotal}
+                      onClick={() => setAgedPage((page) => page + 1)}
+                    >
+                      Next
+                    </GhostButton>
+                  </div>
+                </div>
+              ) : null}
             </div>
           </article>
         </>

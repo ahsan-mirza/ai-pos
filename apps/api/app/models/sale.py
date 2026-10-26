@@ -32,6 +32,7 @@ class Sale(TenantScoped, TimestampMixin, Base):
         CheckConstraint("due_balance_cents >= 0", name="due_balance_nonnegative"),
         CheckConstraint("amount_paid_cents + due_balance_cents = total_cents", name="paid_plus_due_is_total"),
         Index("ix_sales_tenant_store_created", "tenant_id", "store_id", "created_at"),
+        Index("ix_sales_customer_created", "customer_id", "created_at"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)

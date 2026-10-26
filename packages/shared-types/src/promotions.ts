@@ -7,7 +7,7 @@
  * A line is discounted by at most one promotion.
  */
 
-export type PromotionKind = "PERCENT_OFF" | "BUY_X_GET_Y" | "MIX_MATCH" | "BUNDLE";
+export type PromotionKind = "PERCENT_OFF" | "BUY_X_GET_Y" | "MIX_MATCH" | "BUNDLE" | "AMOUNT_OFF";
 
 export interface PromotionRule {
   id: string;
@@ -18,6 +18,19 @@ export interface PromotionRule {
   category_ids: string[];
   /** PERCENT_OFF */
   percent_bps?: number | null;
+  /** Optional ceiling on a percent discount, in cents. */
+  max_discount_cents?: number | null;
+  /** AMOUNT_OFF, in cents. Never more than the eligible subtotal. */
+  amount_cents?: number | null;
+  /** Issued per customer. Registers do not apply it until that customer's code is entered. */
+  customer_issued?: boolean | null;
+  segment?: string | null;
+  repeat_count?: number | null;
+  window_days?: number | null;
+  quiet_days?: number | null;
+  visit_count?: number | null;
+  spend_cents?: number | null;
+  notify?: boolean | null;
   /** BUY_X_GET_Y: buy buy_qty, the next get_qty cheapest get get_discount_bps off (10000 = free). */
   buy_qty?: number | null;
   get_qty?: number | null;
@@ -86,6 +99,20 @@ function spread(group: Unit[], discount: number, discounts: Map<string, number>)
   }
 }
 
+function capTotal(discounts: Map<string, number>, limit: number): void {
+  let total = 0;
+  for (const value of discounts.values()) total += value;
+  if (limit <= 0 || total <= limit) return;
+  const items = [...discounts.entries()];
+  let running = 0;
+  discounts.clear();
+  items.forEach(([lineId, amount], index) => {
+    const take = index === items.length - 1 ? Math.max(0, limit - running) : Math.floor((amount * limit) / total);
+    if (take > 0) discounts.set(lineId, take);
+    running += take;
+  });
+}
+
 function evaluate(rule: PromotionRule, lines: { line: PromotionLine; order: number }[]): Evaluation {
   const discounts = new Map<string, number>();
   const used = new Set<string>();
@@ -98,6 +125,15 @@ function evaluate(rule: PromotionRule, lines: { line: PromotionLine; order: numb
         discounts.set(line.line_id, discount);
         used.add(line.line_id);
       }
+    }
+    if (rule.max_discount_cents) capTotal(discounts, rule.max_discount_cents);
+  } else if (rule.kind === "AMOUNT_OFF") {
+    const units = unitsOf(pool);
+    const gross = units.reduce((sum, unit) => sum + unit.price, 0);
+    const discount = Math.min(rule.amount_cents ?? 0, gross);
+    if (discount > 0) {
+      for (const unit of units) used.add(unit.line_id);
+      spread(units, discount, discounts);
     }
   } else if (rule.kind === "BUY_X_GET_Y") {
     const buy = rule.buy_qty ?? 0;
@@ -198,6 +234,7 @@ export function activeRules(promotions: Promotion[], at: Date, storeId: string, 
       (promo.starts_at === null || new Date(promo.starts_at) <= at) &&
       (promo.ends_at === null || new Date(promo.ends_at) > at) &&
       (promo.store_ids.length === 0 || promo.store_ids.includes(storeId)) &&
+      !promo.customer_issued &&
       (promo.coupon_code === null || promo.coupon_code === code) &&
       (promo.max_uses === null || promo.uses_count < promo.max_uses),
   );

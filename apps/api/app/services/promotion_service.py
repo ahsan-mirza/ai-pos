@@ -13,6 +13,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.errors import ApiError, SyncRejected
+from app.models.customer import CustomerCoupon
 from app.models.product import Product
 from app.models.promotion import Promotion, PromotionRedemption
 from app.schemas.payloads import SalePayload
@@ -28,6 +29,16 @@ PARAM_KEYS = (
     "group_price_cents",
     "components",
     "bundle_price_cents",
+    "amount_cents",
+    "max_discount_cents",
+    "customer_issued",
+    "segment",
+    "repeat_count",
+    "window_days",
+    "quiet_days",
+    "visit_count",
+    "spend_cents",
+    "notify",
 )
 
 
@@ -67,7 +78,7 @@ def _out(promo: Promotion, stats: dict[uuid.UUID, tuple[int, int]]) -> Promotion
         uses_count=uses,
         discount_given_cents=given,
         min_spend_cents=promo.min_spend_cents,
-        **{key: params.get(key) for key in PARAM_KEYS},
+        **{key: params[key] for key in PARAM_KEYS if key in params and params[key] is not None},
     )
 
 
@@ -148,6 +159,8 @@ def for_register(db: Session, store_id: uuid.UUID | None) -> list[PromotionOut]:
     for promo in db.scalars(select(Promotion).where(Promotion.is_active.is_(True))):
         if promo.ends_at is not None and _aware(promo.ends_at) <= now:  # type: ignore[operator]
             continue
+        if (promo.params or {}).get("customer_issued"):
+            continue
         if store_id is not None and promo.store_ids and str(store_id) not in promo.store_ids:
             continue
         row = _out(promo, stats)
@@ -170,7 +183,19 @@ def rule_of(promo: Promotion) -> Rule:
     )
 
 
-def _live(promo: Promotion, at: datetime, store_id: uuid.UUID, coupon: str | None, uses: int) -> list[str]:
+def _customer_issued(promo: Promotion) -> bool:
+    return bool((promo.params or {}).get("customer_issued"))
+
+
+def _live(
+    promo: Promotion,
+    at: datetime,
+    store_id: uuid.UUID,
+    coupon: str | None,
+    uses: int,
+    *,
+    voucher_promotion_id: uuid.UUID | None = None,
+) -> list[str]:
     """Why a promotion did not apply to this sale (empty when it did)."""
     problems = []
     if not promo.is_active:
@@ -181,7 +206,10 @@ def _live(promo: Promotion, at: datetime, store_id: uuid.UUID, coupon: str | Non
         problems.append("ended")
     if promo.store_ids and str(store_id) not in promo.store_ids:
         problems.append("not offered at this branch")
-    if promo.coupon_code is not None and promo.coupon_code != coupon:
+    if _customer_issued(promo):
+        if voucher_promotion_id != promo.id:
+            problems.append("coupon not entered")
+    elif promo.coupon_code is not None and promo.coupon_code != coupon:
         problems.append("coupon not entered")
     if promo.max_uses is not None and uses >= promo.max_uses:
         problems.append("use limit reached")
@@ -203,18 +231,30 @@ def verify_and_redeem(db: Session, data: SalePayload, *, sold_at: datetime) -> l
     if not claimed:
         return []
     coupon = data.coupon_code.strip().upper() if data.coupon_code else None
+    voucher = _voucher_for_sale(db, coupon, data, sold_at) if coupon else None
     promotions = {promo_id: db.get(Promotion, promo_id) for promo_id in claimed}
     missing = [str(promo_id) for promo_id, promo in promotions.items() if promo is None]
     if missing:
         raise SyncRejected("The sale claims a promotion this business does not have.")
     stats = _stats(db)
     issues: list[str] = []
-    if data.sale_type != "RETAIL":
+    wholesale_claim = data.sale_type != "RETAIL" and any(
+        promo is not None and not _customer_issued(promo) for promo in promotions.values()
+    )
+    if wholesale_claim:
         issues.append("Promotions are for retail sales; this was a wholesale sale.")
+    voucher_promotion_id = voucher.promotion_id if voucher is not None else None
 
     live_rules = []
     for promo in db.scalars(select(Promotion)):
-        if not _live(promo, sold_at, data.store_id, coupon, stats.get(promo.id, (0, 0))[0]):
+        if not _live(
+            promo,
+            sold_at,
+            data.store_id,
+            coupon,
+            stats.get(promo.id, (0, 0))[0],
+            voucher_promotion_id=voucher_promotion_id,
+        ):
             live_rules.append(rule_of(promo))
     products = {
         product.id: product
@@ -241,18 +281,70 @@ def verify_and_redeem(db: Session, data: SalePayload, *, sold_at: datetime) -> l
     for promo_id, discount in claimed.items():
         promo = promotions[promo_id]
         assert promo is not None
-        problems = _live(promo, sold_at, data.store_id, coupon, stats.get(promo.id, (0, 0))[0])
+        problems = _live(
+            promo,
+            sold_at,
+            data.store_id,
+            coupon,
+            stats.get(promo.id, (0, 0))[0],
+            voucher_promotion_id=voucher_promotion_id,
+        )
         if problems:
             issues.append(f"{promo.name}: {', '.join(problems)}.")
         elif discount > (limit := allowed.get(str(promo_id), 0)):
             issues.append(f"{promo.name}: claimed {discount / 100:.2f} but the rules allow {limit / 100:.2f}.")
+        matched = voucher is not None and voucher.promotion_id == promo_id and not problems
+        if matched and discount > allowed.get(str(promo_id), 0):
+            matched = False
         db.add(
             PromotionRedemption(
                 promotion_id=promo_id,
                 sale_id=data.id,
                 store_id=data.store_id,
                 discount_cents=discount,
-                coupon_code=coupon if promo.coupon_code else None,
+                coupon_code=coupon if promo.coupon_code or matched else None,
+                customer_coupon_id=voucher.id if matched else None,
             )
         )
+        if matched and voucher is not None:
+            voucher.status = "redeemed"
+            voucher.sale_id = data.id
     return issues
+
+
+def _voucher_for_sale(db: Session, coupon: str, data: SalePayload, sold_at: datetime) -> CustomerCoupon | None:
+    """A personal code must belong to this customer and still be open. A shared code returns None."""
+    voucher = db.scalar(select(CustomerCoupon).where(CustomerCoupon.code == coupon))
+    if voucher is None:
+        return None
+    if data.customer_id is None or voucher.customer_id != data.customer_id:
+        raise SyncRejected("This voucher belongs to a different customer.")
+    if voucher.status == "redeemed":
+        raise SyncRejected("This voucher has already been used.")
+    if voucher.status in {"revoked", "expired"}:
+        raise SyncRejected("This voucher is no longer valid.")
+    expires = _aware(voucher.expires_at)
+    if expires is not None and expires <= sold_at:
+        raise SyncRejected("This voucher has expired.")
+    promo = db.get(Promotion, voucher.promotion_id)
+    if promo is None or not _customer_issued(promo):
+        raise SyncRejected("This voucher is no longer valid.")
+    gross = sum(item.unit_price_cents * item.quantity for item in data.items)
+    if promo.min_spend_cents and gross < promo.min_spend_cents:
+        raise SyncRejected("This voucher needs a larger basket.")
+    if promo.product_ids or promo.category_ids:
+        products = {
+            product.id: product
+            for product in db.scalars(select(Product).where(Product.id.in_({item.product_id for item in data.items})))
+        }
+        covered = False
+        for item in data.items:
+            product = products.get(item.product_id)
+            category = str(product.category_id) if product is not None and product.category_id else None
+            listed = str(item.product_id) in (promo.product_ids or [])
+            in_category = category is not None and category in (promo.category_ids or [])
+            if listed or in_category:
+                covered = True
+        if not covered:
+            raise SyncRejected("This voucher does not apply to these products.")
+    return voucher

@@ -44,6 +44,8 @@ export interface SaleItemUpsert {
   discount_override?: { approved_by_id: string; note: string } | null;
   /** Selling a gift card: the code the register generated. */
   gift_card_code?: string | null;
+  /** Sent when the product has a minimum age. The sale is refused without it. */
+  age_check?: { confirmed: boolean; override_by_id?: string | null; reason?: string | null } | null;
   /** Menu modifiers; unit_price_cents and list_price_cents include their price deltas. */
   modifiers?: ModifierChoice[];
   /** Meal components of a combo line; unit_price_cents and list_price_cents include their surcharges. */

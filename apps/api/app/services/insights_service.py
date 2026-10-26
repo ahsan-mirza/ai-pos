@@ -40,7 +40,7 @@ from app.schemas.insights import (
     ShrinkWeek,
     StaffActivity,
 )
-from app.services import management_reports, margin_service, weighed
+from app.services import management_reports, margin_service, sales_velocity, weighed
 from app.services.settings_service import cached_settings
 from app.services.tax import policy as tax_policy
 
@@ -278,12 +278,12 @@ def detect_anomalies(db: Session, *, days: int, scope: uuid.UUID | None) -> Anom
 
 # --- Price suggestions -------------------------------------------------------------------------------------------
 
-DEMAND_DAYS = 28
-BASELINE_DAYS = 56
-# Fast sellers: at least this many units in the last 28 days, selling this much faster than the 8 weeks before.
-DEMAND_MIN_UNITS = 10
-DEMAND_GROWTH = 1.5
-DEMAND_MAX_COVER_DAYS = 14
+# Fast sellers stay a price suggestion, not a slow/dead status. The day counts live with the other thresholds.
+DEMAND_DAYS = sales_velocity.DEMAND_DAYS
+BASELINE_DAYS = sales_velocity.BASELINE_DAYS
+DEMAND_MIN_UNITS = sales_velocity.DEMAND_MIN_UNITS
+DEMAND_GROWTH = sales_velocity.DEMAND_GROWTH
+DEMAND_MAX_COVER_DAYS = sales_velocity.DEMAND_MAX_COVER_DAYS
 EXPIRY_HORIZON_DAYS = 7
 
 
@@ -301,20 +301,8 @@ def expiry_markdown_bps(days_left: int) -> int:
 
 
 def _units(db: Session, since: datetime, until: datetime, scope: uuid.UUID | None) -> dict[uuid.UUID, int]:
-    query = (
-        select(SaleItem.product_id, func.coalesce(func.sum(SaleItem.quantity), 0))
-        .join(Sale, Sale.id == SaleItem.sale_id)
-        .where(
-            Sale.created_at >= since,
-            Sale.created_at < until,
-            Sale.is_quote_proforma.is_(False),
-            Sale.status.in_(POSTED),
-        )
-        .group_by(SaleItem.product_id)
-    )
-    if scope is not None:
-        query = query.where(Sale.store_id == scope)
-    return {product_id: int(units) for product_id, units in db.execute(query)}
+    """Net units in the window. Returns dated in the window are subtracted. Zero and negative nets stay in the map."""
+    return sales_velocity.net_units_by_product(db, since=since, until=until, store_id=scope)
 
 
 def pricing(
@@ -328,7 +316,8 @@ def pricing(
     scope = _scope(principal, store_id)
     currency = cached_settings(db).currency
     now = datetime.now(UTC)
-    recent = _units(db, now - timedelta(days=DEMAND_DAYS), now, scope)
+    recent_net = _units(db, now - timedelta(days=DEMAND_DAYS), now, scope)
+    recent = {product_id: units for product_id, units in recent_net.items() if units > 0}
     baseline = _units(db, now - timedelta(days=DEMAND_DAYS + BASELINE_DAYS), now - timedelta(days=DEMAND_DAYS), scope)
     stock_query = select(
         InventoryLevel.product_id, func.coalesce(func.sum(InventoryLevel.quantity_on_hand), 0)
@@ -340,10 +329,20 @@ def pricing(
     store_code = stores[scope].code if scope is not None and scope in stores else None
     suggestions: list[PriceSuggestion] = []
 
-    def add(product: Product, action: str, suggested: int, reason: str, **extra: object) -> None:
+    def add(
+        product: Product,
+        action: str,
+        suggested: int,
+        reason: str,
+        *,
+        baseline_units: int | None = None,
+        growth: float | None = None,
+        recent_daily: float | None = None,
+        baseline_daily: float | None = None,
+        **extra: object,
+    ) -> None:
         units = recent.get(product.id, 0)
         stock = int(extra.pop("on_hand", on_hand.get(product.id, 0)))  # type: ignore[call-overload]
-        daily = units / DEMAND_DAYS
         suggestions.append(
             PriceSuggestion(
                 product_id=product.id,
@@ -358,9 +357,13 @@ def pricing(
                 reason=reason,
                 units_28d=units,
                 on_hand=stock,
-                cover_days=round(stock / daily) if daily else None,
+                cover_days=sales_velocity.cover_days(stock, units, DEMAND_DAYS),
                 expiry_date=extra.pop("expiry_date", None),  # type: ignore[arg-type]
                 sold_by_weight=product.sold_by_weight,
+                baseline_units=baseline_units,
+                growth=round(growth, 2) if growth is not None else None,
+                recent_daily=round(recent_daily, 3) if recent_daily is not None else None,
+                baseline_daily=round(baseline_daily, 3) if baseline_daily is not None else None,
             )
         )
 
@@ -404,8 +407,10 @@ def pricing(
         units = recent.get(product.id, 0)
         if units < DEMAND_MIN_UNITS:
             continue
-        before = baseline.get(product.id, 0) * DEMAND_DAYS / BASELINE_DAYS
-        growth = units / before if before else None
+        baseline_units = baseline.get(product.id, 0)
+        before = baseline_units * DEMAND_DAYS / BASELINE_DAYS
+        # Equivalent daily rates: (units / 28) / (baseline_units / 56). A non-positive baseline is not growth.
+        growth = units / before if before > 0 else None
         stock = on_hand.get(product.id, 0)
         cover = stock / (units / DEMAND_DAYS)
         if growth is None or growth < DEMAND_GROWTH or cover > DEMAND_MAX_COVER_DAYS:
@@ -417,6 +422,10 @@ def pricing(
             _round_up(product.price_cents + product.price_cents * bps // 10_000),
             f"Selling {growth:.1f}x faster than the 8 weeks before with about {round(cover)} days of stock left; "
             f"a {bps // 100}% rise slows the run on the shelf until the next delivery.",
+            baseline_units=baseline_units,
+            growth=growth,
+            recent_daily=units / DEMAND_DAYS,
+            baseline_daily=baseline_units / BASELINE_DAYS,
         )
 
     today = now.date()
@@ -462,7 +471,11 @@ def pricing(
         )
 
     aged = (
-        management_reports.aged_stock(db, store_id=scope, slow_days=60, dead_days=120).rows if include_clearance else []
+        management_reports.aged_stock(
+            db, store_id=scope, slow_days=sales_velocity.SLOW_DAYS, dead_days=sales_velocity.DEAD_DAYS
+        ).rows
+        if include_clearance
+        else []
     )
     aged_ids = {row.product_id for row in aged}
     by_id = {row.id: row for row in db.scalars(select(Product).where(Product.id.in_(aged_ids))).unique()}
@@ -584,7 +597,7 @@ def shrink(db: Session, principal: Principal, *, days: int = 90, store_id: uuid.
         product = products.get(product_id)
         if product is None:
             continue
-        sold_units = sold.get(product_id, 0)
+        sold_units = max(sold.get(product_id, 0), 0)
         top.append(
             ShrinkProduct(
                 product_id=product_id,

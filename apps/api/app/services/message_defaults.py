@@ -41,6 +41,16 @@ DEFAULT_TEMPLATES: dict[str, tuple[str, str, str]] = {
         "Layaway {{number}} reminder",
         "Hi {{customer}}, {{balance}} is left on layaway {{number}}; goods are held until {{expires}}.",
     ),
+    "reorder_due": (
+        "Scheduled reorder",
+        "Your scheduled reorder is due",
+        "Your scheduled reorder for {{plan}} is due on {{date}}. Please confirm your usual order.",
+    ),
+    "coupon_issued": (
+        "Your offer",
+        "A code for you: {{code}}",
+        "Hi {{customer}}, {{offer}} is ready. Use code {{code}} at the till. {{reason}}.",
+    ),
 }
 
 DEFAULT_EVENTS: dict[str, bool] = {
@@ -51,4 +61,6 @@ DEFAULT_EVENTS: dict[str, bool] = {
     "repair_ready": True,
     "repair_estimate": True,
     "layaway_reminder": True,
+    "reorder_due": True,
+    "coupon_issued": True,
 }

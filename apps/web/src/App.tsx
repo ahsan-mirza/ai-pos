@@ -25,6 +25,7 @@ import { PurchaseOrdersPage } from "./features/inventory/PurchaseOrdersPage";
 import { ReplenishmentPage } from "./features/inventory/ReplenishmentPage";
 import { StockCountsPage } from "./features/inventory/StockCountsPage";
 import { ExpiringStockPage } from "./features/inventory/ExpiringStockPage";
+import { WastePage } from "./features/inventory/WastePage";
 import { FloorPlanPage } from "./features/menu/FloorPlanPage";
 import { KitchenStationsPage } from "./features/menu/KitchenStationsPage";
 import { RecipesPage } from "./features/menu/RecipesPage";
@@ -71,6 +72,7 @@ import { RolesPage } from "./features/roles/RolesPage";
 import { QuotationsPage } from "./features/sales/QuotationsPage";
 import { DeliveryPodPage } from "./features/salesOrders/DeliveryPodPage";
 import { SalesOrdersPage } from "./features/salesOrders/SalesOrdersPage";
+import { ReordersPage } from "./features/reorders/ReordersPage";
 import { SettingsPage } from "./features/settings/SettingsPage";
 import { StoresPage } from "./features/stores/StoresPage";
 import { UsersPage } from "./features/users/UsersPage";
@@ -206,6 +208,7 @@ function Portal() {
               />
               <Route path="counts" element={<StockCountsPage />} />
               <Route path="expiring" element={<RequireCapability capability={Capability.Fefo}><ExpiringStockPage /></RequireCapability>} />
+              <Route path="waste" element={<RequireCapability capability={Capability.Fefo}><WastePage /></RequireCapability>} />
               <Route path="modifiers" element={<RequireCapability capability={Capability.MenuModifiers}><ModifiersPage /></RequireCapability>} />
               <Route path="meals" element={<RequireCapability capability={Capability.MenuModifiers}><MealsPage /></RequireCapability>} />
               <Route path="floor-plan" element={<RequireCapability capability={Capability.Tables}><FloorPlanPage /></RequireCapability>} />
@@ -258,6 +261,14 @@ function Portal() {
             element={
               <RequirePermission permission={Permission.SalesOrders}>
                 <RequireCapability capability={Capability.SalesOrders}><SalesOrdersPage /></RequireCapability>
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="reorders"
+            element={
+              <RequirePermission permission={Permission.CustomersManage}>
+                <RequireCapability capability={Capability.CustomerReorders}><ReordersPage /></RequireCapability>
               </RequirePermission>
             }
           />

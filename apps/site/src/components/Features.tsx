@@ -27,7 +27,7 @@ const FEATURES: { title: string; icon: MarkName; body: string }[] = [
   {
     title: "Customer management",
     icon: "users",
-    body: "Keep customer records in the portal. Wholesale profiles can add credit limits, statements, and collections.",
+    body: "Every shop keeps a buying history and loyalty points. Points are not money owed. A credit statement starts on electronics and wholesale. Fashion and grocery can turn it on. Restaurant, café, and quick service cannot.",
   },
   {
     title: "Multi-store management",
@@ -42,7 +42,7 @@ const FEATURES: { title: string; icon: MarkName; body: string }[] = [
   {
     title: "Product management",
     icon: "tag",
-    body: "Organize categories, brands, models, and prices. Fashion profiles add a size and colour matrix. Electronics profiles add serial numbers.",
+    body: "Organize categories, brands, models, and prices. Fashion adds a size and colour matrix. Grocery adds weight and expiry. Electronics adds serial numbers.",
   },
 ];
 

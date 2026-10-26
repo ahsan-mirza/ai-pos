@@ -434,6 +434,7 @@ def products_out(db: Session, products: list[Product], store_id: uuid.UUID | Non
                 sold_by_weight=product.sold_by_weight,
                 plu_code=product.plu_code,
                 tare_grams=product.tare_grams,
+                minimum_age=product.minimum_age,
                 nearest_expiry=expiries.get(product.id),
                 has_recipe=product.id in dishes,
                 is_ingredient=product.is_ingredient,
@@ -716,7 +717,8 @@ def update_level(
 
 
 MANUAL_REFERENCE = "manual_adjustment"
-DAMAGE_REASONS = frozenset({"DAMAGED_OR_EXPIRED", "STOLEN_SHRINKAGE"})
+DAMAGE_REASONS = frozenset({"DAMAGED_OR_EXPIRED", "STOLEN_SHRINKAGE", "SPOILAGE", "QUALITY_REJECTION"})
+WASTE_REASONS = frozenset({"SPOILAGE", "DAMAGED_OR_EXPIRED", "QUALITY_REJECTION", "OTHER"})
 INBOUND_ONLY_REASONS = frozenset({"SUPPLIER_SAMPLE_IN"})
 # Where a written-off IMEI/serial unit goes. Demo units can come back; everything else leaves sellable stock for good.
 WRITE_OFF_STATUS = {"DAMAGED_OR_EXPIRED": "defective", "INTERNAL_DEMO_USE": "quarantine"}
@@ -1143,6 +1145,7 @@ def create_product(db: Session, principal: Principal, data: ProductCreate, curre
         sold_by_weight=data.sold_by_weight,
         plu_code=data.plu_code if data.sold_by_weight else None,
         tare_grams=data.tare_grams if data.sold_by_weight else 0,
+        minimum_age=data.minimum_age,
     )
     from app.services.item_type import apply_item_type
 
@@ -1215,10 +1218,14 @@ def _update_weighing(db: Session, product: Product, data: ProductUpdate) -> None
         product.plu_code = data.plu_code
     if data.tare_grams is not None and product.sold_by_weight:
         product.tare_grams = data.tare_grams
+    if "minimum_age" in fields:
+        product.minimum_age = data.minimum_age
 
 
 @portal_errors
-def update_product(db: Session, product_id: uuid.UUID, data: ProductUpdate) -> ProductOut:
+def update_product(
+    db: Session, product_id: uuid.UUID, data: ProductUpdate, *, user_id: uuid.UUID | None = None
+) -> ProductOut:
     product = _product(db, product_id)
     if data.name is not None:
         product.name = data.name.strip()
@@ -1231,7 +1238,7 @@ def update_product(db: Session, product_id: uuid.UUID, data: ProductUpdate) -> P
     if data.price_cents is not None and data.price_cents != product.price_cents:
         from app.services import markdown_service
 
-        markdown_service.record(db, product, data.price_cents, "MANUAL")
+        markdown_service.record(db, product, data.price_cents, "MANUAL", user_id=user_id)
         product.price_cents = data.price_cents
     if data.tax_category is not None:
         product.tax_category = data.tax_category

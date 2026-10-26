@@ -11,9 +11,12 @@ from app.core.permissions import CASHIER_ROLE_ID
 from app.core.security import hash_pin
 from app.models.audit_log import AuditLog
 from app.models.batch import BatchItem
-from app.models.inventory import StockMovement
+from app.models.inventory import InventoryLevel, StockMovement
 from app.models.product import Product
+from app.models.return_item import ReturnItem
 from app.models.sale import Sale
+from app.models.sale_item import SaleItem
+from app.models.sale_return import SaleReturn
 from app.models.shift import RegisterShift
 from app.models.store import Store
 from app.models.user import User
@@ -224,3 +227,118 @@ def test_weighed_shrink_counts_grams_against_per_kilo_cost(client, session: Sess
     now = datetime.now(UTC)
     rows = management_reports.shrinkage(session, now - timedelta(days=1), now + timedelta(days=1), None)
     assert [value for _, _, value in rows] == [300]
+
+
+def _set_on_hand(session: Session, quantity: int) -> None:
+    level = session.scalar(select(InventoryLevel).where(InventoryLevel.product_id == uuid.UUID(CABLE_ID)))
+    assert level is not None
+    level.quantity_on_hand = quantity
+    session.commit()
+
+
+def test_raise_on_demand_compares_daily_rates_and_stays_off_the_slow_list(client, session: Session) -> None:
+    seed_catalog(client)
+    headers = bearer(admin_token(client))
+    _set_on_hand(session, 200)
+    recent = record_sale(client, product_id=CABLE_ID, price=1500, quantity=15)
+    baseline = record_sale(client, product_id=CABLE_ID, price=1500, quantity=10)
+    now = datetime.now(UTC)
+    for sale_id, days in ((recent["client_sale_id"], 3), (baseline["client_sale_id"], 40)):
+        sold = session.scalar(select(Sale).where(Sale.client_sale_id == sale_id))
+        assert sold is not None
+        sold.created_at = now - timedelta(days=days)
+    session.commit()
+    _set_on_hand(session, 7)
+
+    def demand() -> dict | None:
+        report = client.get("/api/v1/insights/pricing", headers=headers).json()
+        return next(
+            (
+                row
+                for row in report["suggestions"]
+                if row["action"] == "RAISE_ON_DEMAND" and row["product_id"] == CABLE_ID
+            ),
+            None,
+        )
+
+    row = demand()
+    assert row is not None
+    assert row["units_28d"] == 15 and row["baseline_units"] == 10 and row["growth"] == 3
+    assert row["recent_daily"] == round(15 / 28, 3) and row["baseline_daily"] == round(10 / 56, 3)
+    assert row["cover_days"] == 13 and row["suggested_price_cents"] == 1650
+    aged = client.get("/api/v1/reports/management/aged-stock", headers=headers).json()
+    assert all(item["product_id"] != CABLE_ID for item in aged["rows"])
+
+    _set_on_hand(session, 100)
+    assert demand() is None
+    _set_on_hand(session, 7)
+    assert demand() is not None
+
+    older = session.scalar(
+        select(SaleItem)
+        .join(Sale, Sale.id == SaleItem.sale_id)
+        .where(Sale.client_sale_id == baseline["client_sale_id"])
+    )
+    assert older is not None
+    older.quantity = 40
+    session.commit()
+    assert demand() is None
+    older.quantity = 10
+    session.commit()
+    assert demand() is not None
+
+    sold = session.scalar(select(Sale).where(Sale.client_sale_id == recent["client_sale_id"]))
+    item = session.scalar(select(SaleItem).where(SaleItem.sale_id == sold.id))
+    assert sold is not None and item is not None
+    returned = SaleReturn(
+        original_sale_id=sold.id,
+        store_id=sold.store_id,
+        cashier_id=sold.cashier_id,
+        currency="USD",
+        subtotal_cents=item.unit_price_cents * 6,
+        tax_refund_cents=0,
+        restocking_fee_cents=0,
+        total_refund_cents=item.unit_price_cents * 6,
+        refund_method="cash",
+        reason_notes="",
+    )
+    session.add(returned)
+    session.flush()
+    session.add(
+        ReturnItem(
+            return_id=returned.id,
+            sale_item_id=item.id,
+            product_id=item.product_id,
+            quantity=6,
+            unit_price_cents=item.unit_price_cents,
+            tax_refund_cents=0,
+            restocking_fee_cents=0,
+            refund_cents=item.unit_price_cents * 6,
+            condition_status="unopened_resealable",
+            reason_code="changed_mind",
+        )
+    )
+    session.commit()
+    assert demand() is None
+
+
+def test_clearance_uses_the_report_dead_threshold(client, session: Session) -> None:
+    seed_catalog(client)
+    token = admin_token(client)
+    cable_batch(client, token, 8, "6.00")
+    _set_on_hand(session, 20)
+    sold = record_sale(client, product_id=CABLE_ID, price=1500, quantity=1)
+    row = session.scalar(select(Sale).where(Sale.client_sale_id == sold["client_sale_id"]))
+    assert row is not None
+    row.created_at = datetime.now(UTC) - timedelta(days=150)
+    session.commit()
+    headers = bearer(token)
+    aged = client.get("/api/v1/reports/management/aged-stock", headers=headers).json()
+    stock = next(item for item in aged["rows"] if item["product_id"] == CABLE_ID)
+    assert stock["status"] == "SLOW" and stock["days_since_sale"] >= 149
+    assert stock["suggested_price_cents"] == 1350 and stock["markdown_pct"] == 10
+    pricing = client.get("/api/v1/insights/pricing", headers=headers).json()
+    clearance = next(
+        item for item in pricing["suggestions"] if item["action"] == "CLEARANCE" and item["product_id"] == CABLE_ID
+    )
+    assert clearance["suggested_price_cents"] == 1350 and "Slow stock" in clearance["reason"]

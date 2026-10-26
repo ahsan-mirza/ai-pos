@@ -9,6 +9,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   RefreshCw,
+  Repeat,
   RotateCcw,
   Settings,
   ShoppingCart,
@@ -44,6 +45,7 @@ const allPages: { id: RegisterView; label: string; icon: LucideIcon; capability?
   { id: "orders", label: "Void & waste", icon: RotateCcw, audience: "fnb" },
   { id: "repairs", label: "Repairs", icon: Wrench, capability: Capability.Repairs, audience: "electronics" },
   { id: "returns", label: "Returns & Exchanges", icon: RotateCcw, audience: "retail" },
+  { id: "reorders", label: "Reorder alerts", icon: Repeat, capability: Capability.CustomerReorders },
 ];
 
 const allTools: { id: Tool; label: string; hint: string; icon: LucideIcon; desktopOnly: boolean; capability?: Capability; audience?: "fnb" | "retail" }[] = [

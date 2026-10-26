@@ -26,6 +26,8 @@ class Rule:
     components: tuple[tuple[str, int], ...] = ()
     bundle_price_cents: int = 0
     min_spend_cents: int = 0
+    amount_cents: int = 0
+    max_discount_cents: int = 0
 
     @classmethod
     def from_dict(cls, raw: dict[str, Any]) -> Rule:
@@ -43,6 +45,8 @@ class Rule:
             components=tuple((str(part["product_id"]), int(part["quantity"])) for part in raw.get("components") or ()),
             bundle_price_cents=int(raw.get("bundle_price_cents") or 0),
             min_spend_cents=int(raw.get("min_spend_cents") or 0),
+            amount_cents=int(raw.get("amount_cents") or 0),
+            max_discount_cents=int(raw.get("max_discount_cents") or 0),
         )
 
 
@@ -95,6 +99,20 @@ def _units(entries: list[tuple[int, Line]]) -> list[tuple[str, int, int]]:
     return sorted(units, key=lambda unit: (-unit[1], unit[2]))
 
 
+def _cap(result: _Evaluation, limit: int) -> None:
+    total = sum(result.discounts.values())
+    if limit <= 0 or total <= limit:
+        return
+    items = list(result.discounts.items())
+    running = 0
+    scaled: dict[str, int] = {}
+    for index, (line_id, amount) in enumerate(items):
+        take = max(0, limit - running) if index == len(items) - 1 else amount * limit // total
+        scaled[line_id] = take
+        running += take
+    result.discounts = {line_id: amount for line_id, amount in scaled.items() if amount > 0}
+
+
 def _spread(group: list[tuple[str, int, int]], discount: int, result: _Evaluation) -> None:
     remaining = discount
     for line_id, price, _ in group:
@@ -114,6 +132,16 @@ def _evaluate(rule: Rule, entries: list[tuple[int, Line]]) -> _Evaluation:
             if discount > 0:
                 result.add(line.line_id, discount)
                 result.use(line.line_id)
+        if rule.max_discount_cents:
+            _cap(result, rule.max_discount_cents)
+    elif rule.kind == "AMOUNT_OFF" and rule.amount_cents > 0:
+        units = _units(pool)
+        gross = sum(price for _, price, _ in units)
+        discount = min(rule.amount_cents, gross)
+        if discount > 0:
+            for line_id, _, _ in units:
+                result.use(line_id)
+            _spread(units, discount, result)
     elif rule.kind == "BUY_X_GET_Y" and rule.buy_qty > 0 and rule.get_qty > 0:
         size = rule.buy_qty + rule.get_qty
         units = _units(pool)

@@ -8,16 +8,18 @@ use serde_json::{json, Value};
 
 use crate::AppState;
 
-const PREFIXES: [&str; 9] = [
+const PREFIXES: [&str; 11] = [
     "/api/v1/gift-cards",
     "/api/v1/customers",
     "/api/v1/quotes",
     "/api/v1/tax-free",
     "/api/v1/repairs",
+    "/api/v1/reorders",
     "/api/v1/online-orders",
     "/api/v1/returns/receipts",
     "/api/v1/users/register-staff",
     "/api/v1/catalog/attributes",
+    "/api/v1/grocery",
 ];
 
 fn safe(path: &str) -> bool {
@@ -97,6 +99,8 @@ mod tests {
             "/api/v1/customers/123e4567-e89b-12d3-a456-426614174000/history?limit=10"
         ));
         assert!(safe("/api/v1/online-orders?status=NEW"));
+        assert!(safe("/api/v1/reorders/occurrences?view=due"));
+        assert!(!safe("/api/v1/reordersx"));
         assert!(safe("/api/v1/users/register-staff?store_id=s-1"));
         assert!(!safe("/api/v1/users"));
         assert!(!safe("/api/v1/users/123"));

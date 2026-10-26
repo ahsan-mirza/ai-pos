@@ -17,7 +17,16 @@ from app.models.store import Store
 from app.schemas.payments import IntentCreate, IntentOut
 from app.services.settings_service import business_currency
 
-ISO_NUMERIC = {"AED": "784", "SAR": "682", "USD": "840", "EUR": "978", "GBP": "826", "INR": "356", "PKR": "586"}
+ISO_NUMERIC = {
+    "AED": "784",
+    "SAR": "682",
+    "USD": "840",
+    "EUR": "978",
+    "GBP": "826",
+    "INR": "356",
+    "PKR": "586",
+    "CNY": "156",
+}
 
 
 def _tlv(tag: str, value: str) -> str:

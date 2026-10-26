@@ -293,6 +293,8 @@ AdjustmentReason = Literal[
     "PHYSICAL_COUNT_AUDIT",
     "DAMAGED_OR_EXPIRED",
     "STOLEN_SHRINKAGE",
+    "SPOILAGE",
+    "QUALITY_REJECTION",
     "SUPPLIER_SAMPLE_IN",
     "INCORRECT_ENTRY_CORRECTION",
     "INTERNAL_DEMO_USE",
@@ -599,6 +601,8 @@ class ProductCreate(FashionAttributes):
     sold_by_weight: bool = False
     plu_code: str | None = Field(default=None, pattern=r"^\d{4,6}$")
     tare_grams: int = Field(default=0, ge=0, le=100_000)
+    # Null means the till does not ask. There is no country-wide default.
+    minimum_age: int | None = Field(default=None, ge=1, le=120)
     # Recipes module: kept in stock for dishes only; registers do not sell it.
     is_ingredient: bool = False
     # Prepared dishes are not stocked. Ingredients and packaged goods are.
@@ -652,6 +656,7 @@ class ProductUpdate(FashionAttributes):
     # Send null to clear the PLU.
     plu_code: str | None = Field(default=None, pattern=r"^\d{4,6}$")
     tare_grams: int | None = Field(default=None, ge=0, le=100_000)
+    minimum_age: int | None = Field(default=None, ge=1, le=120)
     is_ingredient: bool | None = None
     item_type: ItemType | None = None
     sellable_units: list[UnitType] | None = Field(default=None, max_length=8)

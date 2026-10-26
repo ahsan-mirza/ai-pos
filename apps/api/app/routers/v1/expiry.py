@@ -7,7 +7,15 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.core.deps import Principal, authorize
 from app.core.permissions import Permission
-from app.schemas.expiry import ExpiringRow, ExpiryWriteOff, ExpiryWriteOffOut
+from app.schemas.expiry import (
+    ExpiringRow,
+    ExpiryWriteOff,
+    ExpiryWriteOffOut,
+    WasteHistoryRow,
+    WasteOut,
+    WasteSource,
+    WasteWrite,
+)
 from app.services import expiry_service
 
 router = APIRouter()
@@ -29,3 +37,18 @@ def expiring(
 @router.post("/expiry-writeoff", response_model=ExpiryWriteOffOut)
 def write_off(payload: ExpiryWriteOff, db: Db, principal: CanAdjust) -> ExpiryWriteOffOut:
     return expiry_service.write_off(db, principal, payload)
+
+
+@router.get("/waste/sources", response_model=list[WasteSource])
+def waste_sources(db: Db, principal: CanRead, store_id: uuid.UUID | None = None) -> list[WasteSource]:
+    return expiry_service.waste_sources(db, principal, store_id=store_id)
+
+
+@router.get("/waste", response_model=list[WasteHistoryRow])
+def waste_history(db: Db, principal: CanRead, store_id: uuid.UUID | None = None) -> list[WasteHistoryRow]:
+    return expiry_service.waste_history(db, principal, store_id=store_id)
+
+
+@router.post("/waste", response_model=WasteOut)
+def record_waste(payload: WasteWrite, db: Db, principal: CanAdjust) -> WasteOut:
+    return expiry_service.record_waste(db, principal, payload)

@@ -34,6 +34,7 @@ export const Capability = {
   TaxFree: "tax_free",
   Alterations: "alterations",
   OnlineStore: "online_store",
+  CustomerReorders: "customer_reorders",
 } as const;
 export type Capability = (typeof Capability)[keyof typeof Capability];
 
@@ -88,6 +89,7 @@ export const CAPABILITIES: readonly CapabilitySpec[] = [
   { id: "tax_free", label: "Tax-free for tourists", description: "Issue tax-free forms to tourists and report the refunds in VAT box 2.", group: "customers", available: true, requires: [] },
   { id: "alterations", label: "Alterations & tailoring", description: "Alteration tickets with measurements, due dates and a ready-for-collection message.", group: "service", available: true, requires: [] },
   { id: "online_store", label: "Online store", description: "Web-store orders (Shopify or any shop) reserve stock and are shipped or collected in store.", group: "selling", available: true, requires: [] },
+  { id: "customer_reorders", label: "Customer reorder plans", description: "Recurring customer deliveries with a reminder before anyone confirms the order.", group: "customers", available: true, requires: [] },
 ];
 
 const SPECS = new Map(CAPABILITIES.map((spec) => [spec.id, spec]));
@@ -104,6 +106,7 @@ export const CAPABILITY_DEPENDENCIES: Record<Capability, readonly Capability[]> 
 
 export const BusinessProfile = {
   ElectronicsWholesale: "electronics_wholesale",
+  WholesaleRetail: "wholesale_retail",
   RetailFashion: "retail_fashion",
   Grocery: "grocery",
   Restaurant: "restaurant",
@@ -150,15 +153,36 @@ const electronicsWholesale: Capability[] = [
   "bnpl",
 ];
 
+const wholesaleRetail: Capability[] = [
+  "wholesale_pricing",
+  "sales_orders",
+  "b2b_credit",
+  "quotes_layaway",
+  "promotions",
+  "loyalty",
+  "multi_currency",
+  "card_terminals",
+  "customer_reorders",
+];
+
 export const PROFILE_PRESETS: Record<BusinessProfile, ProfileSpec> = {
   electronics_wholesale: {
     id: "electronics_wholesale",
-    label: "Electronics & Wholesale",
+    label: "Electronics",
     shortLabel: "Electronics",
     settingsLabel: "Store settings",
-    description: "IMEI tracking, B2B credit, quotations, repairs and trade-ins.",
+    description: "Electronics products, IMEI and serial tracking, warranties and accessories.",
     group: "retail_trade",
     capabilities: electronicsWholesale,
+  },
+  wholesale_retail: {
+    id: "wholesale_retail",
+    label: "Wholesale & Retail",
+    shortLabel: "Wholesale",
+    settingsLabel: "Store settings",
+    description: "Manage bulk orders, individual sales, customer pricing, inventory, and recurring customer deliveries.",
+    group: "retail_trade",
+    capabilities: wholesaleRetail,
   },
   retail_fashion: {
     id: "retail_fashion",

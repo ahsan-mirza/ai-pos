@@ -1,10 +1,18 @@
 import csv
 import io
 import uuid
-from datetime import date
+from datetime import UTC, date, datetime, timedelta
 
+from sqlalchemy import select
 from tests.test_costing import add_batch
 
+from app.models.inventory import InventoryLevel, StockMovement
+from app.models.markdown import PriceChange
+from app.models.return_item import ReturnItem
+from app.models.sale import Sale
+from app.models.sale_item import SaleItem
+from app.models.sale_return import SaleReturn
+from app.models.user import User
 from wholesale_support import CABLE, CASHIER_ID, STORE, admin, event, line, push, sale, seed
 
 
@@ -83,6 +91,164 @@ def test_valuation_and_aged_stock(client, session) -> None:
         "/api/v1/reports/management/aged-stock", headers=headers, params={"slow_days": 90, "dead_days": 30}
     )
     assert bad.status_code == 422
+
+
+def _on_hand(session, quantity: int) -> None:
+    level = session.scalar(select(InventoryLevel).where(InventoryLevel.product_id == uuid.UUID(CABLE)))
+    assert level is not None
+    level.quantity_on_hand = quantity
+    session.commit()
+
+
+def _backdate_receipts(session, days: int) -> None:
+    moment = datetime.now(UTC) - timedelta(days=days)
+    movements = session.scalars(
+        select(StockMovement).where(StockMovement.product_id == uuid.UUID(CABLE), StockMovement.quantity > 0)
+    ).all()
+    assert movements
+    for movement in movements:
+        movement.created_at = moment
+    session.commit()
+
+
+def _refund_sale(session, sold: Sale) -> None:
+    item = session.scalar(select(SaleItem).where(SaleItem.sale_id == sold.id))
+    assert item is not None
+    returned = SaleReturn(
+        original_sale_id=sold.id,
+        store_id=sold.store_id,
+        cashier_id=sold.cashier_id,
+        currency="USD",
+        subtotal_cents=item.line_total_cents,
+        tax_refund_cents=0,
+        restocking_fee_cents=0,
+        total_refund_cents=item.line_total_cents,
+        refund_method="cash",
+        reason_notes="",
+    )
+    session.add(returned)
+    session.flush()
+    session.add(
+        ReturnItem(
+            return_id=returned.id,
+            sale_item_id=item.id,
+            product_id=item.product_id,
+            quantity=item.quantity,
+            unit_price_cents=item.unit_price_cents,
+            tax_refund_cents=0,
+            restocking_fee_cents=0,
+            refund_cents=item.line_total_cents,
+            condition_status="unopened_resealable",
+            reason_code="changed_mind",
+        )
+    )
+    session.commit()
+
+
+def test_never_sold_stock_is_aged_from_the_receipt_and_a_refund_does_not_reset_it(client, session) -> None:
+    seed(client)
+    headers, _ = admin(client)
+    add_batch(session, quantity=10, cost=600)
+    _backdate_receipts(session, 200)
+    aged = client.get("/api/v1/reports/management/aged-stock", headers=headers).json()
+    row = next(item for item in aged["rows"] if item["product_id"] == CABLE)
+    assert row["status"] == "DEAD" and row["last_sold_at"] is None and row["days_since_sale"] is None
+    assert row["days_in_stock"] >= 200 and row["review_required"] is False
+    assert row["suggested_price_cents"] == 1100 and row["target_markdown_pct"] == 25
+    assert "Dead after 180" in row["reason"]
+
+    assert push(client, [event("dead-sale", "sale", sale([line(CABLE, 4, 1500)]))]).status_code == 200
+    sold = session.scalar(select(Sale).where(Sale.client_sale_id.is_not(None)).order_by(Sale.created_at.desc()))
+    assert sold is not None
+    _refund_sale(session, sold)
+    _backdate_receipts(session, 200)
+    again = client.get("/api/v1/reports/management/aged-stock", headers=headers).json()
+    row = next(item for item in again["rows"] if item["product_id"] == CABLE)
+    assert row["status"] == "DEAD" and row["days_since_sale"] is None and row["units_sold_90d"] <= 0
+
+
+def test_idle_slow_cover_boundary_zero_stock_and_a_return_that_lengthens_cover(client, session) -> None:
+    seed(client)
+    headers, _ = admin(client)
+    add_batch(session, quantity=10, cost=600)
+    assert push(client, [event("slow-sale", "sale", sale([line(CABLE, 4, 1500)]))]).status_code == 200
+    sold = session.scalar(select(Sale))
+    assert sold is not None
+    sold.created_at = datetime.now(UTC) - timedelta(days=70)
+    session.commit()
+    _on_hand(session, 2)
+    slow = client.get("/api/v1/reports/management/aged-stock", headers=headers).json()
+    row = next(item for item in slow["rows"] if item["product_id"] == CABLE)
+    assert row["status"] == "SLOW" and 69 <= row["days_since_sale"] <= 71
+    assert row["cover_days"] is not None and row["cover_days"] <= 180
+    assert "No qualifying sale" in row["reason"]
+
+    _on_hand(session, 180)
+    sold.created_at = datetime.now(UTC) - timedelta(days=2)
+    item = session.scalar(select(SaleItem).where(SaleItem.sale_id == sold.id))
+    assert item is not None
+    item.quantity = 90
+    session.commit()
+    boundary = client.get("/api/v1/reports/management/aged-stock", headers=headers).json()
+    assert all(entry["product_id"] != CABLE for entry in boundary["rows"])
+
+    _on_hand(session, 0)
+    empty = client.get("/api/v1/reports/management/aged-stock", headers=headers).json()
+    assert all(entry["product_id"] != CABLE for entry in empty["rows"])
+
+    _on_hand(session, 20)
+    item.quantity = 20
+    sold.created_at = datetime.now(UTC) - timedelta(days=2)
+    session.commit()
+    _refund_sale(session, sold)
+    returned = session.scalar(select(ReturnItem))
+    assert returned is not None
+    returned.quantity = 15
+    session.commit()
+    covered = client.get("/api/v1/reports/management/aged-stock", headers=headers).json()
+    row = next(item for item in covered["rows"] if item["product_id"] == CABLE)
+    assert row["status"] == "SLOW" and row["units_sold_90d"] == 5 and row["cover_days"] > 180
+
+
+def test_missing_cost_is_not_a_clearance_price_and_reads_do_not_change_the_price(client, session) -> None:
+    seed(client)
+    headers, user_id = admin(client)
+    _backdate_receipts(session, 200)
+    aged = client.get("/api/v1/reports/management/aged-stock", headers=headers).json()
+    row = next(item for item in aged["rows"] if item["product_id"] == CABLE)
+    assert row["status"] == "DEAD" and row["review_required"] is True and row["suggested_price_cents"] is None
+    assert "Cost is missing" in row["suggestion"]
+    before = client.get(f"/api/v1/products/{CABLE}", headers=headers).json()["price_cents"]
+    assert client.get("/api/v1/reports/management/aged-stock", headers=headers).status_code == 200
+    assert client.get(f"/api/v1/products/{CABLE}", headers=headers).json()["price_cents"] == before
+
+    changed = client.patch(f"/api/v1/products/{CABLE}", headers=headers, json={"price_cents": 1600})
+    assert changed.status_code == 200, changed.text
+    recorded = session.scalar(select(PriceChange).where(PriceChange.product_id == uuid.UUID(CABLE)))
+    assert recorded is not None and recorded.user_id == uuid.UUID(user_id) and recorded.reason == "MANUAL"
+
+
+def test_aged_stock_filters_and_a_pinned_branch_cannot_read_another_store(client, session) -> None:
+    headers = scenario(client, session)
+    named = client.get(
+        "/api/v1/reports/management/aged-stock", headers=headers, params={"q": "cable", "limit": 1}
+    ).json()
+    assert named["total"] >= 1 and len(named["rows"]) == 1 and named["rows"][0]["sku"] == "ACC-CABLE-USBC"
+    missed = client.get("/api/v1/reports/management/aged-stock", headers=headers, params={"q": "zzzz"}).json()
+    assert missed["rows"] == []
+    dead_only = client.get("/api/v1/reports/management/aged-stock", headers=headers, params={"status": "DEAD"}).json()
+    assert all(row["status"] == "DEAD" for row in dead_only["rows"])
+
+    user = session.scalar(select(User).where(User.username == "admin"))
+    assert user is not None
+    user.store_id = uuid.UUID(STORE)
+    session.commit()
+    headers, _ = admin(client)
+    other = str(uuid.uuid4())
+    scoped = client.get("/api/v1/reports/management/aged-stock", headers=headers, params={"store_id": other}).json()
+    assert scoped["rows"] and all(row["store_id"] == STORE for row in scoped["rows"])
+    denied = client.get("/api/v1/insights/pricing", headers=headers, params={"store_id": other})
+    assert denied.status_code == 403
 
 
 def test_sales_by_staff(client, session) -> None:

@@ -10,6 +10,7 @@ from app.core.deps import Principal, authorize
 from app.core.permissions import Permission
 from app.schemas.management import AgedStockReport, DiscountReport, PnlReport, StaffSalesReport, ValuationReport
 from app.services import management_reports as reports
+from app.services.sales_velocity import DEAD_DAYS, SLOW_DAYS
 
 router = APIRouter()
 Db = Annotated[Session, Depends(get_db)]
@@ -39,9 +40,15 @@ def aged_stock(
     db: Db,
     principal: CanRead,
     store_id: uuid.UUID | None = None,
-    slow_days: SlowDays = 60,
-    dead_days: SlowDays = 180,
+    slow_days: SlowDays = SLOW_DAYS,
+    dead_days: SlowDays = DEAD_DAYS,
     carrying_rate_pct: CarryingRate = 25,
+    q: str | None = None,
+    status: Literal["SLOW", "DEAD"] | None = None,
+    category: str | None = None,
+    sort: Literal["cost", "idle", "cover", "name"] = "cost",
+    limit: Annotated[int | None, Query(ge=1, le=500)] = None,
+    offset: Annotated[int, Query(ge=0)] = 0,
 ) -> AgedStockReport:
     return reports.aged_stock(
         db,
@@ -49,6 +56,12 @@ def aged_stock(
         slow_days=slow_days,
         dead_days=dead_days,
         carrying_rate_bps=carrying_rate_pct * 100,
+        q=q,
+        status=status,
+        category=category,
+        sort=sort,
+        limit=limit,
+        offset=offset,
     )
 
 
@@ -70,9 +83,13 @@ def export(
     start: Annotated[date | None, Query(alias="from")] = None,
     end: Annotated[date | None, Query(alias="to")] = None,
     store_id: uuid.UUID | None = None,
-    slow_days: SlowDays = 60,
-    dead_days: SlowDays = 180,
+    slow_days: SlowDays = SLOW_DAYS,
+    dead_days: SlowDays = DEAD_DAYS,
     carrying_rate_pct: CarryingRate = 25,
+    q: str | None = None,
+    status: Literal["SLOW", "DEAD"] | None = None,
+    category: str | None = None,
+    sort: Literal["cost", "idle", "cover", "name"] = "cost",
 ) -> Response:
     scope = _scope(principal, store_id)
     today = date.today()
@@ -83,15 +100,24 @@ def export(
         body = reports.valuation_csv(reports.valuation(db, store_id=scope))
     elif report == "aged-stock":
         aged = reports.aged_stock(
-            db, store_id=scope, slow_days=slow_days, dead_days=dead_days, carrying_rate_bps=carrying_rate_pct * 100
+            db,
+            store_id=scope,
+            slow_days=slow_days,
+            dead_days=dead_days,
+            carrying_rate_bps=carrying_rate_pct * 100,
+            q=q,
+            status=status,
+            category=category,
+            sort=sort,
         )
         body = reports.aged_csv(aged)
     elif report == "discounts":
         body = reports.discounts_csv(reports.discounts(db, start=start, end=end, store_id=scope))
     else:
         body = reports.staff_csv(reports.staff_sales(db, start=start, end=end, store_id=scope))
+    filename = "aged-stock.csv" if report == "aged-stock" else f"{report}-{start:%Y%m%d}-{end:%Y%m%d}.csv"
     return Response(
         body,
         media_type="text/csv",
-        headers={"Content-Disposition": f'attachment; filename="{report}-{start:%Y%m%d}-{end:%Y%m%d}.csv"'},
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )

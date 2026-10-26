@@ -245,6 +245,46 @@ register(
 )
 
 
+def _reorder_reminders(db: Session, settings: Settings) -> str:
+    del settings
+    from app.core.capabilities import Capability, has_capability
+    from app.services import reorder_service
+
+    if not has_capability(db, Capability.CUSTOMER_REORDERS):
+        return "customer reorders are off"
+    return reorder_service.generate_due(db)
+
+
+register(
+    Job(
+        "customer_reorders",
+        "Open reminders for customer reorder plans that are due",
+        _reorder_reminders,
+        {"trigger": "interval", "minutes": 15},
+    )
+)
+
+
+def _issue_coupons(db: Session, settings: Settings) -> str:
+    del settings
+    from app.core.capabilities import Capability, has_capability
+    from app.services import coupon_service
+
+    if not has_capability(db, Capability.PROMOTIONS):
+        return "promotions are off"
+    return f"{coupon_service.issue_due(db)} vouchers issued"
+
+
+register(
+    Job(
+        "customer_coupons",
+        "Issue customer vouchers from buying history",
+        _issue_coupons,
+        {"trigger": "interval", "hours": 1},
+    )
+)
+
+
 def _drain_cache(db: Session, settings: Settings) -> str:
     del settings
     from sqlalchemy import select

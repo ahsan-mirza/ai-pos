@@ -145,6 +145,44 @@ def receive_payment(
     return entry, allocations
 
 
+def credit_return(
+    db: Session,
+    customer: Customer,
+    sale: Sale,
+    *,
+    return_id: uuid.UUID,
+    refund_cents: int,
+    user_id: uuid.UUID | None,
+) -> None:
+    """Reduces what is still owed on this sale. A second call for the same return does nothing."""
+    reference = str(return_id)
+    already = db.scalar(
+        select(CustomerLedgerEntry.id).where(
+            CustomerLedgerEntry.sale_id == sale.id,
+            CustomerLedgerEntry.entry_type == "ADJUSTMENT",
+            CustomerLedgerEntry.reference == reference,
+        )
+    )
+    if already is not None or sale.due_balance_cents <= 0 or refund_cents <= 0:
+        return
+    relief = min(refund_cents, sale.due_balance_cents)
+    sale.due_balance_cents -= relief
+    sale.amount_paid_cents += relief
+    sale.payment_status = "PAID" if sale.due_balance_cents == 0 else "PARTIAL"
+    _append(
+        db,
+        customer,
+        entry_type="ADJUSTMENT",
+        amount_cents=-relief,
+        created_at=datetime.now(UTC),
+        sale_id=sale.id,
+        reference=reference,
+        note="Return",
+        user_id=user_id,
+    )
+    db.flush()
+
+
 def adjust(db: Session, customer: Customer, *, amount_cents: int, note: str, user_id: uuid.UUID | None) -> None:
     _append(
         db,

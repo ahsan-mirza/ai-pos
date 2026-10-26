@@ -20,6 +20,33 @@ function query(params: Record<string, string | number | boolean | null | undefin
   return text === "" ? "" : `?${text}`;
 }
 
+export interface PurchaseLine {
+  sold_at: string;
+  name: string;
+  size: string | null;
+  color: string | null;
+  quantity: number;
+  invoice: string | null;
+  sku: string | null;
+  unit: string | null;
+  unit_price_cents: number | null;
+  discount_cents: number | null;
+  line_total_cents: number | null;
+  quantity_refunded: number;
+  sale_status: string | null;
+}
+
+export interface CustomerCoupon {
+  id: string;
+  code: string;
+  status: string;
+  reason: string;
+  issued_at: string;
+  expires_at: string | null;
+  min_spend_cents: number;
+  promotion_name: string;
+}
+
 export const customersApi = {
   list: (params: { q?: string | null; customer_type?: string | null; include_inactive?: boolean }) =>
     apiGet<Customer[]>(`/api/v1/customers${query({ limit: 500, ...params })}`),
@@ -27,6 +54,8 @@ export const customersApi = {
   create: (body: CustomerWrite) => apiPost<Customer>("/api/v1/customers", body),
   update: (id: string, body: CustomerUpdate) => apiPatch<Customer>(`/api/v1/customers/${id}`, body),
   statement: (id: string) => apiGet<CustomerStatement>(`/api/v1/customers/${id}/statement`),
+  history: (id: string) => apiGet<PurchaseLine[]>(`/api/v1/customers/${id}/history?limit=50`),
+  coupons: (id: string) => apiGet<CustomerCoupon[]>(`/api/v1/customers/${id}/coupons`),
   sales: (id: string) => apiGet<Sale[]>(`/api/v1/customers/${id}/sales`),
   receivePayment: (id: string, body: PaymentCreate) =>
     apiPost<PaymentResult>(`/api/v1/customers/${id}/payments`, body),

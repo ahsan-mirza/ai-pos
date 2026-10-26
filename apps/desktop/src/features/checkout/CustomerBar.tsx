@@ -1,7 +1,7 @@
 import { PAYMENT_TERMS_LABELS, PRICE_TIER_LABELS } from "@ai-pos/shared-types";
 import { Building2, UserRound, X } from "lucide-react";
 import { useEffect, useState } from "react";
-import { customerHistory } from "../../lib/api";
+import { customerCoupons, customerHistory, type IssuedCoupon } from "../../lib/api";
 import type { RegisterCustomer } from "../../lib/tauri";
 import type { CashierSession } from "../auth/session";
 import { CreditBadge } from "./CreditBadge";
@@ -20,6 +20,7 @@ interface CustomerBarProps {
 
 function CustomerProfile({ customer }: { customer: RegisterCustomer }) {
   const [recent, setRecent] = useState<string[]>([]);
+  const [coupons, setCoupons] = useState<IssuedCoupon[]>([]);
   const sizes = Object.entries(customer.preferred_sizes ?? {})
     .map(([key, value]) => `${key} ${value}`)
     .join(" · ");
@@ -34,17 +35,23 @@ function CustomerProfile({ customer }: { customer: RegisterCustomer }) {
         }
       })
       .catch(() => undefined);
+    customerCoupons(customer.id)
+      .then((rows) => {
+        if (live) setCoupons(rows.filter((row) => row.status === "issued"));
+      })
+      .catch(() => undefined);
     return () => {
       live = false;
     };
   }, [customer.id]);
-  if (!sizes && !customer.notes && !birthday && recent.length === 0) return null;
+  if (!sizes && !customer.notes && !birthday && recent.length === 0 && coupons.length === 0) return null;
   return (
     <div className="mt-2 space-y-1 text-xs text-zinc-600 dark:text-white/60">
       {birthday === today ? <p className="font-semibold text-primary">Birthday today</p> : null}
       {sizes ? <p>Sizes {sizes}</p> : null}
       {customer.notes ? <p className="line-clamp-2">{customer.notes}</p> : null}
       {recent.length ? <p className="line-clamp-2">Last: {recent.join(", ")}</p> : null}
+      {coupons.length ? <p className="line-clamp-2">Coupons: {coupons.map((row) => row.code).join(", ")}</p> : null}
     </div>
   );
 }

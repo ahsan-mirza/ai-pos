@@ -50,7 +50,7 @@ export const SEO_PAGES: readonly SeoPage[] = [
     path: "/",
     title: "AxizPOS | POS Software for Restaurants, Retail & Cafés",
     description:
-      "AxizPOS is point of sale software for restaurants, cafés, retailers, and wholesalers. Run checkout, inventory, and the reports the store has already recorded.",
+      "AxizPOS is point of sale software for restaurants, cafés, quick service, grocery, fashion, wholesale, and electronics. Each profile starts with the modules that fit that work.",
     h1: "Smart POS Software for Restaurants, Retail & Growing Businesses",
     kicker: "AI-powered POS",
     lead: "",
@@ -79,8 +79,8 @@ export const SEO_PAGES: readonly SeoPage[] = [
       {
         heading: "What the restaurant profile includes",
         paragraphs: [
-          "The preset turns on tables and a floor plan, open orders, menu modifiers, a kitchen display, recipes that deduct ingredients, split bills, and tips or service charge. Loyalty, promotions, and foreign-currency cash are on the same profile.",
-          "Delivery-app orders are not part of this preset. Those sit on the quick-service profile. A restaurant does not inherit café-only or fashion-only modules.",
+          "The preset turns on tables and a floor plan, open orders, menu modifiers, a kitchen display, recipes that deduct ingredients, split bills, and tips or service charge. Loyalty points, promotions, and foreign-currency cash are on the same profile. A customer also has a buying history, including returns. Points and history are not money owed.",
+          "This preset does not keep a credit ledger or take on-account sales. A restaurant cannot turn that on. Delivery-app orders sit on the quick-service profile. A personal promotion code can be issued from a customer's purchases. Using it does not change points or a balance.",
         ],
       },
       {
@@ -96,6 +96,7 @@ export const SEO_PAGES: readonly SeoPage[] = [
       "Menu modifiers and a kitchen display",
       "Recipes that deduct ingredients",
       "Split bills, tips, and service charge",
+      "Buying history and loyalty points, not a credit account",
       "Dashboard, shift close, and VAT report",
     ],
     image: SURFACE,
@@ -106,23 +107,23 @@ export const SEO_PAGES: readonly SeoPage[] = [
     path: "/retail-pos",
     title: "Retail POS System | AxizPOS",
     description:
-      "A retail POS for catalog checkout, barcodes, stock, and the VAT report. Grocery profiles add weighed items and expiry. Fashion has its own size and colour grid.",
+      "The shared AxizPOS register: catalog checkout, barcodes, stock, purchase orders, and the VAT report. Grocery and fashion each have their own profile.",
     h1: "Retail POS system for checkout, barcodes, and stock",
     kicker: "Retail",
-    lead: "Every AxizPOS store sells from a product catalog on the register. Retail work is that shared checkout, plus the grocery or fashion profile that matches the shop.",
+    lead: "Every AxizPOS store sells from a product catalog on the register. This page is that shared checkout. Grocery and fashion are separate profiles with their own pages.",
     sections: [
       {
         heading: "The counter and the stock room",
         paragraphs: [
-          "A retail sale is a scan, a price, and a receipt. The problem starts when the shelf count and the report are two different lists, or when a grocery item sold by weight never hits stock.",
-          "The register records the sale. The portal keeps products, categories, brands, purchase orders, and transfers between stores. The dashboard and VAT report read those sales.",
+          "A counter sale is a scan, a price, and a receipt. The problem starts when the shelf count and the report are two different lists.",
+          "The register records the sale. The portal keeps products, categories, brands, purchase orders, and transfers between stores. The dashboard and VAT report read those sales. A customer linked to the sale has a buying history, including returns, and can earn loyalty points. Those are not a debt.",
         ],
       },
       {
-        heading: "Grocery and fashion are different profiles",
+        heading: "Grocery and fashion have their own pages",
         paragraphs: [
-          "There is no single profile named only Retail. A grocery shop starts with loyalty, promotions, weighed items, and expiry-first stock. A fashion shop starts with a size and colour grid, and that page describes it on its own.",
-          "Barcode checkout is part of the register for these stores. A module from another business type, such as restaurant tables, stays off.",
+          "There is no preset named only Retail. A grocery shop starts with weighed items and expiry-first stock, described on the grocery page. A fashion shop starts with a size and colour grid, described on the fashion page.",
+          "Barcode checkout is part of the register for these stores. Restaurant tables stay off. On-account credit is not a starting module for a grocery or fashion shop. Those shops can turn it on later. A restaurant cannot.",
         ],
       },
       {
@@ -135,12 +136,47 @@ export const SEO_PAGES: readonly SeoPage[] = [
     points: [
       "Catalog checkout and barcode scanning",
       "Stock, purchase orders, and transfers",
-      "Grocery: weighed items and expiry-first stock",
+      "Grocery and fashion are separate profiles",
       "Dashboard, shift close, and VAT report",
       "Assistant answers from that store's records",
     ],
     image: PORTAL,
     crumb: "Retail POS",
+  },
+  {
+    id: "grocery-pos",
+    path: "/grocery-pos",
+    title: "Grocery POS Software | AxizPOS",
+    description:
+      "Grocery POS for catalog checkout, weighed items, expiry-first stock, loyalty points, and promotions. On-account credit stays off until the shop turns it on.",
+    h1: "Grocery POS software for weight, expiry, and the counter",
+    kicker: "Grocery",
+    lead: "The grocery profile sells from the same register as other shops, then adds weight and expiry. It is not a generic retail preset with restaurant tables switched on.",
+    sections: [
+      {
+        heading: "What the grocery profile starts with",
+        paragraphs: [
+          "The preset turns on loyalty points, promotions, weighed items, and expiry-first stock. Staff scan or weigh at the register. The portal keeps products, purchase orders, transfers, the dashboard, and the VAT report.",
+          "Every customer has a buying history, including returns. Points and history are not money owed. A personal promotion code can be issued from those purchases, and using it does not change points or a balance.",
+        ],
+      },
+      {
+        heading: "Credit is off until the shop turns it on",
+        paragraphs: [
+          "A grocery shop does not start with a credit limit, a statement of what is owed, or on-account sales. The shop can turn B2B credit on later. A restaurant, café, or quick-service profile cannot.",
+          "Size and colour grids, kitchen tickets, and device serial numbers stay off this preset.",
+        ],
+      },
+    ],
+    points: [
+      "Catalog checkout and barcode scanning",
+      "Weighed items at the till",
+      "Expiry-first stock",
+      "Buying history and loyalty points",
+      "Credit stays off until the shop turns it on",
+    ],
+    image: PORTAL,
+    crumb: "Grocery POS",
   },
   {
     id: "cafe-pos",
@@ -156,13 +192,13 @@ export const SEO_PAGES: readonly SeoPage[] = [
         heading: "Counter service is not a dining room",
         paragraphs: [
           "Café orders are short, custom, and often paid later. A till that only knows a flat menu price misses the oat milk and the extra shot, and the bar never sees the ticket.",
-          "AxizPOS prices modifiers on the item, keeps the order open, and routes it to the kitchen display. The café preset does not turn on tables, split bills, or service charge. Those belong to the restaurant profile.",
+          "AxizPOS prices modifiers on the item, keeps the order open, and routes it to the kitchen display. The café preset does not turn on tables, split bills, or service charge. Those belong to the restaurant profile. It also does not keep a credit ledger or take on-account sales, and a café cannot turn that on.",
         ],
       },
       {
         heading: "What the café profile includes",
         paragraphs: [
-          "It starts with menu modifiers, open orders, a kitchen display, and recipes that deduct ingredients. Loyalty and promotions are included. Staff still close the sale on the register and print the receipt.",
+          "It starts with menu modifiers, open orders, a kitchen display, and recipes that deduct ingredients. Loyalty points and promotions are included. A customer has a buying history, including returns. Points and history are not money owed. A personal promotion code can be issued from those purchases, and using it does not change points or a balance. Staff still close the sale on the register and print the receipt.",
           "Managers read the dashboard, shift close, and VAT report for that store. The assistant can answer questions about those records in English or Arabic. It does not invent a figure.",
         ],
       },
@@ -172,42 +208,77 @@ export const SEO_PAGES: readonly SeoPage[] = [
       "Open tabs settled later",
       "Kitchen or barista display",
       "Recipes that deduct ingredients",
-      "Loyalty and promotions at the till",
+      "Buying history and loyalty points, with no credit account",
     ],
     image: SURFACE,
     crumb: "Café POS",
+  },
+  {
+    id: "quick-service-pos",
+    path: "/quick-service-pos",
+    title: "Quick Service POS Software | AxizPOS",
+    description:
+      "Quick-service POS for counter checkout, menu modifiers, open orders, a kitchen display, recipes, and delivery-channel orders. No tables and no credit account.",
+    h1: "Quick service POS for the counter, the kitchen, and delivery apps",
+    kicker: "Quick Service",
+    lead: "Quick service is pay-at-the-counter work, plus orders that arrive from a delivery channel. It is not a dining room and it is not a credit account.",
+    sections: [
+      {
+        heading: "What this profile starts with",
+        paragraphs: [
+          "The preset turns on menu modifiers, open orders, a kitchen display, recipes that deduct ingredients, and delivery-channel orders. Loyalty points and promotions are included. Staff close the sale on the register and print the receipt.",
+          "A customer has a buying history, including returns. Points and history are not money owed. A personal promotion code can be issued from those purchases, and using it does not change points or a balance.",
+        ],
+      },
+      {
+        heading: "What stays off",
+        paragraphs: [
+          "Tables, split bills, and service charge belong to the restaurant profile. This preset does not keep a credit ledger or take on-account sales, and a quick-service business cannot turn that on.",
+          "Managers read the dashboard, shift close, and VAT report for that store. The assistant answers from those records, in English or Arabic, and does not invent a figure.",
+        ],
+      },
+    ],
+    points: [
+      "Counter checkout and menu modifiers",
+      "Open orders and a kitchen display",
+      "Recipes that deduct ingredients",
+      "Delivery-channel orders",
+      "Buying history and loyalty points, with no credit account",
+    ],
+    image: SURFACE,
+    crumb: "Quick Service POS",
   },
   {
     id: "wholesale-pos",
     path: "/wholesale-pos",
     title: "Wholesale POS Software | AxizPOS",
     description:
-      "Wholesale POS software for tier pricing, on-account sales, cheques, and orders delivered in parts. Device serials, repairs, and warranties are on the same profile.",
+      "Wholesale and retail POS for tier pricing, on-account credit, statements, and sales orders delivered in parts. Serial numbers and repairs are on the electronics profile.",
     h1: "Wholesale POS software for tiers, credit, and deliveries",
-    kicker: "Wholesale",
-    lead: "Wholesale selling in AxizPOS lives on the Electronics & Wholesale profile. The same preset covers account customers and, when the business sells devices, the unit-level record.",
+    kicker: "Wholesale & Retail",
+    lead: "Wholesale & Retail is its own profile. It starts with account customers and orders that leave in more than one delivery. Device serials and repair tickets are on the electronics page.",
     sections: [
       {
         heading: "A counter price is the wrong price",
         paragraphs: [
-          "Wholesale needs a tier, a credit limit, and an order that leaves in more than one delivery. A retail checkout that only knows one price and one receipt does not carry that.",
-          "This profile starts with wholesale pricing, quotations and layaway, on-account sales, cheques, and sales orders that can be picked and delivered in parts. Promotions, loyalty, and foreign-currency cash are included.",
+          "Wholesale needs a tier, a credit limit, and an order that leaves in more than one delivery. A checkout that only knows one price and one receipt does not carry that.",
+          "This profile starts with wholesale pricing, quotations and layaway, on-account sales, statements, and sales orders that can be picked and delivered in parts. Scheduled customer reorders are on the same preset. Promotions, loyalty points, and foreign-currency cash are included.",
         ],
       },
       {
-        heading: "When the goods are serialized",
+        heading: "Credit is the amount owed",
         paragraphs: [
-          "The profile also tracks IMEI or serial numbers, warranties, repair tickets, and trade-ins. Those tools matter for a business that sells devices. A wholesaler that does not sell serialized units still uses the pricing, credit, cheque, and sales-order tools on this preset.",
-          "Statements and collections sit with the credit account. The portal's dashboard and VAT report still read the sales the business recorded.",
+          "The credit statement, credit limit, and on-account tender are on from the start. Buying history, including returns, sits beside that statement and is labeled as purchases. Loyalty points are not money owed. A personal promotion code can be issued from those purchases, and using it does not change the balance or the points.",
+          "This preset does not start with IMEI tracking, warranties, or repair tickets. A shop that sells devices uses the electronics profile, which has its own credit tools and does not start with sales orders.",
         ],
       },
     ],
     points: [
       "Tier pricing and volume breaks",
       "Quotations, holds, and layaway",
-      "Credit limits, statements, and cheques",
+      "Credit limits, statements, and on-account sales",
       "Sales orders delivered in parts",
-      "Serial numbers, warranties, and repairs for devices",
+      "Scheduled customer reorders",
     ],
     image: PORTAL,
     crumb: "Wholesale POS",
@@ -226,14 +297,14 @@ export const SEO_PAGES: readonly SeoPage[] = [
         heading: "One product, many variants",
         paragraphs: [
           "A shirt is a style, a colour, and a size. If those live in a spreadsheet, the till and the stock room disagree about what is left.",
-          "The fashion profile starts with a size and colour matrix, consignment stock, loyalty, promotions, quotations and layaway, gift cards, and foreign-currency cash. Alterations are a separate module and are not turned on by this preset.",
+          "The fashion profile starts with a size and colour matrix, consignment stock, loyalty points, promotions, quotations and layaway, gift cards, and foreign-currency cash. Every customer has a buying history, including returns. Points and history are not money owed. A personal promotion code can be issued from those purchases, and using it does not change points or a balance.",
+          "Alterations and B2B credit can be turned on later. Both are off when the shop starts. Restaurant tables, kitchen tickets, and device serial numbers stay off.",
         ],
       },
       {
         heading: "Checkout and the report after the day",
         paragraphs: [
           "Staff sell the variant at the register. Managers read the dashboard, shift close, and VAT report for that store. The assistant answers from those records, in English or Arabic, and does not invent a figure.",
-          "Restaurant tables, kitchen tickets, and device serial numbers stay off a fashion shop.",
         ],
       },
     ],
@@ -241,7 +312,7 @@ export const SEO_PAGES: readonly SeoPage[] = [
       "Size and colour grids",
       "Variant stock at the till",
       "Consignment stock and settlement",
-      "Loyalty, promotions, and gift cards",
+      "Buying history and loyalty points; credit is off until switched on",
       "Dashboard and VAT report for that store",
     ],
     image: PORTAL,
@@ -255,7 +326,7 @@ export const SEO_PAGES: readonly SeoPage[] = [
       "Electronics store POS software for catalogs, IMEI and serial numbers, warranties, repair tickets, and trade-ins, with checkout and the VAT report.",
     h1: "Electronics store POS software for serials, warranties, and repairs",
     kicker: "Electronics",
-    lead: "An electronics sale is a specific unit. AxizPOS keeps the catalog, the serial or IMEI, and the later warranty or repair on the Electronics & Wholesale profile.",
+    lead: "An electronics sale is a specific unit. AxizPOS keeps the catalog, the serial or IMEI, and the later warranty or repair on the Electronics profile.",
     sections: [
       {
         heading: "The unit, not just the model",
@@ -267,8 +338,8 @@ export const SEO_PAGES: readonly SeoPage[] = [
       {
         heading: "Selling on account and at the till",
         paragraphs: [
-          "The same preset includes tier pricing, quotations, on-account sales, cheques, loyalty, and promotions. Integrated card terminals and Tabby or Tamara are on this profile. A restaurant or café profile does not include those payment modules.",
-          "Managers still use the dashboard and VAT report for the sales the store recorded. The assistant answers from that store and does not invent a number.",
+          "The same preset includes tier pricing, quotations, on-account sales, cheques, loyalty points, and promotions. Integrated card terminals and Tabby or Tamara are on this profile. A restaurant or café profile does not include those payment modules. Sales orders delivered in parts belong to Wholesale & Retail, not this preset.",
+          "The credit statement is the amount owed. Buying history, including returns, is the list of purchases and is not labeled as debt. Loyalty points are separate again. A personal promotion code can be issued from those purchases, and using it does not change the balance or the points. Managers still use the dashboard and VAT report. The assistant answers from that store and does not invent a number.",
         ],
       },
     ],
@@ -276,7 +347,7 @@ export const SEO_PAGES: readonly SeoPage[] = [
       "Catalog of brands, models, and stock",
       "IMEI and serial tracking",
       "Warranties, repairs, and trade-ins",
-      "Tier pricing, credit, and cheques",
+      "Tier pricing, credit statements, and cheques",
       "Card terminals and Tabby or Tamara on this profile",
     ],
     image: PORTAL,
@@ -302,14 +373,14 @@ export const SEO_PAGES: readonly SeoPage[] = [
       {
         heading: "Payments and profiles",
         paragraphs: [
-          "Integrated card terminals, and Tabby or Tamara, are capabilities on profiles that include them, including Electronics & Wholesale. They are not switched on for every restaurant or café. The pricing section shows which package lists card terminals.",
-          "Tax-free forms for tourists are a capability in the product. They are not part of the restaurant, café, or fashion presets, so this page does not treat them as included for every shop.",
+          "Integrated card terminals, and Tabby or Tamara, are capabilities on profiles that include them, including Electronics. They are not switched on for every restaurant, café, grocery shop, or fashion store. The pricing section shows which package lists card terminals.",
+          "Tax-free forms for tourists are a capability in the product. They are not part of the restaurant, café, quick-service, grocery, or fashion presets, so this page does not treat them as included for every shop.",
         ],
       },
       {
         heading: "Which businesses it fits",
         paragraphs: [
-          "The same product has presets for restaurants, cafés, grocery retail, fashion, and electronics and wholesale. Each preset turns on the modules that fit that work. A fashion shop does not start with kitchen tickets, and a café does not start with a size and colour grid.",
+          "The same product has presets for restaurants, cafés, quick service, grocery, fashion, wholesale and retail, and electronics. Each preset turns on the modules that fit that work. A fashion shop does not start with kitchen tickets. A café does not start with a size and colour grid. On-account credit starts on electronics and wholesale. Fashion and grocery can turn it on later. Restaurant, café, and quick service cannot.",
         ],
       },
     ],
@@ -318,7 +389,7 @@ export const SEO_PAGES: readonly SeoPage[] = [
       "VAT report from recorded sales",
       "Assistant in English or Arabic",
       "WhatsApp demo request when a number is published",
-      "Profiles for restaurants, cafés, retail, fashion, and wholesale",
+      "Profiles for restaurants, cafés, quick service, grocery, fashion, wholesale, and electronics",
     ],
     image: PORTAL,
     crumb: "POS software UAE",

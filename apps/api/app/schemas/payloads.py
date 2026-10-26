@@ -180,6 +180,14 @@ class ComboChoice(ApiModel):
     surcharge_cents: int = Field(default=0, ge=0, le=1_000_000)
 
 
+class AgeCheckPayload(ApiModel):
+    """Cashier confirmation, or a manager override with a reason. No identity document is stored."""
+
+    confirmed: bool = False
+    override_by_id: UUID | None = None
+    reason: str | None = Field(default=None, max_length=200)
+
+
 class SaleItemPayload(ApiModel):
     """quantity and unit_price_cents are per piece; unit_type records the pack the cashier sold in.
     Sold-by-weight products count grams and price per kilogram (app.services.weighed)."""
@@ -211,6 +219,8 @@ class SaleItemPayload(ApiModel):
     discount_override: PriceOverridePayload | None = None
     # Selling a gift card: the code the register generated (GIFT_CARD_CODE); the line amount loads the card.
     gift_card_code: str | None = Field(default=None, pattern=r"^GC-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}$")
+    # Required when the product has a minimum age. Absent or unconfirmed sales are rejected.
+    age_check: AgeCheckPayload | None = None
 
     @model_validator(mode="after")
     def serial_fields_match(self) -> Self:
@@ -565,6 +575,7 @@ class ProductOut(ApiModel):
     sold_by_weight: bool = False
     plu_code: str | None = None
     tare_grams: int = 0
+    minimum_age: int | None = None
     # Soonest expiry among the batches still holding stock at store_id (expiry-first stock module).
     nearest_expiry: date | None = None
     # Recipes module: a dish drawn from its ingredients (no stock of its own), and ingredients registers never sell.

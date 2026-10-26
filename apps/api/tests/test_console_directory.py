@@ -20,7 +20,7 @@ def test_directory_lists_stores_with_their_stats(platform) -> None:  # noqa: F81
     assert (alpha["domain"], alpha["plan"], alpha["profile_label"]) == (
         "alpha.axizpos.com",
         "standard",
-        "Electronics & Wholesale",
+        "Electronics",
     )
     assert alpha["stats"]["onboarded"] is True and alpha["stats"]["users"] == 1
     assert "serial_tracking" in alpha["stats"]["enabled_modules"]

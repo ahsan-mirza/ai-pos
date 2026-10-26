@@ -283,6 +283,14 @@ export const navGroups: NavGroup[] = [
         isActive: under("/sales-orders"),
       },
       {
+        to: "/reorders",
+        label: "Reorder management",
+        icon: Repeat2,
+        permission: Permission.CustomersManage,
+        capability: Capability.CustomerReorders,
+        isActive: under("/reorders"),
+      },
+      {
         to: "/cheques",
         label: "Cheques & PDCs",
         icon: Banknote,

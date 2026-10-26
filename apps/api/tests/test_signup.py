@@ -264,16 +264,64 @@ def test_store_addresses_must_be_valid_and_free(signup: TestClient) -> None:
     assert country.json()["error"]["code"] == "unsupported_country"
 
 
-def test_coming_soon_business_types_join_the_waitlist(signup: TestClient) -> None:
+@pytest.mark.parametrize(
+    ("sub_type", "slug"),
+    [
+        ("grocery_shop", "gshop"),
+        ("grocery_supermarket", "gsuper"),
+        ("grocery_cash_carry", "gcarry"),
+    ],
+)
+def test_grocery_sub_types_provision_their_kits(signup: TestClient, sub_type: str, slug: str) -> None:
+    from app.core import capabilities as catalog
+
+    token, _state = _food_store(signup, slug, "grocery", sub_type)
+    settings = signup.get("/api/v1/settings", headers=_tenant_headers(slug, token)).json()
+    assert set(settings["capabilities"]) == {item.value for item in catalog.SUB_TYPES["grocery"][sub_type]}
+
+
+def test_grocery_shop_practice_stock_is_weighed_and_the_milk_expires(signup: TestClient) -> None:
+    token, _state = _food_store(signup, "gpractice", "grocery", "grocery_shop")
+    headers = _tenant_headers("gpractice", token)
+    products = signup.get("/api/v1/products", headers=headers, params={"limit": 200}).json()
+    by_sku = {row["sku"]: row for row in products}
+    bananas = by_sku["SAMPLE-BANANA-1KG"]
+    tomatoes = by_sku["SAMPLE-TOMATO-1KG"]
+    assert (bananas["sold_by_weight"], bananas["plu_code"], bananas["tare_grams"], bananas["stock_quantity"]) == (
+        True,
+        "900001",
+        0,
+        20000,
+    )
+    assert (tomatoes["sold_by_weight"], tomatoes["plu_code"], tomatoes["tare_grams"], tomatoes["stock_quantity"]) == (
+        True,
+        "900002",
+        20,
+        15000,
+    )
+    expiring = signup.get("/api/v1/inventory/expiring", headers=headers).json()
+    milk = next(row for row in expiring if row["sku"] == "SAMPLE-MILK-1L")
+    assert milk["quantity_remaining"] == 48 and 0 <= milk["days_left"] <= 7
+    keys = signup.get("/api/v1/settings", headers=headers).json()["module_settings"]["department_keys"]["keys"]
+    assert [key["label"] for key in keys] == ["Produce", "Dairy", "Bakery", "Pantry"]
+
+
+def test_unknown_grocery_sub_type_is_rejected(signup: TestClient) -> None:
+    started = _verified(signup)
+    unknown = _post(signup, started, "business", {"profile": "grocery", "sub_type": "kiosk"})
+    assert unknown.json()["error"]["code"] == "unknown_sub_type"
+
+
+def test_a_profile_missing_from_sub_types_still_joins_the_waitlist(signup: TestClient, monkeypatch) -> None:
+    from app.core import capabilities as catalog
+
+    without_grocery = {key: value for key, value in catalog.SUB_TYPES.items() if key != "grocery"}
+    monkeypatch.setattr(catalog, "SUB_TYPES", without_grocery)
     started = _verified(signup)
     waiting = _post(signup, started, "business", {"profile": "grocery", "sub_type": None})
     assert waiting.json()["status"] == "WAITLIST"
-    blocked = _post(signup, started, "store", _store())
+    blocked = _post(signup, started, "store", _store("waitlist"))
     assert (blocked.status_code, blocked.json()["error"]["code"]) == (409, "wrong_step")
-    back = _post(signup, started, "business", {"profile": "retail_fashion", "sub_type": "fashion_chain"})
-    assert back.json()["status"] == "VERIFIED"
-    unknown = _post(signup, started, "business", {"profile": "retail_fashion", "sub_type": "kiosk"})
-    assert unknown.json()["error"]["code"] == "unknown_sub_type"
 
 
 def _food_store(signup: TestClient, slug: str, profile: str, sub_type: str) -> tuple[str, dict]:

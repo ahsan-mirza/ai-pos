@@ -17,7 +17,8 @@ import { useCapability } from "../../lib/capabilities";
 import { CreditRiskCard } from "./CreditRiskCard";
 import { CustomerFormModal } from "./CustomerFormModal";
 import { ReceivePaymentModal } from "./ReceivePaymentModal";
-import { customersApi, message, shortDate } from "./api";
+import { customersApi, message, shortDate, type CustomerCoupon, type PurchaseLine } from "./api";
+import { CustomerReorderCard } from "../reorders/ReordersPage";
 
 type EntryFilter = "all" | LedgerEntryType;
 
@@ -43,6 +44,7 @@ export function CustomerStatementPage() {
   const [toast, setToast] = useState<string | null>(null);
   const dismissToast = useCallback(() => setToast(null), []);
   const creditModule = useCapability(Capability.B2bCredit);
+  const reorderModule = useCapability(Capability.CustomerReorders);
 
   const load = useCallback(async () => {
     try {
@@ -91,6 +93,8 @@ export function CustomerStatementPage() {
           <ArrowLeft size={16} aria-hidden="true" /> All customers
         </Link>
         <div className="flex flex-wrap gap-2">
+          {creditModule ? (
+          <>
           <GhostButton
             onClick={() =>
               void customersApi
@@ -117,10 +121,12 @@ export function CustomerStatementPage() {
           >
             <Send size={16} aria-hidden="true" className="-ml-1 mr-2" /> Send statement
           </GhostButton>
+          </>
+          ) : null}
           <GhostButton onClick={() => setDialog("edit")}>
             <SquarePen size={16} aria-hidden="true" className="-ml-1 mr-2" /> Edit profile
           </GhostButton>
-          {wholesale ? (
+          {wholesale && creditModule ? (
             <GhostButton
               onClick={() => {
                 const hold = !customer.credit_hold;
@@ -138,18 +144,22 @@ export function CustomerStatementPage() {
               {customer.credit_hold ? "Lift credit hold" : "Place on hold"}
             </GhostButton>
           ) : null}
+          {creditModule ? (
           <PrimaryButton onClick={() => setDialog("payment")}>
             <Banknote size={16} aria-hidden="true" className="-ml-2 mr-2" /> Receive payment
           </PrimaryButton>
+          ) : null}
         </div>
       </div>
 
-      {customer.credit_hold ? (
+      {reorderModule ? <CustomerReorderCard customerId={customer.id} /> : null}
+
+      {creditModule && customer.credit_hold ? (
         <p role="status" className="rounded-2xl bg-accent px-5 py-3 text-sm font-semibold text-white">
           On credit hold: {customer.credit_hold_reason ?? "placed by a manager"}. On-account sales need a manager's approval.
         </p>
       ) : null}
-      {(customer.cheque_exposure_cents ?? 0) > 0 ? (
+      {creditModule && (customer.cheque_exposure_cents ?? 0) > 0 ? (
         <p className="rounded-2xl bg-surface px-5 py-3 text-sm text-charcoal/70">
           {formatMoney(customer.cheque_exposure_cents ?? 0, currency)} in uncleared cheques is already credited to this account.
         </p>
@@ -182,6 +192,7 @@ export function CustomerStatementPage() {
               ) : null}
             </div>
           </div>
+          {creditModule ? (
           <div className="mt-6 grid grid-cols-3 gap-4">
             <div>
               <p className="text-xs text-white/50">Balance due</p>
@@ -198,7 +209,8 @@ export function CustomerStatementPage() {
               </p>
             </div>
           </div>
-          {wholesale ? (
+          ) : null}
+          {creditModule && wholesale ? (
             <div className="mt-4 h-2 overflow-hidden rounded-full bg-white/10" aria-hidden="true">
               <div
                 className={`h-full rounded-full ${customer.available_credit_cents < 0 ? "bg-accent" : "bg-white/70"}`}
@@ -208,7 +220,7 @@ export function CustomerStatementPage() {
           ) : null}
         </article>
 
-        <article className="rounded-card border border-line bg-white p-6">
+        {creditModule ? <article className="rounded-card border border-line bg-white p-6">
           <div className="flex items-center justify-between">
             <h3 className="text-lg font-semibold">Aging</h3>
             <p className="text-sm text-charcoal/60 tabular-nums">
@@ -238,9 +250,13 @@ export function CustomerStatementPage() {
               <dd className="mt-1 font-semibold tabular-nums">{formatMoney(statement.total_paid_cents, currency)}</dd>
             </div>
           </dl>
-        </article>
+        </article> : null}
       </div>
 
+      <BuyingHistory customerId={customer.id} currency={currency} />
+      <CustomerCoupons customerId={customer.id} currency={currency} />
+
+      {creditModule ? <>
       <div className="rounded-card border border-line bg-white p-6">
         <div className="mb-4 flex items-center justify-between">
           <h3 className="text-lg font-semibold">Unpaid invoices</h3>
@@ -347,8 +363,9 @@ export function CustomerStatementPage() {
           {entries.length === 0 ? <p className="py-8 text-sm text-charcoal/60">No ledger activity yet.</p> : null}
         </div>
       </div>
+      </> : null}
 
-      {dialog === "payment" ? (
+      {dialog === "payment" && creditModule ? (
         <ReceivePaymentModal
           customer={customer}
           invoices={statement.open_invoices}
@@ -389,6 +406,83 @@ interface LoyaltyStanding {
   next_tier: string | null;
   next_tier_gap_cents: number | null;
   expiring_soon: number;
+}
+
+function BuyingHistory({ customerId, currency }: { customerId: string; currency: string }) {
+  const [rows, setRows] = useState<PurchaseLine[]>([]);
+  useEffect(() => {
+    customersApi.history(customerId).then(setRows).catch(() => setRows([]));
+  }, [customerId]);
+  return (
+    <div className="rounded-card border border-line bg-white p-6">
+      <h3 className="text-lg font-semibold">Buying history</h3>
+      <p className="mt-1 text-sm text-charcoal/60">Purchases, including what was returned. This is not money owed.</p>
+      {rows.length === 0 ? (
+        <p className="mt-4 text-sm text-charcoal/60">No purchases yet.</p>
+      ) : (
+        <div className="mt-4 overflow-x-auto">
+          <table className="w-full min-w-[720px] text-left text-sm">
+            <thead className="text-xs uppercase tracking-wide text-charcoal/50">
+              <tr>
+                <th className="pb-3 font-medium">When</th>
+                <th className="pb-3 font-medium">Invoice</th>
+                <th className="pb-3 font-medium">Item</th>
+                <th className="pb-3 text-right font-medium">Qty</th>
+                <th className="pb-3 text-right font-medium">Price</th>
+                <th className="pb-3 text-right font-medium">Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row) => (
+                <tr key={`${row.invoice}-${row.sku}-${row.sold_at}`} className="border-t border-line">
+                  <td className="py-3">{shortDate(row.sold_at)}</td>
+                  <td className="py-3 font-mono text-xs">{row.invoice}</td>
+                  <td className="py-3">
+                    {row.name}
+                    {row.size || row.color ? <span className="text-charcoal/50"> · {[row.size, row.color].filter(Boolean).join(" ")}</span> : null}
+                    {row.quantity_refunded > 0 ? <span className="text-charcoal/50"> · {row.quantity_refunded} returned</span> : null}
+                  </td>
+                  <td className="py-3 text-right tabular-nums">{row.quantity}</td>
+                  <td className="py-3 text-right tabular-nums">{formatMoney(row.unit_price_cents ?? 0, currency)}</td>
+                  <td className="py-3 text-right tabular-nums">{formatMoney(row.line_total_cents ?? 0, currency)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CustomerCoupons({ customerId, currency }: { customerId: string; currency: string }) {
+  const [rows, setRows] = useState<CustomerCoupon[]>([]);
+  useEffect(() => {
+    customersApi.coupons(customerId).then(setRows).catch(() => setRows([]));
+  }, [customerId]);
+  if (rows.length === 0) return null;
+  return (
+    <div className="rounded-card border border-line bg-white p-6">
+      <h3 className="text-lg font-semibold">Coupons</h3>
+      <p className="mt-1 text-sm text-charcoal/60">Codes issued to this customer. They do not change points or the amount owed.</p>
+      <ul className="mt-4 space-y-2 text-sm">
+        {rows.map((row) => (
+          <li key={row.id} className="flex flex-wrap items-baseline justify-between gap-2 rounded-2xl bg-surface px-4 py-3">
+            <span>
+              <span className="font-mono font-semibold">{row.code}</span>
+              <span className="text-charcoal/60"> · {row.promotion_name}</span>
+              {row.reason ? <span className="text-charcoal/60"> · {row.reason}</span> : null}
+            </span>
+            <span className="text-charcoal/60">
+              {row.status}
+              {row.min_spend_cents > 0 ? ` · minimum ${formatMoney(row.min_spend_cents, currency)}` : ""}
+              {row.expires_at ? ` · expires ${shortDate(row.expires_at)}` : ""}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
 }
 
 function LoyaltyStrip({ customerId, currency }: { customerId: string; currency: string }) {

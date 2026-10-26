@@ -75,6 +75,40 @@ def test_every_preset_is_consistent(profile: str) -> None:
     assert not any(catalog.SPECS[capability].available for capability in resolved.planned)
 
 
+def test_b2b_credit_follows_the_business_type(client) -> None:
+    seed(client)
+    headers, _ = admin(client)
+    current = client.get("/api/v1/settings", headers=headers).json()
+    assert "b2b_credit" in current["capabilities"]
+
+    fashion = change_profile(client, headers, "retail_fashion")
+    assert fashion.status_code == 200, fashion.text
+    assert "b2b_credit" not in fashion.json()["capabilities"]
+    fashion_plus = [item.value for item in catalog.PROFILES["retail_fashion"]] + ["b2b_credit"]
+    enabled = change_profile(client, headers, "retail_fashion", capabilities=fashion_plus)
+    assert enabled.status_code == 200, enabled.text
+    assert "b2b_credit" in enabled.json()["capabilities"]
+
+    grocery = [item.value for item in catalog.PROFILES["grocery"]]
+    assert "b2b_credit" not in grocery
+    grocery_on = change_profile(client, headers, "grocery", capabilities=[*grocery, "b2b_credit"])
+    assert grocery_on.status_code == 200, grocery_on.text
+
+    for profile in FOOD:
+        assert catalog.Capability.B2B_CREDIT not in catalog.compatible(profile)
+
+
+@pytest.mark.parametrize("profile", FOOD)
+def test_food_service_cannot_enable_b2b_credit(client, profile: str) -> None:
+    headers, _ = admin(client)
+    opened = change_profile(client, headers, profile, complete_onboarding=True)
+    assert opened.status_code == 200, opened.text
+    preset = [item.value for item in catalog.PROFILES[profile]]
+    refused = change_profile(client, headers, profile, capabilities=[*preset, "b2b_credit"])
+    assert refused.status_code == 422
+    assert refused.json()["error"]["code"] == "module_not_available"
+
+
 def test_existing_installs_keep_every_built_module(client) -> None:
     body = client.get("/api/v1/settings", headers=device()).json()
     assert body["business_profile"] == "electronics_wholesale"
@@ -220,7 +254,7 @@ def test_business_type_locks_after_onboarding_and_only_fitting_modules_switch_on
     body = modules.json()
     assert (body["business_profile"], body["profile_label"], body["locked"]) == (
         "electronics_wholesale",
-        "Electronics & Wholesale",
+        "Electronics",
         True,
     )
     assert body["enabled"] == [c.value for c in catalog.ORDER if c.value in trimmed]

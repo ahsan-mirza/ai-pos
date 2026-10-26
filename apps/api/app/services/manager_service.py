@@ -12,9 +12,7 @@ from app.core.deps import Principal
 from app.core.permissions import Permission
 from app.models.cheque import Cheque
 from app.models.customer import Customer
-from app.models.product import Product
 from app.models.sale import Sale
-from app.models.sale_item import SaleItem
 from app.models.sale_return import SaleReturn
 from app.models.store import Store
 from app.models.time_entry import TimeEntry
@@ -27,7 +25,7 @@ from app.schemas.manager import (
     PendingTimeEntry,
     TopProduct,
 )
-from app.services import approval_service
+from app.services import approval_service, sales_velocity
 from app.services.settings_service import business_currency
 
 POSTED = ("completed", "partially_refunded", "refunded")
@@ -110,31 +108,10 @@ def dashboard(db: Session, principal: Principal, offset_minutes: int, now: datet
     yesterday_refunds = _refunds(db, start - timedelta(days=1), now - timedelta(days=1), scope)
     yesterday = sum(sale.total_cents for sale in yesterday_sales) - sum(yesterday_refunds.values())
 
-    top: list[TopProduct] = []
-    if sales:
-        rows = db.execute(
-            select(
-                SaleItem.product_id,
-                func.sum(SaleItem.quantity * SaleItem.unit_factor),
-                func.sum(SaleItem.line_total_cents),
-            )
-            .where(SaleItem.sale_id.in_([sale.id for sale in sales]))
-            .group_by(SaleItem.product_id)
-            .order_by(func.sum(SaleItem.line_total_cents).desc())
-            .limit(5)
-        ).all()
-        names = {
-            row.id: row.name for row in db.scalars(select(Product).where(Product.id.in_([item[0] for item in rows])))
-        }
-        top = [
-            TopProduct(
-                product_id=item[0],
-                name=names.get(item[0], "Product"),
-                quantity=int(item[1]),
-                revenue_cents=int(item[2]),
-            )
-            for item in rows
-        ]
+    top = [
+        TopProduct(product_id=row.product_id, name=row.name, quantity=row.units, revenue_cents=row.revenue_cents)
+        for row in sales_velocity.rank_products(db, since=start, until=now, store_id=scope, limit=5, by="revenue")
+    ]
 
     user = principal.user
     attention = Attention(

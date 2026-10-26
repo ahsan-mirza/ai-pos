@@ -59,6 +59,15 @@ def set_value(key: str, value: str, ttl_seconds: int) -> None:
         log.warning("cache write failed")
 
 
+def claim(key: str, ttl_seconds: int) -> bool:
+    """True when this caller took the key. A Redis outage returns True so the database stays the guard."""
+    try:
+        return bool(_client_for().set(key, "1", nx=True, ex=ttl_seconds))
+    except RedisError:
+        log.warning("cache claim failed")
+        return True
+
+
 def delete(key: str) -> None:
     try:
         _client_for().delete(key)

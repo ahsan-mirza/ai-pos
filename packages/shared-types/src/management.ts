@@ -68,19 +68,31 @@ export interface AgedStockRow {
   on_hand: number;
   cost_value_cents: number;
   last_sold_at: string | null;
+  /** Whole UTC days since the last qualifying sale. Null when there has never been one. */
   days_since_sale: number | null;
   units_sold_90d: number;
   cover_days: number | null;
   status: "SLOW" | "DEAD";
   suggestion: string;
+  reason?: string;
+  brand?: string | null;
+  sold_by_weight?: boolean;
+  /** Whole UTC days since the first receipt. Null when that date is unknown. */
+  days_in_stock?: number | null;
   /** Carrying cost at the report's annual rate. */
   holding_cost_month_cents?: number;
   holding_cost_to_date_cents?: number;
   price_cents?: number;
-  /** Clearance price that respects the margin floor (or cost); null when already at the floor. */
+  /** Clearance price that respects the margin floor (or cost); null when already at the floor, cost is missing, or the stock is supplier-owned. */
   suggested_price_cents?: number | null;
   markdown_pct?: number;
+  target_markdown_pct?: number;
   floor_cents?: number | null;
+  expected_margin_bps?: number | null;
+  cost_estimated?: boolean;
+  review_required?: boolean;
+  /** The target markdown could not be applied in full because of cost or the margin floor. */
+  discount_limited?: boolean;
 }
 
 export interface AgedStockReport {
@@ -93,6 +105,8 @@ export interface AgedStockReport {
   carrying_rate_bps?: number;
   holding_cost_month_cents?: number;
   holding_cost_to_date_cents?: number;
+  /** Rows matching the filters, before the page slice. */
+  total?: number;
   rows: AgedStockRow[];
 }
 

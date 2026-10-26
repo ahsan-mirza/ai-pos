@@ -20,12 +20,14 @@ import {
   Shirt,
   ShoppingBasket,
   Smartphone,
+  Store,
   UtensilsCrossed,
   type LucideIcon,
 } from "lucide-react";
 
 export const PROFILE_ICONS: Record<BusinessProfile, LucideIcon> = {
   electronics_wholesale: Smartphone,
+  wholesale_retail: Store,
   retail_fashion: Shirt,
   grocery: ShoppingBasket,
   restaurant: UtensilsCrossed,

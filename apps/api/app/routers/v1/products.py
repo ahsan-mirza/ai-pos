@@ -153,9 +153,11 @@ def update_product(
     product_id: uuid.UUID,
     payload: ProductUpdate,
     db: Annotated[Session, Depends(get_db)],
-    _: Annotated[Principal, Depends(authorize(Permission.PORTAL_INVENTORY_MANAGE))],
+    principal: Annotated[Principal, Depends(authorize(Permission.PORTAL_INVENTORY_MANAGE))],
 ) -> ProductOut:
-    return inventory.update_product(db, product_id, payload)
+    return inventory.update_product(
+        db, product_id, payload, user_id=principal.user.id if principal.user is not None else None
+    )
 
 
 @router.post("", response_model=ProductOut, status_code=201)

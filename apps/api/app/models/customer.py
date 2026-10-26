@@ -97,3 +97,29 @@ class CustomerLedgerEntry(TenantScoped, Base):
     note: Mapped[str] = mapped_column(String(255), default="")
     user_id: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True), ForeignKey("users.id"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+
+
+COUPON_STATUSES = ("issued", "redeemed", "revoked", "expired")
+
+
+class CustomerCoupon(TenantScoped, Base):
+    """A code issued to one customer for an existing promotion. It is not a second discount engine."""
+
+    __tablename__ = "customer_coupons"
+    __table_args__ = (
+        tenant_unique("code", name="uq_customer_coupons_code"),
+        tenant_unique("idempotency_key", name="uq_customer_coupons_period"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    promotion_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("promotions.id"), index=True)
+    customer_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("customers.id"), index=True)
+    code: Mapped[str] = mapped_column(String(32))
+    status: Mapped[str] = mapped_column(String(16), default="issued", index=True)
+    reason: Mapped[str] = mapped_column(String(255), default="")
+    issued_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    idempotency_key: Mapped[str] = mapped_column(String(80))
+    sale_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("sales.id"), nullable=True, index=True
+    )

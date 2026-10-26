@@ -1,3 +1,4 @@
+import { Capability } from "@ai-pos/shared-types";
 import { useEffect, useState, type ReactNode } from "react";
 import { ConfirmProvider } from "./components/ConfirmDialog";
 import { RegisterShell } from "./components/shell/RegisterShell";
@@ -9,6 +10,7 @@ import { lock, restore, type CashierSession } from "./features/auth/session";
 import { CheckoutPage } from "./features/checkout/CheckoutPage";
 import { OrdersPage } from "./features/orders/OrdersPage";
 import { RepairsPage } from "./features/repairs/RepairsPage";
+import { ReordersPage } from "./features/reorders/ReordersPage";
 import { ReturnsPage } from "./features/returns/ReturnsPage";
 import { SettingsPage } from "./features/settings/SettingsPage";
 import { OpenShiftScreen } from "./features/shifts/OpenShiftScreen";
@@ -24,12 +26,13 @@ export function App() {
   const [activating, setActivating] = useState(false);
   const [view, setView] = useState<RegisterView>("checkout");
   const shiftState = useShift();
-  const { foodAndBeverage } = useCapabilities();
+  const { foodAndBeverage, enabled } = useCapabilities();
 
   useEffect(() => {
     if (foodAndBeverage && (view === "returns" || view === "repairs")) setView("checkout");
     if (!foodAndBeverage && view === "orders") setView("checkout");
-  }, [foodAndBeverage, view]);
+    if (view === "reorders" && !enabled.has(Capability.CustomerReorders)) setView("checkout");
+  }, [enabled, foodAndBeverage, view]);
 
   useEffect(() => {
     restore()
@@ -75,6 +78,8 @@ export function App() {
             <OrdersPage session={session} />
           ) : view === "repairs" ? (
             <RepairsPage session={session} />
+          ) : view === "reorders" && enabled.has(Capability.CustomerReorders) ? (
+            <ReordersPage session={session} />
           ) : (
             <CheckoutPage session={session} />
           )}

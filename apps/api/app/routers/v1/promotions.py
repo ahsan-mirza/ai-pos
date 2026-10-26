@@ -7,8 +7,8 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.core.deps import Principal, authorize
 from app.core.permissions import Permission
-from app.schemas.promotions import PromotionOut, PromotionWrite
-from app.services import promotion_service
+from app.schemas.promotions import CouponReportOut, PromotionOut, PromotionWrite
+from app.services import coupon_service, promotion_service
 
 router = APIRouter()
 Db = Annotated[Session, Depends(get_db)]
@@ -21,6 +21,11 @@ AtRegister = Annotated[
 @router.get("", response_model=list[PromotionOut])
 def list_promotions(db: Db, _: CanManage) -> list[PromotionOut]:
     return promotion_service.list_promotions(db)
+
+
+@router.get("/coupon-report", response_model=CouponReportOut)
+def coupon_report(db: Db, _: CanManage) -> CouponReportOut:
+    return CouponReportOut.model_validate(coupon_service.report(db))
 
 
 @router.get("/active", response_model=list[PromotionOut])

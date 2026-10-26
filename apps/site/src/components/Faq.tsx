@@ -15,12 +15,12 @@ const ITEMS = [
   {
     question: "Which types of businesses can use AxizPOS?",
     answer:
-      "The product ships with profiles for electronics and wholesale, fashion, grocery, restaurants, cafés, and quick service. Each profile turns on the modules that fit that work.",
+      "The product ships with profiles for restaurants, cafés, quick service, grocery, fashion, wholesale and retail, and electronics. Each profile turns on the modules that fit that work. Buying history and loyalty points are on for every profile. A credit statement starts on electronics and wholesale. Fashion and grocery can turn it on later. Restaurant, café, and quick service cannot.",
   },
   {
     question: "How does AxizPOS help manage inventory?",
     answer:
-      "You keep products, categories, brands, and stock in the portal, raise purchase orders, and transfer between stores. Grocery can sell by weight and expiry. Fashion can sell a size and colour grid. Electronics can follow a serial number.",
+      "You keep products, categories, brands, and stock in the portal, raise purchase orders, and transfer between stores. Grocery sells by weight and expiry. Fashion sells a size and colour grid. Electronics follows a serial number. Wholesale delivers sales orders in parts.",
   },
   {
     question: "Can I manage sales and view reports?",

@@ -105,6 +105,7 @@ function toUpsert(row: Product): ProductUpsert {
     sold_by_weight: row.sold_by_weight ?? false,
     plu_code: row.plu_code ?? null,
     tare_grams: row.tare_grams ?? 0,
+    minimum_age: row.minimum_age ?? null,
     nearest_expiry: row.nearest_expiry ?? null,
     has_recipe: row.has_recipe ?? false,
     is_ingredient: row.is_ingredient ?? false,
@@ -172,6 +173,26 @@ export interface CustomerPurchase {
   size: string | null;
   color: string | null;
   quantity: number;
+}
+
+export interface IssuedCoupon {
+  code: string;
+  status: string;
+  reason: string;
+  expires_at: string | null;
+  promotion_id: string;
+  promotion_name: string;
+  kind: "PERCENT_OFF" | "BUY_X_GET_Y" | "MIX_MATCH" | "BUNDLE" | "AMOUNT_OFF";
+  amount_cents: number | null;
+  percent_bps: number | null;
+  min_spend_cents: number;
+  product_ids: string[];
+  category_ids: string[];
+}
+
+export async function customerCoupons(customerId: string): Promise<IssuedCoupon[]> {
+  const response = await request(`/api/v1/customers/${customerId}/coupons`);
+  return (await response.json()) as IssuedCoupon[];
 }
 
 export async function customerHistory(customerId: string): Promise<CustomerPurchase[]> {

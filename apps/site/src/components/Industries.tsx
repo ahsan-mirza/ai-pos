@@ -9,42 +9,56 @@ const INDUSTRIES: { title: string; href: string; link: string; icon: MarkName; p
     href: "/restaurant-pos",
     link: "Restaurant POS system",
     icon: "utensils",
-    points: ["Take orders and check out from the register.", "Run the menu, tables, and kitchen display on the restaurant profile.", "Split bills and add service charge where that profile is on."],
+    points: ["Tables, open orders, and a kitchen display.", "Split bills, tips, and service charge.", "Buying history and loyalty points, with no credit account."],
   },
   {
     title: "Café POS",
     href: "/cafe-pos",
     link: "Café POS software",
     icon: "coffee",
-    points: ["Move counter sales through the register.", "Price drink sizes and add-ons with menu modifiers.", "Keep open tabs and send tickets to the kitchen display."],
+    points: ["Priced drink sizes and add-ons.", "Open tabs and a kitchen display.", "No tables, split bills, or on-account credit."],
   },
   {
     title: "Retail POS",
     href: "/retail-pos",
     link: "Retail POS system",
     icon: "bag",
-    points: ["Sell from a product catalog and record stock.", "Scan barcodes at the register.", "Review sales from the dashboard and VAT report."],
+    points: ["Catalog checkout, barcodes, and stock.", "Purchase orders and transfers between stores.", "Grocery and fashion each have their own profile."],
+  },
+  {
+    title: "Quick Service POS",
+    href: "/quick-service-pos",
+    link: "Quick service POS software",
+    icon: "zap",
+    points: ["Counter checkout and menu modifiers.", "Kitchen display, recipes, and delivery-channel orders.", "No tables and no credit account."],
+  },
+  {
+    title: "Grocery POS",
+    href: "/grocery-pos",
+    link: "Grocery POS software",
+    icon: "package",
+    points: ["Weighed items and expiry-first stock.", "Buying history and loyalty points from the start.", "On-account credit stays off until the shop turns it on."],
   },
   {
     title: "Wholesale POS",
     href: "/wholesale-pos",
     link: "Wholesale POS software",
     icon: "boxes",
-    points: ["The Electronics & Wholesale profile sells in tiers and on account.", "Create sales orders and deliver them in parts.", "Track customer credit, statements, and cheques."],
+    points: ["Tier pricing, quotations, and on-account credit.", "Sales orders delivered in parts.", "Scheduled customer reorders. Serials stay on the electronics page."],
   },
   {
     title: "Fashion POS",
     href: "/fashion-pos",
     link: "Fashion store POS system",
     icon: "shirt",
-    points: ["Build size and colour grids on the fashion profile.", "See which variants are in stock.", "Check out and read the same sales reports as other stores."],
+    points: ["Size and colour grids, with variant stock.", "Loyalty points, gift cards, and consignment.", "Alterations and credit stay off until switched on."],
   },
   {
     title: "Electronics POS",
     href: "/electronics-pos",
     link: "Electronics store POS software",
     icon: "phone",
-    points: ["Keep a catalog of brands, models, and stock.", "Track IMEI and serial numbers, warranties, and repair tickets.", "Record each unit through checkout and transfers."],
+    points: ["IMEI and serial numbers, warranties, and repairs.", "Tier pricing, credit statements, and cheques.", "Card terminals and Tabby or Tamara on this profile."],
   },
 ];
 
@@ -53,7 +67,7 @@ export function Industries() {
     <section id="solutions" className="border-t border-line bg-surface">
       <div id="industries" className="mx-auto max-w-page px-4 py-16 sm:px-6 lg:px-8 lg:py-20">
         <SectionHeading kicker="Solutions" title="A profile for the way you sell.">
-          Each business type starts with its own modules. Restaurant tables stay off a fashion shop. Serial tracking stays on electronics. Businesses selling in the UAE use the same register for checkout, stock, and the VAT report.
+          Each business type starts with its own modules. Restaurant tables stay off a fashion shop. Serial tracking stays on electronics. Credit starts on electronics and wholesale. Fashion and grocery can turn it on later. Food service cannot.
         </SectionHeading>
         <p className="mt-4">
           <a href="/pos-software-uae" className="text-sm font-semibold text-primary">

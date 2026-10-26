@@ -4,7 +4,7 @@ import { useEffect, useId, useState, type FormEvent, type ReactNode } from "reac
 import { signupUrl } from "../env";
 import { publishedWhatsapp, whatsappChatUrl, type PublicWhatsApp } from "../whatsapp";
 
-const TYPES = ["Restaurant", "Café", "Retail", "Wholesale", "Fashion", "Electronics"] as const;
+const TYPES = ["Restaurant", "Café", "Quick Service", "Grocery", "Retail", "Wholesale", "Fashion", "Electronics"] as const;
 
 interface Fields {
   name: string;

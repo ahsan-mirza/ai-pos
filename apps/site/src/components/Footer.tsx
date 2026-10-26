@@ -4,7 +4,9 @@ import { whatsappChatUrl, whatsappDigits, whatsappReady, type PublicWhatsApp } f
 const SOLUTIONS = [
   ["Restaurant POS system", "/restaurant-pos"],
   ["Café POS software", "/cafe-pos"],
+  ["Quick service POS", "/quick-service-pos"],
   ["Retail POS system", "/retail-pos"],
+  ["Grocery POS software", "/grocery-pos"],
   ["Wholesale POS software", "/wholesale-pos"],
   ["Fashion store POS", "/fashion-pos"],
   ["Electronics store POS", "/electronics-pos"],

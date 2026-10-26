@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Select } from "@ai-pos/ui";
 import { ErrorNote, Field, PrimaryButton } from "../components/ui";
 import { ConsoleError, api, errorText } from "../lib/api";
@@ -99,13 +99,25 @@ export function MailPage() {
   const [fields, setFields] = useState<Partial<Record<FieldName, string>>>({});
   const [saved, setSaved] = useState(false);
   const [tested, setTested] = useState(false);
-  const [busy, setBusy] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [isSendingTest, setIsSendingTest] = useState(false);
+  const savingRef = useRef(false);
+  const sendingRef = useRef(false);
+  const alive = useRef(true);
 
   useEffect(() => {
+    alive.current = true;
     api
       .get<MailSettings>("/mail")
-      .then(setForm)
-      .catch((caught: unknown) => setError(errorText(caught, "Could not load the mailbox.")));
+      .then((row) => {
+        if (alive.current) setForm(row);
+      })
+      .catch((caught: unknown) => {
+        if (alive.current) setError(errorText(caught, "Could not load the mailbox."));
+      });
+    return () => {
+      alive.current = false;
+    };
   }, []);
 
   const patch = (partial: Partial<MailSettings>) => setForm((current) => ({ ...current, ...partial }));
@@ -124,6 +136,7 @@ export function MailPage() {
   };
 
   const save = () => {
+    if (savingRef.current) return;
     const local = saveErrors();
     setFields(local);
     setSaved(false);
@@ -131,7 +144,8 @@ export function MailPage() {
       setError(null);
       return;
     }
-    setBusy(true);
+    savingRef.current = true;
+    setIsSaving(true);
     api
       .patch<MailSettings>("/mail", {
         enabled: form.enabled,
@@ -145,6 +159,7 @@ export function MailPage() {
         reason: reason.trim(),
       })
       .then((row) => {
+        if (!alive.current) return;
         setForm(row);
         setPassword("");
         setReason("");
@@ -153,6 +168,7 @@ export function MailPage() {
         setSaved(true);
       })
       .catch((caught: unknown) => {
+        if (!alive.current) return;
         const mapped = caught instanceof ConsoleError ? apiFieldErrors(caught) : {};
         if (Object.keys(mapped).length > 0) {
           setFields(mapped);
@@ -161,25 +177,37 @@ export function MailPage() {
           setError(errorText(caught, "Could not save the mailbox."));
         }
       })
-      .finally(() => setBusy(false));
+      .finally(() => {
+        savingRef.current = false;
+        if (alive.current) setIsSaving(false);
+      });
   };
 
   const sendTest = () => {
+    if (sendingRef.current) return;
     setTested(false);
     if (testTo.trim() === "" || !isEmail(testTo)) {
       setFields((current) => ({ ...current, to: "Enter an email address to send the test to." }));
       setError(null);
       return;
     }
-    setBusy(true);
+    sendingRef.current = true;
+    setIsSendingTest(true);
     api
       .post<{ sent: boolean }>("/mail/test", { to: testTo.trim() })
-      .then(() => {
+      .then((result) => {
+        if (!alive.current) return;
+        if (!result.sent) {
+          setTested(false);
+          setError("The test email was not sent.");
+          return;
+        }
         setError(null);
         clearField("to");
         setTested(true);
       })
       .catch((caught: unknown) => {
+        if (!alive.current) return;
         const mapped = caught instanceof ConsoleError ? apiFieldErrors(caught) : {};
         if (mapped.to) {
           setFields((current) => ({ ...current, to: mapped.to }));
@@ -188,7 +216,10 @@ export function MailPage() {
           setError(errorText(caught, "The test email was not sent."));
         }
       })
-      .finally(() => setBusy(false));
+      .finally(() => {
+        sendingRef.current = false;
+        if (alive.current) setIsSendingTest(false);
+      });
   };
 
   return (
@@ -309,10 +340,19 @@ export function MailPage() {
               }}
             />
             <div className="flex items-center gap-3">
-              <PrimaryButton disabled={busy || reason.trim().length < 3} onClick={save}>
+              <PrimaryButton
+                loading={isSaving}
+                loadingText="Saving..."
+                disabled={reason.trim().length < 3 || isSaving}
+                onClick={save}
+              >
                 Save
               </PrimaryButton>
-              {saved ? <p className="text-sm text-charcoal/60">Saved.</p> : null}
+              {saved ? (
+                <p role="status" className="text-sm text-charcoal/60">
+                  Saved.
+                </p>
+              ) : null}
             </div>
             <div className="border-t border-line pt-4">
               <Field
@@ -326,10 +366,19 @@ export function MailPage() {
                 }}
               />
               <div className="mt-3 flex items-center gap-3">
-                <PrimaryButton disabled={busy || testTo.trim() === ""} onClick={sendTest}>
+                <PrimaryButton
+                  loading={isSendingTest}
+                  loadingText="Sending test..."
+                  disabled={testTo.trim() === "" || isSendingTest}
+                  onClick={sendTest}
+                >
                   Send test
                 </PrimaryButton>
-                {tested ? <p className="text-sm text-charcoal/60">Test sent.</p> : null}
+                {tested ? (
+                  <p role="status" className="text-sm text-charcoal/60">
+                    Test sent.
+                  </p>
+                ) : null}
               </div>
             </div>
           </>

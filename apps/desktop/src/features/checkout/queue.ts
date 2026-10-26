@@ -79,6 +79,15 @@ export function saleItems(lines: CartLine[], policy: TaxPolicy = businessTax()):
       promotion_id: discount > 0 ? (line.promotion?.id ?? null) : null,
       ...manualDiscountFields(line),
       ...(line.giftCardCode ? { gift_card_code: line.giftCardCode } : {}),
+      ...(line.ageCheck
+        ? {
+            age_check: {
+              confirmed: true,
+              override_by_id: line.ageCheck.overrideById ?? null,
+              reason: line.ageCheck.reason ?? null,
+            },
+          }
+        : {}),
       ...(line.modifiers?.length ? { modifiers: line.modifiers } : {}),
       ...(line.components?.length ? { components: line.components } : {}),
     };

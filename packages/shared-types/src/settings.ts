@@ -1,6 +1,6 @@
 import type { PosPolicy } from "./posPolicy.js";
 
-export const SUPPORTED_CURRENCIES = ["USD", "EUR", "GBP", "AED", "SAR", "QAR", "PKR", "INR"] as const;
+export const SUPPORTED_CURRENCIES = ["USD", "EUR", "GBP", "AED", "SAR", "QAR", "PKR", "INR", "CNY"] as const;
 export type CurrencyCode = (typeof SUPPORTED_CURRENCIES)[number];
 
 export const CURRENCY_NAMES: Record<CurrencyCode, string> = {
@@ -12,6 +12,7 @@ export const CURRENCY_NAMES: Record<CurrencyCode, string> = {
   QAR: "Qatari riyal",
   PKR: "Pakistani rupee",
   INR: "Indian rupee",
+  CNY: "Chinese yuan",
 };
 
 /** Receipt branding (PUT /api/v1/settings/receipt). Names, TRN, address and phone come from elsewhere. */
@@ -87,12 +88,26 @@ export interface ServiceChargeSettings {
   tip_presets_bps: number[];
 }
 
+export interface BagSettings {
+  /** Off until an administrator turns it on. The till never adds a bag by itself. */
+  enabled: boolean;
+  fee_cents: number;
+  tax_category: "STANDARD" | "ZERO" | "EXEMPT";
+}
+
+export interface DepartmentKey {
+  category_id: string;
+  label: string;
+}
+
 export interface ModuleSettings {
   fefo: { alert_days: number };
   weighed_items: { embedded_barcodes: EmbeddedBarcodeSettings };
   tips_service_charge: ServiceChargeSettings;
   kds: { warn_minutes: number; late_minutes: number };
   repairs: RepairSettings;
+  bags: BagSettings;
+  department_keys: { keys: DepartmentKey[] };
 }
 
 export interface RepairSettings {
@@ -125,6 +140,8 @@ export const DEFAULT_MODULE_SETTINGS: ModuleSettings = {
     terms:
       "We are not responsible for data loss; back up your device before repair. Devices not collected within 90 days of the ready message may be disposed of. Repairs carry the warranty shown on the invoice.",
   },
+  bags: { enabled: false, fee_cents: 0, tax_category: "STANDARD" },
+  department_keys: { keys: [] },
 };
 
 export interface ExpiringStockRow {

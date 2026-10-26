@@ -163,6 +163,14 @@ class CustomerHistoryLine(ApiModel):
     size: str | None = None
     color: str | None = None
     quantity: int
+    invoice: str | None = None
+    sku: str | None = None
+    unit: str | None = None
+    unit_price_cents: int | None = None
+    discount_cents: int | None = None
+    line_total_cents: int | None = None
+    quantity_refunded: int = 0
+    sale_status: str | None = None
 
 
 class RiskFactorOut(ApiModel):

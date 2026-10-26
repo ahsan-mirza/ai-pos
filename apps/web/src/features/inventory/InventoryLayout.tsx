@@ -18,6 +18,7 @@ const tabs: { to: string; label: string; capability?: Capability; profiles?: rea
   { to: "/inventory/units", label: "Units" },
   { to: "/inventory/batches", label: "Batches", profiles: RETAIL_PROFILES },
   { to: "/inventory/expiring", label: "Expiring", capability: Capability.Fefo },
+  { to: "/inventory/waste", label: "Waste", capability: Capability.Fefo },
   { to: "/inventory/modifiers", label: "Modifiers", capability: Capability.MenuModifiers, profiles: FNB_PROFILES },
   { to: "/inventory/meals", label: "Meals", capability: Capability.MenuModifiers, profiles: FNB_PROFILES },
   { to: "/inventory/floor-plan", label: "Floor plan", capability: Capability.Tables, profiles: FNB_PROFILES },

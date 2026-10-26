@@ -117,8 +117,8 @@ export interface SignupBusinessCard {
 export const SIGNUP_BUSINESS_CARDS: readonly SignupBusinessCard[] = [
   {
     profile: "electronics_wholesale",
-    label: "Electronics & Wholesale",
-    description: "Phones, laptops and accessories with IMEI tracking.",
+    label: "Electronics",
+    description: "Electronics products, IMEI and serial tracking, warranties and accessories.",
     subTypes: [
       {
         id: "electronics_retail",
@@ -138,6 +138,19 @@ export const SIGNUP_BUSINESS_CARDS: readonly SignupBusinessCard[] = [
     ],
   },
   {
+    profile: "wholesale_retail",
+    label: "Wholesale & Retail",
+    description: "Manage bulk orders, individual sales, customer pricing, inventory, and recurring customer deliveries.",
+    subTypes: [
+      {
+        id: "wholesale_distributor",
+        label: "Wholesale & distribution",
+        description: "Account customers, bulk pricing, and recurring deliveries.",
+      },
+      { id: "retail_shop", label: "Retail shop", description: "Counter sales with customer-specific repeat orders." },
+    ],
+  },
+  {
     profile: "retail_fashion",
     label: "Retail & Fashion",
     description: "Clothing and footwear with size and colour grids.",
@@ -150,7 +163,23 @@ export const SIGNUP_BUSINESS_CARDS: readonly SignupBusinessCard[] = [
     profile: "grocery",
     label: "Supermarket",
     description: "Weighed items, expiry dates and fast scanning.",
-    subTypes: [],
+    subTypes: [
+      {
+        id: "grocery_shop",
+        label: "Neighborhood grocery",
+        description: "One shop. Scan, weigh produce, and sell the batch that expires first.",
+      },
+      {
+        id: "grocery_supermarket",
+        label: "Supermarket",
+        description: "Several lanes and a large catalogue. Adds gift cards and foreign cash.",
+      },
+      {
+        id: "grocery_cash_carry",
+        label: "Cash & carry",
+        description: "Trade customers with tier prices, credit, cheques and deliveries.",
+      },
+    ],
   },
   {
     profile: "restaurant",

@@ -33,8 +33,8 @@
       { "sku": "SAMPLE-BREAD-ARABIC", "name": "Sample Arabic Bread (6)", "category": "Bakery", "price_cents": 300, "is_serialized": false, "stock": 40 },
       { "sku": "SAMPLE-RICE-5KG", "name": "Sample Basmati Rice 5kg", "category": "Pantry", "price_cents": 4200, "is_serialized": false, "stock": 25 },
       { "sku": "SAMPLE-OIL-1_5L", "name": "Sample Sunflower Oil 1.5L", "category": "Pantry", "price_cents": 1650, "is_serialized": false, "stock": 30 },
-      { "sku": "SAMPLE-BANANA-1KG", "name": "Sample Bananas 1kg", "category": "Fruit & Veg", "price_cents": 690, "is_serialized": false, "stock": 50 },
-      { "sku": "SAMPLE-TOMATO-1KG", "name": "Sample Tomatoes 1kg", "category": "Fruit & Veg", "price_cents": 590, "is_serialized": false, "stock": 50 },
+      { "sku": "SAMPLE-BANANA-1KG", "name": "Sample Bananas 1kg", "category": "Produce", "price_cents": 690, "is_serialized": false, "stock": 20000, "sold_by_weight": true, "plu_code": "900001", "tare_grams": 0 },
+      { "sku": "SAMPLE-TOMATO-1KG", "name": "Sample Tomatoes 1kg", "category": "Produce", "price_cents": 590, "is_serialized": false, "stock": 15000, "sold_by_weight": true, "plu_code": "900002", "tare_grams": 20 },
       { "sku": "SAMPLE-WATER-6X1_5", "name": "Sample Water 6 x 1.5L", "category": "Beverages", "price_cents": 1100, "is_serialized": false, "stock": 60 },
       { "sku": "SAMPLE-DETERGENT-3KG", "name": "Sample Laundry Detergent 3kg", "category": "Household", "price_cents": 3500, "is_serialized": false, "stock": 15 }
     ],

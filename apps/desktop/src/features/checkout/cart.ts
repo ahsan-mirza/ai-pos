@@ -47,6 +47,8 @@ export interface CartLine {
   tier: PriceTier;
   moqShortfall: number;
   override: PriceOverride | null;
+  /** Set once a restricted product has been age-checked for this line. */
+  ageCheck?: { confirmed: true; overrideById?: string; reason?: string } | null;
   /** Open-price lines: what was sold, typed by the cashier. */
   description?: string | null;
   /** Manager approval for a price below the margin floor. */
@@ -158,6 +160,11 @@ export type CartAction =
   | { type: "restore"; state: CartState }
   /** Re-resolve prices, e.g. once the attached customer's contract prices have been fetched. */
   | { type: "refresh_prices" }
+  | {
+      type: "confirm_age";
+      lineIds: string[];
+      check: { confirmed: true; overrideById?: string; reason?: string };
+    }
   | { type: "clear" };
 
 export interface CartResult {
@@ -436,6 +443,13 @@ export function applyCart(state: CartState, action: CartAction): CartResult {
       return ok({ ...action.state });
     case "refresh_prices":
       return ok(state);
+    case "confirm_age": {
+      const ids = new Set(action.lineIds);
+      return ok({
+        ...state,
+        lines: state.lines.map((line) => (ids.has(line.lineId) ? { ...line, ageCheck: action.check } : line)),
+      });
+    }
     case "clear":
       return ok({ ...emptyCart });
   }

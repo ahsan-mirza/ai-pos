@@ -373,6 +373,93 @@ def ensure_starter_pantry(db: Session) -> None:
     db.commit()
 
 
+PRACTICE_EXPIRY_NOTE = "Practice expiry batch"
+_DEPARTMENT_KEYS = ("Produce", "Dairy", "Bakery", "Pantry")
+
+
+def _finish_grocery(db: Session, store: Store) -> None:
+    """Marks weighed practice produce, pins department keys, and gives milk one expiry batch.
+
+    Opening stock is already on the ledger. The batch only records which of those units expire, so a
+    second call does not move stock again.
+    """
+    from datetime import timedelta
+
+    from app.models.batch import BatchItem, PurchaseBatch
+    from app.models.category import Category
+    from app.models.inventory import InventoryLevel
+    from app.models.user import User
+    from app.schemas.module_settings import resolve_module_settings
+    from app.services.batch_ledger import today
+    from app.services.settings_service import load_settings
+
+    catalog = json.loads(samples_path().read_text(encoding="utf-8")).get("grocery") or {}
+    for item in catalog.get("products", []):
+        if not item.get("sold_by_weight"):
+            continue
+        product = db.scalar(select(Product).where(Product.sku == item["sku"]))
+        if product is None:
+            continue
+        product.sold_by_weight = True
+        product.plu_code = item.get("plu_code")
+        product.tare_grams = int(item.get("tare_grams") or 0)
+
+    settings_row = load_settings(db, lock=True)
+    current = resolve_module_settings(settings_row.module_settings)
+    if not current.department_keys.keys:
+        keys = []
+        for name in _DEPARTMENT_KEYS:
+            category = db.scalar(select(Category).where(Category.name == name))
+            if category is not None:
+                keys.append({"category_id": str(category.id), "label": category.name})
+        if keys:
+            stored = current.model_dump(mode="json")
+            stored["department_keys"] = {"keys": keys}
+            settings_row.module_settings = stored
+
+    milk = db.scalar(select(Product).where(Product.sku == "SAMPLE-MILK-1L"))
+    if milk is None:
+        return
+    existing = db.scalar(select(PurchaseBatch.id).where(PurchaseBatch.notes == PRACTICE_EXPIRY_NOTE).limit(1))
+    if existing is not None:
+        return
+    owner_id = db.scalar(select(User.id).limit(1))
+    level = db.scalar(
+        select(InventoryLevel).where(InventoryLevel.product_id == milk.id, InventoryLevel.store_id == store.id)
+    )
+    quantity = level.quantity_on_hand if level is not None else 0
+    if owner_id is None or quantity <= 0:
+        return
+    cost = milk.price_cents // 2
+    batch = PurchaseBatch(
+        batch_number="PRACTICE-MILK",
+        store_id=store.id,
+        import_source="MANUAL",
+        total_cost_amount=cost * quantity,
+        total_items_count=quantity,
+        currency=milk.currency,
+        status="ACTIVE",
+        notes=PRACTICE_EXPIRY_NOTE,
+        created_by_id=owner_id,
+    )
+    db.add(batch)
+    db.flush()
+    db.add(
+        BatchItem(
+            batch_id=batch.id,
+            position=0,
+            product_id=milk.id,
+            store_id=store.id,
+            quantity_imported=quantity,
+            quantity_remaining=quantity,
+            purchase_cost_per_unit=cost,
+            selling_price_per_unit=milk.price_cents,
+            expiry_date=today() + timedelta(days=7),
+            imported_serials=[],
+        )
+    )
+
+
 def load(db: Session, settings: Settings, *, profile: str, sub_type: str | None = None) -> int:
     """Loads the profile's sample items into the first store; returns how many products were added."""
     from app.core.capabilities import FOOD_AND_BEVERAGE
@@ -384,6 +471,9 @@ def load(db: Session, settings: Settings, *, profile: str, sub_type: str | None 
     if catalog is None or store is None:
         return 0
     if db.scalar(select(Product.id).where(Product.is_sample.is_(True)).limit(1)) is not None:
+        if profile == "grocery":
+            _finish_grocery(db, store)
+            db.commit()
         return 0
     currency = business_currency(db)
     events: list[SyncEventIn] = []
@@ -429,5 +519,7 @@ def load(db: Session, settings: Settings, *, profile: str, sub_type: str | None 
     for spec in catalog.get("customers", []):
         customer = customer_service.new_customer(db, CustomerWrite(**spec))
         customer.is_sample = True
+    if profile == "grocery":
+        _finish_grocery(db, store)
     db.commit()
     return len(product_ids)

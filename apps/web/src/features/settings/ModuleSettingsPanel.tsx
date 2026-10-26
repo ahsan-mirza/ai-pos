@@ -3,7 +3,7 @@ import { SlidersHorizontal } from "lucide-react";
 import { useEffect, useState } from "react";
 import { ErrorNote, PrimaryButton, SelectField, TextField } from "../../components/ui/Field";
 import { Toggle } from "../../components/ui/Toggle";
-import { apiPut } from "../../lib/api";
+import { apiGet, apiPut } from "../../lib/api";
 import { useCapabilities } from "../../lib/capabilities";
 import { useCurrency } from "../../lib/currency";
 import { errorMessage } from "../users/api";
@@ -23,6 +23,15 @@ export function ModuleSettingsPanel() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
+  const [categories, setCategories] = useState<{ id: string; name: string }[]>([]);
+  const groceryTill = has(Capability.Fefo) || has(Capability.WeighedItems);
+
+  useEffect(() => {
+    if (!groceryTill) return;
+    void apiGet<{ id: string; name: string }[]>("/api/v1/categories")
+      .then(setCategories)
+      .catch(() => setCategories([]));
+  }, [groceryTill]);
 
   useEffect(() => setDraft(merged(settings?.module_settings)), [settings?.module_settings]);
 
@@ -116,6 +125,69 @@ export function ModuleSettingsPanel() {
                   setDraft({ ...draft, weighed_items: { embedded_barcodes: { ...barcodes, plu_length: Number(value) } } })
                 }
               />
+            </div>
+          </fieldset>
+        ) : null}
+
+        {groceryTill ? (
+          <fieldset className="space-y-3 rounded-2xl border border-line p-4">
+            <legend className="px-1 text-sm font-semibold">Bag fee</legend>
+            <Toggle
+              label="Cashiers can add a bag"
+              description="Off by default. A bag is never added unless someone taps Add bag."
+              checked={draft.bags.enabled}
+              onChange={(enabled) => setDraft({ ...draft, bags: { ...draft.bags, enabled } })}
+            />
+            <TextField
+              label="Fee"
+              type="number"
+              min={0}
+              value={String(draft.bags.fee_cents / 100)}
+              hint="Per bag, in the store currency."
+              onChange={(event) =>
+                setDraft({
+                  ...draft,
+                  bags: { ...draft.bags, fee_cents: Math.round((Number(event.target.value) || 0) * 100) },
+                })
+              }
+            />
+            <SelectField<"STANDARD" | "ZERO" | "EXEMPT">
+              label="Tax"
+              value={draft.bags.tax_category}
+              options={[
+                { value: "STANDARD", label: "Standard" },
+                { value: "ZERO", label: "Zero rated" },
+                { value: "EXEMPT", label: "Exempt" },
+              ]}
+              onChange={(tax_category) => setDraft({ ...draft, bags: { ...draft.bags, tax_category } })}
+            />
+          </fieldset>
+        ) : null}
+
+        {groceryTill ? (
+          <fieldset className="space-y-3 rounded-2xl border border-line p-4">
+            <legend className="px-1 text-sm font-semibold">Department keys</legend>
+            <p className="text-sm text-charcoal/60">Shortcuts on the register. They filter the catalogue; they do not create products.</p>
+            <div className="flex flex-wrap gap-2">
+              {categories.map((category) => {
+                const on = draft.department_keys.keys.some((key) => key.category_id === category.id);
+                return (
+                  <button
+                    key={category.id}
+                    type="button"
+                    aria-pressed={on}
+                    className={`h-11 rounded-2xl px-3 text-sm font-semibold ${on ? "bg-accent text-white" : "border border-line"}`}
+                    onClick={() => {
+                      const keys = on
+                        ? draft.department_keys.keys.filter((key) => key.category_id !== category.id)
+                        : [...draft.department_keys.keys, { category_id: category.id, label: category.name }].slice(0, 16);
+                      setDraft({ ...draft, department_keys: { keys } });
+                    }}
+                  >
+                    {category.name}
+                  </button>
+                );
+              })}
             </div>
           </fieldset>
         ) : null}

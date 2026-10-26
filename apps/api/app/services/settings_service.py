@@ -452,6 +452,20 @@ def _check_locked_change(row: BusinessSettings, profile: str, selection: list[st
         )
 
 
+def _guard_reorder_module(db: Session, resolved: capability_catalog.Resolved) -> None:
+    """A store cannot drop reorder plans, or leave the business type that uses them, while plans still exist."""
+    if capability_catalog.Capability.CUSTOMER_REORDERS in resolved.enabled:
+        return
+    from app.services.reorder_service import has_open_plans
+
+    if has_open_plans(db):
+        raise ApiError(
+            409,
+            "module_in_use",
+            "Customer reorder plans still exist. Archive them before turning this module off.",
+        )
+
+
 def change_profile(db: Session, actor: User, data: ProfileUpdate) -> BusinessSettingsOut:
     """Switches the business type and/or its modules. Roadmap modules are kept as planned, never enabled, and a
     disabled module only hides features: its data stays."""
@@ -486,6 +500,7 @@ def change_profile(db: Session, actor: User, data: ProfileUpdate) -> BusinessSet
         row.onboarded_at = datetime.now(UTC)
     row.updated_by_id = actor.id
     after = capability_catalog.resolve(row.business_profile, row.capabilities, managed)
+    _guard_reorder_module(db, after)
     audit.record(
         db,
         action_type="UPDATE",
@@ -538,10 +553,21 @@ def change_tax(db: Session, actor: User, data: TaxSettingsUpdate) -> BusinessSet
 
 
 def change_module_settings(db: Session, actor: User, data: ModuleSettings) -> BusinessSettingsOut:
+    from app.models.category import Category
+    from app.services.grocery_service import ensure_bag_product
+
     row = load_settings(db, lock=True)
-    before = resolve_module_settings(row.module_settings).model_dump()
-    after = data.model_dump()
+    ids = {key.category_id for key in data.department_keys.keys}
+    if ids:
+        found = set(db.scalars(select(Category.id).where(Category.id.in_(ids))).all())
+        if found != ids:
+            raise ApiError(422, "unknown_category", "A department key names a category that does not exist.")
+    if data.bags.enabled and data.bags.fee_cents > 0:
+        ensure_bag_product(db, data.bags)
+    before = resolve_module_settings(row.module_settings).model_dump(mode="json")
+    after = data.model_dump(mode="json")
     if before == after:
+        db.commit()
         return settings_out(row)
     row.module_settings = after
     row.updated_by_id = actor.id

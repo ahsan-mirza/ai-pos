@@ -32,6 +32,7 @@ from app.services import (
     payables_service,
     replenishment_service,
     restaurant_insights_service,
+    sales_velocity,
     weighed,
 )
 from app.services.settings_service import business_currency
@@ -240,34 +241,30 @@ def top_products(ctx: ToolContext, args: dict[str, Any]) -> ToolResult:
     since, until = _bounds(period)
     limit = min(max(int(args.get("limit") or 10), 1), 25)
     by_quantity = args.get("by") == "quantity"
-    units = func.sum(SaleItem.quantity * SaleItem.unit_factor)
-    revenue = func.sum(SaleItem.line_total_cents)
-    query = (
-        select(Product.name, Product.sku, units, revenue)
-        .join(Sale, SaleItem.sale_id == Sale.id)
-        .join(Product, SaleItem.product_id == Product.id)
-        .where(
-            Sale.created_at >= since,
-            Sale.created_at < until,
-            Sale.is_quote_proforma.is_(False),
-            Sale.status.in_(POSTED),
-        )
-        .group_by(Product.id, Product.name, Product.sku)
-        .order_by((units if by_quantity else revenue).desc())
-        .limit(limit)
+    category = args.get("category")
+    if not isinstance(category, str) or not category.strip():
+        category = None
+    ranked = sales_velocity.rank_products(
+        ctx.db,
+        since=since,
+        until=until,
+        store_id=store_id,
+        category=category,
+        limit=limit,
+        by="quantity" if by_quantity else "revenue",
     )
-    if store_id is not None:
-        query = query.where(Sale.store_id == store_id)
-    data = ctx.db.execute(query).all()
-    rows = [[name, sku, int(qty or 0), ctx.money(int(total or 0))] for name, sku, qty, total in data]
+    rows = [[row.name, row.sku, row.units, ctx.money(row.revenue_cents)] for row in ranked]
+    facts: dict[str, Any] = {
+        "ranked_by": "units sold" if by_quantity else "revenue",
+        "products": [{"name": row[0], "units": row[2], "revenue": row[3]} for row in rows[:5]],
+    }
+    if category is not None:
+        facts["category"] = category
     return ToolResult(
         tool="top_products",
         title=_title("Top products", store_code),
         period=period.label(ctx.language),
-        facts={
-            "ranked_by": "units sold" if by_quantity else "revenue",
-            "products": [{"name": row[0], "units": row[2], "revenue": row[3]} for row in rows[:5]],
-        },
+        facts=facts,
         columns=["Product", "SKU", "Units", "Revenue"],
         rows=rows,
     )
@@ -438,11 +435,22 @@ def stock_value(ctx: ToolContext, args: dict[str, Any]) -> ToolResult:
 
 def slow_stock(ctx: ToolContext, args: dict[str, Any]) -> ToolResult:
     store_id, store_code = _store_scope(ctx, args)
-    slow_days = min(max(int(args.get("slow_days") or 60), 14), 365)
+    named_slow = "slow_days" in args
+    named_dead = "dead_days" in args
+    slow_days = min(max(int(args.get("slow_days") or sales_velocity.SLOW_DAYS), 1), 3649)
+    dead_days = min(max(int(args.get("dead_days") or sales_velocity.DEAD_DAYS), 2), 3650)
+    if dead_days <= slow_days:
+        # A question that names only the dead window ("not sold in 30 days") keeps that window.
+        if named_dead and not named_slow:
+            slow_days = dead_days - 1
+        else:
+            dead_days = slow_days + 1
     report = management_reports.aged_stock(
-        ctx.db, store_id=store_id, slow_days=slow_days, dead_days=max(slow_days * 2, 120)
+        ctx.db, store_id=store_id, slow_days=slow_days, dead_days=dead_days
     )
-    ranked = sorted(report.rows, key=lambda row: -row.cost_value_cents)[:15]
+    focus = "DEAD" if named_dead and not named_slow else "SLOW" if named_slow and not named_dead else None
+    chosen = [row for row in report.rows if focus is None or row.status == focus]
+    ranked = sorted(chosen, key=lambda row: -row.holding_cost_month_cents)[:15]
     rows = [
         [
             row.name,
@@ -452,9 +460,13 @@ def slow_stock(ctx: ToolContext, args: dict[str, Any]) -> ToolResult:
             row.days_since_sale if row.days_since_sale is not None else "never",
             row.status,
             ctx.money(row.holding_cost_month_cents),
-            f"{ctx.money(row.suggested_price_cents)} (-{row.markdown_pct}%)"
-            if row.suggested_price_cents
-            else "at floor",
+            "cost review"
+            if row.review_required
+            else (
+                f"{ctx.money(row.suggested_price_cents)} (-{row.markdown_pct}%)"
+                if row.suggested_price_cents
+                else "at floor"
+            ),
         ]
         for row in ranked
     ]
@@ -465,6 +477,9 @@ def slow_stock(ctx: ToolContext, args: dict[str, Any]) -> ToolResult:
         facts={
             "slow_after_days": report.slow_days,
             "dead_after_days": report.dead_days,
+            "cover_slow_days": sales_velocity.COVER_SLOW_DAYS,
+            "velocity_window_days": sales_velocity.VELOCITY_WINDOW_DAYS,
+            "needs_cost_review": sum(1 for row in chosen if row.review_required),
             "slow_value": ctx.money(report.slow_value_cents),
             "dead_value": ctx.money(report.dead_value_cents),
             "items": len(report.rows),
@@ -518,6 +533,10 @@ def anomalies(ctx: ToolContext, args: dict[str, Any]) -> ToolResult:
 def price_suggestions(ctx: ToolContext, args: dict[str, Any]) -> ToolResult:
     store_id, store_code = _store_scope(ctx, args)
     report = insights_service.pricing(ctx.db, ctx.principal, store_id=store_id, limit=200)
+    action = args.get("action")
+    if action not in (None, "RAISE_TO_FLOOR", "RAISE_ON_DEMAND", "EXPIRY_MARKDOWN", "CLEARANCE"):
+        action = None
+    items = [item for item in report.suggestions if action is None or item.action == action]
     rows = [
         [
             item.name,
@@ -527,20 +546,22 @@ def price_suggestions(ctx: ToolContext, args: dict[str, Any]) -> ToolResult:
             f"{item.change_pct:+d}%",
             item.reason,
         ]
-        for item in report.suggestions[:15]
+        for item in items[:15]
     ]
+    first = items[0] if items else None
     return ToolResult(
         tool="price_suggestions",
-        title=_title("Price suggestions", store_code),
+        title=_title("Fast movers" if action == "RAISE_ON_DEMAND" else "Price suggestions", store_code),
         period=None,
         facts={
-            "total": len(report.suggestions),
+            "total": report.counts.get(action, 0) if action else len(report.suggestions),
+            "filtered_action": action,
             "raise_to_floor": report.counts.get("RAISE_TO_FLOOR", 0),
             "raise_on_demand": report.counts.get("RAISE_ON_DEMAND", 0),
             "expiry_markdown": report.counts.get("EXPIRY_MARKDOWN", 0),
             "clearance": report.counts.get("CLEARANCE", 0),
-            "first": report.suggestions[0].reason if report.suggestions else None,
-            "first_product": report.suggestions[0].name if report.suggestions else None,
+            "first": first.reason if first else None,
+            "first_product": first.name if first else None,
         },
         columns=["Product", "Action", "Now", "Suggested", "Change", "Why"],
         rows=rows,
@@ -852,6 +873,7 @@ TOOLS: dict[str, Tool] = {
             extra={
                 "limit": {"type": "integer", "minimum": 1, "maximum": 25},
                 "by": {"type": "string", "enum": ["revenue", "quantity"]},
+                "category": {"type": "string"},
             },
         ),
         Tool(
@@ -891,7 +913,10 @@ TOOLS: dict[str, Tool] = {
             Permission.PORTAL_REPORTS_READ,
             slow_stock,
             periodic=False,
-            extra={"slow_days": {"type": "integer", "minimum": 14, "maximum": 365}},
+            extra={
+                "slow_days": {"type": "integer", "minimum": 1, "maximum": 3650},
+                "dead_days": {"type": "integer", "minimum": 2, "maximum": 3650},
+            },
         ),
         Tool(
             "anomalies",
@@ -905,10 +930,16 @@ TOOLS: dict[str, Tool] = {
         Tool(
             "price_suggestions",
             "Prices to change: below the margin floor, demand outrunning stock, expiring batches to mark down, "
-            "and dead stock to clear.",
+            "and dead stock to clear. Fast movers are the demand suggestions, not the best-seller ranking.",
             Permission.PORTAL_REPORTS_READ,
             price_suggestions,
             periodic=False,
+            extra={
+                "action": {
+                    "type": "string",
+                    "enum": ["RAISE_TO_FLOOR", "RAISE_ON_DEMAND", "EXPIRY_MARKDOWN", "CLEARANCE"],
+                }
+            },
         ),
         Tool(
             "shrink_report",

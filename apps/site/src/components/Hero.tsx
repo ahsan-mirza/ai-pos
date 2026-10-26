@@ -7,7 +7,7 @@ import { Mark } from "./icons";
 
 const POINTS = ["Ask in English or Arabic", "Verified store data", "Real-time sync"];
 
-const BUSINESSES = ["Restaurants", "Cafés", "Retail", "Wholesale", "Fashion", "Electronics"] as const;
+const BUSINESSES = ["Restaurants", "Cafés", "Quick Service", "Grocery", "Retail", "Wholesale", "Fashion", "Electronics"] as const;
 
 const TAGLINES = [
   { lead: "Ask the store.", accent: "Sell from the same till." },
@@ -50,7 +50,7 @@ function RotatingBusiness({ reduce }: { reduce: boolean }) {
           transition={{ duration: reduce ? 0 : 0.35 }}
           className="hero-accent inline-block"
         >
-          {reduce ? "Restaurants, Cafés, Retail, Wholesale, Fashion & Electronics" : word}
+          {reduce ? "Restaurants, Cafés, Quick Service, Grocery, Retail, Wholesale, Fashion & Electronics" : word}
         </motion.span>
       </AnimatePresence>
     </span>
@@ -115,7 +115,7 @@ export function Hero({ onDemo }: { onDemo: () => void }) {
           </motion.p>
           <h1 className="text-4xl font-bold leading-tight tracking-tight text-white sm:text-5xl">
             <span className="sr-only">
-              Smart POS Software for restaurants, cafés, retail, wholesale, fashion, and electronics.
+              Smart POS Software for restaurants, cafés, quick service, grocery, retail, wholesale, fashion, and electronics.
             </span>
             <span aria-hidden="true">
               Smart POS Software for
@@ -126,8 +126,8 @@ export function Hero({ onDemo }: { onDemo: () => void }) {
             <RotatingTagline reduce={reduce} />
           </div>
           <motion.p {...reveal(0.3)} className="mb-6 max-w-xl text-base leading-relaxed text-slate-300 sm:text-lg">
-            AxizPOS is point of sale software for restaurants, cafés, retailers, wholesalers, fashion stores, and
-            electronics shops. Staff take the sale on the register. Managers ask about that store&apos;s sales, stock, and
+            AxizPOS is point of sale software for restaurants, cafés, quick service, grocery, retail, wholesale, fashion,
+            and electronics. Staff take the sale on the register. Managers ask about that store&apos;s sales, stock, and
             customers in the portal.
           </motion.p>
           <motion.ul {...reveal(0.45)} className="mb-8 flex flex-wrap gap-2.5">

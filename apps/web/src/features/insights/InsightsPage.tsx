@@ -307,7 +307,21 @@ function PricingTab({ canApply }: { canApply: boolean }) {
                         {PRICE_ACTION_LABELS[row.action]}
                       </span>
                     </td>
-                    <td className="max-w-md py-3 pr-4 text-charcoal/70">{row.reason}</td>
+                    <td className="max-w-md py-3 pr-4 text-charcoal/70">
+                      {row.reason}
+                      {row.action === "RAISE_ON_DEMAND" && row.growth != null ? (
+                        <span className="mt-1 block text-xs text-charcoal/60">
+                          {row.units_28d} sold in 28 days
+                          {row.baseline_units != null ? ` · ${row.baseline_units} in the 56 days before` : ""}
+                          {row.recent_daily != null && row.baseline_daily != null
+                            ? ` · ${row.recent_daily.toFixed(1)} vs ${row.baseline_daily.toFixed(1)} a day`
+                            : ""}
+                          {` · ${row.growth.toFixed(1)}×`}
+                          {` · ${row.on_hand.toLocaleString()} on hand`}
+                          {row.cover_days != null ? ` · ${row.cover_days}d cover` : ""}
+                        </span>
+                      ) : null}
+                    </td>
                     <td className="py-3 text-right tabular-nums">
                       {money(row.price_cents)}
                       {row.sold_by_weight ? "/kg" : ""}

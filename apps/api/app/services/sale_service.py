@@ -12,6 +12,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app import tax_authority
+from app.core.capabilities import Capability, has_capability
 from app.core.config import Settings
 from app.core.errors import SyncRejected
 from app.core.permissions import Permission
@@ -145,6 +146,7 @@ AUDIT_ACTION_TYPES = {
     "manual_card_entry": "UPDATE",
     "manual_card_unapproved": "UPDATE",
     "discount": "PRICE_OVERRIDE",
+    "age_check": "PRICE_OVERRIDE",
 }
 
 
@@ -619,6 +621,48 @@ def consume_serial(
 # --- Sales ---------------------------------------------------------------------------------------
 
 
+def _enforce_restricted_lines(db: Session, data: SalePayload, priced) -> None:
+    """Age checks and bag fees are checked again here so a till cannot skip them."""
+    from app.services.grocery_service import BAG_SKU
+    from app.services.settings_service import cached_settings
+
+    bags = cached_settings(db).module_settings.bags
+    for line in priced.lines:
+        product = line.product
+        if product.sku == BAG_SKU:
+            if not bags.enabled or bags.fee_cents <= 0:
+                raise SyncRejected("Bag fees are turned off.")
+            if line.item.unit_price_cents != bags.fee_cents:
+                raise SyncRejected("The bag fee does not match the amount configured for this store.")
+        if product.minimum_age is None:
+            continue
+        check = line.item.age_check
+        if check is None or not check.confirmed:
+            raise SyncRejected(f"{product.name} needs an age check before it can be sold.")
+        approver_id = None
+        if check.override_by_id is not None:
+            if not (check.reason or "").strip():
+                raise SyncRejected("An age-check override needs a reason.")
+            approver = _approver(
+                db,
+                check.override_by_id,
+                permission=Permission.POS_PRICE_OVERRIDE,
+                store_id=data.store_id,
+                label="age check",
+            )
+            approver_id = approver.id
+        audit(
+            db,
+            store_id=data.store_id,
+            actor_id=data.cashier_id,
+            approver_id=approver_id,
+            action="age_check",
+            entity_id=data.id,
+            details={"product_id": str(product.id), "minimum_age": product.minimum_age},
+            reason=(check.reason or "").strip() or None,
+        )
+
+
 def record_sale(
     db: Session,
     settings: Settings,
@@ -666,6 +710,7 @@ def record_sale(
         customer=customer,
         at=sold_at,
     )
+    _enforce_restricted_lines(db, data, priced)
     service_tax = _service_charge_tax(db, data)
     if (
         data.subtotal_cents != priced.subtotal_cents + data.service_charge_cents
@@ -701,6 +746,8 @@ def record_sale(
     paid = data.total_cents - on_account
     credit_approver: User | None = None
     if on_account:
+        if not has_capability(db, Capability.B2B_CREDIT):
+            raise SyncRejected("On-account sales need B2B credit turned on.")
         if customer is None or customer.customer_type != "WHOLESALE":
             raise SyncRejected("On-account sales need a wholesale customer.")
         if Permission.POS_CREDIT_SALE.value not in cashier.permissions:
@@ -837,6 +884,9 @@ def record_sale(
                 floor_cents=line.floor_cents,
                 below_floor_approved_by_id=line.floor_approver.id if line.floor_approver is not None else None,
                 discount_cents=item.discount_cents,
+                product_name=line.product.name[:160],
+                sku=line.product.sku[:64],
+                variant_attributes=dict(line.product.variant_attributes or {}),
                 promotion_id=item.promotion_id,
                 manual_discount_cents=item.manual_discount_cents,
                 discount_reason=item.discount_reason,
@@ -952,9 +1002,25 @@ def record_sale(
     tax_authority.issue_for_sale(db, settings, sale, customer)
 
     if customer is not None:
-        balance_before = customer.current_balance_cents
-        paid_method = next((tender.method for tender in tenders if tender.method != "on_account"), None)
-        ledger_service.post_sale(db, customer, sale, paid_method=paid_method, user_id=data.cashier_id)
+        if on_account:
+            balance_before = customer.current_balance_cents
+            paid_method = next((tender.method for tender in tenders if tender.method != "on_account"), None)
+            ledger_service.post_sale(db, customer, sale, paid_method=paid_method, user_id=data.cashier_id)
+            if balance_before + on_account > customer.credit_limit_cents:
+                audit(
+                    db,
+                    store_id=data.store_id,
+                    actor_id=data.cashier_id,
+                    approver_id=credit_approver.id if credit_approver is not None else None,
+                    action="credit_limit_override" if credit_approver is not None else "credit_limit_exceeded",
+                    entity_id=data.id,
+                    details={
+                        "customer_id": str(customer.id),
+                        "credit_limit_cents": customer.credit_limit_cents,
+                        "balance_after_cents": customer.current_balance_cents,
+                        "note": data.credit_override.note if data.credit_override is not None else "",
+                    },
+                )
         earned_on = (
             data.total_cents
             - on_account
@@ -981,21 +1047,6 @@ def record_sale(
             dedupe_key=f"receipt:{sale.id}",
             attachment=("invoice", str(sale.id)),
         )
-        if on_account and balance_before + on_account > customer.credit_limit_cents:
-            audit(
-                db,
-                store_id=data.store_id,
-                actor_id=data.cashier_id,
-                approver_id=credit_approver.id if credit_approver is not None else None,
-                action="credit_limit_override" if credit_approver is not None else "credit_limit_exceeded",
-                entity_id=data.id,
-                details={
-                    "customer_id": str(customer.id),
-                    "credit_limit_cents": customer.credit_limit_cents,
-                    "balance_after_cents": customer.current_balance_cents,
-                    "note": data.credit_override.note if data.credit_override is not None else "",
-                },
-            )
     for line in priced.lines:
         if line.approver is not None and line.item.price_override is not None:
             audit(

@@ -2,24 +2,83 @@ import { inputLeadingIcon } from "@ai-pos/ui";
 import { Eye, EyeOff, X } from "lucide-react";
 import { useEffect, useId, useState, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type TextareaHTMLAttributes } from "react";
 
-export function PrimaryButton({ className = "", ...props }: ButtonHTMLAttributes<HTMLButtonElement>) {
+type SpinnerPosition = "leading" | "trailing";
+
+interface BusyButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
+  loading?: boolean;
+  loadingText?: string;
+  spinnerPosition?: SpinnerPosition;
+}
+
+const primaryTone =
+  "inline-flex items-center justify-center gap-2 rounded-full bg-accent px-8 py-2.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-accent-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 disabled:hover:bg-accent";
+const ghostTone =
+  "inline-flex items-center justify-center gap-2 rounded-full border border-gray-200 bg-white px-6 py-2.5 text-sm font-medium text-black transition-colors hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2";
+
+function ButtonSpinner({ active }: { active: boolean }) {
+  if (!active) return <span className="inline-block h-4 w-4 shrink-0" aria-hidden="true" />;
   return (
-    <button
-      type="button"
-      {...props}
-      className={`inline-flex items-center justify-center gap-2 rounded-full bg-accent px-8 py-2.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-accent-hover disabled:opacity-40 disabled:hover:bg-accent ${className}`}
+    <span
+      className="inline-block h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-current border-r-transparent motion-reduce:animate-none"
+      aria-hidden="true"
     />
   );
 }
 
-export function GhostButton({ className = "", ...props }: ButtonHTMLAttributes<HTMLButtonElement>) {
+function BusyButton({
+  loading = false,
+  loadingText,
+  spinnerPosition = "leading",
+  className = "",
+  disabled,
+  children,
+  onClick,
+  tone,
+  ...props
+}: BusyButtonProps & { tone: string }) {
+  const reserve = loading || loadingText !== undefined;
   return (
     <button
       type="button"
       {...props}
-      className={`inline-flex items-center justify-center gap-2 rounded-full border border-gray-200 bg-white px-6 py-2.5 text-sm font-medium text-black transition-colors hover:bg-gray-50 disabled:opacity-40 ${className}`}
-    />
+      aria-busy={loading || undefined}
+      disabled={Boolean(disabled) || loading}
+      onClick={(event) => {
+        if (loading || disabled) {
+          event.preventDefault();
+          return;
+        }
+        onClick?.(event);
+      }}
+      className={`${tone} ${loading ? "!opacity-100" : "disabled:opacity-40"} ${className}`}
+    >
+      {reserve ? (
+        <span className="inline-grid items-center justify-items-center whitespace-nowrap">
+          <span className={`col-start-1 row-start-1 ${loading ? "invisible" : ""}`} aria-hidden={loading || undefined}>
+            {children}
+          </span>
+          <span
+            className={`col-start-1 row-start-1 inline-flex items-center gap-2 ${loading ? "" : "invisible"}`}
+            aria-hidden={loading ? undefined : true}
+          >
+            {spinnerPosition === "leading" ? <ButtonSpinner active={loading} /> : null}
+            {loadingText ?? children}
+            {spinnerPosition === "trailing" ? <ButtonSpinner active={loading} /> : null}
+          </span>
+        </span>
+      ) : (
+        children
+      )}
+    </button>
   );
+}
+
+export function PrimaryButton({ className = "", ...props }: BusyButtonProps) {
+  return <BusyButton tone={primaryTone} className={className} {...props} />;
+}
+
+export function GhostButton({ className = "", ...props }: BusyButtonProps) {
+  return <BusyButton tone={ghostTone} className={className} {...props} />;
 }
 
 export function Field({

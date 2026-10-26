@@ -2,7 +2,7 @@ import seed from "@ai-pos/catalog/seed.json";
 import { Permission, formatMoney, noMatchesMessage, type Product } from "@ai-pos/shared-types";
 import { Package, Pencil, Plus, Printer, Search, Upload } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { DataTable, type DataTableColumn } from "../../components/ui/DataTable";
 import { PrimaryButton, SearchField } from "../../components/ui/Field";
 import { apiGet } from "../../lib/api";
@@ -48,6 +48,9 @@ export function InventoryPage() {
   const [editing, setEditing] = useState<Product | "new" | null>(null);
   const [importing, setImporting] = useState(false);
   const navigate = useNavigate();
+  const [params] = useSearchParams();
+  const requestedProduct = params.get("product");
+  const openedProduct = useRef<string | null>(null);
   const [closing, setClosing] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
   const closeTimer = useRef<number | undefined>(undefined);
@@ -85,6 +88,23 @@ export function InventoryPage() {
   useEffect(() => {
     reload();
   }, [reload]);
+
+  useEffect(() => {
+    if (!requestedProduct || requestedProduct === openedProduct.current || live === null) return;
+    const found = live.find((product) => product.id === requestedProduct);
+    if (found) {
+      openedProduct.current = requestedProduct;
+      selectProduct(found.id);
+      return;
+    }
+    openedProduct.current = requestedProduct;
+    apiGet<Product>(`/api/v1/products/${requestedProduct}`)
+      .then((product) => {
+        setLive((current) => (current?.some((row) => row.id === product.id) ? current : [product, ...(current ?? [])]));
+        selectProduct(product.id);
+      })
+      .catch(() => undefined);
+  }, [requestedProduct, live, selectProduct]);
 
   const submit = async (value: string) => {
     const trimmed = value.trim();

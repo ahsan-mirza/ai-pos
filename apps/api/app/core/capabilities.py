@@ -47,6 +47,7 @@ class Capability(StrEnum):
     TAX_FREE = "tax_free"
     ALTERATIONS = "alterations"
     ONLINE_STORE = "online_store"
+    CUSTOMER_REORDERS = "customer_reorders"
 
 
 C = Capability
@@ -90,6 +91,7 @@ SPECS: dict[Capability, CapabilitySpec] = {
     C.TAX_FREE: CapabilitySpec("Tax-free for tourists", True),
     C.ALTERATIONS: CapabilitySpec("Alterations & tailoring", True),
     C.ONLINE_STORE: CapabilitySpec("Online store", True),
+    C.CUSTOMER_REORDERS: CapabilitySpec("Customer reorder plans", True),
 }
 ORDER: tuple[Capability, ...] = tuple(SPECS)
 BUILT_TODAY: tuple[Capability, ...] = tuple(capability for capability in ORDER if SPECS[capability].available)
@@ -114,8 +116,20 @@ ELECTRONICS_WHOLESALE: tuple[Capability, ...] = (
     C.CARD_TERMINALS,
     C.BNPL,
 )
+WHOLESALE_RETAIL: tuple[Capability, ...] = (
+    C.WHOLESALE_PRICING,
+    C.SALES_ORDERS,
+    C.B2B_CREDIT,
+    C.QUOTES_LAYAWAY,
+    C.PROMOTIONS,
+    C.LOYALTY,
+    C.MULTI_CURRENCY,
+    C.CARD_TERMINALS,
+    C.CUSTOMER_REORDERS,
+)
 PROFILES: dict[str, tuple[Capability, ...]] = {
     "electronics_wholesale": ELECTRONICS_WHOLESALE,
+    "wholesale_retail": WHOLESALE_RETAIL,
     "retail_fashion": (
         C.QUOTES_LAYAWAY,
         C.LOYALTY,
@@ -152,7 +166,8 @@ PROFILES: dict[str, tuple[Capability, ...]] = {
 }
 FOOD_AND_BEVERAGE = frozenset({"restaurant", "cafe", "quick_service"})
 PROFILE_LABELS: dict[str, str] = {
-    "electronics_wholesale": "Electronics & Wholesale",
+    "electronics_wholesale": "Electronics",
+    "wholesale_retail": "Wholesale & Retail",
     "retail_fashion": "Fashion & Retail",
     "grocery": "Grocery & Supermarket",
     "restaurant": "Restaurant",
@@ -196,6 +211,7 @@ COMPATIBLE: dict[str, frozenset[Capability]] = {
     "electronics_wholesale": frozenset(
         (*_RETAIL_CORE, C.SERIAL_TRACKING, C.VARIANTS_MATRIX, C.CONSIGNMENT, C.REPAIRS, C.WARRANTY, C.TRADE_IN)
     ),
+    "wholesale_retail": frozenset((*_RETAIL_CORE, C.CUSTOMER_REORDERS)),
     "retail_fashion": frozenset((*_RETAIL_CORE, C.VARIANTS_MATRIX, C.CONSIGNMENT, C.SERIAL_TRACKING, C.ALTERATIONS)),
     "grocery": frozenset((*_RETAIL_CORE, C.WEIGHED_ITEMS, C.FEFO, C.CONSIGNMENT, C.VARIANTS_MATRIX)),
     "restaurant": frozenset(_FOOD_CORE),
@@ -210,8 +226,15 @@ def compatible(profile: str) -> tuple[Capability, ...]:
     return tuple(capability for capability in ORDER if capability in allowed)
 
 
-# Self-service signup: the business types that can go live today, each refined by a sub-type into a module
-# selection. Profiles not listed here (grocery) join the waitlist instead.
+# Self-service signup: each business type that can go live, refined by a sub-type into a module selection.
+# A profile in PROFILES but missing here still joins the waitlist.
+_GROCERY_COUNTER: tuple[Capability, ...] = (
+    C.LOYALTY,
+    C.PROMOTIONS,
+    C.WEIGHED_ITEMS,
+    C.FEFO,
+    C.CARD_TERMINALS,
+)
 SUB_TYPES: dict[str, dict[str, tuple[Capability, ...]]] = {
     "electronics_wholesale": {
         "electronics_retail": (
@@ -229,6 +252,17 @@ SUB_TYPES: dict[str, dict[str, tuple[Capability, ...]]] = {
         # Retail modules are already inside the wholesale preset, so both is that full set.
         "electronics_both": ELECTRONICS_WHOLESALE,
     },
+    "wholesale_retail": {
+        "wholesale_distributor": WHOLESALE_RETAIL,
+        "retail_shop": (
+            C.PROMOTIONS,
+            C.LOYALTY,
+            C.QUOTES_LAYAWAY,
+            C.CARD_TERMINALS,
+            C.CUSTOMER_REORDERS,
+            C.MULTI_CURRENCY,
+        ),
+    },
     "retail_fashion": {
         "fashion_boutique": (
             C.QUOTES_LAYAWAY,
@@ -240,6 +274,22 @@ SUB_TYPES: dict[str, dict[str, tuple[Capability, ...]]] = {
             C.ALTERATIONS,
         ),
         "fashion_chain": PROFILES["retail_fashion"],
+    },
+    "grocery": {
+        "grocery_shop": _GROCERY_COUNTER,
+        "grocery_supermarket": (*_GROCERY_COUNTER, C.GIFT_CARDS, C.MULTI_CURRENCY),
+        "grocery_cash_carry": (
+            C.LOYALTY,
+            C.PROMOTIONS,
+            C.WEIGHED_ITEMS,
+            C.FEFO,
+            C.WHOLESALE_PRICING,
+            C.QUOTES_LAYAWAY,
+            C.B2B_CREDIT,
+            C.CHEQUES,
+            C.SALES_ORDERS,
+            C.CARD_TERMINALS,
+        ),
     },
     # Food & beverage: the starter kit seats guests (floor plan) only where TABLES is on.
     "restaurant": {

@@ -13,6 +13,7 @@ from app.core.pagination import count_rows
 from app.models.customer import Customer, CustomerLedgerEntry
 from app.models.price_list import CustomerGroup
 from app.models.product import Product
+from app.models.return_item import ReturnItem
 from app.models.sale import Sale
 from app.models.sale_item import SaleItem
 from app.models.store import Store
@@ -137,31 +138,55 @@ def customer_detail(db: Session, customer_id: uuid.UUID) -> CustomerOut:
     return _with_overdue(db, [get_customer(db, customer_id)])[0]
 
 
-def purchase_history(db: Session, customer_id: uuid.UUID, limit: int) -> list[CustomerHistoryLine]:
-    """Recent items this customer bought, with size and colour when the product is a variant."""
+def purchase_history(
+    db: Session,
+    customer_id: uuid.UUID,
+    limit: int,
+    *,
+    sold_from: datetime | None = None,
+    sold_to: datetime | None = None,
+) -> list[CustomerHistoryLine]:
+    """Recent items this customer bought. Prices and names are the ones stored on the sale line."""
     get_customer(db, customer_id)
-    rows = db.execute(
-        select(Sale.created_at, SaleItem.quantity, Product.name, Product.variant_attributes)
+    refunded_qty = (
+        select(func.coalesce(func.sum(ReturnItem.quantity), 0))
+        .where(ReturnItem.sale_item_id == SaleItem.id)
+        .scalar_subquery()
+    )
+    statement = (
+        select(Sale, SaleItem, Product, refunded_qty)
         .join(SaleItem, SaleItem.sale_id == Sale.id)
         .join(Product, Product.id == SaleItem.product_id)
         .where(
             Sale.customer_id == customer_id,
             Sale.is_quote_proforma.is_(False),
-            Sale.status.in_(("completed", "partially_refunded")),
+            Sale.status.in_(("completed", "partially_refunded", "refunded")),
         )
-        .order_by(Sale.created_at.desc())
+        .order_by(Sale.created_at.desc(), SaleItem.id)
         .limit(limit)
-    ).all()
+    )
+    if sold_from is not None:
+        statement = statement.where(Sale.created_at >= sold_from)
+    if sold_to is not None:
+        statement = statement.where(Sale.created_at < sold_to)
     history = []
-    for sold_at, quantity, name, attributes in rows:
-        attrs = attributes or {}
+    for sale, item, product, returned in db.execute(statement).all():
+        attrs = item.variant_attributes or product.variant_attributes or {}
         history.append(
             CustomerHistoryLine(
-                sold_at=sold_at,
-                name=name,
+                sold_at=sale.created_at,
+                name=item.product_name or product.name,
                 size=attrs.get("size"),
                 color=attrs.get("color") or attrs.get("colour"),
-                quantity=quantity,
+                quantity=item.quantity,
+                invoice=sale.invoice_number or sale.client_sale_id[:8].upper(),
+                sku=item.sku or product.sku,
+                unit=item.unit_type,
+                unit_price_cents=item.unit_price_cents,
+                discount_cents=item.discount_cents + item.manual_discount_cents,
+                line_total_cents=item.line_total_cents,
+                quantity_refunded=int(returned or 0),
+                sale_status=sale.status,
             )
         )
     return history

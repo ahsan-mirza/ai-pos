@@ -25,6 +25,8 @@ export interface ProductPricing {
   tare_grams?: number;
   /** Soonest batch expiry at this branch (YYYY-MM-DD), when the expiry-first stock module is on. */
   nearest_expiry?: string | null;
+  /** Till asks for an age check when this is set. Null means unrestricted. */
+  minimum_age?: number | null;
   /** Recipes module: a dish drawn from its ingredients (it carries no stock of its own). */
   has_recipe?: boolean;
   /** Recipes module: kept in stock for dishes only; registers do not sell it. */
