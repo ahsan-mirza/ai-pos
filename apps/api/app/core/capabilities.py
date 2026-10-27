@@ -211,7 +211,7 @@ COMPATIBLE: dict[str, frozenset[Capability]] = {
     "electronics_wholesale": frozenset(
         (*_RETAIL_CORE, C.SERIAL_TRACKING, C.VARIANTS_MATRIX, C.CONSIGNMENT, C.REPAIRS, C.WARRANTY, C.TRADE_IN)
     ),
-    "wholesale_retail": frozenset((*_RETAIL_CORE, C.CUSTOMER_REORDERS)),
+    "wholesale_retail": frozenset((*_RETAIL_CORE, C.CUSTOMER_REORDERS, C.REPAIRS)),
     "retail_fashion": frozenset((*_RETAIL_CORE, C.VARIANTS_MATRIX, C.CONSIGNMENT, C.SERIAL_TRACKING, C.ALTERATIONS)),
     "grocery": frozenset((*_RETAIL_CORE, C.WEIGHED_ITEMS, C.FEFO, C.CONSIGNMENT, C.VARIANTS_MATRIX)),
     "restaurant": frozenset(_FOOD_CORE),

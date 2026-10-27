@@ -172,6 +172,11 @@ pub struct CurrencySnapshot {
 
 type CachedRow = (String, Option<String>, Option<String>, Option<String>);
 
+/// The currency last fetched from head office. `None` until this register has reached the API once.
+pub fn cached_currency(db: &Db) -> Result<Option<String>, String> {
+    Ok(cached(db)?.map(|(currency, _, _, _)| currency))
+}
+
 fn cached(db: &Db) -> Result<Option<CachedRow>, String> {
     db.read(|conn| {
         conn.query_row(

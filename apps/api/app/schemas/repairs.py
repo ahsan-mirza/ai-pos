@@ -145,6 +145,22 @@ class RepairDetail(RepairOut):
     balance_due_cents: int = 0
     parts_short: bool = False
     repair_warranty: RepairWarrantyOut | None = None
+    selling_price_cents: int | None = None
+    purchase_cost_cents: int | None = None
+    market_value: str = "Market value not configured"
+    value_warning: str | None = None
+
+
+class RepairDeviceHit(ApiModel):
+    product_id: UUID
+    name: str
+    sku: str
+    selling_price_cents: int
+    purchase_cost_cents: int | None
+    serial_status: str | None
+    available: bool
+    warning: str | None
+    market_value: str = "Market value not configured"
 
 
 class ApprovalSent(ApiModel):

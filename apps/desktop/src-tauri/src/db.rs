@@ -497,6 +497,63 @@ impl Db {
         })
     }
 
+    /// Shifts are counted in the business currency. A register that queued one under the seed currency
+    /// (before settings had synced) is rewritten and queued again. Returns false when nothing changed.
+    pub fn relabel_shift_currency(&self, batch_id: &str, currency: &str) -> Result<bool, String> {
+        let code = currency.trim().to_ascii_uppercase();
+        if code.len() != 3 {
+            return Ok(false);
+        }
+        self.transaction(|tx| {
+            let mut statement = tx
+                .prepare("SELECT id, entity_type, payload FROM sync_queue WHERE batch_id = ?1")
+                .map_err(|err| err.to_string())?;
+            let rows = statement
+                .query_map(params![batch_id], |row| {
+                    Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, String>(2)?))
+                })
+                .map_err(|err| err.to_string())?
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(|err| err.to_string())?;
+            drop(statement);
+            let mut changed = false;
+            for (id, entity, payload) in &rows {
+                if entity != "register_shift" && entity != "cash_movement" {
+                    continue;
+                }
+                let mut value: serde_json::Value = serde_json::from_str(payload).map_err(|err| err.to_string())?;
+                let Some(object) = value.as_object_mut() else {
+                    continue;
+                };
+                let current = object.get("currency").and_then(|item| item.as_str()).unwrap_or("");
+                if current.eq_ignore_ascii_case(&code) {
+                    continue;
+                }
+                object.insert("currency".into(), serde_json::Value::String(code.clone()));
+                let shift_id = if entity == "register_shift" {
+                    object.get("id").and_then(|item| item.as_str()).map(str::to_string)
+                } else {
+                    object.get("shift_id").and_then(|item| item.as_str()).map(str::to_string)
+                };
+                let encoded = serde_json::to_string(&value).map_err(|err| err.to_string())?;
+                tx.execute(
+                    "UPDATE sync_queue SET payload = ?1, status = 'pending', last_error = NULL WHERE id = ?2",
+                    params![encoded, id],
+                )
+                .map_err(|err| err.to_string())?;
+                if let Some(shift_id) = shift_id {
+                    tx.execute(
+                        "UPDATE local_shifts SET currency = ?1 WHERE id = ?2",
+                        params![code, shift_id],
+                    )
+                    .map_err(|err| err.to_string())?;
+                }
+                changed = true;
+            }
+            Ok(changed)
+        })
+    }
+
     pub fn record_failure(&self, batch_id: &str, message: &str) -> Result<(), String> {
         let conn = self.lock()?;
         conn.execute(

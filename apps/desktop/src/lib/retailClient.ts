@@ -52,6 +52,29 @@ export async function retailCall<T>(method: "GET" | "POST" | "PATCH" | "PUT", pa
   return value as T;
 }
 
+/** A paged list. The register shell wraps offset queries as `{ rows, total }`; the browser reads X-Total-Count. */
+export async function retailPage<T>(path: string): Promise<{ rows: T[]; total: number }> {
+  if (inTauri()) {
+    const value = await retailCall<{ rows: T[]; total: number } | T[]>("GET", path);
+    if (Array.isArray(value)) return { rows: value, total: value.length };
+    return { rows: value.rows ?? [], total: value.total ?? value.rows?.length ?? 0 };
+  }
+  let response: Response;
+  try {
+    response = await fetch(`${env.apiBaseUrl}${path}`, { headers: { ...previewHeaders() } });
+  } catch {
+    throw new RetailRequestError(0, "offline", "The server is unreachable.");
+  }
+  const value = (await response.json().catch(() => null)) as { error?: { code?: string; message?: string } } | T[] | null;
+  if (!response.ok) {
+    const error = value && !Array.isArray(value) ? value.error : undefined;
+    throw new RetailRequestError(response.status, error?.code ?? "rejected", error?.message ?? "Request failed.");
+  }
+  const rows = Array.isArray(value) ? value : [];
+  const total = Number(response.headers.get("X-Total-Count"));
+  return { rows, total: Number.isFinite(total) ? total : rows.length };
+}
+
 const GIFT_PRODUCT_KEY = "ai-pos.gift-card-product";
 
 export const giftCardsApi = {

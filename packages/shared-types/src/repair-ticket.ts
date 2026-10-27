@@ -14,6 +14,16 @@ export interface RepairTicket {
   currency: string;
   created_at: string;
   updated_at: string;
+  ownership?: "customer" | "internal";
+  product_id?: string | null;
+  reference?: string;
+  technician_name?: string | null;
+  promised_at?: string | null;
+  deposit_held_cents?: number;
+  warranty_status?: "IN_WARRANTY" | "EXPIRED" | "NOT_FOUND" | null;
+  overdue?: boolean;
+  parts_cents?: number | null;
+  labour_cents?: number | null;
 }
 
 export type RepairLineKind = "PART" | "LABOUR";
@@ -82,6 +92,10 @@ export interface RepairDetail extends RepairTicket {
   deposit_held_cents?: number;
   balance_due_cents?: number;
   parts_short?: boolean;
+  selling_price_cents?: number | null;
+  purchase_cost_cents?: number | null;
+  market_value?: string;
+  value_warning?: string | null;
   attachments?: RepairAttachment[];
   deposits?: RepairDeposit[];
   repair_warranty?: { id: string; starts_at: string; expires_at: string; status: string } | null;
@@ -122,4 +136,6 @@ export interface RepairTicketUpsert {
   status: RepairStatus;
   estimated_cost_cents: number;
   currency: string;
+  ownership?: "customer" | "internal";
+  product_id?: string | null;
 }

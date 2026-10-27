@@ -371,19 +371,12 @@ class SalePayload(ApiModel):
 class RepairPayload(ApiModel):
     id: UUID
     store_id: UUID
-    customer_name: str = Field(min_length=1, max_length=120)
-    customer_phone: str = Field(min_length=3, max_length=40)
-
-    @field_validator("customer_phone")
-    @classmethod
-    def normalize_repair_phone(cls, value: str) -> str:
-        from app.services.phone_numbers import normalize_phone
-
-        normalized = normalize_phone(value, required=True)
-        if normalized is None:
-            raise ValueError("Enter a phone number.")
-        return normalized
-    device_model: str = Field(min_length=1, max_length=120)
+    # customer: the owner's device. internal: equipment the shop owns. Older registers omit this.
+    ownership: Literal["customer", "internal"] = "customer"
+    product_id: UUID | None = None
+    customer_name: str = Field(default="", max_length=120)
+    customer_phone: str = Field(default="", max_length=40)
+    device_model: str = Field(default="", max_length=120)
     identifier_kind: SerialKind
     identifier_value: str = Field(min_length=1, max_length=64)
     issue: str = Field(min_length=1, max_length=2000)
@@ -398,6 +391,28 @@ class RepairPayload(ApiModel):
     passcode: str | None = Field(default=None, max_length=64)
     intake_checklist: dict[str, bool | str] | None = None
     accessories: str | None = Field(default=None, max_length=300)
+
+    @model_validator(mode="after")
+    def classify_ownership(self) -> Self:
+        from app.services.phone_numbers import normalize_phone
+
+        if self.ownership == "internal":
+            self.customer_name = self.customer_name.strip() or "Shop equipment"
+            self.customer_phone = self.customer_phone.strip()
+            if self.product_id is None:
+                raise ValueError("Select the shop device from inventory.")
+            if not self.device_model.strip():
+                self.device_model = "Shop device"
+            return self
+        if not self.customer_name.strip():
+            raise ValueError("Enter the customer name.")
+        if not self.device_model.strip():
+            raise ValueError("Enter the device.")
+        normalized = normalize_phone(self.customer_phone, required=True)
+        if normalized is None:
+            raise ValueError("Enter a phone number.")
+        self.customer_phone = normalized
+        return self
 
     @field_validator("currency")
     @classmethod
@@ -686,6 +701,17 @@ class RepairOut(ApiModel):
     currency: str
     created_at: datetime
     updated_at: datetime
+    ownership: Literal["customer", "internal"] = "customer"
+    product_id: UUID | None = None
+    reference: str = ""
+    technician_name: str | None = None
+    promised_at: datetime | None = None
+    deposit_held_cents: int = 0
+    warranty_status: str | None = None
+    overdue: bool = False
+    # Parts and labour totals. Null unless the caller may see internal cost.
+    parts_cents: int | None = None
+    labour_cents: int | None = None
 
 
 class CategorySlice(ApiModel):

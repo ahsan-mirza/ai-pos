@@ -273,6 +273,7 @@ function Portal() {
             }
           />
           <Route path="repairs" element={<RequireCapability capability={Capability.Repairs}><RepairsPage /></RequireCapability>} />
+          <Route path="repairs/:ticketId" element={<RequireCapability capability={Capability.Repairs}><RepairsPage /></RequireCapability>} />
           <Route
             path="returns"
             element={

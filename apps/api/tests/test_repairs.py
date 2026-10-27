@@ -1,13 +1,16 @@
 import uuid
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from tests.test_open_price import labour_product
 from tests.test_warranty import repair
 
 from app.models.inventory import InventoryLevel
+from app.models.product import Product
 from app.models.sale import Sale
 from app.models.sale_item import SaleItem
-from wholesale_support import CABLE, admin, event, imeis, push, seed
+from app.models.serial_number import SerialNumber
+from app.services.repair_service import _value_warning
+from wholesale_support import CABLE, PHONE, admin, event, imeis, push, seed
 
 
 def booked(client) -> tuple[dict, dict[str, str]]:
@@ -74,6 +77,70 @@ def test_parts_and_labour_invoice_as_a_sale_and_close_the_ticket(client, session
     frozen = client.post(f"{base}/lines", headers=headers, json={"kind": "PART", "product_id": CABLE})
     assert frozen.status_code == 409
     assert client.post(f"{base}/invoice", headers=headers, json={}).status_code == 409
+
+
+def test_customer_repair_does_not_create_or_consume_inventory(client, session) -> None:
+    values = seed(client, phone_units=1)
+    before = session.scalar(select(func.count()).select_from(Product))
+    on_hand = select(InventoryLevel.quantity_on_hand).where(InventoryLevel.product_id == uuid.UUID(PHONE))
+    stock = session.scalar(on_hand)
+    ticket = repair(values[0])
+    assert push(client, [event("customer-device", "repair_ticket", ticket)]).status_code == 200
+    session.expire_all()
+    assert session.scalar(select(func.count()).select_from(Product)) == before
+    assert session.scalar(on_hand) == stock
+    serial = session.scalar(select(SerialNumber).where(SerialNumber.product_id == uuid.UUID(PHONE)))
+    assert serial is not None and serial.status == "in_stock"
+
+
+def test_shop_equipment_is_a_cost_not_a_sale(client, session) -> None:
+    seed(client)
+    on_hand = select(InventoryLevel.quantity_on_hand).where(InventoryLevel.product_id == uuid.UUID(CABLE))
+    stock = session.scalar(on_hand)
+    ticket = repair(
+        "SHOP-CABLE-1",
+        ownership="internal",
+        product_id=CABLE,
+        customer_name="",
+        customer_phone="",
+        device_model="USB-C Cable",
+        identifier_kind="serial",
+    )
+    booked_response = push(client, [event("shop-device", "repair_ticket", ticket)])
+    assert booked_response.status_code == 200, booked_response.text
+    session.expire_all()
+    assert session.scalar(on_hand) == stock
+    headers, _ = admin(client)
+    found = client.get("/api/v1/repairs/devices", headers=headers, params={"q": "USB-C"})
+    assert found.status_code == 200, found.text
+    hit = found.json()[0]
+    assert hit["sku"] == "ACC-CABLE-USBC" and hit["selling_price_cents"] == 1500
+    assert hit["market_value"] == "Market value not configured"
+    invoiced = client.post(f"/api/v1/repairs/{ticket['id']}/invoice", headers=headers, json={})
+    assert invoiced.status_code == 422
+    assert invoiced.json()["error"]["code"] == "internal_repair"
+    assert session.scalar(select(func.count()).select_from(Sale)) == 0
+
+
+def test_a_serialized_shop_device_needs_its_own_serial(client) -> None:
+    seed(client, phone_units=1)
+    ticket = repair(
+        "not-stocked",
+        ownership="internal",
+        product_id=PHONE,
+        customer_name="",
+        customer_phone="",
+        identifier_kind="serial",
+    )
+    refused = push(client, [event("missing-serial", "repair_ticket", ticket)])
+    assert refused.status_code == 422
+    assert "serial number" in refused.json()["error"]["message"]
+
+
+def test_repair_cost_warning_uses_purchase_cost() -> None:
+    assert _value_warning(6_000, 10_000) == "The estimate is 60% of the purchase cost. This is a warning only."
+    assert _value_warning(4_000, 10_000) is None
+    assert _value_warning(6_000, None) is None
 
 
 def test_invoicing_needs_lines(client) -> None:

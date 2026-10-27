@@ -200,6 +200,11 @@ def _repair_out(ticket: RepairTicket, settings: Settings) -> RepairOut:
         currency=ticket.currency,
         created_at=ticket.created_at,
         updated_at=ticket.updated_at,
+        ownership=ticket.ownership if ticket.ownership in ("customer", "internal") else "customer",  # type: ignore[arg-type]
+        product_id=ticket.product_id,
+        reference=str(ticket.id)[:8].upper(),
+        promised_at=ticket.promised_at,
+        warranty_status=ticket.warranty_status,
     )
 
 

@@ -1,61 +1,25 @@
-import seed from "@ai-pos/catalog/seed.json";
 import {
   Permission,
-  RepairStatus,
-  SerialKind,
   formatMoney,
   type PaymentMethod,
   type ProductSearchHit,
+  type RepairBoard,
   type RepairDetail,
   type RepairTicket,
 } from "@ai-pos/shared-types";
+import { DataTable, usePagination, type DataTableColumn } from "@ai-pos/ui";
 import { CircleDot, Package, ReceiptText, Trash2, Wrench } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
-import { ErrorNote, GhostButton, PrimaryButton, TextField } from "../../components/ui/Field";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { ErrorNote, FilterSelect, GhostButton, PrimaryButton, TextField } from "../../components/ui/Field";
 import { Modal } from "../../components/ui/Modal";
 import { SegmentedControl } from "../../components/ui/SegmentedControl";
 import { Toast } from "../../components/ui/Toast";
-import { apiDelete, apiGet, apiPost } from "../../lib/api";
+import { apiDelete, apiGet, apiGetPage, apiPost } from "../../lib/api";
 import { useAuth } from "../../lib/auth";
-import { useCurrency } from "../../lib/currency";
 import { message, toCents } from "../customers/api";
 import { RepairBench } from "./RepairBench";
 import { WorkshopPanel } from "./WorkshopPanel";
-
-const stamped = "2026-10-19T00:00:00.000Z";
-
-const sampleRepairs: RepairTicket[] = [
-  {
-    id: "00000000-0000-4000-8000-000000000101",
-    store_id: seed.store.id,
-    customer_name: "Walk-in customer",
-    customer_phone: "+1 202 555 0142",
-    device_model: "Pixel 9",
-    identifier_kind: SerialKind.Imei,
-    identifier_value: "490154203237518",
-    issue: "Cracked rear glass",
-    status: RepairStatus.InRepair,
-    estimated_cost_cents: 12900,
-    currency: "USD",
-    created_at: stamped,
-    updated_at: stamped,
-  },
-  {
-    id: "00000000-0000-4000-8000-000000000102",
-    store_id: seed.store.id,
-    customer_name: "Walk-in customer",
-    customer_phone: "+1 202 555 0188",
-    device_model: "Tablet 11",
-    identifier_kind: SerialKind.Serial,
-    identifier_value: "TAB-44190",
-    issue: "Battery drains overnight",
-    status: RepairStatus.Ready,
-    estimated_cost_cents: 8900,
-    currency: "USD",
-    created_at: stamped,
-    updated_at: stamped,
-  },
-];
 
 const statusClass: Record<RepairTicket["status"], string> = {
   intake: "bg-surface text-charcoal",
@@ -70,15 +34,36 @@ const statusClass: Record<RepairTicket["status"], string> = {
 
 const statusLabel = (status: string) =>
   ({
-    intake: "Booked in",
-    diagnosing: "Diagnosing",
-    awaiting_approval: "Awaiting approval",
-    in_repair: "In repair",
+    intake: "Received",
+    diagnosing: "Awaiting diagnosis",
+    awaiting_approval: "Awaiting customer approval",
+    in_repair: "In progress",
     waiting_parts: "Waiting for parts",
-    ready: "Ready",
+    ready: "Ready for collection",
     closed: "Collected",
     cancelled: "Cancelled",
   })[status] ?? status;
+
+const views: { id: string; label: string }[] = [
+  { id: "all", label: "All repairs" },
+  { id: "customer", label: "Customer repairs" },
+  { id: "internal", label: "Business repairs" },
+  { id: "active", label: "Active jobs" },
+  { id: "approval", label: "Awaiting approval" },
+  { id: "parts", label: "Waiting for parts" },
+  { id: "ready", label: "Ready for collection" },
+  { id: "overdue", label: "Overdue repairs" },
+  { id: "done", label: "Completed repairs" },
+];
+
+function useDebounced(value: string): string {
+  const [debounced, setDebounced] = useState(value);
+  useEffect(() => {
+    const timer = window.setTimeout(() => setDebounced(value), 300);
+    return () => window.clearTimeout(timer);
+  }, [value]);
+  return debounced;
+}
 
 const nextStatus: Record<RepairTicket["status"], RepairTicket["status"][]> = {
   intake: ["diagnosing", "awaiting_approval", "in_repair", "ready", "cancelled", "closed"],
@@ -97,102 +82,321 @@ const warrantyLabels: Record<NonNullable<RepairDetail["warranty_status"]>, strin
   NOT_FOUND: "Not sold here",
 };
 
+function viewQuery(view: string): Record<string, string> {
+  if (view === "customer") return { ownership: "customer" };
+  if (view === "internal") return { ownership: "internal" };
+  if (view === "active") return { active: "true" };
+  if (view === "approval") return { status: "awaiting_approval" };
+  if (view === "parts") return { status: "waiting_parts" };
+  if (view === "ready") return { status: "ready" };
+  if (view === "overdue") return { overdue: "true" };
+  if (view === "done") return { status: "closed" };
+  return {};
+}
+
 export function RepairsPage() {
-  const { currency } = useCurrency();
-  const [live, setLive] = useState<RepairTicket[] | null>(null);
-  const [view, setView] = useState<"list" | "bench">("bench");
-  const [openId, setOpenId] = useState<string | null>(null);
+  const { can } = useAuth();
+  const financial = can(Permission.AccountingManage);
+  const { ticketId } = useParams();
+  const navigate = useNavigate();
+  const [params, setParams] = useSearchParams();
+  const view = params.get("view") ?? "all";
+  const layout = params.get("layout") === "bench" ? "bench" : "jobs";
+  const [draft, setDraft] = useState(params.get("q") ?? "");
+  const debounced = useDebounced(draft);
+  const [receivedFrom, setReceivedFrom] = useState(params.get("from") ?? "");
+  const [receivedTo, setReceivedTo] = useState(params.get("to") ?? "");
+  const [technicianId, setTechnicianId] = useState(params.get("technician") ?? "");
+  const [warranty, setWarranty] = useState(params.get("warranty") === "1");
+  const [technicians, setTechnicians] = useState<{ id: string; name: string }[]>([]);
+  const [rows, setRows] = useState<RepairTicket[]>([]);
+  const [total, setTotal] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const dismissToast = useCallback(() => setToast(null), []);
-  const tickets = live ?? sampleRepairs.map((ticket) => ({ ...ticket, currency }));
-  const source = live === null ? "sample" : "live";
-
-  const load = useCallback(() => {
-    apiGet<RepairTicket[]>("/api/v1/repairs?limit=200")
-      .then(setLive)
-      .catch(() => setLive(null));
-  }, []);
+  const filters = `${view}|${debounced}|${receivedFrom}|${receivedTo}|${technicianId}|${warranty}`;
+  const pager = usePagination({ resetKeys: [filters] });
 
   useEffect(() => {
+    apiGet<RepairBoard>("/api/v1/repairs/board")
+      .then((board) => setTechnicians(board.technicians))
+      .catch(() => setTechnicians([]));
+  }, []);
+
+  const load = useCallback(() => {
+    const query = new URLSearchParams(viewQuery(view));
+    if (debounced.trim()) query.set("q", debounced.trim());
+    if (receivedFrom) query.set("received_from", receivedFrom);
+    if (receivedTo) query.set("received_to", receivedTo);
+    if (technicianId) query.set("technician_id", technicianId);
+    if (warranty) query.set("warranty", "true");
+    setLoading(true);
+    apiGetPage<RepairTicket>(`/api/v1/repairs?${query.toString()}`, { offset: pager.offset, limit: pager.pageSize })
+      .then((page) => {
+        setRows(page.rows);
+        setTotal(page.total);
+        setError(null);
+      })
+      .catch((caught: unknown) => setError(message(caught, "Could not load repair jobs.")))
+      .finally(() => setLoading(false));
+  }, [view, debounced, receivedFrom, receivedTo, technicianId, warranty, pager.offset, pager.pageSize]);
+
+  useEffect(() => {
+    if (ticketId) return;
     load();
-  }, [load]);
+  }, [load, ticketId]);
+
+  const setView = (id: string) => {
+    const next = new URLSearchParams(params);
+    if (id === "all") next.delete("view");
+    else next.set("view", id);
+    setParams(next, { replace: true });
+  };
+
+  const clearFilters = () => {
+    setDraft("");
+    setReceivedFrom("");
+    setReceivedTo("");
+    setTechnicianId("");
+    setWarranty(false);
+    setParams(new URLSearchParams(), { replace: true });
+  };
+
+  const filtered = view !== "all" || debounced.trim() !== "" || receivedFrom !== "" || receivedTo !== "" || technicianId !== "" || warranty;
+  const columns: DataTableColumn<RepairTicket>[] = [
+    {
+      id: "number",
+      header: "Repair no.",
+      className: "font-mono text-xs",
+      cell: (row) => row.reference || row.id.slice(0, 8).toUpperCase(),
+    },
+    {
+      id: "owner",
+      header: "Customer",
+      cell: (row) =>
+        row.ownership === "internal" ? (
+          <span>
+            <span className="block font-medium">Business repair</span>
+            <span className="text-xs text-charcoal/50">Internal maintenance</span>
+          </span>
+        ) : (
+          <span>
+            <span className="block font-medium">{row.customer_name}</span>
+            <span className="text-xs text-charcoal/50">{row.customer_phone}</span>
+          </span>
+        ),
+    },
+    { id: "device", header: "Device", cell: (row) => row.device_model },
+    {
+      id: "serial",
+      header: "Serial / IMEI",
+      className: "hidden font-mono text-xs md:table-cell",
+      headerClassName: "hidden md:table-cell",
+      cell: (row) => row.identifier_value,
+    },
+    {
+      id: "fault",
+      header: "Reported fault",
+      className: "hidden max-w-[16rem] truncate lg:table-cell",
+      headerClassName: "hidden lg:table-cell",
+      cell: (row) => row.issue,
+    },
+    {
+      id: "status",
+      header: "Status",
+      cell: (row) => (
+        <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${statusClass[row.status]} ${row.overdue ? "ring-1 ring-amber-400" : ""}`}>
+          {statusLabel(row.status)}
+          {row.overdue ? " · overdue" : ""}
+        </span>
+      ),
+    },
+    {
+      id: "estimate",
+      header: "Estimate",
+      align: "right",
+      cell: (row) => formatMoney(row.estimated_cost_cents, row.currency),
+    },
+    {
+      id: "deposit",
+      header: "Deposit",
+      align: "right",
+      cell: (row) => formatMoney(row.deposit_held_cents ?? 0, row.currency),
+    },
+    {
+      id: "tech",
+      header: "Technician",
+      className: "hidden lg:table-cell",
+      headerClassName: "hidden lg:table-cell",
+      cell: (row) => row.technician_name || "—",
+    },
+    {
+      id: "received",
+      header: "Received",
+      className: "whitespace-nowrap text-xs",
+      cell: (row) => new Date(row.created_at).toLocaleDateString(),
+    },
+    {
+      id: "due",
+      header: "Expected",
+      className: "hidden whitespace-nowrap text-xs xl:table-cell",
+      headerClassName: "hidden xl:table-cell",
+      cell: (row) => (row.promised_at ? new Date(row.promised_at).toLocaleDateString() : "—"),
+    },
+    ...(financial
+      ? [
+          {
+            id: "parts",
+            header: "Parts cost",
+            align: "right" as const,
+            cell: (row: RepairTicket) => formatMoney(row.parts_cents ?? 0, row.currency),
+          },
+          {
+            id: "labour",
+            header: "Labor cost",
+            align: "right" as const,
+            cell: (row: RepairTicket) => formatMoney(row.labour_cents ?? 0, row.currency),
+          },
+        ]
+      : []),
+    {
+      id: "open",
+      header: "",
+      cell: (row) => (
+        <button type="button" className="text-sm font-semibold text-accent" onClick={() => navigate(`/repairs/${row.id}`)}>
+          Open
+        </button>
+      ),
+    },
+  ];
+
+  if (ticketId) {
+    return (
+      <>
+        <RepairDrawer
+          ticketId={ticketId}
+          presentation="page"
+          onClose={() => navigate("/repairs")}
+          onToast={setToast}
+        />
+        {toast ? <Toast message={toast} onDismiss={dismissToast} /> : null}
+      </>
+    );
+  }
 
   return (
     <section className="space-y-4">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h2 className="text-2xl font-semibold">Repair board</h2>
+          <h2 className="text-2xl font-semibold">Repair jobs</h2>
           <p className="text-sm text-charcoal/60">
-            {source === "live"
-              ? "Move a job from intake to collection, approve the estimate, and invoice with the deposit credited."
-              : "Showing sample tickets until the API responds."}
+            {total} job{total === 1 ? "" : "s"}. Open a row to update status, parts, and the estimate. Booking stays on the register.
           </p>
         </div>
-        {source === "live" ? (
-          <SegmentedControl
-            label="Repair view"
-            value={view}
-            options={[
-              { value: "bench", label: "Bench" },
-              { value: "list", label: "List" },
-            ]}
-            onChange={setView}
-          />
-        ) : null}
+        <SegmentedControl
+          label="Repair view"
+          value={layout}
+          options={[
+            { value: "jobs", label: "Jobs" },
+            { value: "bench", label: "Bench" },
+          ]}
+          onChange={(next) => {
+            const updated = new URLSearchParams(params);
+            if (next === "bench") updated.set("layout", "bench");
+            else updated.delete("layout");
+            setParams(updated, { replace: true });
+          }}
+        />
       </div>
-      {source === "live" && view === "bench" ? (
-        <RepairBench onOpen={setOpenId} />
-      ) : (
-        <div className="grid gap-4 lg:grid-cols-2">
-        {tickets.map((ticket) => (
+      <div className="flex flex-wrap gap-2">
+        {views.map((item) => (
           <button
-            key={ticket.id}
+            key={item.id}
             type="button"
-            disabled={source !== "live"}
-            onClick={() => setOpenId(ticket.id)}
-            className="rounded-card border border-line bg-white p-5 text-left transition-colors hover:border-accent/60 disabled:hover:border-line"
+            onClick={() => setView(item.id)}
+            className={`h-9 rounded-full px-3 text-sm ${view === item.id ? "bg-charcoal text-white" : "bg-white ring-1 ring-line"}`}
           >
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <h3 className="text-lg font-semibold">{ticket.device_model}</h3>
-                <p className="text-sm text-charcoal/60">{ticket.customer_name}</p>
-              </div>
-              <span className={`rounded-full px-3 py-1 text-xs font-semibold uppercase ${statusClass[ticket.status]}`}>
-                {statusLabel(ticket.status)}
-              </span>
-            </div>
-            <p className="mt-4 text-sm">{ticket.issue}</p>
-            <dl className="mt-4 grid grid-cols-2 gap-3 text-sm">
-              <div>
-                <dt className="text-charcoal/50">Identifier</dt>
-                <dd className="tabular-nums">{ticket.identifier_value}</dd>
-              </div>
-              <div>
-                <dt className="text-charcoal/50">Estimate</dt>
-                <dd className="tabular-nums">{formatMoney(ticket.estimated_cost_cents, ticket.currency)}</dd>
-              </div>
-            </dl>
+            {item.label}
           </button>
         ))}
-        {tickets.length === 0 ? <p className="text-sm text-charcoal/60">No repair tickets yet.</p> : null}
       </div>
-      )}
-      {openId ? (
-        <RepairDrawer
-          ticketId={openId}
-          onClose={() => {
-            setOpenId(null);
-            load();
-          }}
-          onToast={setToast}
+      <div className="flex flex-wrap items-end gap-3">
+        <label className="grid gap-1 text-xs text-charcoal/60">
+          Search
+          <input
+            value={draft}
+            onChange={(event) => setDraft(event.target.value)}
+            placeholder="Number, customer, phone, device, serial, IMEI"
+            aria-label="Search repair jobs"
+            className="h-10 w-72 max-w-full rounded-full border border-line px-4 text-sm text-charcoal"
+          />
+        </label>
+        <label className="hidden gap-1 text-xs text-charcoal/60 md:grid">
+          Received from
+          <input type="date" value={receivedFrom} onChange={(event) => setReceivedFrom(event.target.value)} className="h-10 rounded-xl border border-line px-3 text-sm" />
+        </label>
+        <label className="hidden gap-1 text-xs text-charcoal/60 md:grid">
+          Received to
+          <input type="date" value={receivedTo} onChange={(event) => setReceivedTo(event.target.value)} className="h-10 rounded-xl border border-line px-3 text-sm" />
+        </label>
+        <FilterSelect
+          label="Technician"
+          className="hidden md:block"
+          value={technicianId}
+          options={[{ value: "", label: "Anyone" }, ...technicians.map((person) => ({ value: person.id, label: person.name }))]}
+          onChange={setTechnicianId}
         />
-      ) : null}
+        <label className="hidden h-10 items-center gap-2 text-sm md:flex">
+          <input type="checkbox" checked={warranty} onChange={(event) => setWarranty(event.target.checked)} />
+          Warranty repair
+        </label>
+        {filtered ? <GhostButton onClick={clearFilters}>Clear filters</GhostButton> : null}
+      </div>
+      {layout === "bench" ? (
+        <RepairBench onOpen={(id) => navigate(`/repairs/${id}`)} />
+      ) : (
+        <DataTable
+          aria-label="Repair jobs"
+          minWidth="920px"
+          columns={columns}
+          data={rows}
+          getRowId={(row) => row.id}
+          isLoading={loading}
+          error={error}
+          onRetry={load}
+          onRowClick={(row) => navigate(`/repairs/${row.id}`)}
+          pagination={{
+            mode: "server",
+            currentPage: pager.page,
+            pageSize: pager.pageSize,
+            totalRecords: total,
+            onPageChange: pager.setPage,
+            onPageSizeChange: pager.setPageSize,
+          }}
+          emptyState={
+            filtered
+              ? { title: "No repairs match your filters", description: "Clear the search or filters to see every job.", action: <GhostButton onClick={clearFilters}>Clear filters</GhostButton> }
+              : { title: "No repair jobs yet", description: "Book the first repair from the register." }
+          }
+        />
+      )}
       {toast ? <Toast message={toast} onDismiss={dismissToast} /> : null}
     </section>
   );
 }
 
-function RepairDrawer({ ticketId, onClose, onToast }: { ticketId: string; onClose: () => void; onToast: (text: string) => void }) {
+function RepairDrawer({
+  ticketId,
+  onClose,
+  onToast,
+  presentation = "modal",
+}: {
+  ticketId: string;
+  onClose: () => void;
+  onToast: (text: string) => void;
+  presentation?: "modal" | "page";
+}) {
   const { can } = useAuth();
   const canUpdate = can(Permission.RepairsUpdate);
   const [ticket, setTicket] = useState<RepairDetail | null>(null);
@@ -226,14 +430,11 @@ function RepairDrawer({ ticketId, onClose, onToast }: { ticketId: string; onClos
   const editable = ticket !== null && canUpdate && ticket.sale_id === null && ticket.status !== "closed" && ticket.status !== "cancelled";
   const money = (cents: number) => formatMoney(cents, ticket?.currency ?? "USD");
 
-  return (
-    <Modal
-      title={ticket ? `${ticket.device_model} · ${ticket.customer_name}` : "Repair ticket"}
-      subtitle={ticket ? `${ticket.issue} · ${ticket.identifier_value}` : undefined}
-      onClose={onClose}
-      width="lg"
-      footer={<GhostButton onClick={onClose}>Close</GhostButton>}
-    >
+  const title = ticket
+    ? `${ticket.ownership === "internal" ? "Business repair" : ticket.customer_name} · ${ticket.device_model}`
+    : "Repair ticket";
+  const body = (
+    <>
       {ticket ? (
         <div className="space-y-6">
           <div className="flex flex-wrap items-center gap-2">
@@ -436,6 +637,27 @@ function RepairDrawer({ ticketId, onClose, onToast }: { ticketId: string; onClos
           }}
         />
       ) : null}
+    </>
+  );
+  if (presentation === "page") {
+    return (
+      <section className="mx-auto max-w-3xl space-y-4">
+        <GhostButton onClick={onClose}>Back to repair jobs</GhostButton>
+        <h2 className="text-2xl font-semibold">{title}</h2>
+        {ticket ? <p className="text-sm text-charcoal/60">{ticket.issue}</p> : null}
+        {body}
+      </section>
+    );
+  }
+  return (
+    <Modal
+      title={title}
+      subtitle={ticket ? `${ticket.issue} · ${ticket.identifier_value}` : undefined}
+      onClose={onClose}
+      width="lg"
+      footer={<GhostButton onClick={onClose}>Close</GhostButton>}
+    >
+      {body}
     </Modal>
   );
 }

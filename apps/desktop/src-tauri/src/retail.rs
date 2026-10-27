@@ -33,6 +33,19 @@ fn safe(path: &str) -> bool {
             .all(|c| c.is_ascii_alphanumeric() || "/-_?=&:.%+".contains(c))
 }
 
+fn with_total(path: &str, body: Value, total: Option<&str>) -> Value {
+    if !path.contains("offset=") {
+        return body;
+    }
+    let Some(total) = total.and_then(|value| value.parse::<u64>().ok()) else {
+        return body;
+    };
+    match body {
+        Value::Array(rows) => json!({ "rows": rows, "total": total }),
+        other => other,
+    }
+}
+
 fn failure(status: u16, code: &str, message: &str) -> String {
     json!({ "status": status, "code": code, "message": message }).to_string()
 }
@@ -73,7 +86,13 @@ pub async fn retail_request(
             .send()
             .map_err(|err| failure(0, "offline", &format!("The server is unreachable: {err}")))?;
         let status = response.status();
+        let total = response
+            .headers()
+            .get("x-total-count")
+            .and_then(|value| value.to_str().ok())
+            .map(str::to_owned);
         let value: Value = response.json().unwrap_or(Value::Null);
+        let value = with_total(&path, value, total.as_deref());
         if !status.is_success() {
             let code = value["error"]["code"].as_str().unwrap_or("rejected");
             let message = value["error"]["message"]
@@ -106,5 +125,15 @@ mod tests {
         assert!(!safe("/api/v1/users/123"));
         assert!(!safe("/api/v1/gift-cards/../users"));
         assert!(!safe("/api/v1/gift-cardsx"));
+    }
+
+    #[test]
+    fn offset_lists_keep_their_total() {
+        let body = serde_json::json!([{"id": "a"}]);
+        let wrapped = super::with_total("/api/v1/repairs?offset=0&limit=25", body, Some("4"));
+        assert_eq!(wrapped["total"], 4);
+        assert_eq!(wrapped["rows"][0]["id"], "a");
+        let plain = serde_json::json!([{"id": "a"}]);
+        assert!(super::with_total("/api/v1/repairs?limit=30", plain, Some("4")).is_array());
     }
 }

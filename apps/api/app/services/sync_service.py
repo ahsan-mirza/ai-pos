@@ -321,6 +321,13 @@ def apply_repair(db: Session, settings: Settings, payload: dict[str, object]) ->
     normalized = normalize_identifier(data.identifier_kind, data.identifier_value)
     digest = identifier_hash(normalized)
     existing = db.get(RepairTicket, data.id)
+    from app.services import repair_service
+
+    repair_service.assert_device(db, data, digest, existing.id if existing is not None else None)
+    if data.ownership == "internal" and data.product_id is not None:
+        product = db.get(Product, data.product_id)
+        if product is not None and data.device_model in ("", "Shop device"):
+            data.device_model = product.name
     if existing is None:
         registration = warranty_service.registration_for_identifier(db, digest)
         coverage = warranty_service.status_of(registration)
@@ -344,6 +351,8 @@ def apply_repair(db: Session, settings: Settings, payload: dict[str, object]) ->
             customer_id=customer.id if customer is not None else None,
             warranty_registration_id=registration.id if registration is not None else None,
             warranty_status=coverage,
+            ownership=data.ownership,
+            product_id=data.product_id,
         )
         db.add(ticket)
         db.flush()
@@ -368,6 +377,8 @@ def apply_repair(db: Session, settings: Settings, payload: dict[str, object]) ->
     existing.issue = data.issue
     existing.status = data.status
     existing.estimated_cost_cents = data.estimated_cost_cents
+    existing.ownership = data.ownership
+    existing.product_id = data.product_id
     if data.customer_id is not None and db.get(Customer, data.customer_id) is not None:
         existing.customer_id = data.customer_id
     from app.services import repair_workshop_service
@@ -378,6 +389,9 @@ def apply_repair(db: Session, settings: Settings, payload: dict[str, object]) ->
 
 
 def _repair_customer(db: Session, data: RepairPayload, registration) -> Customer | None:
+    # A shop-owned device is not a customer, and booking it must not create one.
+    if data.ownership == "internal":
+        return None
     if data.customer_id is not None:
         customer = db.get(Customer, data.customer_id)
         if customer is None:

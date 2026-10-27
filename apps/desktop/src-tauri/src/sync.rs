@@ -191,6 +191,12 @@ pub fn flush(db: &Db, config: &DesktopConfig) -> Result<SyncReport, String> {
                 if realigned {
                     continue;
                 }
+                // A shift opened before the business currency arrived is recounted in that currency and sent again.
+                if let Some(code) = business_currency_in(&reason) {
+                    if db.relabel_shift_currency(&batch_id, &code).unwrap_or(false) {
+                        continue;
+                    }
+                }
                 db.mark_batch(&batch_id, "rejected", Some(&reason))?;
                 rejected += 1;
                 last_rejection = Some(reason);
@@ -422,6 +428,18 @@ mod tests {
             Some("2026-10-23T16:38:59Z")
         );
         assert_eq!(http_date_to_iso("not a date"), None);
+    }
+}
+
+/// "… business currency AED." → `AED`. Other refusals return nothing.
+fn business_currency_in(reason: &str) -> Option<String> {
+    let marker = "business currency ";
+    let start = reason.to_ascii_lowercase().find(marker)? + marker.len();
+    let code: String = reason[start..].chars().take(3).collect();
+    if code.len() == 3 && code.chars().all(|item| item.is_ascii_alphabetic()) {
+        Some(code.to_ascii_uppercase())
+    } else {
+        None
     }
 }
 

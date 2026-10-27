@@ -5,7 +5,7 @@ import { useState } from "react";
 import { openShift } from "../../lib/tauri";
 import type { CashierSession } from "../auth/session";
 import { store } from "../checkout/catalog";
-import { useBusinessCurrency } from "../checkout/currency";
+import { syncBusinessCurrency, useBusinessCurrency } from "../checkout/currency";
 import { parseAmount, setShift } from "./shift";
 
 const quickFloats = [0, 20_000, 50_000, 100_000];
@@ -23,12 +23,13 @@ export function OpenShiftScreen({ session, onLock }: { session: CashierSession; 
     setBusy(true);
     setError(null);
     try {
+      const counted = await syncBusinessCurrency();
       setShift(
         await openShift({
           id: crypto.randomUUID(),
           opened_at: new Date().toISOString(),
           opening_float_cents: cents,
-          currency,
+          currency: counted || currency,
         }),
       );
     } catch (caught) {

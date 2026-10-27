@@ -175,6 +175,17 @@ fn valid_id(value: &str) -> bool {
     value.len() == 36 && value.chars().all(|c| c.is_ascii_hexdigit() || c == '-')
 }
 
+/// Head office counts every shift in the business currency. Until that currency has been fetched, the
+/// amount the cashier typed is kept under the code they were shown.
+fn counted_currency(db: &Db, shown: &str) -> Result<String, String> {
+    if let Some(code) = crate::settings::cached_currency(db)? {
+        if code.len() == 3 {
+            return Ok(code);
+        }
+    }
+    Ok(shown.trim().to_ascii_uppercase())
+}
+
 pub fn open(
     db: &Db,
     session: &Session,
@@ -187,6 +198,7 @@ pub fn open(
     if !(0..=MAX_CASH).contains(&input.opening_float_cents) {
         return Err("Enter an opening float between 0 and 1,000,000.".into());
     }
+    let currency = counted_currency(db, &input.currency)?;
     db.transaction(|tx| {
         if open_shift_row(tx)?.is_some() {
             return Err("A shift is already open on this register. Close it first.".into());
@@ -200,7 +212,7 @@ pub fn open(
                 session.user.id,
                 session.user.full_name,
                 input.opening_float_cents,
-                input.currency
+                currency
             ],
         )
         .map_err(|err| err.to_string())?;
@@ -210,7 +222,7 @@ pub fn open(
             "opened_by_id": session.user.id,
             "opened_at": input.opened_at,
             "opening_float_cents": input.opening_float_cents,
-            "currency": input.currency,
+            "currency": currency,
             "status": "OPEN",
             "blind_close": true,
         });
@@ -248,6 +260,7 @@ pub fn record_movement(
     if !no_sale && input.reason.trim().chars().count() < 3 {
         return Err("Give a reason for the cash movement.".into());
     }
+    let currency = counted_currency(db, "")?;
     db.transaction(|tx| {
         let shift = open_shift_row(tx)?.ok_or_else(|| "Open a shift before moving cash.".to_string())?;
         tx.execute(
@@ -271,7 +284,7 @@ pub fn record_movement(
             "user_id": session.user.id,
             "kind": input.kind,
             "amount_cents": input.amount_cents,
-            "currency": shift.currency,
+            "currency": if currency.len() == 3 { currency.clone() } else { shift.currency.clone() },
             "reason": input.reason.trim(),
             "occurred_at": input.occurred_at,
         });
@@ -426,19 +439,22 @@ pub fn close(
     if !(0..=MAX_CASH).contains(&input.counted_cash_cents) {
         return Err("Enter the counted cash.".into());
     }
+    let business = counted_currency(db, "")?;
     db.transaction(|tx| {
         let shift = open_shift_row(tx)?.ok_or_else(|| "No shift is open on this register.".to_string())?;
         let expected = summarize(tx, shift.clone())?.expected_cash_cents;
+        let currency = if business.len() == 3 { business.clone() } else { shift.currency.clone() };
         tx.execute(
             "UPDATE local_shifts SET status = 'CLOSED', closed_at = ?2, closed_by_name = ?3, counted_cash_cents = ?4,
-                expected_cash_cents = ?5, z_number = ?6 WHERE id = ?1",
+                expected_cash_cents = ?5, z_number = ?6, currency = ?7 WHERE id = ?1",
             params![
                 shift.id,
                 input.closed_at,
                 session.user.full_name,
                 input.counted_cash_cents,
                 expected,
-                input.z_number
+                input.z_number,
+                currency
             ],
         )
         .map_err(|err| err.to_string())?;
@@ -451,7 +467,7 @@ pub fn close(
             "opened_by_id": opened_by,
             "opened_at": shift.opened_at,
             "opening_float_cents": shift.opening_float_cents,
-            "currency": shift.currency,
+            "currency": currency,
             "status": "CLOSED",
             "closed_by_id": session.user.id,
             "closed_at": input.closed_at,
@@ -562,6 +578,61 @@ mod tests {
         assert_eq!(closed.expected_cash_cents, 7_500);
         assert_eq!(closed.shift.status, "CLOSED");
         assert!(current(&db).unwrap().is_none());
+        let _ = std::fs::remove_dir_all(&directory);
+    }
+
+    #[test]
+    fn a_shift_queued_in_the_seed_currency_is_recounted_in_the_business_currency() {
+        let directory = std::env::temp_dir().join(format!("aipos-shift-currency-{}", std::process::id()));
+        std::fs::create_dir_all(&directory).unwrap();
+        let db = Db::open(&directory.join("shift.db")).unwrap();
+        db.transaction(|tx| {
+            tx.execute(
+                "INSERT INTO business_settings (id, currency, fetched_at) VALUES (1, 'AED', 1)",
+                [],
+            )
+            .map_err(|err| err.to_string())?;
+            Ok(())
+        })
+        .unwrap();
+        let shift_id = "11111111-1111-4111-8111-111111111111";
+        open(
+            &db,
+            &session(),
+            "store",
+            &OpenShift {
+                id: shift_id.into(),
+                opened_at: "2026-10-26T08:11:00Z".into(),
+                opening_float_cents: 0,
+                currency: "USD".into(),
+            },
+        )
+        .unwrap();
+        let payload: String = db
+            .read(|conn| {
+                conn.query_row(
+                    "SELECT payload FROM sync_queue WHERE entity_type = 'register_shift'",
+                    [],
+                    |row| row.get(0),
+                )
+                .map_err(|err| err.to_string())
+            })
+            .unwrap();
+        assert!(payload.contains("\"currency\":\"AED\""), "{payload}");
+        db.transaction(|tx| {
+            tx.execute("UPDATE sync_queue SET payload = replace(payload, 'AED', 'USD')", [])
+                .map_err(|err| err.to_string())?;
+            Ok(())
+        })
+        .unwrap();
+        let batch: String = db
+            .read(|conn| {
+                conn.query_row("SELECT batch_id FROM sync_queue LIMIT 1", [], |row| row.get(0))
+                    .map_err(|err| err.to_string())
+            })
+            .unwrap();
+        assert!(db.relabel_shift_currency(&batch, "AED").unwrap());
+        assert!(!db.relabel_shift_currency(&batch, "AED").unwrap());
         let _ = std::fs::remove_dir_all(&directory);
     }
 }
