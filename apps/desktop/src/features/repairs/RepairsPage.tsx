@@ -8,7 +8,7 @@ import {
   type RepairDetail,
   type RepairTicket,
 } from "@ai-pos/shared-types";
-import { Select } from "@ai-pos/ui";
+import { RepairJobsToolbar, Select } from "@ai-pos/ui";
 import { Printer, Wrench } from "lucide-react";
 import { useEffect, useState, type FormEvent } from "react";
 import { DataTable, usePagination, type DataTableColumn } from "../../components/DataTable";
@@ -124,10 +124,14 @@ export function RepairsPage({ session }: { session: CashierSession }) {
   const [checks, setChecks] = useState<Record<string, boolean>>({});
   const [photo, setPhoto] = useState<File | null>(null);
   const [ticket, setTicket] = useState<RepairDetail | null>(null);
-  const [bookingOpen, setBookingOpen] = useState(true);
+  const [bookingOpen, setBookingOpen] = useState(false);
   const [jobQuery, setJobQuery] = useState("");
   const [jobSearch, setJobSearch] = useState("");
   const [jobStatus, setJobStatus] = useState("active");
+  const [jobOwnership, setJobOwnership] = useState("");
+  const [receivedFrom, setReceivedFrom] = useState("");
+  const [receivedTo, setReceivedTo] = useState("");
+  const [counts, setCounts] = useState<{ active: number; approval: number; parts: number; ready: number; overdue: number } | null>(null);
   const [jobs, setJobs] = useState<RepairTicket[]>([]);
   const [jobTotal, setJobTotal] = useState(0);
   const [jobError, setJobError] = useState<string | null>(null);
@@ -135,7 +139,7 @@ export function RepairsPage({ session }: { session: CashierSession }) {
   const [reloadJobs, setReloadJobs] = useState(0);
   const [duplicates, setDuplicates] = useState<RepairTicket[]>([]);
   const [reviewing, setReviewing] = useState(false);
-  const pager = usePagination({ resetKeys: [jobSearch, jobStatus] });
+  const pager = usePagination({ resetKeys: [jobSearch, jobStatus, jobOwnership, receivedFrom, receivedTo] });
   useShellPage(busy, setNotice);
 
   useEffect(() => {
@@ -164,6 +168,9 @@ export function RepairsPage({ session }: { session: CashierSession }) {
   useEffect(() => {
     const params = new URLSearchParams();
     if (jobSearch) params.set("q", jobSearch);
+    if (jobOwnership) params.set("ownership", jobOwnership);
+    if (receivedFrom) params.set("received_from", receivedFrom);
+    if (receivedTo) params.set("received_to", receivedTo);
     if (jobStatus === "active") params.set("active", "true");
     else if (jobStatus) params.set("status", jobStatus);
     params.set("offset", String(pager.offset));
@@ -177,7 +184,29 @@ export function RepairsPage({ session }: { session: CashierSession }) {
       })
       .catch((caught: unknown) => setJobError(caught instanceof Error ? caught.message : "Could not load repair jobs."))
       .finally(() => setLoadingJobs(false));
-  }, [jobSearch, jobStatus, pager.offset, pager.pageSize, ticket, reloadJobs]);
+  }, [jobSearch, jobStatus, jobOwnership, receivedFrom, receivedTo, pager.offset, pager.pageSize, ticket, reloadJobs]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadCount = (query: string) =>
+      retailPage<RepairTicket>(`/api/v1/repairs?${query}&limit=1&offset=0`).then((page) => page.total);
+    Promise.all([
+      loadCount("active=true"),
+      loadCount("status=awaiting_approval"),
+      loadCount("status=waiting_parts"),
+      loadCount("status=ready"),
+      loadCount("overdue=true"),
+    ])
+      .then(([active, approval, parts, ready, overdue]) => {
+        if (!cancelled) setCounts({ active, approval, parts, ready, overdue });
+      })
+      .catch(() => {
+        if (!cancelled) setCounts(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [reloadJobs, ticket]);
 
   const field = "mt-1 h-11 w-full rounded-xl px-3 text-sm " + ui.input;
 
@@ -269,6 +298,8 @@ export function RepairsPage({ session }: { session: CashierSession }) {
       const detail = await retailCall<RepairDetail>("GET", `/api/v1/repairs/${id}/workshop`);
       setTicket(detail);
       setNotice(`Booked ${detail.reference || "the repair"}.`);
+      setBookingOpen(false);
+      setReloadJobs((value) => value + 1);
       setOwnership("customer");
       setProductId(null);
       setQuery("");
@@ -333,11 +364,78 @@ export function RepairsPage({ session }: { session: CashierSession }) {
     },
     { id: "device", header: "Device", cell: (row) => row.device_model },
     { id: "serial", header: "Serial / IMEI", className: "hidden md:table-cell", headerClassName: "hidden md:table-cell", cell: (row) => row.identifier_value },
-    { id: "fault", header: "Fault", className: "hidden lg:table-cell", headerClassName: "hidden lg:table-cell", cell: (row) => row.issue },
-    { id: "status", header: "Status", cell: (row) => row.status.replaceAll("_", " ") },
+    {
+      id: "fault",
+      header: "Fault",
+      className: "hidden max-w-[14rem] truncate lg:table-cell",
+      headerClassName: "hidden lg:table-cell",
+      cell: (row) => <span title={row.issue}>{row.issue}</span>,
+    },
+    { id: "status", header: "Status", cell: (row) => <span className="capitalize">{row.status.replaceAll("_", " ")}</span> },
     { id: "estimate", header: "Estimate", align: "right", cell: (row) => formatMoney(row.estimated_cost_cents, row.currency) },
     { id: "deposit", header: "Deposit", align: "right", cell: (row) => formatMoney(row.deposit_held_cents ?? 0, row.currency) },
+    {
+      id: "received",
+      header: "Received",
+      className: "whitespace-nowrap text-xs",
+      cell: (row) => new Date(row.created_at).toLocaleDateString(),
+    },
+    {
+      id: "open",
+      header: "",
+      cell: (row) => (
+        <button type="button" className="text-sm font-semibold" onClick={() => void openJob(row.id)}>
+          View
+        </button>
+      ),
+    },
   ];
+
+  const formDirty =
+    name.trim() !== "" ||
+    phone.trim() !== "" ||
+    model.trim() !== "" ||
+    identifier.trim() !== "" ||
+    issue.trim() !== "" ||
+    estimate.trim() !== "" ||
+    deposit.trim() !== "" ||
+    passcode.trim() !== "" ||
+    accessories.trim() !== "" ||
+    photo !== null ||
+    productId !== null;
+
+  function closeBooking() {
+    if (formDirty && !window.confirm("Discard this repair? Nothing has been booked.")) return;
+    setBookingOpen(false);
+    setReviewing(false);
+    setDuplicates([]);
+    setError(null);
+    setOwnership("customer");
+    setProductId(null);
+    setQuery("");
+    setHits([]);
+    setName("");
+    setPhone("");
+    setModel("");
+    setIdentifier("");
+    setIssue("");
+    setEstimate("");
+    setPasscode("");
+    setAccessories("");
+    setDeposit("");
+    setChecks({});
+    setPhoto(null);
+  }
+
+  const jobsFiltered = jobSearch !== "" || jobStatus !== "active" || jobOwnership !== "" || receivedFrom !== "" || receivedTo !== "";
+  function clearJobFilters() {
+    setJobQuery("");
+    setJobSearch("");
+    setJobStatus("active");
+    setJobOwnership("");
+    setReceivedFrom("");
+    setReceivedTo("");
+  }
 
   const sidePanel = (
     <div className={`flex h-full flex-col gap-4 overflow-y-auto p-4 ${ui.panel}`}>
@@ -370,16 +468,17 @@ export function RepairsPage({ session }: { session: CashierSession }) {
     <PageFrame
       title="Repairs"
       sync={{ tone: "live", label: "Live", title: "Bookings are saved on the server." }}
-      drawer={sidePanel}
+      drawer={bookingOpen || ticket === null ? null : sidePanel}
     >
-      <form id="book-repair" onSubmit={(event) => void submit(event)} className={`mx-auto max-w-3xl space-y-4 p-4 ${bookingOpen ? "" : "hidden"}`}>
+      {bookingOpen ? (
+      <form id="book-repair" onSubmit={(event) => void submit(event)} className="w-full space-y-4 p-4">
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-2">
               <Wrench size={18} aria-hidden="true" />
               <h2 className="text-lg font-semibold">Book a repair</h2>
             </div>
-            <button type="button" className="text-sm font-medium" onClick={() => setBookingOpen(false)}>
-              Hide form
+            <button type="button" className="text-sm font-medium" onClick={closeBooking}>
+              Cancel
             </button>
           </div>
           <fieldset>
@@ -565,47 +664,71 @@ export function RepairsPage({ session }: { session: CashierSession }) {
             </div>
           ) : null}
           {error ? <p className="text-sm text-red-600">{error}</p> : null}
-          {notice ? <p className="text-sm text-emerald-700">{notice}</p> : null}
-          <button type="submit" disabled={busy} className={ui.primaryAction}>
-          {busy ? "Booking…" : reviewing ? "Book this repeat repair" : "Book repair"}
-        </button>
-      </form>
-      <section className="space-y-3 p-4">
-        <div className="flex flex-wrap items-end justify-between gap-3">
-          <div>
-            <h2 className="text-lg font-semibold">Repair jobs</h2>
-            <p className="text-sm text-zinc-500">{jobTotal} job{jobTotal === 1 ? "" : "s"}</p>
+          <div className="flex flex-wrap gap-2">
+            <button type="submit" disabled={busy} className={ui.primaryAction}>
+              {busy ? "Booking…" : reviewing ? "Book this repeat repair" : "Book repair"}
+            </button>
+            <button type="button" disabled={busy} onClick={closeBooking} className={ui.secondaryAction}>
+              Cancel
+            </button>
           </div>
-          <button type="button" className={ui.secondaryAction} onClick={() => setBookingOpen(true)}>
-            New repair
-          </button>
+      </form>
+      ) : (
+      <section className="space-y-3 p-4">
+        {counts ? (
+          <p className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-zinc-600 dark:text-zinc-300">
+            <span>{counts.active} active</span>
+            <span>{counts.approval} awaiting approval</span>
+            <span>{counts.parts} waiting for parts</span>
+            <span>{counts.ready} ready</span>
+            <span>{counts.overdue} overdue</span>
+          </p>
+        ) : null}
+        {notice ? <p className="text-sm text-emerald-700 dark:text-emerald-300">{notice}</p> : null}
+        <div>
+          <h2 className="text-lg font-semibold">Repair jobs</h2>
+          <p className="text-sm text-zinc-500">{jobTotal} job{jobTotal === 1 ? "" : "s"}</p>
         </div>
-        <div className="flex flex-wrap gap-2">
-          <input
-            value={jobQuery}
-            onChange={(event) => setJobQuery(event.target.value)}
-            placeholder="Number, customer, phone, device, serial, IMEI"
-            aria-label="Search repair jobs"
-            className={"h-11 w-64 rounded-xl px-3 text-sm " + ui.input}
-          />
-          <Select
-            aria-label="Repair status"
-            value={jobStatus}
-            onChange={setJobStatus}
-            options={[
-              { value: "active", label: "Active jobs" },
-              { value: "", label: "All statuses" },
-              { value: "intake", label: "Received" },
-              { value: "diagnosing", label: "Awaiting diagnosis" },
-              { value: "awaiting_approval", label: "Awaiting approval" },
-              { value: "in_repair", label: "In progress" },
-              { value: "waiting_parts", label: "Waiting for parts" },
-              { value: "ready", label: "Ready for collection" },
-              { value: "closed", label: "Collected" },
-              { value: "cancelled", label: "Cancelled" },
-            ]}
-          />
-        </div>
+        <RepairJobsToolbar
+          search={jobQuery}
+          onSearch={setJobQuery}
+          status={jobStatus}
+          onStatus={setJobStatus}
+          statusOptions={[
+            { value: "active", label: "Active jobs" },
+            { value: "", label: "All statuses" },
+            { value: "intake", label: "Received" },
+            { value: "diagnosing", label: "Awaiting diagnosis" },
+            { value: "awaiting_approval", label: "Awaiting approval" },
+            { value: "in_repair", label: "In progress" },
+            { value: "waiting_parts", label: "Waiting for parts" },
+            { value: "ready", label: "Ready for collection" },
+            { value: "closed", label: "Collected" },
+            { value: "cancelled", label: "Cancelled" },
+          ]}
+          type={jobOwnership}
+          onType={setJobOwnership}
+          typeOptions={[
+            { value: "", label: "All types" },
+            { value: "customer", label: "Customer repair" },
+            { value: "internal", label: "Shop equipment" },
+          ]}
+          from={receivedFrom}
+          to={receivedTo}
+          onFrom={setReceivedFrom}
+          onTo={setReceivedTo}
+          onClear={clearJobFilters}
+          clearVisible={jobsFiltered}
+          action={
+            <button
+              type="button"
+              onClick={() => setBookingOpen(true)}
+              className="inline-flex h-11 items-center whitespace-nowrap rounded-xl bg-primary-500 px-4 text-sm font-semibold text-white hover:bg-primary-600 focus:outline-none focus:ring-2 focus:ring-primary-500/40"
+            >
+              + New repair
+            </button>
+          }
+        />
         <DataTable
           aria-label="Repair jobs"
           minWidth="720px"
@@ -625,12 +748,29 @@ export function RepairsPage({ session }: { session: CashierSession }) {
             onPageSizeChange: pager.setPageSize,
           }}
           emptyState={
-            jobSearch || jobStatus
-              ? { title: "No repairs match your filters", description: "Clear the search to see every job." }
-              : { title: "No repair jobs yet", description: "Book the first repair above.", action: <button type="button" className={ui.secondaryAction} onClick={() => setBookingOpen(true)}>Book first repair</button> }
+            jobsFiltered
+              ? {
+                  title: "No repairs match these filters",
+                  description: "Try a different search or clear the filters.",
+                  action: (
+                    <button type="button" className={ui.secondaryAction} onClick={clearJobFilters}>
+                      Clear filters
+                    </button>
+                  ),
+                }
+              : {
+                  title: "No repair jobs yet",
+                  description: "Create your first repair job to start tracking device intake, diagnosis and repair progress.",
+                  action: (
+                    <button type="button" className={ui.primaryAction} onClick={() => setBookingOpen(true)}>
+                      + New repair
+                    </button>
+                  ),
+                }
           }
         />
       </section>
+      )}
     </PageFrame>
   );
 }

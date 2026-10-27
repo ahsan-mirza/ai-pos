@@ -34,6 +34,7 @@ export { PhoneField } from "./PhoneField";
 export { isValidE164, phoneError, toE164 } from "./phone";
 export { emailError, fieldErrorsFrom, lengthError, moneyError, requiredError, type FieldErrors } from "./validation";
 export { focusFirstInvalid, useFormValidation } from "./useFormValidation";
+export { RepairJobsToolbar, type RepairJobsToolbarProps } from "./RepairJobsToolbar";
 export { SearchableSpecSelect, type SearchableSpecSelectProps } from "./SearchableSpecSelect";
 export { Select, billingCycleBadge, billingCycleOption, type SelectOption, type SelectProps } from "./Select";
 export {

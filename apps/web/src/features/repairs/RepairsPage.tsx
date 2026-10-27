@@ -7,11 +7,11 @@ import {
   type RepairDetail,
   type RepairTicket,
 } from "@ai-pos/shared-types";
-import { DataTable, usePagination, type DataTableColumn } from "@ai-pos/ui";
+import { DataTable, RepairJobsToolbar, usePagination, type DataTableColumn } from "@ai-pos/ui";
 import { CircleDot, Package, ReceiptText, Trash2, Wrench } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
-import { ErrorNote, FilterSelect, GhostButton, PrimaryButton, TextField } from "../../components/ui/Field";
+import { ErrorNote, GhostButton, PrimaryButton, TextField } from "../../components/ui/Field";
 import { Modal } from "../../components/ui/Modal";
 import { SegmentedControl } from "../../components/ui/SegmentedControl";
 import { Toast } from "../../components/ui/Toast";
@@ -44,17 +44,35 @@ const statusLabel = (status: string) =>
     cancelled: "Cancelled",
   })[status] ?? status;
 
-const views: { id: string; label: string }[] = [
-  { id: "all", label: "All repairs" },
-  { id: "customer", label: "Customer repairs" },
-  { id: "internal", label: "Business repairs" },
-  { id: "active", label: "Active jobs" },
-  { id: "approval", label: "Awaiting approval" },
-  { id: "parts", label: "Waiting for parts" },
-  { id: "ready", label: "Ready for collection" },
-  { id: "overdue", label: "Overdue repairs" },
-  { id: "done", label: "Completed repairs" },
+const statusOptions = [
+  { value: "", label: "All statuses" },
+  { value: "active", label: "Active jobs" },
+  { value: "awaiting_approval", label: "Awaiting approval" },
+  { value: "waiting_parts", label: "Waiting for parts" },
+  { value: "ready", label: "Ready for collection" },
+  { value: "overdue", label: "Overdue" },
+  { value: "closed", label: "Completed" },
 ];
+
+const typeOptions = [
+  { value: "", label: "All types" },
+  { value: "customer", label: "Customer repairs" },
+  { value: "internal", label: "Business repairs" },
+];
+
+function legacyStatus(view: string): string {
+  if (view === "active") return "active";
+  if (view === "approval") return "awaiting_approval";
+  if (view === "parts") return "waiting_parts";
+  if (view === "ready") return "ready";
+  if (view === "overdue") return "overdue";
+  if (view === "done") return "closed";
+  return "";
+}
+
+function legacyType(view: string): string {
+  return view === "customer" || view === "internal" ? view : "";
+}
 
 function useDebounced(value: string): string {
   const [debounced, setDebounced] = useState(value);
@@ -82,25 +100,16 @@ const warrantyLabels: Record<NonNullable<RepairDetail["warranty_status"]>, strin
   NOT_FOUND: "Not sold here",
 };
 
-function viewQuery(view: string): Record<string, string> {
-  if (view === "customer") return { ownership: "customer" };
-  if (view === "internal") return { ownership: "internal" };
-  if (view === "active") return { active: "true" };
-  if (view === "approval") return { status: "awaiting_approval" };
-  if (view === "parts") return { status: "waiting_parts" };
-  if (view === "ready") return { status: "ready" };
-  if (view === "overdue") return { overdue: "true" };
-  if (view === "done") return { status: "closed" };
-  return {};
-}
-
 export function RepairsPage() {
   const { can } = useAuth();
   const financial = can(Permission.AccountingManage);
   const { ticketId } = useParams();
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
-  const view = params.get("view") ?? "all";
+  const legacy = params.get("view") ?? "";
+  const explicit = params.has("status") || params.has("ownership");
+  const status = explicit ? (params.get("status") ?? "") : legacyStatus(legacy);
+  const ownership = explicit ? (params.get("ownership") ?? "") : legacyType(legacy);
   const layout = params.get("layout") === "bench" ? "bench" : "jobs";
   const [draft, setDraft] = useState(params.get("q") ?? "");
   const debounced = useDebounced(draft);
@@ -114,8 +123,9 @@ export function RepairsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  const [counts, setCounts] = useState<{ active: number; approval: number; parts: number; ready: number; overdue: number } | null>(null);
   const dismissToast = useCallback(() => setToast(null), []);
-  const filters = `${view}|${debounced}|${receivedFrom}|${receivedTo}|${technicianId}|${warranty}`;
+  const filters = `${status}|${ownership}|${debounced}|${receivedFrom}|${receivedTo}|${technicianId}|${warranty}`;
   const pager = usePagination({ resetKeys: [filters] });
 
   useEffect(() => {
@@ -124,8 +134,35 @@ export function RepairsPage() {
       .catch(() => setTechnicians([]));
   }, []);
 
+  useEffect(() => {
+    if (ticketId) return;
+    let cancelled = false;
+    const count = (query: string) =>
+      apiGetPage<RepairTicket>(`/api/v1/repairs?${query}`, { offset: 0, limit: 1 }).then((page) => page.total);
+    Promise.all([
+      count("active=true"),
+      count("status=awaiting_approval"),
+      count("status=waiting_parts"),
+      count("status=ready"),
+      count("overdue=true"),
+    ])
+      .then(([active, approval, parts, ready, overdue]) => {
+        if (!cancelled) setCounts({ active, approval, parts, ready, overdue });
+      })
+      .catch(() => {
+        if (!cancelled) setCounts(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [rows, ticketId]);
+
   const load = useCallback(() => {
-    const query = new URLSearchParams(viewQuery(view));
+    const query = new URLSearchParams();
+    if (ownership) query.set("ownership", ownership);
+    if (status === "active") query.set("active", "true");
+    else if (status === "overdue") query.set("overdue", "true");
+    else if (status) query.set("status", status);
     if (debounced.trim()) query.set("q", debounced.trim());
     if (receivedFrom) query.set("received_from", receivedFrom);
     if (receivedTo) query.set("received_to", receivedTo);
@@ -140,17 +177,22 @@ export function RepairsPage() {
       })
       .catch((caught: unknown) => setError(message(caught, "Could not load repair jobs.")))
       .finally(() => setLoading(false));
-  }, [view, debounced, receivedFrom, receivedTo, technicianId, warranty, pager.offset, pager.pageSize]);
+  }, [status, ownership, debounced, receivedFrom, receivedTo, technicianId, warranty, pager.offset, pager.pageSize]);
 
   useEffect(() => {
     if (ticketId) return;
     load();
   }, [load, ticketId]);
 
-  const setView = (id: string) => {
+  const writeFilter = (patch: { status?: string; ownership?: string }) => {
     const next = new URLSearchParams(params);
-    if (id === "all") next.delete("view");
-    else next.set("view", id);
+    next.delete("view");
+    const nextStatus = patch.status === undefined ? status : patch.status;
+    const nextType = patch.ownership === undefined ? ownership : patch.ownership;
+    if (nextStatus) next.set("status", nextStatus);
+    else next.delete("status");
+    if (nextType) next.set("ownership", nextType);
+    else next.delete("ownership");
     setParams(next, { replace: true });
   };
 
@@ -160,10 +202,12 @@ export function RepairsPage() {
     setReceivedTo("");
     setTechnicianId("");
     setWarranty(false);
-    setParams(new URLSearchParams(), { replace: true });
+    const next = new URLSearchParams();
+    if (layout === "bench") next.set("layout", "bench");
+    setParams(next, { replace: true });
   };
 
-  const filtered = view !== "all" || debounced.trim() !== "" || receivedFrom !== "" || receivedTo !== "" || technicianId !== "" || warranty;
+  const filtered = status !== "" || ownership !== "" || debounced.trim() !== "" || receivedFrom !== "" || receivedTo !== "" || technicianId !== "" || warranty;
   const columns: DataTableColumn<RepairTicket>[] = [
     {
       id: "number",
@@ -265,7 +309,7 @@ export function RepairsPage() {
       header: "",
       cell: (row) => (
         <button type="button" className="text-sm font-semibold text-accent" onClick={() => navigate(`/repairs/${row.id}`)}>
-          Open
+          View details
         </button>
       ),
     },
@@ -289,10 +333,8 @@ export function RepairsPage() {
     <section className="space-y-4">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h2 className="text-2xl font-semibold">Repair jobs</h2>
-          <p className="text-sm text-charcoal/60">
-            {total} job{total === 1 ? "" : "s"}. Open a row to update status, parts, and the estimate. Booking stays on the register.
-          </p>
+          <p className="text-xs font-medium text-charcoal/50">Admin / Repairs</p>
+          <h2 className="text-2xl font-semibold">Repairs</h2>
         </div>
         <SegmentedControl
           label="Repair view"
@@ -309,50 +351,45 @@ export function RepairsPage() {
           }}
         />
       </div>
-      <div className="flex flex-wrap gap-2">
-        {views.map((item) => (
-          <button
-            key={item.id}
-            type="button"
-            onClick={() => setView(item.id)}
-            className={`h-9 rounded-full px-3 text-sm ${view === item.id ? "bg-charcoal text-white" : "bg-white ring-1 ring-line"}`}
-          >
-            {item.label}
-          </button>
-        ))}
+      {counts ? (
+        <p className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-charcoal/70">
+          <span>{counts.active} active</span>
+          <span>{counts.approval} awaiting approval</span>
+          <span>{counts.parts} waiting for parts</span>
+          <span>{counts.ready} ready</span>
+          <span>{counts.overdue} overdue</span>
+        </p>
+      ) : null}
+      <div>
+        <h3 className="text-lg font-semibold">Repair jobs</h3>
+        <p className="text-sm text-charcoal/60">{total} job{total === 1 ? "" : "s"}</p>
       </div>
-      <div className="flex flex-wrap items-end gap-3">
-        <label className="grid gap-1 text-xs text-charcoal/60">
-          Search
-          <input
-            value={draft}
-            onChange={(event) => setDraft(event.target.value)}
-            placeholder="Number, customer, phone, device, serial, IMEI"
-            aria-label="Search repair jobs"
-            className="h-10 w-72 max-w-full rounded-full border border-line px-4 text-sm text-charcoal"
-          />
-        </label>
-        <label className="hidden gap-1 text-xs text-charcoal/60 md:grid">
-          Received from
-          <input type="date" value={receivedFrom} onChange={(event) => setReceivedFrom(event.target.value)} className="h-10 rounded-xl border border-line px-3 text-sm" />
-        </label>
-        <label className="hidden gap-1 text-xs text-charcoal/60 md:grid">
-          Received to
-          <input type="date" value={receivedTo} onChange={(event) => setReceivedTo(event.target.value)} className="h-10 rounded-xl border border-line px-3 text-sm" />
-        </label>
-        <FilterSelect
-          label="Technician"
-          className="hidden md:block"
-          value={technicianId}
-          options={[{ value: "", label: "Anyone" }, ...technicians.map((person) => ({ value: person.id, label: person.name }))]}
-          onChange={setTechnicianId}
-        />
-        <label className="hidden h-10 items-center gap-2 text-sm md:flex">
-          <input type="checkbox" checked={warranty} onChange={(event) => setWarranty(event.target.checked)} />
-          Warranty repair
-        </label>
-        {filtered ? <GhostButton onClick={clearFilters}>Clear filters</GhostButton> : null}
-      </div>
+      <RepairJobsToolbar
+        search={draft}
+        onSearch={setDraft}
+        status={status}
+        onStatus={(value) => writeFilter({ status: value })}
+        statusOptions={statusOptions}
+        type={ownership}
+        onType={(value) => writeFilter({ ownership: value })}
+        typeOptions={typeOptions}
+        from={receivedFrom}
+        to={receivedTo}
+        onFrom={setReceivedFrom}
+        onTo={setReceivedTo}
+        technician={technicianId}
+        onTechnician={setTechnicianId}
+        technicianOptions={[{ value: "", label: "Anyone" }, ...technicians.map((person) => ({ value: person.id, label: person.name }))]}
+        moreActive={warranty}
+        more={
+          <label className="flex h-11 items-center gap-2 text-sm">
+            <input type="checkbox" checked={warranty} onChange={(event) => setWarranty(event.target.checked)} />
+            Warranty repair
+          </label>
+        }
+        onClear={clearFilters}
+        clearVisible={filtered}
+      />
       {layout === "bench" ? (
         <RepairBench onOpen={(id) => navigate(`/repairs/${id}`)} />
       ) : (
@@ -377,7 +414,10 @@ export function RepairsPage() {
           emptyState={
             filtered
               ? { title: "No repairs match your filters", description: "Clear the search or filters to see every job.", action: <GhostButton onClick={clearFilters}>Clear filters</GhostButton> }
-              : { title: "No repair jobs yet", description: "Book the first repair from the register." }
+              : {
+                  title: "No repair jobs yet",
+                  description: "Create your first repair job on the register to start tracking device intake, diagnosis and repair progress.",
+                }
           }
         />
       )}
