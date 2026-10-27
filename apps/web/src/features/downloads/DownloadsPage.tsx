@@ -1,5 +1,5 @@
 import type { AppRelease, DownloadsList, InstallerFile } from "@ai-pos/shared-types";
-import { Download, KeyRound, MonitorDown, PackageOpen } from "lucide-react";
+import { Download, KeyRound, PackageOpen } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { ErrorNote } from "../../components/ui/Field";
@@ -66,11 +66,9 @@ export function DownloadsPage() {
   }
 
   const latest = data.releases[0];
-  const earlier = data.releases.slice(1);
   return (
     <section className="mx-auto max-w-xl">
       {latest ? <LatestRelease release={latest} busy={busy} onDownload={download} /> : <NothingPublished />}
-      {earlier.length > 0 ? <EarlierReleases releases={earlier} busy={busy} onDownload={download} /> : null}
       <ErrorNote message={error} />
     </section>
   );
@@ -85,15 +83,14 @@ function LatestRelease({
   busy: string | null;
   onDownload: (file: InstallerFile) => Promise<void>;
 }) {
-  const installer = release.files.find((file) => file.kind === "exe") ?? release.files[0];
-  const packageFile = release.files.find((file) => file.kind === "msi" && file !== installer);
+  const installer = release.files.find((file) => file.kind === "exe");
 
   return (
     <div className="overflow-hidden rounded-card border border-line bg-white shadow-sm">
-      <div className="px-8 pb-8 pt-8">
+      <div className="px-5 pb-8 pt-8 sm:px-8">
         <div className="flex items-start justify-between gap-4">
           <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-accent text-white shadow-sm shadow-accent/30">
-            <MonitorDown size={26} aria-hidden="true" />
+            <WindowsMark />
           </span>
           <span className="rounded-full bg-emerald-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-wider text-emerald-700">
             Latest
@@ -113,32 +110,18 @@ function LatestRelease({
               className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-full bg-accent text-sm font-semibold text-white shadow-sm shadow-accent/25 transition-colors hover:bg-accent-hover disabled:opacity-40"
             >
               <Download size={18} aria-hidden="true" />
-              {busy === installer.download_path ? "Downloading…" : "Download Windows installer"}
+              {busy === installer.download_path ? "Downloading…" : "Download Windows Installer"}
             </button>
             <p className="mt-2 text-center text-xs text-charcoal/50">
               Version {release.version} · .exe · {formatSize(installer.size_bytes)}
             </p>
           </div>
-        ) : null}
-
-        {packageFile ? (
-          <p className="mt-4 text-center text-sm text-charcoal/60">
-            <button
-              type="button"
-              disabled={busy !== null}
-              onClick={() => void onDownload(packageFile)}
-              className="font-medium text-charcoal underline-offset-4 hover:underline disabled:opacity-40"
-            >
-              {busy === packageFile.download_path
-                ? "Downloading package…"
-                : `Windows package (.msi) · v${release.version}`}
-            </button>
-            <span> · {formatSize(packageFile.size_bytes)} for IT deployment</span>
-          </p>
-        ) : null}
+        ) : (
+          <p className="mt-6 text-center text-sm text-charcoal/60">The Windows installer is not available for this release.</p>
+        )}
       </div>
 
-      <div className="border-t border-line bg-[#f8fafc] px-8 py-7">
+      <div className="border-t border-line bg-[#f8fafc] px-5 py-7 sm:px-8">
         <h3 className="text-sm font-semibold uppercase tracking-[0.12em] text-charcoal/45">Set up a register</h3>
         <ol className="mt-4 space-y-4">
           {STEPS.map((step, index) => (
@@ -165,57 +148,11 @@ function LatestRelease({
   );
 }
 
-function EarlierReleases({
-  releases,
-  busy,
-  onDownload,
-}: {
-  releases: AppRelease[];
-  busy: string | null;
-  onDownload: (file: InstallerFile) => Promise<void>;
-}) {
+function WindowsMark() {
   return (
-    <div className="mt-4 overflow-hidden rounded-card border border-line bg-white shadow-sm">
-      <h3 className="border-b border-line px-8 py-4 text-sm font-semibold uppercase tracking-[0.12em] text-charcoal/45">
-        Earlier versions
-      </h3>
-      <ul>
-        {releases.map((release) => {
-          const installer = release.files.find((file) => file.kind === "exe") ?? release.files[0];
-          const packageFile = release.files.find((file) => file.kind === "msi" && file !== installer);
-          return (
-            <li key={release.version} className="flex flex-wrap items-center justify-between gap-3 border-b border-line px-8 py-4 last:border-b-0">
-              <span>
-                <span className="block text-sm font-semibold">Version {release.version}</span>
-                <span className="text-xs text-charcoal/50">{formatDay(release.published_at)}</span>
-              </span>
-              <span className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
-                {installer ? (
-                  <button
-                    type="button"
-                    disabled={busy !== null}
-                    onClick={() => void onDownload(installer)}
-                    className="font-medium text-charcoal underline-offset-4 hover:underline disabled:opacity-40"
-                  >
-                    {busy === installer.download_path ? "Downloading…" : `.exe · ${formatSize(installer.size_bytes)}`}
-                  </button>
-                ) : null}
-                {packageFile ? (
-                  <button
-                    type="button"
-                    disabled={busy !== null}
-                    onClick={() => void onDownload(packageFile)}
-                    className="font-medium text-charcoal underline-offset-4 hover:underline disabled:opacity-40"
-                  >
-                    {busy === packageFile.download_path ? "Downloading…" : `.msi · ${formatSize(packageFile.size_bytes)}`}
-                  </button>
-                ) : null}
-              </span>
-            </li>
-          );
-        })}
-      </ul>
-    </div>
+    <svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true" fill="currentColor">
+      <path d="M3 5.1 10.5 4.1v7.2H3V5.1Zm8.3-1.1L21 2.4v8.9h-9.7V4Zm0 9.2H21v8.9l-9.7-1.4V13.2ZM3 12.7h7.5v7.2L3 18.7v-6Z" />
+    </svg>
   );
 }
 
