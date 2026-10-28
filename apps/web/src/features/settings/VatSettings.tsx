@@ -3,10 +3,11 @@ import {
   formatMoney,
   isSaudiVatNumber,
   lineTax,
+  taxForCountry,
   type BusinessSettings,
-  type TaxAuthority,
   type TaxSettingsUpdate,
 } from "@ai-pos/shared-types";
+import { CountryField } from "@ai-pos/ui";
 import { Landmark } from "lucide-react";
 import { useEffect, useState } from "react";
 import { ErrorNote, PrimaryButton, TextField } from "../../components/ui/Field";
@@ -15,8 +16,6 @@ import { apiPut } from "../../lib/api";
 import { useCurrency } from "../../lib/currency";
 import { errorMessage } from "../users/api";
 import { EInvoicingPanel } from "./EInvoicingPanel";
-
-const AUTHORITIES: TaxAuthority[] = ["fta", "zatca"];
 
 const SAMPLE = 10_500;
 
@@ -29,6 +28,8 @@ function taxForm(row: BusinessSettings): TaxSettingsUpdate {
     prices_include_vat: Boolean(row.prices_include_vat),
     standard_rate_bps: row.standard_rate_bps ?? 500,
     tax_authority: row.tax_authority ?? "fta",
+    country: row.country ?? null,
+    location: row.location ?? null,
   };
 }
 
@@ -61,6 +62,8 @@ export function VatSettings() {
   const changed = JSON.stringify(form) !== JSON.stringify(saved);
   const inclusiveChanged = saved !== null && saved.prices_include_vat !== form.prices_include_vat;
   const authority = TAX_AUTHORITY_LABELS[form.tax_authority];
+  const countryMoved = Boolean(form.country) && form.country !== (saved?.country ?? null);
+  const localTax = form.country !== "AE" && form.country !== "SA";
   const trnInvalid =
     form.tax_authority === "zatca" && Boolean(form.trn) && form.trn?.length === 15 && !isSaudiVatNumber(form.trn ?? "");
 
@@ -74,6 +77,7 @@ export function VatSettings() {
         trn: form.trn?.trim() || null,
         legal_name: form.legal_name?.trim() || null,
         legal_name_ar: form.legal_name_ar?.trim() || null,
+        location: form.location?.trim() || null,
       });
       const next = taxForm(row);
       setSaved(next);
@@ -97,7 +101,7 @@ export function VatSettings() {
           <div>
             <h2 className="text-2xl font-semibold">VAT and tax invoices</h2>
             <p className="text-sm text-charcoal/60">
-              The API recomputes VAT on every sale and prints these details on {authority.name} tax invoices.
+              Tax follows the store&apos;s country. The register charges this rate and prints it on the tax invoice.
             </p>
           </div>
         </div>
@@ -108,38 +112,42 @@ export function VatSettings() {
 
       <div className="mt-6 grid gap-4 lg:grid-cols-[minmax(0,1fr)_280px]">
         <div className="space-y-4">
-          <fieldset>
-            <legend className="mb-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-charcoal/50">Tax authority</legend>
-            <div className="grid gap-3 sm:grid-cols-2">
-              {AUTHORITIES.map((code) => {
-                const option = TAX_AUTHORITY_LABELS[code];
-                const selected = form.tax_authority === code;
-                return (
-                  <label
-                    key={code}
-                    className={`flex cursor-pointer flex-col rounded-2xl border p-3 transition ${
-                      selected ? "border-accent bg-accent/5" : "border-line hover:bg-surface"
-                    }`}
-                  >
-                    <input
-                      type="radio"
-                      name="tax-authority"
-                      value={code}
-                      checked={selected}
-                      onChange={() => setForm({ ...form, tax_authority: code })}
-                      className="sr-only"
-                    />
-                    <span className="text-sm font-semibold">{option.name}</span>
-                    <span className="text-xs text-charcoal/60">
-                      {code === "zatca"
-                        ? "Signed, hash-chained e-invoices with QR codes (Fatoora phase 2)."
-                        : "Full and simplified tax invoices; PINT AE e-invoice export."}
-                    </span>
-                  </label>
-                );
-              })}
-            </div>
-          </fieldset>
+          <div className="grid gap-4 md:grid-cols-2">
+            <CountryField
+              label="Country"
+              required
+              value={form.country ?? ""}
+              onChange={(iso) => {
+                const rule = taxForCountry(iso);
+                const trn = rule.tax_authority === "zatca" ? (form.trn ?? "").replace(/\D/g, "").slice(0, 15) : form.trn;
+                setForm({
+                  ...form,
+                  country: iso,
+                  trn,
+                  tax_authority: rule.tax_authority,
+                  standard_rate_bps: rule.standard_rate_bps,
+                  prices_include_vat: rule.prices_include_vat,
+                });
+              }}
+            />
+            <TextField
+              label="Location"
+              maxLength={120}
+              value={form.location ?? ""}
+              hint="City or area. Each branch keeps its own address."
+              onChange={(event) => setForm({ ...form, location: event.target.value })}
+            />
+          </div>
+          <div className="rounded-2xl border border-accent bg-accent/5 p-3">
+            <p className="text-sm font-semibold">{localTax ? "Standard tax invoice" : authority.name}</p>
+            <p className="text-xs text-charcoal/60">
+              {form.tax_authority === "zatca"
+                ? "Saudi Arabia uses ZATCA: signed, hash-chained e-invoices with QR codes (Fatoora phase 2). VAT is 15%."
+                : form.country === "AE" || !form.country
+                  ? "The UAE uses the Federal Tax Authority: full and simplified tax invoices, and PINT AE export. VAT is 5%."
+                  : "This country uses a standard tax invoice. UAE and Saudi rules are not applied. The rate below is what the register charges."}
+            </p>
+          </div>
           <div className="grid gap-3 md:grid-cols-2">
             <Toggle
               label="VAT registered"
@@ -149,7 +157,7 @@ export function VatSettings() {
             />
             <Toggle
               label="Prices include VAT"
-              description="Shelf prices are VAT-inclusive (UAE retail rule)"
+              description={form.country === "AE" ? "Shelf prices include VAT, the UAE retail rule" : "Shelf prices already include this tax"}
               checked={form.prices_include_vat}
               onChange={(value) => setForm({ ...form, prices_include_vat: value })}
             />
@@ -164,7 +172,9 @@ export function VatSettings() {
                   ? trnInvalid
                     ? "Saudi VAT numbers start and end with 3"
                     : "15 digits, starting and ending with 3. Leave blank if you are not VAT-registered."
-                  : "15 digits for a UAE TRN. Other registration numbers can include letters. Leave blank if you are not tax-registered."
+                  : form.country === "AE" || !form.country
+                    ? "15 digits for a UAE TRN. Leave blank if you are not tax-registered."
+                    : "Your tax registration number. Leave blank if you are not tax-registered."
               }
               onChange={(event) => {
                 const raw = event.target.value.toUpperCase();
@@ -191,6 +201,8 @@ export function VatSettings() {
             <TextField
               label="Standard rate (%)"
               inputMode="decimal"
+              disabled={countryMoved}
+              hint={countryMoved ? "Set from the country. Save, then adjust the rate if yours is different." : undefined}
               value={(rate / 100).toString()}
               onChange={(event) => {
                 const value = Math.round(Number(event.target.value) * 100);

@@ -158,3 +158,53 @@ def test_saudi_vat_numbers_are_checked_when_switching(client) -> None:
         "tax_authority": "zatca",
     }
     assert client.put("/api/v1/settings/tax", headers=bearer(token), json=body).status_code == 422
+
+
+def test_country_sets_the_tax_and_location(client) -> None:
+    token = admin_token(client)
+    base = {
+        "vat_registered": False,
+        "trn": None,
+        "legal_name": "Rehhas Attire",
+        "legal_name_ar": None,
+        "prices_include_vat": False,
+        "standard_rate_bps": 0,
+        "tax_authority": "zatca",
+        "country": "AE",
+        "location": "Dubai",
+    }
+    saved = client.put("/api/v1/settings/tax", headers=bearer(token), json=base)
+    assert saved.status_code == 200, saved.text
+    row = saved.json()
+    assert row["country"] == "AE"
+    assert row["location"] == "Dubai"
+    assert row["tax_authority"] == "fta"
+    assert row["standard_rate_bps"] == 500
+    assert row["prices_include_vat"] is True
+
+    saudi = {
+        **base,
+        "vat_registered": True,
+        "trn": SAUDI_VAT,
+        "country": "SA",
+        "location": "Riyadh",
+        "tax_authority": "fta",
+        "standard_rate_bps": 500,
+        "prices_include_vat": True,
+    }
+    moved = client.put("/api/v1/settings/tax", headers=bearer(token), json=saudi)
+    assert moved.status_code == 200, moved.text
+    row = moved.json()
+    assert row["tax_authority"] == "zatca"
+    assert row["standard_rate_bps"] == 1500
+    assert row["prices_include_vat"] is False
+    assert row["location"] == "Riyadh"
+
+    custom = {**saudi, "standard_rate_bps": 1000, "prices_include_vat": False, "tax_authority": "fta"}
+    kept = client.put("/api/v1/settings/tax", headers=bearer(token), json=custom)
+    assert kept.status_code == 200, kept.text
+    assert kept.json()["standard_rate_bps"] == 1000
+    assert kept.json()["tax_authority"] == "zatca"
+
+    refused = client.put("/api/v1/settings/tax", headers=bearer(token), json={**base, "country": "XX"})
+    assert refused.status_code == 422

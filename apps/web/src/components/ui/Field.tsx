@@ -225,7 +225,7 @@ export function PrimaryButton({ children, ...props }: ButtonHTMLAttributes<HTMLB
     <button
       type="button"
       {...props}
-      className="inline-flex items-center justify-center rounded-full bg-accent px-8 py-2.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-accent-hover disabled:opacity-40 disabled:hover:bg-accent"
+      className="inline-flex items-center justify-center rounded-full bg-accent px-8 py-2.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-accent"
     >
       {children}
     </button>

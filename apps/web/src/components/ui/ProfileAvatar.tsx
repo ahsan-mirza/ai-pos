@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { mediaSrc } from "../../lib/media";
 
 function initialsOf(name: string): string {
   return name
@@ -26,7 +27,7 @@ export function ProfileAvatar({
   if (url && !failed) {
     return (
       <img
-        src={url}
+        src={mediaSrc(url)}
         alt=""
         className={`${className} shrink-0 rounded-full object-cover ring-1 ring-accent/20`}
         onError={() => setFailed(true)}

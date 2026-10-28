@@ -1,3 +1,54 @@
+export interface AddonSearchFields {
+  name: string;
+  description: string;
+  sort_order?: number;
+}
+
+function searchText(value: string): string {
+  return value.toLocaleLowerCase().replace(/\s+/g, " ").trim();
+}
+
+/**
+ * Rank an add-on against a search box. A higher score is a closer match on the name, then the description.
+ * Zero means a word in the query is missing from both. An empty query matches every add-on equally.
+ */
+export function addonSearchScore(addon: AddonSearchFields, query: string): number {
+  const needle = searchText(query);
+  if (needle === "") return 1;
+  const name = searchText(addon.name);
+  const description = searchText(addon.description);
+  const words = needle.split(" ").filter((word) => word.length > 0);
+  const haystack = `${name} ${description}`;
+  if (words.some((word) => !haystack.includes(word))) return 0;
+  let score = 0;
+  if (name === needle) score += 1000;
+  else if (name.startsWith(needle)) score += 800;
+  else if (name.includes(needle)) score += 600;
+  if (description.includes(needle)) score += 80;
+  const nameWords = name.split(" ");
+  for (const word of words) {
+    if (nameWords.some((part) => part === word)) score += 220;
+    else if (nameWords.some((part) => part.startsWith(word))) score += 180;
+    else if (name.includes(word)) score += 100;
+    if (description.includes(word)) score += 40;
+  }
+  return score;
+}
+
+/** Matching add-ons, closest name first. Equal scores keep the catalogue order, then the name. */
+export function rankAddons<T extends AddonSearchFields>(addons: readonly T[], query: string): T[] {
+  return addons
+    .map((addon) => ({ addon, score: addonSearchScore(addon, query) }))
+    .filter((row) => row.score > 0)
+    .sort((left, right) => {
+      if (right.score !== left.score) return right.score - left.score;
+      const order = (left.addon.sort_order ?? 0) - (right.addon.sort_order ?? 0);
+      if (order !== 0) return order;
+      return searchText(left.addon.name).localeCompare(searchText(right.addon.name));
+    })
+    .map((row) => row.addon);
+}
+
 /** Recurring price for one quantity over a whole billing cycle. Matches the API integer division. */
 export function cycleAmountFils(monthlyFils: number, months: number, discountBps: number): number {
   if (months < 1 || discountBps < 0 || discountBps > 10_000 || monthlyFils < 0 || !Number.isFinite(monthlyFils)) return 0;

@@ -1,13 +1,15 @@
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Header, Query
 from sqlalchemy.orm import Session
 
+from app.core.config import Settings, get_settings
 from app.core.database import get_db
 from app.core.deps import Principal, authorize, get_principal
 from app.core.errors import ApiError
 from app.core.permissions import Permission
+from app.schemas.currencies import ConvertResult, RateBoard
 from app.schemas.module_settings import ModuleSettings
 from app.schemas.pos_policy import PosPolicy
 from app.schemas.receipt import ReceiptProfileOut, ReceiptSettings
@@ -18,7 +20,8 @@ from app.schemas.settings import (
     ProfileUpdate,
     TaxSettingsUpdate,
 )
-from app.services import settings_service
+from app.services import fx_service, settings_service
+from app.services.fx_service import QuoteUnavailable
 
 router = APIRouter()
 
@@ -27,7 +30,11 @@ router = APIRouter()
 def read_settings(
     db: Annotated[Session, Depends(get_db)],
     principal: Annotated[Principal, Depends(get_principal)],
+    x_pending_sales: Annotated[str | None, Header(alias="X-Pending-Sales")] = None,
 ) -> BusinessSettingsOut:
+    if principal.kind == "device":
+        device_id = str(principal.device.id) if principal.device is not None else "shared"
+        settings_service.note_offline_pending(device_id, x_pending_sales)
     settings = settings_service.cached_settings(db)
     device = principal.device
     settings_service.note_register_entitlement(
@@ -49,6 +56,35 @@ def update_currency(
     if principal.user is None or principal.store_id is not None:
         raise ApiError(403, "forbidden", "Only a business-wide administrator can change the currency.")
     return settings_service.change_currency(db, principal.user, payload.currency)
+
+
+@router.get("/exchange-rates", response_model=RateBoard)
+def exchange_rates(
+    principal: Annotated[Principal, Depends(get_principal)],
+    settings: Annotated[Settings, Depends(get_settings)],
+    source: Annotated[str, Query(min_length=3, max_length=3)],
+    amount_cents: Annotated[int, Query(ge=0, le=10**14)] = 0,
+    refresh: Annotated[bool, Query()] = False,
+) -> RateBoard:
+    """Live or saved rates for the currencies this business can use. Does not change prices."""
+    del principal
+    return fx_service.rate_board(settings, source, amount_cents, refresh=refresh)
+
+
+@router.get("/exchange-rates/convert", response_model=ConvertResult)
+def convert_currency(
+    principal: Annotated[Principal, Depends(get_principal)],
+    settings: Annotated[Settings, Depends(get_settings)],
+    source: Annotated[str, Query(min_length=3, max_length=3)],
+    target: Annotated[str, Query(min_length=3, max_length=3)],
+    amount_cents: Annotated[int, Query(ge=0, le=10**14)],
+    refresh: Annotated[bool, Query()] = False,
+) -> ConvertResult:
+    del principal
+    try:
+        return fx_service.convert(amount_cents, source, target, settings, refresh=refresh)
+    except QuoteUnavailable as exc:
+        raise ApiError(503, "rate_unavailable", exc.message) from exc
 
 
 @router.put("/appearance", response_model=BusinessSettingsOut)

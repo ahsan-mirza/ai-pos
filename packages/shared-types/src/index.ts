@@ -162,7 +162,14 @@ export type {
   ReturnsAnalytics,
   TenderSlice,
 } from "./returns.js";
-export { CURRENCY_NAMES, DEFAULT_MODULE_SETTINGS, SUPPORTED_CURRENCIES, isSupportedCurrency } from "./settings.js";
+export {
+  CURRENCY_NAMES,
+  CURRENCY_REGIONS,
+  DEFAULT_MODULE_SETTINGS,
+  SUPPORTED_CURRENCIES,
+  acceptBusinessSettings,
+  isSupportedCurrency,
+} from "./settings.js";
 export {
   BusinessProfile,
   CAPABILITIES,
@@ -205,7 +212,7 @@ export type {
   TenantStats,
   TenantStatus,
 } from "./console.js";
-export { cycleAmountFils } from "./billing.js";
+export { addonSearchScore, cycleAmountFils, rankAddons } from "./billing.js";
 export type {
   BillingAddon,
   BillingCatalog,
@@ -238,7 +245,7 @@ export type {
   TaxAuthority,
   TaxSettingsUpdate,
 } from "./settings.js";
-export { TAX_AUTHORITY_LABELS, isSaudiVatNumber, zatcaQr } from "./taxAuthority.js";
+export { TAX_AUTHORITY_LABELS, isSaudiVatNumber, taxForCountry, zatcaQr } from "./taxAuthority.js";
 export { LABEL_LAYOUT_LABELS, compareVariantValues } from "./fashion.js";
 export type {
   ConsignmentItem,

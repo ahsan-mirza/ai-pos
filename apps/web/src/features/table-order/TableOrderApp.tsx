@@ -3,6 +3,7 @@ import { TableGridNode } from "@ai-pos/ui";
 import { Bell, Receipt, Sparkles } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { ApiRequestError, apiPublicPost, apiTerminal } from "../../lib/api";
+import { mediaSrc } from "../../lib/media";
 import { useCurrency } from "../../lib/currency";
 import { emitTableEvent, listenForTableEvents, type TableEvent } from "./live";
 
@@ -851,7 +852,7 @@ function DishCard({ item, onAdd }: { item: MenuItem; onAdd: () => void }) {
     <article className="flex flex-col overflow-hidden rounded-3xl border border-slate-800 bg-slate-900">
       <div className="relative aspect-[4/3] bg-slate-800">
         {item.image_url ? (
-          <img src={item.image_url} alt="" className="h-full w-full object-cover" />
+          <img src={mediaSrc(item.image_url)} alt="" className="h-full w-full object-cover" />
         ) : (
           <DishPlaceholder name={item.name} />
         )}

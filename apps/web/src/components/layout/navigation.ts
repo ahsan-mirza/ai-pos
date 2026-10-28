@@ -87,6 +87,7 @@ export interface SettingsTab {
 
 export const settingsTabs: SettingsTab[] = [
   { to: "/settings", label: "General", permission: Permission.SettingsManage, settingsOnly: true, end: true },
+  { to: "/settings/addons", label: "Add-ons", permission: Permission.SettingsManage, settingsOnly: true },
   { to: "/stores", label: "Stores", permission: Permission.PortalAccess },
   { to: "/roles", label: "Roles", permission: Permission.UsersRead },
   { to: "/settings/addon-access", label: "Add-on access", permission: Permission.UsersRead },

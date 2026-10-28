@@ -24,6 +24,8 @@ class BusinessSettings(TenantScoped, TimestampMixin, Base):
     trn: Mapped[str | None] = mapped_column(String(32), nullable=True)
     # ISO country chosen at signup. Empty for stores created before this was recorded.
     country: Mapped[str | None] = mapped_column(String(2), nullable=True)
+    # City or area printed with the business. Branch addresses stay on each store.
+    location: Mapped[str | None] = mapped_column(String(120), nullable=True)
     legal_name: Mapped[str | None] = mapped_column(String(160), nullable=True)
     legal_name_ar: Mapped[str | None] = mapped_column(String(160), nullable=True)
     # Switching this reinterprets every catalog price, so it is an explicit business decision.

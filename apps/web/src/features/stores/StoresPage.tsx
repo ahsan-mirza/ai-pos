@@ -12,7 +12,7 @@ import { message, storesApi } from "../inventory/api";
 import { fieldErrors, type FieldErrors } from "../inventory/formErrors";
 
 export function StoresPage() {
-  const { currency } = useCurrency();
+  const { currency, settings } = useCurrency();
   const { can, user } = useAuth();
   const [live, setLive] = useState<Store[] | null>(null);
   const [failed, setFailed] = useState(false);
@@ -96,6 +96,7 @@ export function StoresPage() {
       </div>
       {editing ? (
         <StoreModal
+          country={settings?.country ?? null}
           store={editing}
           canChangeType={user?.store_id === null}
           onClose={() => setEditing(null)}
@@ -110,16 +111,19 @@ export function StoresPage() {
 }
 
 function StoreModal({
+  country,
   store,
   canChangeType,
   onClose,
   onSaved,
 }: {
+  country: string | null;
   store: Store;
   canChangeType: boolean;
   onClose: () => void;
   onSaved: () => void;
 }) {
+  const inUae = country === "AE" || country === null;
   const [name, setName] = useState(store.name);
   const [address, setAddress] = useState(store.address ?? "");
   const [phone, setPhone] = useState(store.phone ?? "");
@@ -145,7 +149,7 @@ function StoreModal({
         name: name.trim(),
         address: address.trim() || null,
         phone: phone.trim() || null,
-        emirate: emirate || null,
+        emirate: inUae ? emirate || null : null,
         ...(canChangeType ? { is_warehouse: warehouse, is_active: active } : {}),
       });
       onSaved();
@@ -182,7 +186,12 @@ function StoreModal({
             setErrors((current) => ({ ...current, name: "" }));
           }}
         />
-        <TextField label="Address" value={address} onChange={(event) => setAddress(event.target.value)} />
+        <TextField
+          label="Address"
+          hint={inUae ? undefined : "This branch's location. The business country is set in store settings."}
+          value={address}
+          onChange={(event) => setAddress(event.target.value)}
+        />
         <PhoneField
           label="Phone"
           value={phone}
@@ -192,16 +201,18 @@ function StoreModal({
             setErrors((current) => ({ ...current, phone: "" }));
           }}
         />
-        <SelectField<Emirate | "">
-          label="Emirate"
-          hint="Printed on tax invoices and used for the VAT return's per-emirate boxes."
-          value={emirate}
-          onChange={setEmirate}
-          options={[
-            { value: "", label: "Not set" },
-            ...(Object.entries(EMIRATE_LABELS) as [Emirate, string][]).map(([value, label]) => ({ value, label })),
-          ]}
-        />
+        {inUae ? (
+          <SelectField<Emirate | "">
+            label="Emirate"
+            hint="Printed on tax invoices and used for the VAT return's per-emirate boxes."
+            value={emirate}
+            onChange={setEmirate}
+            options={[
+              { value: "", label: "Not set" },
+              ...(Object.entries(EMIRATE_LABELS) as [Emirate, string][]).map(([value, label]) => ({ value, label })),
+            ]}
+          />
+        ) : null}
         {canChangeType ? (
           <>
             <Toggle

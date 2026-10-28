@@ -12,6 +12,7 @@ from tests.test_returns import admin_token, bearer, seed_catalog
 
 from app.models import Product, Sale
 from app.services import media_storage
+from app.tenancy.context import TenantRef, use_tenant
 from wholesale_support import CABLE, CASHIER_ID, STORE, admin, event, line, push, sale, seed
 
 
@@ -89,6 +90,17 @@ def test_photos_are_resized_stored_per_tenant_and_cover_each_colour(client, medi
     remaining = client.get(f"/api/v1/product-models/{model_id}/images", headers=headers).json()
     assert [row["id"] for row in remaining] == [black.json()["id"]] and remaining[0]["is_primary"]
     assert client.get("/media/" + general.json()["url"].split("/media/", 1)[1]).status_code == 404
+
+
+def test_photos_saved_without_a_store_are_copied_into_that_store(media_root) -> None:
+    key = "products/" + ("ab" * 16) + ".webp"
+    media_storage.storage_for("default").put(key, b"webp-bytes")
+    ref = TenantRef(id="00000000-0000-4000-8000-0000000000a1", slug="alpha", name="Alpha", database_url="sqlite://")
+    with use_tenant(ref):
+        served = media_storage.url(key)
+    assert served.endswith(f"/media/alpha/{key}")
+    assert (media_root / "alpha" / "media" / "products" / f"{'ab' * 16}.webp").is_file()
+    assert (media_root / "default" / "media" / "products" / f"{'ab' * 16}.webp").is_file()
 
 
 def test_only_photos_are_accepted(client) -> None:

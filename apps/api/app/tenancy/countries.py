@@ -255,3 +255,19 @@ COUNTRY_CURRENCIES: dict[str, str] = {
 
 def currency_for_country(code: str) -> str:
     return COUNTRY_CURRENCIES.get(code.upper(), "USD")
+
+
+# Standard VAT for the countries this product bills against a known rate.
+# authority, rate in basis points, whether shelf prices include that VAT.
+# Anywhere else starts at 0% on a standard tax invoice; the business can set its own rate afterwards.
+_COUNTRY_TAX: dict[str, tuple[str, int, bool]] = {
+    "AE": ("fta", 500, True),
+    "SA": ("zatca", 1500, False),
+    "BH": ("fta", 1000, False),
+    "OM": ("fta", 500, False),
+}
+
+
+def tax_for_country(code: str) -> tuple[str, int, bool]:
+    """Tax authority, standard rate, and whether prices include VAT for an ISO country."""
+    return _COUNTRY_TAX.get(code.upper(), ("fta", 0, False))

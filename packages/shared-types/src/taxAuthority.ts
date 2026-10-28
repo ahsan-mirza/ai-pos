@@ -1,5 +1,25 @@
 import type { TaxAuthority } from "./settings.js";
 
+/** Tax a country starts with: authority, rate in basis points, and whether shelf prices include it. */
+export function taxForCountry(iso: string): {
+  tax_authority: TaxAuthority;
+  standard_rate_bps: number;
+  prices_include_vat: boolean;
+} {
+  switch (iso) {
+    case "AE":
+      return { tax_authority: "fta", standard_rate_bps: 500, prices_include_vat: true };
+    case "SA":
+      return { tax_authority: "zatca", standard_rate_bps: 1500, prices_include_vat: false };
+    case "BH":
+      return { tax_authority: "fta", standard_rate_bps: 1000, prices_include_vat: false };
+    case "OM":
+      return { tax_authority: "fta", standard_rate_bps: 500, prices_include_vat: false };
+    default:
+      return { tax_authority: "fta", standard_rate_bps: 0, prices_include_vat: false };
+  }
+}
+
 export const TAX_AUTHORITY_LABELS: Record<TaxAuthority, { name: string; country: string; taxId: string }> = {
   fta: { name: "UAE Federal Tax Authority", country: "United Arab Emirates", taxId: "TRN" },
   zatca: { name: "ZATCA (Saudi Arabia)", country: "Saudi Arabia", taxId: "VAT number" },

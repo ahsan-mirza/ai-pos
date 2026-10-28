@@ -200,7 +200,8 @@ fn parse(raw: Option<&str>) -> Option<Value> {
 }
 
 pub fn refresh(db: &Db, config: &DesktopConfig) -> Result<CurrencySnapshot, String> {
-    match fetch(config) {
+    let pending = db.pending_count().ok();
+    match fetch(config, pending) {
         Ok((currency, tax, mut profile)) => {
             // A failed receipt fetch keeps the last branding rather than printing unbranded slips.
             let fetched_receipt = fetch_receipt(config).ok();
@@ -285,15 +286,17 @@ fn fetch_receipt(config: &DesktopConfig) -> Result<Value, String> {
     response.json::<Value>().map_err(|err| err.to_string())
 }
 
-fn fetch(config: &DesktopConfig) -> Result<(String, Value, Option<Value>), String> {
-    let response = reqwest::blocking::Client::builder()
+fn fetch(config: &DesktopConfig, pending: Option<i64>) -> Result<(String, Value, Option<Value>), String> {
+    let mut request = reqwest::blocking::Client::builder()
         .timeout(Duration::from_secs(6))
         .build()
         .map_err(|err| err.to_string())?
         .get(format!("{}/api/v1/settings", config.api_base_url))
-        .headers(config.auth_headers())
-        .send()
-        .map_err(|err| err.to_string())?;
+        .headers(config.auth_headers());
+    if let Some(count) = pending.filter(|count| *count >= 0) {
+        request = request.header("X-Pending-Sales", count.to_string());
+    }
+    let response = request.send().map_err(|err| err.to_string())?;
     let status = response.status();
     if !status.is_success() {
         return Err(format!("Settings request failed ({}).", status.as_u16()));

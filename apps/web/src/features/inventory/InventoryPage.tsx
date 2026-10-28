@@ -5,6 +5,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { DataTable, type DataTableColumn } from "../../components/ui/DataTable";
 import { PrimaryButton, SearchField } from "../../components/ui/Field";
 import { apiGet } from "../../lib/api";
+import { mediaSrc } from "../../lib/media";
 import { useAuth } from "../../lib/auth";
 import { useCurrency } from "../../lib/currency";
 import { labelsApi } from "./api";
@@ -138,7 +139,7 @@ export function InventoryPage() {
       className: "w-14",
       cell: ({ product }) =>
         product.thumb_url || product.image_url ? (
-          <img src={product.thumb_url ?? product.image_url ?? ""} alt="" className="h-10 w-10 rounded-lg object-cover" />
+          <img src={mediaSrc(product.thumb_url ?? product.image_url)} alt="" className="h-10 w-10 rounded-lg object-cover" />
         ) : (
           <span className="grid h-10 w-10 place-items-center rounded-lg bg-surface text-charcoal/35" aria-hidden="true">
             <Package size={16} />

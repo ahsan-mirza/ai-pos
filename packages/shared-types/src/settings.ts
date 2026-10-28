@@ -15,6 +15,18 @@ export const CURRENCY_NAMES: Record<CurrencyCode, string> = {
   CNY: "Chinese yuan",
 };
 
+export const CURRENCY_REGIONS: Record<CurrencyCode, string> = {
+  USD: "United States",
+  EUR: "Euro area",
+  GBP: "United Kingdom",
+  AED: "United Arab Emirates",
+  SAR: "Saudi Arabia",
+  QAR: "Qatar",
+  PKR: "Pakistan",
+  INR: "India",
+  CNY: "China",
+};
+
 /** Receipt branding (PUT /api/v1/settings/receipt). Names, TRN, address and phone come from elsewhere. */
 export interface ReceiptSettings {
   /** Black-and-white PNG data URL, at most 64 KB and 576 x 320 pixels. */
@@ -46,6 +58,8 @@ export interface BusinessSettings {
   store_code?: string;
   /** ISO country recorded at signup. Null when the store was created before this was stored. */
   country?: string | null;
+  /** City or area of the business. */
+  location?: string | null;
   supported_currencies: CurrencyCode[];
   updated_at: string;
   updated_by_name: string | null;
@@ -183,8 +197,43 @@ export interface TaxSettingsUpdate {
   prices_include_vat: boolean;
   standard_rate_bps: number;
   tax_authority: TaxAuthority;
+  /** ISO country. The tax authority and starting rate follow it. */
+  country?: string | null;
+  /** City or area. */
+  location?: string | null;
 }
 
 export function isSupportedCurrency(value: string): value is CurrencyCode {
   return (SUPPORTED_CURRENCIES as readonly string[]).includes(value);
+}
+
+function sameMembers(left: readonly string[] | undefined, right: readonly string[] | undefined): boolean {
+  if ((left?.length ?? 0) !== (right?.length ?? 0)) return false;
+  const rightItems = new Set(right ?? []);
+  return (left ?? []).every((item) => rightItems.has(item));
+}
+
+/**
+ * True when a settings response should replace the one already on screen.
+ * An older entitlement revision, or the same revision with an older timestamp, is ignored so a
+ * settings poll that started before a save cannot put the previous modules back.
+ */
+export function acceptBusinessSettings(current: BusinessSettings, next: BusinessSettings): boolean {
+  const nextRevision = next.entitlement_revision;
+  const currentRevision = current.entitlement_revision;
+  if (typeof nextRevision === "number" && typeof currentRevision === "number" && nextRevision !== currentRevision) {
+    return nextRevision > currentRevision;
+  }
+  if (next.updated_at < current.updated_at) return false;
+  if (next.updated_at > current.updated_at) return true;
+  return (
+    current.currency !== next.currency ||
+    current.trn !== next.trn ||
+    current.country !== next.country ||
+    current.business_profile !== next.business_profile ||
+    current.primary_color !== next.primary_color ||
+    !sameMembers(current.capabilities, next.capabilities) ||
+    !sameMembers(current.planned_capabilities, next.planned_capabilities) ||
+    !sameMembers(current.purchased_capabilities, next.purchased_capabilities)
+  );
 }

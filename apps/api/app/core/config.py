@@ -155,10 +155,16 @@ class Settings(BaseSettings):
     tamara_notification_token: str | None = None
     tamara_base_url: str = "https://api-sandbox.tamara.co"
 
-    # Exchange rates. "manual" keeps managers' rates; "open_er_api" refreshes them daily from open.er-api.com.
+    # Exchange rates. "manual" keeps managers' rates for foreign cash; "open_er_api" refreshes those daily.
     fx_provider: str = Field(default="manual", pattern="^(manual|open_er_api)$")
     # Registers may use a cached rate up to this far from the latest one (basis points).
     fx_tolerance_bps: int = Field(default=300, ge=0, le=5000)
+    # Informational conversion. The key, when the provider requires one, stays on the server.
+    fx_api_url: str = "https://open.er-api.com/v6/latest"
+    fx_api_key: str | None = None
+    fx_quote_ttl_seconds: int = Field(default=3600, ge=60, le=86_400)
+    fx_quote_stale_seconds: int = Field(default=604_800, ge=3600, le=2_592_000)
+    fx_refresh_seconds: int = Field(default=30, ge=5, le=600)
 
     # AI assistant. "builtin" answers common questions with rules, offline; "openai" calls any OpenAI-compatible
     # chat API with tool calling. Either way answers come only from the read-only report tools.

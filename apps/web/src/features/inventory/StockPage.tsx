@@ -7,6 +7,7 @@ import { SegmentedControl } from "../../components/ui/SegmentedControl";
 import { Toast } from "../../components/ui/Toast";
 import { useTenant } from "../../context/TenantContext";
 import { useAuth } from "../../lib/auth";
+import { mediaSrc } from "../../lib/media";
 import { AdjustStockModal } from "./AdjustStockModal";
 import { inventoryApi, message } from "./api";
 import { FashionFilters, NO_FASHION_FILTER, type FashionFilterValue } from "./FashionFilters";
@@ -111,7 +112,7 @@ export function StockPage() {
     className: "w-14",
     cell: (row) =>
       row.thumb_url ? (
-        <img src={row.thumb_url} alt="" className="h-10 w-10 rounded-lg object-cover" />
+        <img src={mediaSrc(row.thumb_url)} alt="" className="h-10 w-10 rounded-lg object-cover" />
       ) : (
         <span className="grid h-10 w-10 place-items-center rounded-lg bg-surface text-charcoal/35" aria-hidden="true">
           {menu ? <UtensilsCrossed size={16} /> : <Package size={16} />}

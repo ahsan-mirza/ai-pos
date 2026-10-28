@@ -14,6 +14,7 @@ import { ErrorNote, GhostButton, PrimaryButton, SelectField, TextField } from ".
 import { useConfirm } from "../../components/ui/ConfirmDialog";
 import { Modal } from "../../components/ui/Modal";
 import { useAuth } from "../../lib/auth";
+import { mediaSrc } from "../../lib/media";
 import { useCapability } from "../../lib/capabilities";
 import { brandsApi, message, modelsApi } from "./api";
 import { codeError, fieldErrors, useInvalidFocus, type FieldErrors } from "./formErrors";
@@ -376,7 +377,7 @@ function VariantList({ model, onModelSaved }: { model: ProductModel; onModelSave
                 <td className="py-3">
                   <span className="flex items-center gap-3">
                     {variant.thumb_url ? (
-                      <img src={variant.thumb_url} alt="" loading="lazy" className="h-10 w-10 shrink-0 rounded-lg object-cover" />
+                      <img src={mediaSrc(variant.thumb_url)} alt="" className="h-10 w-10 shrink-0 rounded-lg object-cover" />
                     ) : null}
                     <span>
                       <span className="block font-medium">{variantSummary(variant.variant_attributes) || variant.name}</span>

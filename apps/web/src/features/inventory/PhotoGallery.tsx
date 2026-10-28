@@ -4,6 +4,7 @@ import { ImagePlus, Loader2, Star, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { apiDelete, apiGet, apiPatch, apiUpload } from "../../lib/api";
 import { compressImageToWebp } from "../../lib/imageFile";
+import { mediaSrc } from "../../lib/media";
 import { errorMessage } from "../users/api";
 
 interface PhotoGalleryProps {
@@ -123,7 +124,7 @@ export function PhotoGallery({ path, canManage, colours = [], fallbackUrl = null
       {empty ? (
         fallbackUrl ? (
           <div className="flex items-center gap-3 rounded-2xl bg-surface p-3 text-sm text-charcoal/60">
-            <img src={fallbackUrl} alt="" className="h-16 w-16 rounded-xl object-cover" />
+            <img src={mediaSrc(fallbackUrl)} alt="" className="h-16 w-16 rounded-xl object-cover" />
             Showing the model&apos;s photo. Add a photo here to show this variant on its own.
           </div>
         ) : (
@@ -135,7 +136,7 @@ export function PhotoGallery({ path, canManage, colours = [], fallbackUrl = null
         <ul className="grid grid-cols-3 gap-2 sm:grid-cols-4">
           {(images ?? []).map((image) => (
             <li key={image.id} className="relative overflow-hidden rounded-2xl border border-line bg-surface">
-              <img src={image.thumb_url} alt="" loading="lazy" className="aspect-square w-full object-cover" />
+              <img src={mediaSrc(image.thumb_url)} alt="" className="aspect-square w-full object-cover" />
               <div className="absolute inset-x-1 top-1 flex justify-between gap-1">
                 {image.is_primary ? (
                   <span className="rounded-full bg-accent px-2 py-0.5 text-[10px] font-semibold text-white">Main</span>

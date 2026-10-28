@@ -66,5 +66,27 @@ def storage_for(tenant: str | None = None) -> MediaStorage:
     return LocalStorage(ROOT, tenant or tenant_slug())
 
 
+def place(key: str) -> None:
+    """Copy a photo that was saved with no store into the store this request is bound to.
+
+    Older uploads wrote under storage/default while the gallery asked for /media/{store}/.
+    The bytes are copied forward so the existing row's URL loads.
+    """
+    try:
+        slug = tenant_slug()
+        if slug == SINGLE_TENANT:
+            return
+        current = storage_for(slug)
+        if current.path(key) is not None:
+            return
+        legacy = storage_for(SINGLE_TENANT).path(key)
+        if legacy is None:
+            return
+        current.put(key, legacy.read_bytes())
+    except (OSError, ValueError):
+        return
+
+
 def url(key: str) -> str:
+    place(key)
     return f"{get_settings().public_base_url.rstrip('/')}/media/{tenant_slug()}/{key}"

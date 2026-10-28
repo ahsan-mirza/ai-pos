@@ -75,6 +75,7 @@ import { DeliveryPodPage } from "./features/salesOrders/DeliveryPodPage";
 import { SalesOrdersPage } from "./features/salesOrders/SalesOrdersPage";
 import { ReordersPage } from "./features/reorders/ReordersPage";
 import { AddonAccessPage } from "./features/settings/AddonAccessPage";
+import { AddonLibraryPage } from "./features/settings/AddonLibraryPage";
 import { SettingsPage } from "./features/settings/SettingsPage";
 import { StoresPage } from "./features/stores/StoresPage";
 import { UsersPage } from "./features/users/UsersPage";
@@ -481,6 +482,14 @@ function Portal() {
                 element={
                   <RequirePermission permission={Permission.UsersRead}>
                     <RolesPage />
+                  </RequirePermission>
+                }
+              />
+              <Route
+                path="settings/addons"
+                element={
+                  <RequirePermission permission={Permission.SettingsManage} businessWide>
+                    <AddonLibraryPage />
                   </RequirePermission>
                 }
               />

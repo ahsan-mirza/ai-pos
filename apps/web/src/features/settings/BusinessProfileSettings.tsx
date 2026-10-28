@@ -22,7 +22,7 @@ import { Select } from "@ai-pos/ui";
 import { ErrorNote, GhostButton, PrimaryButton } from "../../components/ui/Field";
 import { Modal } from "../../components/ui/Modal";
 import { ApiRequestError, apiGet, apiPost, apiPut } from "../../lib/api";
-import { useCapabilities } from "../../lib/capabilities";
+import { setCapabilityPreview, useCapabilities } from "../../lib/capabilities";
 import { useCurrency } from "../../lib/currency";
 import { errorMessage } from "../users/api";
 import {
@@ -321,6 +321,15 @@ export function BusinessProfileSettings() {
   const changed = profile !== capabilities.profile || !sameSelection(selected, saved);
   const switchingOff = [...capabilities.enabled].filter((capability) => !selected.has(capability));
 
+  useEffect(() => {
+    if (!changed) {
+      setCapabilityPreview(null);
+      return;
+    }
+    setCapabilityPreview(selected);
+    return () => setCapabilityPreview(null);
+  }, [changed, selected]);
+
   const choose = (next: BusinessProfile) => {
     setProfile(next);
     setSelected(presetSelection(next));
@@ -339,9 +348,13 @@ export function BusinessProfileSettings() {
       applySettings(next);
       void loadTenant();
       setConfirming(false);
-      setNotice(`Saved. Registers pick up the change on their next sync.`);
+      setNotice("Saved. The sidebar now follows these modules. Registers pick the change up on their next sync.");
     } catch (caught) {
       setError(errorMessage(caught, "Could not save the business profile."));
+      if (caught instanceof ApiRequestError && (caught.status === 402 || caught.status === 409)) {
+        setProfile(capabilities.profile);
+        setSelected(new Set(saved));
+      }
     } finally {
       setBusy(false);
     }
@@ -401,6 +414,10 @@ export function BusinessProfileSettings() {
           {plannedModules(profile).join(", ")}. They are planned now and switch on by themselves when they ship.
         </p>
       ) : null}
+
+      <p className="mt-4 text-xs text-charcoal/60">
+        The sidebar updates as soon as you switch a module. Save modules to keep the change.
+      </p>
 
       <h3 className="mb-3 mt-7 text-sm font-semibold">{locked ? "Included with your business type" : "Modules"}</h3>
       {locked ? (

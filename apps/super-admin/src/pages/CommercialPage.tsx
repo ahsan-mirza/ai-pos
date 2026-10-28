@@ -1,5 +1,6 @@
 import {
   cycleAmountFils,
+  rankAddons,
   type BillingAddon,
   type BillingCatalog,
   type BillingCycle,
@@ -45,6 +46,24 @@ function useCatalog() {
 
 function Reason({ value, onChange }: { value: string; onChange: (value: string) => void }) {
   return <Field label="Reason (kept in the audit log)" value={value} maxLength={500} onChange={(event) => onChange(event.target.value)} />;
+}
+
+function addonPayload(
+  addon: BillingAddon,
+  reason: string,
+  patch: Partial<Pick<BillingAddon, "name" | "description" | "monthly_fils" | "one_time_fils" | "refundable" | "active" | "module_keys" | "sort_order">>,
+) {
+  return {
+    name: patch.name ?? addon.name,
+    description: patch.description ?? addon.description,
+    monthly_fils: patch.monthly_fils ?? addon.monthly_fils,
+    one_time_fils: patch.one_time_fils ?? addon.one_time_fils,
+    refundable: patch.refundable ?? addon.refundable,
+    active: patch.active ?? addon.active,
+    module_keys: patch.module_keys ?? addon.module_keys,
+    sort_order: patch.sort_order ?? addon.sort_order,
+    reason,
+  };
 }
 
 function StatusPill({ on, onLabel, offLabel }: { on: boolean; onLabel: string; offLabel: string }) {
@@ -476,35 +495,155 @@ function FeeEditor({ fee, onClose, onSaved }: { fee: BillingFee; onClose: () => 
   );
 }
 
+function priceDetail(row: BillingAddon): string {
+  const parts: string[] = [];
+  parts.push(row.monthly_fils > 0 ? `${aed(row.monthly_fils)} / month` : "No monthly charge");
+  if (row.one_time_fils > 0) {
+    parts.push(row.refundable ? `${aed(row.one_time_fils)} refundable deposit` : `${aed(row.one_time_fils)} one-time`);
+  } else {
+    parts.push("No one-time charge");
+  }
+  return parts.join(" · ");
+}
+
+function AddonActivation({
+  addon,
+  onClose,
+  onSaved,
+}: {
+  addon: BillingAddon;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const turningOn = !addon.active;
+  const [reason, setReason] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  return (
+    <Modal
+      title={turningOn ? `Activate ${addon.name}` : `Deactivate ${addon.name}`}
+      subtitle={addon.code}
+      onClose={onClose}
+      footer={
+        <>
+          <GhostButton onClick={onClose}>Cancel</GhostButton>
+          <PrimaryButton
+            disabled={busy || reason.trim().length < 3}
+            onClick={() => {
+              setBusy(true);
+              api
+                .patch(`/billing/addons/${addon.id}`, addonPayload(addon, reason.trim(), { active: turningOn }))
+                .then(onSaved)
+                .catch((caught: unknown) => {
+                  setError(errorText(caught, "Could not update the add-on."));
+                  setBusy(false);
+                });
+            }}
+          >
+            {busy ? "Saving…" : turningOn ? "Activate" : "Deactivate"}
+          </PrimaryButton>
+        </>
+      }
+    >
+      <div className="grid gap-3">
+        <p className="text-sm text-charcoal/70">
+          {turningOn
+            ? "An active add-on is listed in store settings, with the monthly and one-time prices below. Activating it does not bill stores that have not chosen it."
+            : "An inactive add-on is hidden from store settings. Stores that already pay for it keep that subscription until it ends."}
+        </p>
+        <p className="text-sm">{priceDetail(addon)}</p>
+        <Reason value={reason} onChange={setReason} />
+        <ErrorNote message={error} />
+      </div>
+    </Modal>
+  );
+}
+
 export function AddonsPage() {
   const { operator } = useSession();
   const admin = operator?.role === "ADMIN";
   const { catalog, error, reload } = useCatalog();
   const [editing, setEditing] = useState<BillingAddon | null>(null);
   const [viewing, setViewing] = useState<BillingAddon | null>(null);
+  const [activating, setActivating] = useState<BillingAddon | null>(null);
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("");
-  const needle = query.trim().toLowerCase();
-  const rows = (catalog?.addons ?? [])
-    .filter((row) => (status === "" ? true : status === "published" ? row.active : !row.active))
-    .filter((row) => needle === "" || `${row.name} ${row.code} ${row.description}`.toLowerCase().includes(needle));
+  const rows = rankAddons(
+    (catalog?.addons ?? []).filter((row) => (status === "" ? true : status === "active" ? row.active : !row.active)),
+    query,
+  );
+  const columns = useMemo<DataTableColumn<BillingAddon>[]>(
+    () => [
+      {
+        header: "Add-on",
+        cell: (row) => (
+          <span className="block min-w-0">
+            <span className="block font-semibold">{row.name}</span>
+            <span className="block font-mono text-xs text-charcoal/50">{row.code}</span>
+          </span>
+        ),
+      },
+      {
+        header: "Description",
+        cell: (row) => <span className="block max-w-xs text-charcoal/70">{row.description || "—"}</span>,
+      },
+      {
+        header: "Monthly",
+        align: "right",
+        cell: (row) => (row.monthly_fils > 0 ? `${aed(row.monthly_fils)} / month` : "—"),
+      },
+      {
+        header: "One-time",
+        align: "right",
+        cell: (row) => (row.one_time_fils > 0 ? aed(row.one_time_fils) : "—"),
+      },
+      {
+        header: "Deposit",
+        cell: (row) => (row.one_time_fils > 0 ? (row.refundable ? "Refundable" : "Kept") : "—"),
+      },
+      {
+        header: "Modules",
+        cell: (row) => row.module_keys.join(", ") || "—",
+      },
+      {
+        header: "Status",
+        cell: (row) => <StatusPill on={row.active} onLabel="Active" offLabel="Inactive" />,
+      },
+      {
+        id: "actions",
+        header: "Actions",
+        cell: (row) => (
+          <span className="flex flex-wrap gap-2">
+            <GhostButton onClick={() => setViewing(row)}>View</GhostButton>
+            {admin ? (
+              <>
+                <GhostButton onClick={() => setActivating(row)}>{row.active ? "Deactivate" : "Activate"}</GhostButton>
+                <GhostButton onClick={() => setEditing(row)}>Pricing</GhostButton>
+              </>
+            ) : null}
+          </span>
+        ),
+      },
+    ],
+    [admin],
+  );
   return (
     <section>
       <PageHeader
         title="Add-ons"
-        description="Recurring rent is discounted with the billing cycle. A refundable deposit and other one-time amounts are charged once."
+        description="Activate an add-on to list it in store settings. Set the monthly price, the one-time price, and whether that one-time amount is a refundable deposit."
         controls={
           <>
-            <FilterSearch label="Search add-ons" value={query} onChange={setQuery} placeholder="Search add-ons" />
+            <FilterSearch label="Search add-ons" value={query} onChange={setQuery} placeholder="Name or description" />
             <FilterSlot>
               <Select
-                aria-label="Publication"
+                aria-label="Status"
                 value={status}
                 onChange={setStatus}
                 options={[
                   { value: "", label: "All add-ons" },
-                  { value: "published", label: "Published" },
-                  { value: "hidden", label: "Unpublished" },
+                  { value: "active", label: "Active" },
+                  { value: "inactive", label: "Inactive" },
                 ]}
               />
             </FilterSlot>
@@ -512,36 +651,15 @@ export function AddonsPage() {
         }
       />
       <ErrorNote message={error} />
-      {catalog && rows.length === 0 ? (
-        <p className="rounded-2xl border border-dashed border-line bg-white px-4 py-8 text-center text-sm text-charcoal/60">No add-ons match.</p>
-      ) : null}
-      <ul className="grid gap-3 md:grid-cols-2">
-        {rows.map((row) => (
-          <li key={row.id} className="flex flex-col rounded-2xl border border-line bg-white p-5 shadow-sm">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <p className="font-semibold">{row.name}</p>
-                <p className="font-mono text-xs text-charcoal/50">{row.code}</p>
-              </div>
-              <StatusPill on={row.active} onLabel="Published" offLabel="Unpublished" />
-            </div>
-            <p className="mt-3 text-sm text-charcoal/70">{row.description}</p>
-            <p className="mt-3 text-sm">
-              {row.monthly_fils > 0 ? <span className="font-semibold">{aed(row.monthly_fils)} / month</span> : <span>No recurring charge</span>}
-              {row.one_time_fils > 0 ? (
-                <span className="mt-1 block text-charcoal/60">
-                  {aed(row.one_time_fils)} once{row.refundable ? " · refundable deposit" : ""}
-                </span>
-              ) : null}
-            </p>
-            <p className="mt-2 text-xs text-charcoal/50">{row.module_keys.length ? row.module_keys.join(", ") : "Does not unlock a module"}</p>
-            <div className="mt-4 flex gap-2">
-              <GhostButton onClick={() => setViewing(row)}>View</GhostButton>
-              {admin ? <GhostButton onClick={() => setEditing(row)}>Edit</GhostButton> : null}
-            </div>
-          </li>
-        ))}
-      </ul>
+      <DataTable
+        aria-label="Add-ons"
+        columns={columns}
+        data={rows}
+        getRowId={(row) => row.id}
+        isLoading={catalog === null && error === null}
+        emptyState={{ title: query.trim() ? "No add-ons match that search" : "No add-ons" }}
+        minWidth="1100px"
+      />
       {viewing ? (
         <AddonDetail
           addon={viewing}
@@ -555,6 +673,16 @@ export function AddonsPage() {
                 }
               : undefined
           }
+        />
+      ) : null}
+      {activating ? (
+        <AddonActivation
+          addon={activating}
+          onClose={() => setActivating(null)}
+          onSaved={() => {
+            setActivating(null);
+            void reload();
+          }}
         />
       ) : null}
       {editing ? (
@@ -640,6 +768,7 @@ function AddonEditor({ addon, onClose, onSaved }: { addon: BillingAddon; onClose
   const [refundable, setRefundable] = useState(addon.refundable);
   const [active, setActive] = useState(addon.active);
   const [modules, setModules] = useState<string[]>(addon.module_keys ?? []);
+  const [order, setOrder] = useState(String(addon.sort_order));
   const [choices, setChoices] = useState<ModuleCatalogueItem[]>([]);
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
@@ -671,7 +800,7 @@ function AddonEditor({ addon, onClose, onSaved }: { addon: BillingAddon; onClose
                   refundable,
                   active,
                   module_keys: modules,
-                  sort_order: addon.sort_order,
+                  sort_order: Number.isFinite(Number(order)) ? Math.max(0, Math.round(Number(order))) : addon.sort_order,
                   reason: reason.trim(),
                 })
                 .then(onSaved)
@@ -689,13 +818,34 @@ function AddonEditor({ addon, onClose, onSaved }: { addon: BillingAddon; onClose
       <div className="grid gap-3">
         <Field label="Name" value={name} onChange={(event) => setName(event.target.value)} />
         <Field label="Description" value={description} onChange={(event) => setDescription(event.target.value)} />
-        <Field label="Monthly rent (AED)" value={monthly} inputMode="decimal" onChange={(event) => setMonthly(event.target.value)} />
-        <Field label="One-time amount (AED)" value={once} inputMode="decimal" onChange={(event) => setOnce(event.target.value)} />
+        <Field
+          label="Monthly price (AED)"
+          hint="Charged every month. A longer billing cycle can discount this amount. Use 0 when there is no recurring charge."
+          value={monthly}
+          inputMode="decimal"
+          onChange={(event) => setMonthly(event.target.value)}
+        />
+        <Field
+          label="One-time price (AED)"
+          hint="Charged once, on top of the monthly price. Use 0 when there is no one-time charge."
+          value={once}
+          inputMode="decimal"
+          onChange={(event) => setOnce(event.target.value)}
+        />
         <label className="flex items-center gap-2 text-sm">
-          <input type="checkbox" checked={refundable} onChange={(event) => setRefundable(event.target.checked)} /> Refundable deposit
+          <input type="checkbox" checked={refundable} onChange={(event) => setRefundable(event.target.checked)} />
+          The one-time price is a refundable deposit
         </label>
+        <Field
+          label="Sort order"
+          hint="Lower numbers are listed first when a search box is empty."
+          value={order}
+          inputMode="numeric"
+          onChange={(event) => setOrder(event.target.value)}
+        />
         <label className="flex items-center gap-2 text-sm">
-          <input type="checkbox" checked={active} onChange={(event) => setActive(event.target.checked)} /> Active
+          <input type="checkbox" checked={active} onChange={(event) => setActive(event.target.checked)} />
+          Active in the store add-on library
         </label>
         <fieldset>
           <legend className="text-sm font-medium">Modules this add-on may sell</legend>

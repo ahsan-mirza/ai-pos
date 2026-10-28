@@ -1,4 +1,16 @@
+import { env } from "../../config/env";
 import { inTauri } from "../../lib/tauri";
+
+/** The catalog URL uses the server's public host. The till loads the file from the API it already syncs with. */
+export function mediaSrc(url: string): string {
+  try {
+    const parsed = new URL(url, env.apiBaseUrl);
+    if (!parsed.pathname.startsWith("/media/")) return url;
+    return `${env.apiBaseUrl}${parsed.pathname}${parsed.search}`;
+  } catch {
+    return url;
+  }
+}
 
 const resolved = new Map<string, string | null>();
 const waiters = new Set<() => void>();
@@ -27,23 +39,24 @@ function watch(): void {
  * A missing file still uses the remote URL; the card's placeholder shows if that cannot load.
  */
 export async function displayPhoto(src: string): Promise<string> {
-  if (!inTauri()) return src;
+  const remote = mediaSrc(src);
+  if (!inTauri()) return remote;
   watch();
-  const known = resolved.get(src);
+  const known = resolved.get(remote);
   if (known) {
     const { convertFileSrc } = await import("@tauri-apps/api/core");
     return convertFileSrc(known);
   }
-  if (known === null) return src;
+  if (known === null) return remote;
   try {
     const { invoke } = await import("@tauri-apps/api/core");
-    const path = await invoke<string | null>("local_product_image", { url: src });
-    resolved.set(src, path);
-    if (!path) return src;
+    const path = await invoke<string | null>("local_product_image", { url: remote });
+    resolved.set(remote, path);
+    if (!path) return remote;
     const { convertFileSrc } = await import("@tauri-apps/api/core");
     return convertFileSrc(path);
   } catch {
-    return src;
+    return remote;
   }
 }
 

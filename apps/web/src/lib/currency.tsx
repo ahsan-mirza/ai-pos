@@ -1,4 +1,4 @@
-import { Permission, isSupportedCurrency, type BusinessSettings, type CurrencyCode } from "@ai-pos/shared-types";
+import { Permission, acceptBusinessSettings, isSupportedCurrency, type BusinessSettings, type CurrencyCode } from "@ai-pos/shared-types";
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { env } from "../config/env";
 import { apiGet, apiPut } from "./api";
@@ -47,18 +47,9 @@ export function CurrencyProvider({ children }: { children: ReactNode }) {
   const [loadError, setLoadError] = useState<string | null>(null);
 
   const applySettings = useCallback((next: BusinessSettings) => {
-    syncPrimaryColor(next.primary_color ?? null);
     setSettings((current) => {
-      if (
-        current?.entitlement_revision !== undefined &&
-        current.entitlement_revision === next.entitlement_revision &&
-        current.updated_at === next.updated_at &&
-        current.currency === next.currency &&
-        current.trn === next.trn &&
-        current.country === next.country
-      ) {
-        return current;
-      }
+      if (current && !acceptBusinessSettings(current, next)) return current;
+      syncPrimaryColor(next.primary_color ?? null);
       writeCached(next);
       return next;
     });

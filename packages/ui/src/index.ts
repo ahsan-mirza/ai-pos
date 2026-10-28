@@ -31,6 +31,7 @@ export {
 export { inputLeadingIcon, type InputIconHints } from "./inputIcon";
 export { PageSizeSelect } from "./PageSizeSelect";
 export { CountryField } from "./CountryField";
+export { countryOption } from "./countryOptions";
 export { PhoneField } from "./PhoneField";
 export { isValidE164, phoneError, toE164 } from "./phone";
 export {

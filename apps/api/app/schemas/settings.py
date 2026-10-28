@@ -7,6 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from app.core.currency import SUPPORTED_CURRENCIES
 from app.schemas.module_settings import ModuleSettings
 from app.schemas.pos_policy import PosPolicy
+from app.tenancy.countries import COUNTRY_CURRENCIES
 
 
 class BusinessSettingsOut(BaseModel):
@@ -17,6 +18,8 @@ class BusinessSettingsOut(BaseModel):
     store_code: str = ""
     # ISO country recorded at signup. Null for stores created before it was stored.
     country: str | None = None
+    # City or area of the business. Null until someone records it.
+    location: str | None = None
     supported_currencies: list[str]
     updated_at: datetime
     updated_by_name: str | None
@@ -80,6 +83,9 @@ class TaxSettingsUpdate(BaseModel):
     standard_rate_bps: int = Field(ge=0, le=5000)
     # "fta" (UAE) or "zatca" (Saudi Arabia); decides invoice kinds, QR codes and e-invoicing.
     tax_authority: Literal["fta", "zatca"] = "fta"
+    # When set, the tax authority follows this country. Omitted leaves the stored country alone.
+    country: str | None = None
+    location: str | None = Field(default=None, max_length=120)
 
     @field_validator("trn")
     @classmethod
@@ -88,6 +94,24 @@ class TaxSettingsUpdate(BaseModel):
             return None
         cleaned = value.strip().upper()
         return cleaned or None
+
+    @field_validator("country")
+    @classmethod
+    def _country(cls, value: str | None) -> str | None:
+        if value is None or not value.strip():
+            return None
+        code = value.strip().upper()
+        if code not in COUNTRY_CURRENCIES:
+            raise ValueError("Choose a country from the list.")
+        return code
+
+    @field_validator("location")
+    @classmethod
+    def _location(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        text = value.strip()
+        return text or None
 
     @model_validator(mode="after")
     def registered_needs_trn(self) -> "TaxSettingsUpdate":

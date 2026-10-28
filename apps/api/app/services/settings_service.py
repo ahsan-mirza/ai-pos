@@ -1,4 +1,5 @@
 import copy
+import json
 import re
 import threading
 import time
@@ -11,6 +12,7 @@ from sqlalchemy import event, select, update
 from sqlalchemy.orm import ORMExecuteState, Session
 
 from app.core import capabilities as capability_catalog
+from app.core.cache import get_value, set_value
 from app.core.config import get_settings
 from app.core.currency import BUSINESS_SETTINGS_ID, DEFAULT_CURRENCY, SUPPORTED_CURRENCIES
 from app.core.errors import ApiError
@@ -54,6 +56,7 @@ class SettingsSnapshot:
     planned_capabilities: tuple[capability_catalog.Capability, ...] = ()
     onboarded: bool = True
     tax_authority: str = "fta"
+    location: str | None = None
     module_settings: ModuleSettings = field(default_factory=ModuleSettings)
     receipt: ReceiptSettings = field(default_factory=ReceiptSettings)
     pos_policy: PosPolicy = field(default_factory=PosPolicy)
@@ -282,6 +285,7 @@ def snapshot_of(row: BusinessSettings) -> SettingsSnapshot:
         id=row.id,
         currency=row.currency,
         country=row.country,
+        location=row.location,
         vat_registered=bool(row.vat_registered),
         trn=row.trn,
         legal_name=row.legal_name,
@@ -350,6 +354,7 @@ def settings_out(settings: BusinessSettings | SettingsSnapshot) -> BusinessSetti
         currency=snapshot.currency,
         store_code=tenant.slug if tenant is not None else "",
         country=snapshot.country,
+        location=snapshot.location,
         supported_currencies=list(SUPPORTED_CURRENCIES),
         updated_at=snapshot.updated_at,
         updated_by_name=snapshot.updated_by_name,
@@ -663,13 +668,40 @@ TAX_FIELDS = (
     "prices_include_vat",
     "standard_rate_bps",
     "tax_authority",
+    "country",
+    "location",
 )
 
 
 def change_tax(db: Session, actor: User, data: TaxSettingsUpdate) -> BusinessSettingsOut:
+    from pydantic import ValidationError
+
+    from app.tenancy.countries import tax_for_country
+
     row = load_settings(db, lock=True)
+    sent = set(data.model_fields_set)
+    if data.country and data.country != (row.country or ""):
+        authority, rate, inclusive = tax_for_country(data.country)
+        try:
+            data = TaxSettingsUpdate.model_validate(
+                {
+                    **data.model_dump(),
+                    "tax_authority": authority,
+                    "standard_rate_bps": rate,
+                    "prices_include_vat": inclusive,
+                }
+            )
+        except ValidationError as exc:
+            detail = exc.errors()[0]["msg"]
+            raise ApiError(422, "invalid_tax", detail) from exc
+    elif data.country:
+        data = data.model_copy(update={"tax_authority": tax_for_country(data.country)[0]})
     before = {name: getattr(row, name) for name in TAX_FIELDS}
     after = data.model_dump()
+    if not data.country:
+        after.pop("country", None)
+    if "location" not in sent:
+        after.pop("location", None)
     if before == after:
         return settings_out(row)
     for name, value in after.items():
@@ -763,6 +795,55 @@ def change_receipt(db: Session, actor: User, data: ReceiptSettings) -> ReceiptPr
     return ReceiptProfileOut(settings=resolve_receipt_settings(row.receipt))
 
 
+def _offline_key() -> str:
+    from app.tenancy.context import current_tenant
+
+    tenant = current_tenant()
+    return f"offline-pending:{tenant.id if tenant is not None else 'local'}"
+
+
+def note_offline_pending(device_id: str, raw: str | None) -> None:
+    """A register reports how many sales are still queued on that device. The value expires after 15 minutes."""
+    if raw is None:
+        return
+    text = raw.strip()
+    if not text.isdigit():
+        return
+    count = int(text)
+    if count > 100_000:
+        return
+    current: dict[str, int] = {}
+    found = get_value(_offline_key())
+    if found:
+        try:
+            loaded = json.loads(found)
+        except json.JSONDecodeError:
+            loaded = None
+        if isinstance(loaded, dict):
+            for key, value in loaded.items():
+                if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
+                    current[str(key)] = value
+    current[device_id] = count
+    set_value(_offline_key(), json.dumps(current), 900)
+
+
+def offline_pending_total() -> int:
+    found = get_value(_offline_key())
+    if not found:
+        return 0
+    try:
+        loaded = json.loads(found)
+    except json.JSONDecodeError:
+        return 0
+    if not isinstance(loaded, dict):
+        return 0
+    return sum(
+        value
+        for value in loaded.values()
+        if isinstance(value, int) and not isinstance(value, bool) and value > 0
+    )
+
+
 def change_currency(db: Session, actor: User, currency: str) -> BusinessSettingsOut:
     """Relabels every store and product price in the new currency. Amounts are not converted, and
     recorded sales, returns, and repairs keep the currency they were taken in."""
@@ -770,6 +851,13 @@ def change_currency(db: Session, actor: User, currency: str) -> BusinessSettings
     previous = row.currency
     if previous == currency:
         return settings_out(row)
+    pending = offline_pending_total()
+    if pending > 0:
+        raise ApiError(
+            409,
+            "pending_offline",
+            "Registers still have unsynced sales. Sync those sales before changing the business currency.",
+        )
     stores = db.execute(update(Store).values(currency=currency)).rowcount
     products = db.execute(update(Product).values(currency=currency)).rowcount
     row.currency = currency
