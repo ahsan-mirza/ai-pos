@@ -28,6 +28,7 @@ from app.core.config import Settings, env_file_name, get_settings
 from app.core.database import build_engine
 from app.services.rbac_service import ensure_super_admin, ensure_system_roles
 from app.tenancy import registry
+from app.tenancy.context import TenantRef
 from app.tenancy.models import TENANT_STATUSES, Tenant
 
 API_ROOT = Path(__file__).resolve().parents[2]
@@ -186,21 +187,21 @@ def migrate_all(_: argparse.Namespace, settings: Settings) -> None:
     Existing stores are still `legacy` and keep their own databases. Those are the production
     databases. `DATABASE_URL` is the shared database for new stores; it may be empty, and a failure
     there must not skip the databases that are already serving sales.
+
+    Shared stores are catalogued after that shared database is upgraded. Taxonomy reads
+    business_settings, which fails when a new column such as purchased_capabilities is still missing.
     """
     with registry.control_session(settings) as db:
         slugs = [row.slug for row in db.scalars(select(Tenant).order_by(Tenant.slug)).all()]
     seen: set[str] = set()
     legacy = 0
-    shared = 0
+    shared: list[tuple[str, TenantRef]] = []
     for slug in slugs:
         tenant = registry.lookup(slug, settings).tenant
         if tenant is None:
             continue
         if tenant.data_plane == "shared":
-            shared += 1
-            added = _apply_taxonomy(tenant)
-            if added:
-                print(f"  {slug}: {added} catalog rows added.")
+            shared.append((slug, tenant))
             continue
         if tenant.database_url in seen:
             continue
@@ -217,7 +218,11 @@ def migrate_all(_: argparse.Namespace, settings: Settings) -> None:
     else:
         print(f"Migrating the shared operational database ({shared_name})...")
         upgrade_tenant(settings.database_url)
-    print(f"Migrations finished. {shared} shared tenant(s), {legacy} legacy database(s).")
+    for slug, tenant in shared:
+        added = _apply_taxonomy(tenant)
+        if added:
+            print(f"  {slug}: {added} catalog rows added.")
+    print(f"Migrations finished. {len(shared)} shared tenant(s), {legacy} legacy database(s).")
 
 
 def list_tenants(_: argparse.Namespace, settings: Settings) -> None:

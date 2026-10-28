@@ -195,3 +195,50 @@ def test_public_ip_portal_is_allowed_over_http() -> None:
     assert registry.slug_from_domain("client1", settings) == "client1"
     assert registry.slug_from_domain("client1.203.0.113.10", settings) == "client1"
     assert registry.tenant_domain_for("client1", settings) == "client1"
+
+
+def test_shared_taxonomy_waits_until_the_shared_database_is_upgraded(monkeypatch) -> None:
+    """A shared store used to read business_settings before alembic added purchased_capabilities."""
+    from types import SimpleNamespace
+
+    from app.tenancy import cli
+    from app.tenancy.context import TenantRef
+
+    shared = TenantRef(id="s1", slug="shop", name="Shop", database_url="postgresql://db/shared", data_plane="shared")
+    legacy = TenantRef(id="l1", slug="old", name="Old", database_url="postgresql://db/old", data_plane="legacy")
+    order: list[tuple[str, str]] = []
+
+    class Session:
+        def scalars(self, _statement):
+            return self
+
+        def all(self):
+            return [SimpleNamespace(slug="shop"), SimpleNamespace(slug="old")]
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+    monkeypatch.setattr(cli.registry, "control_session", lambda _settings: Session())
+
+    def lookup(slug, _settings):
+        return SimpleNamespace(tenant=shared if slug == "shop" else legacy)
+
+    monkeypatch.setattr(cli.registry, "lookup", lookup)
+    monkeypatch.setattr(
+        cli,
+        "upgrade_tenant",
+        lambda url, tenant_id=None: order.append(("upgrade", f"{url}:{tenant_id}")),
+    )
+    monkeypatch.setattr(cli, "_apply_taxonomy", lambda tenant: order.append(("taxonomy", tenant.database_url)) or 0)
+
+    cli.migrate_all(SimpleNamespace(), SimpleNamespace(database_url="postgresql://db/shared"))
+
+    assert order == [
+        ("upgrade", "postgresql://db/old:l1"),
+        ("taxonomy", "postgresql://db/old"),
+        ("upgrade", "postgresql://db/shared:None"),
+        ("taxonomy", "postgresql://db/shared"),
+    ]
