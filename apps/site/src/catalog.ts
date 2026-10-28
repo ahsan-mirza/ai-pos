@@ -1,3 +1,5 @@
+import { cycleAmountFils } from "@ai-pos/shared-types";
+
 /** Starting catalog from `ensure_catalog` in the API. Used when the public catalog cannot be loaded. */
 
 export interface Plan {
@@ -34,11 +36,29 @@ export interface Fee {
   amount_fils: number;
 }
 
+export interface PublicHardware {
+  id: string;
+  sku: string;
+  name: string;
+  category_name: string;
+  description: string;
+  image_url: string | null;
+  lease_available: boolean;
+  purchase_available: boolean;
+  monthly_fils: number;
+  deposit_fils: number;
+  fee_fils: number;
+  purchase_fils: number | null;
+  delivery_fils: number;
+  currency: string;
+}
+
 export interface PublicCatalog {
   plans: Plan[];
   cycles: Cycle[];
   addons: Addon[];
   fees: Fee[];
+  hardware: PublicHardware[];
 }
 
 export const SEED: PublicCatalog = {
@@ -107,11 +127,12 @@ export const SEED: PublicCatalog = {
     },
   ],
   fees: [{ code: "onboarding", name: "Onboarding", amount_fils: 25_000 }],
+  hardware: [],
 };
 
 /** Same integer fils rounding as `cycle_amount` in the API. */
 export function cycleAmount(monthlyFils: number, months: number, discountBps: number): number {
-  return Math.floor((monthlyFils * months * (10_000 - discountBps)) / 10_000);
+  return cycleAmountFils(monthlyFils, months, discountBps);
 }
 
 export function aed(fils: number): string {
@@ -333,8 +354,34 @@ export function parseCatalog(value: unknown): PublicCatalog | null {
   const cycles = Array.isArray(value.cycles) ? value.cycles.map(readCycle).filter((row) => row !== null) : [];
   const addons = Array.isArray(value.addons) ? value.addons.map(readAddon).filter((row) => row !== null) : [];
   const fees = Array.isArray(value.fees) ? value.fees.map(readFee).filter((row) => row !== null) : [];
+  const hardware = Array.isArray(value.hardware) ? value.hardware.map(readHardware).filter((row) => row !== null) : [];
   if (plans.length === 0) return null;
-  return { plans, cycles, addons, fees };
+  return { plans, cycles, addons, fees, hardware };
+}
+
+function readHardware(value: unknown): PublicHardware | null {
+  if (!isRecord(value)) return null;
+  const id = typeof value.id === "string" ? value.id : "";
+  const name = typeof value.name === "string" ? value.name : "";
+  if (id === "" || name === "") return null;
+  if (value.available === false || value.active === false || value.archived === true) return null;
+  const purchase = typeof value.purchase_fils === "number" ? value.purchase_fils : null;
+  return {
+    id,
+    sku: typeof value.sku === "string" ? value.sku : "",
+    name,
+    category_name: typeof value.category_name === "string" ? value.category_name : "",
+    description: typeof value.description === "string" ? value.description : "",
+    image_url: typeof value.image_url === "string" && value.image_url !== "" ? value.image_url : null,
+    lease_available: value.lease_available === true,
+    purchase_available: value.purchase_available === true,
+    monthly_fils: typeof value.monthly_fils === "number" ? value.monthly_fils : 0,
+    deposit_fils: typeof value.deposit_fils === "number" ? value.deposit_fils : 0,
+    fee_fils: typeof value.fee_fils === "number" ? value.fee_fils : 0,
+    purchase_fils: purchase,
+    delivery_fils: typeof value.delivery_fils === "number" ? value.delivery_fils : 0,
+    currency: typeof value.currency === "string" ? value.currency : "AED",
+  };
 }
 
 export async function loadCatalog(url: string): Promise<{ catalog: PublicCatalog; live: boolean }> {

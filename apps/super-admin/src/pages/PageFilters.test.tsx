@@ -2,6 +2,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
 import type { StoreSubscription } from "@ai-pos/shared-types";
+import { CataloguePage } from "./CataloguePage";
 import { HardwarePage } from "./HardwarePage";
 import { PaymentsPage } from "./PaymentsPage";
 import { RequestsPage } from "./RequestsPage";
@@ -107,6 +108,48 @@ describe("console filter layout", () => {
     fireEvent.click(await screen.findByRole("option", { name: "Trialing" }));
     expect(screen.queryByText("Cafe")).toBeNull();
     expect(screen.getByText("Market")).toBeTruthy();
+  });
+
+  it("loads catalogue totals from the billing, hardware, and subscription endpoints", async () => {
+    get.mockImplementation((path: string) => {
+      if (path === "/billing/catalog") {
+        return Promise.resolve({
+          plans: [{ id: "1", code: "LITE", name: "Lite", included_registers: 1, included_modules: [], monthly_fils: 100, trial_days: 14, active: true, sort_order: 0 }],
+          cycles: [],
+          addons: [{ id: "a", code: "extra", name: "Extra", description: "", monthly_fils: 0, one_time_fils: 0, refundable: false, active: true, module_keys: [], sort_order: 0 }],
+          fees: [],
+        });
+      }
+      if (path === "/hardware/items") return Promise.resolve([{ available: true }, { available: false }]);
+      if (path === "/modules/summary") {
+        return Promise.resolve({
+          catalogue_total: 1,
+          implemented: 1,
+          not_implemented: 0,
+          active_addons: 1,
+          mapped_addons: 0,
+          active_subscriptions: 4,
+          trialing_subscriptions: 1,
+          past_due_subscriptions: 0,
+          canceled_subscriptions: 0,
+          pending_payments: 2,
+          addon_mrr_fils: 0,
+        });
+      }
+      if (path === "/overview") {
+        return Promise.resolve({ currency: "AED", mrr_fils: 250000 });
+      }
+      return Promise.resolve([]);
+    });
+    render(
+      <MemoryRouter>
+        <CataloguePage />
+      </MemoryRouter>,
+    );
+    expect(await screen.findByText("Published packages")).toBeTruthy();
+    expect(screen.getByText("4")).toBeTruthy();
+    expect(screen.getByText("2")).toBeTruthy();
+    expect(screen.getByText("Active subscriptions. Trials, deposits, and one-time fees are excluded.")).toBeTruthy();
   });
 
   it("sends hardware order search and payment on the orders request", async () => {

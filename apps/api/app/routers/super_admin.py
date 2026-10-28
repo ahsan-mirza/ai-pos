@@ -355,6 +355,14 @@ def hardware_category_create(payload: HardwareCategoryIn, operator: ConsoleAdmin
         return hardware.create_category(db, operator, payload)
 
 
+@router.patch("/hardware/categories/{category_id}")
+def hardware_category_update(
+    category_id: uuid.UUID, payload: HardwareCategoryIn, operator: ConsoleAdmin, settings: Config
+):
+    with registry.control_session(settings) as db:
+        return hardware.update_category(db, operator, category_id, payload)
+
+
 @router.get("/hardware/items")
 def hardware_items(_: CurrentOperator, settings: Config):
     with registry.control_session(settings) as db:

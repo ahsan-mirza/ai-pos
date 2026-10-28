@@ -1,14 +1,15 @@
-import type {
-  BillingAddon,
-  BillingCatalog,
-  BillingCycle,
-  BillingFee,
-  BillingPlan,
-  ModuleCatalogueItem,
-  StoreSubscription,
+import {
+  cycleAmountFils,
+  type BillingAddon,
+  type BillingCatalog,
+  type BillingCycle,
+  type BillingFee,
+  type BillingPlan,
+  type ModuleCatalogueItem,
+  type StoreSubscription,
 } from "@ai-pos/shared-types";
 import { DataTable, Select, type DataTableColumn } from "@ai-pos/ui";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { FilterSearch, FilterSlot, PageHeader } from "../components/PageHeader";
 import { ErrorNote, Field, GhostButton, Modal, PrimaryButton } from "../components/ui";
 import { api, errorText } from "../lib/api";
@@ -46,32 +47,113 @@ function Reason({ value, onChange }: { value: string; onChange: (value: string) 
   return <Field label="Reason (kept in the audit log)" value={value} maxLength={500} onChange={(event) => onChange(event.target.value)} />;
 }
 
+function StatusPill({ on, onLabel, offLabel }: { on: boolean; onLabel: string; offLabel: string }) {
+  return (
+    <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${on ? "bg-emerald-50 text-emerald-700" : "bg-charcoal/5 text-charcoal/55"}`}>
+      {on ? onLabel : offLabel}
+    </span>
+  );
+}
+
+function DetailSection({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <section className="rounded-2xl border border-line bg-[#f8fafc] p-4">
+      <h3 className="text-xs font-semibold uppercase tracking-wide text-charcoal/50">{title}</h3>
+      <dl className="mt-3 space-y-2 text-sm">{children}</dl>
+    </section>
+  );
+}
+
+function DetailRow({ label, value }: { label: string; value: ReactNode }) {
+  return (
+    <div className="flex items-start justify-between gap-4">
+      <dt className="text-charcoal/60">{label}</dt>
+      <dd className="max-w-[16rem] text-right font-medium">{value}</dd>
+    </div>
+  );
+}
+
 export function PackagesPage() {
   const { operator } = useSession();
   const admin = operator?.role === "ADMIN";
   const { catalog, error, reload } = useCatalog();
   const [editing, setEditing] = useState<BillingPlan | null>(null);
+  const [viewing, setViewing] = useState<BillingPlan | null>(null);
+  const [query, setQuery] = useState("");
+  const [status, setStatus] = useState("");
+  const needle = query.trim().toLowerCase();
+  const plans = (catalog?.plans ?? [])
+    .filter((plan) => (status === "" ? true : status === "published" ? plan.active : !plan.active))
+    .filter((plan) => needle === "" || `${plan.name} ${plan.code} ${plan.included_modules.join(" ")}`.toLowerCase().includes(needle))
+    .sort((a, b) => a.sort_order - b.sort_order || a.name.localeCompare(b.name));
   return (
     <section>
-      <PageHeader title="Packages" description="Monthly prices before the billing-cycle discount. Checkout reads these rows." />
+      <PageHeader
+        title="Packages"
+        description="Monthly prices before the billing-cycle discount. Checkout and the public site read these rows."
+        controls={
+          <>
+            <FilterSearch label="Search packages" value={query} onChange={setQuery} placeholder="Search name or code" />
+            <FilterSlot>
+              <Select
+                aria-label="Publication"
+                value={status}
+                onChange={setStatus}
+                options={[
+                  { value: "", label: "All packages" },
+                  { value: "published", label: "Published" },
+                  { value: "hidden", label: "Unpublished" },
+                ]}
+              />
+            </FilterSlot>
+          </>
+        }
+      />
       <ErrorNote message={error} />
-      <ul className="mt-6 grid gap-3">
-        {(catalog?.plans ?? []).map((plan) => (
-          <li key={plan.id} className="flex flex-wrap items-center gap-4 rounded-3xl border border-line bg-white px-5 py-4">
-            <div className="min-w-0 flex-1">
-              <p className="font-semibold">
-                {plan.name} <span className="font-mono text-xs text-charcoal/50">{plan.code}</span>
-              </p>
-              <p className="mt-1 text-sm text-charcoal/60">
-                {aed(plan.monthly_fils)} / month · {plan.included_registers} registers · {plan.trial_days} trial days
-                {plan.active ? "" : " · inactive"}
-              </p>
-              <p className="mt-1 text-xs text-charcoal/50">{plan.included_modules.join(", ") || "No included modules"}</p>
+      {catalog && plans.length === 0 ? (
+        <p className="rounded-2xl border border-dashed border-line bg-white px-4 py-8 text-center text-sm text-charcoal/60">
+          No packages match. Clear the search or publication filter.
+        </p>
+      ) : null}
+      <ul className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+        {plans.map((plan) => (
+          <li key={plan.id} className="flex flex-col rounded-2xl border border-line bg-white p-5 shadow-sm">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="font-semibold">{plan.name}</p>
+                <p className="font-mono text-xs text-charcoal/50">{plan.code}</p>
+              </div>
+              <StatusPill on={plan.active} onLabel="Published" offLabel="Unpublished" />
             </div>
-            {admin ? <GhostButton onClick={() => setEditing(plan)}>Edit</GhostButton> : null}
+            <p className="mt-4 text-2xl font-semibold tabular-nums">{aed(plan.monthly_fils)}</p>
+            <p className="text-xs text-charcoal/50">per month, before the billing-cycle discount</p>
+            <p className="mt-3 text-sm text-charcoal/70">
+              {plan.included_registers} {plan.included_registers === 1 ? "register" : "registers"} · {plan.trial_days}-day trial
+            </p>
+            <p className="mt-2 line-clamp-2 text-xs text-charcoal/50">{plan.included_modules.join(", ") || "No included modules"}</p>
+            <div className="mt-4 flex gap-2">
+              <GhostButton onClick={() => setViewing(plan)}>View</GhostButton>
+              {admin ? <GhostButton onClick={() => setEditing(plan)}>Edit</GhostButton> : null}
+            </div>
           </li>
         ))}
       </ul>
+      {viewing ? (
+        <PlanDetail
+          plan={viewing}
+          cycles={catalog?.cycles ?? []}
+          fee={catalog?.fees.find((row) => row.active) ?? null}
+          onClose={() => setViewing(null)}
+          onEdit={
+            admin
+              ? () => {
+                  setEditing(viewing);
+                  setViewing(null);
+                }
+              : undefined
+          }
+        />
+      ) : null}
       {editing ? (
         <PlanEditor
           plan={editing}
@@ -83,6 +165,65 @@ export function PackagesPage() {
         />
       ) : null}
     </section>
+  );
+}
+
+function PlanDetail({
+  plan,
+  cycles,
+  fee,
+  onClose,
+  onEdit,
+}: {
+  plan: BillingPlan;
+  cycles: BillingCycle[];
+  fee: BillingFee | null;
+  onClose: () => void;
+  onEdit?: () => void;
+}) {
+  return (
+    <Modal
+      wide
+      title={plan.name}
+      subtitle={plan.code}
+      onClose={onClose}
+      footer={
+        <>
+          <GhostButton onClick={onClose}>Close</GhostButton>
+          {onEdit ? <PrimaryButton onClick={onEdit}>Edit</PrimaryButton> : null}
+        </>
+      }
+    >
+      <div className="grid gap-3">
+        <DetailSection title="Basic information">
+          <DetailRow label="Name" value={plan.name} />
+          <DetailRow label="Code" value={plan.code} />
+          <DetailRow label="Publication" value={plan.active ? "On the public site and in checkout" : "Hidden"} />
+        </DetailSection>
+        <DetailSection title="Pricing">
+          <DetailRow label="Monthly base" value={aed(plan.monthly_fils)} />
+          <DetailRow label="Currency" value="AED" />
+          {fee ? <DetailRow label="Onboarding fee" value={`${fee.name} · ${aed(fee.amount_fils)} once`} /> : null}
+          {cycles
+            .filter((cycle) => cycle.active)
+            .map((cycle) => (
+              <DetailRow
+                key={cycle.id}
+                label={cycle.name}
+                value={`${aed(cycleAmountFils(plan.monthly_fils, cycle.months, cycle.discount_bps))} / ${cycle.months} mo · ${cycle.discount_bps / 100}% off`}
+              />
+            ))}
+        </DetailSection>
+        <DetailSection title="Included features">
+          <DetailRow label="Registers" value={String(plan.included_registers)} />
+          <DetailRow label="Modules" value={plan.included_modules.join(", ") || "None"} />
+        </DetailSection>
+        <DetailSection title="Trial">
+          <DetailRow label="Trial days" value={String(plan.trial_days)} />
+        </DetailSection>
+        <p className="text-xs text-charcoal/50">Saving a published package changes the public price. Issued invoices stay as they were.</p>
+      </div>
+    </Modal>
   );
 }
 
@@ -139,8 +280,13 @@ function PlanEditor({ plan, onClose, onSaved }: { plan: BillingPlan; onClose: ()
         <Field label="Included modules" value={modules} onChange={(event) => setModules(event.target.value)} hint="Comma-separated capability keys." />
         <Field label="Trial days" value={trial} inputMode="numeric" onChange={(event) => setTrial(event.target.value)} />
         <label className="flex items-center gap-2 text-sm">
-          <input type="checkbox" checked={active} onChange={(event) => setActive(event.target.checked)} /> Active
+          <input type="checkbox" checked={active} onChange={(event) => setActive(event.target.checked)} /> Published on the site and in checkout
         </label>
+        {active ? (
+          <p className="rounded-2xl bg-amber-50 px-3 py-2 text-xs text-amber-900">
+            Publishing updates the public price. Existing subscriptions keep invoices that were already issued.
+          </p>
+        ) : null}
         <Reason value={reason} onChange={setReason} />
         <ErrorNote message={error} />
       </div>
@@ -158,34 +304,50 @@ export function BillingPage() {
     <section>
       <PageHeader
         title="Billing"
-        description="The cycle discount applies to recurring amounts. The onboarding fee stays at face value."
+        description="The cycle discount applies to recurring package and add-on rent. Onboarding, deposits, and one-time fees stay at face value."
       />
       <ErrorNote message={error} />
-      <ul className="mt-6 grid gap-3">
+      <h2 className="text-sm font-semibold">Recurring billing cycles</h2>
+      <ul className="mt-3 grid gap-3 md:grid-cols-2">
         {(catalog?.cycles ?? []).map((row) => (
-          <li key={row.id} className="flex flex-wrap items-center gap-4 rounded-3xl border border-line bg-white px-5 py-4">
-            <div className="min-w-0 flex-1">
-              <p className="font-semibold">{row.name}</p>
-              <p className="mt-1 text-sm text-charcoal/60">
-                {row.months} month{row.months === 1 ? "" : "s"} · {(row.discount_bps / 100).toFixed(2)}% off
-                {row.active ? "" : " · inactive"}
-              </p>
+          <li key={row.id} className="rounded-2xl border border-line bg-white p-5 shadow-sm">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="font-semibold">{row.name}</p>
+                <p className="font-mono text-xs text-charcoal/50">{row.code}</p>
+              </div>
+              <StatusPill on={row.active} onLabel="Active" offLabel="Inactive" />
             </div>
-            {admin ? <GhostButton onClick={() => setCycle(row)}>Edit</GhostButton> : null}
+            <p className="mt-3 text-sm text-charcoal/70">
+              {row.months} month{row.months === 1 ? "" : "s"} · {(row.discount_bps / 100).toFixed(2)}% off recurring charges
+            </p>
+            <ul className="mt-3 space-y-1 text-xs text-charcoal/60">
+              {(catalog?.plans ?? [])
+                .filter((plan) => plan.active)
+                .map((plan) => (
+                  <li key={plan.id}>
+                    {plan.name}: {aed(cycleAmountFils(plan.monthly_fils, row.months, row.discount_bps))} for the cycle
+                  </li>
+                ))}
+            </ul>
+            {admin ? (
+              <GhostButton className="mt-4" onClick={() => setCycle(row)}>
+                Edit
+              </GhostButton>
+            ) : null}
           </li>
         ))}
       </ul>
-      <h2 className="mt-8 text-lg font-semibold">Onboarding fee</h2>
+      <h2 className="mt-8 text-sm font-semibold">One-time onboarding</h2>
+      <p className="mt-1 text-xs text-charcoal/50">Charged once. This is not monthly revenue and the cycle discount does not apply.</p>
       <ul className="mt-3 grid gap-3">
         {(catalog?.fees ?? []).map((row) => (
-          <li key={row.id} className="flex flex-wrap items-center gap-4 rounded-3xl border border-line bg-white px-5 py-4">
+          <li key={row.id} className="flex flex-wrap items-center gap-4 rounded-2xl border border-line bg-white px-5 py-4 shadow-sm">
             <div className="min-w-0 flex-1">
               <p className="font-semibold">{row.name}</p>
-              <p className="mt-1 text-sm text-charcoal/60">
-                {aed(row.amount_fils)}
-                {row.active ? "" : " · inactive"}
-              </p>
+              <p className="mt-1 text-sm text-charcoal/60">{aed(row.amount_fils)} once</p>
             </div>
+            <StatusPill on={row.active} onLabel="Active" offLabel="Inactive" />
             {admin ? <GhostButton onClick={() => setFee(row)}>Edit</GhostButton> : null}
           </li>
         ))}
@@ -319,30 +481,82 @@ export function AddonsPage() {
   const admin = operator?.role === "ADMIN";
   const { catalog, error, reload } = useCatalog();
   const [editing, setEditing] = useState<BillingAddon | null>(null);
+  const [viewing, setViewing] = useState<BillingAddon | null>(null);
+  const [query, setQuery] = useState("");
+  const [status, setStatus] = useState("");
+  const needle = query.trim().toLowerCase();
+  const rows = (catalog?.addons ?? [])
+    .filter((row) => (status === "" ? true : status === "published" ? row.active : !row.active))
+    .filter((row) => needle === "" || `${row.name} ${row.code} ${row.description}`.toLowerCase().includes(needle));
   return (
     <section>
       <PageHeader
         title="Add-ons"
-        description="Lease rent is recurring. A refundable deposit and the onboarding fee are charged once."
+        description="Recurring rent is discounted with the billing cycle. A refundable deposit and other one-time amounts are charged once."
+        controls={
+          <>
+            <FilterSearch label="Search add-ons" value={query} onChange={setQuery} placeholder="Search add-ons" />
+            <FilterSlot>
+              <Select
+                aria-label="Publication"
+                value={status}
+                onChange={setStatus}
+                options={[
+                  { value: "", label: "All add-ons" },
+                  { value: "published", label: "Published" },
+                  { value: "hidden", label: "Unpublished" },
+                ]}
+              />
+            </FilterSlot>
+          </>
+        }
       />
       <ErrorNote message={error} />
-      <ul className="mt-6 grid gap-3">
-        {(catalog?.addons ?? []).map((row) => (
-          <li key={row.id} className="flex flex-wrap items-center gap-4 rounded-3xl border border-line bg-white px-5 py-4">
-            <div className="min-w-0 flex-1">
-              <p className="font-semibold">{row.name}</p>
-              <p className="mt-1 text-sm text-charcoal/60">{row.description}</p>
-              <p className="mt-1 text-sm text-charcoal/60">
-                {aed(row.monthly_fils)} / month
-                {row.one_time_fils ? ` · ${aed(row.one_time_fils)} once${row.refundable ? " (refundable)" : ""}` : ""}
-                {row.active ? "" : " · inactive"}
-                {row.module_keys?.length ? ` · ${row.module_keys.join(", ")}` : ""}
-              </p>
+      {catalog && rows.length === 0 ? (
+        <p className="rounded-2xl border border-dashed border-line bg-white px-4 py-8 text-center text-sm text-charcoal/60">No add-ons match.</p>
+      ) : null}
+      <ul className="grid gap-3 md:grid-cols-2">
+        {rows.map((row) => (
+          <li key={row.id} className="flex flex-col rounded-2xl border border-line bg-white p-5 shadow-sm">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="font-semibold">{row.name}</p>
+                <p className="font-mono text-xs text-charcoal/50">{row.code}</p>
+              </div>
+              <StatusPill on={row.active} onLabel="Published" offLabel="Unpublished" />
             </div>
-            {admin ? <GhostButton onClick={() => setEditing(row)}>Edit</GhostButton> : null}
+            <p className="mt-3 text-sm text-charcoal/70">{row.description}</p>
+            <p className="mt-3 text-sm">
+              {row.monthly_fils > 0 ? <span className="font-semibold">{aed(row.monthly_fils)} / month</span> : <span>No recurring charge</span>}
+              {row.one_time_fils > 0 ? (
+                <span className="mt-1 block text-charcoal/60">
+                  {aed(row.one_time_fils)} once{row.refundable ? " · refundable deposit" : ""}
+                </span>
+              ) : null}
+            </p>
+            <p className="mt-2 text-xs text-charcoal/50">{row.module_keys.length ? row.module_keys.join(", ") : "Does not unlock a module"}</p>
+            <div className="mt-4 flex gap-2">
+              <GhostButton onClick={() => setViewing(row)}>View</GhostButton>
+              {admin ? <GhostButton onClick={() => setEditing(row)}>Edit</GhostButton> : null}
+            </div>
           </li>
         ))}
       </ul>
+      {viewing ? (
+        <AddonDetail
+          addon={viewing}
+          plans={catalog?.plans ?? []}
+          onClose={() => setViewing(null)}
+          onEdit={
+            admin
+              ? () => {
+                  setEditing(viewing);
+                  setViewing(null);
+                }
+              : undefined
+          }
+        />
+      ) : null}
       {editing ? (
         <AddonEditor
           addon={editing}
@@ -354,6 +568,67 @@ export function AddonsPage() {
         />
       ) : null}
     </section>
+  );
+}
+
+function AddonDetail({
+  addon,
+  plans,
+  onClose,
+  onEdit,
+}: {
+  addon: BillingAddon;
+  plans: BillingPlan[];
+  onClose: () => void;
+  onEdit?: () => void;
+}) {
+  const [stores, setStores] = useState<StoreSubscription[] | null>(null);
+  useEffect(() => {
+    api
+      .get<StoreSubscription[]>("/subscriptions")
+      .then((rows) => setStores(rows.filter((row) => row.addons.some((item) => item.code === addon.code && item.quantity > 0))))
+      .catch(() => setStores([]));
+  }, [addon.code]);
+  const carrying = plans.filter((plan) => addon.module_keys.some((key) => plan.included_modules.includes(key)));
+  return (
+    <Modal
+      wide
+      title={addon.name}
+      subtitle={addon.code}
+      onClose={onClose}
+      footer={
+        <>
+          <GhostButton onClick={onClose}>Close</GhostButton>
+          {onEdit ? <PrimaryButton onClick={onEdit}>Edit</PrimaryButton> : null}
+        </>
+      }
+    >
+      <div className="grid gap-3">
+        <DetailSection title="Basic information">
+          <DetailRow label="Description" value={addon.description || "—"} />
+          <DetailRow label="Publication" value={addon.active ? "Published" : "Unpublished"} />
+        </DetailSection>
+        <DetailSection title="Pricing">
+          <DetailRow label="Recurring" value={addon.monthly_fils > 0 ? `${aed(addon.monthly_fils)} / month` : "None"} />
+          <DetailRow
+            label="One-time"
+            value={addon.one_time_fils > 0 ? `${aed(addon.one_time_fils)}${addon.refundable ? " · refundable deposit" : ""}` : "None"}
+          />
+          <DetailRow label="Currency" value="AED" />
+        </DetailSection>
+        <DetailSection title="Entitlement">
+          <DetailRow label="Modules" value={addon.module_keys.join(", ") || "None"} />
+          <DetailRow label="Already in packages" value={carrying.map((plan) => plan.name).join(", ") || "None"} />
+        </DetailSection>
+        <DetailSection title="Subscriptions">
+          <DetailRow
+            label="Stores"
+            value={stores === null ? "Loading…" : stores.length === 0 ? "None" : stores.map((row) => row.tenant_name).join(", ")}
+          />
+        </DetailSection>
+        <p className="text-xs text-charcoal/50">Listing an add-on does not turn its modules on. A store still needs a subscription and a grant.</p>
+      </div>
+    </Modal>
   );
 }
 

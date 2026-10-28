@@ -1,3 +1,9 @@
+/** Recurring price for one quantity over a whole billing cycle. Matches the API integer division. */
+export function cycleAmountFils(monthlyFils: number, months: number, discountBps: number): number {
+  if (months < 1 || discountBps < 0 || discountBps > 10_000 || monthlyFils < 0 || !Number.isFinite(monthlyFils)) return 0;
+  return Math.floor((monthlyFils * months * (10_000 - discountBps)) / 10_000);
+}
+
 export interface BillingPlan {
   id: string;
   code: string;

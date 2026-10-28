@@ -205,6 +205,7 @@ export type {
   TenantStats,
   TenantStatus,
 } from "./console.js";
+export { cycleAmountFils } from "./billing.js";
 export type {
   BillingAddon,
   BillingCatalog,

@@ -12,6 +12,7 @@ import { Industries } from "./components/Industries";
 import { Modules } from "./components/Modules";
 import { Intelligence } from "./components/Intelligence";
 import { Navbar } from "./components/Navbar";
+import { HardwareShelf } from "./components/HardwareShelf";
 import { Pricing } from "./components/Pricing";
 import { Showcase } from "./components/Showcase";
 import { WhatsAppButton } from "./components/WhatsAppButton";
@@ -65,7 +66,13 @@ export function App() {
       <a href="#content" className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:rounded-2xl focus:bg-card focus:px-4 focus:py-2">
         Skip to content
       </a>
-      <Navbar atHome={atHome} theme={theme} onToggleTheme={toggle} onDemo={() => setDemoOpen(true)} />
+      <Navbar
+        atHome={atHome}
+        theme={theme}
+        onToggleTheme={toggle}
+        showHardware={live && catalog.hardware.length > 0}
+        onDemo={() => setDemoOpen(true)}
+      />
       <main id="content">
         {industry && industry.id !== "home" ? (
           <IndustryPage page={industry} contact={contact} contactStatus={contactStatus} onDemo={() => setDemoOpen(true)} />
@@ -87,6 +94,14 @@ export function App() {
             setDemoOpen(true);
           }}
           onQuote={(note) => {
+            setQuoteDraft(note);
+            document.getElementById("contact")?.scrollIntoView({ behavior: "smooth" });
+          }}
+        />
+        <HardwareShelf
+          items={catalog.hardware}
+          live={live}
+          onEnquire={(note) => {
             setQuoteDraft(note);
             document.getElementById("contact")?.scrollIntoView({ behavior: "smooth" });
           }}

@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import { Fragment, useCallback, useEffect, useRef, useState, type FocusEvent, type MouseEvent, type ReactNode } from "react";
 import { Link, NavLink, Outlet, useLocation } from "react-router-dom";
+import { CatalogueNav, cataloguePath } from "./CatalogueNav";
 import { useSession } from "../lib/session";
 
 const COLLAPSED_KEY = "qios.console.sidebar-collapsed";
@@ -40,21 +41,17 @@ const groups: { label: string; items: NavItem[] }[] = [
     ],
   },
   {
-    label: "Commercial",
+    label: "Catalogue",
     items: [
+      { to: "/catalogue", label: "Catalogue", icon: Layers },
       { to: "/packages", label: "Packages", icon: Package },
       { to: "/billing", label: "Billing", icon: Receipt },
       { to: "/hardware", label: "Hardware", icon: MonitorSmartphone },
+      { to: "/addons", label: "Add-ons", icon: Puzzle },
+      { to: "/modules", label: "Modules", icon: Layers },
+      { to: "/business-types", label: "Business types", icon: Store },
       { to: "/subscriptions", label: "Subscriptions", icon: CreditCard },
       { to: "/payments", label: "Payments", icon: Landmark },
-    ],
-  },
-  {
-    label: "Add-ons",
-    items: [
-      { to: "/modules", label: "Catalogue", icon: Layers },
-      { to: "/business-types", label: "Business types", icon: Store },
-      { to: "/addons", label: "Pricing", icon: Puzzle },
     ],
   },
   {
@@ -435,6 +432,7 @@ export function Shell() {
         <Header collapsed={collapsed} onToggleCollapsed={toggleCollapsed} onOpenMobile={() => setMobileOpen(true)} />
         <main className="relative min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
           <div className="p-4 md:p-6 lg:p-8">
+            {cataloguePath(pathname) ? <CatalogueNav /> : null}
             <Outlet />
           </div>
         </main>

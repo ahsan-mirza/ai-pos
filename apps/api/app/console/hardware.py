@@ -216,6 +216,35 @@ def update_item(db: Session, operator: OperatorPrincipal, item_id: uuid.UUID, da
     return _item_out(row, category.name, include_notes=True)
 
 
+def update_category(
+    db: Session, operator: OperatorPrincipal, category_id: uuid.UUID, data: HardwareCategoryIn
+) -> HardwareCategoryOut:
+    ensure_categories(db)
+    row = db.get(HardwareCategory, category_id)
+    if row is None:
+        raise ApiError(404, "not_found", "Category was not found.")
+    name = data.name.strip()
+    clash = db.scalar(
+        select(HardwareCategory.id).where(HardwareCategory.name == name, HardwareCategory.id != row.id)
+    )
+    if clash is not None:
+        raise ApiError(409, "duplicate_category", "That category already exists.")
+    before = {"name": row.name, "active": row.active}
+    row.name = name
+    row.sort_order = data.sort_order
+    row.active = data.active
+    audit_operator(
+        db,
+        operator,
+        "hardware.category.update",
+        before=before,
+        after={"name": name, "active": row.active},
+        reason=data.reason,
+    )
+    db.commit()
+    return HardwareCategoryOut(id=row.id, name=row.name, sort_order=row.sort_order, active=row.active)
+
+
 def create_category(db: Session, operator: OperatorPrincipal, data: HardwareCategoryIn) -> HardwareCategoryOut:
     ensure_categories(db)
     name = data.name.strip()

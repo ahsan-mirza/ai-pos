@@ -86,6 +86,10 @@ def test_public_catalog_lists_the_seed_plans_without_a_tenant(tmp_path) -> None:
             "extra_register",
         }
         assert any(fee["code"] == "onboarding" and fee["amount_fils"] == 25_000 for fee in body["fees"])
+        assert all(
+            item["available"] and not item["archived"] and item.get("internal_notes", "") == ""
+            for item in body["hardware"]
+        )
     finally:
         if previous is None:
             os.environ.pop("CONTROL_DATABASE_URL", None)

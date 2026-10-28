@@ -7,6 +7,7 @@ import { PaymentsPage } from "./pages/PaymentsPage";
 import { MailPage } from "./pages/MailPage";
 import { BusinessTypesPage } from "./pages/BusinessTypesPage";
 import { ModulesPage } from "./pages/ModulesPage";
+import { CataloguePage } from "./pages/CataloguePage";
 import { OverviewPage } from "./pages/OverviewPage";
 import { LoginPage } from "./pages/LoginPage";
 import { RequestsPage } from "./pages/RequestsPage";
@@ -34,6 +35,7 @@ function Console() {
             <Route path=":tenantId" element={<TenantDrawer />} />
           </Route>
           <Route path="requests" element={<RequestsPage />} />
+          <Route path="catalogue" element={<CataloguePage />} />
           <Route path="packages" element={<PackagesPage />} />
           <Route path="billing" element={<BillingPage />} />
           <Route path="addons" element={<AddonsPage />} />

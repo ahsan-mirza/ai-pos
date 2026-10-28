@@ -11,6 +11,7 @@ const LINKS = [
   { href: "#industries", label: "Industries", id: "industries" },
   { href: "#how", label: "How it Works", id: "how" },
   { href: "#pricing", label: "Pricing", id: "pricing" },
+  { href: "#hardware", label: "Hardware", id: "hardware" },
   { href: "#contact", label: "Contact", id: "contact" },
 ] as const;
 
@@ -24,18 +25,21 @@ export function Navbar({
   theme,
   onToggleTheme,
   onDemo,
+  showHardware = false,
 }: {
   atHome?: boolean;
   theme: SiteTheme;
   onToggleTheme: () => void;
+  showHardware?: boolean;
   onDemo: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState("top");
   const dark = theme === "dark";
+  const links = LINKS.filter((link) => link.id !== "hardware" || showHardware);
 
   useEffect(() => {
-    const nodes = LINKS.map((link) => document.getElementById(link.id)).filter((node) => node !== null);
+    const nodes = links.map((link) => document.getElementById(link.id)).filter((node) => node !== null);
     const observer = new IntersectionObserver(
       (entries) => {
         const visible = entries
@@ -47,7 +51,7 @@ export function Navbar({
     );
     for (const node of nodes) observer.observe(node);
     return () => observer.disconnect();
-  }, []);
+  }, [showHardware]);
 
   useEffect(() => {
     if (!open) return undefined;
@@ -76,7 +80,7 @@ export function Navbar({
         </a>
 
         <nav aria-label="Page" className="hidden items-center gap-6 text-sm font-medium lg:flex xl:gap-8">
-          {LINKS.map((link) =>
+          {links.map((link) =>
             link.id === "intelligence" ? (
               <a key={link.href} href={atHome ? link.href : `/${link.href}`} aria-current={atHome && active === link.id ? "true" : undefined} className="whitespace-nowrap">
                 <AiBadge current={atHome && active === link.id} />
@@ -129,7 +133,7 @@ export function Navbar({
       {open ? (
         <nav id="mobile-nav" aria-label="Page" className="mx-auto mt-3 max-w-7xl border-t border-slate-200 pt-3 dark:border-slate-800 lg:hidden">
           <ul className="grid gap-1">
-            {LINKS.map((link) => (
+            {links.map((link) => (
               <li key={link.href}>
                 <a
                   href={atHome ? link.href : `/${link.href}`}

@@ -170,6 +170,10 @@ function Catalogue({ admin }: { admin: boolean }) {
   const [items, setItems] = useState<HardwareItem[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState<(HardwareItem & { reason: string }) | null>(null);
+  const [viewing, setViewing] = useState<HardwareItem | null>(null);
+  const [categoryEdit, setCategoryEdit] = useState<Category | null>(null);
+  const [query, setQuery] = useState("");
+  const [categoryId, setCategoryId] = useState("");
   const [categoryName, setCategoryName] = useState("");
   const [reason, setReason] = useState("");
   const load = useCallback(async () => {
@@ -188,12 +192,47 @@ function Catalogue({ admin }: { admin: boolean }) {
   useEffect(() => {
     void load();
   }, [load]);
+  const needle = query.trim().toLowerCase();
+  const visible = items.filter((item) => {
+    if (categoryId !== "" && item.category_id !== categoryId) return false;
+    if (needle === "") return true;
+    return `${item.name} ${item.sku} ${item.category_name} ${item.description}`.toLowerCase().includes(needle);
+  });
   return (
     <div className="mt-6">
       <ErrorNote message={error} />
+      <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+        <FilterSearch label="Search hardware" value={query} onChange={setQuery} placeholder="Search name or SKU" />
+        <FilterSlot>
+          <Select
+            aria-label="Category"
+            value={categoryId}
+            onChange={setCategoryId}
+            options={[{ value: "", label: "All categories" }, ...categories.map((category) => ({ value: category.id, label: category.name }))]}
+          />
+        </FilterSlot>
+        {admin ? <PrimaryButton onClick={() => setEditing(blankItem(categories.find((category) => category.active)?.id ?? ""))}>New item</PrimaryButton> : null}
+      </div>
+      <h2 className="text-sm font-semibold">Categories</h2>
+      <ul className="mt-2 overflow-hidden rounded-2xl border border-line bg-white">
+        {categories.map((category) => {
+          const count = items.filter((item) => item.category_id === category.id).length;
+          return (
+            <li key={category.id} className="flex flex-wrap items-center gap-3 border-b border-line px-4 py-3 last:border-b-0">
+              <span className="min-w-0 flex-1">
+                <span className="font-medium">{category.name}</span>
+                <span className="mt-0.5 block text-xs text-charcoal/50">
+                  {count} {count === 1 ? "product" : "products"} · {category.active ? "Visible" : "Hidden"}
+                </span>
+              </span>
+              {admin ? <GhostButton onClick={() => setCategoryEdit(category)}>Edit</GhostButton> : null}
+            </li>
+          );
+        })}
+      </ul>
       {admin ? (
         <form
-          className="mb-4 flex flex-wrap items-end gap-3"
+          className="mt-3 flex flex-wrap items-end gap-3"
           onSubmit={(event) => {
             event.preventDefault();
             void api
@@ -211,30 +250,50 @@ function Catalogue({ admin }: { admin: boolean }) {
           <PrimaryButton type="submit">Add category</PrimaryButton>
         </form>
       ) : null}
-      {admin ? (
-        <PrimaryButton onClick={() => setEditing(blankItem(categories[0]?.id ?? ""))}>New hardware item</PrimaryButton>
+      <p className="mt-2 text-xs text-charcoal/50">Categories that contain products stay in the catalogue. Hiding a category does not delete its products.</p>
+      {visible.length === 0 ? (
+        <p className="mt-4 rounded-2xl border border-dashed border-line bg-white px-4 py-8 text-center text-sm text-charcoal/60">No hardware matches.</p>
       ) : null}
-      <ul className="mt-4 grid gap-3">
-        {items.map((item) => (
-          <li key={item.id} className="flex flex-wrap items-center gap-4 rounded-3xl border border-line bg-white px-5 py-4">
+      <ul className="mt-4 grid gap-3 md:grid-cols-2">
+        {visible.map((item) => (
+          <li key={item.id} className="flex gap-4 rounded-2xl border border-line bg-white p-4 shadow-sm">
+            {item.image_url ? (
+              <img src={item.image_url} alt="" className="h-20 w-20 shrink-0 rounded-xl object-cover" />
+            ) : (
+              <div className="flex h-20 w-20 shrink-0 items-center justify-center rounded-xl bg-[#f8fafc] text-[10px] text-charcoal/40">No photo</div>
+            )}
             <div className="min-w-0 flex-1">
-              <p className="font-semibold">
-                {item.name} <span className="font-mono text-xs text-charcoal/50">{item.sku}</span>
-              </p>
-              <p className="mt-1 text-sm text-charcoal/60">
-                {item.category_name}
-                {item.lease_available ? ` · ${aed(item.monthly_fils)} / month` : ""}
-                {item.deposit_fils ? ` · ${aed(item.deposit_fils)} refundable deposit` : ""}
+              <p className="font-semibold">{item.name}</p>
+              <p className="font-mono text-xs text-charcoal/50">{item.sku} · {item.category_name}</p>
+              <p className="mt-2 text-sm text-charcoal/70">
+                {item.lease_available ? `${aed(item.monthly_fils)} / month lease` : "No lease"}
                 {item.purchase_available && item.purchase_fils != null ? ` · buy ${aed(item.purchase_fils)}` : ""}
-                {item.active ? "" : " · inactive"}
-                {item.archived ? " · archived" : ""}
-                {item.available ? "" : " · unavailable"}
               </p>
+              {item.deposit_fils > 0 ? <p className="text-xs text-charcoal/50">Refundable deposit {aed(item.deposit_fils)}, charged once</p> : null}
+              <p className="mt-1 text-xs text-charcoal/50">
+                {item.active ? "Published" : "Unpublished"}
+                {item.available ? "" : " · not available to order"}
+                {item.archived ? " · archived" : ""}
+              </p>
+              <div className="mt-3 flex gap-2">
+                <GhostButton onClick={() => setViewing(item)}>View</GhostButton>
+                {admin ? <GhostButton onClick={() => setEditing({ ...item, reason: "" })}>Edit</GhostButton> : null}
+              </div>
             </div>
-            {admin ? <GhostButton onClick={() => setEditing({ ...item, reason: "" })}>Edit</GhostButton> : null}
           </li>
         ))}
       </ul>
+      {viewing ? <ItemDetail item={viewing} onClose={() => setViewing(null)} onEdit={admin ? () => { setEditing({ ...viewing, reason: "" }); setViewing(null); } : undefined} /> : null}
+      {categoryEdit ? (
+        <CategoryEditor
+          category={categoryEdit}
+          onClose={() => setCategoryEdit(null)}
+          onSaved={() => {
+            setCategoryEdit(null);
+            void load();
+          }}
+        />
+      ) : null}
       {editing ? (
         <ItemEditor
           item={editing}
@@ -247,6 +306,78 @@ function Catalogue({ admin }: { admin: boolean }) {
         />
       ) : null}
     </div>
+  );
+}
+
+function ItemDetail({ item, onClose, onEdit }: { item: HardwareItem; onClose: () => void; onEdit?: () => void }) {
+  return (
+    <Modal
+      wide
+      title={item.name}
+      subtitle={item.sku}
+      onClose={onClose}
+      footer={
+        <>
+          <GhostButton onClick={onClose}>Close</GhostButton>
+          {onEdit ? <PrimaryButton onClick={onEdit}>Edit</PrimaryButton> : null}
+        </>
+      }
+    >
+      <div className="grid gap-3 text-sm">
+        {item.image_url ? <img src={item.image_url} alt="" className="h-40 w-full rounded-2xl object-cover" /> : null}
+        <p className="text-charcoal/70">{item.description || "No public description."}</p>
+        <p>Category: {item.category_name}</p>
+        <p>{item.lease_available ? `Lease ${aed(item.monthly_fils)} / month` : "Lease is not offered"}</p>
+        <p>{item.purchase_available && item.purchase_fils != null ? `Purchase ${aed(item.purchase_fils)}` : "Purchase is not offered"}</p>
+        <p>{item.deposit_fils > 0 ? `Refundable deposit ${aed(item.deposit_fils)}, charged once` : "No refundable deposit"}</p>
+        <p>{item.fee_fils > 0 ? `One-time fee ${aed(item.fee_fils)}` : "No one-time fee"}</p>
+        <p>{item.delivery_fils > 0 ? `Delivery ${aed(item.delivery_fils)}` : "No delivery charge"}</p>
+        <p>Publication: {item.active && !item.archived ? "Published when it is also available to order" : "Hidden from the public catalogue"}</p>
+        <p>Availability: {item.available ? "Can be ordered" : "Not available"}</p>
+        {item.internal_notes ? <p className="text-charcoal/50">Internal: {item.internal_notes}</p> : null}
+      </div>
+    </Modal>
+  );
+}
+
+function CategoryEditor({ category, onClose, onSaved }: { category: Category; onClose: () => void; onSaved: () => void }) {
+  const [name, setName] = useState(category.name);
+  const [active, setActive] = useState(category.active);
+  const [reason, setReason] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  return (
+    <Modal
+      title={category.name}
+      onClose={onClose}
+      footer={
+        <PrimaryButton
+          loading={busy}
+          disabled={reason.trim().length < 3}
+          onClick={() => {
+            setBusy(true);
+            void api
+              .patch(`/hardware/categories/${category.id}`, { name, sort_order: category.sort_order, active, reason: reason.trim() })
+              .then(onSaved)
+              .catch((caught) => {
+                setBusy(false);
+                setError(errorText(caught, "Could not save the category."));
+              });
+          }}
+        >
+          Save
+        </PrimaryButton>
+      }
+    >
+      <div className="grid gap-3">
+        <Field label="Name" value={name} onChange={(event) => setName(event.target.value)} />
+        <label className="flex items-center gap-2 text-sm">
+          <input type="checkbox" checked={active} onChange={(event) => setActive(event.target.checked)} /> Visible
+        </label>
+        <Field label="Reason" value={reason} onChange={(event) => setReason(event.target.value)} />
+        <ErrorNote message={error} />
+      </div>
+    </Modal>
   );
 }
 
