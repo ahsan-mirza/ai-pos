@@ -63,6 +63,7 @@ class AddonOut(ApiModel):
     one_time_fils: int
     refundable: bool
     active: bool
+    module_keys: list[str] = Field(default_factory=list)
     sort_order: int
 
 
@@ -73,8 +74,54 @@ class AddonIn(ApiModel):
     one_time_fils: int = Field(ge=0, le=100_000_000)
     refundable: bool = False
     active: bool = True
+    module_keys: list[str] = Field(default_factory=list, max_length=40)
     sort_order: int = Field(default=0, ge=0, le=100)
     reason: str = Field(min_length=3, max_length=500)
+
+
+class ModuleCatalogueItem(ApiModel):
+    key: str
+    label: str
+    available: bool
+    requires: list[str]
+    business_types: list[str]
+    preset_for: list[str]
+    plan_codes: list[str]
+    addon_codes: list[str]
+
+
+class BusinessTypeModules(ApiModel):
+    key: str
+    label: str
+    preset: list[str]
+    eligible: list[str]
+
+
+class ModuleSummary(ApiModel):
+    catalogue_total: int
+    implemented: int
+    not_implemented: int
+    active_addons: int
+    mapped_addons: int
+    active_subscriptions: int
+    trialing_subscriptions: int
+    past_due_subscriptions: int
+    canceled_subscriptions: int
+    pending_payments: int
+    # Monthly catalogue price of add-on lines on subscriptions whose status is active. Trials, deposits,
+    # one-time fees, and unpaid invoices are not included.
+    addon_mrr_fils: int
+
+
+class EntitlementLine(ApiModel):
+    key: str
+    label: str
+    enabled: bool
+    available: bool
+    fits_type: bool
+    reason: str
+    override: str | None = None
+    addon_codes: list[str] = Field(default_factory=list)
 
 
 class FeeOut(ApiModel):

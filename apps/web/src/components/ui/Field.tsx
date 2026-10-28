@@ -1,6 +1,6 @@
 import { DateInput, inputLeadingIcon } from "@ai-pos/ui";
 import { Eye, EyeOff, Search } from "lucide-react";
-import { useId, useState, type ButtonHTMLAttributes, type InputHTMLAttributes, type TextareaHTMLAttributes } from "react";
+import { useId, useState, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type TextareaHTMLAttributes } from "react";
 import { Select, type SelectProps } from "./Select";
 
 const control =
@@ -21,8 +21,16 @@ export function TextField({
   className = "",
   type,
   autoComplete,
+  endAdornment,
   ...props
-}: InputHTMLAttributes<HTMLInputElement> & { label: string; hint?: string; error?: string; required?: boolean }) {
+}: InputHTMLAttributes<HTMLInputElement> & {
+  label: string;
+  hint?: string;
+  error?: string;
+  required?: boolean;
+  /** Sits inside the right edge. The input keeps room for it so the text does not move when it appears. */
+  endAdornment?: ReactNode;
+}) {
   const id = useId();
   const fieldId = props.id ?? id;
   const describedBy =
@@ -41,10 +49,11 @@ export function TextField({
   });
   const multiline = isDescriptionLabel(label);
   const isDate = type === "date" || type === "datetime-local";
+  const endPad = isPassword ? "pr-12" : endAdornment ? "pr-11" : "pr-4";
   const controlClass = `${control} pl-10 ${
     error
-      ? `border-danger bg-danger/10 focus:border-danger focus:ring-2 focus:ring-danger ${isPassword ? "pr-12" : "pr-4"}`
-      : `border-transparent focus:border-orange-500 focus:ring-2 focus:ring-orange-500 ${isPassword ? "pr-12" : "pr-4"}`
+      ? `border-danger bg-danger/10 focus:border-danger focus:ring-2 focus:ring-danger ${endPad}`
+      : `border-transparent focus:border-orange-500 focus:ring-2 focus:ring-orange-500 ${endPad}`
   } ${className}`;
   return (
     <label htmlFor={multiline ? undefined : fieldId} className="block text-sm font-medium">
@@ -97,6 +106,7 @@ export function TextField({
           className={controlClass}
         />
         )}
+        {endAdornment && !multiline && !isPassword ? endAdornment : null}
         {isPassword && !multiline ? (
           <button
             type="button"

@@ -2,8 +2,10 @@ import { BrandLogo } from "@ai-pos/ui";
 import {
   Building2,
   CreditCard,
+  Layers,
   LayoutDashboard,
   Inbox,
+  Store,
   LogOut,
   MonitorSmartphone,
   Package,
@@ -42,10 +44,17 @@ const groups: { label: string; items: NavItem[] }[] = [
     items: [
       { to: "/packages", label: "Packages", icon: Package },
       { to: "/billing", label: "Billing", icon: Receipt },
-      { to: "/addons", label: "Add-ons", icon: Puzzle },
       { to: "/hardware", label: "Hardware", icon: MonitorSmartphone },
       { to: "/subscriptions", label: "Subscriptions", icon: CreditCard },
       { to: "/payments", label: "Payments", icon: Landmark },
+    ],
+  },
+  {
+    label: "Add-ons",
+    items: [
+      { to: "/modules", label: "Catalogue", icon: Layers },
+      { to: "/business-types", label: "Business types", icon: Store },
+      { to: "/addons", label: "Pricing", icon: Puzzle },
     ],
   },
   {

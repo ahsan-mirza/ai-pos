@@ -58,6 +58,14 @@ export interface BusinessSettings {
   capabilities?: string[];
   /** Selected for this business but not built yet ("Coming soon"). */
   planned_capabilities?: string[];
+  /** Bumps when business settings change. Registers ignore an older revision. */
+  entitlement_revision?: number;
+  /** Module keys granted by a verified add-on subscription. */
+  purchased_capabilities?: string[];
+  /** Paid modules stay usable offline until this moment. */
+  entitlement_until?: string | null;
+  /** Capabilities the Windows register implements. Admin-only modules are omitted. */
+  register_capabilities?: string[];
   /** False until a business-wide admin finishes the onboarding wizard. */
   onboarded?: boolean;
   /** A self-service store before Go live: sample items and practice sales, cleared by Go live. */

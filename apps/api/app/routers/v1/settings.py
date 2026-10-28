@@ -26,9 +26,16 @@ router = APIRouter()
 @router.get("", response_model=BusinessSettingsOut)
 def read_settings(
     db: Annotated[Session, Depends(get_db)],
-    _: Annotated[Principal, Depends(get_principal)],
+    principal: Annotated[Principal, Depends(get_principal)],
 ) -> BusinessSettingsOut:
     settings = settings_service.cached_settings(db)
+    device = principal.device
+    settings_service.note_register_entitlement(
+        db,
+        device.id if device is not None else None,
+        settings.entitlement_revision,
+        device.entitlement_revision if device is not None else None,
+    )
     db.commit()
     return settings_service.settings_out(settings)
 

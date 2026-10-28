@@ -132,11 +132,13 @@ def get_principal(
             raise ApiError(401, "invalid_token", "Use a Bearer access token.")
         user, scope = _user_from_token(token.strip(), db, settings)
         audit_context.bind_user(user.id, user.full_name, user.role.name if user.role else None, user.store_id)
+        from app.services.addon_access import effective_permissions
+
         return Principal(
             kind="user",
             scope=scope,  # type: ignore[arg-type]
             user=user,
-            permissions=frozenset(user.permissions),
+            permissions=frozenset(effective_permissions(db, user)),
         )
     key = x_terminal_token or x_api_key
     if key is not None:

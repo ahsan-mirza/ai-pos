@@ -47,25 +47,39 @@ export function CurrencyProvider({ children }: { children: ReactNode }) {
   const [loadError, setLoadError] = useState<string | null>(null);
 
   const applySettings = useCallback((next: BusinessSettings) => {
-    writeCached(next);
-    setSettings(next);
     syncPrimaryColor(next.primary_color ?? null);
+    setSettings((current) => {
+      if (
+        current?.entitlement_revision !== undefined &&
+        current.entitlement_revision === next.entitlement_revision &&
+        current.updated_at === next.updated_at
+      ) {
+        return current;
+      }
+      writeCached(next);
+      return next;
+    });
   }, []);
 
   useEffect(() => {
     if (status !== "signed-in") return;
     let cancelled = false;
-    apiGet<BusinessSettings>("/api/v1/settings")
-      .then((next) => {
-        if (cancelled) return;
-        applySettings(next);
-        setLoadError(null);
-      })
-      .catch((error: unknown) => {
-        if (!cancelled) setLoadError(error instanceof Error ? error.message : "Settings could not be loaded.");
-      });
+    const load = () => {
+      apiGet<BusinessSettings>("/api/v1/settings")
+        .then((next) => {
+          if (cancelled) return;
+          applySettings(next);
+          setLoadError(null);
+        })
+        .catch((error: unknown) => {
+          if (!cancelled) setLoadError(error instanceof Error ? error.message : "Settings could not be loaded.");
+        });
+    };
+    load();
+    const timer = window.setInterval(load, 20_000);
     return () => {
       cancelled = true;
+      window.clearInterval(timer);
     };
   }, [status, applySettings]);
 

@@ -169,7 +169,7 @@ export function LoginPage() {
         <section className="flex flex-col justify-between bg-charcoal p-8 text-white">
           <BrandLogo tone="dark" className="h-9 w-auto" />
           <div className="mt-16">
-            <h1 className="text-3xl font-semibold leading-tight">Admin portal</h1>
+            <h1 className="text-3xl font-semibold leading-tight">AxizPOS Business</h1>
             <p className="mt-3 max-w-xs text-sm text-white/60">
               Manage stores, inventory, repairs, staff, and role permissions.
             </p>
@@ -251,7 +251,7 @@ export function LoginPage() {
             </button>
             {env.onTenantHost ? null : (
               <p className="text-center text-sm text-charcoal/60">
-                New to AI POS?{" "}
+                New to AxizPOS?{" "}
                 <a href="/signup" className="font-semibold text-accent hover:underline">
                   Create your store
                 </a>

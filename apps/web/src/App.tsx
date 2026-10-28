@@ -73,6 +73,7 @@ import { QuotationsPage } from "./features/sales/QuotationsPage";
 import { DeliveryPodPage } from "./features/salesOrders/DeliveryPodPage";
 import { SalesOrdersPage } from "./features/salesOrders/SalesOrdersPage";
 import { ReordersPage } from "./features/reorders/ReordersPage";
+import { AddonAccessPage } from "./features/settings/AddonAccessPage";
 import { SettingsPage } from "./features/settings/SettingsPage";
 import { StoresPage } from "./features/stores/StoresPage";
 import { UsersPage } from "./features/users/UsersPage";
@@ -113,7 +114,7 @@ function RequireSuperAdmin({ children }: { children: ReactNode }) {
   return (
     <section className="rounded-card border border-line bg-white p-8">
       <h2 className="text-2xl font-semibold">Not available</h2>
-      <p className="mt-2 text-sm text-charcoal/60">Only a Super Admin can download the POS installer.</p>
+      <p className="mt-2 text-sm text-charcoal/60">Only a Super Admin can download the AxizPOS Register installer.</p>
     </section>
   );
 }
@@ -469,6 +470,14 @@ function Portal() {
                 element={
                   <RequirePermission permission={Permission.UsersRead}>
                     <RolesPage />
+                  </RequirePermission>
+                }
+              />
+              <Route
+                path="settings/addon-access"
+                element={
+                  <RequirePermission permission={Permission.UsersRead}>
+                    <AddonAccessPage />
                   </RequirePermission>
                 }
               />

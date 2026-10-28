@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import Annotated
 
-from fastapi import Depends
+from fastapi import Depends, Request
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
@@ -226,6 +226,26 @@ def compatible(profile: str) -> tuple[Capability, ...]:
     return tuple(capability for capability in ORDER if capability in allowed)
 
 
+@dataclass(frozen=True)
+class Catalogue:
+    """Base is the business-type preset. Optional is everything else that type may switch on."""
+
+    base: tuple[Capability, ...]
+    optional: tuple[Capability, ...]
+
+
+def catalogue(profile: str) -> Catalogue:
+    """Included modules versus the extra modules this business type is allowed to turn on.
+
+    Dependencies of an optional module stay inside the combined set, so turning one on never
+    requires a module the business type is not allowed to use.
+    """
+    preset = set(PROFILES.get(profile, ()))
+    base = tuple(capability for capability in ORDER if capability in preset)
+    optional = tuple(capability for capability in compatible(profile) if capability not in preset)
+    return Catalogue(base=base, optional=optional)
+
+
 # Self-service signup: each business type that can go live, refined by a sub-type into a module selection.
 # A profile in PROFILES but missing here still joins the waitlist.
 _GROCERY_COUNTER: tuple[Capability, ...] = (
@@ -326,17 +346,62 @@ def missing_dependencies(selected: Iterable[Capability]) -> dict[Capability, lis
     }
 
 
+# Modules the Windows register already implements. Anything else stays an admin-portal feature.
+REGISTER_CAPABILITIES: frozenset[Capability] = frozenset(
+    {
+        Capability.WHOLESALE_PRICING,
+        Capability.QUOTES_LAYAWAY,
+        Capability.PROMOTIONS,
+        Capability.MULTI_CURRENCY,
+        Capability.SERIAL_TRACKING,
+        Capability.VARIANTS_MATRIX,
+        Capability.WEIGHED_ITEMS,
+        Capability.B2B_CREDIT,
+        Capability.CHEQUES,
+        Capability.LOYALTY,
+        Capability.REPAIRS,
+        Capability.TRADE_IN,
+        Capability.MENU_MODIFIERS,
+        Capability.OPEN_ORDERS,
+        Capability.TABLES,
+        Capability.KDS,
+        Capability.SPLIT_BILLS,
+        Capability.TIPS_SERVICE_CHARGE,
+        Capability.DELIVERY_CHANNELS,
+        Capability.SALES_ORDERS,
+        Capability.CARD_TERMINALS,
+        Capability.BNPL,
+        Capability.GIFT_CARDS,
+        Capability.CUSTOMER_REORDERS,
+    }
+)
+
+
 @dataclass(frozen=True)
 class Resolved:
     enabled: tuple[Capability, ...]
     planned: tuple[Capability, ...]
 
 
-def resolve(profile: str, selection: Sequence[str] | None, managed: Mapping[str, str] | None = None) -> Resolved:
-    """The profile preset, or the stored selection when set, then IT support's overrides (forced on / off);
-    roadmap modules become planned, and a module missing what it needs stays off."""
-    chosen = parse(selection) if selection is not None else list(PROFILES.get(profile, ELECTRONICS_WHOLESALE))
+def resolve(
+    profile: str,
+    selection: Sequence[str] | None,
+    managed: Mapping[str, str] | None = None,
+    purchased: Iterable[str] | None = None,
+) -> Resolved:
+    """The profile preset, or the stored selection when set, plus paid add-on modules that fit this
+    business type, then IT support's overrides. Roadmap modules become planned, and a module missing
+    what it needs stays off."""
+    allowed = set(compatible(profile))
+    if selection is None:
+        chosen = [capability for capability in PROFILES.get(profile, ()) if capability in allowed]
+    else:
+        chosen = [capability for capability in parse(selection) if capability in allowed]
+    if purchased:
+        extra = {capability.value for capability in parse(purchased) if capability in allowed}
+        chosen = parse({capability.value for capability in chosen} | extra)
     if managed:
+        # Support may force a module this type does not normally offer. The console marks fits_type false.
         forced_on = {value for value, state in managed.items() if state == "on"}
         forced_off = {value for value, state in managed.items() if state == "off"}
         values = ({capability.value for capability in chosen} | forced_on) - forced_off
@@ -358,10 +423,14 @@ def has_capability(db: Session, capability: Capability) -> bool:
     return capability in enabled_capabilities(db)
 
 
-def require_capability(capability: Capability) -> Callable[[Session], None]:
-    """Router dependency: 403 when the business has this module switched off. Data stays; only access is gated."""
+def require_capability(capability: Capability) -> Callable[..., None]:
+    """Router dependency: 403 when the business has this module switched off.
 
-    def dependency(db: Annotated[Session, Depends(get_db)]) -> None:
+    A signed-in user also needs access when the module is a paid add-on. A register using only
+    its device token is unchanged; the user's own token is what the till sends once they unlock.
+    """
+
+    def dependency(db: Annotated[Session, Depends(get_db)], request: Request) -> None:
         if not has_capability(db, capability):
             raise ApiError(
                 403,
@@ -369,5 +438,14 @@ def require_capability(capability: Capability) -> Callable[[Session], None]:
                 f"{SPECS[capability].label} is not enabled for this business. "
                 "A business-wide admin can turn it on in Store Settings.",
             )
+        header = request.headers.get("authorization", "")
+        if not header.lower().startswith("bearer "):
+            return
+        from app.core.config import get_settings
+        from app.core.deps import get_principal
+        from app.services.addon_access import enforce_user
+
+        principal = get_principal(db, get_settings(), authorization=header)
+        enforce_user(db, principal, capability.value)
 
     return dependency

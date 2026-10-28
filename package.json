@@ -27,7 +27,7 @@
     "build": "turbo run build",
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",
-    "test": "pnpm --filter @ai-pos/api --filter @ai-pos/desktop test",
+    "test": "pnpm --filter @ai-pos/api --filter @ai-pos/desktop --filter @ai-pos/ui test",
     "verify": "node scripts/verify.mjs",
     "demo:businesses": "pnpm --filter @ai-pos/api demo:businesses",
     "bootstrap": "powershell -ExecutionPolicy Bypass -File ./scripts/bootstrap.ps1"

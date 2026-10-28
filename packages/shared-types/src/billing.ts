@@ -29,7 +29,40 @@ export interface BillingAddon {
   one_time_fils: number;
   refundable: boolean;
   active: boolean;
+  module_keys: string[];
   sort_order: number;
+}
+
+export interface ModuleCatalogueItem {
+  key: string;
+  label: string;
+  available: boolean;
+  requires: string[];
+  business_types: string[];
+  preset_for: string[];
+  plan_codes: string[];
+  addon_codes: string[];
+}
+
+export interface BusinessTypeModules {
+  key: string;
+  label: string;
+  preset: string[];
+  eligible: string[];
+}
+
+export interface ModuleSummary {
+  catalogue_total: number;
+  implemented: number;
+  not_implemented: number;
+  active_addons: number;
+  mapped_addons: number;
+  active_subscriptions: number;
+  trialing_subscriptions: number;
+  past_due_subscriptions: number;
+  canceled_subscriptions: number;
+  pending_payments: number;
+  addon_mrr_fils: number;
 }
 
 export interface BillingFee {

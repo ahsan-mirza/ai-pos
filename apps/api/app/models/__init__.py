@@ -1,4 +1,5 @@
 from app.models.accounting import GlAccount, JournalEntry, JournalLine
+from app.models.addon_access import UserAddonAccess
 from app.models.approval import ApprovalRequest
 from app.models.audit_log import AuditLog
 from app.models.banking import BankAccount, BankStatement, BankStatementLine
@@ -200,6 +201,7 @@ __all__ = [
     "TradeIn",
     "UnitOfMeasure",
     "User",
+    "UserAddonAccess",
     "WarrantyPlan",
     "WarrantyPolicy",
     "WarrantyRegistration",

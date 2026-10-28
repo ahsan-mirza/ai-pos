@@ -1,10 +1,11 @@
 """Module overrides. The control database is the record of what IT support forced on or off; each change is then
 applied to the tenant's own business settings, which every request (and every register sync) reads."""
 
+import logging
 import uuid
 from collections.abc import Iterator
 from contextlib import contextmanager
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -19,6 +20,8 @@ from app.services.settings_service import load_settings, managed_of
 from app.tenancy import registry
 from app.tenancy.context import use_tenant
 from app.tenancy.models import Tenant, TenantModuleOverride
+
+log = logging.getLogger("ai_pos.entitlements")
 
 
 @contextmanager
@@ -41,9 +44,16 @@ def overrides_of(control: Session, tenant_id: uuid.UUID) -> dict[str, TenantModu
     return {row.module_key: row for row in rows}
 
 
-def module_states(profile: str, selection: list | None, managed: dict[str, str]) -> list[ModuleState]:
-    chosen = set(catalog.resolve(profile, selection).enabled) | set(catalog.resolve(profile, selection).planned)
-    effective = set(catalog.resolve(profile, selection, managed).enabled)
+def module_states(
+    profile: str,
+    selection: list | None,
+    managed: dict[str, str],
+    purchased: list[str] | None = None,
+) -> list[ModuleState]:
+    chosen = set(catalog.resolve(profile, selection, purchased=purchased).enabled) | set(
+        catalog.resolve(profile, selection, purchased=purchased).planned
+    )
+    effective = set(catalog.resolve(profile, selection, managed, purchased).enabled)
     fits = set(catalog.compatible(profile))
     return [
         ModuleState(
@@ -60,9 +70,11 @@ def module_states(profile: str, selection: list | None, managed: dict[str, str])
 
 
 def tenant_modules(tenant: Tenant, settings: Settings) -> list[ModuleState]:
+    from app.services.settings_service import effective_purchased_keys
+
     with tenant_session(tenant, settings) as db:
         row = load_settings(db)
-        return module_states(row.business_profile, row.capabilities, managed_of(row))
+        return module_states(row.business_profile, row.capabilities, managed_of(row), effective_purchased_keys(row))
 
 
 def apply_managed(
@@ -86,8 +98,9 @@ def apply_managed(
         row.managed_capabilities = managed or None
         from app.core.capabilities import Capability, resolve
         from app.services.reorder_service import has_open_plans
+        from app.services.settings_service import effective_purchased_keys
 
-        resolved = resolve(row.business_profile, row.capabilities, managed_of(row))
+        resolved = resolve(row.business_profile, row.capabilities, managed_of(row), effective_purchased_keys(row))
         if Capability.CUSTOMER_REORDERS not in resolved.enabled and has_open_plans(db):
             raise ApiError(
                 409,
@@ -165,3 +178,82 @@ def set_overrides(
         )
         control.commit()
         return states
+
+
+def _aware(value: datetime) -> datetime:
+    return value if value.tzinfo is not None else value.replace(tzinfo=UTC)
+
+
+def subscription_module_keys(control: Session, tenant_id: uuid.UUID) -> tuple[list[str], datetime | None]:
+    """Module ids a verified subscription currently pays for, and the moment that grant runs out.
+
+    Pending receipts and canceled subscriptions grant nothing. Active, trial, and grace keep the
+    mapped modules. The end is always set, so an offline register cannot treat a paid module as permanent.
+    """
+    from app.console.transfers import access_state, grace_days
+    from app.tenancy.models import BillingAddon, Subscription, SubscriptionItem
+
+    if access_state(control, tenant_id) not in {"active", "trial", "grace"}:
+        return [], None
+    subscription = control.scalar(select(Subscription).where(Subscription.tenant_id == tenant_id))
+    if subscription is None:
+        return [], None
+    items = list(control.scalars(select(SubscriptionItem).where(SubscriptionItem.subscription_id == subscription.id)))
+    codes = {item.addon_code for item in items}
+    keys: list[str] = []
+    if codes:
+        addons = control.scalars(
+            select(BillingAddon).where(BillingAddon.code.in_(codes), BillingAddon.active.is_(True))
+        )
+        for addon in addons:
+            keys.extend(addon.module_keys or [])
+    grace = timedelta(days=grace_days(control))
+    end = subscription.current_period_end or subscription.trial_ends_at
+    until = _aware(end) + grace if end is not None else datetime.now(UTC) + grace
+    return keys, until
+
+
+def publish_purchased(settings: Settings, tenant_id: uuid.UUID) -> None:
+    """Copies verified add-on modules onto the store. Repeating it with the same grant does nothing."""
+    from app.services import audit
+    from app.services.settings_service import load_settings
+
+    with registry.control_session(settings) as control:
+        tenant = get_tenant(control, tenant_id)
+        raw_keys, until = subscription_module_keys(control, tenant.id)
+        with tenant_session(tenant, settings) as db:
+            row = load_settings(db, lock=True)
+            allowed = set(catalog.compatible(row.business_profile))
+            keys = [capability.value for capability in catalog.parse(raw_keys) if capability in allowed]
+            current = list(row.purchased_capabilities or [])
+            same_until = row.entitlement_until == until or (
+                row.entitlement_until is not None
+                and until is not None
+                and _aware(row.entitlement_until) == _aware(until)
+            )
+            if current == keys and same_until:
+                return
+            before = current
+            row.purchased_capabilities = keys or None
+            row.entitlement_until = until
+            audit.record(
+                db,
+                action_type="UPDATE",
+                action="settings.purchased",
+                target_entity="Settings",
+                target_entity_id=row.id,
+                client_device="billing",
+                old_values={"purchased_capabilities": before},
+                new_values={"purchased_capabilities": keys},
+                reason_notes="Verified add-on subscription",
+            )
+            db.commit()
+            from app.services.addon_access import invalidate_access_cache
+
+            invalidate_access_cache(tenant.id)
+            log.info(
+                "entitlement published tenant=%s revision=%s modules=%s",
+                tenant.id,
+                row.cache_generation,
+                len(keys),
+            )

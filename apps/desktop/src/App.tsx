@@ -15,7 +15,7 @@ import { ReturnsPage } from "./features/returns/ReturnsPage";
 import { SettingsPage } from "./features/settings/SettingsPage";
 import { OpenShiftScreen } from "./features/shifts/OpenShiftScreen";
 import { reloadShift, useShift } from "./features/shifts/shift";
-import { useCapabilities } from "./lib/capabilities";
+import { applySignedInAddons, useCapabilities } from "./lib/capabilities";
 import { UpdatePrompt } from "./features/updates/UpdatePrompt";
 import { VirtualKeyboardProvider } from "./hooks/useVirtualKeyboard";
 import { inTauri } from "./lib/tauri";
@@ -29,8 +29,9 @@ export function App() {
   const { foodAndBeverage, enabled } = useCapabilities();
 
   useEffect(() => {
-    if (foodAndBeverage && (view === "returns" || view === "repairs")) setView("checkout");
-    if (!foodAndBeverage && view === "orders") setView("checkout");
+    if (view === "returns" && foodAndBeverage) setView("checkout");
+    if (view === "orders" && !foodAndBeverage) setView("checkout");
+    if (view === "repairs" && !enabled.has(Capability.Repairs)) setView("checkout");
     if (view === "reorders" && !enabled.has(Capability.CustomerReorders)) setView("checkout");
   }, [enabled, foodAndBeverage, view]);
 
@@ -43,6 +44,11 @@ export function App() {
 
   useEffect(() => {
     if (session !== null) void reloadShift();
+    const syncedAt = session?.user.addon_synced_at;
+    applySignedInAddons(session === null ? null : (session.user.addon_modules ?? []), {
+      offline: session?.mode === "offline",
+      syncedAt: syncedAt ?? session?.unlocked_at,
+    });
   }, [session]);
 
   const onLock = () => {

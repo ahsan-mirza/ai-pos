@@ -98,5 +98,5 @@ def handoff(
 
 
 @router.get("/me", response_model=UserOut)
-def me(user: Annotated[User, Depends(current_user)]) -> UserOut:
-    return rbac_service.user_out(user)
+def me(user: Annotated[User, Depends(current_user)], db: Annotated[Session, Depends(get_db)]) -> UserOut:
+    return rbac_service.user_out(user, db)

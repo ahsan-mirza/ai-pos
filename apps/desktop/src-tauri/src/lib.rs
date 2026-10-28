@@ -47,6 +47,8 @@ pub struct AppState {
     terminal_path: PathBuf,
     flush_lock: Arc<Mutex<()>>,
     session: Mutex<Option<Session>>,
+    /// Bearer token from the last online unlock. Cleared on lock and on an offline unlock.
+    user_token: Mutex<Option<String>>,
     approvals: Arc<returns::Approvals>,
     checkout_approvals: Arc<checkout_approvals::CheckoutApprovals>,
 }
@@ -75,16 +77,17 @@ async fn pin_login(
 ) -> Result<Session, String> {
     let db = state.db.clone();
     let config = state.config.clone();
-    let session = tauri::async_runtime::spawn_blocking(move || {
-        let session = auth::pin_login(&db, &config, &username, &pin)?;
-        if session.mode == "offline" {
-            audit::record_offline_login(&db, &session, &config.store_id)?;
+    let (session, access_token) = tauri::async_runtime::spawn_blocking(move || {
+        let unlocked = auth::pin_login(&db, &config, &username, &pin)?;
+        if unlocked.session.mode == "offline" {
+            audit::record_offline_login(&db, &unlocked.session, &config.store_id)?;
         }
-        Ok::<_, String>(session)
+        Ok::<_, String>((unlocked.session, unlocked.access_token))
     })
     .await
     .map_err(|err| err.to_string())??;
     *state.session.lock().map_err(|err| err.to_string())? = Some(session.clone());
+    *state.user_token.lock().map_err(|err| err.to_string())? = access_token;
     Ok(session)
 }
 
@@ -96,6 +99,7 @@ fn current_session(state: tauri::State<AppState>) -> Result<Option<Session>, Str
 #[tauri::command]
 fn lock_session(state: tauri::State<AppState>) -> Result<(), String> {
     *state.session.lock().map_err(|err| err.to_string())? = None;
+    *state.user_token.lock().map_err(|err| err.to_string())? = None;
     Ok(())
 }
 
@@ -403,7 +407,7 @@ async fn deactivate_terminal(
     let config = state.config.clone();
     let path = state.terminal_path.clone();
     tauri::async_runtime::spawn_blocking(move || {
-        let manager = auth::pin_login(&db, &config, &username, &pin)?.user;
+        let manager = auth::pin_login(&db, &config, &username, &pin)?.session.user;
         if !manager
             .permissions
             .iter()
@@ -678,6 +682,7 @@ pub fn run() {
                 terminal_path,
                 flush_lock: Arc::new(Mutex::new(())),
                 session: Mutex::new(None),
+                user_token: Mutex::new(None),
                 approvals: Arc::new(Mutex::new(Default::default())),
                 checkout_approvals: Arc::new(Mutex::new(Default::default())),
             });

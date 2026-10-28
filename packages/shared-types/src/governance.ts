@@ -10,6 +10,10 @@ export interface TenantModules {
   /** True once onboarding is done: the business type then only changes through IT support. */
   locked: boolean;
   enabled: Capability[];
+  /** The business-type preset. Included with the store. */
+  base: Capability[];
+  /** Compatible with the business type, and not part of the preset. */
+  optional: Capability[];
   /** Fit this business type and can be switched on by the tenant. */
   available: Capability[];
   planned: Capability[];

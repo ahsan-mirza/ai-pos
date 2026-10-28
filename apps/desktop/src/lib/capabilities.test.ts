@@ -7,6 +7,7 @@ import {
   type BusinessProfile,
 } from "@ai-pos/shared-types";
 import { describe, expect, it } from "vitest";
+import { applyProfile, applySignedInAddons, registerCapabilities } from "./capabilities";
 
 describe("business profiles", () => {
   it("ships the seven presets in two groups", () => {
@@ -65,5 +66,50 @@ describe("business profiles", () => {
     expect(profileSpec("cafe").settingsLabel).toBe("Cafe settings");
     expect(profileSpec("teleportation").id).toBe("electronics_wholesale");
     expect(profileSpec(null).shortLabel).toBe("Electronics");
+  });
+
+  it("keeps the newer entitlement and drops a purchase after its offline window", () => {
+    applyProfile({
+      business_profile: "electronics_wholesale",
+      capabilities: ["loyalty"],
+      entitlement_revision: 2,
+      purchased_capabilities: [],
+      entitlement_until: null,
+    });
+    expect(registerCapabilities().enabled.has("loyalty")).toBe(true);
+    applyProfile({
+      business_profile: "electronics_wholesale",
+      capabilities: ["promotions"],
+      entitlement_revision: 1,
+    });
+    expect(registerCapabilities().enabled.has("loyalty")).toBe(true);
+    applyProfile({
+      business_profile: "electronics_wholesale",
+      capabilities: ["loyalty", "sales_orders"],
+      entitlement_revision: 3,
+      purchased_capabilities: ["sales_orders"],
+      entitlement_until: new Date(Date.now() - 60_000).toISOString(),
+    });
+    expect(registerCapabilities().enabled.has("loyalty")).toBe(true);
+    expect(registerCapabilities().enabled.has("sales_orders")).toBe(false);
+  });
+
+  it("hides a paid add-on from a cashier who was not granted it, including a stale offline unlock", () => {
+    applyProfile({
+      business_profile: "electronics_wholesale",
+      capabilities: ["loyalty", "gift_cards"],
+      entitlement_revision: 4,
+      purchased_capabilities: ["gift_cards"],
+      entitlement_until: new Date(Date.now() + 86_400_000).toISOString(),
+    });
+    applySignedInAddons(["gift_cards"], { offline: false, syncedAt: 1_000, now: 1_100 });
+    expect(registerCapabilities().enabled.has("gift_cards")).toBe(true);
+    expect(registerCapabilities().enabled.has("loyalty")).toBe(true);
+    applySignedInAddons([], { offline: false, syncedAt: 1_000, now: 1_100 });
+    expect(registerCapabilities().enabled.has("gift_cards")).toBe(false);
+    expect(registerCapabilities().enabled.has("loyalty")).toBe(true);
+    applySignedInAddons(["gift_cards"], { offline: true, syncedAt: 1_000, now: 1_000 + 24 * 60 * 60 + 5 });
+    expect(registerCapabilities().enabled.has("gift_cards")).toBe(false);
+    applySignedInAddons(null);
   });
 });

@@ -45,6 +45,24 @@ def _on_hand(session, product_id: str) -> int:
     return level.quantity_on_hand
 
 
+def test_catalogue_step_follows_each_business_type() -> None:
+    from app.core.capabilities import FOOD_AND_BEVERAGE, PROFILES
+    from app.services.onboarding_service import catalogue_copy
+
+    for profile in PROFILES:
+        label, hint, action = catalogue_copy(profile)
+        if profile in FOOD_AND_BEVERAGE:
+            assert "menu" in label.lower()
+            assert action == "Add a menu item"
+        else:
+            assert "menu" not in label.lower()
+            assert action == "Add a product"
+        assert hint
+    assert "sizes" in catalogue_copy("retail_fashion")[1]
+    assert "barcodes" in catalogue_copy("grocery")[1]
+    assert "serial numbers" in catalogue_copy("electronics_wholesale")[1]
+
+
 def test_sample_items_load_once_and_are_flagged(client, session) -> None:
     seed(client)
     _practice(session)
@@ -83,17 +101,21 @@ def test_checklist_tracks_first_wins(client, session) -> None:
     done = {item["key"]: item["done"] for item in body["items"]}
     assert body["practice_mode"] is True and body["store_name"] == "Downtown"
     assert body["opening_stock_units"] == 500
+    assert body["version"] == 1
     assert done == {
-        "test_sale": False,
-        "real_product": True,
-        "import_stock": False,
-        "till": False,
-        "cashier": True,
-        "go_live": False,
+        "explore": False,
+        "configure": False,
+        "catalogue": True,
+        "practice": False,
+        "team": False,
+        "activate": False,
     }
+    catalogue = next(item for item in body["items"] if item["key"] == "catalogue")
+    assert catalogue["label"] == "Add your first products"
+    assert "serial numbers" in catalogue["hint"]
     assert push(client, [event("practice-sale-1", "sale", sale([line(CABLE, 1, 1500)]))]).status_code == 200
     after = client.get("/api/v1/onboarding/checklist", headers=headers).json()
-    assert next(item for item in after["items"] if item["key"] == "test_sale")["done"] is True
+    assert next(item for item in after["items"] if item["key"] == "practice")["done"] is True
 
 
 def test_go_live_wipes_practice_and_restores_stock(client, session) -> None:

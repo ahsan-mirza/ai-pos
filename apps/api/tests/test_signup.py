@@ -11,7 +11,7 @@ from app.core.database import build_engine
 from app.main import create_app
 from app.models import Base
 from app.tenancy import provisioning, registry, signup_service
-from app.tenancy.models import ControlBase, SignupRequest, Tenant
+from app.tenancy.models import ControlBase, SignupRequest, Subscription, Tenant
 
 PASSWORD = "Owner-password-1"
 
@@ -75,6 +75,20 @@ def _verified(client: TestClient, **start) -> dict:
     return started
 
 
+def _allow_go_live(slug: str) -> None:
+    """Marks the trial subscription paid. Direct Go live stays refused until this happens."""
+    from datetime import UTC, datetime, timedelta
+
+    with registry.control_session(get_settings()) as db:
+        tenant = db.scalar(select(Tenant).where(Tenant.slug == slug))
+        assert tenant is not None
+        row = db.scalar(select(Subscription).where(Subscription.tenant_id == tenant.id))
+        assert row is not None
+        row.status = "active"
+        row.current_period_end = datetime.now(UTC) + timedelta(days=30)
+        db.commit()
+
+
 def _store(slug: str = "alnoor") -> dict:
     return {"store_name": "Al Noor Mobiles", "slug": slug, "currency": "AED", "country": "AE", "trn": None}
 
@@ -132,9 +146,33 @@ def test_signup_provisions_a_practice_store_and_hands_the_owner_over(signup: Tes
     assert settings["currency"] == "AED" and settings["business_profile"] == "electronics_wholesale"
     assert "repairs" in settings["capabilities"] and "wholesale_pricing" not in settings["capabilities"]
 
-    checklist = signup.get("/api/v1/onboarding/checklist", headers=_tenant_headers("alnoor", token)).json()
+    headers = _tenant_headers("alnoor", token)
+    checklist = signup.get("/api/v1/onboarding/checklist", headers=headers).json()
     assert checklist["store_name"] == "Al Noor Mobiles"
-    assert {item["key"]: item["done"] for item in checklist["items"]}["real_product"] is False
+    by_key = {item["key"]: item for item in checklist["items"]}
+    assert by_key["catalogue"]["done"] is False
+    assert by_key["explore"]["done"] is False
+    assert by_key["configure"]["done"] is True
+    assert checklist["subscription_state"] == "trial"
+    assert by_key["activate"]["blocked"]
+    blocked = signup.post(
+        "/api/v1/onboarding/go-live",
+        headers=headers,
+        json={"confirm": "al noor mobiles", "mode": "keep", "opening_stock": "keep", "tax_acknowledged": True},
+    )
+    assert (blocked.status_code, blocked.json()["error"]["code"]) == (409, "subscription_unverified")
+    explored = signup.post("/api/v1/onboarding/explore", headers=headers).json()
+    assert next(item for item in explored["items"] if item["key"] == "explore")["done"] is True
+    again = signup.post("/api/v1/onboarding/explore", headers=headers).json()
+    assert next(item for item in again["items"] if item["key"] == "explore")["done"] is True
+    refused_skip = signup.post("/api/v1/onboarding/skip", headers=headers, json={"key": "activate"})
+    assert (refused_skip.status_code, refused_skip.json()["error"]["code"]) == (422, "invalid_step")
+    skipped = signup.post("/api/v1/onboarding/skip", headers=headers, json={"key": "invite"}).json()
+    team = next(item for item in skipped["items"] if item["key"] == "team")
+    assert team["skipped"] is True and team["done"] is False
+    kept = signup.get("/api/v1/onboarding/checklist", headers=headers).json()
+    assert next(item for item in kept["items"] if item["key"] == "team")["skipped"] is True
+    _allow_go_live("alnoor")
 
     login = signup.post(
         "/api/v1/auth/login-password",
@@ -260,8 +298,13 @@ def test_store_addresses_must_be_valid_and_free(signup: TestClient) -> None:
     _post(signup, started, "business", {"profile": "electronics_wholesale", "sub_type": "electronics_b2b"})
     clash = _post(signup, started, "store", _store("alpha"))
     assert (clash.status_code, clash.json()["error"]["code"]) == (409, "slug_unavailable")
-    country = _post(signup, started, "store", {**_store("beta"), "country": "US"})
-    assert country.json()["error"]["code"] == "unsupported_country"
+    unknown = _post(signup, started, "store", {**_store("gamma"), "country": "ZZ"})
+    assert unknown.status_code == 422 and unknown.json()["error"]["code"] == "unsupported_country"
+    country = _post(signup, started, "store", {**_store("beta"), "country": "US", "currency": "AED"})
+    assert country.status_code == 200, country.text
+    with registry.control_session(get_settings()) as db:
+        saved = db.scalar(select(SignupRequest).where(SignupRequest.slug == "beta"))
+        assert saved is not None and saved.country == "US" and saved.currency == "USD"
 
 
 @pytest.mark.parametrize(
@@ -395,9 +438,10 @@ def test_restaurants_start_with_a_menu_meals_tables_and_a_kitchen(signup: TestCl
         assert names == (["Soft drink"] if station["name"] == "Bar" else ["Classic beef burger", "French fries"])
 
     checklist = signup.get("/api/v1/onboarding/checklist", headers=headers).json()
-    assert next(item for item in checklist["items"] if item["key"] == "real_product")["label"] == (
-        "Add your first real menu item"
+    assert next(item for item in checklist["items"] if item["key"] == "catalogue")["label"] == (
+        "Add your first menu items"
     )
+    _allow_go_live("grill")
     live = signup.post(
         "/api/v1/onboarding/go-live",
         headers=headers,
@@ -496,3 +540,28 @@ def test_a_configured_signup_code_is_accepted_without_sending(signup: TestClient
         assert _post(signup, started, "verify", {"code": "101010"}).json()["status"] == "VERIFIED"
     finally:
         settings.signup_otp_code = previous
+
+
+def test_signup_country_sets_the_store_currency() -> None:
+    import re
+    from pathlib import Path
+
+    from app.tenancy.countries import COUNTRY_CURRENCIES, currency_for_country
+
+    source = (Path(__file__).resolve().parents[3] / "packages" / "shared-types" / "src" / "countries.ts").read_text(
+        encoding="utf-8"
+    )
+    block = source.split("export const COUNTRY_CURRENCIES", 1)[1].split("} as const", 1)[0]
+    found = dict(re.findall(r'([A-Z]{2}): "([A-Z]{3})"', block))
+    assert found == COUNTRY_CURRENCIES
+    assert currency_for_country("AE") == "AED"
+    assert currency_for_country("SA") == "SAR"
+    assert currency_for_country("FR") == "EUR"
+    assert currency_for_country("GB") == "GBP"
+    assert currency_for_country("IN") == "INR"
+    assert currency_for_country("PK") == "PKR"
+    assert currency_for_country("CN") == "CNY"
+    assert currency_for_country("KW") == "KWD"
+    assert currency_for_country("US") == "USD"
+    assert currency_for_country("JP") == "USD"
+    assert currency_for_country("ZZ") == "USD"

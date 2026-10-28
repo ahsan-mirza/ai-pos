@@ -215,7 +215,7 @@ export async function apiTerminal<T>(method: "GET" | "POST", path: string, token
 export async function apiSignup<T>(
   method: "GET" | "POST",
   path: string,
-  options: { body?: unknown; token?: string | null } = {},
+  options: { body?: unknown; token?: string | null; signal?: AbortSignal } = {},
 ): Promise<T> {
   const headers: Record<string, string> = { "X-Client-Device": "web" };
   if (options.body !== undefined) headers["Content-Type"] = "application/json";
@@ -226,8 +226,10 @@ export async function apiSignup<T>(
       method,
       headers,
       body: options.body === undefined ? undefined : JSON.stringify(options.body),
+      signal: options.signal,
     });
-  } catch {
+  } catch (error) {
+    if (options.signal?.aborted || (error instanceof Error && error.name === "AbortError")) throw error;
     throw unreachable();
   }
   if (!response.ok) throw await parseError(response);

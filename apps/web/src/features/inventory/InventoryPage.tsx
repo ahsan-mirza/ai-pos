@@ -1,4 +1,3 @@
-import seed from "@ai-pos/catalog/seed.json";
 import { Permission, formatMoney, noMatchesMessage, type Product } from "@ai-pos/shared-types";
 import { Package, Pencil, Plus, Printer, Search, Upload } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -16,19 +15,12 @@ import { BrandModelFilters } from "./shared";
 import { IconButton } from "./StockPage";
 import { useProductSearch } from "./useProductSearch";
 
-const stamped = "2026-10-19T00:00:00.000Z";
-
-const sampleProducts: Product[] = seed.products.map((product) => ({
-  ...product,
-  created_at: stamped,
-  updated_at: stamped,
-}));
-
 export function InventoryPage() {
   const { currency } = useCurrency();
   const [live, setLive] = useState<Product[] | null>(null);
-  const products = useMemo(() => live ?? sampleProducts.map((product) => ({ ...product, currency })), [live, currency]);
-  const source = live === null ? "sample" : "live";
+  const [failed, setFailed] = useState(false);
+  const products = useMemo(() => (live ?? []).map((product) => ({ ...product, currency })), [live, currency]);
+  const source = live === null ? "loading" : "live";
   const [query, setQuery] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -81,8 +73,11 @@ export function InventoryPage() {
 
   const reload = useCallback(() => {
     apiGet<Product[]>("/api/v1/products?limit=500")
-      .then(setLive)
-      .catch(() => setLive(null));
+      .then((rows) => {
+        setLive(rows);
+        setFailed(false);
+      })
+      .catch(() => setFailed(true));
   }, []);
 
   useEffect(() => {
@@ -245,9 +240,11 @@ export function InventoryPage() {
           <div>
             <h2 className="text-2xl font-semibold">Catalog</h2>
             <p className="text-sm text-charcoal/60">
-              {source === "live"
-                ? "One catalog for every branch. Stock shown is the total across your stores."
-                : "Showing the offline sample catalog."}
+              {failed
+                ? "Products could not be loaded."
+                : source === "live"
+                  ? "One catalog for every branch. Stock shown is the total across your stores."
+                  : "Loading products…"}
             </p>
           </div>
           {manage && source === "live" ? (

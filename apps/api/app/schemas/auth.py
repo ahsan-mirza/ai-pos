@@ -123,6 +123,8 @@ class UserOut(ApiModel):
     last_login_at: datetime | None
     created_at: datetime
     updated_at: datetime
+    # Active purchased add-ons this user may use. Empty when the store has not bought any.
+    addon_modules: list[str] = Field(default_factory=list)
 
 
 class TokenResponse(ApiModel):

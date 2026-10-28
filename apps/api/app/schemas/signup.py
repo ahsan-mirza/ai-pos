@@ -86,11 +86,19 @@ class SignupBusiness(ApiModel):
 
 
 class SignupStore(ApiModel):
-    store_name: str = Field(min_length=2, max_length=120)
+    store_name: str = Field(min_length=1, max_length=120)
     slug: str = Field(min_length=1, max_length=32)
     currency: str = Field(pattern=r"^[A-Z]{3}$")
     country: str = Field(pattern=r"^[A-Z]{2}$")
     trn: str | None = Field(default=None, pattern=r"^\d{15}$")
+
+    @field_validator("store_name")
+    @classmethod
+    def _store_name(cls, value: str) -> str:
+        cleaned = re.sub(r"\s+", " ", value).strip()
+        if len(cleaned) < 2:
+            raise ValueError("Enter a store name.")
+        return cleaned
 
 
 class SlugCheck(ApiModel):
@@ -98,6 +106,21 @@ class SlugCheck(ApiModel):
     available: bool
     reason: str | None
     suggestion: str | None
+
+
+class EmailLookup(ApiModel):
+    email: str = Field(min_length=1, max_length=254)
+
+
+class PhoneLookup(ApiModel):
+    phone: str = Field(min_length=1, max_length=32)
+
+
+class AvailabilityResult(ApiModel):
+    """Whether a signup may use this identifier. No account details."""
+
+    available: bool
+    code: Literal["available", "taken"]
 
 
 class ProvisionStep(ApiModel):

@@ -60,6 +60,11 @@ pub async fn retail_request(
     state
         .session()?
         .ok_or_else(|| failure(401, "locked", "Unlock the register first."))?;
+    let user_token = state
+        .user_token
+        .lock()
+        .map_err(|err| err.to_string())?
+        .clone();
     if !safe(&path) {
         return Err(failure(
             400,
@@ -81,8 +86,13 @@ pub async fn retail_request(
             "PUT" => client.put(&url).json(&body.unwrap_or_else(|| json!({}))),
             _ => return Err(failure(400, "invalid_method", "Unsupported method.")),
         };
+        let request = request.headers(config.auth_headers());
+        let request = if let Some(token) = &user_token {
+            request.header("Authorization", format!("Bearer {token}"))
+        } else {
+            request
+        };
         let response = request
-            .headers(config.auth_headers())
             .send()
             .map_err(|err| failure(0, "offline", &format!("The server is unreachable: {err}")))?;
         let status = response.status();

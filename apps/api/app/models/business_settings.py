@@ -48,6 +48,10 @@ class BusinessSettings(TenantScoped, TimestampMixin, Base):
     # capabilities=None means "use the profile preset".
     business_profile: Mapped[str] = mapped_column(String(32), default="electronics_wholesale")
     capabilities: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    # Module keys granted by a verified add-on subscription. Empty until a paid add-on is active.
+    purchased_capabilities: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    # Paid modules stay available offline until this moment (period end plus the billing grace period).
+    entitlement_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     # Modules IT support forced on or off from the console, {"serial_tracking": "on"}; the tenant cannot change them.
     managed_capabilities: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     # Per-module configuration validated by app.schemas.module_settings.ModuleSettings; None keeps the defaults.
@@ -57,6 +61,9 @@ class BusinessSettings(TenantScoped, TimestampMixin, Base):
     receipt: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     # Till rules validated by app.schemas.pos_policy: discount reasons and limits, gift cards, the returns policy.
     pos_policy: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    # Guided trial progress that is not a business record: portal explored, optional steps skipped.
+    # Completion of catalogue, register, and go-live is still calculated from those records.
+    guided_onboarding: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     # Set when a business-wide admin finishes the onboarding wizard; None shows the wizard.
     onboarded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     # When the business went live. Self-service signup clears it (practice mode with sample data) until the owner

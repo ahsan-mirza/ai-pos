@@ -102,6 +102,8 @@ export interface User {
   last_login_at: string | null;
   created_at: string;
   updated_at: string;
+  /** Active purchased add-ons this user may use. */
+  addon_modules?: string[];
 }
 
 export interface PasswordLoginRequest {

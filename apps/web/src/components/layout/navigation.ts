@@ -4,6 +4,7 @@ import {
   BadgeCheck,
   Ban,
   Banknote,
+  Blocks,
   BookOpenCheck,
   ChartColumn,
   Boxes,
@@ -41,7 +42,7 @@ import {
   Wrench,
   type LucideIcon,
 } from "lucide-react";
-import { ELECTRONICS_PROFILES, FASHION_PROFILES, FNB_PROFILES, RETAIL_PROFILES } from "../../lib/industry";
+import { FASHION_PROFILES, FNB_PROFILES, RETAIL_PROFILES } from "../../lib/industry";
 import { portalHomePath } from "../../lib/portal-home";
 
 /** What the navigation adapts to: the business type (for names) and its switched-on modules (for visibility). */
@@ -66,7 +67,7 @@ export interface NavItem {
   superAdminOnly?: boolean;
   /** Opens the first Store settings tab this user is allowed to see. */
   hub?: boolean;
-  isActive: (pathname: string) => boolean;
+  isActive: (pathname: string, hash?: string) => boolean;
   /** Shows the AI mark in front of the label. */
   ai?: boolean;
 }
@@ -88,6 +89,7 @@ export const settingsTabs: SettingsTab[] = [
   { to: "/settings", label: "General", permission: Permission.SettingsManage, settingsOnly: true, end: true },
   { to: "/stores", label: "Stores", permission: Permission.PortalAccess },
   { to: "/roles", label: "Roles", permission: Permission.UsersRead },
+  { to: "/settings/addon-access", label: "Add-on access", permission: Permission.UsersRead },
   { to: "/registers", label: "Registers", permission: Permission.DevicesManage },
   { to: "/downloads", label: "Downloads", permission: Permission.PortalAccess, superAdminOnly: true },
   { to: "/settings/currencies", label: "Currencies", permission: Permission.CurrenciesManage, capability: Capability.MultiCurrency },
@@ -97,7 +99,6 @@ export const settingsTabs: SettingsTab[] = [
     label: "Delivery channels",
     permission: Permission.SettingsManage,
     capability: Capability.DeliveryChannels,
-    profiles: FNB_PROFILES,
   },
   { to: "/settings/audit-logs", label: "Audit trail", permission: Permission.AuditRead },
 ];
@@ -193,7 +194,6 @@ export const navGroups: NavGroup[] = [
         icon: ScanBarcode,
         permission: Permission.PortalAccess,
         capability: Capability.SerialTracking,
-        profiles: ELECTRONICS_PROFILES,
         isActive: under("/inventory/serials"),
       },
       {
@@ -256,7 +256,6 @@ export const navGroups: NavGroup[] = [
         icon: Gift,
         permission: Permission.GiftCardsManage,
         capability: Capability.GiftCards,
-        profiles: FASHION_PROFILES,
         isActive: under("/gift-cards"),
       },
       { to: "/margin", label: "Margin guard", icon: ShieldCheck, permission: Permission.PortalReportsRead, isActive: under("/margin") },
@@ -296,7 +295,6 @@ export const navGroups: NavGroup[] = [
         icon: Banknote,
         permission: Permission.ChequesManage,
         capability: Capability.Cheques,
-        profiles: ELECTRONICS_PROFILES,
         isActive: under("/cheques"),
       },
       {
@@ -305,7 +303,6 @@ export const navGroups: NavGroup[] = [
         icon: Handshake,
         permission: Permission.PayablesManage,
         capability: Capability.Consignment,
-        profiles: RETAIL_PROFILES,
         isActive: under("/consignment"),
       },
     ],
@@ -319,7 +316,6 @@ export const navGroups: NavGroup[] = [
         icon: Wrench,
         permission: Permission.PortalAccess,
         capability: Capability.Repairs,
-        profiles: ELECTRONICS_PROFILES,
         isActive: under("/repairs"),
       },
       {
@@ -328,7 +324,6 @@ export const navGroups: NavGroup[] = [
         icon: BadgeCheck,
         permission: Permission.PortalAccess,
         capability: Capability.Warranty,
-        profiles: ELECTRONICS_PROFILES,
         isActive: under("/warranties"),
       },
       {
@@ -337,7 +332,6 @@ export const navGroups: NavGroup[] = [
         icon: Repeat2,
         permission: Permission.PortalReportsRead,
         capability: Capability.TradeIn,
-        profiles: ELECTRONICS_PROFILES,
         isActive: under("/trade-ins"),
       },
     ],
@@ -351,7 +345,6 @@ export const navGroups: NavGroup[] = [
         icon: LayoutGrid,
         permission: Permission.PortalAccess,
         capability: Capability.Tables,
-        profiles: FNB_PROFILES,
         isActive: under("/inventory/floor-plan"),
       },
       {
@@ -360,7 +353,6 @@ export const navGroups: NavGroup[] = [
         icon: ChefHat,
         permission: Permission.PortalAccess,
         capability: Capability.Kds,
-        profiles: FNB_PROFILES,
         isActive: (pathname) => pathname === "/inventory/kitchen" || pathname.startsWith("/inventory/kitchen/"),
       },
       {
@@ -370,7 +362,6 @@ export const navGroups: NavGroup[] = [
         ai: true,
         permission: Permission.PortalAccess,
         capability: Capability.Recipes,
-        profiles: FNB_PROFILES,
         isActive: under("/inventory/kitchen-agent"),
       },
       {
@@ -379,7 +370,6 @@ export const navGroups: NavGroup[] = [
         icon: UtensilsCrossed,
         permission: Permission.PortalAccess,
         capability: Capability.Recipes,
-        profiles: FNB_PROFILES,
         isActive: under("/inventory/recipes", "/inventory/recipe-usage"),
       },
       {
@@ -388,7 +378,6 @@ export const navGroups: NavGroup[] = [
         icon: SlidersHorizontal,
         permission: Permission.PortalAccess,
         capability: Capability.MenuModifiers,
-        profiles: FNB_PROFILES,
         isActive: under("/inventory/modifiers"),
       },
       {
@@ -424,7 +413,6 @@ export const navGroups: NavGroup[] = [
         icon: HandCoins,
         permission: Permission.PortalReportsRead,
         capability: Capability.TipsServiceCharge,
-        profiles: FNB_PROFILES,
         isActive: under("/reports/tips"),
       },
     ],
@@ -435,12 +423,20 @@ export const navGroups: NavGroup[] = [
       { to: "/users", label: "Users", icon: UserCog, permission: Permission.UsersRead, isActive: under("/users") },
       { to: "/staff", label: "Staff & payroll", icon: Timer, permission: Permission.StaffManage, isActive: under("/staff") },
       {
+        to: "/settings#add-modules",
+        label: "Add modules",
+        icon: Blocks,
+        permission: Permission.SettingsManage,
+        settingsOnly: true,
+        isActive: (pathname, hash) => pathname === "/settings" && hash === "#add-modules",
+      },
+      {
         to: "/settings",
         label: settingsLabel,
         icon: Settings,
         permission: Permission.PortalAccess,
         hub: true,
-        isActive: inSettingsHub,
+        isActive: (pathname, hash) => inSettingsHub(pathname) && hash !== "#add-modules",
       },
     ],
   },
@@ -526,5 +522,5 @@ export function crumbsFor(pathname: string, ctx: NavContext): Crumb[] {
   if (pathname.startsWith("/customers/")) {
     return [{ label: "Suppliers & CRM" }, { label: "Customers", to: "/customers" }, { label: "Statement" }];
   }
-  return [{ label: "AI POS" }];
+  return [{ label: "AxizPOS Business" }];
 }

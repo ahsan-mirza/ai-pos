@@ -4,7 +4,7 @@ import { NavLink, Outlet } from "react-router-dom";
 import { AiMark } from "../../components/ui/AiMark";
 import { useTenant } from "../../context/TenantContext";
 import { useCapabilities } from "../../lib/capabilities";
-import { ELECTRONICS_PROFILES, FNB_PROFILES, MODEL_PROFILES, RETAIL_PROFILES } from "../../lib/industry";
+import { MODEL_PROFILES, RETAIL_PROFILES } from "../../lib/industry";
 
 const tabs: { to: string; label: string; capability?: Capability; profiles?: readonly BusinessProfile[]; ai?: boolean }[] = [
   { to: "/inventory/stock", label: "Stock" },
@@ -19,18 +19,18 @@ const tabs: { to: string; label: string; capability?: Capability; profiles?: rea
   { to: "/inventory/batches", label: "Batches", profiles: RETAIL_PROFILES },
   { to: "/inventory/expiring", label: "Expiring", capability: Capability.Fefo },
   { to: "/inventory/waste", label: "Waste", capability: Capability.Fefo },
-  { to: "/inventory/modifiers", label: "Modifiers", capability: Capability.MenuModifiers, profiles: FNB_PROFILES },
-  { to: "/inventory/meals", label: "Meals", capability: Capability.MenuModifiers, profiles: FNB_PROFILES },
-  { to: "/inventory/floor-plan", label: "Floor plan", capability: Capability.Tables, profiles: FNB_PROFILES },
-  { to: "/inventory/kitchen", label: "Kitchen stations", capability: Capability.Kds, profiles: FNB_PROFILES },
-  { to: "/inventory/kitchen-agent", label: "Kitchen agent", capability: Capability.Recipes, profiles: FNB_PROFILES, ai: true },
-  { to: "/inventory/recipes", label: "Recipes", capability: Capability.Recipes, profiles: FNB_PROFILES },
-  { to: "/inventory/recipe-usage", label: "Ingredient usage", capability: Capability.Recipes, profiles: FNB_PROFILES },
+  { to: "/inventory/modifiers", label: "Modifiers", capability: Capability.MenuModifiers },
+  { to: "/inventory/meals", label: "Meals", capability: Capability.MenuModifiers },
+  { to: "/inventory/floor-plan", label: "Floor plan", capability: Capability.Tables },
+  { to: "/inventory/kitchen", label: "Kitchen stations", capability: Capability.Kds },
+  { to: "/inventory/kitchen-agent", label: "Kitchen agent", capability: Capability.Recipes, ai: true },
+  { to: "/inventory/recipes", label: "Recipes", capability: Capability.Recipes },
+  { to: "/inventory/recipe-usage", label: "Ingredient usage", capability: Capability.Recipes },
   { to: "/inventory/replenishment", label: "Replenishment" },
   { to: "/inventory/counts", label: "Stock Counts" },
   { to: "/inventory/purchase-orders", label: "Purchase Orders" },
   { to: "/inventory/transfers", label: "Transfers" },
-  { to: "/inventory/serials", label: "IMEI Tracker", capability: Capability.SerialTracking, profiles: ELECTRONICS_PROFILES },
+  { to: "/inventory/serials", label: "IMEI Tracker", capability: Capability.SerialTracking },
 ];
 
 /** Header (4rem) plus this tab strip (3rem); split-view drawers subtract it from the viewport height. */

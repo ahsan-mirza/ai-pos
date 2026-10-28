@@ -65,6 +65,9 @@ class SettingsSnapshot:
     tax_portal_pending: bool = False
     # IT support's overrides from the console: module -> "on" | "off".
     managed_capabilities: dict[str, str] = field(default_factory=dict)
+    entitlement_revision: int = 1
+    purchased_capabilities: tuple[str, ...] = ()
+    entitlement_until: datetime | None = None
 
 
 class _SettingsCache:
@@ -241,12 +244,28 @@ def _tax_portal_pending(row: BusinessSettings) -> bool:
     return credential is None or credential.environment != "production"
 
 
+def effective_purchased_keys(row: BusinessSettings, now: datetime | None = None) -> list[str]:
+    """Paid module keys that are still inside the subscription window. A missing end does not keep them forever."""
+    parsed = [capability.value for capability in capability_catalog.parse(row.purchased_capabilities or [])]
+    until = row.entitlement_until
+    if until is None:
+        return parsed
+    stamp = until if until.tzinfo is not None else until.replace(tzinfo=UTC)
+    if stamp <= (now or datetime.now(UTC)):
+        return []
+    return parsed
+
+
 def snapshot_of(row: BusinessSettings) -> SettingsSnapshot:
     profile = row.business_profile or capability_catalog.DEFAULT_PROFILE
     managed = managed_of(row)
-    resolved = capability_catalog.resolve(profile, row.capabilities, managed)
+    purchased = effective_purchased_keys(row)
+    resolved = capability_catalog.resolve(profile, row.capabilities, managed, purchased)
     return SettingsSnapshot(
         managed_capabilities=managed,
+        entitlement_revision=int(row.cache_generation or 1),
+        purchased_capabilities=tuple(purchased),
+        entitlement_until=row.entitlement_until,
         business_profile=profile,
         capabilities=resolved.enabled,
         planned_capabilities=resolved.planned,
@@ -333,6 +352,14 @@ def settings_out(settings: BusinessSettings | SettingsSnapshot) -> BusinessSetti
         business_profile=snapshot.business_profile,
         capabilities=[capability.value for capability in snapshot.capabilities],
         planned_capabilities=[capability.value for capability in snapshot.planned_capabilities],
+        entitlement_revision=snapshot.entitlement_revision,
+        purchased_capabilities=list(snapshot.purchased_capabilities),
+        entitlement_until=snapshot.entitlement_until,
+        register_capabilities=[
+            capability.value
+            for capability in snapshot.capabilities
+            if capability in capability_catalog.REGISTER_CAPABILITIES
+        ],
         onboarded=snapshot.onboarded,
         practice_mode=snapshot.practice_mode,
         tax_portal_pending=snapshot.tax_portal_pending,
@@ -408,12 +435,15 @@ def tenant_modules(db: Session, tenant_name: str) -> TenantModulesOut:
     snapshot = cached_settings(db)
     profile = snapshot.business_profile
     enabled = {capability.value for capability in snapshot.capabilities}
+    listed = capability_catalog.catalogue(profile)
     return TenantModulesOut(
         tenant_name=tenant_name,
         business_profile=profile,
         profile_label=capability_catalog.PROFILE_LABELS.get(profile, profile),
         locked=snapshot.onboarded,
         enabled=[capability.value for capability in snapshot.capabilities],
+        base=[capability.value for capability in listed.base],
+        optional=[capability.value for capability in listed.optional],
         available=[
             capability.value
             for capability in capability_catalog.compatible(profile)
@@ -429,15 +459,17 @@ def locked_message(support_email: str) -> str:
     return f"To change your business type and migrate store data safely, please contact IT Support at {support_email}"
 
 
-def _check_locked_change(row: BusinessSettings, profile: str, selection: list[str] | None) -> None:
-    """After onboarding the business type is fixed (its sales and stock depend on it), and only the modules that fit
-    it can be switched on from the portal. IT support handles everything else."""
+def _check_locked_change(row: BusinessSettings, profile: str) -> None:
+    """After onboarding the business type is fixed. Its sales and stock depend on it."""
     if profile != row.business_profile:
         raise ApiError(409, "business_type_locked", locked_message(get_settings().support_email))
+
+
+def _check_selection_fits(profile: str, selection: list[str] | None, managed: dict[str, str]) -> None:
+    """A store can switch on only modules its business type offers, plus modules IT support already forced on."""
     if selection is None:
         return
     allowed = set(capability_catalog.compatible(profile))
-    managed = managed_of(row)
     outside = [
         value for value in selection if capability_catalog.Capability(value) not in allowed and value not in managed
     ]
@@ -466,17 +498,106 @@ def _guard_reorder_module(db: Session, resolved: capability_catalog.Resolved) ->
         )
 
 
+def commercial_module_keys() -> set[str]:
+    """Capability ids a priced add-on is allowed to sell. Tenancy off means nothing is sold as an add-on."""
+    settings = get_settings()
+    if not settings.tenancy_enabled:
+        return set()
+    from sqlalchemy import select
+
+    from app.tenancy import registry
+    from app.tenancy.models import BillingAddon
+
+    try:
+        with registry.control_session(settings) as control:
+            rows = control.scalars(select(BillingAddon).where(BillingAddon.active.is_(True))).all()
+            return {key for row in rows for key in (row.module_keys or [])}
+    except Exception as exc:
+        raise ApiError(
+            503,
+            "entitlement_unavailable",
+            "Module access could not be confirmed. Try again.",
+        ) from exc
+
+
+def _refuse_unpaid(profile: str, selection: list[str] | None, row: BusinessSettings, purchased: list[str]) -> None:
+    """A module mapped to a priced add-on cannot be switched on from the portal until payment is verified.
+
+    Modules already stored for this store stay, including ones chosen before the add-on was mapped.
+    """
+    if selection is None:
+        return
+    preset = {capability.value for capability in capability_catalog.PROFILES.get(profile, ())}
+    stored = row.capabilities
+    already = set(stored) if stored is not None else preset
+    newly = set(selection) - already - preset - set(purchased)
+    if not newly:
+        return
+    blocked = sorted(newly & commercial_module_keys())
+    if not blocked:
+        return
+    names = ", ".join(capability_catalog.SPECS[capability_catalog.Capability(value)].label for value in blocked)
+    raise ApiError(
+        402,
+        "payment_required",
+        f"{names} is sold as an add-on. It switches on after the payment is verified.",
+        details={"modules": blocked},
+    )
+
+
+def _refuse_dropping_purchased(profile: str, selection: list[str] | None, purchased: list[str]) -> None:
+    if selection is None or not purchased:
+        return
+    fitting = {
+        key
+        for key in purchased
+        if key in {capability.value for capability in capability_catalog.compatible(profile)}
+    }
+    removed = sorted(fitting - set(selection))
+    if not removed:
+        return
+    names = ", ".join(capability_catalog.SPECS[capability_catalog.Capability(value)].label for value in removed)
+    raise ApiError(
+        409,
+        "module_purchased",
+        f"{names} stays on until the add-on subscription ends.",
+        details={"modules": removed},
+    )
+
+
+def note_register_entitlement(db: Session, device_id: uuid.UUID | None, revision: int, seen: int | None) -> None:
+    """Records the entitlement revision a register just fetched. The same revision is not written again."""
+    if device_id is None or seen == revision:
+        return
+    from app.models.device import Device
+
+    db.execute(
+        update(Device)
+        .where(Device.id == device_id)
+        .values(entitlement_revision=revision, entitlement_synced_at=datetime.now(UTC))
+    )
+
+
 def change_profile(db: Session, actor: User, data: ProfileUpdate) -> BusinessSettingsOut:
     """Switches the business type and/or its modules. Roadmap modules are kept as planned, never enabled, and a
     disabled module only hides features: its data stays."""
     if data.business_profile not in capability_catalog.PROFILES:
         raise ApiError(422, "invalid_request", f"Unknown business profile '{data.business_profile}'.")
     selection = None
+    chosen: list[capability_catalog.Capability] = []
     if data.capabilities is not None:
         unknown = sorted(set(data.capabilities) - {capability.value for capability in capability_catalog.Capability})
         if unknown:
             raise ApiError(422, "invalid_request", f"Unknown modules: {', '.join(unknown)}.")
         chosen = capability_catalog.parse(data.capabilities)
+        selection = [capability.value for capability in chosen]
+
+    row = load_settings(db, lock=True)
+    if row.onboarded_at is not None:
+        _check_locked_change(row, data.business_profile)
+    # Refuse a module this business type does not offer before talking about its dependencies.
+    _check_selection_fits(data.business_profile, selection, managed_of(row))
+    if chosen:
         missing = capability_catalog.missing_dependencies(chosen)
         if missing:
             detail = "; ".join(
@@ -484,22 +605,25 @@ def change_profile(db: Session, actor: User, data: ProfileUpdate) -> BusinessSet
                 for capability, needs in missing.items()
             )
             raise ApiError(422, "capability_dependencies", f"Some modules need others switched on: {detail}.")
-        selection = [capability.value for capability in chosen]
-
-    row = load_settings(db, lock=True)
-    if row.onboarded_at is not None:
-        _check_locked_change(row, data.business_profile, selection)
+    purchased = effective_purchased_keys(row)
+    _refuse_unpaid(data.business_profile, selection, row, purchased)
+    _refuse_dropping_purchased(data.business_profile, selection, purchased)
     managed = managed_of(row)
     before = {
         "business_profile": row.business_profile,
-        "capabilities": list(capability_catalog.resolve(row.business_profile, row.capabilities, managed).enabled),
+        "capabilities": [
+            capability.value
+            for capability in capability_catalog.resolve(
+                row.business_profile, row.capabilities, managed, purchased
+            ).enabled
+        ],
     }
     row.business_profile = data.business_profile
     row.capabilities = selection
     if data.complete_onboarding and row.onboarded_at is None:
         row.onboarded_at = datetime.now(UTC)
     row.updated_by_id = actor.id
-    after = capability_catalog.resolve(row.business_profile, row.capabilities, managed)
+    after = capability_catalog.resolve(row.business_profile, row.capabilities, managed, purchased)
     _guard_reorder_module(db, after)
     audit.record(
         db,
@@ -514,6 +638,9 @@ def change_profile(db: Session, actor: User, data: ProfileUpdate) -> BusinessSet
     )
     db.commit()
     db.refresh(row)
+    from app.services.addon_access import invalidate_access_cache
+
+    invalidate_access_cache(row.tenant_id)
     return settings_out(row)
 
 

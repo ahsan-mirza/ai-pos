@@ -503,6 +503,8 @@ mod tests {
                 role_name: "Cashier".into(),
                 permissions: vec![],
                 max_discount_bps: None,
+                addon_modules: vec![],
+                addon_synced_at: 0,
             },
             mode: "offline",
             unlocked_at: 0,

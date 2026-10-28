@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 
 from app.console.entitlements import get_tenant, tenant_session
 from app.console.security import OperatorPrincipal, audit_operator
+from app.core import capabilities as capability_catalog
 from app.core.config import Settings
 from app.core.deps import Principal
 from app.core.errors import ApiError
@@ -101,6 +102,28 @@ _ADDONS = (
         3,
     ),
 )
+
+
+def require_module_keys(keys: list[str], *, with_dependencies: bool) -> list[str]:
+    """Keeps stored module ids inside the registered capability catalogue."""
+    known = {capability.value for capability in capability_catalog.Capability}
+    cleaned: list[str] = []
+    for key in keys:
+        if key not in known:
+            raise ApiError(422, "unknown_module", f"{key} is not a registered module.")
+        if key not in cleaned:
+            cleaned.append(key)
+    if with_dependencies:
+        chosen = capability_catalog.parse(cleaned)
+        missing = capability_catalog.missing_dependencies(chosen)
+        if missing:
+            parts = [
+                f"{capability.value} needs {', '.join(need.value for need in needs)}"
+                for capability, needs in missing.items()
+            ]
+            detail = "; ".join(parts)
+            raise ApiError(422, "capability_dependencies", f"Include the modules these depend on: {detail}.")
+    return [capability.value for capability in capability_catalog.parse(cleaned)]
 
 
 def cycle_amount(monthly_fils: int, months: int, discount_bps: int) -> int:
@@ -227,6 +250,7 @@ def addon_out(row: BillingAddon) -> AddonOut:
         one_time_fils=row.one_time_fils,
         refundable=row.refundable,
         active=row.active,
+        module_keys=list(row.module_keys or []),
         sort_order=row.sort_order,
     )
 
@@ -272,7 +296,7 @@ def update_plan(db: Session, operator: OperatorPrincipal, plan_id: uuid.UUID, da
     before = plan_out(row).model_dump(mode="json")
     row.name = data.name.strip()
     row.included_registers = data.included_registers
-    row.included_modules = data.included_modules
+    row.included_modules = require_module_keys(data.included_modules, with_dependencies=False)
     row.monthly_fils = data.monthly_fils
     row.trial_days = data.trial_days
     row.active = data.active
@@ -312,6 +336,7 @@ def update_addon(db: Session, operator: OperatorPrincipal, addon_id: uuid.UUID, 
     row.one_time_fils = data.one_time_fils
     row.refundable = data.refundable
     row.active = data.active
+    row.module_keys = require_module_keys(data.module_keys, with_dependencies=True)
     row.sort_order = data.sort_order
     _touch(row)
     _audit_price(db, operator, "billing.addon", before, addon_out(row).model_dump(mode="json"), data.reason)
@@ -790,6 +815,9 @@ def simulate_checkout(db: Session, settings: Settings, tenant_id: uuid.UUID, che
         raise ApiError(404, "not_found", "Checkout was not found.")
     _complete(db, settings, row)
     db.commit()
+    from app.console.entitlements import publish_purchased
+
+    publish_purchased(settings, tenant_id)
     return checkout_status(db, tenant_id, checkout_id)
 
 
@@ -810,25 +838,26 @@ def verify_stripe_signature(body: bytes, header: str, secret: str) -> bool:
     return any(hmac.compare_digest(expected, item) for item in signatures)
 
 
-def complete_stripe_event(db: Session, settings: Settings, payload: dict) -> None:
+def complete_stripe_event(db: Session, settings: Settings, payload: dict) -> uuid.UUID | None:
     if payload.get("type") != "checkout.session.completed":
-        return
+        return None
     session = payload.get("data", {}).get("object", {})
     checkout_id = (session.get("metadata") or {}).get("checkout_id") or session.get("client_reference_id")
     if not checkout_id:
-        return
+        return None
     try:
         invoice_id = uuid.UUID(str(checkout_id))
     except ValueError:
-        return
+        return None
     row = db.get(BillingInvoice, invoice_id)
     if row is None:
-        return
+        return None
     customer = session.get("customer")
     subscription = session.get("subscription")
     if isinstance(customer, str):
         _remember_stripe(db, row, customer, subscription if isinstance(subscription, str) else None)
     _complete(db, settings, row)
+    return row.tenant_id
 
 
 def _remember_stripe(db: Session, invoice: BillingInvoice, customer: str, subscription: str | None) -> None:
@@ -861,7 +890,7 @@ def _complete(db: Session, settings: Settings, invoice: BillingInvoice) -> None:
             if user is None:
                 raise ApiError(422, "owner_missing", "The owner who started checkout no longer exists.")
             principal = Principal(kind="user", scope="portal", user=user, permissions=frozenset(user.permissions))
-            result = go_live(store, principal, payload)
+            result = go_live(store, principal, payload, settings=settings, payment_verified=True)
     except ApiError as exc:
         if exc.code != "already_live":
             invoice.error = exc.message

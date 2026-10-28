@@ -179,8 +179,9 @@ class SignupRequest(ControlBase):
     __tablename__ = "signup_requests"
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    email: Mapped[str] = mapped_column(String(254), index=True)
-    phone: Mapped[str] = mapped_column(String(32), index=True)
+    # One signup per email and per mobile. The availability check is advisory; these constraints close the race.
+    email: Mapped[str] = mapped_column(String(254), unique=True)
+    phone: Mapped[str] = mapped_column(String(32), unique=True)
     full_name: Mapped[str] = mapped_column(String(120))
     password_hash: Mapped[str] = mapped_column(Text)
     # SHA-256 of the token returned at start; every later step must present it.
@@ -206,6 +207,19 @@ class SignupRequest(ControlBase):
     handoff_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
+
+
+class SignupSlugHold(ControlBase):
+    """The store address a signup is provisioning.
+
+    Released when setup fails before a tenant exists, so another store can use that address.
+    A live tenant keeps the address on tenants.slug. Display names are not unique and have no hold.
+    """
+
+    __tablename__ = "signup_slug_holds"
+
+    slug: Mapped[str] = mapped_column(String(32), primary_key=True)
+    signup_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("signup_requests.id"), index=True)
 
 
 SUBSCRIPTION_STATUSES = ("trialing", "active", "past_due", "canceled")
@@ -256,6 +270,8 @@ class BillingAddon(ControlBase):
     one_time_fils: Mapped[int] = mapped_column(Integer, default=0)
     refundable: Mapped[bool] = mapped_column(Boolean, default=False)
     active: Mapped[bool] = mapped_column(Boolean, default=True)
+    # Capability keys this commercial add-on is allowed to unlock. Empty means it bills only and grants nothing.
+    module_keys: Mapped[list] = mapped_column(JSON, default=list)
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
 

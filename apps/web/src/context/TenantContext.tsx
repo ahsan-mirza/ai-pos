@@ -8,6 +8,7 @@ import {
   fitsProfiles,
   isFnBProfile,
   isRetailProfile,
+  knownBusinessType,
 } from "../lib/industry";
 
 /** GET /api/v1/tenant/profile. The stored business type is a BusinessProfile id. */
@@ -18,9 +19,13 @@ export interface TenantProfileResponse {
 
 export interface TenantContextValue {
   businessType: BusinessProfile;
+  /** The id returned by the API, including values this portal does not recognize. */
+  storedProfile: string | null;
   enabledModules: readonly string[];
   /** False until settings or the profile endpoint has answered. */
   ready: boolean;
+  /** True once a supported business type has been read. Unknown ids stay false. */
+  recognized: boolean;
   isRetail: boolean;
   isFnB: boolean;
   isElectronics: boolean;
@@ -51,17 +56,24 @@ export function TenantProvider({ children }: { children: ReactNode }) {
   }, [status, settings?.updated_at, settings?.business_profile]);
 
   const value = useMemo<TenantContextValue>(() => {
-    const businessType = businessTypeOf(settings?.business_profile ?? remote?.business_type);
+    const storedProfile = settings?.business_profile ?? remote?.business_type ?? null;
+    const known = knownBusinessType(storedProfile);
+    const ready = settings !== null || remote !== null;
+    const recognized = ready && known !== null;
+    const businessType = businessTypeOf(storedProfile);
     const enabledModules = settings?.capabilities ?? remote?.enabled_modules ?? [];
     return {
       businessType,
+      storedProfile,
       enabledModules,
-      ready: settings !== null || remote !== null,
-      isRetail: isRetailProfile(businessType),
-      isFnB: isFnBProfile(businessType),
-      isElectronics: businessType === "electronics_wholesale",
-      isFashion: businessType === "retail_fashion",
-      allows: (profiles) => fitsProfiles(businessType, profiles),
+      ready,
+      recognized,
+      isRetail: known !== null && isRetailProfile(known),
+      isFnB: known !== null && isFnBProfile(known),
+      isElectronics: known === "electronics_wholesale",
+      isFashion: known === "retail_fashion",
+      // Until the type is known, only pages with no industry allow-list stay visible.
+      allows: (profiles) => (recognized ? fitsProfiles(known, profiles) : profiles === undefined),
     };
   }, [settings, remote]);
 

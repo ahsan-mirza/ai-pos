@@ -75,6 +75,62 @@ def delete(key: str) -> None:
         log.warning("cache delete failed")
 
 
+def reachable() -> bool:
+    """False when Redis cannot answer. Callers then use PostgreSQL."""
+    try:
+        return bool(_client_for().ping())
+    except RedisError:
+        return False
+
+
+def set_permanent(key: str, value: str) -> bool:
+    """Stores a value with no expiry. False when Redis cannot accept it."""
+    try:
+        _client_for().set(key, value)
+        return True
+    except RedisError:
+        log.warning("cache write failed")
+        return False
+
+
+def try_claim(key: str, ttl_seconds: int) -> bool:
+    """True only when this caller set the key. A Redis outage returns False."""
+    try:
+        return bool(_client_for().set(key, "1", nx=True, ex=ttl_seconds))
+    except RedisError:
+        log.warning("cache claim failed")
+        return False
+
+
+def get_bits(key: str, offsets: list[int]) -> list[int] | None:
+    """None when Redis cannot be read. An empty offset list is an empty result."""
+    if not offsets:
+        return []
+    try:
+        pipe = _client_for().pipeline()
+        for offset in offsets:
+            pipe.getbit(key, offset)
+        return [int(bit) for bit in pipe.execute()]
+    except RedisError:
+        log.warning("cache read failed")
+        return None
+
+
+def set_bits(key: str, offsets: list[int]) -> bool:
+    """Sets bits to 1. False when Redis cannot store them."""
+    if not offsets:
+        return True
+    try:
+        pipe = _client_for().pipeline()
+        for offset in offsets:
+            pipe.setbit(key, offset, 1)
+        pipe.execute()
+        return True
+    except RedisError:
+        log.warning("cache write failed")
+        return False
+
+
 def increment(key: str) -> int:
     """Moves a counter forward. A Redis outage returns 0 so callers fall back to the database."""
     try:

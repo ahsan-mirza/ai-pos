@@ -5,7 +5,7 @@ import { apiGet } from "../../lib/api";
 import { useTenant } from "../../context/TenantContext";
 import { FirstWinChecklist } from "../../features/onboarding/FirstWinChecklist";
 import { PracticeBanner, PracticeProvider, TaxPortalBanner } from "../../features/onboarding/practice";
-import { industryAllows } from "../../lib/industry";
+import { portalRouteAllowed } from "../../lib/industry";
 import { portalHomePath } from "../../lib/portal-home";
 import { StoreScopeProvider } from "../../lib/storeScope";
 import { Header } from "./Header";
@@ -95,9 +95,11 @@ function SubscriptionNotice() {
 /** Blocks a deep link when this business type does not use the page. */
 function IndustryGate() {
   const { pathname } = useLocation();
-  const { businessType, ready } = useTenant();
-  if (ready && !industryAllows(pathname, businessType)) {
-    const name = profileSpec(businessType).label;
+  const { storedProfile, ready, recognized, businessType } = useTenant();
+  const allowed = portalRouteAllowed(pathname, ready ? storedProfile : null);
+  if (!allowed && !ready) return null;
+  if (!allowed) {
+    const name = recognized ? profileSpec(businessType).label : "This business";
     return (
       <section className="m-6 max-w-lg rounded-card border border-line bg-white p-8">
         <h1 className="text-xl font-semibold">Not part of this portal</h1>

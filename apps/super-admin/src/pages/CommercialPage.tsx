@@ -1,4 +1,12 @@
-import type { BillingAddon, BillingCatalog, BillingCycle, BillingFee, BillingPlan, StoreSubscription } from "@ai-pos/shared-types";
+import type {
+  BillingAddon,
+  BillingCatalog,
+  BillingCycle,
+  BillingFee,
+  BillingPlan,
+  ModuleCatalogueItem,
+  StoreSubscription,
+} from "@ai-pos/shared-types";
 import { DataTable, type DataTableColumn } from "@ai-pos/ui";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ErrorNote, Field, GhostButton, Modal, PrimaryButton } from "../components/ui";
@@ -324,6 +332,7 @@ export function AddonsPage() {
                 {aed(row.monthly_fils)} / month
                 {row.one_time_fils ? ` · ${aed(row.one_time_fils)} once${row.refundable ? " (refundable)" : ""}` : ""}
                 {row.active ? "" : " · inactive"}
+                {row.module_keys?.length ? ` · ${row.module_keys.join(", ")}` : ""}
               </p>
             </div>
             {admin ? <GhostButton onClick={() => setEditing(row)}>Edit</GhostButton> : null}
@@ -351,9 +360,17 @@ function AddonEditor({ addon, onClose, onSaved }: { addon: BillingAddon; onClose
   const [once, setOnce] = useState((addon.one_time_fils / 100).toFixed(2));
   const [refundable, setRefundable] = useState(addon.refundable);
   const [active, setActive] = useState(addon.active);
+  const [modules, setModules] = useState<string[]>(addon.module_keys ?? []);
+  const [choices, setChoices] = useState<ModuleCatalogueItem[]>([]);
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    api
+      .get<ModuleCatalogueItem[]>("/modules")
+      .then((rows) => setChoices(rows.filter((row) => row.available)))
+      .catch(() => setChoices([]));
+  }, []);
   return (
     <Modal
       title={addon.name}
@@ -374,6 +391,7 @@ function AddonEditor({ addon, onClose, onSaved }: { addon: BillingAddon; onClose
                   one_time_fils: filsOf(once),
                   refundable,
                   active,
+                  module_keys: modules,
                   sort_order: addon.sort_order,
                   reason: reason.trim(),
                 })
@@ -400,6 +418,27 @@ function AddonEditor({ addon, onClose, onSaved }: { addon: BillingAddon; onClose
         <label className="flex items-center gap-2 text-sm">
           <input type="checkbox" checked={active} onChange={(event) => setActive(event.target.checked)} /> Active
         </label>
+        <fieldset>
+          <legend className="text-sm font-medium">Modules this add-on may sell</legend>
+          <p className="mt-1 text-xs text-charcoal/50">Saving this does not enable the module for existing stores.</p>
+          <div className="mt-2 grid max-h-48 gap-1 overflow-y-auto">
+            {choices.map((choice) => (
+              <label key={choice.key} className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={modules.includes(choice.key)}
+                  onChange={(event) =>
+                    setModules((current) =>
+                      event.target.checked ? [...current, choice.key] : current.filter((key) => key !== choice.key),
+                    )
+                  }
+                />
+                {choice.label}
+                {choice.requires.length ? <span className="text-xs text-charcoal/50">needs {choice.requires.join(", ")}</span> : null}
+              </label>
+            ))}
+          </div>
+        </fieldset>
         <Reason value={reason} onChange={setReason} />
         <ErrorNote message={error} />
       </div>

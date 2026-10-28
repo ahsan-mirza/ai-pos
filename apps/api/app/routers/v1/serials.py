@@ -33,6 +33,10 @@ def search(
     status: SerialStatus | Literal["any"] = "in_stock",
     limit: Annotated[int, Query(ge=1, le=500)] = 50,
 ) -> SerialSearchOut:
+    from app.core.capabilities import Capability
+    from app.services.addon_access import enforce_user
+
+    enforce_user(db, principal, Capability.SERIAL_TRACKING.value)
     return serial_service.search(
         db,
         settings,

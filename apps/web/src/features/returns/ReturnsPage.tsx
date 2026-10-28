@@ -11,7 +11,6 @@ import { Sparkline, SplitBar } from "../../components/charts/Charts";
 import { SegmentedControl } from "../../components/ui/SegmentedControl";
 import { apiGet } from "../../lib/api";
 import { useCurrency } from "../../lib/currency";
-import { sampleReturns } from "./sample";
 
 const options = [
   { value: AnalyticsTimeframe.AllTime, label: "All time" },
@@ -55,25 +54,41 @@ const dateTime = (value: string) =>
 export function ReturnsPage() {
   const { currency } = useCurrency();
   const [timeframe, setTimeframe] = useState<AnalyticsTimeframe>(AnalyticsTimeframe.AllTime);
-  const [data, setData] = useState<ReturnsAnalytics>(sampleReturns[AnalyticsTimeframe.AllTime]);
-  const [source, setSource] = useState<"sample" | "live">("sample");
+  const [data, setData] = useState<ReturnsAnalytics | null>(null);
+  const [failed, setFailed] = useState(false);
 
   useEffect(() => {
     const controller = new AbortController();
-    setData({ ...sampleReturns[timeframe], currency });
-    setSource("sample");
     apiGet<ReturnsAnalytics>(`/api/v1/returns/analytics?timeframe=${timeframe}&currency=${currency}`)
       .then((live) => {
         if (!controller.signal.aborted) {
           setData(live);
-          setSource("live");
+          setFailed(false);
         }
       })
       .catch(() => {
-        if (!controller.signal.aborted) setSource("sample");
+        if (!controller.signal.aborted) setFailed(true);
       });
     return () => controller.abort();
   }, [timeframe, currency]);
+
+  if (data === null) {
+    return (
+      <section className="space-y-6">
+        <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+          <div>
+            <h2 className="font-sans text-[28px] font-semibold leading-tight tracking-tight md:text-[32px]">
+              Returns &amp; Refunds
+            </h2>
+            <p className="mt-1 text-sm text-charcoal/60">
+              {failed ? "Returns could not be loaded." : "Loading returns…"}
+            </p>
+          </div>
+          <SegmentedControl label="Timeframe" value={timeframe} options={options} onChange={setTimeframe} />
+        </div>
+      </section>
+    );
+  }
 
   const conditionMax = Math.max(...data.conditions.map((item) => item.units), 1);
   const flagged = data.cashiers.filter((row) => row.flagged).length;
@@ -85,11 +100,7 @@ export function ReturnsPage() {
           <h2 className="font-sans text-[28px] font-semibold leading-tight tracking-tight md:text-[32px]">
             Returns &amp; Refunds
           </h2>
-          <p className="mt-1 text-sm text-charcoal/60">
-            {source === "sample"
-              ? "Showing sample figures. Live returns appear when the API is reachable."
-              : `Refunds processed in ${data.currency}.`}
-          </p>
+          <p className="mt-1 text-sm text-charcoal/60">Refunds processed in {data.currency}.</p>
         </div>
         <SegmentedControl label="Timeframe" value={timeframe} options={options} onChange={setTimeframe} />
       </div>

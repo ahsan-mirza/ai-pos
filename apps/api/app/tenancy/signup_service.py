@@ -13,6 +13,7 @@ from datetime import UTC, datetime, timedelta
 
 import jwt
 from sqlalchemy import func, or_, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core import capabilities as capability_catalog
@@ -29,14 +30,14 @@ from app.schemas.signup import (
     SignupStore,
     SlugCheck,
 )
-from app.services import messaging_providers
+from app.services import availability, messaging_providers
 from app.tenancy import registry
-from app.tenancy.models import SignupRequest, Tenant
+from app.tenancy.countries import COUNTRY_CURRENCIES, currency_for_country
+from app.tenancy.models import SignupRequest, SignupSlugHold, Tenant
 
 MAX_OTP_ATTEMPTS = 5
 HANDOFF_MINUTES = 5
 CHANNEL_PROVIDERS = {"log": "log", "whatsapp": "whatsapp_cloud", "sms": "http_sms", "email": "smtp"}
-SUPPORTED_COUNTRIES = {"AE": "AED", "SA": "SAR", "QA": "QAR", "KW": "KWD", "BH": "BHD", "OM": "OMR"}
 STEPS: tuple[tuple[str, str], ...] = (
     ("database", "Creating your store's own database"),
     ("migrations", "Building the database tables"),
@@ -152,11 +153,7 @@ def start(settings: Settings, data: SignupStart) -> SignupStarted:
     _require_enabled(settings)
     with registry.control_session(settings) as db:
         if _existing(db, email=data.email, phone=data.phone) is not None:
-            raise ApiError(
-                409,
-                "signup_exists",
-                "You already have a signup. Log in to finish where you left off.",
-            )
+            raise _signup_exists(db, data.email, data.phone)
         since = _now() - timedelta(hours=1)
         recent = db.scalar(
             select(func.count())
@@ -178,10 +175,17 @@ def start(settings: Settings, data: SignupStart) -> SignupStarted:
             status="PENDING_OTP",
             steps=[],
         )
-        db.add(row)
-        db.flush()
-        code = _send_code(settings, row)
-        db.commit()
+        try:
+            db.add(row)
+            db.flush()
+            # Record the identifiers before commit. A rolled-back insert only creates a filter hit,
+            # which still confirms against PostgreSQL. A committed row is never missing from a healthy filter.
+            availability.remember_account(db, data.email, data.phone)
+            code = _send_code(settings, row)
+            db.commit()
+        except IntegrityError:
+            db.rollback()
+            raise _signup_exists(db, data.email, data.phone) from None
         return _started(settings, row, token, code=code, expires_in=_code_seconds(settings))
 
 
@@ -265,11 +269,30 @@ def suggest_slug(name: str) -> str:
     return base or "store"
 
 
+def _signup_exists(db: Session, email: str, phone: str) -> ApiError:
+    fields: dict[str, str] = {}
+    if db.scalar(select(SignupRequest.id).where(SignupRequest.email == email).limit(1)) is not None:
+        fields["email"] = "This email is already registered."
+    if db.scalar(select(SignupRequest.id).where(SignupRequest.phone == phone).limit(1)) is not None:
+        fields["phone"] = "This mobile number is already registered."
+    if not fields:
+        fields["email"] = "This email is already registered."
+    return ApiError(
+        409,
+        "signup_exists",
+        "You already have a signup. Log in to finish where you left off.",
+        details={"fields": fields},
+    )
+
+
 def _slug_reason(db: Session, slug: str, own_id: uuid.UUID | None = None) -> str | None:
     if not registry.valid_slug(slug):
         return "Use 1-32 lowercase letters, numbers or dashes; some names (www, api, admin) are reserved."
     if db.scalar(select(Tenant.id).where(Tenant.slug == slug)) is not None:
         return "That address is taken."
+    held = db.get(SignupSlugHold, slug)
+    if held is not None and held.signup_id != own_id:
+        return "That address is being set up for another store."
     claimed = db.scalar(
         select(SignupRequest.id).where(
             SignupRequest.slug == slug,
@@ -280,10 +303,48 @@ def _slug_reason(db: Session, slug: str, own_id: uuid.UUID | None = None) -> str
     return "That address is being set up for another store." if claimed is not None else None
 
 
+def _slug_conflict(reason: str) -> ApiError:
+    return ApiError(409, "slug_unavailable", reason, details={"fields": {"slug": reason}})
+
+
+def _claim_slug(db: Session, slug: str, signup_id: uuid.UUID) -> str | None:
+    reason = _slug_reason(db, slug, signup_id)
+    if reason is not None:
+        return reason
+    try:
+        with db.begin_nested():
+            db.add(SignupSlugHold(slug=slug, signup_id=signup_id))
+            db.flush()
+    except IntegrityError:
+        return "That address is taken."
+    return None
+
+
+def _reclaim_slug(db: Session, row: SignupRequest) -> None:
+    """Takes the address back for a retry. Another store that claimed it after a failure wins."""
+    if not row.slug:
+        return
+    tenant = db.scalar(select(Tenant).where(Tenant.slug == row.slug))
+    if tenant is not None and tenant.id != row.tenant_id:
+        raise _slug_conflict("That address is taken.")
+    hold = db.get(SignupSlugHold, row.slug)
+    if hold is not None and hold.signup_id != row.id:
+        raise _slug_conflict("That address is taken.")
+    if hold is None:
+        try:
+            with db.begin_nested():
+                db.add(SignupSlugHold(slug=row.slug, signup_id=row.id))
+                db.flush()
+        except IntegrityError:
+            raise _slug_conflict("That address is taken.") from None
+
+
 def check_slug(settings: Settings, slug: str) -> SlugCheck:
     _require_enabled(settings)
     cleaned = slug.strip().lower()
     with registry.control_session(settings) as db:
+        if registry.valid_slug(cleaned) and not availability.slug_needs_database(db, cleaned):
+            return SlugCheck(slug=cleaned, available=True, reason=None, suggestion=None)
         reason = _slug_reason(db, cleaned)
         suggestion = None
         if reason is not None:
@@ -325,15 +386,15 @@ def choose_store(settings: Settings, request_id: uuid.UUID, token: str | None, d
     with db:
         if row.status != "VERIFIED" or row.sub_type is None:
             raise ApiError(409, "wrong_step", "Choose your business type first.")
-        if data.country not in SUPPORTED_COUNTRIES:
-            raise ApiError(422, "unsupported_country", "Choose a GCC country.")
+        if data.country not in COUNTRY_CURRENCIES:
+            raise ApiError(422, "unsupported_country", "Choose a country from the list.")
         slug = data.slug.strip().lower()
-        reason = _slug_reason(db, slug, row.id)
+        reason = _claim_slug(db, slug, row.id)
         if reason is not None:
-            raise ApiError(409, "slug_unavailable", reason)
-        row.store_name = data.store_name.strip()
+            raise _slug_conflict(reason)
+        row.store_name = re.sub(r"\s+", " ", data.store_name).strip()
         row.slug = slug
-        row.currency = data.currency
+        row.currency = currency_for_country(data.country)
         row.country = data.country
         row.trn = data.trn
         row.status = "PROVISIONING"
@@ -343,6 +404,8 @@ def choose_store(settings: Settings, request_id: uuid.UUID, token: str | None, d
             {"key": key, "label": FOOD_SAMPLES_LABEL if food and key == "samples" else label, "state": "pending"}
             for key, label in STEPS
         ]
+        db.flush()
+        availability.remember_slug(db, slug)
         db.commit()
         return state(settings, row)
 
@@ -353,6 +416,9 @@ def retry(settings: Settings, request_id: uuid.UUID, token: str | None) -> Signu
     with db:
         if row.status != "FAILED":
             raise ApiError(409, "wrong_step", "Only a failed setup can be retried.")
+        _reclaim_slug(db, row)
+        if row.slug:
+            availability.remember_slug(db, row.slug)
         row.status = "PROVISIONING"
         row.error = None
         row.steps = [{**step, "state": "pending" if step["state"] != "done" else "done"} for step in (row.steps or [])]

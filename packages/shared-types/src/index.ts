@@ -169,12 +169,14 @@ export {
   CAPABILITY_GROUP_LABELS,
   Capability,
   DEFAULT_BUSINESS_PROFILE,
+  PROFILE_ELIGIBLE,
   PROFILE_GROUP_LABELS,
   PROFILE_PRESETS,
   capabilitySpec,
   isBusinessProfile,
   isCapability,
   missingDependencies,
+  profileAllows,
   profileSpec,
   resolveCapabilities,
 } from "./capabilities.js";
@@ -205,6 +207,9 @@ export type {
 export type {
   BillingAddon,
   BillingCatalog,
+  BusinessTypeModules,
+  ModuleCatalogueItem,
+  ModuleSummary,
   BillingCheckout,
   BillingCheckoutStatus,
   BillingCycle,
@@ -541,7 +546,10 @@ export {
   signupPasswordReady,
   signupPasswordRules,
 } from "./signup.js";
+export { COUNTRY_CURRENCIES, currencyForCountry } from "./countries.js";
+export type { SignupCountryCode } from "./countries.js";
 export type {
+  AvailabilityResult,
   ProvisionStep,
   ProvisionStepState,
   SignupBusiness,
@@ -565,6 +573,7 @@ export type {
   GoLiveRequest,
   GoLiveResult,
   OnboardingChecklist,
+  OnboardingSkip,
   OpeningStockChoice,
 } from "./onboarding.js";
 export {

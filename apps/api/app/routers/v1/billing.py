@@ -199,6 +199,10 @@ async def stripe_webhook(request: Request, settings: Config) -> dict[str, bool]:
     except json.JSONDecodeError as exc:
         raise ApiError(400, "invalid_body", "The payment notice was not JSON.") from exc
     with registry.control_session(settings) as db:
-        billing.complete_stripe_event(db, settings, payload if isinstance(payload, dict) else {})
+        tenant_id = billing.complete_stripe_event(db, settings, payload if isinstance(payload, dict) else {})
         db.commit()
+    if tenant_id is not None:
+        from app.console.entitlements import publish_purchased
+
+        publish_purchased(settings, tenant_id)
     return {"ok": True}

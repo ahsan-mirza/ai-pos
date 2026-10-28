@@ -12,15 +12,31 @@ class ChecklistItem(ApiModel):
     hint: str
     done: bool
     href: str
+    action: str
+    optional: bool = False
+    skipped: bool = False
+    blocked: str | None = None
+    secondary_href: str | None = None
+    secondary_label: str | None = None
+    # The optional action inside this step (inviting staff), not the step itself.
+    skippable: bool = False
 
 
 class Checklist(ApiModel):
+    version: int
     practice_mode: bool
     live_at: datetime | None
     store_name: str
     # Units "Keep opening stock" would carry: real products, with practice sales put back.
     opening_stock_units: int
+    # trial, pending_review, active, grace, restricted, or unbilled.
+    subscription_state: str
+    next_key: str | None
     items: list[ChecklistItem]
+
+
+class OnboardingSkip(ApiModel):
+    key: str = Field(min_length=1, max_length=40)
 
 
 class GoLiveRequest(ApiModel):

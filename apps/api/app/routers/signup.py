@@ -3,10 +3,14 @@
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, BackgroundTasks, Depends, Header, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, Header, Query, Request
 
 from app.core.config import Settings, get_settings
+from app.core.rate_limit import check
 from app.schemas.signup import (
+    AvailabilityResult,
+    EmailLookup,
+    PhoneLookup,
     SignupBusiness,
     SignupResume,
     SignupStart,
@@ -16,11 +20,21 @@ from app.schemas.signup import (
     SignupVerify,
     SlugCheck,
 )
+from app.services import availability
 from app.tenancy import provisioning, signup_service
 
 router = APIRouter()
 Config = Annotated[Settings, Depends(get_settings)]
 Token = Annotated[str | None, Header(alias="X-Signup-Token")]
+
+
+def _limit(request: Request) -> None:
+    check(
+        request,
+        "signup-availability",
+        limit=availability.RATE_LIMIT,
+        window_seconds=availability.RATE_WINDOW_SECONDS,
+    )
 
 
 @router.post("/start", response_model=SignupStarted, status_code=201)
@@ -34,8 +48,23 @@ def resume(payload: SignupResume, settings: Config) -> SignupStarted:
 
 
 @router.get("/slug-check", response_model=SlugCheck)
-def slug_check(settings: Config, slug: Annotated[str, Query(min_length=1, max_length=40)]) -> SlugCheck:
+def slug_check(
+    request: Request, settings: Config, slug: Annotated[str, Query(min_length=1, max_length=40)]
+) -> SlugCheck:
+    _limit(request)
     return signup_service.check_slug(settings, slug)
+
+
+@router.post("/availability/email", response_model=AvailabilityResult)
+def email_availability(request: Request, payload: EmailLookup, settings: Config) -> AvailabilityResult:
+    _limit(request)
+    return availability.check_email(settings, payload.email)
+
+
+@router.post("/availability/phone", response_model=AvailabilityResult)
+def phone_availability(request: Request, payload: PhoneLookup, settings: Config) -> AvailabilityResult:
+    _limit(request)
+    return availability.check_phone(settings, payload.phone)
 
 
 @router.get("/{request_id}", response_model=SignupState)

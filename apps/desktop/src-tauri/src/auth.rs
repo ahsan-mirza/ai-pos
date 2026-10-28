@@ -11,9 +11,17 @@ use crate::sync::DesktopConfig;
 const LOCAL_MAX_ATTEMPTS: i64 = 5;
 const LOCAL_LOCKOUT_SECS: i64 = 5 * 60;
 const POS_ACCESS: &str = "pos:access";
+const OFFLINE_ADDON_SECS: i64 = 24 * 60 * 60;
+
+/// Paid add-ons from the last online unlock. A corrupt list or a day-old cache grants none.
+pub fn fresh_addons(encoded: &str, updated_at: i64, now: i64) -> Vec<String> {
+    if now.saturating_sub(updated_at) > OFFLINE_ADDON_SECS {
+        return Vec::new();
+    }
+    serde_json::from_str(encoded).unwrap_or_default()
+}
 
 
-///  Dummy 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CashierProfile {
     pub id: String,
@@ -25,6 +33,12 @@ pub struct CashierProfile {
     /// Largest discount (basis points) the cashier gives without a manager; None uses the business default.
     #[serde(default)]
     pub max_discount_bps: Option<i64>,
+    /// Paid add-ons this cashier may use. Empty when none were granted.
+    #[serde(default)]
+    pub addon_modules: Vec<String>,
+    /// Unix seconds of the online unlock that refreshed add-on access.
+    #[serde(default)]
+    pub addon_synced_at: i64,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -49,10 +63,19 @@ struct RemoteUser {
     store_id: Option<String>,
     role: RemoteRole,
     permissions: Vec<String>,
+    #[serde(default)]
+    addon_modules: Vec<String>,
+}
+
+pub struct PinUnlock {
+    pub session: Session,
+    pub access_token: Option<String>,
 }
 
 #[derive(Deserialize)]
 struct TokenResponse {
+    #[serde(default)]
+    access_token: String,
     user: RemoteUser,
 }
 
@@ -90,13 +113,14 @@ pub fn pin_login(
     config: &DesktopConfig,
     username: &str,
     pin: &str,
-) -> Result<Session, String> {
+) -> Result<PinUnlock, String> {
     let username = username.trim().to_lowercase();
     if !(4..=6).contains(&pin.len()) || !pin.chars().all(|c| c.is_ascii_digit()) {
         return Err("PINs are 4 to 6 digits.".into());
     }
     match remote_login(config, &username, pin) {
         Remote::Accepted(response) => {
+            let now = now_secs();
             let profile = CashierProfile {
                 id: response.user.id,
                 username: response.user.username,
@@ -105,12 +129,21 @@ pub fn pin_login(
                 role_name: response.user.role.name,
                 permissions: response.user.permissions,
                 max_discount_bps: response.user.role.max_discount_bps,
+                addon_modules: response.user.addon_modules,
+                addon_synced_at: now,
             };
-            db.upsert_cached_user(&profile, &hash_pin(pin)?, now_secs())?;
-            Ok(Session {
-                user: profile,
-                mode: "online",
-                unlocked_at: now_secs(),
+            db.upsert_cached_user(&profile, &hash_pin(pin)?, now)?;
+            Ok(PinUnlock {
+                session: Session {
+                    user: profile,
+                    mode: "online",
+                    unlocked_at: now,
+                },
+                access_token: if response.access_token.is_empty() {
+                    None
+                } else {
+                    Some(response.access_token)
+                },
             })
         }
         Remote::Refused { status, message } => {
@@ -123,7 +156,7 @@ pub fn pin_login(
     }
 }
 
-fn offline_login(db: &Db, username: &str, pin: &str) -> Result<Session, String> {
+fn offline_login(db: &Db, username: &str, pin: &str) -> Result<PinUnlock, String> {
     let Some(cached) = db.cached_user(username)? else {
         return Err(
             "The server is unreachable and this cashier has not unlocked this register online yet."
@@ -151,14 +184,18 @@ fn offline_login(db: &Db, username: &str, pin: &str) -> Result<Session, String> 
     if !profile.permissions.iter().any(|item| item == POS_ACCESS) {
         return Err("This account cannot unlock a register.".into());
     }
-    Ok(Session {
-        user: profile,
-        mode: "offline",
-        unlocked_at: now,
+    Ok(PinUnlock {
+        session: Session {
+            user: profile,
+            mode: "offline",
+            unlocked_at: now,
+        },
+        access_token: None,
     })
 }
 
 fn cached_profile(cached: CachedUser) -> Result<CashierProfile, String> {
+    let synced_at = cached.updated_at;
     Ok(CashierProfile {
         id: cached.user_id,
         username: cached.username,
@@ -167,6 +204,8 @@ fn cached_profile(cached: CachedUser) -> Result<CashierProfile, String> {
         role_name: cached.role_name,
         permissions: serde_json::from_str(&cached.permissions).map_err(|err| err.to_string())?,
         max_discount_bps: cached.max_discount_bps,
+        addon_modules: fresh_addons(&cached.addon_modules, synced_at, now_secs()),
+        addon_synced_at: synced_at,
     })
 }
 
@@ -210,6 +249,18 @@ fn hash_pin(pin: &str) -> Result<String, String> {
         .hash_password(pin.as_bytes(), &salt)
         .map(|hash| hash.to_string())
         .map_err(|err| err.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::fresh_addons;
+
+    #[test]
+    fn a_stale_or_broken_cache_does_not_keep_add_on_access() {
+        assert_eq!(fresh_addons("[\"gift_cards\"]", 1_000, 1_000 + 24 * 60 * 60 + 1), Vec::<String>::new());
+        assert_eq!(fresh_addons("[\"gift_cards\"]", 1_000, 1_000 + 60), vec!["gift_cards".to_string()]);
+        assert!(fresh_addons("not-json", 1_000, 1_000).is_empty());
+    }
 }
 
 fn verify_pin(pin: &str, encoded: &str) -> bool {

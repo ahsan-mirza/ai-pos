@@ -148,6 +148,12 @@ struct RemoteSettings {
     /// A self-service store before Go live; the register shows a "Practice mode" pill.
     #[serde(default)]
     practice_mode: bool,
+    #[serde(default)]
+    entitlement_revision: i64,
+    #[serde(default)]
+    purchased_capabilities: Option<Vec<String>>,
+    #[serde(default)]
+    entitlement_until: Option<String>,
 }
 
 fn standard_rate() -> i64 {
@@ -195,9 +201,23 @@ fn parse(raw: Option<&str>) -> Option<Value> {
 
 pub fn refresh(db: &Db, config: &DesktopConfig) -> Result<CurrencySnapshot, String> {
     match fetch(config) {
-        Ok((currency, tax, profile)) => {
+        Ok((currency, tax, mut profile)) => {
             // A failed receipt fetch keeps the last branding rather than printing unbranded slips.
             let fetched_receipt = fetch_receipt(config).ok();
+            if let Some(incoming) = profile.as_ref() {
+                let incoming_revision = incoming.get("entitlement_revision").and_then(Value::as_i64).unwrap_or(0);
+                if let Some((_, _, cached_profile, _)) = cached(db)? {
+                    let stored = parse(cached_profile.as_deref());
+                    let stored_revision = stored
+                        .as_ref()
+                        .and_then(|value| value.get("entitlement_revision"))
+                        .and_then(Value::as_i64)
+                        .unwrap_or(0);
+                    if stored_revision > incoming_revision && stored_revision > 0 {
+                        profile = stored;
+                    }
+                }
+            }
             let tax_json = tax.to_string();
             let profile_json = profile.as_ref().map(Value::to_string);
             let receipt_json = fetched_receipt.as_ref().map(Value::to_string);
@@ -292,14 +312,17 @@ fn fetch(config: &DesktopConfig) -> Result<(String, Value, Option<Value>), Strin
         "legal_name_ar": body.legal_name_ar,
         "tax_authority": body.tax_authority.unwrap_or_else(|| "fta".into()),
     });
-    let profile = body.capabilities.map(|capabilities| {
+    let profile = body.capabilities.as_ref().map(|capabilities| {
         serde_json::json!({
             "business_profile": body.business_profile,
             "capabilities": capabilities,
-            "planned_capabilities": body.planned_capabilities.unwrap_or_default(),
+            "planned_capabilities": body.planned_capabilities.clone().unwrap_or_default(),
             "module_settings": body.module_settings,
             "pos_policy": body.pos_policy,
             "practice_mode": body.practice_mode,
+            "entitlement_revision": body.entitlement_revision,
+            "purchased_capabilities": body.purchased_capabilities.clone().unwrap_or_default(),
+            "entitlement_until": body.entitlement_until,
         })
     });
     Ok((code, tax, profile))

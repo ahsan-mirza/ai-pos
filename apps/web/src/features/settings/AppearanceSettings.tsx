@@ -57,7 +57,7 @@ export function AppearanceSettings() {
       setNotice(
         next.primary_color
           ? `${next.primary_color} is now the primary color for every administrator.`
-          : "The AI POS brand color is restored for every administrator.",
+          : "The AxizPOS brand color is restored for every administrator.",
       );
     } catch (caught) {
       setError(errorMessage(caught, "Could not save the primary color."));
@@ -129,7 +129,7 @@ export function AppearanceSettings() {
               className="mt-3 inline-flex items-center gap-1.5 text-xs font-semibold text-charcoal/60 hover:text-charcoal disabled:text-charcoal/30"
             >
               <RotateCcw size={13} aria-hidden="true" />
-              {draft === null ? "Using the AI POS brand color" : "Reset to the AI POS brand color"} ({DEFAULT_PRIMARY})
+              {draft === null ? "Using the AxizPOS brand color" : "Reset to the AxizPOS brand color"} ({DEFAULT_PRIMARY})
             </button>
           </fieldset>
 

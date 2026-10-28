@@ -47,6 +47,37 @@ Every app reads the env files at the repo root. None of them keep their own.
 | Build the admin portal | `pnpm build:admin:dev` | `pnpm build:admin:prod` |
 | Build the POS installer | `pnpm build:pos:dev` | `pnpm build:pos:prod` |
 
+## POS installer: build and publish on GitHub
+
+A local build produces the Windows installer on this machine. Pushing a version tag runs `.github/workflows/release-pos.yml`, which builds the same installer, attaches the `.exe` and `.msi` to a GitHub Release, and copies them to the server so Super Admins can download them from **Administration → Downloads**.
+
+Build on this PC (Rust and the Tauri prerequisites from above):
+
+```powershell
+pnpm build:pos:dev    # AI POS Dev, side by side with the live register
+pnpm build:pos:prod   # production installer
+```
+
+The production files land in `apps/desktop/src-tauri/target/release/bundle/nsis/` (`.exe`) and `.../msi/` (`.msi`). `pnpm --filter @ai-pos/desktop build:win` builds only the NSIS setup and also copies it to `dist/POS-Setup-<version>.exe`.
+
+Publish that build through GitHub:
+
+1. Change the version in `apps/desktop/VERSION` only. The release build copies that number into `package.json`, `tauri.conf.json`, and `Cargo.toml`.
+2. Commit and push that change.
+3. Tag the same number and push the tag. For version `0.0.6` the tag is `v0.0.6`:
+
+```powershell
+git tag v0.0.6
+git push origin v0.0.6
+
+git tag -f v0.0.6
+git push origin v0.0.6 --force
+```
+
+The workflow fails if the tag and `apps/desktop/VERSION` disagree. The installers are unsigned, so Windows SmartScreen warns on first install until a code-signing certificate is added.
+
+Running **Release POS** by hand from the Actions tab builds the installers as a workflow artifact and does not create a GitHub Release or publish them to the portal.
+
 ## Run
 
 Skip `docker compose up -d` if PostgreSQL already runs on port 5432; point `DATABASE_URL` in the repo-root `.env` at it instead (URL-encode special characters in the password, for example `@` as `%40`).

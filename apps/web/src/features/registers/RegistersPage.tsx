@@ -304,7 +304,7 @@ function ActivationModal({
   return (
     <Modal
       title={`Activate ${device.code}`}
-      subtitle="On the new register, open AI POS and enter these two values. The key works once."
+      subtitle="On the new register, open AxizPOS Register and enter these two values. The key works once."
       onClose={onClose}
       footer={<PrimaryButton onClick={onClose}>Done</PrimaryButton>}
     >

@@ -1,9 +1,10 @@
-import { signupPasswordReady, signupPasswordRules, type SignupState } from "@ai-pos/shared-types";
+import { currencyForCountry, signupPasswordReady, signupPasswordRules, type SignupState } from "@ai-pos/shared-types";
+import { CountryField, availabilityBlocksSubmit, emailError, phoneError, requiredError } from "@ai-pos/ui";
 import { Check } from "lucide-react";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { ErrorNote, TextField } from "../../components/ui/Field";
-import { PhoneField, emailError, phoneError, requiredError } from "@ai-pos/ui";
 import { ApiRequestError } from "../../lib/api";
+import { EmailAvailabilityField, PhoneAvailabilityField, useEmailAvailability, usePhoneAvailability } from "./availabilityFields";
 import { sessionFromStarted, signupApi, type SignupSession } from "./signupApi";
 
 function secondsLeft(expiresAt: number | undefined): number {
@@ -31,9 +32,13 @@ const submitClass =
   "mt-2 h-12 w-full rounded-2xl bg-accent font-semibold text-white transition-colors hover:bg-accent-hover disabled:opacity-40";
 
 export function AccountStep({
+  country,
+  onCountryChange,
   onStarted,
   onResumed,
 }: {
+  country: string;
+  onCountryChange: (iso: string) => void;
   onStarted: (session: SignupSession) => void;
   onResumed: (session: SignupSession, state: SignupState) => void;
 }) {
@@ -44,22 +49,28 @@ export function AccountStep({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [existing, setExisting] = useState(false);
-  const [emailProblem, setEmailProblem] = useState<string | undefined>();
-  const [phoneProblem, setPhoneProblem] = useState<string | undefined>();
   const [nameProblem, setNameProblem] = useState<string | undefined>();
   const [passwordProblem, setPasswordProblem] = useState<string | undefined>();
+  const emailCheck = useEmailAvailability(email);
+  const phoneCheck = usePhoneAvailability(phone);
+  const emailValid = emailError(email, true) === undefined;
+  const phoneValid = phoneError(phone, true) === undefined;
+  const nameValid = fullName.trim().length >= 2 && requiredError(fullName, "your name") === undefined;
+  const passwordValid = signupPasswordReady(password);
+  const canContinue =
+    !busy &&
+    nameValid &&
+    passwordValid &&
+    !availabilityBlocksSubmit(emailCheck.status, emailValid) &&
+    !availabilityBlocksSubmit(phoneCheck.status, phoneValid);
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
-    const nextEmail = emailError(email, true);
-    const nextPhone = phoneError(phone, true);
     const nextName = fullName.trim().length < 2 ? "Enter your name." : requiredError(fullName, "your name");
-    const nextPassword = signupPasswordReady(password) ? undefined : "Choose a password that meets every requirement.";
-    setEmailProblem(nextEmail);
-    setPhoneProblem(nextPhone);
+    const nextPassword = passwordValid ? undefined : "Choose a password that meets every requirement.";
     setNameProblem(nextName);
     setPasswordProblem(nextPassword);
-    if (nextEmail || nextPhone || nextName || nextPassword) return;
+    if (!canContinue || nextName || nextPassword) return;
     setBusy(true);
     setError(null);
     try {
@@ -136,27 +147,27 @@ export function AccountStep({
   }
 
   return (
-    <form className="mx-auto max-w-md" onSubmit={(event) => void submit(event)}>
+    <form className="w-full" onSubmit={(event) => void submit(event)}>
       <h2 className="text-2xl font-semibold">Create your account</h2>
       <p className="mt-1 text-sm text-charcoal/60">You will be the owner of the store, with full access.</p>
       <div className="mt-6 space-y-4">
-        <TextField
-          label="Email"
-          type="email"
-          autoComplete="email"
+        <EmailAvailabilityField
           value={email}
-          error={emailProblem}
-          onChange={(event) => setEmail(event.target.value)}
-          required
+          onChange={setEmail}
+          status={emailCheck.status}
+          onRetry={emailCheck.retry}
         />
-        <PhoneField
-          label="Mobile number"
-          value={phone}
-          error={phoneProblem}
-          onChange={setPhone}
-          hint="Saved on your account. The code is sent by email."
-          required
-        />
+        <div className="grid grid-cols-[minmax(12rem,0.95fr)_minmax(0,1.25fr)] items-start gap-3">
+          <CountryField label="Country" value={country} onChange={onCountryChange} detail={currencyForCountry} required />
+          <PhoneAvailabilityField
+            value={phone}
+            onChange={setPhone}
+            country={country}
+            onCountryChange={onCountryChange}
+            status={phoneCheck.status}
+            onRetry={phoneCheck.retry}
+          />
+        </div>
         <fieldset>
           <legend className="text-sm font-medium">Send the code by</legend>
           <div className="mt-2 grid gap-2 sm:grid-cols-2">
@@ -212,7 +223,7 @@ export function AccountStep({
         </div>
       </div>
       <ErrorNote message={error} />
-      <button type="submit" disabled={busy} className={`${submitClass} mt-6`}>
+      <button type="submit" disabled={!canContinue} className={`${submitClass} mt-6`}>
         {busy ? "Sending code…" : "Continue"}
       </button>
     </form>

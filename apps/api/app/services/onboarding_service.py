@@ -13,6 +13,7 @@ from sqlalchemy import delete, func, select, update
 from sqlalchemy.orm import Session
 
 from app.core.capabilities import FOOD_AND_BEVERAGE
+from app.core.config import Settings
 from app.core.deps import Principal
 from app.core.errors import ApiError
 from app.models.accounting import JournalEntry, JournalLine
@@ -80,6 +81,11 @@ from app.schemas.onboarding import Checklist, ChecklistItem, GoLiveRequest, GoLi
 from app.services import batch_ledger
 from app.services.settings_service import load_settings
 
+# Bump when a new required step is added. Completed explore timestamps and known skips are kept.
+ONBOARDING_VERSION = 1
+# Optional actions inside a step. Skipping one does not mark the step complete.
+SKIPPABLE = frozenset({"invite"})
+
 # Stock moved by practice sales and returns, including the ingredients practice dishes drew.
 PRACTICE_REFERENCES = ("sale", "sale_return", "sale_recipe")
 
@@ -127,70 +133,205 @@ def opening_stock_units(db: Session) -> int:
     return on_hand - practice
 
 
-def checklist(db: Session) -> Checklist:
-    settings = load_settings(db)
-    serials = settings.business_profile == "electronics_wholesale"
-    food = settings.business_profile in FOOD_AND_BEVERAGE
+def catalogue_copy(profile: str) -> tuple[str, str, str]:
+    """Title, explanation, and action for the catalogue step. Profile keys come from the module registry."""
+    if profile in FOOD_AND_BEVERAGE:
+        return (
+            "Add your first menu items",
+            "Add menu categories, items, and prices. Modifiers, recipes, and kitchen stations stay when you go live "
+            "if this store uses them. Sample items are removed at Go live.",
+            "Add a menu item",
+        )
+    if profile == "retail_fashion":
+        return (
+            "Add your first products",
+            "Add products, categories, sizes, colours, and prices. Sample items are removed when you go live.",
+            "Add a product",
+        )
+    if profile == "grocery":
+        return (
+            "Add your first products",
+            "Add products, categories, barcodes, units, and prices. Sample items are removed when you go live.",
+            "Add a product",
+        )
+    if profile == "electronics_wholesale":
+        return (
+            "Add your first products",
+            "Add products, SKUs, and prices. Stock import and serial numbers stay on the inventory pages when that "
+            "module is included. Sample items are removed when you go live.",
+            "Add a product",
+        )
+    return (
+        "Add your first products",
+        "Prepare the catalogue your team will sell. Sample items are removed when you go live.",
+        "Add a product",
+    )
+
+
+def _progress(row: BusinessSettings) -> dict[str, object]:
+    raw = row.guided_onboarding if isinstance(row.guided_onboarding, dict) else {}
+    skipped = [key for key in raw.get("skipped", []) if isinstance(key, str) and key in SKIPPABLE]
+    explored = raw.get("explored_at")
+    return {
+        "version": ONBOARDING_VERSION,
+        "explored_at": explored if isinstance(explored, str) and explored else None,
+        "skipped": skipped,
+    }
+
+
+def _write_progress(db: Session, row: BusinessSettings, progress: dict[str, object]) -> None:
+    row.guided_onboarding = {
+        "version": ONBOARDING_VERSION,
+        "explored_at": progress.get("explored_at"),
+        "skipped": list(progress.get("skipped") or []),
+    }
+    db.commit()
+
+
+def subscription_gate(settings: Settings) -> tuple[str, str | None]:
+    """Billing state, and why Go live must wait. Unbilled stores are not on this payment policy."""
+    if not settings.tenancy_enabled:
+        return "unbilled", None
+    from app.tenancy.context import current_tenant
+
+    ref = current_tenant()
+    if ref is None:
+        return "unbilled", None
+    from app.console.transfers import access_state
+    from app.tenancy import registry
+    from app.tenancy.models import BillingTransfer
+
+    tenant_id = uuid.UUID(ref.id)
+    with registry.control_session(settings) as control:
+        state = access_state(control, tenant_id)
+        if state == "trial" and _exists(
+            control,
+            select(BillingTransfer.id).where(
+                BillingTransfer.tenant_id == tenant_id,
+                BillingTransfer.status == "pending_review",
+            ),
+        ):
+            state = "pending_review"
+    if state in {"unbilled", "active", "grace"}:
+        return state, None
+    if state == "pending_review":
+        return state, "A receipt is waiting for review. Uploading it did not activate the subscription."
+    if state == "trial":
+        return (
+            state,
+            "Verify a subscription payment before going live. Uploading a receipt does not activate the store.",
+        )
+    return state, "This subscription has to be active before the store can go live."
+
+
+def checklist(db: Session, settings: Settings) -> Checklist:
+    row = load_settings(db)
+    progress = _progress(row)
+    state, blocked = subscription_gate(settings)
+    label, hint, action = catalogue_copy(row.business_profile)
+    register = _exists(db, select(Device.id).where(Device.revoked_at.is_(None)))
+    invited = int(db.scalar(select(func.count()).select_from(User)) or 0) > 1
+    invite_skipped = "invite" in progress["skipped"]
+    team_hint = "Create a register, then enter its one-time key in the Windows Register. Inviting staff is optional."
+    if invite_skipped:
+        team_hint = "Create a register when you are ready. Staff invites can be finished later."
+    elif invited:
+        team_hint = "A teammate already has a login. Create a register and enter its key in the Windows Register."
     items = [
         ChecklistItem(
-            key="test_sale",
-            label="Ring up a test sale",
-            hint="Open the register and sell a sample item; practice sales are wiped when you go live.",
-            done=_exists(db, select(Sale.id)),
-            href="/registers",
+            key="explore",
+            label="Explore your Business Portal",
+            hint="Discover your dashboard, business tools, and the features available for your store.",
+            done=progress["explored_at"] is not None,
+            href="/dashboard",
+            action="Open dashboard",
         ),
         ChecklistItem(
-            key="real_product",
-            label="Add your first real menu item" if food else "Add your first real product",
-            hint=(
-                "The sample menu and meals are removed at Go live; your floor plan and kitchen stations stay."
-                if food
-                else "Sample items are marked and removed at Go live."
-            ),
+            key="configure",
+            label="Configure your store",
+            hint="Add your business details and prepare currency, tax, and receipt settings.",
+            done=bool(row.legal_name and row.legal_name.strip()) and len(row.currency or "") == 3,
+            href="/settings",
+            action="Open store settings",
+        ),
+        ChecklistItem(
+            key="catalogue",
+            label=label,
+            hint=hint,
             done=_exists(db, select(Product.id).where(Product.is_sample.is_(False))),
             href="/inventory/products",
+            action=action,
         ),
-    ]
-    if serials:
-        items.append(
-            ChecklistItem(
-                key="import_stock",
-                label="Import your stock list",
-                hint="Upload a supplier invoice or Excel sheet; IMEIs come in with it.",
-                done=_exists(db, select(PurchaseBatch.id)),
-                href="/inventory/batches",
-            )
-        )
-    items += [
         ChecklistItem(
-            key="till",
-            label="Set up your till",
-            hint="Create a register here, then enter its one-time key in the AI POS app on the till PC.",
-            done=_exists(db, select(Device.id).where(Device.revoked_at.is_(None))),
+            key="practice",
+            label="Try a practice sale",
+            hint=(
+                "Ring up a sample item on the register. Practice sales are cleared at Go live, so they do not stay "
+                "in live reports, stock, or invoice numbers."
+            ),
+            done=_exists(db, select(Sale.id)),
             href="/registers",
+            action="Open registers",
         ),
         ChecklistItem(
-            key="cashier",
-            label="Invite a cashier",
-            hint="Give each person their own login and PIN.",
-            done=int(db.scalar(select(func.count()).select_from(User)) or 0) > 1,
-            href="/users",
+            key="team",
+            label="Set up your team",
+            hint=team_hint,
+            done=register,
+            href="/registers",
+            action="Set up a register",
+            secondary_href="/users",
+            secondary_label="Invite staff",
+            skippable=not invite_skipped and not invited,
+            skipped=invite_skipped,
         ),
         ChecklistItem(
-            key="go_live",
-            label="Go live",
-            hint="Clears practice sales and sample items and restarts invoice numbering.",
-            done=settings.live_at is not None,
+            key="activate",
+            label="Activate your store",
+            hint=(
+                "Choose a plan and activate live operations after payment is verified. "
+                "Uploading a receipt does not activate the store."
+            ),
+            done=row.live_at is not None,
             href="#go-live",
+            action="Review plans" if blocked else "Go live",
+            blocked=None if row.live_at is not None else blocked,
         ),
     ]
+    pending = next((item.key for item in items if not item.done), None)
     return Checklist(
-        practice_mode=settings.live_at is None,
-        live_at=settings.live_at,
+        version=ONBOARDING_VERSION,
+        practice_mode=row.live_at is None,
+        live_at=row.live_at,
         store_name=store_name(db),
         opening_stock_units=opening_stock_units(db),
+        subscription_state=state,
+        next_key=pending,
         items=items,
     )
+
+
+def mark_explored(db: Session, settings: Settings) -> Checklist:
+    """Records that someone opened the Business Portal. Signup alone does not complete this step."""
+    row = load_settings(db)
+    progress = _progress(row)
+    if progress["explored_at"] is None:
+        progress["explored_at"] = datetime.now(UTC).isoformat()
+        _write_progress(db, row, progress)
+    return checklist(db, settings)
+
+
+def skip_optional(db: Session, key: str, settings: Settings) -> Checklist:
+    if key not in SKIPPABLE:
+        raise ApiError(422, "invalid_step", "That step cannot be skipped.")
+    row = load_settings(db)
+    progress = _progress(row)
+    skipped = list(progress["skipped"])
+    if key not in skipped:
+        skipped.append(key)
+        progress["skipped"] = skipped
+        _write_progress(db, row, progress)
+    return checklist(db, settings)
 
 
 def _restore_practice_stock(db: Session, sample_ids: set[uuid.UUID]) -> None:
@@ -483,12 +624,24 @@ def _delete_configuration(db: Session, keeper_id: uuid.UUID) -> None:
     db.execute(delete(User).where(User.id.in_(removable)))
 
 
-def go_live(db: Session, principal: Principal, payload: GoLiveRequest) -> GoLiveResult:
-    settings = load_settings(db, lock=True)
-    if settings.live_at is not None:
+def go_live(
+    db: Session,
+    principal: Principal,
+    payload: GoLiveRequest,
+    *,
+    settings: Settings,
+    payment_verified: bool = False,
+) -> GoLiveResult:
+    """Takes the store live. A trial cannot skip payment unless the caller just verified it in this transaction."""
+    row = load_settings(db, lock=True)
+    if row.live_at is not None:
         raise ApiError(409, "already_live", "This store is already live.")
     if principal.user is None or principal.store_id is not None:
         raise ApiError(403, "business_wide_only", "Only a business-wide admin can take the store live.")
+    if not payment_verified:
+        _state, reason = subscription_gate(settings)
+        if reason is not None:
+            raise ApiError(409, "subscription_unverified", reason)
     if not payload.tax_acknowledged:
         raise ApiError(422, "tax_not_acknowledged", "Confirm that practice tax stamps will be removed.")
     if payload.mode == "keep" and payload.opening_stock not in ("keep", "reset"):
@@ -506,12 +659,12 @@ def go_live(db: Session, principal: Principal, payload: GoLiveRequest) -> GoLive
         _reset_opening_stock(db)
     if payload.mode == "fresh":
         _delete_configuration(db, principal.user.id)
-        settings.onboarded_at = None
-    settings.live_at = datetime.now(UTC)
-    settings.promoted_from_practice = True
+        row.onboarded_at = None
+    row.live_at = datetime.now(UTC)
+    row.promoted_from_practice = True
     db.commit()
     return GoLiveResult(
-        live_at=settings.live_at,
+        live_at=row.live_at,
         mode=payload.mode,
         opening_stock=opening_stock,
         sales_removed=sales,

@@ -4,7 +4,6 @@ import {
   PROFILE_PRESETS,
   isBusinessProfile,
   isCapability,
-  resolveCapabilities,
   resolvePosPolicy,
   type BusinessProfile,
   type Capability,
@@ -33,6 +32,9 @@ export interface ProfileSnapshot {
   module_settings?: Partial<ModuleSettings> | null;
   practice_mode?: boolean | null;
   pos_policy?: Partial<PosPolicy> | null;
+  entitlement_revision?: number | null;
+  purchased_capabilities?: readonly string[] | null;
+  entitlement_until?: string | null;
 }
 
 const CACHE_KEY = "ai-pos.register-capabilities";
@@ -41,12 +43,21 @@ function modulesOf(raw: Partial<ModuleSettings> | null | undefined): ModuleSetti
   return { ...DEFAULT_MODULE_SETTINGS, ...(raw ?? {}) };
 }
 
+function entitled(raw: ProfileSnapshot): readonly string[] | null | undefined {
+  const capabilities = raw.capabilities;
+  if (!capabilities) return capabilities;
+  const until = raw.entitlement_until ? Date.parse(raw.entitlement_until) : Number.NaN;
+  const purchased = new Set(raw.purchased_capabilities ?? []);
+  if (purchased.size === 0 || Number.isNaN(until) || until > Date.now()) return capabilities;
+  return capabilities.filter((id) => !purchased.has(id));
+}
+
 function build(raw: ProfileSnapshot | null): RegisterCapabilities {
   const name = raw?.business_profile ?? DEFAULT_BUSINESS_PROFILE;
   const profile = isBusinessProfile(name) ? name : DEFAULT_BUSINESS_PROFILE;
-  const fallback = resolveCapabilities(profile);
-  const enabled = raw?.capabilities ? raw.capabilities.filter(isCapability) : fallback.enabled;
-  const planned = raw?.planned_capabilities ? raw.planned_capabilities.filter(isCapability) : fallback.planned;
+  const source = raw ? entitled(raw) : null;
+  const enabled = source ? source.filter(isCapability) : [];
+  const planned = raw?.planned_capabilities?.filter(isCapability) ?? [];
   return {
     profile,
     enabled: new Set(enabled),
@@ -67,23 +78,23 @@ function readCached(): ProfileSnapshot | null {
   }
 }
 
-/** Until the API (or the register's cache) says otherwise every module built today is on, so a register never
- * loses a feature because it started offline. */
-let current: RegisterCapabilities = build(readCached());
+/** A register with no entitlement snapshot shows no paid or profile modules. A cached snapshot keeps the
+ * last list, and paid add-ons still follow the signed-in user. */
+const OFFLINE_ADDON_SECONDS = 24 * 60 * 60;
+let storeCurrent: RegisterCapabilities = build(readCached());
+let purchased = new Set(readCached()?.purchased_capabilities ?? []);
+let signedInAddons: ReadonlySet<string> | null = null;
+let current: RegisterCapabilities = storeCurrent;
+let revision = readCached()?.entitlement_revision ?? 0;
 const listeners = new Set<() => void>();
 
-export function applyProfile(raw: ProfileSnapshot | null | undefined): void {
-  if (!raw?.capabilities) return;
-  try {
-    const { business_profile, capabilities, planned_capabilities, module_settings, practice_mode, pos_policy } = raw;
-    localStorage.setItem(
-      CACHE_KEY,
-      JSON.stringify({ business_profile, capabilities, planned_capabilities, module_settings, practice_mode, pos_policy }),
-    );
-  } catch {
-    // Storage disabled: the in-memory copy still serves this session.
-  }
-  const next = build(raw);
+function publish(): void {
+  const granted = signedInAddons;
+  const enabled =
+    granted === null
+      ? storeCurrent.enabled
+      : new Set([...storeCurrent.enabled].filter((capability) => !purchased.has(capability) || granted.has(capability)));
+  const next = { ...storeCurrent, enabled };
   const same =
     next.profile === current.profile &&
     next.practice === current.practice &&
@@ -94,6 +105,65 @@ export function applyProfile(raw: ProfileSnapshot | null | undefined): void {
   if (same) return;
   current = next;
   for (const listener of listeners) listener();
+}
+
+/**
+ * Limits paid add-ons to the modules the signed-in user may use.
+ * Pass null on lock. An offline unlock older than a day drops add-on access until the till is online again.
+ * A missing or unreadable list grants none of the paid modules. Core selling stays on the store profile.
+ */
+export function applySignedInAddons(
+  modules: readonly string[] | null,
+  options?: { offline?: boolean; syncedAt?: number; now?: number },
+): void {
+  if (modules === null) {
+    signedInAddons = null;
+  } else {
+    const now = options?.now ?? Date.now() / 1000;
+    const syncedAt = options?.syncedAt ?? now;
+    const stale = options?.offline === true && now - syncedAt > OFFLINE_ADDON_SECONDS;
+    signedInAddons = new Set(stale ? [] : modules);
+  }
+  publish();
+}
+
+export function applyProfile(raw: ProfileSnapshot | null | undefined): void {
+  if (!raw?.capabilities) return;
+  const nextRevision = raw.entitlement_revision ?? 0;
+  if (nextRevision > 0 && revision > nextRevision) return;
+  try {
+    const {
+      business_profile,
+      capabilities,
+      planned_capabilities,
+      module_settings,
+      practice_mode,
+      pos_policy,
+      entitlement_revision,
+      purchased_capabilities,
+      entitlement_until,
+    } = raw;
+    localStorage.setItem(
+      CACHE_KEY,
+      JSON.stringify({
+        business_profile,
+        capabilities,
+        planned_capabilities,
+        module_settings,
+        practice_mode,
+        pos_policy,
+        entitlement_revision,
+        purchased_capabilities,
+        entitlement_until,
+      }),
+    );
+  } catch {
+    // Storage disabled: the in-memory copy still serves this session.
+  }
+  if (nextRevision > revision) revision = nextRevision;
+  storeCurrent = build(raw);
+  purchased = new Set(raw.purchased_capabilities ?? []);
+  publish();
 }
 
 export function registerCapabilities(): RegisterCapabilities {

@@ -30,9 +30,27 @@ export {
 } from "./dateFormat";
 export { inputLeadingIcon, type InputIconHints } from "./inputIcon";
 export { PageSizeSelect } from "./PageSizeSelect";
+export { CountryField } from "./CountryField";
 export { PhoneField } from "./PhoneField";
 export { isValidE164, phoneError, toE164 } from "./phone";
-export { emailError, fieldErrorsFrom, lengthError, moneyError, requiredError, type FieldErrors } from "./validation";
+export {
+  emailError,
+  fieldErrorsFrom,
+  lengthError,
+  moneyError,
+  normalizeStoreName,
+  requiredError,
+  storeNameError,
+  type FieldErrors,
+} from "./validation";
+export { AvailabilityStatus } from "./AvailabilityStatus";
+export {
+  AVAILABILITY_DEBOUNCE_MS,
+  AVAILABILITY_TIMEOUT_MS,
+  availabilityBlocksSubmit,
+  useAvailabilityCheck,
+  type AvailabilityState,
+} from "./useAvailabilityCheck";
 export { focusFirstInvalid, useFormValidation } from "./useFormValidation";
 export { RepairJobsToolbar, type RepairJobsToolbarProps } from "./RepairJobsToolbar";
 export { SearchableSpecSelect, type SearchableSpecSelectProps } from "./SearchableSpecSelect";

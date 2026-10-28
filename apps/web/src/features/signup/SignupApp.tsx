@@ -35,6 +35,7 @@ function stepFor(state: SignupState): Step {
 /** Public signup on the bare domain: account and code, business type, store, then live provisioning. */
 export function SignupApp() {
   const [session, setSession] = useState<SignupSession | null>(() => readSignupSession());
+  const [country, setCountry] = useState("AE");
   const [state, setState] = useState<SignupState | null>(null);
   const [step, setStep] = useState<Step>(session ? "loading" : "account");
 
@@ -110,6 +111,8 @@ export function SignupApp() {
           {step === "loading" ? <p className="text-sm text-charcoal/60">Loading…</p> : null}
           <div hidden={step !== "account"}>
             <AccountStep
+              country={country}
+              onCountryChange={setCountry}
               onStarted={(next) => {
                 saveSignupSession(next);
                 setSession(next);
@@ -155,6 +158,7 @@ export function SignupApp() {
                 session={session}
                 profile={state?.profile ?? null}
                 subType={state?.sub_type ?? null}
+                country={country}
                 onBack={() => setStep("business")}
                 onSubmitted={advance}
               />

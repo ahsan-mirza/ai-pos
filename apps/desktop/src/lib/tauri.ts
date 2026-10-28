@@ -43,6 +43,10 @@ export interface CashierProfile {
   permissions: string[];
   /** Largest discount (basis points) given without a manager; null uses the business default. */
   max_discount_bps?: number | null;
+  /** Paid add-ons this cashier may use. Absent on an older till build. */
+  addon_modules?: string[];
+  /** Unix seconds of the last online unlock that refreshed add-on access. */
+  addon_synced_at?: number;
 }
 
 export interface CashierSession {

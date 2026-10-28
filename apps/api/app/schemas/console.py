@@ -144,11 +144,24 @@ class OperatorAuditOut(ApiModel):
     created_at: datetime
 
 
+class RegisterSync(ApiModel):
+    id: UUID
+    store_id: UUID
+    code: str
+    name: str
+    last_seen_at: datetime | None
+    entitlement_revision: int | None
+    entitlement_synced_at: datetime | None
+    # current: this register has the store's revision. pending: it has not. revoked: the key was withdrawn.
+    status: Literal["current", "pending", "revoked"]
+
+
 class TenantDetail(ApiModel):
     tenant: TenantRow
     modules: list[ModuleState]
     change_requests: list[ChangeRequestOut]
     audit: list[OperatorAuditOut]
+    registers: list[RegisterSync] = Field(default_factory=list)
     # Set when the store's database could not be read (modules then come from the last snapshot).
     unreachable: str | None = None
 

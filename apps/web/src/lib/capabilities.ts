@@ -3,11 +3,11 @@ import {
   isBusinessProfile,
   isCapability,
   profileSpec,
-  resolveCapabilities,
   type BusinessProfile,
   type Capability,
 } from "@ai-pos/shared-types";
 import { useMemo } from "react";
+import { useAuth } from "./auth";
 import { useCurrency } from "./currency";
 
 export interface Capabilities {
@@ -20,27 +20,31 @@ export interface Capabilities {
 }
 
 /**
- * What this business has switched on, from the business settings. Until settings load (or against an API that
- * predates profiles) everything built today stays on, so nothing an existing business uses ever flickers away.
+ * What this business has switched on. Until settings have loaded, no module is treated as on.
  */
 export function useCapabilities(): Capabilities {
   const { settings } = useCurrency();
+  const { user } = useAuth();
   return useMemo(() => {
     const raw = settings?.business_profile;
     const profile = raw !== undefined && isBusinessProfile(raw) ? raw : DEFAULT_BUSINESS_PROFILE;
-    const fallback = resolveCapabilities(profile);
-    const enabled = new Set(settings?.capabilities ? settings.capabilities.filter(isCapability) : fallback.enabled);
-    const planned = new Set(
-      settings?.planned_capabilities ? settings.planned_capabilities.filter(isCapability) : fallback.planned,
-    );
+    const loaded = settings != null;
+    const enabled = new Set(loaded ? (settings.capabilities ?? []).filter(isCapability) : []);
+    const planned = new Set(loaded ? (settings.planned_capabilities ?? []).filter(isCapability) : []);
+    const purchased = new Set(settings?.purchased_capabilities ?? []);
+    const granted = new Set(user?.addon_modules ?? []);
     return {
       profile,
       enabled,
       planned,
       onboarded: settings?.onboarded !== false,
-      has: (capability: Capability) => enabled.has(capability),
+      has: (capability: Capability) => {
+        if (!enabled.has(capability)) return false;
+        if (!purchased.has(capability) || user?.addon_modules === undefined) return true;
+        return granted.has(capability);
+      },
     };
-  }, [settings]);
+  }, [settings, user]);
 }
 
 export function useCapability(capability: Capability | undefined): boolean {

@@ -9,6 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.console.security import OperatorPrincipal, audit_operator
+from app.core.config import Settings
 from app.core.errors import ApiError
 from app.tenancy.models import (
     BillingInvoice,
@@ -201,7 +202,7 @@ def receipt_bytes(db: Session, transfer_id: uuid.UUID, tenant_id: uuid.UUID | No
     return row
 
 
-def approve(db: Session, operator: OperatorPrincipal, transfer_id: uuid.UUID) -> BillingPayment:
+def approve(db: Session, operator: OperatorPrincipal, transfer_id: uuid.UUID, settings: Settings) -> BillingPayment:
     from app.console.billing import _activate
 
     row = db.get(BillingTransfer, transfer_id)
@@ -211,6 +212,9 @@ def approve(db: Session, operator: OperatorPrincipal, transfer_id: uuid.UUID) ->
         found = db.scalar(select(BillingPayment).where(BillingPayment.submission_id == row.id))
         if found is None:
             raise ApiError(409, "payment_missing", "This receipt was approved without a payment record.")
+        from app.console.entitlements import publish_purchased
+
+        publish_purchased(settings, row.tenant_id)
         return found
     if row.status != "pending_review":
         raise ApiError(409, "transfer_closed", "This receipt is no longer waiting for review.")
@@ -252,6 +256,9 @@ def approve(db: Session, operator: OperatorPrincipal, transfer_id: uuid.UUID) ->
         reason="Verified bank credit",
     )
     db.commit()
+    from app.console.entitlements import publish_purchased
+
+    publish_purchased(settings, row.tenant_id)
     db.refresh(payment)
     return payment
 

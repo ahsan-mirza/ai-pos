@@ -153,6 +153,8 @@ export function ModuleList({
   disabled = false,
   visible,
   managed = {},
+  included,
+  prices,
 }: {
   selected: ReadonlySet<Capability>;
   onToggle: (capability: Capability, on: boolean) => void;
@@ -161,6 +163,10 @@ export function ModuleList({
   visible?: ReadonlySet<Capability>;
   /** Set by IT support; shown but not switchable. */
   managed?: Partial<Record<Capability, OverrideState>>;
+  /** Preset modules. An included module that is on shows an Included badge, never a price. */
+  included?: ReadonlySet<Capability>;
+  /** A price is shown only when the billing catalogue has an add-on with this module's code. */
+  prices?: Partial<Record<Capability, string>>;
 }) {
   const shown = (spec: CapabilitySpec) => visible === undefined || visible.has(spec.id);
   return (
@@ -180,6 +186,11 @@ export function ModuleList({
                     <span className="flex flex-wrap items-center gap-2 text-sm font-medium">
                       {spec.label}
                       {spec.available ? null : <ComingSoonBadge />}
+                      {included?.has(spec.id) && on ? (
+                        <span className="rounded-full bg-accent/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-accent">
+                          Included
+                        </span>
+                      ) : null}
                       {locked ? (
                         <span className="inline-flex items-center gap-1 rounded-full bg-charcoal/5 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-charcoal/60">
                           <Lock size={10} aria-hidden="true" /> Managed by support
@@ -187,6 +198,9 @@ export function ModuleList({
                       ) : null}
                     </span>
                     <span className="block text-xs text-charcoal/60">{spec.description}</span>
+                    {prices?.[spec.id] ? (
+                      <span className="mt-0.5 block text-[11px] font-medium text-charcoal/70">{prices[spec.id]}</span>
+                    ) : null}
                     {spec.requires.length > 0 ? (
                       <span className="mt-0.5 block text-[11px] text-charcoal/45">
                         Needs {spec.requires.map((id) => capabilitySpec(id).label).join(", ")}

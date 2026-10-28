@@ -102,6 +102,66 @@ function ModuleRow({ module, choice, onChoose }: { module: ModuleState; choice: 
   );
 }
 
+function RegisterSyncList({ registers }: { registers: TenantDetail["registers"] }) {
+  const rows = registers ?? [];
+  return (
+    <div className="mb-4 rounded-2xl border border-line p-4">
+      <h3 className="text-sm font-semibold">Registers</h3>
+      <p className="mt-1 text-xs text-charcoal/60">
+        A register stays pending until it fetches the current entitlement. Being offline is not the same as updated.
+      </p>
+      {rows.length === 0 ? (
+        <p className="mt-3 text-sm text-charcoal/60">No registers are registered for this store.</p>
+      ) : (
+        <ul className="mt-3 divide-y divide-line">
+          {rows.map((row) => (
+            <li key={row.id} className="flex flex-wrap items-center justify-between gap-2 py-2 text-sm">
+              <span>
+                <span className="font-medium">{row.name}</span>
+                <span className="text-charcoal/50"> · {row.code}</span>
+              </span>
+              <span className="text-xs text-charcoal/60">
+                {row.status === "current" ? "Up to date" : row.status === "revoked" ? "Revoked" : "Pending sync"}
+                {row.entitlement_synced_at ? ` · last fetch ${when(row.entitlement_synced_at)}` : ""}
+                {row.last_seen_at ? ` · last seen ${when(row.last_seen_at)}` : ""}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+function AddonAssignments({ tenantId }: { tenantId: string }) {
+  const [rows, setRows] = useState<{ key: string; label: string; entitlement: string; granted: number; assignments: number }[]>([]);
+  useEffect(() => {
+    void api
+      .get<{ modules: { key: string; label: string; entitlement: string; granted: number; assignments: number }[] }>(
+        `/tenants/${tenantId}/addon-access`,
+      )
+      .then((body) => setRows(body.modules))
+      .catch(() => setRows([]));
+  }, [tenantId]);
+  if (rows.length === 0) return null;
+  return (
+    <div className="mt-6">
+      <h3 className="text-sm font-semibold">Add-on user access</h3>
+      <p className="mt-1 text-sm text-charcoal/60">
+        Grants are store records. They do not activate a subscription, and an expired add-on stays closed.
+      </p>
+      <ul className="mt-2 space-y-1 text-sm text-charcoal/70">
+        {rows.map((row) => (
+          <li key={row.key}>
+            {row.label}: {row.entitlement}, {row.granted} granted of {row.assignments} saved assignments. Registers
+            refresh this when that person unlocks online.
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 function ModulesTab({ detail, onSaved }: { detail: TenantDetail; onSaved: () => void }) {
   const initial = useMemo(
     () => Object.fromEntries(detail.modules.map((module) => [module.key, (module.override ?? "default") as Choice])),
@@ -116,7 +176,7 @@ function ModulesTab({ detail, onSaved }: { detail: TenantDetail; onSaved: () => 
     <div>
       <div className="mb-3 flex items-center justify-between gap-3">
         <p className="text-sm text-charcoal/60">
-          Default follows the business type and the store's own choices. A forced module cannot be changed by the store.
+          Default follows the business type, the store's own choices, and a verified add-on. A forced module cannot be changed by the store.
         </p>
         <PrimaryButton disabled={changes.length === 0} onClick={() => setConfirming(true)}>
           Save {changes.length > 0 ? `${changes.length} change${changes.length === 1 ? "" : "s"}` : "overrides"}
@@ -138,6 +198,8 @@ function ModulesTab({ detail, onSaved }: { detail: TenantDetail; onSaved: () => 
           );
         })}
       </div>
+      <RegisterSyncList registers={detail.registers ?? []} />
+      <AddonAssignments tenantId={detail.tenant.id} />
       {confirming ? (
         <ReasonModal
           title={`Apply ${changes.length} module change${changes.length === 1 ? "" : "s"}`}

@@ -148,6 +148,8 @@ pub struct CachedUser {
     pub failed_attempts: i64,
     pub locked_until: Option<i64>,
     pub max_discount_bps: Option<i64>,
+    pub addon_modules: String,
+    pub updated_at: i64,
 }
 
 #[derive(Deserialize)]
@@ -572,6 +574,8 @@ impl Db {
     ) -> Result<(), String> {
         let permissions =
             serde_json::to_string(&profile.permissions).map_err(|err| err.to_string())?;
+        let addon_modules =
+            serde_json::to_string(&profile.addon_modules).map_err(|err| err.to_string())?;
         let mut conn = self.lock()?;
         let tx = conn.transaction().map_err(|err| err.to_string())?;
         tx.execute(
@@ -580,8 +584,8 @@ impl Db {
         )
         .map_err(|err| err.to_string())?;
         tx.execute(
-            "INSERT INTO cached_users (user_id, username, full_name, store_id, role_name, permissions, pin_hash, failed_attempts, locked_until, updated_at, max_discount_bps)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 0, NULL, ?8, ?9)
+            "INSERT INTO cached_users (user_id, username, full_name, store_id, role_name, permissions, pin_hash, failed_attempts, locked_until, updated_at, max_discount_bps, addon_modules)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 0, NULL, ?8, ?9, ?10)
              ON CONFLICT(user_id) DO UPDATE SET
                 username = excluded.username,
                 full_name = excluded.full_name,
@@ -592,7 +596,8 @@ impl Db {
                 failed_attempts = 0,
                 locked_until = NULL,
                 updated_at = excluded.updated_at,
-                max_discount_bps = excluded.max_discount_bps",
+                max_discount_bps = excluded.max_discount_bps,
+                addon_modules = excluded.addon_modules",
             params![
                 profile.id,
                 profile.username,
@@ -602,7 +607,8 @@ impl Db {
                 permissions,
                 pin_hash,
                 now,
-                profile.max_discount_bps
+                profile.max_discount_bps,
+                addon_modules
             ],
         )
         .map_err(|err| err.to_string())?;
@@ -613,7 +619,7 @@ impl Db {
         let conn = self.lock()?;
         conn.query_row(
             "SELECT user_id, username, full_name, store_id, role_name, permissions, pin_hash, failed_attempts, locked_until,
-                    max_discount_bps
+                    max_discount_bps, addon_modules, updated_at
              FROM cached_users WHERE username = ?1",
             params![username],
             |row| {
@@ -628,6 +634,8 @@ impl Db {
                     failed_attempts: row.get(7)?,
                     locked_until: row.get(8)?,
                     max_discount_bps: row.get(9)?,
+                    addon_modules: row.get(10)?,
+                    updated_at: row.get(11)?,
                 })
             },
         )
@@ -757,6 +765,12 @@ fn migrate(conn: &Connection) -> Result<(), String> {
     if !has_column(conn, "cached_users", "max_discount_bps")? {
         conn.execute_batch("ALTER TABLE cached_users ADD COLUMN max_discount_bps INTEGER;")
             .map_err(|err| err.to_string())?;
+    }
+    if !has_column(conn, "cached_users", "addon_modules")? {
+        conn.execute_batch(
+            "ALTER TABLE cached_users ADD COLUMN addon_modules TEXT NOT NULL DEFAULT '[]';",
+        )
+        .map_err(|err| err.to_string())?;
     }
     if !has_column(conn, "sync_queue", "batch_id")? {
         conn.execute_batch(

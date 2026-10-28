@@ -44,6 +44,7 @@ AUDITED_TABLES: dict[str, str] = {
     "suppliers": "Supplier",
     "import_mapping_templates": "ImportTemplate",
     "purchase_batches": "PurchaseBatch",
+    "user_addon_access": "UserAddonAccess",
 }
 
 # Columns that change as a side effect of normal use and would only add noise to a diff.

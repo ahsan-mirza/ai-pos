@@ -47,7 +47,7 @@ pub fn approve(
     if !allowed_permission(permission) {
         return Err("Unknown approval type.".into());
     }
-    let approver = auth::pin_login(db, config, username, pin)?.user;
+    let approver = auth::pin_login(db, config, username, pin)?.session.user;
     if !approver.permissions.iter().any(|item| item == permission) {
         return Err(format!(
             "{} cannot approve {}.",

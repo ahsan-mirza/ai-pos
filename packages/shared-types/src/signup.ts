@@ -1,5 +1,7 @@
 /** Self-service signup on the bare domain (tenant-free /api/v1/signup). Mirrors app/schemas/signup.py. */
 
+import { COUNTRY_CURRENCIES, currencyForCountry } from "./countries.js";
+
 export type SignupStatus = "PENDING_OTP" | "VERIFIED" | "WAITLIST" | "PROVISIONING" | "READY" | "FAILED";
 export type ProvisionStepState = "pending" | "running" | "done" | "failed";
 export type SignupOtpChannel = "log" | "whatsapp" | "sms" | "email";
@@ -74,6 +76,12 @@ export interface SlugCheck {
   available: boolean;
   reason: string | null;
   suggestion: string | null;
+}
+
+/** Public availability answer. It never includes the other account. */
+export interface AvailabilityResult {
+  available: boolean;
+  code: "available" | "taken";
 }
 
 export interface ProvisionStep {
@@ -228,12 +236,13 @@ export interface SignupCountry {
   currency: string;
 }
 
-/** Matches SUPPORTED_COUNTRIES in app/tenancy/signup_service.py. */
-export const SIGNUP_COUNTRIES: readonly SignupCountry[] = [
-  { code: "AE", name: "United Arab Emirates", currency: "AED" },
-  { code: "SA", name: "Saudi Arabia", currency: "SAR" },
-  { code: "QA", name: "Qatar", currency: "QAR" },
-  { code: "KW", name: "Kuwait", currency: "KWD" },
-  { code: "BH", name: "Bahrain", currency: "BHD" },
-  { code: "OM", name: "Oman", currency: "OMR" },
-];
+const regionNames = new Intl.DisplayNames(["en"], { type: "region" });
+
+/** Every country the signup form can store, with the currency that country selects. */
+export const SIGNUP_COUNTRIES: readonly SignupCountry[] = Object.keys(COUNTRY_CURRENCIES)
+  .map((code) => ({
+    code,
+    name: regionNames.of(code) ?? code,
+    currency: currencyForCountry(code),
+  }))
+  .sort((left, right) => left.name.localeCompare(right.name));

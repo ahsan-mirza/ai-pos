@@ -1,8 +1,8 @@
 import type { BusinessSettings, OnboardingChecklist } from "@ai-pos/shared-types";
 import { FlaskConical, ShieldAlert } from "lucide-react";
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useLocation } from "react-router-dom";
-import { apiGet } from "../../lib/api";
+import { apiGet, apiPost } from "../../lib/api";
 import { portalHomePath } from "../../lib/portal-home";
 import { useCanManageSettings, useCurrency } from "../../lib/currency";
 import { GoLiveModal } from "./GoLiveModal";
@@ -30,6 +30,7 @@ export function PracticeProvider({ children }: { children: ReactNode }) {
   const [checklist, setChecklist] = useState<OnboardingChecklist | null>(null);
   const [goLiveOpen, setGoLiveOpen] = useState(false);
   const [tick, setTick] = useState(0);
+  const explored = useRef(false);
 
   const refresh = useCallback(() => setTick((value) => value + 1), []);
 
@@ -51,6 +52,18 @@ export function PracticeProvider({ children }: { children: ReactNode }) {
     window.addEventListener("focus", refresh);
     return () => window.removeEventListener("focus", refresh);
   }, [practice, refresh]);
+
+  useEffect(() => {
+    if (!practice || !canManage || checklist === null || explored.current) return;
+    const step = checklist.items.find((item) => item.key === "explore");
+    if (step === undefined || step.done) return;
+    explored.current = true;
+    apiPost("/api/v1/onboarding/explore", {})
+      .then(() => refresh())
+      .catch(() => {
+        explored.current = false;
+      });
+  }, [practice, canManage, checklist, refresh]);
 
   // Every page may be showing sample rows Go live just deleted, so start the portal over with fresh settings.
   const wentLive = useCallback(() => {

@@ -45,7 +45,14 @@ INVALID_CREDENTIALS = "Invalid email, username, or password."
 # --- Serialization -------------------------------------------------------------------------------
 
 
-def user_out(user: User) -> UserOut:
+def user_out(user: User, db: Session | None = None) -> UserOut:
+    modules: list[str] = []
+    permissions = set(user.permissions)
+    if db is not None:
+        from app.services.addon_access import addon_modules, effective_permissions
+
+        modules = addon_modules(db, user)
+        permissions = effective_permissions(db, user)
     return UserOut(
         id=user.id,
         username=user.username,
@@ -54,7 +61,7 @@ def user_out(user: User) -> UserOut:
         is_active=user.is_active,
         store_id=user.store_id,
         role=RoleSummary(id=user.role.id, name=user.role.name, max_discount_bps=user.role.max_discount_bps),
-        permissions=sorted(user.permissions),
+        permissions=sorted(permissions),
         has_pos_access=user.has_pos_access,
         has_portal_access=user.has_portal_access,
         can_sell_open_price=user.can_sell_open_price,
@@ -64,6 +71,7 @@ def user_out(user: User) -> UserOut:
         last_login_at=_aware(user.last_login_at),
         created_at=user.created_at,
         updated_at=user.updated_at,
+        addon_modules=modules,
     )
 
 
@@ -273,7 +281,7 @@ def issue_session(db: Session, settings: Settings, user: User, method: str) -> T
         settings=settings,
         tenant_id=tenant.id if tenant is not None else None,
     )
-    return TokenResponse(access_token=token, scope=scope, expires_in=expires_in, user=user_out(user))
+    return TokenResponse(access_token=token, scope=scope, expires_in=expires_in, user=user_out(user, db))
 
 
 # --- Authorization rules -------------------------------------------------------------------------
@@ -428,6 +436,9 @@ def update_user(db: Session, actor: Principal, user_id: uuid.UUID, data: UserUpd
         raise ApiError(422, "last_super_admin", "At least one active Super Admin must remain.")
     _commit(db, "Email is already in use.")
     db.refresh(user)
+    from app.services.addon_access import invalidate_access_cache
+
+    invalidate_access_cache(user.tenant_id)
     return user_out(user)
 
 
@@ -528,6 +539,9 @@ def update_role(db: Session, actor: Principal, role_id: uuid.UUID, data: RoleUpd
         role.set_permissions(permissions)
     _commit(db, "A role with this name already exists.")
     db.refresh(role)
+    from app.services.addon_access import invalidate_access_cache
+
+    invalidate_access_cache(role.tenant_id)
     return role_out(db, role)
 
 

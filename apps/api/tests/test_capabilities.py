@@ -233,6 +233,25 @@ def test_food_sub_types_keep_their_modules_working(profile: str, sub_type: str) 
     assert seats_guests == (sub_type in {"full_service", "restaurant_delivery", "sit_down_cafe"})
 
 
+def test_optional_modules_are_the_compatible_ones_outside_the_preset() -> None:
+    for profile in catalog.PROFILES:
+        listed = catalog.catalogue(profile)
+        preset = set(catalog.PROFILES[profile])
+        assert list(listed.base) == [capability for capability in catalog.ORDER if capability in preset]
+        assert set(listed.optional) == set(catalog.compatible(profile)) - preset
+        assert set(listed.base).isdisjoint(listed.optional)
+        assert not catalog.missing_dependencies([*listed.base, *listed.optional])
+    electronics = catalog.catalogue("electronics_wholesale")
+    assert catalog.Capability.REPAIRS in electronics.base
+    assert catalog.Capability.SALES_ORDERS in electronics.optional
+    assert catalog.Capability.GIFT_CARDS in electronics.optional
+    restaurant = catalog.catalogue("restaurant")
+    assert catalog.Capability.TABLES in restaurant.base and catalog.Capability.KDS in restaurant.base
+    cafe = catalog.catalogue("cafe")
+    assert catalog.Capability.KDS in cafe.base
+    assert catalog.Capability.TABLES in cafe.optional and catalog.Capability.SPLIT_BILLS in cafe.optional
+
+
 def test_business_type_locks_after_onboarding_and_only_fitting_modules_switch_on(client) -> None:
     headers, _ = admin(client)
     assert change_profile(client, headers, "cafe").status_code == 200
@@ -258,7 +277,11 @@ def test_business_type_locks_after_onboarding_and_only_fitting_modules_switch_on
         True,
     )
     assert body["enabled"] == [c.value for c in catalog.ORDER if c.value in trimmed]
-    assert "trade_in" in body["available"] and "weighed_items" not in body["available"]
+    listed = catalog.catalogue("electronics_wholesale")
+    assert body["base"] == [capability.value for capability in listed.base]
+    assert body["optional"] == [capability.value for capability in listed.optional]
+    assert "trade_in" in body["base"] and "trade_in" in body["available"]
+    assert "weighed_items" not in body["available"]
     assert body["support_email"] == "support@axizpos.com"
     assert client.get("/api/v1/tenant/modules", headers=device()).status_code == 200
     assert client.get("/api/v1/tenant/modules").status_code == 401
@@ -302,6 +325,137 @@ def test_tenant_profile_names_the_business_type_and_its_modules(client) -> None:
     assert "kds" in restaurant["enabled_modules"]
     assert "serial_tracking" not in restaurant["enabled_modules"]
     assert "repairs" not in restaurant["enabled_modules"]
+
+
+def test_purchased_modules_join_only_when_they_fit_and_a_console_off_wins() -> None:
+    granted = catalog.resolve("electronics_wholesale", None, None, ["sales_orders", "tables"])
+    assert catalog.Capability.SALES_ORDERS in granted.enabled
+    assert catalog.Capability.TABLES not in granted.enabled
+    blocked = catalog.resolve("electronics_wholesale", None, {"sales_orders": "off"}, ["sales_orders"])
+    assert catalog.Capability.SALES_ORDERS not in blocked.enabled
+    assert catalog.Capability.REPAIRS in catalog.REGISTER_CAPABILITIES
+    assert catalog.Capability.WARRANTY not in catalog.REGISTER_CAPABILITIES
+
+
+def test_unpaid_add_on_cannot_be_switched_on_and_a_paid_one_cannot_be_switched_off(monkeypatch) -> None:
+    from types import SimpleNamespace
+
+    from app.core.errors import ApiError
+    from app.services import settings_service
+
+    monkeypatch.setattr(settings_service, "commercial_module_keys", lambda: {"sales_orders"})
+    stored = SimpleNamespace(capabilities=["quotes_layaway"])
+    try:
+        settings_service._refuse_unpaid("electronics_wholesale", ["quotes_layaway", "sales_orders"], stored, [])
+    except ApiError as error:
+        assert error.code == "payment_required"
+    else:
+        raise AssertionError("an unpaid add-on was accepted")
+    settings_service._refuse_unpaid(
+        "electronics_wholesale",
+        ["sales_orders"],
+        SimpleNamespace(capabilities=["sales_orders"]),
+        [],
+    )
+    try:
+        settings_service._refuse_dropping_purchased("electronics_wholesale", ["quotes_layaway"], ["sales_orders"])
+    except ApiError as error:
+        assert error.code == "module_purchased"
+    else:
+        raise AssertionError("a purchased module was switched off")
+
+
+def test_expired_purchased_modules_drop_out_of_the_snapshot() -> None:
+    from datetime import UTC, datetime, timedelta
+    from types import SimpleNamespace
+
+    from app.services.settings_service import effective_purchased_keys
+
+    fresh = SimpleNamespace(
+        purchased_capabilities=["sales_orders"],
+        entitlement_until=datetime.now(UTC) + timedelta(days=1),
+    )
+    expired = SimpleNamespace(
+        purchased_capabilities=["sales_orders"],
+        entitlement_until=datetime.now(UTC) - timedelta(seconds=1),
+    )
+    assert effective_purchased_keys(fresh) == ["sales_orders"]
+    assert effective_purchased_keys(expired) == []
+
+
+def frontend_eligible() -> dict[str, set[str]]:
+    source = SHARED.read_text(encoding="utf-8")
+    block = source.split("export const PROFILE_ELIGIBLE", 1)[1].split("\n};", 1)[0]
+    return {
+        match.group(1): set(re.findall(r'"(\w+)"', match.group(2)))
+        for match in re.finditer(r"(\w+): \[([^\]]*)\]", block, re.S)
+    }
+
+
+def test_frontend_eligibility_matches_every_business_type() -> None:
+    found = frontend_eligible()
+    assert set(found) == set(catalog.PROFILES)
+    for profile, keys in found.items():
+        assert keys == {capability.value for capability in catalog.compatible(profile)}
+
+
+def test_an_unknown_business_type_enables_nothing() -> None:
+    assert catalog.resolve("bakery", None).enabled == ()
+    assert catalog.resolve("bakery", ["loyalty", "tables", "serial_tracking"]).enabled == ()
+    assert catalog.compatible("bakery") == ()
+
+
+@pytest.mark.parametrize("profile", sorted(catalog.PROFILES))
+def test_stored_modules_outside_the_business_type_stay_off(profile: str) -> None:
+    foreign = [capability.value for capability in catalog.ORDER if capability not in set(catalog.compatible(profile))]
+    preset = [capability.value for capability in catalog.PROFILES[profile]]
+    resolved = catalog.resolve(profile, [*preset, *foreign[:4]])
+    assert set(resolved.enabled).isdisjoint(foreign)
+    assert set(catalog.PROFILES[profile]) <= set(resolved.enabled) | set(resolved.planned)
+
+
+def test_an_incompatible_purchase_can_be_left_out_without_cancelling_it() -> None:
+    from app.services import settings_service
+
+    settings_service._refuse_dropping_purchased("electronics_wholesale", ["quotes_layaway"], ["tables"])
+
+
+@pytest.mark.parametrize("profile", sorted(catalog.PROFILES))
+def test_each_business_type_opens_only_its_preset_routes(client, profile: str) -> None:
+    headers, _ = admin(client)
+    switched = change_profile(client, headers, profile)
+    assert switched.status_code == 200, switched.text
+    enabled = {capability.value for capability in catalog.resolve(profile, None).enabled}
+    assert set(switched.json()["capabilities"]) == enabled
+    register = {
+        capability.value
+        for capability in catalog.resolve(profile, None).enabled
+        if capability in catalog.REGISTER_CAPABILITIES
+    }
+    if profile in FOOD:
+        assert "kds" in register and "serial_tracking" not in register and "repairs" not in enabled
+    if profile == "electronics_wholesale":
+        assert "serial_tracking" in register and "tables" not in enabled
+    if profile == "grocery":
+        assert "weighed_items" in enabled and "kds" not in enabled and "serial_tracking" not in enabled
+    if profile == "retail_fashion":
+        assert "variants_matrix" in enabled and "repairs" not in enabled
+    if profile == "wholesale_retail":
+        assert "customer_reorders" in enabled and "serial_tracking" not in enabled
+    for capability, path in GATED.items():
+        response = client.get(path, headers=headers)
+        if capability.value in enabled:
+            assert response.status_code != 403, path
+        else:
+            assert response.status_code == 403, path
+            assert response.json()["error"]["code"] == "capability_disabled"
+
+
+def test_incompatible_modules_are_refused_before_onboarding(client) -> None:
+    headers, _ = admin(client)
+    refused = change_profile(client, headers, "grocery", ["loyalty", "tables", "kds"])
+    assert refused.status_code == 422
+    assert refused.json()["error"]["code"] == "module_not_available"
 
 
 def test_provisioning_sets_the_preset_and_leaves_onboarding_to_the_admin(client, session) -> None:

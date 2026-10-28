@@ -14,6 +14,19 @@ export function emailError(value: string, required = false): string | undefined 
   return undefined;
 }
 
+/** Collapses whitespace. Store names are display text and are not unique. */
+export function normalizeStoreName(value: string): string {
+  return value.trim().replace(/\s+/g, " ");
+}
+
+export function storeNameError(value: string, required = false): string | undefined {
+  const cleaned = normalizeStoreName(value);
+  if (cleaned === "") return required ? "Enter a store name." : undefined;
+  if (cleaned.length < 2) return "Enter a store name.";
+  if (cleaned.length > 120) return "Use 120 characters or fewer.";
+  return undefined;
+}
+
 /** Amount in major units with at most two decimal places. Empty is an error. */
 export function moneyError(value: string, label: string): string | undefined {
   const text = value.trim();

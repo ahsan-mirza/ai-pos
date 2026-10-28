@@ -126,7 +126,7 @@ function SidebarNav({
   onNavigate?: () => void;
   onTip?: (tip: Tip | null) => void;
 }) {
-  const { pathname } = useLocation();
+  const { pathname, hash } = useLocation();
   const groups = useVisibleGroups();
 
   const showTip = (item: VisibleItem) => (event: MouseEvent<HTMLElement> | FocusEvent<HTMLElement>) => {
@@ -156,7 +156,7 @@ function SidebarNav({
           </div>
           <ul className="space-y-0.5">
             {group.items.map((item) => {
-              const active = item.isActive(pathname);
+              const active = item.isActive(pathname, hash);
               return (
                 <li key={item.to}>
                   <Link
@@ -206,7 +206,7 @@ function SidebarBrand({ collapsed }: { collapsed: boolean }) {
   return (
     <Link
       to={portalHomePath()}
-      aria-label="AI POS home"
+      aria-label="AxizPOS Business home"
       className={`flex h-16 shrink-0 items-center overflow-hidden border-b border-line outline-none focus-visible:bg-charcoal/[0.03] ${collapsed ? "justify-center px-2" : "px-[22px]"}`}
     >
       <BrandLogo variant={collapsed ? "mark" : "wordmark"} tone="light" alt="" className={collapsed ? "h-8 w-8" : "h-8 max-w-full"} />

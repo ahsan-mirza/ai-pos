@@ -10,22 +10,39 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query, Request, Response
 
-from app.console import auth, billing, directory, entitlements, hardware, mail, migration, site, stats, transfers
+from app.console import (
+    auth,
+    billing,
+    directory,
+    entitlements,
+    hardware,
+    mail,
+    migration,
+    modules,
+    site,
+    stats,
+    transfers,
+)
 from app.console.security import ConsoleAdmin, CurrentOperator
 from app.core.config import Settings, get_settings
 from app.core.errors import ApiError
 from app.core.pagination import Offset, set_total
+from app.schemas.addon_access import ConsoleAddonAccessOut
 from app.schemas.billing import (
     AddonIn,
     AddonOut,
     BankAccountIn,
     BankAccountOut,
+    BusinessTypeModules,
     CatalogOut,
     CycleIn,
     CycleOut,
+    EntitlementLine,
     FeeIn,
     FeeOut,
     GraceIn,
+    ModuleCatalogueItem,
+    ModuleSummary,
     OverviewOut,
     PaymentOut,
     PlanIn,
@@ -57,6 +74,7 @@ from app.schemas.console import (
 from app.schemas.hardware import DepositDecisionIn, FulfillmentIn, HardwareCategoryIn, HardwareItemIn
 from app.schemas.mail import MailSettingsIn, MailSettingsOut, MailTestIn, MailTestOut
 from app.schemas.site import SiteContactIn, SiteContactOut
+from app.services import addon_access
 from app.tenancy import registry
 from app.tenancy.models import Operator
 
@@ -174,6 +192,51 @@ def reject_request(
     request_id: uuid.UUID, payload: ResolveIn, operator: CurrentOperator, settings: Config
 ) -> ConsoleChangeRequest:
     return directory.close_request(settings, operator, request_id, status="REJECTED", notes=payload.notes)
+
+
+@router.get("/modules", response_model=list[ModuleCatalogueItem])
+def module_catalogue(_: CurrentOperator, settings: Config) -> list[ModuleCatalogueItem]:
+    with registry.control_session(settings) as db:
+        billing.ensure_catalog(db)
+        found = modules.catalogue(db)
+        db.commit()
+        return found
+
+
+@router.get("/modules/summary", response_model=ModuleSummary)
+def module_summary(_: CurrentOperator, settings: Config) -> ModuleSummary:
+    with registry.control_session(settings) as db:
+        billing.ensure_catalog(db)
+        found = modules.summary(db)
+        db.commit()
+        return found
+
+
+@router.get("/modules/business-types", response_model=list[BusinessTypeModules])
+def module_business_types(_: CurrentOperator) -> list[BusinessTypeModules]:
+    return modules.business_types()
+
+
+@router.get("/tenants/{tenant_id}/addon-access", response_model=ConsoleAddonAccessOut)
+def tenant_addon_access(tenant_id: uuid.UUID, _: CurrentOperator, settings: Config) -> ConsoleAddonAccessOut:
+    """Who the store has granted each paid add-on to. Read only. It does not activate a subscription."""
+    with registry.control_session(settings) as control:
+        tenant = entitlements.get_tenant(control, tenant_id)
+    with entitlements.tenant_session(tenant, settings) as db:
+        return addon_access.console_snapshot(db)
+
+
+@router.get("/tenants/{tenant_id}/entitlements", response_model=list[EntitlementLine])
+def tenant_entitlements(tenant_id: uuid.UUID, _: CurrentOperator, settings: Config) -> list[EntitlementLine]:
+    with registry.control_session(settings) as db:
+        billing.ensure_catalog(db)
+        tenant = entitlements.get_tenant(db, tenant_id)
+        mapped: dict[str, list[str]] = {}
+        for addon in billing._addons(db):
+            for key in addon.module_keys or []:
+                mapped.setdefault(key, []).append(addon.code)
+        db.commit()
+    return modules.explain(entitlements.tenant_modules(tenant, settings), mapped)
 
 
 @router.get("/tenants/{tenant_id}/modules", response_model=list[ModuleState])
@@ -441,7 +504,7 @@ def transfer_receipt(transfer_id: uuid.UUID, _: CurrentOperator, settings: Confi
 @router.post("/billing/transfers/{transfer_id}/approve", response_model=PaymentOut)
 def approve_transfer(transfer_id: uuid.UUID, operator: ConsoleAdmin, settings: Config) -> PaymentOut:
     with registry.control_session(settings) as db:
-        payment = transfers.approve(db, operator, transfer_id)
+        payment = transfers.approve(db, operator, transfer_id, settings)
         return PaymentOut(
             id=payment.id,
             invoice_id=payment.invoice_id,

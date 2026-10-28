@@ -20,6 +20,7 @@ from app.schemas.console import (
     ConsoleChangeRequest,
     CustomerRow,
     OperatorAuditOut,
+    RegisterSync,
     TenantDetail,
     TenantRow,
     TenantUpdate,
@@ -121,6 +122,40 @@ def _audit_rows(control: Session, tenant_id: uuid.UUID) -> list[OperatorAuditOut
     ]
 
 
+def register_sync(tenant: Tenant, settings: Settings) -> list[RegisterSync]:
+    """Each register's last applied entitlement revision. Offline registers stay pending, not current."""
+    from app.models.device import Device
+    from app.services.settings_service import load_settings
+
+    try:
+        with tenant_session(tenant, settings) as db:
+            revision = int(load_settings(db).cache_generation or 1)
+            rows = db.scalars(select(Device).order_by(Device.code)).all()
+    except Exception:
+        return []
+    found: list[RegisterSync] = []
+    for row in rows:
+        if row.revoked_at is not None:
+            status = "revoked"
+        elif row.entitlement_revision == revision:
+            status = "current"
+        else:
+            status = "pending"
+        found.append(
+            RegisterSync(
+                id=row.id,
+                store_id=row.store_id,
+                code=row.code,
+                name=row.name,
+                last_seen_at=row.last_seen_at,
+                entitlement_revision=row.entitlement_revision,
+                entitlement_synced_at=row.entitlement_synced_at,
+                status=status,
+            )
+        )
+    return found
+
+
 def details(settings: Settings, tenant_id: uuid.UUID) -> TenantDetail:
     with registry.control_session(settings) as control:
         tenant = get_tenant(control, tenant_id)
@@ -145,6 +180,7 @@ def details(settings: Settings, tenant_id: uuid.UUID) -> TenantDetail:
             modules=modules,
             change_requests=[change_requests.out(request) for request in requests],
             audit=_audit_rows(control, tenant.id),
+            registers=register_sync(tenant, settings),
             unreachable=unreachable,
         )
 

@@ -7,7 +7,7 @@ import { apiGet } from "../../lib/api";
 import { useCanManageSettings, useCurrency } from "../../lib/currency";
 import { useCapabilities } from "../../lib/capabilities";
 import { useTenant } from "../../context/TenantContext";
-import { industryAllows } from "../../lib/industry";
+import { portalRouteAllowed } from "../../lib/industry";
 import { AiMark, isAiFeature } from "../ui/AiMark";
 import { crumbsFor, settingsLabel } from "./navigation";
 import { StoreSwitcher } from "./StoreSwitcher";
@@ -152,11 +152,10 @@ export function Header({
   const { currency } = useCurrency();
   const canManageSettings = useCanManageSettings();
   const capabilities = useCapabilities();
-  const { businessType, ready } = useTenant();
-  const crumbs =
-    ready && !industryAllows(pathname, businessType)
-      ? [{ label: settingsLabel(capabilities) }]
-      : crumbsFor(pathname, capabilities);
+  const { storedProfile, ready } = useTenant();
+  const crumbs = portalRouteAllowed(pathname, ready ? storedProfile : null)
+    ? crumbsFor(pathname, capabilities)
+    : [{ label: settingsLabel(capabilities) }];
   const settingsName = settingsLabel(capabilities);
   const badge =
     "hidden h-7 items-center rounded-md border border-line bg-[#f8fafc] px-2 font-mono text-[11px] font-bold tracking-wider text-charcoal/70 sm:inline-flex";
@@ -220,7 +219,7 @@ export function Header({
           href={`${env.apiBaseUrl}/api/download/installer/win`}
           className="hidden rounded-full border border-gray-200 px-3 py-1.5 text-[13px] font-medium text-charcoal hover:bg-gray-50 md:inline-flex"
         >
-          Download POS
+          Download register
         </a>
         <StoreSwitcher className="hidden !w-[230px] md:block" />
         {canManageSettings ? (

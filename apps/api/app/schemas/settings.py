@@ -25,6 +25,14 @@ class BusinessSettingsOut(BaseModel):
     business_profile: str = "electronics_wholesale"
     capabilities: list[str] = Field(default_factory=list)
     planned_capabilities: list[str] = Field(default_factory=list)
+    # Bumps whenever business settings change. Registers compare it with the copy they stored.
+    entitlement_revision: int = 1
+    # Module keys granted by a verified add-on. Empty when none are paid for.
+    purchased_capabilities: list[str] = Field(default_factory=list)
+    # Paid modules remain usable offline until this moment. Null when nothing was purchased.
+    entitlement_until: datetime | None = None
+    # Subset of capabilities the Windows register implements. Admin-only modules are left out.
+    register_capabilities: list[str] = Field(default_factory=list)
     onboarded: bool = True
     # A self-service store before Go live: sample data and practice sales, kept out of the books by Go live.
     practice_mode: bool = False

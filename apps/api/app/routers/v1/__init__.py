@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends
 
 from app.core.capabilities import Capability, require_capability
 from app.routers.v1.accounting import router as accounting_router
+from app.routers.v1.addon_access import router as addon_access_router
 from app.routers.v1.analytics import router as analytics_router
 from app.routers.v1.approvals import router as approvals_router
 from app.routers.v1.assistant import router as assistant_router
@@ -92,6 +93,7 @@ api_router = APIRouter()
 api_router.include_router(tenant_router, prefix="/tenant", tags=["tenancy"])
 api_router.include_router(terminals_router, prefix="/terminals", tags=["tenancy"])
 api_router.include_router(auth_router, prefix="/auth", tags=["auth"])
+api_router.include_router(addon_access_router, prefix="/addon-access", tags=["addon access"])
 api_router.include_router(users_router, prefix="/users", tags=["users"])
 api_router.include_router(roles_router, prefix="/roles", tags=["roles"])
 api_router.include_router(stores_router, prefix="/stores", tags=["stores"])

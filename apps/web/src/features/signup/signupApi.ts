@@ -1,4 +1,5 @@
 import type {
+  AvailabilityResult,
   SignupBusiness,
   SignupResume,
   SignupStart,
@@ -59,7 +60,12 @@ export const signupApi = {
   store: (session: SignupSession, body: SignupStore) =>
     apiSignup<SignupState>("POST", `/${session.id}/store`, { token: session.token, body }),
   retry: (session: SignupSession) => apiSignup<SignupState>("POST", `/${session.id}/retry`, { token: session.token }),
-  slugCheck: (slug: string) => apiSignup<SlugCheck>("GET", `/slug-check?slug=${encodeURIComponent(slug)}`),
+  slugCheck: (slug: string, signal?: AbortSignal) =>
+    apiSignup<SlugCheck>("GET", `/slug-check?slug=${encodeURIComponent(slug)}`, { signal }),
+  emailAvailability: (email: string, signal?: AbortSignal) =>
+    apiSignup<AvailabilityResult>("POST", "/availability/email", { signal, body: { email } }),
+  phoneAvailability: (phone: string, signal?: AbortSignal) =>
+    apiSignup<AvailabilityResult>("POST", "/availability/phone", { signal, body: { phone } }),
 };
 
 /** Same rule as the API: lowercase letters, numbers and single dashes, at most 32 characters. */

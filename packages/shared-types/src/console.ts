@@ -74,11 +74,23 @@ export interface OperatorAudit {
   created_at: string;
 }
 
+export interface RegisterSync {
+  id: string;
+  store_id: string;
+  code: string;
+  name: string;
+  last_seen_at: string | null;
+  entitlement_revision: number | null;
+  entitlement_synced_at: string | null;
+  status: "current" | "pending" | "revoked";
+}
+
 export interface TenantDetail {
   tenant: TenantRow;
   modules: ModuleState[];
   change_requests: ChangeRequest[];
   audit: OperatorAudit[];
+  registers?: RegisterSync[];
   unreachable: string | null;
 }
 

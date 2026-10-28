@@ -20,6 +20,10 @@ class TenantModulesOut(ApiModel):
     # True once onboarding is done: the business type then only changes through IT support.
     locked: bool
     enabled: list[str]
+    # The business-type preset. These ship with the store; the tenant can still switch one off.
+    base: list[str] = Field(default_factory=list)
+    # Compatible with the business type, but not part of the preset.
+    optional: list[str] = Field(default_factory=list)
     # Fit this business type and can be switched on by the tenant.
     available: list[str]
     planned: list[str]

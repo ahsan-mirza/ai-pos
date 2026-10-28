@@ -1,4 +1,3 @@
-import seed from "@ai-pos/catalog/seed.json";
 import { EMIRATE_LABELS, Permission, type Emirate, type Store } from "@ai-pos/shared-types";
 import { PhoneField, phoneError, requiredError } from "@ai-pos/ui";
 import { MapPin, Phone, Warehouse } from "lucide-react";
@@ -12,26 +11,23 @@ import { useCurrency } from "../../lib/currency";
 import { message, storesApi } from "../inventory/api";
 import { fieldErrors, type FieldErrors } from "../inventory/formErrors";
 
-const stamped = "2026-10-19T00:00:00.000Z";
-const sampleStores: Store[] = [seed.store, ...seed.branches].map((store) => ({
-  ...store,
-  created_at: stamped,
-  updated_at: stamped,
-}));
-
 export function StoresPage() {
   const { currency } = useCurrency();
   const { can, user } = useAuth();
   const [live, setLive] = useState<Store[] | null>(null);
+  const [failed, setFailed] = useState(false);
   const [editing, setEditing] = useState<Store | null>(null);
-  const stores = live ?? sampleStores.map((store) => ({ ...store, currency }));
-  const source = live === null ? "sample" : "live";
+  const stores = (live ?? []).map((store) => ({ ...store, currency }));
+  const source = live === null ? "loading" : "live";
   const manage = can(Permission.PortalInventoryManage);
 
   const reload = () => {
     apiGet<Store[]>("/api/v1/stores?limit=200")
-      .then(setLive)
-      .catch(() => setLive(null));
+      .then((rows) => {
+        setLive(rows);
+        setFailed(false);
+      })
+      .catch(() => setFailed(true));
   };
   useEffect(reload, []);
 
@@ -40,7 +36,11 @@ export function StoresPage() {
       <div>
         <h2 className="text-2xl font-semibold">Branches & warehouses</h2>
         <p className="text-sm text-charcoal/60">
-          {source === "live" ? "Each branch holds its own stock." : "Showing sample locations until the API responds."}
+          {failed
+            ? "Branches could not be loaded."
+            : source === "live"
+              ? "Each branch holds its own stock."
+              : "Loading branches…"}
         </p>
       </div>
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">

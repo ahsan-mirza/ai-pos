@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { env } from "../../config/env";
 import { flushSync, inTauri, pendingCount, type SyncReport } from "../../lib/tauri";
+import { syncBusinessCurrency } from "./currency";
 
 const idle: SyncReport = {
   pending: 0,
@@ -13,10 +14,11 @@ export function useSyncEngine(pulse: number) {
   const [report, setReport] = useState<SyncReport>(idle);
 
   useEffect(() => {
-    if (!inTauri()) return;
     let cancelled = false;
 
     const run = async () => {
+      await syncBusinessCurrency().catch(() => undefined);
+      if (!inTauri()) return;
       try {
         const next = await flushSync();
         if (!cancelled) setReport(next);

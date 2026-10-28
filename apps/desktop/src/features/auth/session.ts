@@ -25,6 +25,8 @@ async function browserUnlock(username: string, pin: string): Promise<CashierSess
       role_name: response.user.role.name,
       permissions: response.user.permissions,
       max_discount_bps: response.user.role.max_discount_bps ?? null,
+      addon_modules: response.user.addon_modules ?? [],
+      addon_synced_at: Math.floor(Date.now() / 1000),
     },
     mode: "online",
     unlocked_at: Math.floor(Date.now() / 1000),

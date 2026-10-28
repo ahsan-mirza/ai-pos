@@ -10,11 +10,14 @@ import {
   type Capability,
   type ChangeKind,
   type ChangeRequest,
+  formatMoney,
+  type BillingCatalog,
   type ProfileUpdate,
   type TenantModules,
 } from "@ai-pos/shared-types";
 import { AlertTriangle, LayoutGrid, LifeBuoy, Lock, Mail, Send } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useLocation } from "react-router-dom";
 import { Select } from "@ai-pos/ui";
 import { ErrorNote, GhostButton, PrimaryButton } from "../../components/ui/Field";
 import { Modal } from "../../components/ui/Modal";
@@ -231,8 +234,33 @@ export async function saveProfile(update: ProfileUpdate): Promise<BusinessSettin
   return apiPut<BusinessSettings>("/api/v1/settings/profile", update);
 }
 
+function includedVisible(tenant: TenantModules, visible: ReadonlySet<Capability> | undefined): Set<Capability> {
+  const optional = new Set<Capability>(tenant.optional ?? []);
+  const shown = visible ?? new Set<Capability>(tenant.base ?? []);
+  return new Set([...shown].filter((capability) => !optional.has(capability)));
+}
+
+function modulePrices(catalog: BillingCatalog, currency: string): Partial<Record<Capability, string>> {
+  const prices: Partial<Record<Capability, string>> = {};
+  for (const addon of catalog.addons) {
+    if (!addon.active || !isCapability(addon.code)) continue;
+    const parts: string[] = [];
+    if (addon.monthly_fils > 0) parts.push(`${formatMoney(addon.monthly_fils, currency)} / month`);
+    if (addon.one_time_fils > 0) {
+      parts.push(
+        addon.refundable
+          ? `${formatMoney(addon.one_time_fils, currency)} refundable deposit`
+          : formatMoney(addon.one_time_fils, currency),
+      );
+    }
+    if (parts.length > 0) prices[addon.code] = parts.join(", ");
+  }
+  return prices;
+}
+
 export function BusinessProfileSettings() {
-  const { settings, applySettings } = useCurrency();
+  const { settings, applySettings, currency } = useCurrency();
+  const location = useLocation();
   const capabilities = useCapabilities();
   const saved = useMemo(
     () => new Set<Capability>([...capabilities.enabled, ...capabilities.planned]),
@@ -251,14 +279,19 @@ export function BusinessProfileSettings() {
   }, [capabilities.profile, saved]);
 
   useEffect(() => {
-    if (window.location.hash === "#business-profile") {
-      document.getElementById("business-profile")?.scrollIntoView({ behavior: "smooth" });
-    }
-  }, []);
+    const id = location.hash === "#add-modules" || location.hash === "#business-profile" ? location.hash.slice(1) : null;
+    if (id) document.getElementById(id)?.scrollIntoView({ behavior: "smooth" });
+  }, [location.hash]);
 
   const [tenant, setTenant] = useState<TenantModules | null>(null);
   const [requests, setRequests] = useState<ChangeRequest[]>([]);
   const [requesting, setRequesting] = useState(false);
+  const [prices, setPrices] = useState<Partial<Record<Capability, string>>>({});
+  useEffect(() => {
+    apiGet<BillingCatalog>("/api/v1/billing/catalog")
+      .then((catalog) => setPrices(modulePrices(catalog, currency)))
+      .catch(() => setPrices({}));
+  }, [currency]);
   const loadTenant = useCallback(async () => {
     try {
       setTenant(await apiGet<TenantModules>("/api/v1/tenant/modules"));
@@ -369,20 +402,53 @@ export function BusinessProfileSettings() {
         </p>
       ) : null}
 
-      <h3 className="mb-3 mt-7 text-sm font-semibold">{locked ? "Your modules" : "Modules"}</h3>
+      <h3 className="mb-3 mt-7 text-sm font-semibold">{locked ? "Included with your business type" : "Modules"}</h3>
       {locked ? (
         <p className="-mt-2 mb-3 text-xs text-charcoal/60">
-          The modules that fit a {tenant?.profile_label ?? PROFILE_PRESETS[capabilities.profile].label} business. Others are
-          added by IT Support.
+          These come with a {tenant?.profile_label ?? PROFILE_PRESETS[capabilities.profile].label} store. Switch one off
+          only if you do not use it. Modules that do not fit this business type are added by IT Support.
         </p>
       ) : null}
-      <ModuleList
-        selected={selected}
-        disabled={busy}
-        visible={visible}
-        managed={tenant?.managed}
-        onToggle={(capability, on) => setSelected((current) => toggleModule(current, capability, on))}
-      />
+      {locked && tenant && ((tenant.base ?? []).length > 0 || (tenant.optional ?? []).length > 0) ? (
+        <>
+          <ModuleList
+            selected={selected}
+            disabled={busy}
+            visible={includedVisible(tenant, visible)}
+            managed={tenant.managed}
+            included={new Set(tenant.base ?? [])}
+            onToggle={(capability, on) => setSelected((current) => toggleModule(current, capability, on))}
+          />
+          <h3 id="add-modules" className="mb-3 mt-7 scroll-mt-20 text-sm font-semibold">
+            Add modules
+          </h3>
+          <p className="-mt-2 mb-3 text-xs text-charcoal/60">
+            Extra modules this business type can switch on. Register hardware is billed from the subscription page.
+          </p>
+          {(tenant.optional ?? []).length === 0 ? (
+            <p className="rounded-2xl bg-surface px-4 py-3 text-sm text-charcoal/70">
+              This business type already includes every module it can use.
+            </p>
+          ) : (
+            <ModuleList
+              selected={selected}
+              disabled={busy}
+              visible={new Set(tenant.optional ?? [])}
+              managed={tenant.managed}
+              prices={prices}
+              onToggle={(capability, on) => setSelected((current) => toggleModule(current, capability, on))}
+            />
+          )}
+        </>
+      ) : (
+        <ModuleList
+          selected={selected}
+          disabled={busy}
+          visible={visible}
+          managed={tenant?.managed}
+          onToggle={(capability, on) => setSelected((current) => toggleModule(current, capability, on))}
+        />
+      )}
 
       {locked && tenant ? <SupportCard tenant={tenant} requests={requests} onRequest={() => setRequesting(true)} /> : null}
       {requesting && tenant ? (

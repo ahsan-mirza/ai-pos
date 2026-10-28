@@ -242,10 +242,144 @@ export const PROFILE_PRESETS: Record<BusinessProfile, ProfileSpec> = {
   },
 };
 
+/**
+ * Every module a business type may use. The preset is the starter set; anything else here is an optional add-on.
+ * Mirrors COMPATIBLE in apps/api/app/core/capabilities.py.
+ */
+export const PROFILE_ELIGIBLE: Record<BusinessProfile, readonly Capability[]> = {
+  electronics_wholesale: [
+    "wholesale_pricing",
+    "quotes_layaway",
+    "promotions",
+    "multi_currency",
+    "b2b_credit",
+    "cheques",
+    "loyalty",
+    "sales_orders",
+    "card_terminals",
+    "bnpl",
+    "gift_cards",
+    "tax_free",
+    "online_store",
+    "serial_tracking",
+    "variants_matrix",
+    "consignment",
+    "repairs",
+    "warranty",
+    "trade_in",
+  ],
+  wholesale_retail: [
+    "wholesale_pricing",
+    "quotes_layaway",
+    "promotions",
+    "multi_currency",
+    "b2b_credit",
+    "cheques",
+    "loyalty",
+    "sales_orders",
+    "card_terminals",
+    "bnpl",
+    "gift_cards",
+    "tax_free",
+    "online_store",
+    "customer_reorders",
+    "repairs",
+  ],
+  retail_fashion: [
+    "wholesale_pricing",
+    "quotes_layaway",
+    "promotions",
+    "multi_currency",
+    "b2b_credit",
+    "cheques",
+    "loyalty",
+    "sales_orders",
+    "card_terminals",
+    "bnpl",
+    "gift_cards",
+    "tax_free",
+    "online_store",
+    "variants_matrix",
+    "consignment",
+    "serial_tracking",
+    "alterations",
+  ],
+  grocery: [
+    "wholesale_pricing",
+    "quotes_layaway",
+    "promotions",
+    "multi_currency",
+    "b2b_credit",
+    "cheques",
+    "loyalty",
+    "sales_orders",
+    "card_terminals",
+    "bnpl",
+    "gift_cards",
+    "tax_free",
+    "online_store",
+    "weighed_items",
+    "fefo",
+    "consignment",
+    "variants_matrix",
+  ],
+  restaurant: [
+    "loyalty",
+    "promotions",
+    "multi_currency",
+    "fefo",
+    "menu_modifiers",
+    "open_orders",
+    "tables",
+    "kds",
+    "recipes",
+    "split_bills",
+    "tips_service_charge",
+    "delivery_channels",
+    "card_terminals",
+  ],
+  cafe: [
+    "loyalty",
+    "promotions",
+    "multi_currency",
+    "fefo",
+    "menu_modifiers",
+    "open_orders",
+    "tables",
+    "kds",
+    "recipes",
+    "split_bills",
+    "tips_service_charge",
+    "delivery_channels",
+    "card_terminals",
+  ],
+  quick_service: [
+    "loyalty",
+    "promotions",
+    "multi_currency",
+    "fefo",
+    "menu_modifiers",
+    "open_orders",
+    "tables",
+    "kds",
+    "recipes",
+    "split_bills",
+    "tips_service_charge",
+    "delivery_channels",
+    "card_terminals",
+  ],
+};
+
 export const DEFAULT_BUSINESS_PROFILE: BusinessProfile = "electronics_wholesale";
 
 export function isBusinessProfile(value: string): value is BusinessProfile {
   return value in PROFILE_PRESETS;
+}
+
+/** True when this business type is allowed to use the module. An unknown type is allowed nothing. */
+export function profileAllows(profile: string | null | undefined, capability: Capability): boolean {
+  if (!profile || !isBusinessProfile(profile)) return false;
+  return PROFILE_ELIGIBLE[profile].includes(capability);
 }
 
 /** The preset for a stored profile name; unknown names fall back to the default business type. */
@@ -280,7 +414,10 @@ export interface ResolvedCapabilities {
  * and anything whose prerequisites are missing stays off.
  */
 export function resolveCapabilities(profile: BusinessProfile, selection?: readonly string[] | null): ResolvedCapabilities {
-  const chosen = (selection ?? PROFILE_PRESETS[profile]?.capabilities ?? electronicsWholesale).filter(isCapability);
+  const eligible = new Set(PROFILE_ELIGIBLE[profile] ?? []);
+  const chosen = (selection ?? PROFILE_PRESETS[profile]?.capabilities ?? []).filter(
+    (id): id is Capability => isCapability(id) && eligible.has(id),
+  );
   const unique = [...new Set(chosen)];
   const blocked = new Set(missingDependencies(unique).map((problem) => problem.capability));
   const order = (list: Capability[]) =>

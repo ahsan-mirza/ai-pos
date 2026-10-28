@@ -4,7 +4,6 @@ import { BarSeries, CategoryDonut, HorizontalBars, Sparkline, SplitBar } from ".
 import { SegmentedControl } from "../../components/ui/SegmentedControl";
 import { apiGet } from "../../lib/api";
 import { useCurrency } from "../../lib/currency";
-import { sampleAnalytics } from "./sample";
 
 const options = [
   { value: AnalyticsTimeframe.AllTime, label: "All time" },
@@ -22,26 +21,42 @@ function formatGrowth(bps: number | null): string {
 export function DashboardPage() {
   const { currency } = useCurrency();
   const [timeframe, setTimeframe] = useState<AnalyticsTimeframe>(AnalyticsTimeframe.AllTime);
-  const [summary, setSummary] = useState<AnalyticsSummary>(sampleAnalytics[AnalyticsTimeframe.AllTime]);
-  const [source, setSource] = useState<"sample" | "live">("sample");
+  const [summary, setSummary] = useState<AnalyticsSummary | null>(null);
+  const [failed, setFailed] = useState(false);
 
   useEffect(() => {
     const controller = new AbortController();
-    setSummary({ ...sampleAnalytics[timeframe], currency });
-    setSource("sample");
     const path = `/api/v1/analytics/summary?timeframe=${timeframe}&currency=${currency}`;
     apiGet<AnalyticsSummary>(path)
       .then((live) => {
         if (!controller.signal.aborted) {
           setSummary(live);
-          setSource("live");
+          setFailed(false);
         }
       })
       .catch(() => {
-        if (!controller.signal.aborted) setSource("sample");
+        if (!controller.signal.aborted) setFailed(true);
       });
     return () => controller.abort();
   }, [timeframe, currency]);
+
+  if (summary === null) {
+    return (
+      <section className="space-y-6">
+        <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+          <div>
+            <h2 className="font-sans text-[28px] font-semibold leading-tight tracking-tight md:text-[32px]">
+              Retail Inventory
+            </h2>
+            <p className="mt-1 text-sm text-charcoal/60">
+              {failed ? "Totals could not be loaded." : "Loading totals…"}
+            </p>
+          </div>
+          <SegmentedControl label="Timeframe" value={timeframe} options={options} onChange={setTimeframe} />
+        </div>
+      </section>
+    );
+  }
 
   const split = summary.payment_split.slice(0, 2).map((item, index) => ({
     label: item.method.replace("_", " "),
@@ -58,11 +73,7 @@ export function DashboardPage() {
           <h2 className="font-sans text-[28px] font-semibold leading-tight tracking-tight md:text-[32px]">
             Retail Inventory
           </h2>
-          <p className="mt-1 text-sm text-charcoal/60">
-            {source === "sample"
-              ? "Showing sample figures. Live totals appear when the API is reachable."
-              : `Completed sales in ${summary.currency}.`}
-          </p>
+          <p className="mt-1 text-sm text-charcoal/60">Completed sales in {summary.currency}.</p>
         </div>
         <SegmentedControl label="Timeframe" value={timeframe} options={options} onChange={setTimeframe} />
       </div>

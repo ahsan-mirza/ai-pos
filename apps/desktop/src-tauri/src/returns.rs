@@ -286,7 +286,7 @@ pub fn approve(
     username: &str,
     pin: &str,
 ) -> Result<CashierProfile, String> {
-    let approver = auth::pin_login(db, config, username, pin)?.user;
+    let approver = auth::pin_login(db, config, username, pin)?.session.user;
     if approver.id == session.user.id {
         return Err("Approval must come from a different staff member.".into());
     }

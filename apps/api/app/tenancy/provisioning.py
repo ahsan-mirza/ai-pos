@@ -22,13 +22,13 @@ from app.core.config import Settings
 from app.core.database import build_engine
 from app.models.store import Store
 from app.models.user import User
-from app.services import sample_data
+from app.services import availability, sample_data
 from app.services.rbac_service import super_admin_role_id
 from app.services.settings_service import load_settings
 from app.services.taxonomy_service import ensure_taxonomy
 from app.tenancy import cli, registry
 from app.tenancy.context import TenantRef, use_tenant
-from app.tenancy.models import SignupRequest, Tenant
+from app.tenancy.models import SignupRequest, SignupSlugHold, Tenant
 
 logger = logging.getLogger("ai_pos.provisioning")
 
@@ -70,7 +70,15 @@ def _mark(settings: Settings, request_id: uuid.UUID, key: str, state: str, **fie
         row.steps = [{**step, "state": state} if step["key"] == key else step for step in (row.steps or [])]
         for name, value in fields.items():
             setattr(row, name, value)
+        released = False
+        if fields.get("status") == "FAILED" and row.slug:
+            hold = db.get(SignupSlugHold, row.slug)
+            if hold is not None and hold.signup_id == row.id:
+                db.delete(hold)
+                released = True
         db.commit()
+        if released:
+            availability.note_slug_released()
 
 
 @contextmanager

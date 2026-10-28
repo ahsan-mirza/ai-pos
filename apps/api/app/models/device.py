@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, String, Uuid
+from sqlalchemy import DateTime, ForeignKey, Integer, String, Uuid
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base, TenantScoped, TimestampMixin, tenant_unique
@@ -24,6 +24,9 @@ class Device(TenantScoped, TimestampMixin, Base):
     key_hash: Mapped[str] = mapped_column(String(64))
     key_hint: Mapped[str] = mapped_column(String(12))
     last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # The business-settings generation this register last applied. Behind the current generation means pending.
+    entitlement_revision: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    entitlement_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_by_id: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True), ForeignKey("users.id"), nullable=True)
 

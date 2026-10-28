@@ -5,6 +5,8 @@ import { AddonsPage, BillingPage, PackagesPage, SubscriptionsPage } from "./page
 import { HardwarePage } from "./pages/HardwarePage";
 import { PaymentsPage } from "./pages/PaymentsPage";
 import { MailPage } from "./pages/MailPage";
+import { BusinessTypesPage } from "./pages/BusinessTypesPage";
+import { ModulesPage } from "./pages/ModulesPage";
 import { OverviewPage } from "./pages/OverviewPage";
 import { LoginPage } from "./pages/LoginPage";
 import { RequestsPage } from "./pages/RequestsPage";
@@ -35,6 +37,8 @@ function Console() {
           <Route path="packages" element={<PackagesPage />} />
           <Route path="billing" element={<BillingPage />} />
           <Route path="addons" element={<AddonsPage />} />
+          <Route path="modules" element={<ModulesPage />} />
+          <Route path="business-types" element={<BusinessTypesPage />} />
           <Route path="hardware" element={<HardwarePage />} />
           <Route path="subscriptions" element={<SubscriptionsPage />} />
           <Route path="payments" element={<PaymentsPage />} />

@@ -1,60 +1,9 @@
-import { getCountries, getCountryCallingCode, parsePhoneNumberFromString, type CountryCode } from "libphonenumber-js";
-import * as flagIcons from "country-flag-icons/react/3x2";
+import { getCountryCallingCode, parsePhoneNumberFromString, type CountryCode } from "libphonenumber-js";
 import { ChevronDown, Phone, Search } from "lucide-react";
-import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ComponentType, type SVGProps } from "react";
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
+import { CountryFlag, countryOption, filterCountries } from "./countryOptions";
 import { formatLocal, isValidE164, nationalDigits, placeholderFor, readPhone, toE164 } from "./phone";
-
-/** Countries shown before the alphabetical list. Gulf first, then the other numbers people type here. */
-const PINNED: CountryCode[] = ["AE", "SA", "QA", "KW", "BH", "OM", "PK", "IN", "US", "GB"];
-
-const ALIASES: Partial<Record<CountryCode, string[]>> = {
-  AE: ["uae", "emirates"],
-  SA: ["ksa", "saudi"],
-  QA: ["qat"],
-  OM: ["omn"],
-  BH: ["bhr"],
-  KW: ["kwt"],
-  PK: ["pak"],
-  IN: ["ind"],
-  US: ["usa"],
-  GB: ["uk", "britain"],
-};
-
-interface CountryOption {
-  iso: CountryCode;
-  name: string;
-  dial: string;
-}
-
-const regionNames = new Intl.DisplayNames(["en"], { type: "region" });
-
-function flagEmoji(iso: string): string {
-  return [...iso.toUpperCase()].map((char) => String.fromCodePoint(127397 + char.charCodeAt(0))).join("");
-}
-
-function Flag({ iso }: { iso: string }) {
-  const icons = flagIcons as unknown as Record<string, ComponentType<SVGProps<SVGSVGElement>> | undefined>;
-  const Icon = icons[iso];
-  if (!Icon) {
-    return (
-      <span aria-hidden="true" className="text-base leading-none">
-        {flagEmoji(iso)}
-      </span>
-    );
-  }
-  return <Icon className="h-3.5 w-5 shrink-0 rounded-[2px]" />;
-}
-
-const COUNTRIES: CountryOption[] = getCountries()
-  .map((iso) => ({
-    iso,
-    name: regionNames.of(iso) ?? iso,
-    dial: getCountryCallingCode(iso),
-  }))
-  .sort((left, right) => left.name.localeCompare(right.name));
-
-const BY_ISO = new Map(COUNTRIES.map((country) => [country.iso, country]));
 
 function caretAfterDigits(formatted: string, digitCount: number): number {
   if (digitCount <= 0) return 0;
@@ -68,26 +17,6 @@ function caretAfterDigits(formatted: string, digitCount: number): number {
   return formatted.length;
 }
 
-function matches(country: CountryOption, query: string): boolean {
-  if (!query) return true;
-  const text = query.toLowerCase();
-  const digits = text.replace(/\D/g, "");
-  if (country.name.toLowerCase().includes(text)) return true;
-  if (country.iso.toLowerCase().includes(text)) return true;
-  if (digits && country.dial.includes(digits)) return true;
-  return (ALIASES[country.iso] ?? []).some((alias) => alias.includes(text));
-}
-
-function listed(query: string): { pinned: CountryOption[]; rest: CountryOption[] } {
-  const pinned = PINNED.map((iso) => BY_ISO.get(iso)).filter((country): country is CountryOption => country !== undefined);
-  if (!query.trim()) {
-    const pinnedSet = new Set<CountryCode>(PINNED);
-    return { pinned: pinned.filter((country) => matches(country, query)), rest: COUNTRIES.filter((country) => !pinnedSet.has(country.iso)) };
-  }
-  const found = COUNTRIES.filter((country) => matches(country, query));
-  return { pinned: [], rest: found };
-}
-
 export function PhoneField({
   label,
   value,
@@ -97,7 +26,10 @@ export function PhoneField({
   required = false,
   disabled = false,
   defaultCountry = "AE",
+  selectedCountry,
+  onCountryChange,
   tone = "default",
+  endAdornment,
 }: {
   label: string;
   /** E.164, or an empty string when the visitor has not typed a number yet. */
@@ -108,8 +40,13 @@ export function PhoneField({
   required?: boolean;
   disabled?: boolean;
   defaultCountry?: CountryCode;
+  /** When set, the dial code follows this country. Choosing a code reports it back. */
+  selectedCountry?: CountryCode;
+  onCountryChange?: (country: CountryCode) => void;
   /** Marketing forms sit on a white card. The portal keeps the default field. */
   tone?: "default" | "marketing";
+  /** Sits inside the right edge. Room is reserved so the number does not move when it appears. */
+  endAdornment?: ReactNode;
 }) {
   const inputId = useId();
   const listId = useId();
@@ -120,8 +57,9 @@ export function PhoneField({
   const searchRef = useRef<HTMLInputElement>(null);
   const emitted = useRef(value);
   const caretDigits = useRef<number | null>(null);
-  const initial = readPhone(value, defaultCountry);
-  const [country, setCountry] = useState<CountryCode>(initial.country);
+  const initial = readPhone(value, selectedCountry ?? defaultCountry);
+  const [internalCountry, setInternalCountry] = useState<CountryCode>(initial.country);
+  const country = selectedCountry ?? internalCountry;
   const [national, setNational] = useState(initial.national);
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -129,8 +67,8 @@ export function PhoneField({
   const [touched, setTouched] = useState(false);
   const [menuBox, setMenuBox] = useState<{ top: number; left: number; width: number } | null>(null);
 
-  const selected = BY_ISO.get(country) ?? COUNTRIES[0];
-  const groups = useMemo(() => listed(query), [query]);
+  const selected = countryOption(country) ?? countryOption("AE");
+  const groups = useMemo(() => filterCountries(query), [query]);
   const options = useMemo(() => [...groups.pinned, ...groups.rest], [groups]);
   const ownError =
     touched && required && value === ""
@@ -147,7 +85,7 @@ export function PhoneField({
     const shown = canonical || value;
     emitted.current = shown;
     const next = readPhone(shown, defaultCountry);
-    setCountry(next.country);
+    setInternalCountry(next.country);
     setNational(next.national);
     if (canonical && canonical !== value) onChange(canonical);
   }, [value, defaultCountry, onChange]);
@@ -212,11 +150,21 @@ export function PhoneField({
     onChange(next);
   };
 
+  const formattedFor = useRef(country);
+  useEffect(() => {
+    if (formattedFor.current === country) return;
+    formattedFor.current = country;
+    setInternalCountry(country);
+    emit(country, nationalDigits(national, country));
+  }, [country]);
+
   const choose = (next: CountryCode) => {
-    setCountry(next);
+    formattedFor.current = next;
+    setInternalCountry(next);
     setOpen(false);
     setQuery("");
     emit(next, nationalDigits(national, next));
+    onCountryChange?.(next);
     inputRef.current?.focus();
   };
 
@@ -224,7 +172,9 @@ export function PhoneField({
     if (raw.trim().startsWith("+") || raw.trim().startsWith("00")) {
       const parsed = parsePhoneNumberFromString(raw.trim().startsWith("00") ? `+${raw.trim().slice(2)}` : raw);
       if (parsed?.country) {
-        setCountry(parsed.country);
+        formattedFor.current = parsed.country;
+        setInternalCountry(parsed.country);
+        onCountryChange?.(parsed.country);
         caretDigits.current = parsed.nationalNumber.length;
         emit(parsed.country, parsed.nationalNumber);
         return;
@@ -282,7 +232,7 @@ export function PhoneField({
               : "flex shrink-0 items-center gap-1.5 px-3 py-3 text-sm disabled:cursor-not-allowed"
           }
         >
-          <Flag iso={selected.iso} />
+          <CountryFlag iso={selected.iso} />
           <span>+{selected.dial}</span>
           <ChevronDown className={`h-4 w-4 ${marketing ? "text-slate-400" : "text-gray-400"}`} aria-hidden="true" />
         </button>
@@ -303,10 +253,11 @@ export function PhoneField({
           onChange={(event) => onNational(event.target.value, event.target.selectionStart ?? event.target.value.length)}
           className={
             marketing
-              ? "min-w-0 w-full flex-1 appearance-none bg-transparent px-3 py-3 text-sm text-slate-900 outline-none placeholder:text-slate-400 disabled:cursor-not-allowed [background:transparent]"
-              : "min-w-0 flex-1 bg-transparent px-3 py-3 text-sm font-normal text-charcoal outline-none placeholder:text-charcoal/40 disabled:cursor-not-allowed"
+              ? `min-w-0 w-full flex-1 appearance-none bg-transparent py-3 pl-3 text-sm text-slate-900 outline-none placeholder:text-slate-400 disabled:cursor-not-allowed [background:transparent] ${endAdornment ? "pr-11" : "pr-3"}`
+              : `min-w-0 flex-1 bg-transparent py-3 pl-3 text-sm font-normal text-charcoal outline-none placeholder:text-charcoal/40 disabled:cursor-not-allowed ${endAdornment ? "pr-11" : "pr-3"}`
           }
         />
+        {endAdornment}
         {open && menuBox
           ? createPortal(
               <div
@@ -367,7 +318,7 @@ export function PhoneField({
                         index === highlight ? (marketing ? "bg-slate-50" : "bg-surface") : ""
                       }`}
                     >
-                      <Flag iso={option.iso} />
+                      <CountryFlag iso={option.iso} />
                       <span className="min-w-0 flex-1 truncate">{option.name}</span>
                       <span className={marketing ? "text-slate-500" : "text-charcoal/50"}>(+{option.dial})</span>
                     </button>
