@@ -12,6 +12,7 @@ import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { apiGet, apiPost } from "../../lib/api";
 import { useAuth } from "../../lib/auth";
+import { useCurrency } from "../../lib/currency";
 import { portalHomePath } from "../../lib/portal-home";
 import { errorMessage } from "../users/api";
 
@@ -25,6 +26,7 @@ const time = (value: string) => new Date(value).toLocaleTimeString(undefined, { 
 const hours = (minutes: number) => `${Math.floor(minutes / 60)}h ${String(minutes % 60).padStart(2, "0")}m`;
 
 export function ManagerMobilePage() {
+  const { currency: businessCurrency } = useCurrency();
   const { user, can, logout } = useAuth();
   const [tab, setTab] = useState<Tab>("today");
   const [board, setBoard] = useState<ManagerDashboard | null>(null);
@@ -99,9 +101,9 @@ export function ManagerMobilePage() {
       <main className="flex-1 space-y-4 px-4 pb-28 pt-4">
         {error ? <p className="rounded-2xl bg-danger/10 px-4 py-3 text-sm font-medium text-danger">{error}</p> : null}
         {tab === "today" ? <TodayView board={board} onOpen={setTab} /> : null}
-        {tab === "approvals" ? <ApprovalsView approvals={approvals} currency={board?.currency ?? "AED"} onChanged={() => void loadApprovals()} /> : null}
+        {tab === "approvals" ? <ApprovalsView approvals={approvals} currency={board?.currency ?? businessCurrency} onChanged={() => void loadApprovals()} /> : null}
         {tab === "staff" ? <TimesheetsView onChanged={() => void loadBoard()} /> : null}
-        {tab === "credit" ? <CreditView currency={board?.currency ?? "AED"} onChanged={() => void loadBoard()} /> : null}
+        {tab === "credit" ? <CreditView currency={board?.currency ?? businessCurrency} onChanged={() => void loadBoard()} /> : null}
       </main>
 
       <nav className="fixed inset-x-0 bottom-0 z-10 mx-auto flex max-w-lg border-t border-line bg-white pb-[env(safe-area-inset-bottom)]">

@@ -42,6 +42,10 @@ export interface ReceiptProfile {
 
 export interface BusinessSettings {
   currency: CurrencyCode;
+  /** Canonical tenant store code used at sign-in. */
+  store_code?: string;
+  /** ISO country recorded at signup. Null when the store was created before this was stored. */
+  country?: string | null;
   supported_currencies: CurrencyCode[];
   updated_at: string;
   updated_by_name: string | null;

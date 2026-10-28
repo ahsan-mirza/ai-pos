@@ -574,6 +574,14 @@ async fn refresh_products(
 }
 
 #[tauri::command]
+async fn catalog_revision(state: tauri::State<'_, AppState>) -> Result<String, String> {
+    let config = state.config.clone();
+    tauri::async_runtime::spawn_blocking(move || sync::catalog_revision(&config))
+        .await
+        .map_err(|err| err.to_string())?
+}
+
+#[tauri::command]
 fn local_product_image(state: tauri::State<AppState>, url: String) -> Option<String> {
     media_cache::local_path(&state.media_dir, &url).map(|path| path.to_string_lossy().into_owned())
 }
@@ -710,6 +718,7 @@ pub fn run() {
             batch_status,
             flush_sync,
             refresh_products,
+            catalog_revision,
             local_product_image,
             business_currency,
             approve_manager,

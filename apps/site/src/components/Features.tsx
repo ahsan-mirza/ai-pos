@@ -50,7 +50,7 @@ export function Features() {
   return (
     <section id="features" className="mx-auto max-w-page px-4 py-16 sm:px-6 lg:px-8 lg:py-20">
       <SectionHeading kicker="Features" title="What the product does today.">
-        These are the workflows already in the register and the admin portal. A module appears only when that business profile includes it.
+        These are the workflows already in the register and the admin portal. A module appears when that business type includes it, or when a compatible optional module is added.
       </SectionHeading>
       <motion.div className="mt-8 grid gap-4 sm:grid-cols-2" initial="hidden" whileInView="show" viewport={viewport} variants={stagger}>
         {FEATURES.map((feature) => (

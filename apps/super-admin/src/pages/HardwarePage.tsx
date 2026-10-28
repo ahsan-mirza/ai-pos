@@ -1,6 +1,7 @@
 import type { HardwareItem } from "@ai-pos/shared-types";
-import { DataTable, type DataTableColumn } from "@ai-pos/ui";
+import { DataTable, Select, type DataTableColumn } from "@ai-pos/ui";
 import { useCallback, useEffect, useState } from "react";
+import { FilterSearch, FilterSlot, PageHeader } from "../components/PageHeader";
 import { ErrorNote, Field, GhostButton, Modal, PrimaryButton } from "../components/ui";
 import { api, errorText } from "../lib/api";
 import { money } from "../lib/format";
@@ -103,17 +104,63 @@ export function HardwarePage() {
   const { operator } = useSession();
   const admin = operator?.role === "ADMIN";
   const [tab, setTab] = useState<"catalogue" | "orders">("catalogue");
+  const [query, setQuery] = useState("");
+  const [payment, setPayment] = useState("");
+  const [fulfillment, setFulfillment] = useState("");
   return (
     <section>
-      <h1 className="text-2xl font-semibold">Hardware</h1>
-      <p className="mt-1 text-sm text-charcoal/60">
-        Optional products a store can lease or buy. A refundable deposit is not monthly revenue.
-      </p>
-      <div className="mt-4 flex gap-2">
-        <GhostButton onClick={() => setTab("catalogue")}>Catalogue</GhostButton>
-        <GhostButton onClick={() => setTab("orders")}>Orders</GhostButton>
-      </div>
-      {tab === "catalogue" ? <Catalogue admin={admin} /> : <Orders admin={admin} />}
+      <PageHeader
+        title="Hardware"
+        description="Optional products a store can lease or buy. A refundable deposit is not monthly revenue."
+        controls={
+          <>
+            <div className="inline-flex gap-2" role="group" aria-label="Hardware section">
+              <GhostButton aria-pressed={tab === "catalogue"} onClick={() => setTab("catalogue")}>
+                Catalogue
+              </GhostButton>
+              <GhostButton aria-pressed={tab === "orders"} onClick={() => setTab("orders")}>
+                Orders
+              </GhostButton>
+            </div>
+            {tab === "orders" ? (
+              <>
+                <FilterSearch label="Search orders" value={query} onChange={setQuery} placeholder="Search orders" />
+                <FilterSlot>
+                  <Select
+                    aria-label="Payment"
+                    value={payment}
+                    onChange={setPayment}
+                    options={[
+                      { value: "", label: "Any payment" },
+                      { value: "awaiting_payment", label: "Awaiting payment" },
+                      { value: "under_review", label: "Under review" },
+                      { value: "paid", label: "Paid" },
+                      { value: "canceled", label: "Canceled" },
+                    ]}
+                  />
+                </FilterSlot>
+                <FilterSlot wide>
+                  <Select
+                    aria-label="Fulfillment"
+                    value={fulfillment}
+                    onChange={setFulfillment}
+                    options={[
+                      { value: "", label: "Any fulfillment" },
+                      { value: "awaiting_payment", label: "Awaiting payment" },
+                      { value: "awaiting_fulfillment", label: "Awaiting fulfillment" },
+                      { value: "partial", label: "Partially fulfilled" },
+                      { value: "fulfilled", label: "Fulfilled" },
+                      { value: "canceled", label: "Canceled" },
+                      { value: "returned", label: "Returned" },
+                    ]}
+                  />
+                </FilterSlot>
+              </>
+            ) : null}
+          </>
+        }
+      />
+      {tab === "catalogue" ? <Catalogue admin={admin} /> : <Orders admin={admin} query={query} payment={payment} fulfillment={fulfillment} />}
     </section>
   );
 }
@@ -318,15 +365,28 @@ function ItemEditor({
   );
 }
 
-function Orders({ admin }: { admin: boolean }) {
+function Orders({
+  admin,
+  query,
+  payment,
+  fulfillment,
+}: {
+  admin: boolean;
+  query: string;
+  payment: string;
+  fulfillment: string;
+}) {
   const [rows, setRows] = useState<HardwareOrder[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
-  const [query, setQuery] = useState("");
-  const [payment, setPayment] = useState("");
-  const [fulfillment, setFulfillment] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const filterKey = `${query}\0${payment}\0${fulfillment}`;
+  const [seenFilters, setSeenFilters] = useState(filterKey);
+  if (seenFilters !== filterKey) {
+    setSeenFilters(filterKey);
+    setPage(1);
+  }
   const [loading, setLoading] = useState(true);
   const [open, setOpen] = useState<HardwareOrder | null>(null);
   const load = useCallback(async () => {
@@ -377,32 +437,7 @@ function Orders({ admin }: { admin: boolean }) {
     },
   ];
   return (
-    <div className="mt-6">
-      <div className="mb-3 grid gap-2 sm:grid-cols-3">
-        <Field label="Search" value={query} onChange={(event) => { setQuery(event.target.value); setPage(1); }} />
-        <label className="text-sm">
-          Payment
-          <select className="mt-1 w-full rounded-xl border border-line bg-white px-3 py-2" value={payment} onChange={(event) => setPayment(event.target.value)}>
-            <option value="">Any</option>
-            <option value="awaiting_payment">Awaiting payment</option>
-            <option value="under_review">Under review</option>
-            <option value="paid">Paid</option>
-            <option value="canceled">Canceled</option>
-          </select>
-        </label>
-        <label className="text-sm">
-          Fulfillment
-          <select className="mt-1 w-full rounded-xl border border-line bg-white px-3 py-2" value={fulfillment} onChange={(event) => setFulfillment(event.target.value)}>
-            <option value="">Any</option>
-            <option value="awaiting_payment">Awaiting payment</option>
-            <option value="awaiting_fulfillment">Awaiting fulfillment</option>
-            <option value="partial">Partially fulfilled</option>
-            <option value="fulfilled">Fulfilled</option>
-            <option value="canceled">Canceled</option>
-            <option value="returned">Returned</option>
-          </select>
-        </label>
-      </div>
+    <div>
       <ErrorNote message={error} />
       <DataTable
         aria-label="Hardware orders"

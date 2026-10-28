@@ -1,3 +1,5 @@
+import { normalizeStoreCode } from "@ai-pos/shared-types";
+
 function required(name: keyof ImportMetaEnv): string {
   const value = import.meta.env[name];
   if (typeof value !== "string" || value.trim() === "") {
@@ -32,7 +34,7 @@ const tenantSlug = (tenantHost() ?? configuredTenant)?.split(".")[0] ?? null;
 /** Store code typed on the sign-in screen when the portal is opened by a public IP (no subdomain). */
 function rememberedStoreCode(): string | null {
   if (typeof localStorage === "undefined") return null;
-  const value = localStorage.getItem(STORE_CODE_KEY)?.trim().toLowerCase() ?? "";
+  const value = normalizeStoreCode(localStorage.getItem(STORE_CODE_KEY) ?? "");
   return value === "" ? null : value;
 }
 
@@ -51,7 +53,7 @@ function needsStoreCode(): boolean {
 }
 
 export function saveStoreCode(code: string): void {
-  localStorage.setItem(STORE_CODE_KEY, code.trim().toLowerCase());
+  localStorage.setItem(STORE_CODE_KEY, normalizeStoreCode(code));
 }
 
 /** "same-origin" follows the address in the browser (http://<vm-public-ip>). "{tenant}" follows a subdomain. */

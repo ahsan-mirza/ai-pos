@@ -33,6 +33,7 @@ class Outgoing:
     subject: str
     body: str
     attachment: tuple[str, bytes] | None = None
+    html: str | None = None
 
 
 def _require(value: str | None, name: str) -> str:
@@ -79,6 +80,21 @@ def send_http_sms(settings: Settings, message: Outgoing) -> str:
         return ""
 
 
+def build_email(message: Outgoing, sender: str) -> EmailMessage:
+    """Plain text, with an HTML alternative and an optional PDF. The plain part stays first."""
+    email = EmailMessage()
+    email["From"] = sender
+    email["To"] = message.to
+    email["Subject"] = message.subject or "Message"
+    email.set_content(message.body)
+    if message.html:
+        email.add_alternative(message.html, subtype="html")
+    if message.attachment is not None:
+        name, content = message.attachment
+        email.add_attachment(content, maintype="application", subtype="pdf", filename=name)
+    return email
+
+
 def transmit_smtp(
     message: Outgoing,
     *,
@@ -90,14 +106,7 @@ def transmit_smtp(
     security: str,
 ) -> str:
     """security is ssl (port 465), starttls (port 587), or none."""
-    email = EmailMessage()
-    email["From"] = sender
-    email["To"] = message.to
-    email["Subject"] = message.subject or "Message"
-    email.set_content(message.body)
-    if message.attachment is not None:
-        name, content = message.attachment
-        email.add_attachment(content, maintype="application", subtype="pdf", filename=name)
+    email = build_email(message, sender)
     client_cls = smtplib.SMTP_SSL if security == "ssl" else smtplib.SMTP
     try:
         with client_cls(host, port, timeout=20) as client:

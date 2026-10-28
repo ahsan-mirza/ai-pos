@@ -1,6 +1,6 @@
 import uuid
 
-from sqlalchemy import and_, or_, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.config import Settings
@@ -19,6 +19,15 @@ from app.services.inventory import products_out
 
 def _visible(row_store_id: uuid.UUID, scope: uuid.UUID | None) -> bool:
     return scope is None or row_store_id == scope
+
+
+def catalog_revision(db: Session) -> tuple[object, int]:
+    """Monotonic catalog cursor: the newest product timestamp and how many products exist.
+
+    A register compares this with the cursor it last applied and downloads the catalog only when it moved.
+    """
+    stamp, count = db.execute(select(func.max(Product.updated_at), func.count()).select_from(Product)).one()
+    return stamp, int(count or 0)
 
 
 def list_stores(db: Session, *, limit: int, store_scope: uuid.UUID | None = None) -> list[StoreOut]:

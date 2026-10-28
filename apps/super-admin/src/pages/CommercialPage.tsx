@@ -7,8 +7,9 @@ import type {
   ModuleCatalogueItem,
   StoreSubscription,
 } from "@ai-pos/shared-types";
-import { DataTable, type DataTableColumn } from "@ai-pos/ui";
+import { DataTable, Select, type DataTableColumn } from "@ai-pos/ui";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { FilterSearch, FilterSlot, PageHeader } from "../components/PageHeader";
 import { ErrorNote, Field, GhostButton, Modal, PrimaryButton } from "../components/ui";
 import { api, errorText } from "../lib/api";
 import { money, when } from "../lib/format";
@@ -52,8 +53,7 @@ export function PackagesPage() {
   const [editing, setEditing] = useState<BillingPlan | null>(null);
   return (
     <section>
-      <h1 className="text-2xl font-semibold">Packages</h1>
-      <p className="mt-1 text-sm text-charcoal/60">Monthly prices before the billing-cycle discount. Checkout reads these rows.</p>
+      <PageHeader title="Packages" description="Monthly prices before the billing-cycle discount. Checkout reads these rows." />
       <ErrorNote message={error} />
       <ul className="mt-6 grid gap-3">
         {(catalog?.plans ?? []).map((plan) => (
@@ -156,8 +156,10 @@ export function BillingPage() {
   const [fee, setFee] = useState<BillingFee | null>(null);
   return (
     <section>
-      <h1 className="text-2xl font-semibold">Billing</h1>
-      <p className="mt-1 text-sm text-charcoal/60">The cycle discount applies to recurring amounts. The onboarding fee stays at face value.</p>
+      <PageHeader
+        title="Billing"
+        description="The cycle discount applies to recurring amounts. The onboarding fee stays at face value."
+      />
       <ErrorNote message={error} />
       <ul className="mt-6 grid gap-3">
         {(catalog?.cycles ?? []).map((row) => (
@@ -319,8 +321,10 @@ export function AddonsPage() {
   const [editing, setEditing] = useState<BillingAddon | null>(null);
   return (
     <section>
-      <h1 className="text-2xl font-semibold">Add-ons</h1>
-      <p className="mt-1 text-sm text-charcoal/60">Lease rent is recurring. A refundable deposit and the onboarding fee are charged once.</p>
+      <PageHeader
+        title="Add-ons"
+        description="Lease rent is recurring. A refundable deposit and the onboarding fee are charged once."
+      />
       <ErrorNote message={error} />
       <ul className="mt-6 grid gap-3">
         {(catalog?.addons ?? []).map((row) => (
@@ -512,30 +516,30 @@ export function SubscriptionsPage() {
   ];
   return (
     <section>
-      <h1 className="text-2xl font-semibold">Subscriptions</h1>
-      <p className="mt-1 text-sm text-charcoal/60">Assign a package from the store's drawer. The next amount uses today's catalog.</p>
-      <div className="mt-4 flex flex-wrap gap-3">
-        <input
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-          placeholder="Search store or package"
-          aria-label="Search subscriptions"
-          className="h-10 w-64 rounded-full border border-line px-4 text-sm"
-        />
-        <select
-          aria-label="Subscription status"
-          value={status}
-          onChange={(event) => setStatus(event.target.value)}
-          className="h-10 rounded-full border border-line bg-white px-3 text-sm"
-        >
-          <option value="">All statuses</option>
-          <option value="trialing">Trialing</option>
-          <option value="active">Active</option>
-          <option value="past_due">Past due</option>
-          <option value="canceled">Canceled</option>
-        </select>
-      </div>
-      <div className="mt-4">
+      <PageHeader
+        title="Subscriptions"
+        description="Assign a package from the store's drawer. The next amount uses today's catalog."
+        controls={
+          <>
+            <FilterSearch label="Search subscriptions" value={query} onChange={setQuery} placeholder="Search store or package" />
+            <FilterSlot>
+              <Select
+                aria-label="Subscription status"
+                value={status}
+                onChange={setStatus}
+                options={[
+                  { value: "", label: "All statuses" },
+                  { value: "trialing", label: "Trialing" },
+                  { value: "active", label: "Active" },
+                  { value: "past_due", label: "Past due" },
+                  { value: "canceled", label: "Canceled" },
+                ]}
+              />
+            </FilterSlot>
+          </>
+        }
+      />
+      <div>
         <DataTable
           aria-label="Subscriptions"
           minWidth="760px"

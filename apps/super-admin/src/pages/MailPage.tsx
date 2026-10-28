@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Select } from "@ai-pos/ui";
+import { PageHeader } from "../components/PageHeader";
 import { ErrorNote, Field, PrimaryButton } from "../components/ui";
 import { ConsoleError, api, errorText } from "../lib/api";
 import { useSession } from "../lib/session";
@@ -224,11 +225,10 @@ export function MailPage() {
 
   return (
     <section className="max-w-xl">
-      <h1 className="text-2xl font-semibold">Email</h1>
-      <p className="mt-1 text-sm text-charcoal/60">
-        The mailbox that sends password-reset codes to store users. For Spacemail use mail.spacemail.com, port 465, and SSL.
-        Port 587 uses STARTTLS.
-      </p>
+      <PageHeader
+        title="Email"
+        description="The mailbox that sends password-reset codes to store users. For Spacemail use mail.spacemail.com, port 465, and SSL. Port 587 uses STARTTLS."
+      />
       <div className="mt-6 space-y-4 rounded-3xl border border-line bg-white p-5">
         <label className="flex items-center gap-2 text-sm font-medium">
           <input

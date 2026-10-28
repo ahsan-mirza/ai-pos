@@ -1,5 +1,6 @@
 import { isValidE164, PhoneField } from "@ai-pos/ui";
 import { useEffect, useState } from "react";
+import { PageHeader } from "../components/PageHeader";
 import { ErrorNote, Field, GhostButton, PrimaryButton } from "../components/ui";
 import { ConsoleError, api, errorText } from "../lib/api";
 import { useSession } from "../lib/session";
@@ -163,11 +164,10 @@ export function WhatsAppPage() {
 
   return (
     <section className="max-w-xl" aria-busy={busy}>
-      <h1 className="text-2xl font-semibold">WhatsApp Sales Contact</h1>
-      <p className="mt-1 text-sm text-charcoal/60">
-        The landing-page demo form, the floating button, and the site footer use this WhatsApp number. The footer also
-        shows the sales email. The visitor still has to press Send in WhatsApp.
-      </p>
+      <PageHeader
+        title="WhatsApp Sales Contact"
+        description="The landing-page demo form, the floating button, and the site footer use this WhatsApp number. The footer also shows the sales email. The visitor still has to press Send in WhatsApp."
+      />
       {!ready ? (
         <p className="mt-6 text-sm text-charcoal/60">Loading…</p>
       ) : !loaded ? (

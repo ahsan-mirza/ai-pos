@@ -30,7 +30,7 @@ import { useShell } from "../../components/shell/ShellContext";
 import { ui } from "../../components/shell/tokens";
 import { useCapabilities } from "../../lib/capabilities";
 import type { CashierSession } from "../auth/session";
-import { loadCatalog, seedProducts } from "../checkout/catalog";
+import { loadCatalog, seedProducts, useCatalogUpdates } from "../checkout/catalog";
 import { activeStore, useBusinessCurrency } from "../checkout/currency";
 import { combosFor, groupsFor, refreshMenu, useMenu } from "../checkout/menu";
 import { ComboBuilderModal } from "../checkout/ComboBuilderModal";
@@ -266,10 +266,15 @@ export function OrdersPage({ session }: { session: CashierSession }) {
     };
   }, [refresh, storeId]);
 
-  useEffect(() => {
+  const refreshCatalog = useCallback(() => {
     void loadCatalog().then((catalog) => setProducts(catalog.products));
+  }, []);
+  useCatalogUpdates(refreshCatalog);
+
+  useEffect(() => {
+    refreshCatalog();
     if (capabilities.enabled.has(Capability.MenuModifiers)) void refreshMenu();
-  }, [capabilities.enabled]);
+  }, [capabilities.enabled, refreshCatalog]);
 
   useEffect(() => {
     if (channelsOn) void channelsApi.list().then(setChannels).catch(() => setChannels([]));

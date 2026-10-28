@@ -104,6 +104,8 @@ export interface User {
   updated_at: string;
   /** Active purchased add-ons this user may use. */
   addon_modules?: string[];
+  /** Media URL for this user's photo. Null when they have not uploaded one. */
+  avatar_url?: string | null;
 }
 
 export interface PasswordLoginRequest {

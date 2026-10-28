@@ -15,12 +15,14 @@ interface PhotoGalleryProps {
   /** Shown when there are no photos of its own (a variant falls back to its model's photo). */
   fallbackUrl?: string | null;
   onChange?: () => void;
+  /** Bump this after photos are uploaded elsewhere so the gallery reloads. */
+  version?: number;
 }
 
 const ACCEPT = "image/jpeg,image/png,image/webp";
 
 /** Upload, order and tag product photos. Each file is compressed to WebP here, then stored as WebP on the server. */
-export function PhotoGallery({ path, canManage, colours = [], fallbackUrl = null, onChange }: PhotoGalleryProps) {
+export function PhotoGallery({ path, canManage, colours = [], fallbackUrl = null, onChange, version = 0 }: PhotoGalleryProps) {
   const [images, setImages] = useState<ProductImage[] | null>(null);
   const [colour, setColour] = useState("");
   const [busy, setBusy] = useState(false);
@@ -37,7 +39,7 @@ export function PhotoGallery({ path, canManage, colours = [], fallbackUrl = null
 
   useEffect(() => {
     void load();
-  }, [load]);
+  }, [load, version]);
 
   const changed = async () => {
     await load();
@@ -81,7 +83,10 @@ export function PhotoGallery({ path, canManage, colours = [], fallbackUrl = null
   return (
     <section>
       <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-        <h4 className="text-xs font-semibold uppercase tracking-wide text-charcoal/50">Photos</h4>
+        <div>
+          <h4 className="text-xs font-semibold uppercase tracking-wide text-charcoal/50">Photos</h4>
+          <p className="text-xs text-charcoal/50">The main photo is the one shown on the register.</p>
+        </div>
         {canManage ? (
           <div className="flex items-center gap-2">
             {colours.length ? (
@@ -129,11 +134,11 @@ export function PhotoGallery({ path, canManage, colours = [], fallbackUrl = null
       ) : (
         <ul className="grid grid-cols-3 gap-2 sm:grid-cols-4">
           {(images ?? []).map((image) => (
-            <li key={image.id} className="group relative overflow-hidden rounded-2xl border border-line bg-surface">
+            <li key={image.id} className="relative overflow-hidden rounded-2xl border border-line bg-surface">
               <img src={image.thumb_url} alt="" loading="lazy" className="aspect-square w-full object-cover" />
               <div className="absolute inset-x-1 top-1 flex justify-between gap-1">
                 {image.is_primary ? (
-                  <span className="rounded-full bg-accent px-2 py-0.5 text-[10px] font-semibold text-white">Cover</span>
+                  <span className="rounded-full bg-accent px-2 py-0.5 text-[10px] font-semibold text-white">Main</span>
                 ) : (
                   <span />
                 )}
@@ -144,12 +149,12 @@ export function PhotoGallery({ path, canManage, colours = [], fallbackUrl = null
                 ) : null}
               </div>
               {canManage ? (
-                <div className="absolute inset-x-1 bottom-1 flex justify-end gap-1 opacity-0 transition group-focus-within:opacity-100 group-hover:opacity-100">
+                <div className="absolute inset-x-1 bottom-1 flex justify-end gap-1">
                   {!image.is_primary ? (
                     <button
                       type="button"
-                      aria-label="Use as cover"
-                      title="Use as cover"
+                      aria-label="Use as the main photo"
+                      title="Use as the main photo"
                       disabled={busy}
                       onClick={() =>
                         void act(

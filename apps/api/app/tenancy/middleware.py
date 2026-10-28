@@ -19,6 +19,7 @@ OPEN_PATHS = (
     "/redoc",
     "/openapi.json",
     "/api/v1/signup",
+    "/api/v1/auth/recover-store-code",
     "/api/v1/super-admin",
     "/media/",
     "/api/v1/billing/public-catalog",

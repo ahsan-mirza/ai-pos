@@ -93,6 +93,8 @@ export function SidebarNav({ busy, onNavigate, onLock }: SidebarNavProps) {
   const [tool, setTool] = useState<Tool | null>(null);
   const [products, setProducts] = useState<ProductUpsert[] | null>(null);
   const [rejected, setRejected] = useState(0);
+  const [photoFailed, setPhotoFailed] = useState(false);
+  const avatarUrl = session.user.avatar_url ?? null;
   const desktop = inTauri();
   const { enabled, profile, foodAndBeverage } = useCapabilities();
   const spec = profileSpec(profile);
@@ -105,6 +107,8 @@ export function SidebarNav({ busy, onNavigate, onLock }: SidebarNavProps) {
     .filter((item) => allows(item.audience) && (item.capability === undefined || enabled.has(item.capability)))
     .map((item) => (item.id === "settings" ? { ...item, label: spec.settingsLabel } : item));
   const who = `${session.user.full_name} · ${session.user.role_name}${session.mode === "offline" ? " · offline unlock" : ""}`;
+
+  useEffect(() => setPhotoFailed(false), [avatarUrl]);
 
   useEffect(() => {
     if (!desktop) return;
@@ -260,8 +264,17 @@ export function SidebarNav({ busy, onNavigate, onLock }: SidebarNavProps) {
             }`}
             title={collapsed ? undefined : who}
           >
-            <span className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary-500/15 text-xs font-bold text-primary-600 ring-1 ring-primary-500/20 dark:text-primary-400">
-              {initialsOf(session.user.full_name)}
+            <span className="relative flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-primary-500/15 text-xs font-bold text-primary-600 ring-1 ring-primary-500/20 dark:text-primary-400">
+              {avatarUrl && !photoFailed ? (
+                <img
+                  src={avatarUrl}
+                  alt=""
+                  className="h-full w-full object-cover"
+                  onError={() => setPhotoFailed(true)}
+                />
+              ) : (
+                initialsOf(session.user.full_name)
+              )}
               {session.mode === "offline" ? (
                 <span className="absolute -right-0.5 -top-0.5 h-3 w-3 rounded-full border-2 border-white bg-amber-500 dark:border-zinc-900" />
               ) : null}

@@ -451,6 +451,10 @@ def _transfer_out(db, row) -> TransferOut:
         currency=invoice.currency if invoice else "AED",
         transferred_on=row.transferred_on,
         bank_reference=row.bank_reference,
+        sending_bank=row.sending_bank,
+        plan_code=invoice.plan_code if invoice else "",
+        cycle_code=invoice.cycle_code if invoice else "",
+        tenant_slug=tenant.slug if tenant else "",
         created_at=row.created_at,
         decision_reason=row.decision_reason,
     )
@@ -518,6 +522,25 @@ def reject_transfer(transfer_id: uuid.UUID, payload: RejectIn, operator: Console
     with registry.control_session(settings) as db:
         row = transfers.reject(db, operator, transfer_id, payload.reason)
         return _transfer_out(db, row)
+
+
+@router.post("/billing/transfers/{transfer_id}/reopen", response_model=TransferOut)
+def reopen_transfer(transfer_id: uuid.UUID, payload: RejectIn, operator: ConsoleAdmin, settings: Config) -> TransferOut:
+    with registry.control_session(settings) as db:
+        row = transfers.reopen(db, operator, transfer_id, payload.reason)
+        return _transfer_out(db, row)
+
+
+@router.post("/billing/transfers/{transfer_id}/revoke", response_model=PaymentOut)
+def revoke_transfer(transfer_id: uuid.UUID, payload: RejectIn, operator: ConsoleAdmin, settings: Config) -> PaymentOut:
+    with registry.control_session(settings) as db:
+        payment = transfers.revoke(db, operator, settings, transfer_id, payload.reason)
+        return PaymentOut(
+            id=payment.id,
+            invoice_id=payment.invoice_id,
+            amount_fils=payment.amount_fils,
+            bank_reference=payment.bank_reference,
+        )
 
 
 @router.get("/subscriptions", response_model=list[SubscriptionOut])

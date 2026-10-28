@@ -21,6 +21,7 @@ from app.schemas.messaging import (
     TemplateWrite,
 )
 from app.services import race
+from app.services.email_brand import notice_html
 from app.services.message_defaults import DEFAULT_EVENTS, DEFAULT_TEMPLATES
 from app.services.messaging_providers import CHANNEL_PROVIDERS, Outgoing, ProviderError, deliver
 from app.services.settings_service import load_settings
@@ -158,11 +159,19 @@ def dispatch_due(db: Session, settings: Settings, limit: int = 50) -> dict[str, 
         message.provider = provider
         message.attempts += 1
         try:
+            html_body = None
+            if message.channel == "email" and message.body:
+                html_body = notice_html(
+                    heading=message.subject or "AxizPOS",
+                    body=message.body,
+                    support_email=settings.support_email,
+                )
             outgoing = Outgoing(
                 to=message.to_address,
                 subject=message.subject,
                 body=message.body,
                 attachment=_attachment(db, settings, message),
+                html=html_body,
             )
             message.provider_message_id = deliver(settings, provider, outgoing)[:120] or None
             message.status = "SENT"

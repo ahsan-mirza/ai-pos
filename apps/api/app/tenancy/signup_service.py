@@ -30,7 +30,7 @@ from app.schemas.signup import (
     SignupStore,
     SlugCheck,
 )
-from app.services import availability, messaging_providers
+from app.services import availability, email_brand, messaging_providers
 from app.tenancy import registry
 from app.tenancy.countries import COUNTRY_CURRENCIES, currency_for_country
 from app.tenancy.models import SignupRequest, SignupSlugHold, Tenant
@@ -105,13 +105,22 @@ def _send_code(settings: Settings, row: SignupRequest) -> str:
         return code
     channel = _otp_channel(settings)
     to = row.email if channel == "email" else row.phone
-    body = f"Your AI POS verification code is {code}. It expires in {settings.signup_otp_minutes} minutes."
-    try:
-        messaging_providers.deliver(
-            settings,
-            CHANNEL_PROVIDERS[channel],
-            messaging_providers.Outgoing(to=to, subject="Your AI POS verification code", body=body),
+    minutes = settings.signup_otp_minutes
+    if channel == "email":
+        plain, html_body = email_brand.verification_parts(
+            code=code, minutes=minutes, support_email=settings.support_email
         )
+        outgoing = messaging_providers.Outgoing(
+            to=to, subject="Verify your AxizPOS email", body=plain, html=html_body
+        )
+    else:
+        outgoing = messaging_providers.Outgoing(
+            to=to,
+            subject="Your AxizPOS verification code",
+            body=f"Your AxizPOS verification code is {code}. It expires in {minutes} minutes.",
+        )
+    try:
+        messaging_providers.deliver(settings, CHANNEL_PROVIDERS[channel], outgoing)
     except messaging_providers.ProviderError as error:
         raise ApiError(502, "otp_not_sent", f"We could not send the code: {error}") from error
     return code
@@ -341,7 +350,7 @@ def _reclaim_slug(db: Session, row: SignupRequest) -> None:
 
 def check_slug(settings: Settings, slug: str) -> SlugCheck:
     _require_enabled(settings)
-    cleaned = slug.strip().lower()
+    cleaned = registry.normalize_store_code(slug)
     with registry.control_session(settings) as db:
         if registry.valid_slug(cleaned) and not availability.slug_needs_database(db, cleaned):
             return SlugCheck(slug=cleaned, available=True, reason=None, suggestion=None)
@@ -388,7 +397,7 @@ def choose_store(settings: Settings, request_id: uuid.UUID, token: str | None, d
             raise ApiError(409, "wrong_step", "Choose your business type first.")
         if data.country not in COUNTRY_CURRENCIES:
             raise ApiError(422, "unsupported_country", "Choose a country from the list.")
-        slug = data.slug.strip().lower()
+        slug = registry.normalize_store_code(data.slug)
         reason = _claim_slug(db, slug, row.id)
         if reason is not None:
             raise _slug_conflict(reason)

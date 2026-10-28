@@ -1,4 +1,4 @@
-import { PASSWORD_MIN_LENGTH } from "@ai-pos/shared-types";
+import { PASSWORD_MIN_LENGTH, normalizeStoreCode, storeCodeError } from "@ai-pos/shared-types";
 import { BrandLogo } from "@ai-pos/ui";
 import { Eye, EyeOff, Lock, Mail, ShieldCheck, Store, User, type LucideIcon } from "lucide-react";
 import { useState, type FormEvent, type InputHTMLAttributes } from "react";
@@ -6,8 +6,6 @@ import { env, saveStoreCode } from "../../config/env";
 import { ApiRequestError, apiPublicPost } from "../../lib/api";
 import { useAuth } from "../../lib/auth";
 import { DemoAccounts, demoAccountsEnabled } from "./DemoAccounts";
-
-const STORE_CODE = /^[a-z0-9](?:[a-z0-9-]{0,30}[a-z0-9])?$/;
 
 function LoginField({
   id,
@@ -57,18 +55,35 @@ function LoginField({
   );
 }
 
-type Step = "sign-in" | "email" | "code" | "password";
+type Step = "sign-in" | "email" | "code" | "password" | "stores";
+type Recovery = "password" | "store";
 
-const RESET_STEPS: { id: Exclude<Step, "sign-in">; label: string }[] = [
+interface RecoveredStore {
+  code: string;
+  name: string;
+  branch: string | null;
+}
+
+const PASSWORD_STEPS: { id: Exclude<Step, "sign-in" | "stores">; label: string }[] = [
   { id: "email", label: "Email" },
   { id: "code", label: "Code" },
   { id: "password", label: "Password" },
 ];
 
+const STORE_STEPS: { id: "email" | "code" | "stores"; label: string }[] = [
+  { id: "email", label: "Email" },
+  { id: "code", label: "Code" },
+  { id: "stores", label: "Store codes" },
+];
+
 export function LoginPage() {
   const { login } = useAuth();
   const [step, setStep] = useState<Step>("sign-in");
-  const [storeCode, setStoreCode] = useState(() => (env.needsStoreCode ? (env.tenantDomain ?? "") : ""));
+  const [recovery, setRecovery] = useState<Recovery>("password");
+  const [stores, setStores] = useState<RecoveredStore[]>([]);
+  const [storeCode, setStoreCode] = useState(() =>
+    normalizeStoreCode(env.needsStoreCode ? (env.tenantDomain ?? "") : ""),
+  );
   const [identity, setIdentity] = useState("");
   const [password, setPassword] = useState("");
   const [email, setEmail] = useState("");
@@ -78,8 +93,9 @@ export function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [fieldError, setFieldError] = useState<{ store?: string; identity?: string; password?: string; email?: string; confirm?: string }>({});
   const [busy, setBusy] = useState(false);
-  const store = storeCode.trim().toLowerCase();
-  const storeReady = !env.needsStoreCode || STORE_CODE.test(store);
+  const store = normalizeStoreCode(storeCode);
+  const storeProblem = env.needsStoreCode ? storeCodeError(store) : undefined;
+  const storeReady = storeProblem === undefined;
 
   const rememberStore = () => {
     if (env.needsStoreCode) saveStoreCode(store);
@@ -88,7 +104,7 @@ export function LoginPage() {
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     const next: { store?: string; identity?: string; password?: string } = {};
-    if (!storeReady) next.store = "Enter the store code.";
+    if (storeProblem) next.store = storeProblem;
     if (identity.trim() === "") next.identity = "Enter your email or username.";
     if (password === "") next.password = "Enter your password.";
     setFieldError(next);
@@ -107,12 +123,21 @@ export function LoginPage() {
   };
 
   const requestCode = async () => {
-    if (!storeReady) return;
+    if (recovery === "password" && !storeReady) {
+      setFieldError({ store: "Enter the store code." });
+      return;
+    }
+    if (!email.trim().includes("@")) {
+      setFieldError({ email: "Enter the email on the account." });
+      return;
+    }
+    setFieldError({});
     setBusy(true);
     setError(null);
     try {
-      rememberStore();
-      const result = await apiPublicPost<{ message: string }>("/api/v1/auth/forgot-password", { email: email.trim() });
+      if (recovery === "password") rememberStore();
+      const path = recovery === "store" ? "/api/v1/auth/recover-store-code" : "/api/v1/auth/forgot-password";
+      const result = await apiPublicPost<{ message: string }>(path, { email: email.trim() });
       setNotice(result.message);
       setCode("");
       setStep("code");
@@ -127,12 +152,24 @@ export function LoginPage() {
     setBusy(true);
     setError(null);
     try {
-      rememberStore();
-      await apiPublicPost("/api/v1/auth/verify-reset-code", { email: email.trim(), code: code.trim() });
-      setPassword("");
-      setConfirm("");
-      setNotice(null);
-      setStep("password");
+      if (recovery === "password") rememberStore();
+      if (recovery === "store") {
+        const result = await apiPublicPost<{ message: string; stores: RecoveredStore[] }>(
+          "/api/v1/auth/recover-store-code/verify",
+          { email: email.trim(), code: code.trim() },
+        );
+        setStores(result.stores);
+        setNotice(result.message);
+        const only = result.stores[0];
+        if (result.stores.length === 1 && only) setStoreCode(only.code);
+        setStep("stores");
+      } else {
+        await apiPublicPost("/api/v1/auth/verify-reset-code", { email: email.trim(), code: code.trim() });
+        setPassword("");
+        setConfirm("");
+        setNotice(null);
+        setStep("password");
+      }
     } catch (caught) {
       setError(caught instanceof ApiRequestError ? caught.message : "That code is wrong or has expired.");
     } finally {
@@ -197,7 +234,7 @@ export function LoginPage() {
                 spellCheck={false}
                 value={storeCode}
                 error={fieldError.store}
-                onChange={(event) => setStoreCode(event.target.value.toLowerCase())}
+                onChange={(event) => setStoreCode(normalizeStoreCode(event.target.value))}
                 placeholder="client1"
                 required
               />
@@ -238,17 +275,34 @@ export function LoginPage() {
             >
               {busy ? "Signing in…" : "Sign in"}
             </button>
-            <button
-              type="button"
-              className="text-center text-sm font-semibold text-accent hover:underline"
-              onClick={() => {
-                setError(null);
-                setNotice(null);
-                setStep("email");
-              }}
-            >
-              Forgot password?
-            </button>
+            <div className="flex flex-col items-center gap-2">
+              <button
+                type="button"
+                className="text-center text-sm font-semibold text-accent hover:underline"
+                onClick={() => {
+                  setError(null);
+                  setNotice(null);
+                  setFieldError({});
+                  setRecovery("store");
+                  setStep("email");
+                }}
+              >
+                Forgot store code?
+              </button>
+              <button
+                type="button"
+                className="text-center text-sm font-semibold text-accent hover:underline"
+                onClick={() => {
+                  setError(null);
+                  setNotice(null);
+                  setFieldError({});
+                  setRecovery("password");
+                  setStep("email");
+                }}
+              >
+                Forgot password?
+              </button>
+            </div>
             {env.onTenantHost ? null : (
               <p className="text-center text-sm text-charcoal/60">
                 New to AxizPOS?{" "}
@@ -263,14 +317,15 @@ export function LoginPage() {
             className="flex flex-col justify-center gap-4 p-8"
             onSubmit={(event) => {
               event.preventDefault();
-              void (step === "email" ? requestCode() : step === "code" ? verifyCode() : reset());
+              void (step === "email" ? requestCode() : step === "code" ? verifyCode() : step === "password" ? reset() : undefined);
             }}
           >
             <div>
-              <ol className="mb-3 flex gap-3 text-xs font-semibold" aria-label="Reset steps">
-                {RESET_STEPS.map((item, index) => {
+              <ol className="mb-3 flex gap-3 text-xs font-semibold" aria-label="Recovery steps">
+                {(recovery === "store" ? STORE_STEPS : PASSWORD_STEPS).map((item, index) => {
                   const active = item.id === step;
-                  const done = RESET_STEPS.findIndex((entry) => entry.id === step) > index;
+                  const steps = recovery === "store" ? STORE_STEPS : PASSWORD_STEPS;
+                  const done = steps.findIndex((entry) => entry.id === step) > index;
                   return (
                     <li key={item.id} className={active ? "text-accent" : done ? "text-charcoal" : "text-charcoal/40"} aria-current={active ? "step" : undefined}>
                       {index + 1}. {item.label}
@@ -279,17 +334,29 @@ export function LoginPage() {
                 })}
               </ol>
               <h2 className="text-2xl font-semibold">
-                {step === "email" ? "Reset password" : step === "code" ? "Enter the code" : "Choose a new password"}
+                {step === "email"
+                  ? recovery === "store"
+                    ? "Find your store code"
+                    : "Reset password"
+                  : step === "code"
+                    ? "Enter the code"
+                    : step === "stores"
+                      ? "Your store codes"
+                      : "Choose a new password"}
               </h2>
               <p className="text-sm text-charcoal/60">
                 {step === "email"
-                  ? "We email a 6-digit code to the address on your portal account."
+                  ? recovery === "store"
+                    ? "We email a 6-digit code. Store codes are shown only after that code is accepted."
+                    : "We email a 6-digit code to the address on your portal account."
                   : step === "code"
                     ? `Enter the 6-digit code sent to ${email.trim()}.`
-                    : `At least ${PASSWORD_MIN_LENGTH} characters.`}
+                    : step === "stores"
+                      ? "Use a store code with your email and password. This does not sign you in."
+                      : `At least ${PASSWORD_MIN_LENGTH} characters.`}
               </p>
             </div>
-            {step === "email" && env.needsStoreCode ? (
+            {step === "email" && recovery === "password" && env.needsStoreCode ? (
               <LoginField
                 id="reset-store-code"
                 label="Store code"
@@ -297,7 +364,7 @@ export function LoginPage() {
                 autoComplete="off"
                 spellCheck={false}
                 value={storeCode}
-                onChange={(event) => setStoreCode(event.target.value.toLowerCase())}
+                onChange={(event) => setStoreCode(normalizeStoreCode(event.target.value))}
                 placeholder="client1"
                 required
               />
@@ -310,6 +377,7 @@ export function LoginPage() {
                 type="email"
                 autoComplete="email"
                 value={email}
+                error={fieldError.email}
                 onChange={(event) => setEmail(event.target.value)}
                 required
               />
@@ -327,6 +395,23 @@ export function LoginPage() {
                 maxLength={6}
                 required
               />
+            ) : null}
+            {step === "stores" ? (
+              stores.length > 0 ? (
+                <ul className="space-y-2" aria-label="Store codes">
+                  {stores.map((item) => (
+                    <li key={`${item.code}-${item.branch ?? ""}`} className="rounded-2xl border border-line px-4 py-3">
+                      <p className="font-mono text-base font-semibold">{item.code}</p>
+                      <p className="text-sm text-charcoal/70">
+                        {item.name}
+                        {item.branch ? ` · ${item.branch}` : ""}
+                      </p>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="text-sm text-charcoal/70">No store code is linked to this email.</p>
+              )
             ) : null}
             {step === "password" ? (
               <>
@@ -355,17 +440,32 @@ export function LoginPage() {
                 />
               </>
             ) : null}
-            {notice && step === "code" ? <p className="rounded-2xl bg-emerald-500/10 px-4 py-3 text-sm text-emerald-800">{notice}</p> : null}
+            {notice && (step === "code" || step === "stores") ? (
+              <p className="rounded-2xl bg-emerald-500/10 px-4 py-3 text-sm text-emerald-800">{notice}</p>
+            ) : null}
             {error ? (
               <p role="alert" className="rounded-2xl bg-danger/10 px-4 py-3 text-sm text-danger">
                 {error}
               </p>
             ) : null}
+            {step === "stores" ? (
+              <button
+                type="button"
+                className="h-12 rounded-2xl bg-accent font-semibold text-white"
+                onClick={() => {
+                  setNotice(null);
+                  setError(null);
+                  setStep("sign-in");
+                }}
+              >
+                Back to sign in
+              </button>
+            ) : (
             <button
               type="submit"
               disabled={
                 busy ||
-                !storeReady ||
+                (recovery === "password" && !storeReady) ||
                 (step === "email" && email.trim() === "") ||
                 (step === "code" && code.length !== 6) ||
                 (step === "password" && (password.length < PASSWORD_MIN_LENGTH || confirm.length < PASSWORD_MIN_LENGTH))
@@ -374,6 +474,7 @@ export function LoginPage() {
             >
               {busy ? "Please wait…" : step === "email" ? "Email me a code" : step === "code" ? "Continue" : "Update password"}
             </button>
+            )}
             {step === "code" ? (
               <button
                 type="button"
@@ -384,17 +485,19 @@ export function LoginPage() {
                 Resend code
               </button>
             ) : null}
+            {step === "stores" ? null : (
             <button
               type="button"
               className="text-center text-sm font-semibold text-charcoal/60 hover:underline"
               onClick={() => {
                 setError(null);
-                setNotice(null);
                 setStep(step === "password" ? "code" : step === "code" ? "email" : "sign-in");
+                if (step === "email") setNotice(null);
               }}
             >
               {step === "password" ? "Back to code" : step === "code" ? "Use a different email" : "Back to sign in"}
             </button>
+            )}
           </form>
         )}
       </div>

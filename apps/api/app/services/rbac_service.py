@@ -35,7 +35,7 @@ from app.schemas.auth import (
     UserOut,
     UserUpdate,
 )
-from app.services import audit
+from app.services import audit, media_storage
 from app.tenancy.context import current_tenant
 from app.tenancy.scoping import DEFAULT_TENANT_ID, active_tenant_id, include_all_tenants
 
@@ -72,6 +72,7 @@ def user_out(user: User, db: Session | None = None) -> UserOut:
         created_at=user.created_at,
         updated_at=user.updated_at,
         addon_modules=modules,
+        avatar_url=media_storage.url(user.avatar_key) if user.avatar_key else None,
     )
 
 
@@ -284,6 +285,19 @@ def issue_session(db: Session, settings: Settings, user: User, method: str) -> T
     return TokenResponse(access_token=token, scope=scope, expires_in=expires_in, user=user_out(user, db))
 
 
+def renew_session(db: Session, settings: Settings, user: User, scope: Literal["portal", "pos"]) -> TokenResponse:
+    """Issues a new access token for a session that is still valid. It does not extend a revoked token."""
+    tenant = current_tenant()
+    token, expires_in = create_access_token(
+        subject=str(user.id),
+        scope=scope,
+        token_version=user.token_version,
+        settings=settings,
+        tenant_id=tenant.id if tenant is not None else None,
+    )
+    return TokenResponse(access_token=token, scope=scope, expires_in=expires_in, user=user_out(user, db))
+
+
 # --- Authorization rules -------------------------------------------------------------------------
 
 
@@ -440,6 +454,42 @@ def update_user(db: Session, actor: Principal, user_id: uuid.UUID, data: UserUpd
 
     invalidate_access_cache(user.tenant_id)
     return user_out(user)
+
+
+def update_own_profile(db: Session, user: User, full_name: str) -> UserOut:
+    """The signed-in user changes their own name. Nothing else on the account moves."""
+    user.full_name = full_name
+    db.commit()
+    db.refresh(user)
+    return user_out(user, db)
+
+
+def change_own_password(
+    db: Session, settings: Settings, user: User, current_password: str, password: str
+) -> TokenResponse:
+    """Checks the current password, stores a new hash, and returns a fresh token for this browser.
+
+    Other sessions stop working because the token version moves. The new token keeps this browser signed in.
+    """
+    if not verify_password(current_password, user.hashed_password):
+        raise ApiError(400, "wrong_password", "The current password is wrong.")
+    if verify_password(password, user.hashed_password):
+        raise ApiError(422, "same_password", "Choose a different password.")
+    user.hashed_password = hash_password(password)
+    user.token_version += 1
+    user.failed_login_attempts = 0
+    user.locked_until = None
+    db.commit()
+    db.refresh(user)
+    tenant = current_tenant()
+    token, expires_in = create_access_token(
+        subject=str(user.id),
+        scope="portal",
+        token_version=user.token_version,
+        settings=settings,
+        tenant_id=tenant.id if tenant is not None else None,
+    )
+    return TokenResponse(access_token=token, scope="portal", expires_in=expires_in, user=user_out(user, db))
 
 
 def set_password(db: Session, actor: Principal, user_id: uuid.UUID, password: str) -> UserOut:

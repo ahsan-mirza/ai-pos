@@ -1,5 +1,5 @@
 import { BrandLogo } from "@ai-pos/ui";
-import { LogOut, X } from "lucide-react";
+import { LogOut, UserRound, X } from "lucide-react";
 import { useEffect, useRef, useState, type FocusEvent, type MouseEvent, type ReactNode } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { useTenant } from "../../context/TenantContext";
@@ -8,6 +8,7 @@ import { portalHomePath } from "../../lib/portal-home";
 import { useCapabilities } from "../../lib/capabilities";
 import { useCanManageSettings } from "../../lib/currency";
 import { AiMark } from "../ui/AiMark";
+import { ProfileAvatar } from "../ui/ProfileAvatar";
 import { labelOf, navGroups, settingsTabAllowed, settingsTabs, type NavGroup, type NavItem } from "./navigation";
 import { StoreSwitcher } from "./StoreSwitcher";
 
@@ -59,15 +60,6 @@ function tipEvents(collapsed: boolean, onTip: TipHandler | undefined, label: Rea
   return { onMouseEnter: show, onMouseLeave: hide, onFocus: show, onBlur: hide };
 }
 
-function initialsOf(name: string): string {
-  return name
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part[0]?.toUpperCase() ?? "")
-    .join("");
-}
-
 /** The signed-in admin, shown only here: name and role when expanded, an avatar with a tooltip when collapsed. */
 function SidebarProfile({ collapsed, onTip }: { collapsed: boolean; onTip?: TipHandler }) {
   const { user, logout } = useAuth();
@@ -93,14 +85,21 @@ function SidebarProfile({ collapsed, onTip }: { collapsed: boolean; onTip?: TipH
           collapsed ? "" : "bg-[#f8fafc] ring-1 ring-line"
         }`}
       >
-        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-accent/10 text-[11px] font-bold text-accent ring-1 ring-accent/20">
-          {initialsOf(user.full_name)}
-        </span>
+        <ProfileAvatar name={user.full_name} url={user.avatar_url} />
         <span className={`min-w-0 transition-opacity duration-200 ${collapsed ? "pointer-events-none opacity-0" : "opacity-100"}`}>
           <span className="block truncate text-[13px] font-semibold">{user.full_name}</span>
           <span className="block truncate text-[11px] text-charcoal/50">{user.role.name}</span>
         </span>
       </div>
+      <Link
+        to="/account"
+        aria-label={collapsed ? "Your account" : undefined}
+        {...tipEvents(collapsed, onTip, "Your account")}
+        className="group flex h-10 w-full items-center gap-3 overflow-hidden rounded-lg px-[18px] text-[13px] font-medium text-charcoal/70 outline-none transition-colors hover:bg-charcoal/[0.04] hover:text-charcoal focus-visible:ring-2 focus-visible:ring-accent/40"
+      >
+        <UserRound size={16} strokeWidth={1.75} className="shrink-0" aria-hidden="true" />
+        <span className={`truncate transition-opacity duration-200 ${collapsed ? "opacity-0" : "opacity-100"}`}>Your account</span>
+      </Link>
       <button
         type="button"
         onClick={logout}

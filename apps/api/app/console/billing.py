@@ -720,6 +720,7 @@ def create_checkout(
     invoice = BillingInvoice(
         tenant_id=tenant.id,
         status="pending",
+        currency=priced.currency,
         plan_code=priced.plan_code,
         cycle_code=priced.cycle_code,
         recurring_fils=priced.recurring_fils,

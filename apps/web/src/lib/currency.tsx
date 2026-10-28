@@ -52,7 +52,10 @@ export function CurrencyProvider({ children }: { children: ReactNode }) {
       if (
         current?.entitlement_revision !== undefined &&
         current.entitlement_revision === next.entitlement_revision &&
-        current.updated_at === next.updated_at
+        current.updated_at === next.updated_at &&
+        current.currency === next.currency &&
+        current.trn === next.trn &&
+        current.country === next.country
       ) {
         return current;
       }

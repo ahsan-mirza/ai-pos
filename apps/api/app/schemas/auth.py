@@ -56,6 +56,19 @@ class ForgotPasswordResponse(ApiModel):
     message: str
 
 
+class RecoveredStoreOut(ApiModel):
+    """`code` is the store code typed at sign-in. `branch` is set when the user is assigned to one branch."""
+
+    code: str
+    name: str
+    branch: str | None = None
+
+
+class StoreCodeVerifyResponse(ApiModel):
+    message: str
+    stores: list[RecoveredStoreOut]
+
+
 class VerifyResetCodeRequest(ApiModel):
     email: str
     code: str = Field(pattern=r"^\d{6}$")
@@ -125,6 +138,8 @@ class UserOut(ApiModel):
     updated_at: datetime
     # Active purchased add-ons this user may use. Empty when the store has not bought any.
     addon_modules: list[str] = Field(default_factory=list)
+    # Public media URL for this user's photo. Null when they have not uploaded one.
+    avatar_url: str | None = None
 
 
 class TokenResponse(ApiModel):
@@ -193,6 +208,25 @@ class UserUpdate(ApiModel):
         if self.clear_store and self.store_id is not None:
             raise ValueError("Use either store_id or clear_store, not both.")
         return self
+
+
+class AccountProfileUpdate(ApiModel):
+    """A person editing their own account. Role, store, and status are not on this request."""
+
+    full_name: str = Field(min_length=2, max_length=120)
+
+    @field_validator("full_name")
+    @classmethod
+    def _name(cls, value: str) -> str:
+        cleaned = " ".join(value.split())
+        if len(cleaned) < 2:
+            raise ValueError("Enter your name.")
+        return cleaned
+
+
+class AccountPasswordChange(ApiModel):
+    current_password: str = Field(min_length=1, max_length=128)
+    password: str = Field(min_length=10, max_length=128)
 
 
 class PasswordReset(ApiModel):

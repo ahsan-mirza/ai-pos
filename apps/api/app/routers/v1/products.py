@@ -1,7 +1,9 @@
 import uuid
+from datetime import datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query, Response
+from pydantic import BaseModel, ConfigDict
 from sqlalchemy.orm import Session
 
 from app.core.config import Settings, get_settings
@@ -19,6 +21,13 @@ from app.services.product_search import search_products
 from app.services.sync_service import ingest_one
 
 router = APIRouter()
+
+
+class CatalogRevision(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    updated_at: datetime | None
+    count: int
 
 CanRead = Annotated[
     Principal,
@@ -68,6 +77,13 @@ def list_products(
         collection=collection,
         gender=gender,
     )
+
+
+@router.get("/revision", response_model=CatalogRevision)
+def product_revision(db: Annotated[Session, Depends(get_db)], _: CanRead) -> CatalogRevision:
+    """Cheap cursor for registers. The catalog itself is downloaded only when this changes."""
+    stamp, count = catalog_service.catalog_revision(db)
+    return CatalogRevision(updated_at=stamp if isinstance(stamp, datetime) else None, count=count)
 
 
 @router.get("/search", response_model=list[ProductSearchHit])

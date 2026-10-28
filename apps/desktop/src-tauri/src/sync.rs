@@ -276,6 +276,28 @@ pub fn fetch_products(config: &DesktopConfig) -> Result<Vec<ProductRow>, String>
     }
 }
 
+#[derive(Deserialize)]
+struct CatalogRevisionBody {
+    updated_at: Option<String>,
+    count: i64,
+}
+
+/// `updated_at:count`. Callers download the catalog only when the string changes.
+pub fn catalog_revision(config: &DesktopConfig) -> Result<String, String> {
+    let response = client()?
+        .get(format!("{}/api/v1/products/revision", config.api_base_url))
+        .headers(config.auth_headers())
+        .send()
+        .map_err(|err| err.to_string())?;
+    let status = response.status();
+    let body = response.text().map_err(|err| err.to_string())?;
+    if !status.is_success() {
+        return Err(error_message(&body, status.as_u16()));
+    }
+    let parsed: CatalogRevisionBody = serde_json::from_str(&body).map_err(|err| err.to_string())?;
+    Ok(format!("{}:{}", parsed.updated_at.unwrap_or_default(), parsed.count))
+}
+
 /// Server search adds what the local cache cannot answer: IMEI/serial lookups and other stores' live stock.
 pub fn remote_search(
     config: &DesktopConfig,

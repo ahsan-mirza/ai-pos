@@ -13,6 +13,11 @@ const ITEMS = [
       "AxizPOS is a point of sale register and an admin portal. Staff sell at the till. Managers look after products, stock, customers, users, and the reports the store has recorded.",
   },
   {
+    question: "Can I add modules after I start?",
+    answer:
+      "Yes. Each business type starts with its own modules. Compatible optional modules can be added later. A module that is already in the starter set is not sold again as an add-on. A separate price is shown only when the public catalog lists one. Choosing a module on this page does not start a subscription or confirm a payment.",
+  },
+  {
     question: "Which types of businesses can use AxizPOS?",
     answer:
       "The product ships with profiles for restaurants, cafés, quick service, grocery, fashion, wholesale and retail, and electronics. Each profile turns on the modules that fit that work. Buying history and loyalty points are on for every profile. A credit statement starts on electronics and wholesale. Fashion and grocery can turn it on later. Restaurant, café, and quick service cannot.",

@@ -5,6 +5,7 @@ import { AppShell, PageFrame } from "./components/layout/AppShell";
 import { ConfirmProvider } from "./components/ui/ConfirmDialog";
 import { DashboardPage } from "./features/analytics/DashboardPage";
 import { AuditPage } from "./features/audit/AuditPage";
+import { AccountPage } from "./features/account/AccountPage";
 import { LoginPage } from "./features/auth/LoginPage";
 import { portalHomePath } from "./lib/portal-home";
 import { CustomersPage } from "./features/customers/CustomersPage";
@@ -81,6 +82,7 @@ import { AuthProvider, useAuth, useIsSuperAdmin } from "./lib/auth";
 import { useCapability, useSettingsLabel } from "./lib/capabilities";
 import { TenantProvider } from "./context/TenantContext";
 import { CurrencyProvider, useCanManageSettings } from "./lib/currency";
+import { SubscriptionPaymentPage } from "./features/billing/SubscriptionPaymentPage";
 import { OnboardingWizard } from "./features/onboarding/OnboardingWizard";
 import { SignupApp } from "./features/signup/SignupApp";
 import { WelcomeHandoff, isWelcomeHandoff } from "./features/signup/WelcomeHandoff";
@@ -232,6 +234,15 @@ function Portal() {
           <Route element={<PageFrame />}>
           <Route index element={<DashboardRoute />} />
           <Route path="dashboard" element={<DashboardRoute />} />
+          <Route path="account" element={<AccountPage />} />
+          <Route
+            path="subscription"
+            element={
+              <RequirePermission permission={Permission.SettingsManage} businessWide>
+                <SubscriptionPaymentPage />
+              </RequirePermission>
+            }
+          />
           <Route
             path="customers"
             element={

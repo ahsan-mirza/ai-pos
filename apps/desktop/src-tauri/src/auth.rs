@@ -39,6 +39,9 @@ pub struct CashierProfile {
     /// Unix seconds of the online unlock that refreshed add-on access.
     #[serde(default)]
     pub addon_synced_at: i64,
+    /// Profile photo from the last online unlock. Missing on an offline unlock.
+    #[serde(default)]
+    pub avatar_url: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -65,6 +68,8 @@ struct RemoteUser {
     permissions: Vec<String>,
     #[serde(default)]
     addon_modules: Vec<String>,
+    #[serde(default)]
+    avatar_url: Option<String>,
 }
 
 pub struct PinUnlock {
@@ -131,6 +136,7 @@ pub fn pin_login(
                 max_discount_bps: response.user.role.max_discount_bps,
                 addon_modules: response.user.addon_modules,
                 addon_synced_at: now,
+                avatar_url: response.user.avatar_url,
             };
             db.upsert_cached_user(&profile, &hash_pin(pin)?, now)?;
             Ok(PinUnlock {
@@ -206,6 +212,7 @@ fn cached_profile(cached: CachedUser) -> Result<CashierProfile, String> {
         max_discount_bps: cached.max_discount_bps,
         addon_modules: fresh_addons(&cached.addon_modules, synced_at, now_secs()),
         addon_synced_at: synced_at,
+        avatar_url: None,
     })
 }
 

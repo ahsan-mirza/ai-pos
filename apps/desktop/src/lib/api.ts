@@ -120,6 +120,11 @@ function toUpsert(row: Product): ProductUpsert {
   };
 }
 
+export async function catalogRevision(): Promise<{ updated_at: string | null; count: number }> {
+  const response = await request("/api/v1/products/revision");
+  return (await response.json()) as { updated_at: string | null; count: number };
+}
+
 const CATALOG_PAGE = 1000;
 
 /** The whole catalog, page by page (GET /products?after=), so large supermarket catalogs are complete. */

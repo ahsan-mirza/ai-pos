@@ -1,6 +1,7 @@
 import type { ModuleCatalogueItem, ModuleSummary } from "@ai-pos/shared-types";
 import { DataTable, type DataTableColumn } from "@ai-pos/ui";
 import { useEffect, useState } from "react";
+import { PageHeader } from "../components/PageHeader";
 import { ErrorNote } from "../components/ui";
 import { api, errorText } from "../lib/api";
 import { money } from "../lib/format";
@@ -50,11 +51,10 @@ export function ModulesPage() {
   }, []);
   return (
     <section>
-      <h1 className="text-2xl font-semibold">Module catalogue</h1>
-      <p className="mt-1 max-w-3xl text-sm text-charcoal/60">
-        These are the modules the product actually registers. A commercial add-on can be mapped to them from Add-on pricing.
-        Mapping does not turn a module on for a store. Access still follows the business type, the store selection, and a console override.
-      </p>
+      <PageHeader
+        title="Module catalogue"
+        description="These are the modules the product actually registers. A commercial add-on can be mapped to them from Add-on pricing. Mapping does not turn a module on for a store. Access still follows the business type, the store selection, and a console override."
+      />
       <ErrorNote message={error} />
       {summary ? (
         <dl className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">

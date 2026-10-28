@@ -77,8 +77,39 @@ export function SettingsPage() {
           </span>
         </a>
       </header>
+      {settings ? (
+        <dl className="grid gap-3 rounded-card border border-line bg-white p-4 text-sm sm:grid-cols-4 xl:col-span-2">
+          <div>
+            <dt className="text-charcoal/50">Country</dt>
+            <dd className="font-medium">{settings.country ? settings.country : "Not recorded"}</dd>
+          </div>
+          <div>
+            <dt className="text-charcoal/50">Currency</dt>
+            <dd className="font-medium">{settings.currency}</dd>
+          </div>
+          <div>
+            <dt className="text-charcoal/50">Store code</dt>
+            <dd className="font-mono font-medium">{settings.store_code || "—"}</dd>
+          </div>
+          <div>
+            <dt className="text-charcoal/50">Tax registration number</dt>
+            <dd className="font-medium">{settings.trn || "Not registered"}</dd>
+          </div>
+        </dl>
+      ) : null}
 
       <SectionHeading title="General" hint="Currency, tax, receipts and the look of the portal and registers." />
+
+      <div className="rounded-card border border-line bg-white p-6">
+        <h2 className="text-lg font-semibold">Store code</h2>
+        <p className="mt-1 text-sm text-charcoal/60">Used to sign in to this business. It is the same for every branch.</p>
+        <input
+          readOnly
+          aria-label="Store code"
+          value={settings?.store_code ?? ""}
+          className="mt-4 h-12 w-full rounded-2xl border border-line bg-surface px-4 font-mono text-base text-charcoal"
+        />
+      </div>
 
       <div className="rounded-card border border-line bg-white p-6">
         <div className="flex flex-wrap items-start justify-between gap-3">

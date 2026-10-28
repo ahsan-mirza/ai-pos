@@ -505,6 +505,7 @@ mod tests {
                 max_discount_bps: None,
                 addon_modules: vec![],
                 addon_synced_at: 0,
+                avatar_url: None,
             },
             mode: "offline",
             unlocked_at: 0,

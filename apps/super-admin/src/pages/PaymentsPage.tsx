@@ -1,5 +1,6 @@
-import { DataTable, type DataTableColumn } from "@ai-pos/ui";
+import { DataTable, Select, type DataTableColumn } from "@ai-pos/ui";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { FilterSearch, FilterSlot, PageHeader } from "../components/PageHeader";
 import { ErrorNote, GhostButton, PrimaryButton } from "../components/ui";
 import { api, consoleBlob, errorText } from "../lib/api";
 import { money, when } from "../lib/format";
@@ -22,6 +23,9 @@ interface BankAccount {
 interface TransferRow {
   id: string;
   tenant_name: string;
+  tenant_slug: string;
+  plan_code: string;
+  cycle_code: string;
   invoice_id: string;
   status: "pending_review" | "approved" | "rejected";
   amount_fils: number;
@@ -63,6 +67,7 @@ export function PaymentsPage() {
   const [query, setQuery] = useState("");
   const [reason, setReason] = useState("");
   const [rejecting, setRejecting] = useState<string | null>(null);
+  const [decision, setDecision] = useState<"reject" | "reopen" | "revoke">("reject");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -122,9 +127,11 @@ export function PaymentsPage() {
     }
   };
 
-  const approve = async (id: string) => {
+  const approve = async (row: TransferRow) => {
+    const summary = `Verify ${row.tenant_name} (${row.tenant_slug || "store"}), invoice ${row.invoice_id.slice(0, 8)}, ${money(row.invoice_total_fils, row.currency)}, plan ${row.plan_code || "package"} ${row.cycle_code}? This activates the subscription.`;
+    if (!window.confirm(summary)) return;
     try {
-      await api.post(`/billing/transfers/${id}/approve`, {});
+      await api.post(`/billing/transfers/${row.id}/approve`, {});
       load();
     } catch (caught) {
       setError(errorText(caught, "Could not approve this receipt."));
@@ -133,13 +140,15 @@ export function PaymentsPage() {
 
   const reject = async () => {
     if (rejecting === null) return;
+    const path =
+      decision === "reopen" ? "reopen" : decision === "revoke" ? "revoke" : "reject";
     try {
-      await api.post(`/billing/transfers/${rejecting}/reject`, { reason });
+      await api.post(`/billing/transfers/${rejecting}/${path}`, { reason });
       setRejecting(null);
       setReason("");
       load();
     } catch (caught) {
-      setError(errorText(caught, "Could not reject this receipt."));
+      setError(errorText(caught, "Could not save this decision."));
     }
   };
 
@@ -193,9 +202,10 @@ export function PaymentsPage() {
           <GhostButton onClick={() => void openReceipt(row.id)}>Receipt</GhostButton>
           {admin && row.status === "pending_review" ? (
             <>
-              <GhostButton onClick={() => void approve(row.id)}>Approve</GhostButton>
+              <GhostButton onClick={() => void approve(row)}>Verify and activate</GhostButton>
               <GhostButton
                 onClick={() => {
+                  setDecision("reject");
                   setRejecting(row.id);
                   setReason("");
                 }}
@@ -204,6 +214,28 @@ export function PaymentsPage() {
               </GhostButton>
             </>
           ) : null}
+          {admin && row.status === "rejected" ? (
+            <GhostButton
+              onClick={() => {
+                setDecision("reopen");
+                setRejecting(row.id);
+                setReason("");
+              }}
+            >
+              Reopen
+            </GhostButton>
+          ) : null}
+          {admin && row.status === "approved" ? (
+            <GhostButton
+              onClick={() => {
+                setDecision("revoke");
+                setRejecting(row.id);
+                setReason("");
+              }}
+            >
+              Revoke activation
+            </GhostButton>
+          ) : null}
         </span>
       ),
     },
@@ -211,11 +243,10 @@ export function PaymentsPage() {
 
   return (
     <section>
-      <h1 className="text-2xl font-semibold">Payments</h1>
-      <p className="mt-1 max-w-3xl text-sm text-charcoal/60">
-        A receipt is evidence, not a payment. Approve only after the credit appears on the bank statement. The paid-through
-        date stays inclusive, and the grace period below is counted from the day after it.
-      </p>
+      <PageHeader
+        title="Payments"
+        description="A receipt is evidence, not a payment. Approve only after the credit appears on the bank statement. The paid-through date stays inclusive, and the grace period below is counted from the day after it."
+      />
       <ErrorNote message={error} />
 
       <div className="mt-6 grid gap-4 lg:grid-cols-2">
@@ -283,25 +314,29 @@ export function PaymentsPage() {
         </div>
       </div>
 
-      <div className="mt-8 flex flex-wrap gap-3">
-        <input
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-          placeholder="Search store, invoice, or reference"
-          aria-label="Search receipts"
-          className="h-10 w-72 rounded-full border border-line px-4 text-sm"
-        />
-        <select
-          aria-label="Receipt status"
-          value={status}
-          onChange={(event) => setStatus(event.target.value)}
-          className="h-10 rounded-full border border-line bg-white px-3 text-sm"
-        >
-          <option value="pending_review">Pending review</option>
-          <option value="approved">Approved</option>
-          <option value="rejected">Rejected</option>
-          <option value="">All</option>
-        </select>
+      <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
+        <h2 className="text-lg font-semibold">Receipts</h2>
+        <div className="flex w-full min-w-0 flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap sm:items-center">
+          <FilterSearch
+            label="Search receipts"
+            value={query}
+            onChange={setQuery}
+            placeholder="Search store, invoice, or reference"
+          />
+          <FilterSlot>
+            <Select
+              aria-label="Receipt status"
+              value={status}
+              onChange={setStatus}
+              options={[
+                { value: "pending_review", label: "Pending review" },
+                { value: "approved", label: "Approved" },
+                { value: "rejected", label: "Rejected" },
+                { value: "", label: "All" },
+              ]}
+            />
+          </FilterSlot>
+        </div>
       </div>
       <div className="mt-4">
         <DataTable
@@ -319,8 +354,16 @@ export function PaymentsPage() {
       </div>
       {rejecting ? (
         <div className="mt-4 max-w-lg rounded-3xl border border-line bg-white p-5">
-          <h2 className="font-semibold">Reject this receipt</h2>
-          <p className="mt-1 text-sm text-charcoal/60">The invoice stays unpaid. The store can send a corrected receipt.</p>
+          <h2 className="font-semibold">
+            {decision === "reopen" ? "Reopen this review" : decision === "revoke" ? "Revoke this activation" : "Reject this receipt"}
+          </h2>
+          <p className="mt-1 text-sm text-charcoal/60">
+            {decision === "reopen"
+              ? "The receipt returns to the queue. The subscription is not activated."
+              : decision === "revoke"
+                ? "The payment record stays. Paid features stop until a later verification."
+                : "The invoice stays unpaid. The store can send a corrected receipt."}
+          </p>
           <textarea
             value={reason}
             onChange={(event) => setReason(event.target.value)}
@@ -329,7 +372,7 @@ export function PaymentsPage() {
           />
           <div className="mt-3 flex gap-2">
             <PrimaryButton onClick={() => void reject()} disabled={reason.trim().length < 3}>
-              Reject receipt
+              {decision === "reopen" ? "Reopen review" : decision === "revoke" ? "Revoke activation" : "Reject receipt"}
             </PrimaryButton>
             <GhostButton onClick={() => setRejecting(null)}>Cancel</GhostButton>
           </div>

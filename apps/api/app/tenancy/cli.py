@@ -127,7 +127,7 @@ def _register(
 
 
 def _check_slug(slug: str) -> str:
-    slug = slug.strip().lower()
+    slug = registry.normalize_store_code(slug)
     if not registry.valid_slug(slug):
         sys.exit("Subdomains are 1-32 lowercase letters, digits, or dashes, and not a reserved name (www, api, ...).")
     return slug

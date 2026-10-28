@@ -37,15 +37,27 @@ _factories: dict[str, sessionmaker[Session]] = {}
 _lock = threading.Lock()
 
 
+def normalize_store_code(value: str) -> str:
+    """Drops every whitespace character, then lowercases. Other characters stay as typed.
+
+    'bar isto' and ' BAR ISTO ' both become 'baristo'. An empty result is not a store code.
+    """
+    return "".join(character for character in value if not character.isspace()).lower()
+
+
 def valid_slug(slug: str) -> bool:
     return SLUG.fullmatch(slug) is not None and slug not in RESERVED
 
 
 def slug_from_domain(value: str | None, settings: Settings) -> str | None:
-    """'client1', 'client1.axizpos.com', 'https://client1.axizpos.com/x' or 'client1.localhost:5173' -> 'client1'."""
+    """'client1', 'client1.axizpos.com', 'https://client1.axizpos.com/x' or 'client1.localhost:5173' -> 'client1'.
+
+    Whitespace is removed first, so a store code typed with spaces still finds the same tenant.
+    The registry cache key is this canonical code.
+    """
     if not value:
         return None
-    host = value.strip().lower()
+    host = normalize_store_code(value)
     host = re.sub(r"^[a-z]+://", "", host).split("/", 1)[0].split(":", 1)[0].rstrip(".")
     if host in settings.tenant_domain_list:
         return None

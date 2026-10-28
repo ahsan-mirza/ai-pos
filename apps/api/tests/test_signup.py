@@ -100,6 +100,28 @@ def _tenant_headers(slug: str, token: str | None = None) -> dict[str, str]:
     return headers
 
 
+def test_a_store_code_with_spaces_is_saved_without_them(signup: TestClient) -> None:
+    checked = signup.get("/api/v1/signup/slug-check", params={"slug": " bar isto "})
+    assert checked.status_code == 200, checked.text
+    assert checked.json()["slug"] == "baristo"
+    assert checked.json()["available"] is True
+
+    started = _verified(signup, email="owner@baristo.ae", phone="+971501110001")
+    chosen = _post(signup, started, "business", {"profile": "cafe", "sub_type": "counter_cafe"})
+    assert chosen.status_code == 200, chosen.text
+    saved = _post(signup, started, "store", {**_store(" BAR\tISTO "), "store_name": "Baristo Cafe"})
+    assert saved.status_code == 200, saved.text
+    assert saved.json()["slug"] == "baristo"
+    with registry.control_session(get_settings()) as db:
+        assert db.scalar(select(Tenant).where(Tenant.slug == "baristo")) is not None
+        assert db.scalar(select(Tenant).where(Tenant.slug == "bar isto")) is None
+
+    duplicate = _verified(signup, email="other@baristo.ae", phone="+971501110002")
+    _post(signup, duplicate, "business", {"profile": "cafe", "sub_type": "counter_cafe"})
+    clash = _post(signup, duplicate, "store", _store("baristo"))
+    assert clash.status_code == 409
+
+
 def test_signup_provisions_a_practice_store_and_hands_the_owner_over(signup: TestClient) -> None:
     started = _start(signup)
     assert started["channel"] == "log" and len(started["dev_code"]) == 6

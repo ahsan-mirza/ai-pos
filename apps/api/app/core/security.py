@@ -90,11 +90,12 @@ def create_access_token(
     return token, int(lifetime.total_seconds())
 
 
-def decode_access_token(token: str, *, settings: Settings) -> dict[str, object]:
+def decode_access_token(token: str, *, settings: Settings, leeway_seconds: int = 0) -> dict[str, object]:
     payload = jwt.decode(
         token,
         settings.jwt_secret,
         algorithms=["HS256"],
+        leeway=leeway_seconds,
         options={"require": ["sub", "exp", "scope", "ver"]},
     )
     if not isinstance(payload, dict):

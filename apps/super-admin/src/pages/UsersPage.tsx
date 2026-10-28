@@ -1,6 +1,7 @@
 import { Select } from "@ai-pos/ui";
 import type { Operator, OperatorRole } from "@ai-pos/shared-types";
 import { useEffect, useState } from "react";
+import { PageHeader } from "../components/PageHeader";
 import { ErrorNote, Field, PrimaryButton } from "../components/ui";
 import { ConsoleError, api, errorText } from "../lib/api";
 import { when } from "../lib/format";
@@ -74,8 +75,7 @@ export function UsersPage() {
   if (!admin) {
     return (
       <section className="max-w-xl">
-        <h1 className="text-2xl font-semibold">Users</h1>
-        <p className="mt-1 text-sm text-charcoal/60">Only an admin can manage users.</p>
+        <PageHeader title="Users" description="Only an admin can manage users." />
       </section>
     );
   }
@@ -185,10 +185,10 @@ export function UsersPage() {
 
   return (
     <section className="max-w-3xl">
-      <h1 className="text-2xl font-semibold">Users</h1>
-      <p className="mt-1 text-sm text-charcoal/60">
-        Admins manage billing, mail, WhatsApp, and these users. Support can work with stores only.
-      </p>
+      <PageHeader
+        title="Users"
+        description="Admins manage billing, mail, WhatsApp, and these users. Support can work with stores only."
+      />
       <div className="mt-6 space-y-4 rounded-3xl border border-line bg-white p-5">
         <h2 className="text-lg font-semibold">New user</h2>
         <Field

@@ -295,6 +295,10 @@ class TransferOut(ApiModel):
     currency: str
     transferred_on: str
     bank_reference: str
+    sending_bank: str = ""
+    plan_code: str = ""
+    cycle_code: str = ""
+    tenant_slug: str = ""
     created_at: datetime
     decision_reason: str | None
 
@@ -312,6 +316,25 @@ class GraceIn(ApiModel):
 
 class RejectIn(ApiModel):
     reason: str = Field(min_length=3, max_length=500)
+
+
+class PaymentAttention(ApiModel):
+    kind: Literal["awaiting_proof", "pending_review", "rejected", "revoked"]
+    invoice_id: UUID
+    plan_code: str
+    cycle_code: str
+    currency: str
+    total_fils: int
+    issued_at: str
+    bank: dict[str, str] | None = None
+    transfer_id: UUID | None = None
+    reason: str | None = None
+
+
+class AccessOut(ApiModel):
+    state: str
+    ai_allowed: bool
+    attention: PaymentAttention | None = None
 
 
 class SubscriptionAssign(ApiModel):

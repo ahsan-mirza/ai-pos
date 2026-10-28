@@ -156,8 +156,12 @@ def submit_transfer(
         raise ApiError(404, "invoice_not_found", "That invoice is not on this store.")
     if invoice.status != "pending":
         raise ApiError(409, "invoice_not_payable", "This invoice is not waiting for a transfer.")
-    if amount_fils <= 0:
-        raise ApiError(422, "invalid_amount", "Enter the amount you transferred.")
+    if amount_fils != invoice.total_fils:
+        raise ApiError(
+            422,
+            "amount_mismatch",
+            "Transfer the invoice total. This invoice does not accept a partial payment.",
+        )
     kind = _kind(body)
     pending = db.scalar(
         select(BillingTransfer.id).where(
@@ -185,7 +189,69 @@ def submit_transfer(
     hardware_catalog.mark_under_review(db, invoice.id)
     db.commit()
     db.refresh(row)
+    _notify_owner(
+        db,
+        row.tenant_id,
+        "Payment proof received",
+        "We have your payment proof. Subscription features stay locked until an administrator verifies the transfer. "
+        "Sign in to AxizPOS Business to see the status.",
+    )
     return row
+
+
+def attention(db: Session, tenant_id: uuid.UUID) -> dict[str, object] | None:
+    """The invoice this store still has to act on. A paid, unrevoked invoice returns nothing."""
+    invoice = db.scalar(
+        select(BillingInvoice)
+        .where(BillingInvoice.tenant_id == tenant_id, BillingInvoice.status == "pending")
+        .order_by(BillingInvoice.created_at.desc())
+    )
+    paid = db.scalar(
+        select(BillingPayment)
+        .where(BillingPayment.tenant_id == tenant_id, BillingPayment.revoked_at.is_not(None))
+        .order_by(BillingPayment.revoked_at.desc())
+    )
+    if invoice is None:
+        if paid is None:
+            return None
+        source = db.get(BillingInvoice, paid.invoice_id)
+        if source is None:
+            return None
+        return _attention_body(source, None, "revoked", paid.revoke_reason)
+    latest = db.scalar(
+        select(BillingTransfer)
+        .where(BillingTransfer.invoice_id == invoice.id)
+        .order_by(BillingTransfer.created_at.desc())
+    )
+    if latest is None:
+        kind = "awaiting_proof"
+        reason = None
+    elif latest.status == "rejected":
+        kind = "rejected"
+        reason = latest.decision_reason
+    elif latest.status == "pending_review":
+        kind = "pending_review"
+        reason = None
+    else:
+        return None
+    return _attention_body(invoice, latest, kind, reason)
+
+
+def _attention_body(
+    invoice: BillingInvoice, transfer: BillingTransfer | None, kind: str, reason: str | None
+) -> dict[str, object]:
+    return {
+        "kind": kind,
+        "invoice_id": str(invoice.id),
+        "plan_code": invoice.plan_code,
+        "cycle_code": invoice.cycle_code,
+        "currency": invoice.currency,
+        "total_fils": invoice.total_fils,
+        "issued_at": invoice.created_at.isoformat(),
+        "bank": invoice.bank_snapshot,
+        "transfer_id": None if transfer is None else str(transfer.id),
+        "reason": reason,
+    }
 
 
 def list_transfers(db: Session, status: str | None) -> list[BillingTransfer]:
@@ -259,6 +325,13 @@ def approve(db: Session, operator: OperatorPrincipal, transfer_id: uuid.UUID, se
     from app.console.entitlements import publish_purchased
 
     publish_purchased(settings, row.tenant_id)
+    _notify_owner(
+        db,
+        row.tenant_id,
+        "Subscription activated",
+        "Your payment was verified and the subscription is active. "
+        "Sign in to AxizPOS Business to use the paid features.",
+    )
     db.refresh(payment)
     return payment
 
@@ -289,7 +362,114 @@ def reject(db: Session, operator: OperatorPrincipal, transfer_id: uuid.UUID, rea
     )
     db.commit()
     db.refresh(row)
+    _notify_owner(
+        db,
+        row.tenant_id,
+        "Payment proof needs attention",
+        "We could not verify the transfer on your invoice. "
+        "Sign in to AxizPOS Business to read the reason and send a corrected proof. Subscription features stay locked.",
+    )
     return row
+
+
+def reopen(db: Session, operator: OperatorPrincipal, transfer_id: uuid.UUID, reason: str) -> BillingTransfer:
+    """Puts a rejected receipt back in the queue. It does not activate the subscription."""
+    cleaned = reason.strip()
+    if len(cleaned) < 3:
+        raise ApiError(422, "reason_required", "Enter why this review is being reopened.")
+    row = db.get(BillingTransfer, transfer_id)
+    if row is None:
+        raise ApiError(404, "transfer_not_found", "That receipt does not exist.")
+    if row.status != "rejected":
+        raise ApiError(409, "transfer_closed", "Only a rejected receipt can be reopened.")
+    previous = row.decision_reason
+    row.status = "pending_review"
+    row.reviewed_by = operator.id
+    row.reviewed_at = datetime.now(UTC)
+    audit_operator(
+        db,
+        operator,
+        "billing.transfer_reopen",
+        tenant_id=row.tenant_id,
+        before={"decision_reason": previous},
+        after={"transfer_id": str(row.id), "status": "pending_review"},
+        reason=cleaned,
+    )
+    db.commit()
+    db.refresh(row)
+    return row
+
+
+def revoke(
+    db: Session, operator: OperatorPrincipal, settings: Settings, transfer_id: uuid.UUID, reason: str
+) -> BillingPayment:
+    """Stops a subscription that was activated from this receipt. The payment and receipt stay on record."""
+    cleaned = reason.strip()
+    if len(cleaned) < 3:
+        raise ApiError(422, "reason_required", "Enter why this activation is being revoked.")
+    row = db.get(BillingTransfer, transfer_id)
+    if row is None:
+        raise ApiError(404, "transfer_not_found", "That receipt does not exist.")
+    if row.status != "approved":
+        raise ApiError(409, "transfer_closed", "Only a verified receipt can have its activation revoked.")
+    payment = db.scalar(select(BillingPayment).where(BillingPayment.submission_id == row.id))
+    if payment is None:
+        raise ApiError(409, "payment_missing", "This receipt was approved without a payment record.")
+    if payment.revoked_at is not None:
+        raise ApiError(409, "already_revoked", "This activation was already revoked.")
+    subscription = db.scalar(select(Subscription).where(Subscription.tenant_id == row.tenant_id))
+    if subscription is not None:
+        subscription.status = "canceled"
+        subscription.updated_at = datetime.now(UTC)
+    payment.revoked_at = datetime.now(UTC)
+    payment.revoke_reason = cleaned
+    audit_operator(
+        db,
+        operator,
+        "billing.transfer_revoke",
+        tenant_id=row.tenant_id,
+        after={"payment_id": str(payment.id), "invoice_id": str(row.invoice_id)},
+        reason=cleaned,
+    )
+    db.commit()
+    from app.console.entitlements import publish_purchased
+
+    publish_purchased(settings, row.tenant_id)
+    _notify_owner(
+        db,
+        row.tenant_id,
+        "Subscription access was updated",
+        "An administrator revoked the activation on your invoice. "
+        "Sign in to AxizPOS Business to read the status. Paid features stay locked until a payment is verified again.",
+    )
+    db.refresh(payment)
+    return payment
+
+
+def _notify_owner(db: Session, tenant_id: uuid.UUID, heading: str, body: str) -> None:
+    """Emails the store owner when a mailbox is configured. A mail failure does not change the payment."""
+    tenant = db.get(Tenant, tenant_id)
+    address = "" if tenant is None or tenant.owner_email is None else tenant.owner_email.strip()
+    if not address:
+        return
+    try:
+        from app.console import mail
+        from app.core.config import get_settings
+        from app.services.email_brand import notice_html
+        from app.services.messaging_providers import Outgoing
+
+        settings = get_settings()
+        mail.send(
+            settings,
+            Outgoing(
+                to=address,
+                subject=heading,
+                body=body,
+                html=notice_html(heading=heading, body=body, support_email=settings.support_email),
+            ),
+        )
+    except Exception:
+        return
 
 
 def _kind(body: bytes) -> str:

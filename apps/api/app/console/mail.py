@@ -12,6 +12,7 @@ from app.core.config import Settings
 from app.core.errors import ApiError
 from app.core.security import decrypt_value, encrypt_value
 from app.schemas.mail import MailSettingsIn, MailSettingsOut
+from app.services.email_brand import notice_html
 from app.services.messaging_providers import Outgoing, ProviderError, transmit_smtp
 from app.tenancy import registry
 from app.tenancy.models import MailSettings
@@ -47,7 +48,7 @@ def _address(value: str, label: str) -> str:
 
 
 def _sender(name: str, address: str) -> str:
-    clean = name.replace('"', "").strip() or "AI POS"
+    clean = name.replace('"', "").strip() or "AxizPOS"
     return f"{clean} <{address}>"
 
 
@@ -72,7 +73,7 @@ def save_settings(
     host = data.host.strip()
     username = data.username.strip()
     from_address = _address(data.from_address, "From address")
-    from_name = data.from_name.strip() or "AI POS"
+    from_name = data.from_name.strip() or "AxizPOS"
     row = _row(db)
     if data.enabled and (not host or not from_address):
         raise ApiError(422, "mail_incomplete", "Enter the outgoing server and the From address before turning mail on.")
@@ -175,8 +176,13 @@ def send_test(settings: Settings, to: str) -> None:
             settings,
             Outgoing(
                 to=address,
-                subject="AI POS mailbox test",
-                body="This is a test from the POS management console. Password-reset codes use this mailbox.",
+                subject="AxizPOS mailbox test",
+                body="This is a test from AxizPOS. Password-reset codes use this mailbox.",
+                html=notice_html(
+                    heading="Mailbox test",
+                    body="This is a test from AxizPOS. Password-reset codes use this mailbox.",
+                    support_email=settings.support_email,
+                ),
             ),
         )
     except ProviderError as error:

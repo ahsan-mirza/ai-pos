@@ -1,3 +1,4 @@
+import { isStoreCode, normalizeStoreCode } from "@ai-pos/shared-types";
 import { BrandLogo } from "@ai-pos/ui";
 import { CheckCircle2, KeyRound, Loader2, ShieldCheck, Store } from "lucide-react";
 import { useEffect, useState, type FormEvent } from "react";
@@ -15,9 +16,7 @@ function formatKey(raw: string): string {
 }
 
 function subdomainOf(raw: string): string {
-  return raw
-    .trim()
-    .toLowerCase()
+  return normalizeStoreCode(raw)
     .replace(/^[a-z]+:\/\//, "")
     .split(/[/:]/)[0]!
     .replace(new RegExp(`\\.${BASE_DOMAIN.replaceAll(".", "\\.")}$`), "");
@@ -35,7 +34,7 @@ export function ActivationScreen({ onCancel }: { onCancel?: () => void }) {
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<TerminalStatus | null>(null);
   const slug = subdomainOf(subdomain);
-  const ready = /^[a-z0-9](?:[a-z0-9-]{0,30}[a-z0-9])?$/.test(slug) && key.replace(/-/g, "").length === 12;
+  const ready = isStoreCode(slug) && key.replace(/-/g, "").length === 12;
 
   useEffect(() => {
     if (done === null || inTauri()) return;
@@ -132,7 +131,7 @@ export function ActivationScreen({ onCancel }: { onCancel?: () => void }) {
                   autoComplete="off"
                   spellCheck={false}
                   value={subdomain}
-                  onChange={(event) => setSubdomain(event.target.value)}
+                  onChange={(event) => setSubdomain(normalizeStoreCode(event.target.value))}
                   placeholder="baristo"
                   className={input}
                 />

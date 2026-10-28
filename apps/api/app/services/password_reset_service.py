@@ -6,7 +6,7 @@ import logging
 import secrets
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from app.console import mail
@@ -14,6 +14,7 @@ from app.core.config import Settings
 from app.core.errors import ApiError
 from app.core.security import hash_password
 from app.models.user import User
+from app.services.email_brand import password_changed_parts, password_reset_parts
 from app.services.messaging_providers import Outgoing, ProviderError
 
 logger = logging.getLogger("ai_pos.password_reset")
@@ -58,12 +59,14 @@ def request_code(db: Session, settings: Settings, email: str) -> str:
     user.reset_code_sent_at = _now()
     user.reset_code_attempts = 0
     db.commit()
-    body = (
-        f"Your AI POS password reset code is {code}.\n\n"
-        f"It expires in {CODE_MINUTES} minutes. If you did not ask for this, you can ignore the email."
+    plain, html_body = password_reset_parts(
+        code=code, minutes=CODE_MINUTES, name=user.full_name, support_email=settings.support_email
     )
     try:
-        mail.send(settings, Outgoing(to=user.email, subject="Your AI POS password reset code", body=body))
+        mail.send(
+            settings,
+            Outgoing(to=user.email, subject="Reset your AxizPOS password", body=plain, html=html_body),
+        )
     except ProviderError as error:
         user.reset_code_hash = None
         user.reset_code_expires_at = None
@@ -94,14 +97,39 @@ def check_code(db: Session, email: str, code: str) -> None:
     _match(db, email, code)
 
 
-def reset_password(db: Session, email: str, code: str, password: str) -> None:
+def reset_password(db: Session, settings: Settings, email: str, code: str, password: str) -> None:
     user = _match(db, email, code)
-    user.hashed_password = hash_password(password)
-    user.token_version += 1
-    user.failed_login_attempts = 0
-    user.locked_until = None
-    user.reset_code_hash = None
-    user.reset_code_expires_at = None
-    user.reset_code_sent_at = None
-    user.reset_code_attempts = 0
+    address = user.email
+    taken = db.execute(
+        update(User)
+        .where(User.id == user.id, User.reset_code_hash == user.reset_code_hash)
+        .values(
+            hashed_password=hash_password(password),
+            token_version=User.token_version + 1,
+            failed_login_attempts=0,
+            locked_until=None,
+            reset_code_hash=None,
+            reset_code_expires_at=None,
+            reset_code_sent_at=None,
+            reset_code_attempts=0,
+        )
+    )
+    if taken.rowcount != 1:
+        db.rollback()
+        raise ApiError(400, "invalid_code", "That code is wrong or has expired. Request a new one.")
     db.commit()
+    logger.info("password reset completed")
+    _notify_changed(settings, address)
+
+
+def _notify_changed(settings: Settings, address: str) -> None:
+    if mail.platform_link(settings) is None:
+        return
+    plain, html_body = password_changed_parts(support_email=settings.support_email)
+    try:
+        mail.send(
+            settings,
+            Outgoing(to=address, subject="Your AxizPOS password was changed", body=plain, html=html_body),
+        )
+    except ProviderError as error:
+        logger.warning("password changed notice failed: %s", error)

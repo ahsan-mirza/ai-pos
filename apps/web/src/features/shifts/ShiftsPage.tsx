@@ -5,6 +5,7 @@ import { ErrorNote, FilterSelect } from "../../components/ui/Field";
 import { Modal } from "../../components/ui/Modal";
 import { apiGet } from "../../lib/api";
 import { useAuth } from "../../lib/auth";
+import { useCurrency } from "../../lib/currency";
 import { formatDate, storeOptions, useStores } from "../inventory/shared";
 import { errorMessage } from "../users/api";
 
@@ -47,6 +48,7 @@ function VarianceChip({ shift }: { shift: Shift }) {
 }
 
 export function ShiftsPage() {
+  const { currency: businessCurrency } = useCurrency();
   const { user } = useAuth();
   const { stores } = useStores();
   const [storeId, setStoreId] = useState(user?.store_id ?? "");
@@ -74,7 +76,7 @@ export function ShiftsPage() {
   const rows = useMemo(() => shifts ?? [], [shifts]);
   const closed = rows.filter((shift) => shift.status === "CLOSED");
   const netVariance = closed.reduce((sum, shift) => sum + (shift.variance_cents ?? 0), 0);
-  const currency = rows[0]?.currency ?? "AED";
+  const currency = rows[0]?.currency ?? businessCurrency;
 
   return (
     <section className="space-y-4">

@@ -8,7 +8,7 @@ import uuid
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, Response
 from sqlalchemy import select
 
 from app.console import billing, transfers
@@ -16,7 +16,7 @@ from app.core.config import Settings, get_settings
 from app.core.deps import Principal, authorize, get_principal
 from app.core.errors import ApiError
 from app.core.permissions import Permission
-from app.schemas.billing import CatalogOut, CheckoutIn, CheckoutOut, CheckoutStatus, QuoteIn, QuoteOut
+from app.schemas.billing import AccessOut, CatalogOut, CheckoutIn, CheckoutOut, CheckoutStatus, QuoteIn, QuoteOut
 from app.tenancy import registry
 from app.tenancy.context import current_tenant
 from app.tenancy.models import Tenant
@@ -141,14 +141,17 @@ def simulate(
         return billing.simulate_checkout(db, settings, tenant_id, checkout_id)
 
 
-@router.get("/access")
-def access_status(principal: Annotated[Principal, Depends(get_principal)], settings: Config) -> dict[str, str | bool]:
+@router.get("/access", response_model=AccessOut)
+def access_status(principal: Annotated[Principal, Depends(get_principal)], settings: Config) -> AccessOut:
     """Request-time entitlement. A delayed job cannot extend access past this answer."""
     del principal
     tenant_id = _tenant_id(settings)
     with registry.control_session(settings) as db:
-        state = transfers.access_state(db, tenant_id)
-        return {"state": state, "ai_allowed": transfers.ai_allowed(db, tenant_id)}
+        return AccessOut(
+            state=transfers.access_state(db, tenant_id),
+            ai_allowed=transfers.ai_allowed(db, tenant_id),
+            attention=transfers.attention(db, tenant_id),
+        )
 
 
 @router.post("/transfers")
@@ -183,6 +186,18 @@ async def submit_transfer(
             body=body,
         )
         return {"id": str(row.id), "status": row.status}
+
+
+@router.get("/transfers/{transfer_id}/receipt")
+def own_receipt(
+    transfer_id: uuid.UUID,
+    _: Annotated[Principal, Depends(authorize(Permission.SETTINGS_MANAGE))],
+    settings: Config,
+) -> Response:
+    tenant_id = _tenant_id(settings)
+    with registry.control_session(settings) as db:
+        row = transfers.receipt_bytes(db, transfer_id, tenant_id)
+        return Response(content=row.body, media_type=row.content_type)
 
 
 @router.post("/stripe-webhook")

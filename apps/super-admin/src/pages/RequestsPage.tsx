@@ -2,6 +2,7 @@ import type { ConsoleChangeRequest } from "@ai-pos/shared-types";
 import { Inbox } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
+import { PageHeader } from "../components/PageHeader";
 import { ErrorNote, StatusBadge } from "../components/ui";
 import { api, errorText } from "../lib/api";
 import { when } from "../lib/format";
@@ -29,30 +30,26 @@ export function RequestsPage() {
 
   return (
     <section>
-      <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-charcoal text-white">
-            <Inbox size={20} aria-hidden="true" />
-          </span>
-          <div>
-            <h1 className="text-2xl font-semibold">Change requests</h1>
-            <p className="text-sm text-charcoal/60">Business-type migrations and modules stores asked for.</p>
+      <PageHeader
+        icon={Inbox}
+        title="Change requests"
+        description="Business-type migrations and modules stores asked for."
+        controls={
+          <div className="inline-flex h-auto max-w-full flex-wrap items-center rounded-full border border-line bg-white p-1" role="group" aria-label="Filter">
+            {FILTERS.map((value) => (
+              <button
+                key={value || "all"}
+                type="button"
+                aria-pressed={status === value}
+                onClick={() => setStatus(value)}
+                className={`h-9 rounded-full px-4 text-sm font-semibold capitalize ${status === value ? "bg-charcoal text-white" : "text-charcoal/60"}`}
+              >
+                {value ? value.toLowerCase() : "all"}
+              </button>
+            ))}
           </div>
-        </div>
-        <div className="inline-flex rounded-full bg-white p-1 shadow-sm" role="group" aria-label="Filter">
-          {FILTERS.map((value) => (
-            <button
-              key={value || "all"}
-              type="button"
-              aria-pressed={status === value}
-              onClick={() => setStatus(value)}
-              className={`h-9 rounded-full px-4 text-sm font-semibold capitalize ${status === value ? "bg-charcoal text-white" : "text-charcoal/60"}`}
-            >
-              {value ? value.toLowerCase() : "all"}
-            </button>
-          ))}
-        </div>
-      </div>
+        }
+      />
       <ErrorNote message={error} />
       <ul className="space-y-2">
         {rows.map((request) => (

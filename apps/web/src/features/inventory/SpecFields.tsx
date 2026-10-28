@@ -44,6 +44,11 @@ const FIELD_ICONS: Record<string, LucideIcon> = {
   size: Ruler,
   fabric: Shirt,
   gender_fit: User,
+  length: Ruler,
+  sleeve: Shirt,
+  neckline: Shirt,
+  material: Layers,
+  width: Ruler,
 };
 
 function labelFor(key: string): string {
@@ -118,6 +123,7 @@ export function SpecFields({
             <input
               value={draftName}
               placeholder="Battery capacity"
+              autoComplete="off"
               onChange={(event) => setDraftName(event.target.value)}
               className={control}
             />
@@ -127,6 +133,7 @@ export function SpecFields({
             <input
               value={draftValue}
               placeholder="5000mAh"
+              autoComplete="off"
               onChange={(event) => setDraftValue(event.target.value)}
               className={control}
             />

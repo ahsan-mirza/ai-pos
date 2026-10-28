@@ -51,6 +51,41 @@ export function setUnauthorizedHandler(handler: (() => void) | null): void {
   onUnauthorized = handler;
 }
 
+let renewer: (() => Promise<boolean>) | null = null;
+let renewal: Promise<boolean> | null = null;
+let renewalEpoch = 0;
+
+/** The signed-in app registers one renewer. Replacing it drops a renewal that started earlier. */
+export function setSessionRenewer(next: (() => Promise<boolean>) | null): void {
+  renewalEpoch += 1;
+  renewal = null;
+  renewer = next;
+}
+
+/** One renewal at a time. Later 401s wait for that call instead of each starting another. */
+export function requestSessionRenewal(): Promise<boolean> {
+  if (renewer === null) return Promise.resolve(false);
+  if (renewal === null) {
+    const stamp = renewalEpoch;
+    const run = renewer;
+    const flight = run()
+      .then((ok) => stamp === renewalEpoch && ok)
+      .catch((error: unknown) => {
+        if (stamp !== renewalEpoch) return false;
+        throw error;
+      });
+    renewal = flight;
+    void flight.finally(() => {
+      if (renewal === flight) renewal = null;
+    });
+  }
+  return renewal;
+}
+
+export function renewAccessToken<T>(): Promise<T> {
+  return request<T>("POST", "/api/v1/auth/refresh", undefined, true, false);
+}
+
 async function parseError(response: Response): Promise<ApiRequestError> {
   try {
     const body = (await response.json()) as {
@@ -78,8 +113,23 @@ async function parseError(response: Response): Promise<ApiRequestError> {
   return new ApiRequestError(`Request failed (${response.status}).`, response.status);
 }
 
-async function request<T>(method: string, path: string, body?: unknown, auth = true): Promise<T> {
-  return (await exchange<T>(method, path, body, auth)).data;
+async function request<T>(method: string, path: string, body?: unknown, auth = true, renew = true): Promise<T> {
+  return (await exchange<T>(method, path, body, auth, renew)).data;
+}
+
+async function rejected<T>(response: Response, auth: boolean, renew: boolean, retry: () => Promise<T>): Promise<T> {
+  const error = await parseError(response);
+  if (auth && response.status === 401) {
+    if (renew) {
+      try {
+        if (await requestSessionRenewal()) return retry();
+      } catch (caught) {
+        if (caught instanceof ApiRequestError && caught.status === 0) throw caught;
+      }
+    }
+    onUnauthorized?.();
+  }
+  throw error;
 }
 
 async function exchange<T>(
@@ -87,6 +137,7 @@ async function exchange<T>(
   path: string,
   body?: unknown,
   auth = true,
+  renew = true,
 ): Promise<{ data: T; headers: Headers }> {
   const headers = baseHeaders();
   if (body !== undefined) headers["Content-Type"] = "application/json";
@@ -102,9 +153,7 @@ async function exchange<T>(
     throw unreachable();
   }
   if (!response.ok) {
-    const error = await parseError(response);
-    if (auth && response.status === 401) onUnauthorized?.();
-    throw error;
+    return rejected(response, auth, renew, () => exchange(method, path, body, auth, false));
   }
   if (response.status === 204) return { data: undefined as T, headers: response.headers };
   return { data: (await response.json()) as T, headers: response.headers };
@@ -148,7 +197,7 @@ export function apiDelete(path: string): Promise<void> {
 }
 
 /** Authenticated binary download, for PDFs. A body sends a POST (e.g. a list of labels to print). */
-export async function apiBlob(path: string, body?: unknown): Promise<Blob> {
+export async function apiBlob(path: string, body?: unknown, renew = true): Promise<Blob> {
   const headers = baseHeaders();
   if (accessToken !== null) headers.Authorization = `Bearer ${accessToken}`;
   if (body !== undefined) headers["Content-Type"] = "application/json";
@@ -163,15 +212,13 @@ export async function apiBlob(path: string, body?: unknown): Promise<Blob> {
     throw unreachable();
   }
   if (!response.ok) {
-    const error = await parseError(response);
-    if (response.status === 401) onUnauthorized?.();
-    throw error;
+    return rejected(response, true, renew, () => apiBlob(path, body, false));
   }
   return response.blob();
 }
 
 /** Authenticated multipart upload; the browser sets the boundary header itself. */
-export async function apiUpload<T>(path: string, form: FormData): Promise<T> {
+export async function apiUpload<T>(path: string, form: FormData, renew = true): Promise<T> {
   const headers = baseHeaders();
   if (accessToken !== null) headers.Authorization = `Bearer ${accessToken}`;
   let response: Response;
@@ -181,9 +228,7 @@ export async function apiUpload<T>(path: string, form: FormData): Promise<T> {
     throw unreachable();
   }
   if (!response.ok) {
-    const error = await parseError(response);
-    if (response.status === 401) onUnauthorized?.();
-    throw error;
+    return rejected(response, true, renew, () => apiUpload(path, form, false));
   }
   return (await response.json()) as T;
 }

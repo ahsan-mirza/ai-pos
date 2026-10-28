@@ -47,6 +47,8 @@ export interface CashierProfile {
   addon_modules?: string[];
   /** Unix seconds of the last online unlock that refreshed add-on access. */
   addon_synced_at?: number;
+  /** Profile photo from the last online unlock. Absent offline until the next successful sign-in. */
+  avatar_url?: string | null;
 }
 
 export interface CashierSession {
@@ -266,6 +268,11 @@ export function pendingCount(): Promise<number> {
 
 export function refreshProducts(): Promise<CatalogSnapshot> {
   return invoke<CatalogSnapshot>("refresh_products");
+}
+
+/** `updated_at:count` from the API. The register downloads products only when this string changes. */
+export function catalogRevision(): Promise<string> {
+  return invoke<string>("catalog_revision");
 }
 
 export interface CurrencySnapshot {

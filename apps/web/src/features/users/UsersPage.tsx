@@ -3,6 +3,7 @@ import { KeyRound, Pencil, Plus, Smartphone, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { useConfirm } from "../../components/ui/ConfirmDialog";
 import { ErrorNote, PrimaryButton, SearchField } from "../../components/ui/Field";
+import { ProfileAvatar } from "../../components/ui/ProfileAvatar";
 import { useAuth } from "../../lib/auth";
 import { errorMessage, rolesApi, storesApi, usersApi } from "./api";
 import { CredentialModal } from "./CredentialModal";
@@ -13,15 +14,6 @@ type Dialog =
   | { kind: "password"; user: User }
   | { kind: "pin"; user: User }
   | null;
-
-function initials(name: string): string {
-  return name
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part[0]?.toUpperCase() ?? "")
-    .join("");
-}
 
 function Badge({ on, label }: { on: boolean; label: string }) {
   return (
@@ -166,14 +158,11 @@ export function UsersPage() {
                 <tr key={user.id} className="border-t border-line">
                   <td className="py-3">
                     <div className="flex items-center gap-3">
-                      <span className="flex h-9 w-9 items-center justify-center rounded-full bg-charcoal text-xs font-semibold text-white">
-                        {initials(user.full_name)}
-                      </span>
+                      <ProfileAvatar name={user.full_name} url={user.avatar_url} tone="ink" />
                       <span>
                         <span className="block font-medium">{user.full_name}</span>
-                        <span className="block text-xs text-charcoal/50">
-                          @{user.username} · {user.email}
-                        </span>
+                        <span className="block text-xs text-charcoal/50">@{user.username}</span>
+                        <span className="block text-xs text-charcoal/50">{user.email}</span>
                       </span>
                     </div>
                   </td>

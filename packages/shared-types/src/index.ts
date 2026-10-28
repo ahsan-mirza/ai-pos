@@ -1,4 +1,5 @@
 export { formatMoney, isValidImei, lineTaxCents } from "./money.js";
+export { isStoreCode, normalizeStoreCode, storeCodeError } from "./storeCode.js";
 export { DEFAULT_TAX_POLICY, TAX_TREATMENT_LABELS, divHalfUp, forCustomer, lineTax, rateFor, treatmentOf } from "./tax.js";
 export type { Device, DeviceActivationKey, DeviceCreate, DeviceKey } from "./devices.js";
 export type { LineTax, TaxCategory, TaxPolicy, TaxTreatment } from "./tax.js";
@@ -547,6 +548,8 @@ export {
   signupPasswordRules,
 } from "./signup.js";
 export { COUNTRY_CURRENCIES, currencyForCountry } from "./countries.js";
+export { taxIdError, taxIdField } from "./taxId.js";
+export type { TaxIdField } from "./taxId.js";
 export type { SignupCountryCode } from "./countries.js";
 export type {
   AvailabilityResult,

@@ -1,5 +1,6 @@
 import type { BusinessTypeModules } from "@ai-pos/shared-types";
 import { useEffect, useState } from "react";
+import { PageHeader } from "../components/PageHeader";
 import { ErrorNote } from "../components/ui";
 import { api, errorText } from "../lib/api";
 
@@ -17,11 +18,10 @@ export function BusinessTypesPage() {
   }, []);
   return (
     <section>
-      <h1 className="text-2xl font-semibold">Business types</h1>
-      <p className="mt-1 max-w-3xl text-sm text-charcoal/60">
-        Preset modules are what a new store of that type starts with. Eligible modules are the ones that type may turn on.
-        Changing this list is a product change, not a per-store edit, so it stays in the registered catalogue.
-      </p>
+      <PageHeader
+        title="Business types"
+        description="Preset modules are what a new store of that type starts with. Eligible modules are the ones that type may turn on. Changing this list is a product change, not a per-store edit, so it stays in the registered catalogue."
+      />
       <ErrorNote message={error} />
       <ul className="mt-6 grid gap-3">
         {rows.map((row) => (

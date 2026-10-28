@@ -68,26 +68,74 @@ export function AppShell() {
 }
 
 function SubscriptionNotice() {
-  const [state, setState] = useState<string | null>(null);
+  const { pathname } = useLocation();
+  const [access, setAccess] = useState<{
+    state: string;
+    attention: { kind: string; invoice_id: string; reason: string | null } | null;
+  } | null>(null);
   useEffect(() => {
     let cancelled = false;
-    apiGet<{ state: string; ai_allowed: boolean }>("/api/v1/billing/access")
+    apiGet<{ state: string; attention: { kind: string; invoice_id: string; reason: string | null } | null }>(
+      "/api/v1/billing/access",
+    )
       .then((found) => {
-        if (!cancelled) setState(found.state);
+        if (!cancelled) setAccess(found);
       })
       .catch(() => undefined);
     return () => {
       cancelled = true;
     };
-  }, []);
-  if (state !== "grace" && state !== "restricted") return null;
+  }, [pathname]);
+  const attention = access?.attention;
+  if (attention) {
+    const title =
+      attention.kind === "pending_review"
+        ? "Payment Verification Pending"
+        : attention.kind === "rejected"
+          ? "Payment Proof Needs Attention"
+          : attention.kind === "revoked"
+            ? "Subscription access was updated"
+            : "Payment Required";
+    const message =
+      attention.kind === "rejected" && attention.reason
+        ? attention.reason
+        : attention.kind === "pending_review"
+          ? "We have received your payment proof. Our team will review it and update your subscription status. Your features will remain locked until verification is complete."
+          : attention.kind === "revoked"
+            ? "The previous activation was revoked. Paid features stay locked until a payment is verified again."
+            : "Your invoice is ready. Transfer the amount shown on your invoice and submit your payment proof. Your subscription features will remain locked until payment is verified.";
+    return (
+      <div className="border-b border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950" role="status">
+        <p className="font-semibold">{title}</p>
+        <p className="mt-1">{message}</p>
+        <p className="mt-2 flex flex-wrap gap-3">
+          <Link to="/subscription" className="font-semibold underline">
+            View Invoice
+          </Link>
+          {attention.kind === "awaiting_proof" || attention.kind === "rejected" ? (
+            <Link to="/subscription" className="font-semibold underline">
+              {attention.kind === "rejected" ? "Resubmit Payment Proof" : "Submit Payment Proof"}
+            </Link>
+          ) : (
+            <Link to="/subscription" className="font-semibold underline">
+              View submission status
+            </Link>
+          )}
+        </p>
+      </div>
+    );
+  }
+  if (access?.state !== "grace" && access?.state !== "restricted") return null;
   const text =
-    state === "grace"
+    access.state === "grace"
       ? "Your AxizPOS subscription payment is overdue. Complete the bank transfer and submit the receipt before the grace period ends."
       : "This subscription is past its grace period. Billing and receipt upload stay open so the store can pay and recover.";
   return (
     <p className="border-b border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-950" role="status">
-      {text}
+      {text}{" "}
+      <Link to="/subscription" className="font-semibold underline">
+        View Invoice
+      </Link>
     </p>
   );
 }

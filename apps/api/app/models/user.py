@@ -22,6 +22,8 @@ class User(TenantScoped, TimestampMixin, Base):
     username: Mapped[str] = mapped_column(String(32))
     email: Mapped[str] = mapped_column(String(254))
     full_name: Mapped[str] = mapped_column(String(120))
+    # Random media key under storage/{tenant}/media/avatars/. Null until the user uploads a photo.
+    avatar_key: Mapped[str | None] = mapped_column(String(80), nullable=True)
     hashed_password: Mapped[str | None] = mapped_column(String(255), nullable=True)
     hashed_pin: Mapped[str | None] = mapped_column(String(255), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)

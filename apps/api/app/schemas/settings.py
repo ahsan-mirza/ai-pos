@@ -1,3 +1,4 @@
+import re
 from datetime import datetime
 from typing import Literal
 
@@ -12,6 +13,10 @@ class BusinessSettingsOut(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     currency: str
+    # Canonical tenant store code used at sign-in. Read-only; it is not a branch code.
+    store_code: str = ""
+    # ISO country recorded at signup. Null for stores created before it was stored.
+    country: str | None = None
     supported_currencies: list[str]
     updated_at: datetime
     updated_by_name: str | None
@@ -68,7 +73,7 @@ class TaxSettingsUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     vat_registered: bool
-    trn: str | None = Field(default=None, pattern=r"^\d{15}$")
+    trn: str | None = Field(default=None, max_length=32)
     legal_name: str | None = Field(default=None, max_length=160)
     legal_name_ar: str | None = Field(default=None, max_length=160)
     prices_include_vat: bool
@@ -76,12 +81,26 @@ class TaxSettingsUpdate(BaseModel):
     # "fta" (UAE) or "zatca" (Saudi Arabia); decides invoice kinds, QR codes and e-invoicing.
     tax_authority: Literal["fta", "zatca"] = "fta"
 
+    @field_validator("trn")
+    @classmethod
+    def _clean_trn(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        cleaned = value.strip().upper()
+        return cleaned or None
+
     @model_validator(mode="after")
     def registered_needs_trn(self) -> "TaxSettingsUpdate":
         if self.vat_registered and not self.trn:
-            raise ValueError("A VAT-registered business needs its 15-digit TRN.")
-        if self.tax_authority == "zatca" and self.trn and not (self.trn.startswith("3") and self.trn.endswith("3")):
-            raise ValueError("A Saudi VAT number is 15 digits that start and end with 3.")
+            raise ValueError("A tax-registered business needs its tax registration number.")
+        if self.tax_authority == "zatca":
+            saudi = self.trn is not None and len(self.trn) == 15 and self.trn.isdigit()
+            if self.trn and not (saudi and self.trn.startswith("3") and self.trn.endswith("3")):
+                raise ValueError("A Saudi VAT number is 15 digits that start and end with 3.")
+        elif self.trn and self.trn.isdigit() and len(self.trn) != 15:
+            raise ValueError("A UAE TRN is 15 digits. Leave it blank if the business is not VAT-registered.")
+        elif self.trn and not re.fullmatch(r"[A-Z0-9][A-Z0-9 \-]{0,30}[A-Z0-9]", self.trn):
+            raise ValueError("Enter the tax registration number, or leave it blank.")
         return self
 
 

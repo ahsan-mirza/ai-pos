@@ -291,6 +291,32 @@ function CreateRegisterModal({
   );
 }
 
+/** Copies the exact string the user can see. "Copied" is only for a successful write. */
+async function copyVisible(value: string): Promise<boolean> {
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(value);
+      return true;
+    }
+  } catch {
+    // The page may be denied clipboard permission. Fall through to the older command.
+  }
+  try {
+    const area = document.createElement("textarea");
+    area.value = value;
+    area.setAttribute("readonly", "");
+    area.style.position = "fixed";
+    area.style.left = "-9999px";
+    document.body.appendChild(area);
+    area.select();
+    const ok = document.execCommand("copy");
+    area.remove();
+    return ok;
+  } catch {
+    return false;
+  }
+}
+
 function ActivationModal({
   device,
   activation,
@@ -301,10 +327,11 @@ function ActivationModal({
   onClose: () => void;
 }) {
   const [copied, setCopied] = useState(false);
+  const [copyError, setCopyError] = useState<string | null>(null);
   return (
     <Modal
       title={`Activate ${device.code}`}
-      subtitle="On the new register, open AxizPOS Register and enter these two values. The key works once."
+      subtitle="On the new register, enter the store subdomain, then paste this key. The key works once."
       onClose={onClose}
       footer={<PrimaryButton onClick={onClose}>Done</PrimaryButton>}
     >
@@ -323,14 +350,18 @@ function ActivationModal({
       <button
         type="button"
         onClick={() => {
-          void navigator.clipboard
-            .writeText(`Subdomain: ${activation.tenant_domain}\nActivation key: ${activation.activation_key}`)
-            .then(() => setCopied(true));
+          setCopied(false);
+          setCopyError(null);
+          void copyVisible(activation.activation_key).then((ok) => {
+            if (ok) setCopied(true);
+            else setCopyError("Could not copy the activation key. Select it and copy it manually.");
+          });
         }}
         className="mt-3 inline-flex items-center gap-2 rounded-full border border-line px-4 py-2 text-sm font-semibold hover:border-accent hover:text-accent"
       >
-        <Copy size={14} aria-hidden="true" /> {copied ? "Copied" : "Copy both"}
+        <Copy size={14} aria-hidden="true" /> {copied ? "Copied" : "Copy activation key"}
       </button>
+      {copyError ? <p className="mt-2 text-sm text-danger">{copyError}</p> : null}
       <p className="mt-4 text-sm text-charcoal/60">
         Valid until {formatDate(activation.expires_at)}. Generating a new key cancels this one; activating replaces the
         register's previous key.
@@ -341,6 +372,7 @@ function ActivationModal({
 
 function KeyModal({ issued, onClose }: { issued: DeviceKey; onClose: () => void }) {
   const [copied, setCopied] = useState(false);
+  const [copyError, setCopyError] = useState<string | null>(null);
   return (
     <Modal
       title={`Key for ${issued.device.code}`}
@@ -357,12 +389,18 @@ function KeyModal({ issued, onClose }: { issued: DeviceKey; onClose: () => void 
       <button
         type="button"
         onClick={() => {
-          void navigator.clipboard.writeText(`DEVICE_KEY=${issued.key}`).then(() => setCopied(true));
+          setCopied(false);
+          setCopyError(null);
+          void copyVisible(issued.key).then((ok) => {
+            if (ok) setCopied(true);
+            else setCopyError("Could not copy the key. Select it and copy it manually.");
+          });
         }}
         className="mt-3 inline-flex items-center gap-2 rounded-full border border-line px-4 py-2 text-sm font-semibold hover:border-accent hover:text-accent"
       >
-        <Copy size={14} aria-hidden="true" /> {copied ? "Copied" : "Copy as .env line"}
+        <Copy size={14} aria-hidden="true" /> {copied ? "Copied" : "Copy key"}
       </button>
+      {copyError ? <p className="mt-2 text-sm text-danger">{copyError}</p> : null}
       <p className="mt-4 text-sm text-charcoal/60">
         Invoices from this till are numbered <span className="font-mono">{issued.device.invoice_prefix}-000001</span> onward.
       </p>

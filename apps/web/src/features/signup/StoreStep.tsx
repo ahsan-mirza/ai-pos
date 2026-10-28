@@ -1,4 +1,4 @@
-import { currencyForCountry, type SignupState } from "@ai-pos/shared-types";
+import { currencyForCountry, normalizeStoreCode, taxIdError, taxIdField, type SignupState } from "@ai-pos/shared-types";
 import { CountryField, availabilityBlocksSubmit, normalizeStoreName, storeNameError } from "@ai-pos/ui";
 import { Check, Loader2, X } from "lucide-react";
 import { useState, type FormEvent } from "react";
@@ -62,7 +62,9 @@ export function StoreStep({
 
   const currency = currencyForCountry(country);
   const nameValid = storeNameError(storeName, true) === undefined;
-  const trnValid = trn === "" || /^\d{15}$/.test(trn);
+  const taxField = taxIdField(country);
+  const taxError = taxIdError(country, trn);
+  const trnValid = taxError === null;
   const slugReady = !availabilityBlocksSubmit(slugCheck.status, slug.length > 0);
   const nameReady = !availabilityBlocksSubmit(nameCheck.status, nameValid);
   const ready = nameReady && slugReady && trnValid && !busy;
@@ -114,7 +116,7 @@ export function StoreStep({
               value={slug}
               onChange={(event) => {
                 setSlugEdited(true);
-                setSlug(event.target.value.toLowerCase().replace(/[^a-z0-9-]/g, "").slice(0, 32));
+                setSlug(normalizeStoreCode(event.target.value).replace(/[^a-z0-9-]/g, "").slice(0, 32));
               }}
               className="min-w-0 flex-1 bg-transparent px-4 py-3 text-sm focus:outline-none"
               aria-describedby="signup-slug-status"
@@ -178,12 +180,14 @@ export function StoreStep({
           <TextField label="Currency" value={currency} readOnly disabled hint="Set by the country." />
         </div>
         <TextField
-          label="VAT number (TRN)"
-          inputMode="numeric"
+          label={taxField.label}
           value={trn}
-          onChange={(event) => setTrn(event.target.value.replace(/\D/g, "").slice(0, 15))}
-          hint={trnValid ? "Optional. 15 digits; add it later if you are not registered yet." : "A TRN has 15 digits."}
-          placeholder="100123456700003"
+          maxLength={32}
+          autoComplete="off"
+          onChange={(event) => setTrn(event.target.value.slice(0, 32))}
+          hint={taxError === null ? taxField.hint : undefined}
+          error={taxError ?? undefined}
+          placeholder={taxField.placeholder || undefined}
         />
       </div>
       <ErrorNote message={error} />

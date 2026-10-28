@@ -501,6 +501,7 @@ const singlePages: Record<string, Crumb[]> = {
   "/reports/tips": [{ label: "Finance" }, { label: "Tips & service charge" }],
   "/insights": [{ label: "Workspace" }, { label: "AI insights" }],
   "/assistant": [{ label: "Workspace" }, { label: "AI assistant" }],
+  "/account": [{ label: "Your account" }],
   "/users": [{ label: "Administration" }, { label: "Users" }],
   "/staff": [{ label: "Administration" }, { label: "Staff, timesheets & payroll" }],
 };

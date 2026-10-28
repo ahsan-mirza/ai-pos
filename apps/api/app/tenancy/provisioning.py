@@ -51,6 +51,7 @@ class Job:
     password_hash: str
     tenant_id: uuid.UUID | None
     owner_username: str | None
+    country: str | None = None
 
     @property
     def database(self) -> str:
@@ -175,6 +176,7 @@ def step_settings(job: Job) -> None:
         row.capabilities = [capability.value for capability in modules]
         row.currency = job.currency
         row.legal_name = job.store_name
+        row.country = job.country
         row.trn = job.trn
         row.vat_registered = job.trn is not None
         row.onboarded_at = datetime.now(UTC)
@@ -227,6 +229,7 @@ def provision(request_id: uuid.UUID, settings: Settings) -> None:
             sub_type=row.sub_type or "",
             currency=row.currency or "AED",
             trn=row.trn,
+            country=row.country,
             email=row.email,
             full_name=row.full_name,
             password_hash=row.password_hash,

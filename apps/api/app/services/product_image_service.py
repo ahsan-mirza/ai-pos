@@ -44,6 +44,12 @@ def _decode(data: bytes) -> Image.Image:
     return image
 
 
+def reencode(data: bytes, size: int) -> bytes:
+    """Re-encode an uploaded photo as WebP. The bytes are checked; the declared type is not trusted."""
+    encoded, _, _ = _encode(_decode(data), size)
+    return encoded
+
+
 def out(image: ProductImage) -> ProductImageOut:
     return ProductImageOut(
         id=image.id,

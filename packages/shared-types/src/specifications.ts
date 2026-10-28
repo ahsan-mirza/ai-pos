@@ -8,7 +8,16 @@ export interface SpecField {
 }
 
 export interface SpecSchema {
-  id: "COMPUTERS_LAPTOPS" | "MOBILES_PHONES" | "HOME_APPLIANCES_FRIDGE" | "TV_AUDIO" | "FASHION_CLOTHING" | "OTHER";
+  id:
+    | "COMPUTERS_LAPTOPS"
+    | "MOBILES_PHONES"
+    | "HOME_APPLIANCES_FRIDGE"
+    | "TV_AUDIO"
+    | "FASHION_CLOTHING"
+    | "FASHION_DRESS"
+    | "FASHION_FOOTWEAR"
+    | "FASHION_BAG"
+    | "OTHER";
   title: string;
   fields: readonly SpecField[];
   /** Values that also distinguish a sellable variant (size, storage, colour). */
@@ -67,15 +76,57 @@ const TV: SpecSchema = {
   ],
 };
 
+const FASHION_COLORS = ["Black", "White", "Navy", "Grey", "Beige", "Cream", "Red", "Pink", "Burgundy", "Green", "Brown", "Gold"] as const;
+const FASHION_SIZES = ["XS", "S", "M", "L", "XL", "XXL", "32", "34", "36", "38", "40", "42"] as const;
+const FABRICS = ["Cotton", "Silk", "Polyester", "Wool", "Linen", "Denim", "Chiffon", "Satin", "Velvet", "Crepe"] as const;
+
 const FASHION: SpecSchema = {
   id: "FASHION_CLOTHING",
   title: "Fashion & apparel",
   variantKeys: ["size", "color"],
   fields: [
-    { key: "size", label: "Size", placeholder: "M", options: ["XS", "S", "M", "L", "XL", "XXL", "32", "34", "36", "38", "40", "42"] },
-    { key: "color", label: "Color", placeholder: "Navy", options: ["Black", "White", "Navy", "Grey", "Beige", "Red"] },
-    { key: "fabric", label: "Fabric / material", placeholder: "Cotton", options: ["Cotton", "Silk", "Polyester", "Wool", "Linen", "Denim"] },
+    { key: "size", label: "Size", placeholder: "M", options: FASHION_SIZES },
+    { key: "color", label: "Color", placeholder: "Navy", options: FASHION_COLORS },
+    { key: "fabric", label: "Fabric / material", placeholder: "Cotton", options: FABRICS },
     { key: "gender_fit", label: "Gender / fit", placeholder: "Regular", options: ["Men", "Women", "Unisex", "Kids", "Slim", "Regular", "Relaxed"] },
+  ],
+};
+
+const DRESS: SpecSchema = {
+  id: "FASHION_DRESS",
+  title: "Dresses",
+  variantKeys: ["size", "color"],
+  fields: [
+    { key: "size", label: "Size", placeholder: "M", options: FASHION_SIZES },
+    { key: "color", label: "Color", placeholder: "Beige", options: FASHION_COLORS },
+    { key: "fabric", label: "Fabric", placeholder: "Chiffon", options: FABRICS },
+    { key: "length", label: "Length", placeholder: "Midi", options: ["Mini", "Knee", "Midi", "Maxi", "Floor"] },
+    { key: "sleeve", label: "Sleeve", placeholder: "Sleeveless", options: ["Sleeveless", "Short", "Three-quarter", "Long"] },
+    { key: "neckline", label: "Neckline", placeholder: "V-neck", options: ["Round", "V-neck", "Square", "Sweetheart", "Boat", "High neck", "Off shoulder"] },
+    { key: "gender_fit", label: "Gender / fit", placeholder: "Women", options: ["Women", "Girls", "Unisex", "Slim", "Regular", "Relaxed"] },
+  ],
+};
+
+const FOOTWEAR: SpecSchema = {
+  id: "FASHION_FOOTWEAR",
+  title: "Footwear",
+  variantKeys: ["size", "color"],
+  fields: [
+    { key: "size", label: "Size", placeholder: "40", options: ["36", "37", "38", "39", "40", "41", "42", "43", "44", "45", "UK 5", "UK 6", "UK 7", "UK 8", "UK 9", "UK 10"] },
+    { key: "color", label: "Color", placeholder: "Black", options: FASHION_COLORS },
+    { key: "material", label: "Material", placeholder: "Leather", options: ["Leather", "Suede", "Canvas", "Mesh", "Synthetic", "Rubber"] },
+    { key: "width", label: "Width", placeholder: "Regular", options: ["Narrow", "Regular", "Wide"] },
+  ],
+};
+
+const BAG: SpecSchema = {
+  id: "FASHION_BAG",
+  title: "Bags",
+  variantKeys: ["color"],
+  fields: [
+    { key: "size", label: "Size", placeholder: "Medium", options: ["Mini", "Small", "Medium", "Large"] },
+    { key: "color", label: "Color", placeholder: "Black", options: FASHION_COLORS },
+    { key: "material", label: "Material", placeholder: "Leather", options: ["Leather", "Canvas", "Nylon", "Straw", "Suede", "Fabric"] },
   ],
 };
 
@@ -86,7 +137,7 @@ const OTHER: SpecSchema = {
   fields: [],
 };
 
-const SCHEMAS = [LAPTOP, MOBILE, FRIDGE, TV, FASHION] as const;
+const SCHEMAS = [LAPTOP, MOBILE, FRIDGE, TV, FASHION, DRESS, FOOTWEAR, BAG] as const;
 
 function text(value: string): string {
   return value.toLowerCase();
@@ -96,19 +147,63 @@ function mentions(value: string, words: readonly string[]): boolean {
   return words.some((word) => value.includes(word));
 }
 
+export interface SpecSchemaHint {
+  /** Product or model name, so "Evening dress" picks dress fields even under a broad category. */
+  productName?: string;
+  /** Business profile. A fashion store uses apparel fields when the names match nothing else. */
+  profile?: string;
+}
+
+function hasTerm(value: string, terms: readonly string[]): boolean {
+  return terms.some((term) => new RegExp(`(^|[^a-z])${term}(?:es|s)?([^a-z]|$)`).test(value));
+}
+
+const DRESS_TERMS = ["dress", "gown", "abaya", "jalabiya", "kaftan", "jilbab"];
+const FOOTWEAR_TERMS = ["shoe", "footwear", "sneaker", "sandal", "heel", "boot", "loafer", "slipper"];
+const BAG_TERMS = ["bag", "handbag", "clutch", "tote", "purse", "wallet"];
+const CLOTHING_TERMS = [
+  "apparel",
+  "fashion",
+  "clothing",
+  "garment",
+  "shirt",
+  "top",
+  "tee",
+  "jean",
+  "trouser",
+  "pant",
+  "skirt",
+  "blouse",
+  "hijab",
+  "scarf",
+  "jacket",
+  "coat",
+  "sweater",
+  "hoodie",
+  "short",
+];
+
 /** Pick the specification template from the catalog names the merchant just chose. */
-export function specSchemaFor(categoryName: string, subCategoryName = ""): SpecSchema {
+export function specSchemaFor(categoryName: string, subCategoryName = "", hint?: SpecSchemaHint): SpecSchema {
   const category = text(categoryName);
   const sub = text(subCategoryName);
-  const both = `${category} ${sub}`.trim();
-  if (both === "") return OTHER;
+  const both = `${category} ${sub} ${text(hint?.productName ?? "")}`.trim();
+  const fashionStore = hint?.profile === "retail_fashion";
+  if (both === "") return fashionStore ? FASHION : OTHER;
   if (mentions(both, ["refrigerator", "fridge", "freezer"])) return FRIDGE;
   if (/(^|[^a-z])tv([^a-z]|$)|television|soundbar/.test(both)) return TV;
-  if (mentions(both, ["apparel", "fashion", "clothing", "garment", "footwear", "shoe"])) return FASHION;
   if (mentions(both, ["phone", "mobile", "smartphone", "tablet", "ipad", "handset"])) return MOBILE;
-  const computer = mentions(sub, ["laptop", "desktop", "notebook", "macbook"]);
+  const computer = mentions(sub, ["laptop", "desktop", "notebook", "macbook"]) || mentions(text(hint?.productName ?? ""), ["laptop", "notebook", "macbook"]);
   const computerCategory = mentions(category, ["computer"]) && (sub === "" || mentions(sub, ["laptop", "desktop", "notebook"]));
   if (computer || computerCategory) return LAPTOP;
+  const dress = hasTerm(both, DRESS_TERMS);
+  const footwear = hasTerm(both, FOOTWEAR_TERMS);
+  const clothing = hasTerm(both, CLOTHING_TERMS);
+  // "Dress shoes" are shoes; "boot cut jeans" stay apparel. A plain dress stays a dress.
+  if (dress && !hasTerm(both, ["shoe", "boot", "sandal", "sneaker"])) return DRESS;
+  if (footwear && !hasTerm(both, ["jean", "trouser", "pant"])) return FOOTWEAR;
+  if (hasTerm(both, BAG_TERMS)) return BAG;
+  if (clothing || dress || fashionStore) return FASHION;
   return OTHER;
 }
 
@@ -157,7 +252,17 @@ export function titleFromSpecs(input: {
     case "TV_AUDIO":
       return join([brand, value(specs, "screen_size"), value(specs, "display_tech"), model || "Television"]);
     case "FASHION_CLOTHING":
-      return join([brand, model, value(specs, "color"), value(specs, "fabric"), value(specs, "size")]);
+    case "FASHION_DRESS":
+    case "FASHION_FOOTWEAR":
+    case "FASHION_BAG":
+      return join([
+        brand,
+        model,
+        value(specs, "color"),
+        value(specs, "fabric") || value(specs, "material"),
+        value(specs, "length"),
+        value(specs, "size"),
+      ]);
     default:
       return join([brand, model, ...Object.values(specs)]);
   }

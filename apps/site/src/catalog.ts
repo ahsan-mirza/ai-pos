@@ -23,6 +23,9 @@ export interface Addon {
   monthly_fils: number;
   one_time_fils: number;
   refundable: boolean;
+  /** Capability ids this priced add-on is allowed to sell. Empty when it does not unlock a product module. */
+  module_keys: string[];
+  active: boolean;
 }
 
 export interface Fee {
@@ -79,6 +82,8 @@ export const SEED: PublicCatalog = {
       monthly_fils: 15_000,
       one_time_fils: 50_000,
       refundable: true,
+      module_keys: [],
+      active: true,
     },
     {
       code: "equipment_protection",
@@ -87,6 +92,8 @@ export const SEED: PublicCatalog = {
       monthly_fils: 3_900,
       one_time_fils: 0,
       refundable: false,
+      module_keys: [],
+      active: true,
     },
     {
       code: "extra_register",
@@ -95,6 +102,8 @@ export const SEED: PublicCatalog = {
       monthly_fils: 4_900,
       one_time_fils: 0,
       refundable: false,
+      module_keys: [],
+      active: true,
     },
   ],
   fees: [{ code: "onboarding", name: "Onboarding", amount_fils: 25_000 }],
@@ -297,6 +306,7 @@ function readAddon(value: unknown): Addon | null {
   ) {
     return null;
   }
+  const keys = Array.isArray(value.module_keys) ? value.module_keys.filter((item) => typeof item === "string") : [];
   return {
     code: value.code,
     name: value.name,
@@ -304,6 +314,8 @@ function readAddon(value: unknown): Addon | null {
     monthly_fils: value.monthly_fils,
     one_time_fils: value.one_time_fils,
     refundable: value.refundable === true,
+    module_keys: keys,
+    active: value.active !== false,
   };
 }
 

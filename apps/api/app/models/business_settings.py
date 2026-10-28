@@ -21,7 +21,9 @@ class BusinessSettings(TenantScoped, TimestampMixin, Base):
     currency: Mapped[str] = mapped_column(String(3))
     # VAT. While vat_registered is false the API keeps the register's line tax as sent (legacy behaviour).
     vat_registered: Mapped[bool] = mapped_column(Boolean, default=False)
-    trn: Mapped[str | None] = mapped_column(String(15), nullable=True)
+    trn: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    # ISO country chosen at signup. Empty for stores created before this was recorded.
+    country: Mapped[str | None] = mapped_column(String(2), nullable=True)
     legal_name: Mapped[str | None] = mapped_column(String(160), nullable=True)
     legal_name_ar: Mapped[str | None] = mapped_column(String(160), nullable=True)
     # Switching this reinterprets every catalog price, so it is an explicit business decision.

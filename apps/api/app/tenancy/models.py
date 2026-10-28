@@ -197,7 +197,7 @@ class SignupRequest(ControlBase):
     slug: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
     currency: Mapped[str | None] = mapped_column(String(3), nullable=True)
     country: Mapped[str | None] = mapped_column(String(2), nullable=True)
-    trn: Mapped[str | None] = mapped_column(String(15), nullable=True)
+    trn: Mapped[str | None] = mapped_column(String(32), nullable=True)
     status: Mapped[str] = mapped_column(String(16), default="PENDING_OTP", index=True)
     steps: Mapped[list] = mapped_column(JSON, default=list)
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -467,6 +467,9 @@ class BillingPayment(ControlBase):
     bank_reference: Mapped[str | None] = mapped_column(String(80), nullable=True, unique=True)
     recorded_by: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    # Set when an administrator undoes an activation. The payment row itself stays.
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    revoke_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
 class HardwareCategory(ControlBase):
@@ -595,3 +598,19 @@ class BillingInvoiceLine(ControlBase):
     amount_fils: Mapped[int] = mapped_column(Integer, default=0)
     recurring: Mapped[bool] = mapped_column(Boolean, default=False)
     refundable: Mapped[bool] = mapped_column(Boolean, default=False)
+
+
+class RecoveryChallenge(ControlBase):
+    """One emailed recovery code for an address. The code is stored only as a hash."""
+
+    __tablename__ = "recovery_challenges"
+    __table_args__ = (UniqueConstraint("purpose", "email", name="uq_recovery_challenges_purpose_email"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    purpose: Mapped[str] = mapped_column(String(32))
+    email: Mapped[str] = mapped_column(String(254), index=True)
+    code_hash: Mapped[str] = mapped_column(String(64))
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    sent_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

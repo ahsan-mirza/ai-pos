@@ -176,3 +176,122 @@ def test_transfer_checkout_does_not_mark_the_invoice_paid(platform) -> None:  # 
         invoice = db.get(BillingInvoice, uuid.UUID(body["checkout_id"]))
         assert invoice is not None and invoice.status == "pending"
         assert invoice.bank_snapshot["iban"] == "AE070331234567890123456"
+
+
+def test_a_wrong_amount_is_refused_and_review_can_be_reopened_or_revoked(platform) -> None:  # noqa: F811
+    admin = platform.operator(email="review-admin@axizpos.com")
+    support = platform.operator(email="review-support@axizpos.com", role="SUPPORT")
+    tenant_id = uuid.UUID(platform.tenant_id("alpha"))
+    with platform.control() as db:
+        ensure_catalog(db)
+        invoice = BillingInvoice(
+            tenant_id=tenant_id,
+            status="pending",
+            plan_code="LITE",
+            cycle_code="MONTHLY",
+            currency="AED",
+            recurring_fils=14_900,
+            total_fils=14_900,
+            confirm_name="Alpha",
+            bank_snapshot={
+                "holder_name": "AxizPOS LLC",
+                "bank_name": "Example Bank",
+                "iban": "AE070331234567890123456",
+            },
+        )
+        db.add(invoice)
+        db.commit()
+        invoice_id = str(invoice.id)
+    short = platform.client.post(
+        "/api/v1/billing/transfers",
+        headers=platform.headers("alpha"),
+        data={
+            "invoice_id": invoice_id,
+            "amount_fils": "100",
+            "transferred_on": "2026-10-26",
+            "idempotency_key": "transfer-key-short",
+        },
+        files={"receipt": ("pay.png", PNG, "image/png")},
+    )
+    assert short.status_code == 422
+    submitted = platform.client.post(
+        "/api/v1/billing/transfers",
+        headers=platform.headers("alpha"),
+        data={
+            "invoice_id": invoice_id,
+            "amount_fils": "14900",
+            "transferred_on": "2026-10-26",
+            "idempotency_key": "transfer-key-review",
+            "bank_reference": "BANK-REVIEW",
+        },
+        files={"receipt": ("pay.png", PNG, "image/png")},
+    )
+    assert submitted.status_code == 200, submitted.text
+    transfer_id = submitted.json()["id"]
+    other = platform.client.get(f"/api/v1/billing/transfers/{transfer_id}/receipt", headers=platform.headers("bravo"))
+    assert other.status_code == 404
+    own = platform.client.get(f"/api/v1/billing/transfers/{transfer_id}/receipt", headers=platform.headers("alpha"))
+    assert own.status_code == 200
+    waiting = platform.client.get("/api/v1/billing/access", headers=platform.headers("alpha"))
+    assert waiting.status_code == 200, waiting.text
+    assert waiting.json()["attention"]["kind"] == "pending_review"
+    rejected = platform.client.post(
+        f"/api/v1/super-admin/billing/transfers/{transfer_id}/reject",
+        headers=admin,
+        json={"reason": "The slip is unreadable."},
+    )
+    assert rejected.status_code == 200, rejected.text
+    corrected = platform.client.post(
+        "/api/v1/billing/transfers",
+        headers=platform.headers("alpha"),
+        data={
+            "invoice_id": invoice_id,
+            "amount_fils": "14900",
+            "transferred_on": "2026-10-27",
+            "idempotency_key": "transfer-key-corrected",
+            "bank_reference": "BANK-CORRECTED",
+        },
+        files={"receipt": ("pay.png", PNG, "image/png")},
+    )
+    assert corrected.status_code == 200, corrected.text
+    assert corrected.json()["id"] != transfer_id
+    assert corrected.json()["status"] == "pending_review"
+    blocked = platform.client.post(
+        f"/api/v1/super-admin/billing/transfers/{transfer_id}/reopen",
+        headers=support,
+        json={"reason": "Support cannot reopen this."},
+    )
+    assert blocked.status_code == 403
+    reopened = platform.client.post(
+        f"/api/v1/super-admin/billing/transfers/{transfer_id}/reopen",
+        headers=admin,
+        json={"reason": "The slip is readable on a second look."},
+    )
+    assert reopened.status_code == 200, reopened.text
+    assert reopened.json()["status"] == "pending_review"
+    with platform.control() as db:
+        invoice = db.get(BillingInvoice, uuid.UUID(invoice_id))
+        assert invoice is not None and invoice.status == "pending"
+    approved = platform.client.post(
+        f"/api/v1/super-admin/billing/transfers/{transfer_id}/approve", headers=admin
+    )
+    assert approved.status_code == 200, approved.text
+    revoked = platform.client.post(
+        f"/api/v1/super-admin/billing/transfers/{transfer_id}/revoke",
+        headers=admin,
+        json={"reason": "The credit was reversed by the bank."},
+    )
+    assert revoked.status_code == 200, revoked.text
+    again = platform.client.post(
+        f"/api/v1/super-admin/billing/transfers/{transfer_id}/approve", headers=admin
+    )
+    assert again.json()["id"] == approved.json()["id"]
+    with platform.control() as db:
+        invoice = db.get(BillingInvoice, uuid.UUID(invoice_id))
+        assert invoice is not None and invoice.status == "paid"
+        assert db.query(BillingPayment).count() == 1
+        row = db.query(Subscription).filter(Subscription.tenant_id == invoice.tenant_id).one()
+        assert row.status == "canceled"
+    access = platform.client.get("/api/v1/billing/access", headers=platform.headers("alpha"))
+    assert access.json()["attention"]["kind"] == "revoked"
+    assert access.json()["state"] == "restricted"

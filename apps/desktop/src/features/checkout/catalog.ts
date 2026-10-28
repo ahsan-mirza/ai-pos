@@ -1,7 +1,8 @@
 import seed from "@ai-pos/catalog/seed.json";
 import type { ProductPrice, ProductUpsert, StoreUpsert, UnitType } from "@ai-pos/shared-types";
-import { listProducts } from "../../lib/api";
-import { inTauri, refreshProducts } from "../../lib/tauri";
+import { useEffect } from "react";
+import { catalogRevision as fetchCatalogRevision, listProducts } from "../../lib/api";
+import { catalogRevision as readDesktopRevision, inTauri, refreshProducts } from "../../lib/tauri";
 import { registerCapabilities } from "../../lib/capabilities";
 import { productFitsRegister } from "../../lib/industry";
 import { GIFT_CARD_SKU } from "./cart";
@@ -55,4 +56,45 @@ export async function loadCatalog(): Promise<Catalog> {
     (product) => !product.is_ingredient && product.sku !== GIFT_CARD_SKU && productFitsRegister(product, profile),
   );
   return { ...catalog, products: sellable.map((product) => ({ ...product, currency })) };
+}
+
+/** Cheap cursor. Null when the register cannot reach the API; the local catalog stays as it is. */
+export async function readCatalogRevision(): Promise<string | null> {
+  try {
+    if (inTauri()) return await readDesktopRevision();
+    const body = await fetchCatalogRevision();
+    return `${body.updated_at ?? ""}:${body.count}`;
+  } catch {
+    return null;
+  }
+}
+
+const CATALOG_POLL_MS = 5_000;
+
+/**
+ * While the register is online, reload the catalog only after the server cursor moves.
+ * A failed check keeps the products already on screen and does not touch the offline sale queue.
+ */
+export function useCatalogUpdates(reload: () => void): void {
+  useEffect(() => {
+    let seen: string | null = null;
+    let cancelled = false;
+    const poll = async () => {
+      const revision = await readCatalogRevision();
+      if (cancelled || revision === null || revision === seen) return;
+      seen = revision;
+      reload();
+    };
+    void poll();
+    const timer = window.setInterval(() => void poll(), CATALOG_POLL_MS);
+    const again = () => void poll();
+    window.addEventListener("online", again);
+    window.addEventListener("focus", again);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+      window.removeEventListener("online", again);
+      window.removeEventListener("focus", again);
+    };
+  }, [reload]);
 }

@@ -9,6 +9,7 @@ import { Footer } from "./components/Footer";
 import { Hero } from "./components/Hero";
 import { HowItWorks } from "./components/HowItWorks";
 import { Industries } from "./components/Industries";
+import { Modules } from "./components/Modules";
 import { Intelligence } from "./components/Intelligence";
 import { Navbar } from "./components/Navbar";
 import { Pricing } from "./components/Pricing";
@@ -73,6 +74,7 @@ export function App() {
         <Hero onDemo={() => setDemoOpen(true)} />
         <Intelligence />
         <Industries />
+        <Modules catalog={catalog} />
         <Features />
         <HowItWorks />
         <Showcase />

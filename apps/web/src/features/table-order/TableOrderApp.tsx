@@ -3,6 +3,7 @@ import { TableGridNode } from "@ai-pos/ui";
 import { Bell, Receipt, Sparkles } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { ApiRequestError, apiPublicPost, apiTerminal } from "../../lib/api";
+import { useCurrency } from "../../lib/currency";
 import { emitTableEvent, listenForTableEvents, type TableEvent } from "./live";
 
 const STORAGE_KEY = "table.device";
@@ -130,7 +131,8 @@ function loadDevice(): TableDevice | null {
 }
 
 function price(cents: number, currency: string): string {
-  return `${currency || "AED"} ${(cents / 100).toFixed(2)}`;
+  const amount = (cents / 100).toFixed(2);
+  return currency ? `${currency} ${amount}` : amount;
 }
 
 function sameModifiers(left: DraftLine["modifiers"], right: DraftLine["modifiers"]): boolean {
@@ -243,6 +245,7 @@ function Activate({ onActivated }: { onActivated: (device: TableDevice) => void 
 }
 
 function Service({ device, onForget }: { device: TableDevice; onForget: () => void }) {
+  const { currency: businessCurrency } = useCurrency();
   const [areas, setAreas] = useState<FloorArea[]>([]);
   const [zoneId, setZoneId] = useState("all");
   const [seating, setSeating] = useState<FloorTable | null>(null);
@@ -549,7 +552,7 @@ function Service({ device, onForget }: { device: TableDevice; onForget: () => vo
 
   const visible = useMemo(() => menu.filter((item) => item.course === course), [course, menu]);
   const liveItems = session?.order?.items.filter((item) => item.sent_at && !item.voided_at) ?? [];
-  const currency = menu.find((item) => item.currency)?.currency || "AED";
+  const currency = menu.find((item) => item.currency)?.currency || businessCurrency;
   const roundCents = draft.reduce((sum, line) => sum + lineCents(line), 0);
   const roundCount = draft.reduce((sum, line) => sum + line.quantity, 0);
 

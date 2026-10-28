@@ -861,6 +861,7 @@ function StatementModal({
   onPay: () => void;
   onSaved: () => void;
 }) {
+  const { currency: businessCurrency } = useCurrency();
   const [statement, setStatement] = useState<SupplierStatement | null>(null);
   const [terms, setTerms] = useState("");
   const [trn, setTrn] = useState("");
@@ -886,7 +887,7 @@ function StatementModal({
     }
   };
 
-  const money = (cents: number) => formatMoney(cents, statement?.currency ?? "AED");
+  const money = (cents: number) => formatMoney(cents, statement?.currency ?? businessCurrency);
   const aging = statement?.aging;
   const buckets = aging
     ? [

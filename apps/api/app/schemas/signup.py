@@ -1,8 +1,8 @@
 import re
-from typing import Literal
+from typing import Literal, Self
 from uuid import UUID
 
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, model_validator
 
 from app.schemas.payloads import ApiModel
 
@@ -90,7 +90,7 @@ class SignupStore(ApiModel):
     slug: str = Field(min_length=1, max_length=32)
     currency: str = Field(pattern=r"^[A-Z]{3}$")
     country: str = Field(pattern=r"^[A-Z]{2}$")
-    trn: str | None = Field(default=None, pattern=r"^\d{15}$")
+    trn: str | None = Field(default=None, max_length=32)
 
     @field_validator("store_name")
     @classmethod
@@ -99,6 +99,16 @@ class SignupStore(ApiModel):
         if len(cleaned) < 2:
             raise ValueError("Enter a store name.")
         return cleaned
+
+    @model_validator(mode="after")
+    def _tax_id(self) -> Self:
+        from app.tenancy.tax_ids import TaxIdError, normalize_tax_id
+
+        try:
+            self.trn = normalize_tax_id(self.country, self.trn)
+        except TaxIdError as exc:
+            raise ValueError(str(exc)) from exc
+        return self
 
 
 class SlugCheck(ApiModel):

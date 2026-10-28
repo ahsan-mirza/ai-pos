@@ -163,6 +163,20 @@ def test_slug_from_domain(value: str, slug: str | None) -> None:
     assert registry.slug_from_domain(value, get_settings()) == slug
 
 
+def test_store_code_whitespace_resolves_to_the_same_tenant() -> None:
+    settings = get_settings()
+    assert registry.normalize_store_code(" bar isto ") == "baristo"
+    assert registry.normalize_store_code("BAR\tISTO\n") == "baristo"
+    assert registry.normalize_store_code("\u00a0bar\u2003isto\u2028") == "baristo"
+    assert registry.normalize_store_code("   \t") == ""
+    assert registry.normalize_store_code("Bar-Isto!") == "bar-isto!"
+    assert registry.slug_from_domain(" bar isto ", settings) == "baristo"
+    assert registry.slug_from_domain("BAR ISTO.axizpos.com", settings) == "baristo"
+    assert registry.valid_slug("baristo")
+    assert not registry.valid_slug("bar isto")
+    assert not registry.valid_slug("")
+
+
 def test_public_ip_portal_is_allowed_over_http() -> None:
     import re
 

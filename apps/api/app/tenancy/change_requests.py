@@ -18,7 +18,7 @@ from app.models.sale import Sale
 from app.models.store import Store
 from app.models.user import User
 from app.schemas.governance import ChangeRequestIn, ChangeRequestOut
-from app.services import audit, messaging_providers
+from app.services import audit, email_brand, messaging_providers
 from app.services.settings_service import cached_settings
 from app.tenancy import registry
 from app.tenancy.context import current_tenant
@@ -98,7 +98,14 @@ def _notify(settings: Settings, tenant_name: str, row: TenantChangeRequest) -> N
             settings,
             provider,
             messaging_providers.Outgoing(
-                to=settings.support_email, subject=f"Business Type Change Request - {tenant_name}", body=body
+                to=settings.support_email,
+                subject=f"Business type change request — {tenant_name}",
+                body=body,
+                html=email_brand.notice_html(
+                    heading="Business type change request",
+                    body=body,
+                    support_email=settings.support_email,
+                ),
             ),
         )
     except messaging_providers.ProviderError:

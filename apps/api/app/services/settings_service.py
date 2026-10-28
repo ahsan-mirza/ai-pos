@@ -24,7 +24,7 @@ from app.schemas.pos_policy import PosPolicy, resolve_pos_policy
 from app.schemas.receipt import ReceiptProfileOut, ReceiptSettings, ReceiptStore, resolve_receipt_settings
 from app.schemas.settings import AppearanceUpdate, BusinessSettingsOut, ProfileUpdate, TaxSettingsUpdate
 from app.services import audit, race
-from app.tenancy.scoping import DEFAULT_TENANT_ID, active_tenant_id, include_all_tenants
+from app.tenancy.scoping import DEFAULT_TENANT_ID, REQUEST_SESSION, active_tenant_id, include_all_tenants
 
 CURRENCY_CHANGED = "settings.currency"
 # Commits in this process invalidate at once; the TTL bounds staleness when another API worker changed the row.
@@ -68,6 +68,7 @@ class SettingsSnapshot:
     entitlement_revision: int = 1
     purchased_capabilities: tuple[str, ...] = ()
     entitlement_until: datetime | None = None
+    country: str | None = None
 
 
 class _SettingsCache:
@@ -180,11 +181,15 @@ def _load(db: Session, *, lock: bool) -> tuple[BusinessSettings, bool]:
     if row is not None:
         return row, False
     active = active_tenant_id()
-    placeholder = db.scalar(
-        select(BusinessSettings)
-        .where(BusinessSettings.id == BUSINESS_SETTINGS_ID)
-        .execution_options(include_all_tenants=True)
-    )
+    # A signed-in request is already limited to one tenant, and that session is not allowed to
+    # scan every tenant's settings. The placeholder adoption below is for maintenance sessions.
+    placeholder = None
+    if not db.info.get(REQUEST_SESSION):
+        placeholder = db.scalar(
+            select(BusinessSettings)
+            .where(BusinessSettings.id == BUSINESS_SETTINGS_ID)
+            .execution_options(include_all_tenants=True)
+        )
     if (
         placeholder is not None
         and str(placeholder.tenant_id) == str(DEFAULT_TENANT_ID)
@@ -276,6 +281,7 @@ def snapshot_of(row: BusinessSettings) -> SettingsSnapshot:
         tax_portal_pending=_tax_portal_pending(row),
         id=row.id,
         currency=row.currency,
+        country=row.country,
         vat_registered=bool(row.vat_registered),
         trn=row.trn,
         legal_name=row.legal_name,
@@ -337,8 +343,13 @@ def report_currency(db: Session, requested: str | None) -> str:
 
 def settings_out(settings: BusinessSettings | SettingsSnapshot) -> BusinessSettingsOut:
     snapshot = settings if isinstance(settings, SettingsSnapshot) else snapshot_of(settings)
+    from app.tenancy.context import current_tenant
+
+    tenant = current_tenant()
     return BusinessSettingsOut(
         currency=snapshot.currency,
+        store_code=tenant.slug if tenant is not None else "",
+        country=snapshot.country,
         supported_currencies=list(SUPPORTED_CURRENCIES),
         updated_at=snapshot.updated_at,
         updated_by_name=snapshot.updated_by_name,

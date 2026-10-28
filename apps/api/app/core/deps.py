@@ -92,9 +92,13 @@ def require_api_key(
     require_device(db, settings, x_api_key, x_terminal_token)
 
 
-def _user_from_token(token: str, db: Session, settings: Settings) -> tuple[User, str]:
+# A renewal may arrive just after exp when a background tab delayed its timer. Ordinary requests stay strict.
+RENEWAL_GRACE_SECONDS = 120
+
+
+def _user_from_token(token: str, db: Session, settings: Settings, *, leeway_seconds: int = 0) -> tuple[User, str]:
     try:
-        claims = decode_access_token(token, settings=settings)
+        claims = decode_access_token(token, settings=settings, leeway_seconds=leeway_seconds)
         user_id = uuid.UUID(str(claims["sub"]))
     except (jwt.PyJWTError, ValueError, KeyError) as exc:
         raise ApiError(401, "invalid_token", "The access token is invalid or expired.") from exc
@@ -111,6 +115,22 @@ def _user_from_token(token: str, db: Session, settings: Settings) -> tuple[User,
         raise ApiError(401, "invalid_token", "POS access was revoked.")
     if scope not in {"portal", "pos"}:
         raise ApiError(401, "invalid_token", "The access token scope is invalid.")
+    return user, scope
+
+
+def renewable_session(
+    db: Annotated[Session, Depends(get_db)],
+    settings: Annotated[Settings, Depends(get_settings)],
+    authorization: Annotated[str | None, Header()] = None,
+) -> tuple[User, Literal["portal", "pos"]]:
+    """The signed-in user for token renewal, including a short grace after the access token's exp."""
+    scheme, _, token = (authorization or "").partition(" ")
+    if scheme.lower() != "bearer" or not token:
+        raise ApiError(401, "invalid_token", "Use a Bearer access token.")
+    user, scope = _user_from_token(token.strip(), db, settings, leeway_seconds=RENEWAL_GRACE_SECONDS)
+    if scope not in {"portal", "pos"}:
+        raise ApiError(401, "invalid_token", "The access token scope is invalid.")
+    audit_context.bind_user(user.id, user.full_name, user.role.name if user.role else None, user.store_id)
     return user, scope
 
 

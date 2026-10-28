@@ -251,7 +251,7 @@ export function GoLiveModal({
     return (
       <Modal
         title={receiptSent ? "Receipt received" : "Pay by bank transfer"}
-        subtitle="Uploading a receipt does not pay the invoice. An administrator checks the bank credit first."
+        subtitle="Review your invoice and transfer the amount to the bank account listed on it. Then submit your payment proof. Your subscription features will be activated after our team verifies your payment."
         onClose={onClose}
         footer={
           receiptSent ? (
@@ -270,23 +270,48 @@ export function GoLiveModal({
       >
         <ErrorNote message={error} />
         <p className="text-sm text-charcoal/70">
-          Invoice {transfer.checkout_id.slice(0, 8)} · {formatMoney(transfer.quote.total_fils, transfer.quote.currency)}
+          {transfer.quote.plan_name} · {transfer.quote.cycle_name} · Invoice {transfer.checkout_id.slice(0, 8)} ·{" "}
+          {formatMoney(transfer.quote.total_fils, transfer.quote.currency)}
+        </p>
+        <p className="mt-3 text-sm text-charcoal/70">
+          Payment is by bank transfer. Opening this invoice or uploading a receipt does not activate the subscription.
         </p>
         {bank ? (
           <dl className="mt-4 grid gap-1 text-sm">
             <div>
-              <dt className="inline text-charcoal/50">Beneficiary </dt>
+              <dt className="inline text-charcoal/50">Account name </dt>
               <dd className="inline">{bank.holder_name}</dd>
             </div>
             <div>
               <dt className="inline text-charcoal/50">Bank </dt>
               <dd className="inline">{bank.bank_name}</dd>
             </div>
-            <div>
-              <dt className="inline text-charcoal/50">IBAN </dt>
-              <dd className="inline font-mono">{bank.iban}</dd>
-            </div>
+            {bank.iban ? (
+              <div>
+                <dt className="inline text-charcoal/50">IBAN </dt>
+                <dd className="inline font-mono">{bank.iban}</dd>
+              </div>
+            ) : null}
+            {bank.account_number ? (
+              <div>
+                <dt className="inline text-charcoal/50">Account number </dt>
+                <dd className="inline font-mono">{bank.account_number}</dd>
+              </div>
+            ) : null}
+            {bank.swift ? (
+              <div>
+                <dt className="inline text-charcoal/50">SWIFT </dt>
+                <dd className="inline font-mono">{bank.swift}</dd>
+              </div>
+            ) : null}
+            {bank.country || bank.currency ? (
+              <div>
+                <dt className="inline text-charcoal/50">Account </dt>
+                <dd className="inline">{[bank.country, bank.currency].filter(Boolean).join(" · ")}</dd>
+              </div>
+            ) : null}
             {bank.instructions ? <p className="mt-2 text-charcoal/70">{bank.instructions}</p> : null}
+            <p className="mt-2 text-charcoal/70">Use the invoice reference in the transfer description.</p>
           </dl>
         ) : (
           <p className="mt-4 text-sm text-charcoal/70">Bank details were not copied onto this invoice.</p>
@@ -388,12 +413,15 @@ export function GoLiveModal({
           ) : (
             <>
               {catalog ? (
-                <GhostButton onClick={() => void payByTransfer()} disabled={!matches || !taxAck || busy || watching !== null}>
-                  Bank transfer
+                <GhostButton onClick={() => void goLive()} disabled={!matches || !taxAck || busy || watching !== null}>
+                  {watching ? "Waiting for card payment…" : "Pay by card"}
                 </GhostButton>
               ) : null}
-              <PrimaryButton onClick={() => void goLive()} disabled={!matches || !taxAck || busy || watching !== null}>
-                {watching ? "Waiting for payment…" : busy ? "Going live…" : catalog ? "Pay and go live" : "Go live"}
+              <PrimaryButton
+                onClick={() => void (catalog ? payByTransfer() : goLive())}
+                disabled={!matches || !taxAck || busy || watching !== null}
+              >
+                {busy ? "Preparing…" : catalog ? "Review invoice" : "Go live"}
               </PrimaryButton>
             </>
           )}
@@ -451,6 +479,13 @@ export function GoLiveModal({
       ) : null}
       {step === "confirm" ? (
         <div>
+          {catalog && quote ? (
+            <p className="mb-4 text-sm text-charcoal/70">
+              {quote.plan_name} for {quote.cycle_name} is {formatMoney(quote.total_fils, quote.currency)}. Review your
+              invoice and transfer that amount to the bank account listed on it. Then submit your payment proof. Your
+              subscription features will be activated after our team verifies your payment.
+            </p>
+          ) : null}
           <p className="rounded-2xl bg-surface px-4 py-3 text-sm text-charcoal/70">
             Tax number kept: <strong className="font-semibold text-charcoal">{trn?.trim() || "none on file"}</strong>.
             Practice signing keys and the invoice chain are destroyed.

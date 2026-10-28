@@ -1,8 +1,9 @@
 import { PROFILE_PRESETS, type BusinessProfile, type TenantRow } from "@ai-pos/shared-types";
 import { DataTable, Select, type DataTableColumn } from "@ai-pos/ui";
-import { Building2, Search } from "lucide-react";
+import { Building2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { Outlet, useNavigate, useParams } from "react-router-dom";
+import { FilterSearch, FilterSlot, PageHeader } from "../components/PageHeader";
 import { ErrorNote, StatusBadge } from "../components/ui";
 import { api, errorText } from "../lib/api";
 import { bytes, date, money } from "../lib/format";
@@ -92,59 +93,53 @@ export function TenantsPage() {
 
   return (
     <section>
-      <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-charcoal text-white">
-            <Building2 size={20} aria-hidden="true" />
-          </span>
-          <div>
-            <h1 className="text-2xl font-semibold">Tenants</h1>
-            <p className="text-sm text-charcoal/60">{total} registered stores</p>
-          </div>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <label className="relative">
-            <span className="sr-only">Search tenants</span>
-            <Search size={15} aria-hidden="true" className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-charcoal/40" />
-            <input
+      <PageHeader
+        icon={Building2}
+        title="Tenants"
+        description={`${total} registered stores`}
+        controls={
+          <>
+            <FilterSearch
+              label="Search tenants"
               value={query}
-              onChange={(event) => {
-                setQuery(event.target.value);
+              placeholder="Name, subdomain or owner email"
+              onChange={(value) => {
+                setQuery(value);
                 setPage(1);
               }}
-              placeholder="Name, subdomain or owner email"
-              className="h-10 w-72 rounded-full border border-line bg-white pl-9 pr-4 text-sm focus:border-accent focus:outline-none"
             />
-          </label>
-          <Select
-            className="w-44"
-            aria-label="Status"
-            value={status}
-            onChange={(value) => {
-              setStatus(value);
-              setPage(1);
-            }}
-            options={[
-              { value: "", label: "All statuses" },
-              { value: "active", label: "Active" },
-              { value: "suspended", label: "Suspended" },
-            ]}
-          />
-          <Select
-            className="w-56"
-            aria-label="Business type"
-            value={profile}
-            onChange={(value) => {
-              setProfile(value);
-              setPage(1);
-            }}
-            options={[
-              { value: "", label: "All business types" },
-              ...profiles.map((id) => ({ value: id, label: PROFILE_PRESETS[id].label })),
-            ]}
-          />
-        </div>
-      </div>
+            <FilterSlot>
+              <Select
+                aria-label="Status"
+                value={status}
+                onChange={(value) => {
+                  setStatus(value);
+                  setPage(1);
+                }}
+                options={[
+                  { value: "", label: "All statuses" },
+                  { value: "active", label: "Active" },
+                  { value: "suspended", label: "Suspended" },
+                ]}
+              />
+            </FilterSlot>
+            <FilterSlot wide>
+              <Select
+                aria-label="Business type"
+                value={profile}
+                onChange={(value) => {
+                  setProfile(value);
+                  setPage(1);
+                }}
+                options={[
+                  { value: "", label: "All business types" },
+                  ...profiles.map((id) => ({ value: id, label: PROFILE_PRESETS[id].label })),
+                ]}
+              />
+            </FilterSlot>
+          </>
+        }
+      />
       <ErrorNote message={error} />
       <DataTable
         aria-label="Tenants"

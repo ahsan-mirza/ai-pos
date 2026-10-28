@@ -19,7 +19,7 @@ import { useEffect, useRef, useState } from "react";
 import { ErrorNote, GhostButton, SelectField, TextField } from "../../components/ui/Field";
 import { Modal } from "../../components/ui/Modal";
 import { Toggle } from "../../components/ui/Toggle";
-import { apiDelete, apiGet, apiPatch, apiUpload } from "../../lib/api";
+import { apiGet, apiUpload } from "../../lib/api";
 import { cleanCode } from "../../lib/codes";
 import { compressImageToWebp } from "../../lib/imageFile";
 import { useAuth } from "../../lib/auth";
@@ -30,7 +30,8 @@ import { barcodeError, randomCode128, randomEan13, skuFromParts } from "./barcod
 import { SpecFields } from "./SpecFields";
 import { fieldErrors, useInvalidFocus, type FieldErrors } from "./formErrors";
 import { BarcodePrintFlow } from "./BarcodePrintFlow";
-import { ProductImageDropzone, type ProductPhotoChoice } from "./ProductImageDropzone";
+import { PhotoGallery } from "./PhotoGallery";
+import { ProductImageDropzone, type PendingProductPhoto } from "./ProductImageDropzone";
 import { storeOptions, useBrands, useCategories, useModels, useStores } from "./shared";
 import { useUnits } from "./units";
 
@@ -107,7 +108,7 @@ export function ProductFormModal({
   const [serialized, setSerialized] = useState(product?.is_serialized ?? preset?.serialized ?? false);
   const [taxCategory, setTaxCategory] = useState<TaxCategory>(product?.tax_category ?? "STANDARD");
   const [openPrice, setOpenPrice] = useState(product?.is_open_price ?? false);
-  const { has } = useCapabilities();
+  const { has, profile } = useCapabilities();
   const weighing = has(Capability.WeighedItems);
   const [byWeight, setByWeight] = useState(product?.sold_by_weight ?? false);
   const [plu, setPlu] = useState(product?.plu_code ?? "");
@@ -137,13 +138,18 @@ export function ProductFormModal({
   const [printProduct, setPrintProduct] = useState<Product | null>(null);
   const [busy, setBusy] = useState(false);
   const [persistedId, setPersistedId] = useState<string | null>(product?.id ?? null);
-  const [photo, setPhoto] = useState<ProductPhotoChoice>({ file: null, removed: false });
+  const [pendingPhotos, setPendingPhotos] = useState<PendingProductPhoto[]>([]);
+  const [mainPhotoKey, setMainPhotoKey] = useState<string | null>(null);
+  const [photoVersion, setPhotoVersion] = useState(0);
   const { brands, reload: reloadBrands } = useBrands();
   const { models, reload: reloadModels } = useModels(subCategoryId || null, brandId || null);
   const category = categories.find((item) => item.id === categoryId);
   const subCategory = category?.sub_categories.find((item) => item.id === subCategoryId);
-  const schema = specSchemaFor(category?.name ?? product?.category ?? "", subCategory?.name ?? product?.sub_category ?? "");
   const model = models.find((item) => item.id === modelId);
+  const schema = specSchemaFor(category?.name ?? product?.category ?? "", subCategory?.name ?? product?.sub_category ?? "", {
+    productName: [name, model?.name].filter(Boolean).join(" "),
+    profile,
+  });
 
   useEffect(() => {
     if (!nameTouched && model && name === "") setName(model.name);
@@ -467,15 +473,21 @@ export function ProductFormModal({
         id = created.id;
         setPersistedId(created.id);
       }
-      if (id !== null && photo.file) {
-        const form = new FormData();
-        form.append("file", await compressImageToWebp(photo.file));
-        const image = await apiUpload<ProductImage>(`/api/v1/inventory/products/${id}/images`, form);
-        if (!image.is_primary) await apiPatch(`/api/v1/inventory/images/${image.id}`, { is_primary: true });
-      } else if (id !== null && photo.removed && product !== null) {
-        const images = await apiGet<ProductImage[]>(`/api/v1/inventory/products/${id}/images`);
-        const cover = images.find((image) => image.is_primary) ?? images[0];
-        if (cover) await apiDelete(`/api/v1/inventory/images/${cover.id}`);
+      if (id !== null && pendingPhotos.length > 0) {
+        const chosen = pendingPhotos.find((item) => item.key === mainPhotoKey) ?? pendingPhotos[0];
+        if (chosen) {
+          const ordered = [chosen, ...pendingPhotos.filter((item) => item.key !== chosen.key)];
+          let remaining = ordered;
+          for (const item of ordered) {
+            const form = new FormData();
+            form.append("file", await compressImageToWebp(item.file));
+            await apiUpload<ProductImage>(`/api/v1/inventory/products/${id}/images`, form);
+            remaining = remaining.filter((photo) => photo.key !== item.key);
+            setPendingPhotos(remaining);
+            setMainPhotoKey(remaining[0]?.key ?? null);
+          }
+          setPhotoVersion((version) => version + 1);
+        }
       }
       if (!editing && id !== null) {
         const created = await apiGet<Product>(`/api/v1/products/${id}`);
@@ -540,7 +552,24 @@ export function ProductFormModal({
       }
     >
       <div ref={formRef}>
-      <ProductImageDropzone currentUrl={product?.thumb_url ?? product?.image_url ?? null} onChange={setPhoto} />
+      {persistedId && pendingPhotos.length === 0 ? (
+        <div className="mb-5">
+          <PhotoGallery
+            path={`/api/v1/inventory/products/${persistedId}/images`}
+            canManage
+            version={photoVersion}
+          />
+        </div>
+      ) : (
+        <ProductImageDropzone
+          photos={pendingPhotos}
+          mainKey={mainPhotoKey}
+          onChange={(photos, main) => {
+            setPendingPhotos(photos);
+            setMainPhotoKey(main);
+          }}
+        />
+      )}
       <h3 id="product-section-catalog" className="mb-3 scroll-mt-4 text-sm font-semibold">
         Catalog placement
       </h3>
@@ -619,7 +648,9 @@ export function ProductFormModal({
       <div id="product-section-specs" className="mt-6 scroll-mt-4">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h3 className="text-sm font-semibold">Category specifications & technical details</h3>
+            <h3 className="text-sm font-semibold">
+              {schema.id.startsWith("FASHION") ? "Product attributes" : "Category specifications & technical details"}
+            </h3>
             <p className="text-xs text-charcoal/50">{schema.title}</p>
           </div>
           <button

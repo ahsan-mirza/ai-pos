@@ -157,17 +157,23 @@ export function VatSettings() {
           <div className="grid gap-4 md:grid-cols-3">
             <TextField
               label={authority.taxId}
-              inputMode="numeric"
-              maxLength={15}
+              maxLength={32}
               value={form.trn ?? ""}
               hint={
                 form.tax_authority === "zatca"
                   ? trnInvalid
                     ? "Saudi VAT numbers start and end with 3"
-                    : "15 digits, starting and ending with 3"
-                  : "15-digit Tax Registration Number"
+                    : "15 digits, starting and ending with 3. Leave blank if you are not VAT-registered."
+                  : "15 digits for a UAE TRN. Other registration numbers can include letters. Leave blank if you are not tax-registered."
               }
-              onChange={(event) => setForm({ ...form, trn: event.target.value.replace(/\D/g, "") })}
+              onChange={(event) => {
+                const raw = event.target.value.toUpperCase();
+                const next =
+                  form.tax_authority === "zatca"
+                    ? raw.replace(/\D/g, "").slice(0, 15)
+                    : raw.replace(/[^A-Z0-9 -]/g, "").slice(0, 32);
+                setForm({ ...form, trn: next });
+              }}
             />
             <TextField
               label="Legal name"

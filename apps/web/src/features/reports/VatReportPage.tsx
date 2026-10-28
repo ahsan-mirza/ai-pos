@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { ErrorNote, FilterSelect, TextField } from "../../components/ui/Field";
 import { apiBlob, apiGet } from "../../lib/api";
 import { useAuth } from "../../lib/auth";
+import { useCurrency } from "../../lib/currency";
 import { storeOptions, useStores } from "../inventory/shared";
 import { errorMessage } from "../users/api";
 
@@ -34,6 +35,7 @@ const periodOptions: { value: Period; label: string }[] = [
 ];
 
 export function VatReportPage() {
+  const { currency: businessCurrency } = useCurrency();
   const { user } = useAuth();
   const { stores } = useStores();
   const [period, setPeriod] = useState<Period>("this_quarter");
@@ -79,7 +81,7 @@ export function VatReportPage() {
     }
   };
 
-  const money = (cents: number) => formatMoney(cents, report?.currency ?? "AED");
+  const money = (cents: number) => formatMoney(cents, report?.currency ?? businessCurrency);
   const emirateRows = report?.emirates.filter((row) => row.amount_cents !== 0 || row.vat_cents !== 0 || row.adjustment_cents !== 0) ?? [];
 
   return (

@@ -1,6 +1,7 @@
 import type { ConsoleOverview } from "@ai-pos/shared-types";
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
+import { PageHeader } from "../components/PageHeader";
 import { ErrorNote } from "../components/ui";
 import { api, errorText } from "../lib/api";
 import { money } from "../lib/format";
@@ -36,10 +37,10 @@ export function OverviewPage() {
   const peak = Math.max(1, ...(data?.by_plan.map((row) => row.mrr_fils) ?? [1]));
   return (
     <section>
-      <h1 className="text-2xl font-semibold">Overview</h1>
-      <p className="mt-1 max-w-2xl text-sm text-charcoal/60">
-        Subscription health from the control database. Trials, deposits, and one-time fees stay out of recurring revenue.
-      </p>
+      <PageHeader
+        title="Overview"
+        description="Subscription health from the control database. Trials, deposits, and one-time fees stay out of recurring revenue."
+      />
       <ErrorNote message={error} />
       {data ? (
         <>

@@ -70,7 +70,7 @@ import { CartList } from "./CartList";
 import { GuestSuggestions, suggestsForGuests } from "../orders/GuestSuggestions";
 import { GrocerySuggestions } from "./GrocerySuggestions";
 import { CheckoutSidebar } from "./CheckoutSidebar";
-import { loadCatalog, seedProducts, store, type Catalog } from "./catalog";
+import { loadCatalog, seedProducts, store, useCatalogUpdates, type Catalog } from "./catalog";
 import { OrderModeBar } from "./fnb/OrderModeBar";
 import {
   closeSession,
@@ -410,6 +410,15 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
       setCatalogLoaded(true);
     }
   }, []);
+
+  useCatalogUpdates(reloadCatalog);
+
+  useEffect(() => {
+    setCatalog((current) => {
+      if (current.products.every((product) => product.currency === currency)) return current;
+      return { ...current, products: current.products.map((product) => ({ ...product, currency })) };
+    });
+  }, [currency]);
 
   useEffect(() => {
     void reloadCatalog();
