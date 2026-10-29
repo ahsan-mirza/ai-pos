@@ -4,6 +4,7 @@ import { BrowserRouter, Link, Navigate, Route, Routes } from "react-router-dom";
 import { AppShell, PageFrame } from "./components/layout/AppShell";
 import { ConfirmProvider } from "./components/ui/ConfirmDialog";
 import { DashboardPage } from "./features/analytics/DashboardPage";
+import { RentalsPage } from "./features/rentals/RentalsPage";
 import { DeepAnalyticsPage } from "./features/analytics/DeepAnalyticsPage";
 import { AuditPage } from "./features/audit/AuditPage";
 import { AccountPage } from "./features/account/AccountPage";
@@ -283,6 +284,16 @@ function Portal() {
             element={
               <RequirePermission permission={Permission.CustomersManage}>
                 <RequireCapability capability={Capability.CustomerReorders}><ReordersPage /></RequireCapability>
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="rentals"
+            element={
+              <RequirePermission permission={Permission.PortalInventoryManage}>
+                <RequireCapability capability={Capability.FashionRental}>
+                  <RentalsPage />
+                </RequireCapability>
               </RequirePermission>
             }
           />

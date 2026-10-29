@@ -33,6 +33,7 @@ export const Capability = {
   GiftCards: "gift_cards",
   TaxFree: "tax_free",
   Alterations: "alterations",
+  FashionRental: "fashion_rental",
   OnlineStore: "online_store",
   CustomerReorders: "customer_reorders",
   DeepAnalytics: "deep_analytics",
@@ -89,6 +90,7 @@ export const CAPABILITIES: readonly CapabilitySpec[] = [
   { id: "gift_cards", label: "Gift cards", description: "Sell gift cards at the till and accept them as payment at every branch.", group: "selling", available: true, requires: [] },
   { id: "tax_free", label: "Tax-free for tourists", description: "Issue tax-free forms to tourists and report the refunds in VAT box 2.", group: "customers", available: true, requires: [] },
   { id: "alterations", label: "Alterations & tailoring", description: "Alteration tickets with measurements, due dates and a ready-for-collection message.", group: "service", available: true, requires: [] },
+  { id: "fashion_rental", label: "Fashion rental", description: "Rent catalogue items for a period, with deposits, returns and a booking calendar.", group: "service", available: true, requires: [] },
   { id: "online_store", label: "Online store", description: "Web-store orders (Shopify or any shop) reserve stock and are shipped or collected in store.", group: "selling", available: true, requires: [] },
   { id: "customer_reorders", label: "Customer reorder plans", description: "Recurring customer deliveries with a reminder before anyone confirms the order.", group: "customers", available: true, requires: [] },
   { id: "deep_analytics", label: "Deep analytics", description: "Sales, margin, inventory, and the reports for this business type.", group: "selling", available: true, requires: [] },
@@ -308,6 +310,7 @@ export const PROFILE_ELIGIBLE: Record<BusinessProfile, readonly Capability[]> = 
     "serial_tracking",
     "alterations",
     "deep_analytics",
+    "fashion_rental",
   ],
   grocery: [
     "wholesale_pricing",

@@ -38,6 +38,7 @@ import { useShell, useShellPage } from "../../components/shell/ShellContext";
 import { ui } from "../../components/shell/tokens";
 import { useCapabilities } from "../../lib/capabilities";
 import { categoryChips, searchLabel, searchPlaceholder } from "../../lib/industry";
+import { retailCall } from "../../lib/retailClient";
 import { inTauri, openDocumentPdf, recordCashMovement, refreshSeries, type RegisterCustomer } from "../../lib/tauri";
 import { CashDrawerModal } from "../audit/CashDrawerModal";
 import { logItemVoid } from "../audit/registerAudit";
@@ -89,6 +90,7 @@ import {
 } from "./fnb/tableSessions";
 import { invoiceOf, prepareNumberedBatch, submitCharge, submitQuote, type ChargeBatch } from "./checkout";
 import { activeStore, businessTax, customerTax, useBusinessCurrency } from "./currency";
+import { RentModal } from "./RentModal";
 import { refreshPricing } from "./customerPricing";
 import { CustomerBar } from "./CustomerBar";
 import { ServedByPicker } from "./ServedByPicker";
@@ -232,6 +234,10 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
   const [ageLines, setAgeLines] = useState<CartLine[] | null>(null);
   const [discountFor, setDiscountFor] = useState<{ lines: CartLine[]; title: string } | null>(null);
   const [giftCardOpen, setGiftCardOpen] = useState(false);
+  const [rentalIds, setRentalIds] = useState<Set<string>>(new Set());
+  const [rentOnly, setRentOnly] = useState<Set<string>>(new Set());
+  const [rentChoice, setRentChoice] = useState<ProductUpsert | null>(null);
+  const [rentFor, setRentFor] = useState<ProductUpsert | null>(null);
   const [notice, setNotice] = useState("Search the catalog.");
   const [query, setQuery] = useState("");
   const [pendingSerial, setPendingSerial] = useState<ProductUpsert | null>(null);
@@ -550,9 +556,24 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
     }
   };
 
+  const rentalsOn = capabilities.enabled.has(Capability.FashionRental);
+  useEffect(() => {
+    if (!rentalsOn) return;
+    void retailCall<{ product_id: string; enabled: boolean; offer: string }[]>("GET", "/api/v1/rentals/products")
+      .then((rows) => {
+        setRentalIds(new Set(rows.filter((row) => row.enabled && row.offer !== "SALE").map((row) => row.product_id)));
+        setRentOnly(new Set(rows.filter((row) => row.enabled && row.offer === "RENT").map((row) => row.product_id)));
+      })
+      .catch(() => undefined);
+  }, [rentalsOn]);
+
   const select = useCallback(
-    (product: ProductUpsert, askQuantity = false) => {
+    (product: ProductUpsert, askQuantity = false, forceSell = false) => {
       if (charging) return;
+      if (!forceSell && rentalIds.has(product.id)) {
+        setRentChoice(product);
+        return;
+      }
       if (product.is_open_price) {
         setOpenPriceFor(product);
         return;
@@ -580,7 +601,7 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
       }
       dispatch({ type: "add_product", product });
     },
-    [charging, dispatch, menu],
+    [charging, dispatch, menu, rentalIds],
   );
 
   const menuModules = capabilities.enabled.has(Capability.MenuModifiers);
@@ -1618,6 +1639,51 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
           onApplied={(discounts) => {
             dispatch({ type: "set_discounts", discounts });
             setDiscountFor(null);
+          }}
+        />
+      ) : null}
+      {rentChoice ? (
+        <div className="fixed inset-0 z-40 flex items-end justify-center bg-black/40 p-4 sm:items-center">
+          <div className="w-full max-w-md rounded-3xl bg-white p-6 dark:bg-zinc-900">
+            <h2 className="text-lg font-semibold">{rentChoice.name}</h2>
+            <p className="mt-1 text-sm text-zinc-500">Sell it, or rent it for a period. A rental is confirmed on the server.</p>
+            <div className="mt-4 flex gap-2">
+              {rentOnly.has(rentChoice.id) ? null : (
+                <button
+                  type="button"
+                  className={`${ui.secondaryAction} h-11 flex-1`}
+                  onClick={() => {
+                    const product = rentChoice;
+                    setRentChoice(null);
+                    select(product, true, true);
+                  }}
+                >
+                  Sell
+                </button>
+              )}
+              <button
+                type="button"
+                className={`${ui.primaryAction} h-11 flex-1`}
+                onClick={() => {
+                  setRentFor(rentChoice);
+                  setRentChoice(null);
+                }}
+              >
+                Rent
+              </button>
+            </div>
+            <button type="button" className={`${ui.ghostAction} mt-3`} onClick={() => setRentChoice(null)}>Close</button>
+          </div>
+        </div>
+      ) : null}
+      {rentFor ? (
+        <RentModal
+          product={rentFor}
+          storeId={activeStore().id}
+          onClose={() => setRentFor(null)}
+          onBooked={(reference) => {
+            setRentFor(null);
+            setNotice(`Rental ${reference} confirmed. The deposit is not a sale.`);
           }}
         />
       ) : null}

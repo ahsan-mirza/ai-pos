@@ -58,6 +58,7 @@ from app.routers.v1.promotions import router as promotions_router
 from app.routers.v1.quotes import router as quotes_router
 from app.routers.v1.recipes import router as recipes_router
 from app.routers.v1.register import router as register_router
+from app.routers.v1.rentals import router as rentals_router
 from app.routers.v1.reorders import router as reorders_router
 from app.routers.v1.repair_workshop import router as repair_workshop_router
 from app.routers.v1.repairs import router as repairs_router
@@ -137,6 +138,12 @@ api_router.include_router(
 )
 api_router.include_router(repairs_router, prefix="/repairs", tags=["repairs"], dependencies=module(Capability.REPAIRS))
 api_router.include_router(analytics_router, prefix="/analytics", tags=["analytics"])
+api_router.include_router(
+    rentals_router,
+    prefix="/rentals",
+    tags=["rentals"],
+    dependencies=module(Capability.FASHION_RENTAL),
+)
 api_router.include_router(
     deep_analytics_router,
     prefix="/deep-analytics",

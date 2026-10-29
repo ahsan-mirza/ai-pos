@@ -1,5 +1,6 @@
 /** Self-service signup on the bare domain (tenant-free /api/v1/signup). Mirrors app/schemas/signup.py. */
 
+import type { Capability } from "./capabilities.js";
 import { COUNTRY_CURRENCIES, currencyForCountry } from "./countries.js";
 
 export type SignupStatus = "PENDING_OTP" | "VERIFIED" | "WAITLIST" | "PROVISIONING" | "READY" | "FAILED";
@@ -111,6 +112,8 @@ export interface SignupSubType {
   id: string;
   label: string;
   description: string;
+  /** Starter modules for this signup choice. The ids match SUB_TYPES in app/core/capabilities.py. */
+  modules: readonly Capability[];
 }
 
 export interface SignupBusinessCard {
@@ -132,16 +135,19 @@ export const SIGNUP_BUSINESS_CARDS: readonly SignupBusinessCard[] = [
         id: "electronics_retail",
         label: "Retail shop",
         description: "Walk-in customers: IMEIs, repairs, warranty and trade-ins.",
+        modules: ["promotions", "multi_currency", "serial_tracking", "loyalty", "repairs", "warranty", "trade_in", "card_terminals", "bnpl"],
       },
       {
         id: "electronics_b2b",
         label: "Wholesale & B2B",
         description: "Adds tier prices, customer credit, quotations and cheques.",
+        modules: ["wholesale_pricing", "quotes_layaway", "promotions", "multi_currency", "serial_tracking", "variants_matrix", "consignment", "b2b_credit", "cheques", "loyalty", "repairs", "warranty", "trade_in", "card_terminals", "bnpl"],
       },
       {
         id: "electronics_both",
         label: "Both",
         description: "A walk-in shop and wholesale: IMEIs, repairs, tier prices, credit and quotations.",
+        modules: ["wholesale_pricing", "quotes_layaway", "promotions", "multi_currency", "serial_tracking", "variants_matrix", "consignment", "b2b_credit", "cheques", "loyalty", "repairs", "warranty", "trade_in", "card_terminals", "bnpl"],
       },
     ],
   },
@@ -154,8 +160,14 @@ export const SIGNUP_BUSINESS_CARDS: readonly SignupBusinessCard[] = [
         id: "wholesale_distributor",
         label: "Wholesale & distribution",
         description: "Account customers, bulk pricing, and recurring deliveries.",
+        modules: ["wholesale_pricing", "sales_orders", "b2b_credit", "quotes_layaway", "promotions", "loyalty", "multi_currency", "card_terminals", "customer_reorders"],
       },
-      { id: "retail_shop", label: "Retail shop", description: "Counter sales with customer-specific repeat orders." },
+      {
+        id: "retail_shop",
+        label: "Retail shop",
+        description: "Counter sales with customer-specific repeat orders.",
+        modules: ["promotions", "loyalty", "quotes_layaway", "card_terminals", "customer_reorders", "multi_currency"],
+      },
     ],
   },
   {
@@ -163,8 +175,18 @@ export const SIGNUP_BUSINESS_CARDS: readonly SignupBusinessCard[] = [
     label: "Retail & Fashion",
     description: "Clothing and footwear with size and colour grids.",
     subTypes: [
-      { id: "fashion_boutique", label: "Boutique", description: "One shop: loyalty, promotions and size grids." },
-      { id: "fashion_chain", label: "Chain", description: "Several branches; adds consignment stock." },
+      {
+        id: "fashion_boutique",
+        label: "Boutique",
+        description: "One shop: loyalty, promotions and size grids.",
+        modules: ["quotes_layaway", "loyalty", "promotions", "multi_currency", "variants_matrix", "gift_cards", "alterations"],
+      },
+      {
+        id: "fashion_chain",
+        label: "Chain",
+        description: "Several branches; adds consignment stock.",
+        modules: ["quotes_layaway", "loyalty", "promotions", "multi_currency", "variants_matrix", "consignment", "gift_cards"],
+      },
     ],
   },
   {
@@ -176,16 +198,19 @@ export const SIGNUP_BUSINESS_CARDS: readonly SignupBusinessCard[] = [
         id: "grocery_shop",
         label: "Neighborhood grocery",
         description: "One shop. Scan, weigh produce, and sell the batch that expires first.",
+        modules: ["loyalty", "promotions", "weighed_items", "fefo", "card_terminals"],
       },
       {
         id: "grocery_supermarket",
         label: "Supermarket",
         description: "Several lanes and a large catalogue. Adds gift cards and foreign cash.",
+        modules: ["loyalty", "promotions", "weighed_items", "fefo", "card_terminals", "gift_cards", "multi_currency"],
       },
       {
         id: "grocery_cash_carry",
         label: "Cash & carry",
         description: "Trade customers with tier prices, credit, cheques and deliveries.",
+        modules: ["loyalty", "promotions", "weighed_items", "fefo", "wholesale_pricing", "quotes_layaway", "b2b_credit", "cheques", "sales_orders", "card_terminals"],
       },
     ],
   },
@@ -198,11 +223,13 @@ export const SIGNUP_BUSINESS_CARDS: readonly SignupBusinessCard[] = [
         id: "full_service",
         label: "Dine-in restaurant",
         description: "Tables and covers, courses sent to the kitchen and bar, split bills.",
+        modules: ["loyalty", "promotions", "multi_currency", "tables", "open_orders", "menu_modifiers", "kds", "recipes", "split_bills", "tips_service_charge", "card_terminals"],
       },
       {
         id: "restaurant_delivery",
         label: "Dine-in + delivery",
         description: "Everything above, plus orders from delivery apps.",
+        modules: ["loyalty", "promotions", "multi_currency", "tables", "open_orders", "menu_modifiers", "kds", "recipes", "split_bills", "tips_service_charge", "delivery_channels", "card_terminals"],
       },
     ],
   },
@@ -211,11 +238,17 @@ export const SIGNUP_BUSINESS_CARDS: readonly SignupBusinessCard[] = [
     label: "Cafe",
     description: "Coffee, bakery and sandwiches with sizes, milk choices and breakfast deals.",
     subTypes: [
-      { id: "counter_cafe", label: "Counter cafe", description: "Order and pay at the counter; drinks go to the barista." },
+      {
+        id: "counter_cafe",
+        label: "Counter cafe",
+        description: "Order and pay at the counter; drinks go to the barista.",
+        modules: ["loyalty", "promotions", "menu_modifiers", "open_orders", "kds", "recipes", "card_terminals"],
+      },
       {
         id: "sit_down_cafe",
         label: "Sit-down cafe",
         description: "Adds tables, split bills and tips for guests who stay.",
+        modules: ["loyalty", "promotions", "menu_modifiers", "open_orders", "kds", "recipes", "tables", "split_bills", "tips_service_charge", "card_terminals"],
       },
     ],
   },
@@ -224,8 +257,18 @@ export const SIGNUP_BUSINESS_CARDS: readonly SignupBusinessCard[] = [
     label: "Quick Service",
     description: "Burgers, wraps and combo meals: pay first, cooked to order.",
     subTypes: [
-      { id: "qsr_counter", label: "Counter & takeaway", description: "Pay-first counter with kitchen tickets and meal deals." },
-      { id: "qsr_delivery", label: "Counter + delivery apps", description: "Adds orders from Talabat, Deliveroo and the like." },
+      {
+        id: "qsr_counter",
+        label: "Counter & takeaway",
+        description: "Pay-first counter with kitchen tickets and meal deals.",
+        modules: ["loyalty", "promotions", "menu_modifiers", "open_orders", "kds", "recipes", "card_terminals"],
+      },
+      {
+        id: "qsr_delivery",
+        label: "Counter + delivery apps",
+        description: "Adds orders from Talabat, Deliveroo and the like.",
+        modules: ["loyalty", "promotions", "menu_modifiers", "open_orders", "kds", "recipes", "delivery_channels", "card_terminals"],
+      },
     ],
   },
 ];

@@ -213,6 +213,21 @@ def signup_cards() -> dict[str, list[str]]:
     return cards
 
 
+def signup_modules() -> dict[str, dict[str, set[str]]]:
+    """profile -> sub-type -> module ids, parsed from the same signup cards."""
+    source = (SHARED.parent / "signup.ts").read_text(encoding="utf-8")
+    block = source.split("export const SIGNUP_BUSINESS_CARDS", 1)[1].split("\n];", 1)[0]
+    found: dict[str, dict[str, set[str]]] = {}
+    for chunk in re.split(r'\n  \{\n    profile: "', block)[1:]:
+        profile = chunk.split('"', 1)[0]
+        found[profile] = {}
+        for part in re.split(r'\n        id: "', chunk)[1:]:
+            sub_type = part.split('"', 1)[0]
+            modules = part.split("modules: [", 1)[1].split("]", 1)[0]
+            found[profile][sub_type] = set(re.findall(r'"(\w+)"', modules))
+    return found
+
+
 def test_signup_cards_match_the_sub_types_that_can_go_live() -> None:
     cards = signup_cards()
     live = {profile: list(sub_types) for profile, sub_types in catalog.SUB_TYPES.items()}
@@ -220,6 +235,10 @@ def test_signup_cards_match_the_sub_types_that_can_go_live() -> None:
     assert set(cards) <= set(catalog.PROFILES)
     for profile in FOOD:
         assert profile in live, f"{profile} should sign up on its own"
+    listed = signup_modules()
+    for profile, sub_types in catalog.SUB_TYPES.items():
+        for sub_type, modules in sub_types.items():
+            assert listed[profile][sub_type] == {module.value for module in modules}
 
 
 @pytest.mark.parametrize("profile,sub_type", [(p, s) for p in FOOD for s in catalog.SUB_TYPES[p]])

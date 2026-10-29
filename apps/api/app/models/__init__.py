@@ -41,6 +41,7 @@ from app.models.promotion import Promotion, PromotionRedemption
 from app.models.purchasing import GoodsReceipt, GoodsReceiptLine, PurchaseOrder, PurchaseOrderLine
 from app.models.quote_payment import QuotePayment
 from app.models.recipe import ModifierIngredient, Recipe, RecipeLine, RecipeUsage
+from app.models.rental import ProductRental, Rental, RentalLine, RentalPayment
 from app.models.reorder import CustomerReorderOccurrence, CustomerReorderPlan, CustomerReorderPlanItem
 from app.models.repair_ticket import RepairAttachment, RepairDeposit, RepairEvent, RepairLine, RepairTicket
 from app.models.replenishment import DemandDaily, ReplenishmentRun, ReplenishmentSuggestion, SeasonalEvent
@@ -134,6 +135,10 @@ __all__ = [
     "PaymentRefund",
     "PaymentTerminal",
     "Product",
+    "ProductRental",
+    "Rental",
+    "RentalLine",
+    "RentalPayment",
     "ProductImage",
     "ProductModel",
     "ProductPrice",

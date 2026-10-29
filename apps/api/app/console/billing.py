@@ -159,6 +159,7 @@ _MODULE_DESCRIPTIONS: dict[str, str] = {
     "alterations": "Alteration tickets with measurements, due dates and a ready-for-collection message.",
     "online_store": "Web-store orders (Shopify or any shop) reserve stock and are shipped or collected in store.",
     "deep_analytics": "Sales, margin, inventory, and the reports for this business type.",
+    "fashion_rental": "Rent catalogue items for a period, with deposits, returns and a booking calendar.",
 }
 
 

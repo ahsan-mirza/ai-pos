@@ -46,6 +46,7 @@ class Capability(StrEnum):
     GIFT_CARDS = "gift_cards"
     TAX_FREE = "tax_free"
     ALTERATIONS = "alterations"
+    FASHION_RENTAL = "fashion_rental"
     ONLINE_STORE = "online_store"
     CUSTOMER_REORDERS = "customer_reorders"
     DEEP_ANALYTICS = "deep_analytics"
@@ -91,6 +92,7 @@ SPECS: dict[Capability, CapabilitySpec] = {
     C.GIFT_CARDS: CapabilitySpec("Gift cards", True),
     C.TAX_FREE: CapabilitySpec("Tax-free for tourists", True),
     C.ALTERATIONS: CapabilitySpec("Alterations & tailoring", True),
+    C.FASHION_RENTAL: CapabilitySpec("Fashion rental", True),
     C.ONLINE_STORE: CapabilitySpec("Online store", True),
     C.CUSTOMER_REORDERS: CapabilitySpec("Customer reorder plans", True),
     C.DEEP_ANALYTICS: CapabilitySpec("Deep analytics", True),
@@ -216,7 +218,9 @@ COMPATIBLE: dict[str, frozenset[Capability]] = {
         (*_RETAIL_CORE, C.SERIAL_TRACKING, C.VARIANTS_MATRIX, C.CONSIGNMENT, C.REPAIRS, C.WARRANTY, C.TRADE_IN)
     ),
     "wholesale_retail": frozenset((*_RETAIL_CORE, C.CUSTOMER_REORDERS, C.REPAIRS)),
-    "retail_fashion": frozenset((*_RETAIL_CORE, C.VARIANTS_MATRIX, C.CONSIGNMENT, C.SERIAL_TRACKING, C.ALTERATIONS)),
+    "retail_fashion": frozenset(
+        (*_RETAIL_CORE, C.VARIANTS_MATRIX, C.CONSIGNMENT, C.SERIAL_TRACKING, C.ALTERATIONS, C.FASHION_RENTAL)
+    ),
     "grocery": frozenset((*_RETAIL_CORE, C.WEIGHED_ITEMS, C.FEFO, C.CONSIGNMENT, C.VARIANTS_MATRIX)),
     "restaurant": frozenset(_FOOD_CORE),
     "cafe": frozenset(_FOOD_CORE),
@@ -377,6 +381,7 @@ REGISTER_CAPABILITIES: frozenset[Capability] = frozenset(
         Capability.BNPL,
         Capability.GIFT_CARDS,
         Capability.CUSTOMER_REORDERS,
+        Capability.FASHION_RENTAL,
     }
 )
 

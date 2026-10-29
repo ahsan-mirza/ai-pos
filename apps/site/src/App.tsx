@@ -75,7 +75,7 @@ export function App() {
       />
       <main id="content">
         {industry && industry.id !== "home" ? (
-          <IndustryPage page={industry} contact={contact} contactStatus={contactStatus} onDemo={() => setDemoOpen(true)} />
+          <IndustryPage page={industry} catalog={catalog} contact={contact} contactStatus={contactStatus} onDemo={() => setDemoOpen(true)} />
         ) : (
           <>
         <Hero onDemo={() => setDemoOpen(true)} />

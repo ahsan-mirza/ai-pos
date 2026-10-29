@@ -1,19 +1,31 @@
+import { PROFILE_PRESETS, SIGNUP_BUSINESS_CARDS, capabilitySpec, type Capability } from "@ai-pos/shared-types";
 import { ContactForm } from "../components/ContactForm";
+import type { PublicCatalog } from "../catalog";
+import { profileModules, publicModulePrices } from "../modules";
 import { SEO_PAGES, type SeoPage } from "../seo";
 import type { PublicWhatsApp } from "../whatsapp";
 
 export function IndustryPage({
   page,
+  catalog,
   contact,
   contactStatus,
   onDemo,
 }: {
   page: SeoPage;
+  catalog: PublicCatalog;
   contact: PublicWhatsApp;
   contactStatus: "loading" | "ready" | "unavailable";
   onDemo: () => void;
 }) {
   const others = SEO_PAGES.filter((item) => item.id !== "home" && item.id !== page.id);
+  const card = SIGNUP_BUSINESS_CARDS.find((item) => item.profile === page.profile);
+  const started = new Set<Capability>(card?.subTypes.flatMap((item) => [...item.modules]) ?? []);
+  const prices = publicModulePrices(catalog.addons);
+  const extra =
+    page.profile === undefined
+      ? []
+      : [...profileModules(page.profile).included, ...profileModules(page.profile).optional].filter((id) => !started.has(id));
 
   return (
     <>
@@ -83,6 +95,56 @@ export function IndustryPage({
           </figure>
         </aside>
       </section>
+      {card && card.subTypes.length > 0 ? (
+        <section className="border-t border-line bg-surface">
+          <div className="mx-auto max-w-page px-4 py-14 sm:px-6 lg:px-8 lg:py-16">
+            <h2 className="text-2xl font-semibold tracking-tight text-charcoal">Ways to start</h2>
+            <p className="mt-3 max-w-2xl text-base leading-7 text-charcoal/75">
+              Signup asks which of these fits {page.profile ? PROFILE_PRESETS[page.profile].label : card.label}. Each one turns on the modules listed on its card.
+            </p>
+            <div className="mt-6 grid gap-4 lg:grid-cols-3">
+              {card.subTypes.map((subType) => (
+                <article key={subType.id} className="flex flex-col rounded-card border border-line bg-card p-5">
+                  <h3 className="text-lg font-semibold text-charcoal">{subType.label}</h3>
+                  <p className="mt-2 text-sm leading-6 text-charcoal/75">{subType.description}</p>
+                  <ul className="mt-4 space-y-2 text-sm leading-6 text-charcoal/75">
+                    {subType.modules.map((id) => (
+                      <li key={id}>{capabilitySpec(id).label}</li>
+                    ))}
+                  </ul>
+                </article>
+              ))}
+            </div>
+          </div>
+        </section>
+      ) : null}
+      {page.profile && extra.length > 0 ? (
+        <section className="border-t border-line">
+          <div className="mx-auto max-w-page px-4 py-14 sm:px-6 lg:px-8 lg:py-16">
+            <h2 className="text-2xl font-semibold tracking-tight text-charcoal">Can be turned on later</h2>
+            <p className="mt-3 max-w-2xl text-base leading-7 text-charcoal/75">
+              {PROFILE_PRESETS[page.profile].label} is allowed to use these modules. None of the starts above include them. A price is shown only when the public catalog lists one.
+            </p>
+            <ul className="mt-6 grid gap-4 sm:grid-cols-2">
+              {extra.map((id) => {
+                const spec = capabilitySpec(id);
+                const listed = prices[id];
+                return (
+                  <li key={id} className="rounded-card border border-line bg-card p-5">
+                    <h3 className="text-base font-semibold text-charcoal">{spec.label}</h3>
+                    <p className="mt-2 text-sm leading-6 text-charcoal/75">{spec.description}</p>
+                    {listed && listed.length > 0 ? (
+                      <p className="mt-2 text-sm font-medium text-charcoal">{listed.map((price) => `${price.addonName}: ${price.label}`).join(" · ")}</p>
+                    ) : (
+                      <p className="mt-2 text-sm text-charcoal/60">No separate public price. Confirm it with the plan.</p>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        </section>
+      ) : null}
       <section className="border-t border-line bg-surface">
         <div className="mx-auto max-w-page px-4 py-12 sm:px-6 lg:px-8">
           <h2 className="text-2xl font-semibold tracking-tight text-charcoal">Related pages</h2>

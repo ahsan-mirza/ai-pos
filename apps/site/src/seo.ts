@@ -1,3 +1,5 @@
+import type { BusinessProfile } from "@ai-pos/shared-types";
+
 /** Public marketing metadata. The Vite plugin injects this into each HTML entry. */
 
 export const SITE_ORIGIN = "https://axizpos.com";
@@ -28,6 +30,8 @@ export interface SeoPage {
   image: SeoImage;
   /** Visible breadcrumb label for this page. */
   crumb: string;
+  /** The business-type preset this page describes. Retail and the UAE page cover more than one. */
+  profile?: BusinessProfile;
 }
 
 const SURFACE: SeoImage = {
@@ -101,6 +105,7 @@ export const SEO_PAGES: readonly SeoPage[] = [
     ],
     image: SURFACE,
     crumb: "Restaurant POS",
+    profile: "restaurant",
   },
   {
     id: "retail-pos",
@@ -161,10 +166,10 @@ export const SEO_PAGES: readonly SeoPage[] = [
         ],
       },
       {
-        heading: "Credit is off until the shop turns it on",
+        heading: "A neighborhood shop, a supermarket, or cash and carry",
         paragraphs: [
-          "A grocery shop does not start with a credit limit, a statement of what is owed, or on-account sales. The shop can turn B2B credit on later. A restaurant, café, or quick-service profile cannot.",
-          "Size and colour grids, kitchen tickets, and device serial numbers stay off this preset.",
+          "A neighborhood grocery is one shop: scan, weigh produce, and sell the batch that expires first, with loyalty, promotions, and card terminals. A supermarket is that counter across several lanes and a large catalogue, and adds gift cards and foreign-currency cash. Neither starts with a credit statement. The shop can turn on-account credit on later.",
+          "Cash and carry is the trade start. It keeps weight and expiry, and adds tier prices, quotations, on-account credit, cheques, and deliveries. A restaurant, café, or quick-service profile cannot turn credit on. Size and colour grids, kitchen tickets, and device serial numbers stay off this profile.",
         ],
       },
     ],
@@ -173,10 +178,11 @@ export const SEO_PAGES: readonly SeoPage[] = [
       "Weighed items at the till",
       "Expiry-first stock",
       "Buying history and loyalty points",
-      "Credit stays off until the shop turns it on",
+      "Credit starts on for cash and carry",
     ],
     image: PORTAL,
     crumb: "Grocery POS",
+    profile: "grocery",
   },
   {
     id: "cafe-pos",
@@ -212,6 +218,7 @@ export const SEO_PAGES: readonly SeoPage[] = [
     ],
     image: SURFACE,
     crumb: "Café POS",
+    profile: "cafe",
   },
   {
     id: "quick-service-pos",
@@ -226,15 +233,15 @@ export const SEO_PAGES: readonly SeoPage[] = [
       {
         heading: "What this profile starts with",
         paragraphs: [
-          "The preset turns on menu modifiers, open orders, a kitchen display, recipes that deduct ingredients, and delivery-channel orders. Loyalty points and promotions are included. Staff close the sale on the register and print the receipt.",
+          "Every quick-service start includes menu modifiers, open orders, a kitchen display, and recipes that deduct ingredients. Loyalty points and promotions are included. Staff close the sale on the register and print the receipt. Card terminals are on both starts.",
           "A customer has a buying history, including returns. Points and history are not money owed. A personal promotion code can be issued from those purchases, and using it does not change points or a balance.",
         ],
       },
       {
-        heading: "What stays off",
+        heading: "Counter only, or counter and delivery apps",
         paragraphs: [
-          "Tables, split bills, and service charge belong to the restaurant profile. This preset does not keep a credit ledger or take on-account sales, and a quick-service business cannot turn that on.",
-          "Managers read the dashboard, shift close, and VAT report for that store. The assistant answers from those records, in English or Arabic, and does not invent a figure.",
+          "Counter and takeaway is the pay-first start. Delivery-channel orders are not included. Counter plus delivery apps adds those orders on top of the same kitchen and modifier set.",
+          "Tables, split bills, and service charge belong to the restaurant profile. Neither start keeps a credit ledger or takes on-account sales, and a quick-service business cannot turn that on. Managers read the dashboard, shift close, and VAT report for that store. The assistant answers from those records, in English or Arabic, and does not invent a figure.",
         ],
       },
     ],
@@ -242,11 +249,12 @@ export const SEO_PAGES: readonly SeoPage[] = [
       "Counter checkout and menu modifiers",
       "Open orders and a kitchen display",
       "Recipes that deduct ingredients",
-      "Delivery-channel orders",
+      "Delivery-channel orders on the delivery start",
       "Buying history and loyalty points, with no credit account",
     ],
     image: SURFACE,
     crumb: "Quick Service POS",
+    profile: "quick_service",
   },
   {
     id: "wholesale-pos",
@@ -256,20 +264,21 @@ export const SEO_PAGES: readonly SeoPage[] = [
       "Wholesale and retail POS for tier pricing, on-account credit, statements, and sales orders delivered in parts. Serial numbers and repairs are on the electronics profile.",
     h1: "Wholesale POS software for tiers, credit, and deliveries",
     kicker: "Wholesale & Retail",
-    lead: "Wholesale & Retail is its own profile. It starts with account customers and orders that leave in more than one delivery. Device serials and repair tickets are on the electronics page.",
+    lead: "Wholesale & Retail is its own profile. Distribution starts with account customers and orders that leave in more than one delivery. A retail counter on the same profile starts smaller. Device serials and repair tickets are on the electronics page.",
     sections: [
       {
         heading: "A counter price is the wrong price",
         paragraphs: [
-          "Wholesale needs a tier, a credit limit, and an order that leaves in more than one delivery. A checkout that only knows one price and one receipt does not carry that.",
-          "This profile starts with wholesale pricing, quotations and layaway, on-account sales, statements, and sales orders that can be picked and delivered in parts. Scheduled customer reorders are on the same preset. Promotions, loyalty points, and foreign-currency cash are included.",
+          "A distributor needs a tier, a credit limit, and an order that leaves in more than one delivery. A checkout that only knows one price and one receipt does not carry that.",
+          "The distribution start includes wholesale pricing, quotations and layaway, on-account sales, statements, sales orders delivered in parts, and scheduled customer reorders. Promotions, loyalty points, foreign-currency cash, and card terminals are included. Cheques are not in that start.",
         ],
       },
       {
-        heading: "Credit is the amount owed",
+        heading: "Distribution, or a retail counter",
         paragraphs: [
-          "The credit statement, credit limit, and on-account tender are on from the start. Buying history, including returns, sits beside that statement and is labeled as purchases. Loyalty points are not money owed. A personal promotion code can be issued from those purchases, and using it does not change the balance or the points.",
-          "This preset does not start with IMEI tracking, warranties, or repair tickets. A shop that sells devices uses the electronics profile, which has its own credit tools and does not start with sales orders.",
+          "On the distribution start, the credit statement is the amount owed. Buying history, including returns, is the list of purchases. Loyalty points are not money owed. A personal promotion code can be issued from those purchases, and using it does not change the balance or the points.",
+          "A retail shop on this same profile starts smaller: promotions, loyalty, quotations, card terminals, customer reorders, and foreign-currency cash. Tier pricing, a credit statement, and partial deliveries are not in that start.",
+          "This profile does not start with IMEI tracking, warranties, or repair tickets. A shop that sells devices uses the electronics profile. Repairs can be turned on later here. Sales orders are already in the distribution start.",
         ],
       },
     ],
@@ -279,9 +288,11 @@ export const SEO_PAGES: readonly SeoPage[] = [
       "Credit limits, statements, and on-account sales",
       "Sales orders delivered in parts",
       "Scheduled customer reorders",
+      "A retail counter starts without tier pricing or a credit statement",
     ],
     image: PORTAL,
     crumb: "Wholesale POS",
+    profile: "wholesale_retail",
   },
   {
     id: "fashion-pos",
@@ -297,8 +308,8 @@ export const SEO_PAGES: readonly SeoPage[] = [
         heading: "One product, many variants",
         paragraphs: [
           "A shirt is a style, a colour, and a size. If those live in a spreadsheet, the till and the stock room disagree about what is left.",
-          "The fashion profile starts with a size and colour matrix, consignment stock, loyalty points, promotions, quotations and layaway, gift cards, and foreign-currency cash. Every customer has a buying history, including returns. Points and history are not money owed. A personal promotion code can be issued from those purchases, and using it does not change points or a balance.",
-          "Alterations and B2B credit can be turned on later. Both are off when the shop starts. Restaurant tables, kitchen tickets, and device serial numbers stay off.",
+          "A boutique starts with a size and colour matrix, loyalty points, promotions, quotations and layaway, gift cards, foreign-currency cash, and alterations. A chain uses that grid across branches and starts with consignment stock. The chain start does not include alterations; the shop can turn them on later.",
+          "Every customer has a buying history, including returns. Points and history are not money owed. A personal promotion code can be issued from those purchases, and using it does not change points or a balance. On-account credit is off for both starts and can be turned on later. Restaurant tables, kitchen tickets, and device serial numbers stay off.",
         ],
       },
       {
@@ -317,6 +328,7 @@ export const SEO_PAGES: readonly SeoPage[] = [
     ],
     image: PORTAL,
     crumb: "Fashion POS",
+    profile: "retail_fashion",
   },
   {
     id: "electronics-pos",
@@ -338,8 +350,9 @@ export const SEO_PAGES: readonly SeoPage[] = [
       {
         heading: "Selling on account and at the till",
         paragraphs: [
-          "The same preset includes tier pricing, quotations, on-account sales, cheques, loyalty points, and promotions. Integrated card terminals and Tabby or Tamara are on this profile. A restaurant or café profile does not include those payment modules. Sales orders delivered in parts belong to Wholesale & Retail, not this preset.",
-          "The credit statement is the amount owed. Buying history, including returns, is the list of purchases and is not labeled as debt. Loyalty points are separate again. A personal promotion code can be issued from those purchases, and using it does not change the balance or the points. Managers still use the dashboard and VAT report. The assistant answers from that store and does not invent a number.",
+          "A walk-in shop starts with IMEI or serial tracking, repairs, warranties, trade-ins, loyalty, promotions, foreign-currency cash, card terminals, and Tabby or Tamara. Tier pricing, a credit statement, and cheques are not in that start.",
+          "Wholesale and B2B, and a shop that does both, start from the full Electronics set: the walk-in modules plus tier pricing, quotations, on-account credit, cheques, consignment, and a size and colour matrix. The credit statement is the amount owed. Buying history, including returns, is the list of purchases and is not labeled as debt. Loyalty points are separate. A personal promotion code can be issued from those purchases, and using it does not change the balance or the points.",
+          "Sales orders delivered in parts are not in any of these starts. They can be turned on later, and they are the starter set on Wholesale & Retail. Managers still use the dashboard and VAT report. The assistant answers from that store and does not invent a number.",
         ],
       },
     ],
@@ -347,11 +360,12 @@ export const SEO_PAGES: readonly SeoPage[] = [
       "Catalog of brands, models, and stock",
       "IMEI and serial tracking",
       "Warranties, repairs, and trade-ins",
-      "Tier pricing, credit statements, and cheques",
+      "Tier pricing and credit on the wholesale and both starts",
       "Card terminals and Tabby or Tamara on this profile",
     ],
     image: PORTAL,
     crumb: "Electronics POS",
+    profile: "electronics_wholesale",
   },
   {
     id: "pos-software-uae",

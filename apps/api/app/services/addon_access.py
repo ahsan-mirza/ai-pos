@@ -63,6 +63,10 @@ MODULE_ACTIONS: dict[str, tuple[tuple[str, str], ...]] = {
     "online_store": ((Permission.ONLINE_ORDERS.value, "Edit"),),
     "wholesale_pricing": ((Permission.PORTAL_PRICING_MANAGE.value, "Edit"),),
     "deep_analytics": ((Permission.PORTAL_REPORTS_READ.value, "View"),),
+    "fashion_rental": (
+        (Permission.PORTAL_INVENTORY_MANAGE.value, "View"),
+        (Permission.POS_ACCESS.value, "Create"),
+    ),
 }
 
 _CACHE_TTL = 30

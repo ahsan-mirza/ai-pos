@@ -788,6 +788,10 @@ def record_sale(
         for product in (line.product, *parts.get(line.item.id, ())):
             if product.is_ingredient:
                 raise SyncRejected(f"{product.name} is an ingredient and is not sold on its own.")
+            if has_capability(db, Capability.FASHION_RENTAL):
+                from app.services.rental_service import rental_only
+
+                rental_only(db, product)
             # Open-price lines (labour, unlisted accessories) are not stocked items.
             stocked = (
                 product.is_stock_tracked
@@ -798,7 +802,13 @@ def record_sale(
             if stocked and product.id not in dishes:
                 demand[product.id] = demand.get(product.id, 0) + line.item.quantity
     for product_id, quantity in demand.items():
-        if level_for(db, product_id, data.store_id).available < quantity:
+        level = level_for(db, product_id, data.store_id)
+        promised = 0
+        if has_capability(db, Capability.FASHION_RENTAL):
+            from app.services.rental_service import units_promised_today
+
+            promised = units_promised_today(db, product_id, data.store_id, datetime.now(UTC).date())
+        if level.available - promised < quantity:
             raise SyncRejected("Insufficient stock.")
 
     serial_ids: list[uuid.UUID | None] = []

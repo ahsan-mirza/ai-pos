@@ -8,7 +8,7 @@ use serde_json::{json, Value};
 
 use crate::AppState;
 
-const PREFIXES: [&str; 11] = [
+const PREFIXES: [&str; 12] = [
     "/api/v1/gift-cards",
     "/api/v1/customers",
     "/api/v1/quotes",
@@ -20,6 +20,7 @@ const PREFIXES: [&str; 11] = [
     "/api/v1/users/register-staff",
     "/api/v1/catalog/attributes",
     "/api/v1/grocery",
+    "/api/v1/rentals",
 ];
 
 fn safe(path: &str) -> bool {
