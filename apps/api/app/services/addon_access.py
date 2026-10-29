@@ -62,6 +62,7 @@ MODULE_ACTIONS: dict[str, tuple[tuple[str, str], ...]] = {
     "kds": ((Permission.KDS_OPERATE.value, "Edit"),),
     "online_store": ((Permission.ONLINE_ORDERS.value, "Edit"),),
     "wholesale_pricing": ((Permission.PORTAL_PRICING_MANAGE.value, "Edit"),),
+    "deep_analytics": ((Permission.PORTAL_REPORTS_READ.value, "View"),),
 }
 
 _CACHE_TTL = 30

@@ -20,6 +20,7 @@ from app.routers.v1.cheques import router as cheques_router
 from app.routers.v1.consignment import router as consignment_router
 from app.routers.v1.currencies import router as currencies_router
 from app.routers.v1.customers import router as customers_router
+from app.routers.v1.deep_analytics import router as deep_analytics_router
 from app.routers.v1.devices import router as devices_router
 from app.routers.v1.dining import router as dining_router
 from app.routers.v1.downloads import router as downloads_router
@@ -136,6 +137,12 @@ api_router.include_router(
 )
 api_router.include_router(repairs_router, prefix="/repairs", tags=["repairs"], dependencies=module(Capability.REPAIRS))
 api_router.include_router(analytics_router, prefix="/analytics", tags=["analytics"])
+api_router.include_router(
+    deep_analytics_router,
+    prefix="/deep-analytics",
+    tags=["deep analytics"],
+    dependencies=module(Capability.DEEP_ANALYTICS),
+)
 api_router.include_router(sync_router, prefix="/sync", tags=["sync"])
 api_router.include_router(settings_router, prefix="/settings", tags=["settings"])
 api_router.include_router(audit_router, prefix="/audit-logs", tags=["audit"])

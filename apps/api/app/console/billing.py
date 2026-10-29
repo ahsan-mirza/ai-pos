@@ -133,6 +133,79 @@ def cycle_amount(monthly_fils: int, months: int, discount_bps: int) -> int:
     return monthly_fils * months * (10_000 - discount_bps) // 10_000
 
 
+# Descriptions match the capability catalogue. The monthly price stays 0 until the console sets it.
+_MODULE_DESCRIPTIONS: dict[str, str] = {
+    "wholesale_pricing": "Retail/wholesale toggle at the register, price tiers and volume breaks.",
+    "quotes_layaway": "Proforma quotes, items held for a customer with a deposit, and layaway pickups.",
+    "multi_currency": "Accept cash in other currencies at live exchange rates.",
+    "serial_tracking": "Scan and trace individual units by IMEI or serial number.",
+    "variants_matrix": "Create and sell product grids by size, colour and style.",
+    "consignment": "Sell supplier-owned stock and settle what sold.",
+    "fefo": "Sell the batch that expires soonest first, with expiry alerts.",
+    "b2b_credit": "On-account sales, credit limits, statements and collections.",
+    "cheques": "Take cheques and post-dated cheques and track their clearing.",
+    "repairs": "Repair tickets, technician workflow and parts.",
+    "tables": "Seat guests, track table status and move or merge tables.",
+    "split_bills": "Split a bill by item, seat or amount.",
+    "tips_service_charge": "Add tips and an automatic service charge to bills.",
+    "delivery_channels": "Orders from delivery apps alongside walk-in sales.",
+    "sales_orders": "Wholesale orders picked, delivered in parts with proof of delivery, and invoiced per delivery.",
+    "card_terminals": (
+        "Send the amount to the card machine and confirm the payment automatically; refunds go back to the card."
+    ),
+    "bnpl": "Instalment checkout at the till on the customer's phone, captured and refunded through the provider.",
+    "gift_cards": "Sell gift cards at the till and accept them as payment at every branch.",
+    "tax_free": "Issue tax-free forms to tourists and report the refunds in VAT box 2.",
+    "alterations": "Alteration tickets with measurements, due dates and a ready-for-collection message.",
+    "online_store": "Web-store orders (Shopify or any shop) reserve stock and are shipped or collected in store.",
+    "deep_analytics": "Sales, margin, inventory, and the reports for this business type.",
+}
+
+
+def optional_module_capabilities() -> list[capability_catalog.Capability]:
+    """Capabilities that at least one business type may buy. Starter modules are not in this list for that type."""
+    seen: set[capability_catalog.Capability] = set()
+    for profile in capability_catalog.PROFILES:
+        seen.update(capability_catalog.catalogue(profile).optional)
+    return [capability for capability in capability_catalog.ORDER if capability in seen]
+
+
+def addon_module_keys(capability: capability_catalog.Capability) -> list[str]:
+    """The module this add-on sells, plus the modules it requires."""
+    keys = [capability.value]
+    for required in capability_catalog.SPECS[capability].requires:
+        if required.value not in keys:
+            keys.append(required.value)
+    return keys
+
+
+def ensure_module_addons(db: Session) -> None:
+    """Inserts a catalog add-on for each optional module. A row the console already edited is left as it is."""
+    existing = {row.code for row in _addons(db)}
+    now = datetime.now(UTC)
+    order = 100
+    for capability in optional_module_capabilities():
+        code = capability.value
+        if code not in existing:
+            spec = capability_catalog.SPECS[capability]
+            db.add(
+                BillingAddon(
+                    code=code,
+                    name=spec.label[:80],
+                    description=_MODULE_DESCRIPTIONS.get(code, spec.label),
+                    monthly_fils=0,
+                    one_time_fils=0,
+                    refundable=False,
+                    active=True,
+                    module_keys=addon_module_keys(capability),
+                    sort_order=order,
+                    updated_at=now,
+                )
+            )
+        order += 1
+    db.flush()
+
+
 def ensure_catalog(db: Session) -> bool:
     """Inserts the starting catalog once. Later edits in the console are left alone."""
     if db.scalar(select(BillingPlan.id).limit(1)) is not None:
@@ -261,6 +334,7 @@ def fee_out(row: BillingFee) -> FeeOut:
 
 def catalog(db: Session) -> CatalogOut:
     ensure_catalog(db)
+    ensure_module_addons(db)
     from app.console import hardware
 
     return CatalogOut(
@@ -702,6 +776,92 @@ def _stripe_configured(settings: Settings) -> bool:
     return bool((settings.stripe_secret_key or "").strip())
 
 
+def _business_profile(settings: Settings, tenant: Tenant) -> str:
+    from app.services.settings_service import load_settings
+
+    with tenant_session(tenant, settings) as store:
+        return load_settings(store).business_profile or tenant.profile
+
+
+def quote_addon(db: Session, settings: Settings, tenant: Tenant, code: str) -> QuoteOut:
+    """The current cycle's price for one module add-on. No package line and no onboarding fee."""
+    ensure_catalog(db)
+    ensure_module_addons(db)
+    addon = db.scalar(select(BillingAddon).where(BillingAddon.code == code, BillingAddon.active.is_(True)))
+    if addon is None or not (addon.module_keys or []):
+        raise ApiError(422, "unknown_addon", "Choose a module add-on.")
+    if int(addon.monthly_fils or 0) <= 0:
+        raise ApiError(422, "price_not_set", "This add-on does not have a price yet.")
+    subscription = db.scalar(select(Subscription).where(Subscription.tenant_id == tenant.id))
+    if subscription is None:
+        raise ApiError(409, "no_subscription", "Choose a package before buying an add-on.")
+    plan = db.get(BillingPlan, subscription.plan_id)
+    cycle = db.get(BillingCycle, subscription.cycle_id)
+    if plan is None or cycle is None:
+        raise ApiError(422, "catalog_missing", "The current package is missing.")
+    profile = _business_profile(settings, tenant)
+    optional = {capability.value for capability in capability_catalog.catalogue(profile).optional}
+    if code not in optional:
+        raise ApiError(422, "module_not_optional", "This module is not an add-on for this business type.")
+    unit = cycle_amount(addon.monthly_fils, cycle.months, cycle.discount_bps)
+    if unit <= 0:
+        raise ApiError(422, "price_not_set", "This add-on does not have a price yet.")
+    return QuoteOut(
+        currency="AED",
+        plan_code=plan.code,
+        plan_name=plan.name,
+        cycle_code=cycle.code,
+        cycle_name=cycle.name,
+        months=cycle.months,
+        discount_bps=cycle.discount_bps,
+        included_registers=plan.included_registers,
+        lines=[
+            QuoteLine(
+                code=addon.code,
+                label=addon.name,
+                quantity=1,
+                unit_fils=unit,
+                amount_fils=unit,
+                recurring=True,
+                refundable=False,
+            )
+        ],
+        recurring_fils=unit,
+        one_time_fils=0,
+        total_fils=unit,
+    )
+
+
+def create_addon_checkout(
+    db: Session, settings: Settings, tenant: Tenant, actor_id: uuid.UUID, code: str
+) -> CheckoutOut:
+    """Issues an invoice for one module add-on. Payment uses the same bank-transfer review as a package."""
+    priced = quote_addon(db, settings, tenant, code)
+    invoice = BillingInvoice(
+        tenant_id=tenant.id,
+        status="pending",
+        currency=priced.currency,
+        plan_code=priced.plan_code,
+        cycle_code=priced.cycle_code,
+        recurring_fils=priced.recurring_fils,
+        one_time_fils=priced.one_time_fils,
+        total_fils=priced.total_fils,
+        purge="keep",
+        actor_user_id=actor_id,
+        confirm_name=(tenant.name or "Add-on")[:120],
+    )
+    db.add(invoice)
+    db.flush()
+    _snapshot_lines(db, invoice.id, priced)
+    from app.console import transfers
+
+    invoice.bank_snapshot = transfers.active_bank_snapshot(db)
+    if invoice.bank_snapshot is None:
+        raise ApiError(422, "bank_not_configured", "Bank transfer details have not been published yet.")
+    db.commit()
+    return CheckoutOut(checkout_id=invoice.id, mode="transfer", url=None, quote=priced, bank=invoice.bank_snapshot)
+
+
 def create_checkout(
     db: Session,
     settings: Settings,
@@ -911,12 +1071,41 @@ def _complete(db: Session, settings: Settings, invoice: BillingInvoice) -> None:
     hardware_catalog.mark_paid(db, invoice.id)
 
 
+def _addon_lines(lines: list[BillingInvoiceLine], plan_code: str, cycle_code: str) -> list[BillingInvoiceLine]:
+    return [
+        line
+        for line in lines
+        if line.recurring and line.code not in {plan_code, cycle_code} and line.quantity > 0
+    ]
+
+
+def _append_addon_items(db: Session, subscription_id: uuid.UUID, lines: list[BillingInvoiceLine]) -> None:
+    existing = {
+        item.addon_code: item
+        for item in db.scalars(select(SubscriptionItem).where(SubscriptionItem.subscription_id == subscription_id))
+    }
+    for line in lines:
+        current = existing.get(line.code)
+        if current is None:
+            db.add(SubscriptionItem(subscription_id=subscription_id, addon_code=line.code, quantity=line.quantity))
+        else:
+            current.quantity = line.quantity
+
+
 def _activate(db: Session, tenant: Tenant, invoice: BillingInvoice) -> None:
     plan = db.scalar(select(BillingPlan).where(BillingPlan.code == invoice.plan_code))
     cycle = db.scalar(select(BillingCycle).where(BillingCycle.code == invoice.cycle_code))
     if plan is None or cycle is None:
         raise ApiError(422, "catalog_missing", f"Missing {invoice.plan_code}/{invoice.cycle_code}.")
+    lines = list(db.scalars(select(BillingInvoiceLine).where(BillingInvoiceLine.invoice_id == invoice.id)))
     row = db.scalar(select(Subscription).where(Subscription.tenant_id == tenant.id))
+    # A module purchase has no package line. It is added to the subscription the store already has.
+    if not any(line.code == plan.code for line in lines):
+        if row is None:
+            raise ApiError(409, "no_subscription", "Choose a package before buying an add-on.")
+        invoice.subscription_id = row.id
+        _append_addon_items(db, row.id, _addon_lines(lines, plan.code, cycle.code))
+        return
     if row is None:
         row = Subscription(tenant_id=tenant.id, plan_id=plan.id, cycle_id=cycle.id)
         db.add(row)
@@ -932,7 +1121,5 @@ def _activate(db: Session, tenant: Tenant, invoice: BillingInvoice) -> None:
     row.current_period_end = add_calendar_months(base, cycle.months)
     invoice.subscription_id = row.id
     db.execute(delete(SubscriptionItem).where(SubscriptionItem.subscription_id == row.id))
-    lines = db.scalars(select(BillingInvoiceLine).where(BillingInvoiceLine.invoice_id == invoice.id))
-    for line in lines:
-        if line.recurring and line.code not in {plan.code, cycle.code} and line.quantity > 0:
-            db.add(SubscriptionItem(subscription_id=row.id, addon_code=line.code, quantity=line.quantity))
+    for line in _addon_lines(lines, plan.code, cycle.code):
+        db.add(SubscriptionItem(subscription_id=row.id, addon_code=line.code, quantity=line.quantity))

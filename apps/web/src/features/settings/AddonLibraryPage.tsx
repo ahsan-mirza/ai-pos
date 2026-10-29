@@ -1,16 +1,22 @@
 import {
+  PROFILE_ELIGIBLE,
+  PROFILE_PRESETS,
   capabilitySpec,
   formatMoney,
+  isBusinessProfile,
   isCapability,
   rankAddons,
   type BillingAddon,
   type BillingCatalog,
+  type BillingCheckout,
+  type BusinessProfile,
   type BusinessSettings,
   type Capability,
 } from "@ai-pos/shared-types";
 import { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { ErrorNote, SearchField } from "../../components/ui/Field";
-import { apiGet, apiPut } from "../../lib/api";
+import { apiGet, apiPost, apiPut } from "../../lib/api";
 import { useCapabilities } from "../../lib/capabilities";
 import { useCurrency } from "../../lib/currency";
 import { errorMessage } from "../users/api";
@@ -30,7 +36,9 @@ function priceLines(addon: BillingAddon): string[] {
         : `${formatMoney(addon.one_time_fils, "AED")} one-time`,
     );
   }
-  if (lines.length === 0) lines.push("No extra charge");
+  if (lines.length === 0) {
+    lines.push(addon.module_keys.length > 0 ? "Price is set in the console." : "No extra charge");
+  }
   return lines;
 }
 
@@ -38,7 +46,15 @@ function switchedKeys(addon: BillingAddon): Capability[] {
   return addon.module_keys.filter(isCapability);
 }
 
+function soldHere(addon: BillingAddon, profile: BusinessProfile): boolean {
+  if (addon.module_keys.length === 0) return true;
+  if (!isCapability(addon.code)) return false;
+  const preset = new Set(PROFILE_PRESETS[profile].capabilities);
+  return PROFILE_ELIGIBLE[profile].includes(addon.code) && !preset.has(addon.code);
+}
+
 export function AddonLibraryPage() {
+  const navigate = useNavigate();
   const { settings, applySettings } = useCurrency();
   const { enabled, planned, profile } = useCapabilities();
   const [catalog, setCatalog] = useState<BillingCatalog | null>(null);
@@ -65,12 +81,36 @@ export function AddonLibraryPage() {
     };
   }, []);
 
-  const published = useMemo(() => (catalog?.addons ?? []).filter((addon) => addon.active), [catalog]);
+  const published = useMemo(() => {
+    const business = isBusinessProfile(profile) ? profile : null;
+    return (catalog?.addons ?? []).filter(
+      (addon) => addon.active && (business === null || soldHere(addon, business)),
+    );
+  }, [catalog, profile]);
   const addons = useMemo(() => rankAddons(published, query), [published, query]);
   const current = useMemo(() => new Set<Capability>([...enabled, ...planned]), [enabled, planned]);
 
   const toggle = async (addon: BillingAddon, turnOn: boolean) => {
     if (settings === null || busyCode !== null) return;
+    if (turnOn && addon.module_keys.length > 0 && isCapability(addon.code)) {
+      if (addon.monthly_fils <= 0) {
+        setNotice("The price for this add-on is set in the console.");
+        setError(null);
+        return;
+      }
+      setBusyCode(addon.code);
+      setError(null);
+      setNotice(null);
+      try {
+        await apiPost<BillingCheckout>(`/api/v1/billing/addons/${addon.code}/checkout`, {});
+        navigate("/subscription");
+      } catch (caught) {
+        setError(errorMessage(caught, `Could not start the invoice for ${addon.name}.`));
+      } finally {
+        setBusyCode(null);
+      }
+      return;
+    }
     const keys = switchedKeys(addon);
     if (keys.length === 0) return;
     let next = new Set(current);
@@ -102,8 +142,8 @@ export function AddonLibraryPage() {
       <header>
         <h1 className="text-xl font-semibold">Add-ons</h1>
         <p className="mt-1 text-sm text-charcoal/60">
-          Browse the add-on library and switch on the ones this store uses. Search matches the name and the description,
-          and the closest name is listed first. Prices are in AED.
+          Modules included with the business type stay on without a purchase. Other modules turn on after the invoice
+          is paid. Search matches the name and the description, and the closest name is listed first. Prices are in AED.
         </p>
       </header>
       <SearchField
@@ -122,9 +162,12 @@ export function AddonLibraryPage() {
       <ul className="divide-y divide-line overflow-hidden rounded-2xl border border-line bg-white">
         {addons.map((addon) => {
           const keys = switchedKeys(addon);
-          const onCount = keys.filter((key) => enabled.has(key)).length;
-          const checked = keys.length > 0 && onCount === keys.length;
-          const mixed = onCount > 0 && onCount < keys.length;
+          const moduleCode = isCapability(addon.code) ? addon.code : null;
+          const checked =
+            moduleCode !== null
+              ? enabled.has(moduleCode)
+              : keys.length > 0 && keys.every((key) => enabled.has(key));
+          const unpriced = keys.length > 0 && addon.monthly_fils <= 0 && !checked;
           const busy = busyCode === addon.code;
           return (
             <li key={addon.id} className="flex items-start gap-3 p-4">
@@ -132,12 +175,9 @@ export function AddonLibraryPage() {
                 type="checkbox"
                 className="mt-1 h-4 w-4 accent-accent"
                 checked={checked}
-                disabled={busyCode !== null || keys.length === 0 || settings === null}
+                disabled={busyCode !== null || keys.length === 0 || settings === null || unpriced}
                 aria-busy={busy}
                 aria-label={addon.name}
-                ref={(node) => {
-                  if (node) node.indeterminate = mixed;
-                }}
                 onChange={(event) => void toggle(addon, event.target.checked)}
               />
               <div className="min-w-0 flex-1">

@@ -4,6 +4,7 @@ import { BrowserRouter, Link, Navigate, Route, Routes } from "react-router-dom";
 import { AppShell, PageFrame } from "./components/layout/AppShell";
 import { ConfirmProvider } from "./components/ui/ConfirmDialog";
 import { DashboardPage } from "./features/analytics/DashboardPage";
+import { DeepAnalyticsPage } from "./features/analytics/DeepAnalyticsPage";
 import { AuditPage } from "./features/audit/AuditPage";
 import { AccountPage } from "./features/account/AccountPage";
 import { LoginPage } from "./features/auth/LoginPage";
@@ -390,6 +391,16 @@ function Portal() {
             element={
               <RequirePermission permission={Permission.PortalReportsRead}>
                 <ManagementReportsPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="analytics/deep"
+            element={
+              <RequirePermission permission={Permission.PortalReportsRead}>
+                <RequireCapability capability={Capability.DeepAnalytics}>
+                  <DeepAnalyticsPage />
+                </RequireCapability>
               </RequirePermission>
             }
           />

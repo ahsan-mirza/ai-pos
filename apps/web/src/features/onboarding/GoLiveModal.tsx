@@ -580,7 +580,9 @@ function PackageStep({
 }) {
   const plans = catalog.plans.filter((row) => row.active).sort((a, b) => a.sort_order - b.sort_order);
   const cycles = catalog.cycles.filter((row) => row.active).sort((a, b) => a.sort_order - b.sort_order);
-  const addons = catalog.addons.filter((row) => row.active).sort((a, b) => a.sort_order - b.sort_order);
+  const addons = catalog.addons
+    .filter((row) => row.active && row.module_keys.length === 0)
+    .sort((a, b) => a.sort_order - b.sort_order);
   const plan = plans.find((row) => row.code === planCode);
 
   return (

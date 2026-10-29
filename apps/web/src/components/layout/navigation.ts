@@ -409,6 +409,14 @@ export const navGroups: NavGroup[] = [
         isActive: under("/reports/management"),
       },
       {
+        to: "/analytics/deep",
+        label: "Deep analytics",
+        icon: ChartColumn,
+        permission: Permission.PortalReportsRead,
+        capability: Capability.DeepAnalytics,
+        isActive: under("/analytics/deep"),
+      },
+      {
         to: "/reports/tips",
         label: "Tips & service",
         icon: HandCoins,
@@ -499,6 +507,7 @@ const singlePages: Record<string, Crumb[]> = {
   "/reports/vat": [{ label: "Finance" }, { label: "VAT report" }],
   "/reports/exports": [{ label: "Finance" }, { label: "Accounting exports & loyalty" }],
   "/reports/management": [{ label: "Finance" }, { label: "Management reports" }],
+  "/analytics/deep": [{ label: "Finance" }, { label: "Deep analytics" }],
   "/reports/tips": [{ label: "Finance" }, { label: "Tips & service charge" }],
   "/insights": [{ label: "Workspace" }, { label: "AI insights" }],
   "/assistant": [{ label: "Workspace" }, { label: "AI assistant" }],

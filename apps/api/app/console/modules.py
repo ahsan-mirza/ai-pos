@@ -16,6 +16,9 @@ from app.tenancy.models import BillingTransfer, Subscription, SubscriptionItem
 
 
 def catalogue(db: Session) -> list[ModuleCatalogueItem]:
+    from app.console.billing import ensure_module_addons
+
+    ensure_module_addons(db)
     plans = _plans(db)
     addons = _addons(db)
     rows: list[ModuleCatalogueItem] = []
@@ -52,6 +55,9 @@ def business_types() -> list[BusinessTypeModules]:
 
 
 def summary(db: Session) -> ModuleSummary:
+    from app.console.billing import ensure_module_addons
+
+    ensure_module_addons(db)
     addons = _addons(db)
     counts = dict(
         db.execute(select(Subscription.status, func.count()).group_by(Subscription.status)).all()

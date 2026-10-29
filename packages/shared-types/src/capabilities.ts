@@ -35,6 +35,7 @@ export const Capability = {
   Alterations: "alterations",
   OnlineStore: "online_store",
   CustomerReorders: "customer_reorders",
+  DeepAnalytics: "deep_analytics",
 } as const;
 export type Capability = (typeof Capability)[keyof typeof Capability];
 
@@ -90,6 +91,7 @@ export const CAPABILITIES: readonly CapabilitySpec[] = [
   { id: "alterations", label: "Alterations & tailoring", description: "Alteration tickets with measurements, due dates and a ready-for-collection message.", group: "service", available: true, requires: [] },
   { id: "online_store", label: "Online store", description: "Web-store orders (Shopify or any shop) reserve stock and are shipped or collected in store.", group: "selling", available: true, requires: [] },
   { id: "customer_reorders", label: "Customer reorder plans", description: "Recurring customer deliveries with a reminder before anyone confirms the order.", group: "customers", available: true, requires: [] },
+  { id: "deep_analytics", label: "Deep analytics", description: "Sales, margin, inventory, and the reports for this business type.", group: "selling", available: true, requires: [] },
 ];
 
 const SPECS = new Map(CAPABILITIES.map((spec) => [spec.id, spec]));
@@ -267,6 +269,7 @@ export const PROFILE_ELIGIBLE: Record<BusinessProfile, readonly Capability[]> = 
     "repairs",
     "warranty",
     "trade_in",
+    "deep_analytics",
   ],
   wholesale_retail: [
     "wholesale_pricing",
@@ -284,6 +287,7 @@ export const PROFILE_ELIGIBLE: Record<BusinessProfile, readonly Capability[]> = 
     "online_store",
     "customer_reorders",
     "repairs",
+    "deep_analytics",
   ],
   retail_fashion: [
     "wholesale_pricing",
@@ -303,6 +307,7 @@ export const PROFILE_ELIGIBLE: Record<BusinessProfile, readonly Capability[]> = 
     "consignment",
     "serial_tracking",
     "alterations",
+    "deep_analytics",
   ],
   grocery: [
     "wholesale_pricing",
@@ -322,6 +327,7 @@ export const PROFILE_ELIGIBLE: Record<BusinessProfile, readonly Capability[]> = 
     "fefo",
     "consignment",
     "variants_matrix",
+    "deep_analytics",
   ],
   restaurant: [
     "loyalty",
@@ -337,6 +343,7 @@ export const PROFILE_ELIGIBLE: Record<BusinessProfile, readonly Capability[]> = 
     "tips_service_charge",
     "delivery_channels",
     "card_terminals",
+    "deep_analytics",
   ],
   cafe: [
     "loyalty",
@@ -352,6 +359,7 @@ export const PROFILE_ELIGIBLE: Record<BusinessProfile, readonly Capability[]> = 
     "tips_service_charge",
     "delivery_channels",
     "card_terminals",
+    "deep_analytics",
   ],
   quick_service: [
     "loyalty",
@@ -367,6 +375,7 @@ export const PROFILE_ELIGIBLE: Record<BusinessProfile, readonly Capability[]> = 
     "tips_service_charge",
     "delivery_channels",
     "card_terminals",
+    "deep_analytics",
   ],
 };
 

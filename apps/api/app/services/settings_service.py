@@ -515,7 +515,7 @@ def _guard_reorder_module(db: Session, resolved: capability_catalog.Resolved) ->
 
 
 def commercial_module_keys() -> set[str]:
-    """Capability ids a priced add-on is allowed to sell. Tenancy off means nothing is sold as an add-on."""
+    """Capability ids an active add-on is allowed to sell. Tenancy off means nothing is sold as an add-on."""
     settings = get_settings()
     if not settings.tenancy_enabled:
         return set()
@@ -526,6 +526,11 @@ def commercial_module_keys() -> set[str]:
 
     try:
         with registry.control_session(settings) as control:
+            from app.console.billing import ensure_catalog, ensure_module_addons
+
+            ensure_catalog(control)
+            ensure_module_addons(control)
+            control.commit()
             rows = control.scalars(select(BillingAddon).where(BillingAddon.active.is_(True))).all()
             return {key for row in rows for key in (row.module_keys or [])}
     except Exception as exc:

@@ -12,12 +12,13 @@ import {
   type ChangeRequest,
   formatMoney,
   type BillingCatalog,
+  type BillingCheckout,
   type ProfileUpdate,
   type TenantModules,
 } from "@ai-pos/shared-types";
 import { AlertTriangle, LayoutGrid, LifeBuoy, Lock, Mail, Send } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useLocation } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { Select } from "@ai-pos/ui";
 import { ErrorNote, GhostButton, PrimaryButton } from "../../components/ui/Field";
 import { Modal } from "../../components/ui/Modal";
@@ -254,6 +255,7 @@ function modulePrices(catalog: BillingCatalog, currency: string): Partial<Record
       );
     }
     if (parts.length > 0) prices[addon.code] = parts.join(", ");
+    else if (addon.module_keys.length > 0) prices[addon.code] = "Price is set in the console.";
   }
   return prices;
 }
@@ -261,6 +263,7 @@ function modulePrices(catalog: BillingCatalog, currency: string): Partial<Record
 export function BusinessProfileSettings() {
   const { settings, applySettings, currency } = useCurrency();
   const location = useLocation();
+  const navigate = useNavigate();
   const capabilities = useCapabilities();
   const saved = useMemo(
     () => new Set<Capability>([...capabilities.enabled, ...capabilities.planned]),
@@ -286,11 +289,18 @@ export function BusinessProfileSettings() {
   const [tenant, setTenant] = useState<TenantModules | null>(null);
   const [requests, setRequests] = useState<ChangeRequest[]>([]);
   const [requesting, setRequesting] = useState(false);
+  const [catalog, setCatalog] = useState<BillingCatalog | null>(null);
   const [prices, setPrices] = useState<Partial<Record<Capability, string>>>({});
   useEffect(() => {
     apiGet<BillingCatalog>("/api/v1/billing/catalog")
-      .then((catalog) => setPrices(modulePrices(catalog, currency)))
-      .catch(() => setPrices({}));
+      .then((next) => {
+        setCatalog(next);
+        setPrices(modulePrices(next, currency));
+      })
+      .catch(() => {
+        setCatalog(null);
+        setPrices({});
+      });
   }, [currency]);
   const loadTenant = useCallback(async () => {
     try {
@@ -334,6 +344,34 @@ export function BusinessProfileSettings() {
     setProfile(next);
     setSelected(presetSelection(next));
     setNotice(null);
+  };
+
+  const buyAddon = async (code: string) => {
+    setBusy(true);
+    setError(null);
+    setNotice(null);
+    try {
+      await apiPost<BillingCheckout>(`/api/v1/billing/addons/${code}/checkout`, {});
+      navigate("/subscription");
+    } catch (caught) {
+      setError(errorMessage(caught, "Could not start the add-on invoice."));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const addModule = (capability: Capability, on: boolean) => {
+    if (!on) {
+      setSelected((current) => toggleModule(current, capability, false));
+      return;
+    }
+    const addon = catalog?.addons.find((row) => row.active && row.code === capability && row.module_keys.length > 0);
+    if (addon) {
+      if (addon.monthly_fils > 0) void buyAddon(addon.code);
+      else setNotice("The price for this add-on is set in the console.");
+      return;
+    }
+    setSelected((current) => toggleModule(current, capability, true));
   };
 
   const save = async () => {
@@ -440,7 +478,8 @@ export function BusinessProfileSettings() {
             Add modules
           </h3>
           <p className="-mt-2 mb-3 text-xs text-charcoal/60">
-            Extra modules this business type can switch on. Register hardware is billed from the subscription page.
+            Extra modules for this business type. Turning one on starts an invoice. It switches on after the payment
+            is verified. Register hardware is billed from the subscription page.
           </p>
           {(tenant.optional ?? []).length === 0 ? (
             <p className="rounded-2xl bg-surface px-4 py-3 text-sm text-charcoal/70">
@@ -453,7 +492,7 @@ export function BusinessProfileSettings() {
               visible={new Set(tenant.optional ?? [])}
               managed={tenant.managed}
               prices={prices}
-              onToggle={(capability, on) => setSelected((current) => toggleModule(current, capability, on))}
+              onToggle={addModule}
             />
           )}
         </>

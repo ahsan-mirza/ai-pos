@@ -38,7 +38,9 @@ def test_catalogue_uses_registered_modules_only():
     assert serial.available is True
     assert "electronics_wholesale" in serial.business_types
     assert "grocery" not in serial.business_types
-    assert all(row.addon_codes == [] for row in rows)
+    assert serial.addon_codes == ["serial_tracking"]
+    warranty = next(row for row in rows if row.key == "warranty")
+    assert warranty.addon_codes == []
     counted = summary(db)
     assert counted.catalogue_total == len(rows)
     assert counted.implemented == sum(1 for row in rows if row.available)
@@ -83,7 +85,7 @@ def test_mapping_an_addon_does_not_enable_the_module():
         ),
     )
     mapped = next(row for row in catalogue(db) if row.key == "repairs")
-    assert mapped.addon_codes == ["extra_register"]
+    assert mapped.addon_codes == ["extra_register", "repairs"]
     resolved = resolve("grocery", None, None)
     assert "repairs" not in {capability.value for capability in resolved.enabled}
 

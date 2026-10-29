@@ -333,6 +333,16 @@ export type {
   ValuationRow,
 } from "./management.js";
 export type {
+  DeepComparison,
+  DeepForecast,
+  DeepHourPoint,
+  DeepKpi,
+  DeepNamedAmount,
+  DeepOverview,
+  DeepSection,
+  DeepTrendPoint,
+} from "./deep-analytics.js";
+export type {
   CommissionBasis,
   CommissionReport,
   CommissionRule,

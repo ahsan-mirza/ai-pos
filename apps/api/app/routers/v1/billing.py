@@ -59,7 +59,11 @@ def _active_catalog(found: CatalogOut) -> CatalogOut:
         update={
             "plans": [row for row in found.plans if row.active],
             "cycles": [row for row in found.cycles if row.active],
-            "addons": [row for row in found.addons if row.active],
+            "addons": [
+                row
+                for row in found.addons
+                if row.active and (not row.module_keys or row.monthly_fils > 0)
+            ],
             "fees": [row for row in found.fees if row.active],
         }
     )
@@ -97,6 +101,21 @@ def quote(
     stores = _stores(settings, tenant_id)
     with registry.control_session(settings) as db:
         return billing.quote_for(db, payload.plan_code, payload.cycle_code, payload.addons, payload.hardware, stores)
+
+
+@router.post("/addons/{code}/checkout", response_model=CheckoutOut)
+def addon_checkout(
+    code: str,
+    principal: Annotated[Principal, Depends(authorize(Permission.SETTINGS_MANAGE))],
+    settings: Config,
+) -> CheckoutOut:
+    if principal.user is None:
+        raise ApiError(403, "business_wide_only", "Only a business-wide admin can buy an add-on.")
+    tenant_id = _tenant_id(settings)
+    with registry.control_session(settings) as db:
+        row = db.get(Tenant, tenant_id)
+        assert row is not None
+        return billing.create_addon_checkout(db, settings, row, principal.user.id, code)
 
 
 @router.post("/checkout", response_model=CheckoutOut)
