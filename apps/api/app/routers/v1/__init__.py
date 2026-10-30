@@ -47,6 +47,7 @@ from app.routers.v1.markdowns import router as markdowns_router
 from app.routers.v1.menu import router as menu_router
 from app.routers.v1.messaging import jobs_router
 from app.routers.v1.messaging import router as messaging_router
+from app.routers.v1.reach import router as reach_router
 from app.routers.v1.onboarding import router as onboarding_router
 from app.routers.v1.orders import router as orders_router
 from app.routers.v1.payables import router as payables_router
@@ -167,6 +168,7 @@ api_router.include_router(
     consignment_router, prefix="/consignment", tags=["consignment"], dependencies=module(Capability.CONSIGNMENT)
 )
 api_router.include_router(messaging_router, prefix="/messaging", tags=["messaging"])
+api_router.include_router(reach_router, prefix="/reach", tags=["reach"])
 api_router.include_router(jobs_router, prefix="/jobs", tags=["jobs"])
 api_router.include_router(margin_router, prefix="/margin", tags=["margin"])
 api_router.include_router(menu_router, prefix="/menu", tags=["menu"], dependencies=module(Capability.MENU_MODIFIERS))

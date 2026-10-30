@@ -718,7 +718,7 @@ def _filtered(
     supplier_id: uuid.UUID | None,
     query: str | None,
 ):  # type: ignore[no-untyped-def]
-    statement = select(PurchaseBatch)
+    statement = select(PurchaseBatch).where(PurchaseBatch.import_source != "ADJUST")
     scope = _scope(principal, store_id)
     if scope is not None:
         statement = statement.where(PurchaseBatch.store_id == scope)

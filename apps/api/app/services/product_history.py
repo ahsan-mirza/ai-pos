@@ -388,6 +388,13 @@ def product_costing(db: Session, product_id: uuid.UUID, *, store_id: uuid.UUID |
                 unit_cost_cents=item.purchase_cost_per_unit,
                 remaining_value_cents=item.quantity_remaining * item.purchase_cost_per_unit,
                 consumed_quantity=item.quantity_imported - item.quantity_remaining,
+                source=(
+                    "purchase"
+                    if batch.goods_receipt_id is not None
+                    else "adjustment"
+                    if batch.import_source == "ADJUST"
+                    else "import"
+                ),
             )
             for item, batch in layer_rows
             if batch.status != "REVERSED"

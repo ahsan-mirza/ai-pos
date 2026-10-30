@@ -42,14 +42,15 @@ def _require(value: str | None, name: str) -> str:
     return value
 
 
-def send_log(settings: Settings, message: Outgoing) -> str:
+def send_log(settings: Settings, message: Outgoing, credentials: dict | None = None) -> str:
     logger.info("message to %s: %s", message.to, message.body[:200])
     return f"log-{uuid.uuid4().hex[:12]}"
 
 
-def send_whatsapp_cloud(settings: Settings, message: Outgoing) -> str:
-    token = _require(settings.whatsapp_token, "WHATSAPP_TOKEN")
-    phone_id = _require(settings.whatsapp_phone_number_id, "WHATSAPP_PHONE_NUMBER_ID")
+def send_whatsapp_cloud(settings: Settings, message: Outgoing, credentials: dict | None = None) -> str:
+    owned = credentials or {}
+    token = _require(owned.get("secret") or settings.whatsapp_token, "WhatsApp access token")
+    phone_id = _require(owned.get("phone_number_id") or settings.whatsapp_phone_number_id, "WhatsApp phone number id")
     number = "".join(ch for ch in message.to if ch.isdigit())
     response = httpx.post(
         f"https://graph.facebook.com/{settings.whatsapp_api_version}/{phone_id}/messages",
@@ -64,11 +65,14 @@ def send_whatsapp_cloud(settings: Settings, message: Outgoing) -> str:
     return str(response.json().get("messages", [{}])[0].get("id", ""))
 
 
-def send_http_sms(settings: Settings, message: Outgoing) -> str:
-    url = _require(settings.sms_http_url, "SMS_HTTP_URL")
-    headers = {"Authorization": f"Bearer {settings.sms_http_token}"} if settings.sms_http_token else {}
+def send_http_sms(settings: Settings, message: Outgoing, credentials: dict | None = None) -> str:
+    owned = credentials or {}
+    url = _require(owned.get("url") or settings.sms_http_url, "SMS gateway URL")
+    token = owned.get("secret") or settings.sms_http_token
+    headers = {"Authorization": f"Bearer {token}"} if token else {}
+    sender = owned.get("sender_id") or settings.sms_sender
     response = httpx.post(
-        url, headers=headers, json={"to": message.to, "from": settings.sms_sender, "text": message.body}, timeout=15
+        url, headers=headers, json={"to": message.to, "from": sender, "text": message.body}, timeout=15
     )
     if response.status_code >= 400:
         raise ProviderError(
@@ -122,7 +126,21 @@ def transmit_smtp(
     return email.get("Message-ID", "") or ""
 
 
-def send_smtp(settings: Settings, message: Outgoing) -> str:
+def send_smtp(settings: Settings, message: Outgoing, credentials: dict | None = None) -> str:
+    owned = credentials or {}
+    if owned.get("host"):
+        sender = owned.get("sender_name")
+        address = _require(owned.get("sender_email"), "Sender email")
+        from_header = f"{sender} <{address}>" if sender else address
+        return transmit_smtp(
+            message,
+            host=str(owned["host"]),
+            port=int(owned.get("port") or 587),
+            username=owned.get("username") or None,
+            password=owned.get("secret") or None,
+            sender=from_header,
+            security=str(owned.get("security") or "starttls"),
+        )
     from app.console.mail import platform_link
 
     link = platform_link(settings)
@@ -158,8 +176,8 @@ SENDERS = {
 }
 
 
-def deliver(settings: Settings, provider: str, message: Outgoing) -> str:
+def deliver(settings: Settings, provider: str, message: Outgoing, credentials: dict | None = None) -> str:
     sender = SENDERS.get(provider)
     if sender is None:
         raise ProviderError(f"Unknown provider {provider}.", permanent=True)
-    return sender(settings, message)
+    return sender(settings, message, credentials)

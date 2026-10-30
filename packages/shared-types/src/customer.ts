@@ -27,6 +27,9 @@ export interface Customer {
   whatsapp_opt_in?: boolean;
   sms_opt_in?: boolean;
   email_opt_in?: boolean;
+  marketing_whatsapp_opt_in?: boolean;
+  marketing_sms_opt_in?: boolean;
+  marketing_email_opt_in?: boolean;
   loyalty_points?: number;
   /** Latest credit risk (0-100, higher is riskier) and grade A-E; null until first scored. */
   risk_score?: number | null;
@@ -92,6 +95,9 @@ export interface CustomerWrite {
   whatsapp_opt_in?: boolean;
   sms_opt_in?: boolean;
   email_opt_in?: boolean;
+  marketing_whatsapp_opt_in?: boolean;
+  marketing_sms_opt_in?: boolean;
+  marketing_email_opt_in?: boolean;
   group_id?: string | null;
   tax_treatment?: TaxTreatment;
   tax_certificate_ref?: string | null;

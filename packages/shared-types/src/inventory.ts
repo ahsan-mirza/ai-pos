@@ -202,6 +202,8 @@ export const AdjustmentReason = {
   SupplierSampleIn: "SUPPLIER_SAMPLE_IN",
   IncorrectEntryCorrection: "INCORRECT_ENTRY_CORRECTION",
   InternalDemoUse: "INTERNAL_DEMO_USE",
+  Spoilage: "SPOILAGE",
+  QualityRejection: "QUALITY_REJECTION",
   Other: "OTHER",
 } as const;
 export type AdjustmentReason = (typeof AdjustmentReason)[keyof typeof AdjustmentReason];
@@ -215,11 +217,18 @@ export const adjustmentReasonLabels: Record<AdjustmentReason, string> = {
   SUPPLIER_SAMPLE_IN: "Supplier sample received",
   INCORRECT_ENTRY_CORRECTION: "Incorrect entry correction",
   INTERNAL_DEMO_USE: "Internal demo use",
+  SPOILAGE: "Spoilage / waste",
+  QUALITY_REJECTION: "Quality rejection",
   OTHER: "Other",
 };
 
 /** Reasons that only make sense in one direction; the API rejects the opposite. */
-export const REMOVE_ONLY_REASONS: readonly AdjustmentReason[] = ["DAMAGED_OR_EXPIRED", "STOLEN_SHRINKAGE"];
+export const REMOVE_ONLY_REASONS: readonly AdjustmentReason[] = [
+  "DAMAGED_OR_EXPIRED",
+  "STOLEN_SHRINKAGE",
+  "SPOILAGE",
+  "QUALITY_REJECTION",
+];
 export const ADD_ONLY_REASONS: readonly AdjustmentReason[] = ["SUPPLIER_SAMPLE_IN"];
 
 export type AdjustmentMode = "add" | "remove" | "set";
@@ -235,6 +244,13 @@ export interface ManualAdjustment {
   note: string;
   new_serials?: SerialInput[];
   remove_serial_ids?: string[];
+  /** Required when the adjustment adds units. Cents per unit, or per kilogram for weighed goods. */
+  unit_cost_cents?: number | null;
+  landed_cost_cents?: number;
+  lot_number?: string | null;
+  expiry_date?: string | null;
+  supplier_reference?: string | null;
+  receipt_date?: string | null;
 }
 
 export interface ManualAdjustmentResult {
@@ -243,6 +259,9 @@ export interface ManualAdjustmentResult {
   quantity_change: number;
   row: StockRow;
   movements: StockMovement[];
+  unit_cost_cents?: number | null;
+  acquisition_value_cents?: number | null;
+  removed_cost_cents?: number | null;
 }
 
 export interface StoreSerial {

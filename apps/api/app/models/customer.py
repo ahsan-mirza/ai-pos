@@ -44,10 +44,14 @@ class Customer(TenantScoped, TimestampMixin, Base):
     credit_hold: Mapped[bool] = mapped_column(Boolean, default=False)
     credit_hold_reason: Mapped[str | None] = mapped_column(String(255), nullable=True)
     credit_hold_manual: Mapped[bool] = mapped_column(Boolean, default=False)
-    # Consent per channel (UAE PDPL): nothing is sent on a channel the customer has not opted into.
+    # Transactional consent (receipts, statements). A phone number alone is not consent.
     whatsapp_opt_in: Mapped[bool] = mapped_column(Boolean, default=False)
     sms_opt_in: Mapped[bool] = mapped_column(Boolean, default=False)
     email_opt_in: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Marketing consent is separate. Campaigns and promotions require these, not the receipt flags.
+    marketing_whatsapp_opt_in: Mapped[bool] = mapped_column(Boolean, default=False)
+    marketing_sms_opt_in: Mapped[bool] = mapped_column(Boolean, default=False)
+    marketing_email_opt_in: Mapped[bool] = mapped_column(Boolean, default=False)
     # Only services.loyalty_service writes this; loyalty_entries is the ledger behind it.
     loyalty_points: Mapped[int] = mapped_column(Integer, default=0)
     # Latest credit risk (services.credit_risk_service): 0-100 score, grade A-E, and its factors and suggestions.

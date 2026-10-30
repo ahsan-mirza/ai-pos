@@ -104,6 +104,9 @@ def customer_out(
         whatsapp_opt_in=customer.whatsapp_opt_in,
         sms_opt_in=customer.sms_opt_in,
         email_opt_in=customer.email_opt_in,
+        marketing_whatsapp_opt_in=customer.marketing_whatsapp_opt_in,
+        marketing_sms_opt_in=customer.marketing_sms_opt_in,
+        marketing_email_opt_in=customer.marketing_email_opt_in,
         loyalty_points=customer.loyalty_points,
         risk_score=customer.risk_score,
         risk_grade=customer.risk_grade,
@@ -291,6 +294,9 @@ def update_customer(db: Session, customer_id: uuid.UUID, data: CustomerUpdate) -
         "whatsapp_opt_in",
         "sms_opt_in",
         "email_opt_in",
+        "marketing_whatsapp_opt_in",
+        "marketing_sms_opt_in",
+        "marketing_email_opt_in",
         "tax_treatment",
     ):
         if name in changes and changes[name] is None:

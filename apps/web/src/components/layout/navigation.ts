@@ -92,6 +92,12 @@ export const settingsTabs: SettingsTab[] = [
   { to: "/settings/currencies", label: "Currencies", permission: Permission.CurrenciesManage, capability: Capability.MultiCurrency },
   { to: "/settings/messaging", label: "Messaging", permission: Permission.MessagingManage },
   {
+    to: "/settings/reach",
+    label: "AxizReach",
+    permission: Permission.MessagingManage,
+    capability: Capability.AxizReach,
+  },
+  {
     to: "/settings/channels",
     label: "Delivery channels",
     permission: Permission.SettingsManage,

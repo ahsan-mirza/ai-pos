@@ -246,6 +246,19 @@ def shrink_movements(
     movements = list(db.scalars(query))
     if not movements:
         return []
+    added = [
+        str(movement.reference_id)
+        for movement in movements
+        if movement.quantity > 0 and movement.reference_id is not None
+    ]
+    adjust_unit = {
+        name: cost
+        for name, cost in db.execute(
+            select(PurchaseBatch.file_name, BatchItem.purchase_cost_per_unit)
+            .join(BatchItem, BatchItem.batch_id == PurchaseBatch.id)
+            .where(PurchaseBatch.import_source == "ADJUST", PurchaseBatch.file_name.in_(added))
+        )
+    } if added else {}
     allocated: dict[uuid.UUID, tuple[int, int]] = defaultdict(lambda: (0, 0))
     for movement_id, quantity, cost in db.execute(
         select(BatchAllocation.stock_movement_id, BatchAllocation.quantity, BatchItem.purchase_cost_per_unit)
@@ -264,6 +277,12 @@ def shrink_movements(
     )
     out = []
     for movement in movements:
+        reference = str(movement.reference_id) if movement.reference_id is not None else ""
+        if movement.quantity > 0 and reference in adjust_unit:
+            scale = weighed.GRAMS_PER_KG if movement.product_id in weighed_ids else 1
+            value = weighed.amount(movement.quantity, adjust_unit[reference], scale)
+            out.append((movement, -value))
+            continue
         units, value = allocated.get(movement.id, (0, 0))
         rest = abs(movement.quantity) - units
         value += max(rest, 0) * (fallback(movement.product_id) or 0)

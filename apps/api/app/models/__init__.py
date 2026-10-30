@@ -26,6 +26,7 @@ from app.models.margin import MarginPolicy
 from app.models.markdown import MarkdownEvent, PriceChange
 from app.models.menu import ComboSlot, ComboSlotOption, ModifierGroup, ModifierOption, ProductModifierGroup
 from app.models.messaging import MessageTemplate, OutboundMessage
+from app.models.reach import MessagingChannel, ReachCampaign, ReachUsage
 from app.models.payables import SupplierBill, SupplierBillLine, SupplierPayment, SupplierPaymentAllocation
 from app.models.payment_intent import PaymentIntent, PaymentRefund, PaymentTerminal
 from app.models.price_list import (
@@ -134,6 +135,9 @@ __all__ = [
     "ProductModifierGroup",
     "MessageTemplate",
     "OutboundMessage",
+    "MessagingChannel",
+    "ReachCampaign",
+    "ReachUsage",
     "PaymentIntent",
     "PaymentRefund",
     "PaymentTerminal",

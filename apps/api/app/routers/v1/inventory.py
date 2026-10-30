@@ -34,7 +34,8 @@ from app.schemas.inventory import (
     TransferStatus,
 )
 from app.schemas.payloads import ProductOut, SerialStatus
-from app.services import inventory
+from app.schemas.product_history import ProductCosting
+from app.services import inventory, product_history
 from app.services.settings_service import business_currency
 
 router = APIRouter()
@@ -92,6 +93,18 @@ def update_level(product_id: uuid.UUID, store_id: uuid.UUID, payload: LevelUpdat
 CanAdjust = Annotated[Principal, Depends(authorize(Permission.INVENTORY_ADJUST_STOCK))]
 # IMEI / serial lookups need the serial tracking module; availability by product stays open to every register.
 SerialModule = [Depends(require_capability(Capability.SERIAL_TRACKING))]
+
+
+@router.get("/adjust/cost", response_model=ProductCosting)
+def adjustment_cost(
+    db: Db,
+    principal: CanAdjust,
+    product_id: uuid.UUID,
+    store_id: uuid.UUID,
+) -> ProductCosting:
+    """Cost layers and valuation for the branch being adjusted. Same figures the product page shows."""
+    scope = product_history.scope_for(principal, store_id)
+    return product_history.product_costing(db, product_id, store_id=scope)
 
 
 @router.post("/adjust", response_model=ManualAdjustmentOut, status_code=201)

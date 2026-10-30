@@ -126,12 +126,15 @@ def _issue(db: Session, promo: Promotion, customer: Customer, *, reason: str, no
 
 
 def _notify(db: Session, promo: Promotion, customer: Customer, coupon: CustomerCoupon) -> None:
+    from app.core.capabilities import Capability, has_capability
+    from app.services.messaging_service import marketing_consented
+
     params = promo.params or {}
-    if not params.get("notify"):
+    if not params.get("notify") or not has_capability(db, Capability.AXIZ_REACH):
         return
-    if customer.email_opt_in:
+    if marketing_consented(customer, "email") and customer.email:
         channel = "email"
-    elif customer.whatsapp_opt_in:
+    elif marketing_consented(customer, "whatsapp") and customer.phone:
         channel = "whatsapp"
     else:
         return

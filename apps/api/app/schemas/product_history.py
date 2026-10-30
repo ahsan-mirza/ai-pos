@@ -92,6 +92,7 @@ class CostLayerRow(ApiModel):
     unit_cost_cents: int
     remaining_value_cents: int
     consumed_quantity: int
+    source: str = "import"
 
 
 class StoreCostRow(ApiModel):

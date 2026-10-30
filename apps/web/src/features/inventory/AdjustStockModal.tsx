@@ -4,9 +4,12 @@ import {
   AdjustmentReason,
   REMOVE_ONLY_REASONS,
   adjustmentReasonLabels,
+  formatMoney,
   isValidImei,
   type AdjustmentMode,
+  type CostLayerRow,
   type ManualAdjustmentResult,
+  type ProductCosting,
   type SerialInput,
   type StockRow,
   type StoreSerial,
@@ -16,6 +19,9 @@ import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from 
 import { ErrorNote, GhostButton, PrimaryButton, SelectField } from "../../components/ui/Field";
 import { modalBody, modalFooter, modalHeader } from "../../components/ui/Modal";
 import { SegmentedControl } from "../../components/ui/SegmentedControl";
+import { apiGet } from "../../lib/api";
+import { useCapabilities } from "../../lib/capabilities";
+import { useCurrency } from "../../lib/currency";
 import { inventoryApi, message } from "./api";
 
 const modes = [
@@ -23,6 +29,39 @@ const modes = [
   { value: "remove", label: "− Remove / Deduct Stock" },
   { value: "set", label: "= Set Exact Count" },
 ] as const;
+
+function majorToCents(raw: string): number | null {
+  const trimmed = raw.trim();
+  if (!/^\d+(\.\d{0,2})?$/.test(trimmed)) return null;
+  const [whole, fraction = ""] = trimmed.split(".");
+  return Number(whole) * 100 + Number((fraction + "00").slice(0, 2));
+}
+
+function moneyOf(quantity: number, unitCents: number, scale: number): number {
+  if (scale === 1) return quantity * unitCents;
+  return Math.round((quantity * unitCents) / scale);
+}
+
+function removalCost(
+  layers: CostLayerRow[],
+  quantity: number,
+  method: string,
+  average: number | null,
+  scale: number,
+): { cost: number; uncosted: number } {
+  const units = Math.abs(quantity);
+  if (method === "WEIGHTED_AVERAGE" && average !== null) return { cost: moneyOf(units, average, scale), uncosted: 0 };
+  let left = units;
+  let cost = 0;
+  const ordered = [...layers].sort((leftLayer, rightLayer) => leftLayer.receipt_date.localeCompare(rightLayer.receipt_date));
+  for (const layer of ordered) {
+    if (left <= 0) break;
+    const take = Math.min(left, layer.remaining_quantity);
+    cost += moneyOf(take, layer.unit_cost_cents, scale);
+    left -= take;
+  }
+  return { cost, uncosted: left };
+}
 
 function serialFor(raw: string): SerialInput | null {
   const value = raw.trim();
@@ -45,10 +84,22 @@ export function AdjustStockModal({
 }) {
   const titleId = useId();
   const adjustmentId = useRef(crypto.randomUUID());
+  const { currency: businessCurrency } = useCurrency();
+  const { has } = useCapabilities();
+  const trackLots = has("fefo");
   const [mode, setMode] = useState<AdjustmentMode>("add");
   const [quantity, setQuantity] = useState(row.is_serialized ? 0 : 1);
   const [reason, setReason] = useState<AdjustmentReason | "">("");
   const [note, setNote] = useState("");
+  const [costing, setCosting] = useState<ProductCosting | null>(null);
+  const [unitCost, setUnitCost] = useState("");
+  const [landedCost, setLandedCost] = useState("");
+  const [supplierRef, setSupplierRef] = useState("");
+  const [lotNumber, setLotNumber] = useState("");
+  const [expiry, setExpiry] = useState("");
+  const [receiptDate, setReceiptDate] = useState("");
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const costTouched = useRef(false);
   const [scan, setScan] = useState("");
   const [scanned, setScanned] = useState<SerialInput[]>([]);
   const [units, setUnits] = useState<StoreSerial[] | null>(null);
@@ -71,6 +122,25 @@ export function AdjustStockModal({
       document.body.style.overflow = previous;
     };
   }, [busy, onClose]);
+
+  useEffect(() => {
+    if (storeId === null) return;
+    let live = true;
+    apiGet<ProductCosting>(`/api/v1/inventory/adjust/cost?product_id=${row.product_id}&store_id=${storeId}`)
+      .then((snapshot) => {
+        if (!live) return;
+        setCosting(snapshot);
+        if (!costTouched.current && snapshot.last_purchase_cost_cents !== null) {
+          setUnitCost((snapshot.last_purchase_cost_cents / 100).toFixed(2));
+        }
+      })
+      .catch(() => {
+        if (live) setCosting(null);
+      });
+    return () => {
+      live = false;
+    };
+  }, [row.product_id, storeId]);
 
   useEffect(() => {
     if (!serialized || storeId === null) return;
@@ -109,6 +179,18 @@ export function AdjustStockModal({
   const needScans = serialized && change > 0 ? change : 0;
   const needPicks = serialized && change < 0 ? -change : 0;
   const trimmedNote = note.trim().replace(/\s+/g, " ");
+  const scale = row.sold_by_weight ? 1000 : 1;
+  const currency = costing?.currency || businessCurrency;
+  const unitCents = majorToCents(unitCost);
+  const landedCents = landedCost.trim() === "" ? 0 : majorToCents(landedCost);
+  const adding = change > 0;
+  const layers = costing?.layers ?? [];
+  const newest = [...layers].sort((left, right) => right.receipt_date.localeCompare(left.receipt_date));
+  const lastLayer = newest[0];
+  const previousLayer = newest[1];
+  const branch = costing?.stores.find((store) => store.store_id === storeId) ?? costing?.stores[0];
+  const removal = change < 0 ? removalCost(layers, change, costing?.method ?? "FIFO", branch?.weighted_average_cost_cents ?? costing?.weighted_average_cost_cents ?? null, scale) : null;
+  const acquisition = adding && unitCents !== null && landedCents !== null ? moneyOf(change, unitCents, scale) + landedCents : null;
   const problem = (() => {
     if (storeId === null) return "Select a specific store branch to adjust stock levels.";
     if (!Number.isInteger(quantity) || quantity < 0) return "Enter a whole number.";
@@ -118,6 +200,8 @@ export function AdjustStockModal({
     }
     if (needScans && scanned.length !== needScans) return `Scan ${needScans} IMEI/serial number${needScans === 1 ? "" : "s"}.`;
     if (needPicks && selected.size !== needPicks) return `Select ${needPicks} unit${needPicks === 1 ? "" : "s"} to write off.`;
+    if (adding && unitCents === null) return "Enter the unit acquisition cost.";
+    if (adding && landedCents === null) return "Enter the additional landed cost as a number, or leave it blank.";
     if (reason === "") return "Choose an adjustment reason.";
     if (trimmedNote.length < ADJUSTMENT_NOTE_MIN_LENGTH) {
       return `Explain the adjustment in at least ${ADJUSTMENT_NOTE_MIN_LENGTH} characters.`;
@@ -168,6 +252,12 @@ export function AdjustStockModal({
           note: trimmedNote,
           new_serials: needScans ? scanned : [],
           remove_serial_ids: needPicks ? [...selected] : [],
+          unit_cost_cents: adding ? unitCents : null,
+          landed_cost_cents: adding ? (landedCents ?? 0) : 0,
+          lot_number: adding && trackLots ? lotNumber.trim() || null : null,
+          expiry_date: adding && trackLots && expiry ? expiry : null,
+          supplier_reference: adding ? supplierRef.trim() || null : null,
+          receipt_date: adding && receiptDate ? receiptDate : null,
         }),
       );
     } catch (caught) {
@@ -194,7 +284,9 @@ export function AdjustStockModal({
               {row.name}
             </h2>
             <p className="mt-0.5 text-sm text-charcoal/60">
-              <span className="font-mono text-xs">{row.sku}</span> · {row.store_code} · {row.store_name}
+              <span className="font-mono text-xs">{row.sku}</span>
+              {row.model_name ? ` · ${row.model_name}` : ""} · {row.store_code} · {row.store_name}
+              {row.sold_by_weight ? " · weighed, in grams" : ""}
             </p>
           </div>
           <div className="shrink-0 rounded-2xl bg-charcoal px-4 py-2 text-right text-white">
@@ -227,6 +319,21 @@ export function AdjustStockModal({
             }}
           />
         </div>
+
+        <CostSummary
+          costing={costing}
+          currency={currency}
+          onHand={onHand}
+          valueCents={branch?.inventory_value_cents ?? costing?.inventory_value_cents ?? null}
+          averageCents={branch?.weighted_average_cost_cents ?? costing?.weighted_average_cost_cents ?? null}
+          lastCents={lastLayer?.unit_cost_cents ?? costing?.last_purchase_cost_cents ?? null}
+          previousCents={previousLayer?.unit_cost_cents ?? null}
+          lastDate={lastLayer?.receipt_date ?? null}
+          historyOpen={historyOpen}
+          layers={newest}
+          weighed={Boolean(row.sold_by_weight)}
+          onToggleHistory={() => setHistoryOpen((open) => !open)}
+        />
 
         <div className="mt-5">
           <p className="text-sm font-medium">{mode === "set" ? "Exact counted quantity" : "Adjustment quantity"}</p>
@@ -271,7 +378,111 @@ export function AdjustStockModal({
               <span className="ml-2 text-xs text-charcoal/50">Quantity follows the IMEIs below.</span>
             ) : null}
           </p>
+          {mode === "set" ? (
+            <p className="mt-1 text-sm text-charcoal/70">
+              System {onHand} · counted {quantity} · {change === 0 ? "no difference" : change > 0 ? "surplus" : "shortage"}
+            </p>
+          ) : null}
         </div>
+
+        {adding ? (
+          <div className="mt-5 grid gap-4 rounded-2xl border border-line p-4">
+            <p className="text-sm font-medium">New stock cost</p>
+            <label className="block text-sm font-medium">
+              Unit acquisition cost <span className="text-accent">*</span>
+              <span className="mt-0.5 block text-xs font-normal text-charcoal/50">
+                {row.sold_by_weight ? "Per kilogram" : "Per unit"}. This opens a new cost layer and leaves older layers as they are.
+              </span>
+              <input
+                inputMode="decimal"
+                value={unitCost}
+                aria-label="Unit acquisition cost"
+                onChange={(event) => {
+                  costTouched.current = true;
+                  setUnitCost(event.target.value);
+                }}
+                placeholder="0.00"
+                className="mt-1.5 h-11 w-full rounded-xl border border-transparent bg-surface px-4 text-sm font-normal tabular-nums focus:border-accent focus:bg-white focus:outline-none"
+              />
+            </label>
+            <label className="block text-sm font-medium">
+              Additional landed cost
+              <input
+                inputMode="decimal"
+                value={landedCost}
+                aria-label="Additional landed cost"
+                onChange={(event) => setLandedCost(event.target.value)}
+                placeholder="0.00"
+                className="mt-1.5 h-11 w-full rounded-xl border border-transparent bg-surface px-4 text-sm font-normal tabular-nums focus:border-accent focus:bg-white focus:outline-none"
+              />
+            </label>
+            <label className="block text-sm font-medium">
+              Supplier / reference
+              <input
+                value={supplierRef}
+                aria-label="Supplier or reference"
+                onChange={(event) => setSupplierRef(event.target.value)}
+                maxLength={120}
+                className="mt-1.5 h-11 w-full rounded-xl border border-transparent bg-surface px-4 text-sm font-normal focus:border-accent focus:bg-white focus:outline-none"
+              />
+            </label>
+            <label className="block text-sm font-medium">
+              Stock receipt date
+              <input
+                type="date"
+                value={receiptDate}
+                aria-label="Stock receipt date"
+                onChange={(event) => setReceiptDate(event.target.value)}
+                className="mt-1.5 h-11 w-full rounded-xl border border-transparent bg-surface px-4 text-sm font-normal focus:border-accent focus:bg-white focus:outline-none"
+              />
+            </label>
+            {trackLots ? (
+              <div className="grid gap-4 sm:grid-cols-2">
+                <label className="block text-sm font-medium">
+                  Batch / lot number
+                  <input
+                    value={lotNumber}
+                    aria-label="Batch or lot number"
+                    onChange={(event) => setLotNumber(event.target.value)}
+                    maxLength={32}
+                    className="mt-1.5 h-11 w-full rounded-xl border border-transparent bg-surface px-4 text-sm font-normal focus:border-accent focus:bg-white focus:outline-none"
+                  />
+                </label>
+                <label className="block text-sm font-medium">
+                  Expiry date
+                  <input
+                    type="date"
+                    value={expiry}
+                    aria-label="Expiry date"
+                    onChange={(event) => setExpiry(event.target.value)}
+                    className="mt-1.5 h-11 w-full rounded-xl border border-transparent bg-surface px-4 text-sm font-normal focus:border-accent focus:bg-white focus:outline-none"
+                  />
+                </label>
+              </div>
+            ) : null}
+            <p className="text-sm tabular-nums text-charcoal/80">
+              {acquisition === null
+                ? "Quantity × unit cost + landed cost = total acquisition value"
+                : `${change} × ${formatMoney(unitCents ?? 0, currency)}${row.sold_by_weight ? " / kg" : ""} + ${formatMoney(landedCents ?? 0, currency)} = ${formatMoney(acquisition, currency)}`}
+            </p>
+          </div>
+        ) : null}
+
+        {removal !== null ? (
+          <div className="mt-5 rounded-2xl border border-line p-4 text-sm">
+            <p className="font-medium">{mode === "set" ? "Shortage" : "Stock being removed"}</p>
+            <p className="mt-2 tabular-nums text-charcoal/80">
+              Estimated inventory cost{" "}
+              <span className="font-semibold text-charcoal">{formatMoney(removal.cost, currency)}</span>
+              {costing?.method === "WEIGHTED_AVERAGE" ? " at the current weighted average." : " from the oldest cost layers."}
+            </p>
+            {removal.uncosted > 0 ? (
+              <p className="mt-1 text-charcoal/60">{removal.uncosted} units have no recorded acquisition cost.</p>
+            ) : (
+              <p className="mt-1 text-charcoal/60">Inventory value falls by this amount. Posted sales keep their original cost.</p>
+            )}
+          </div>
+        ) : null}
 
         {serialized && (mode === "add" || needScans > 0) ? (
           <div className="mt-5 rounded-2xl border border-line p-4">
@@ -395,6 +606,109 @@ export function AdjustStockModal({
           </PrimaryButton>
         </footer>
       </div>
+    </div>
+  );
+}
+
+function CostSummary({
+  costing,
+  currency,
+  onHand,
+  valueCents,
+  averageCents,
+  lastCents,
+  previousCents,
+  lastDate,
+  historyOpen,
+  layers,
+  weighed,
+  onToggleHistory,
+}: {
+  costing: ProductCosting | null;
+  currency: string;
+  onHand: number;
+  valueCents: number | null;
+  averageCents: number | null;
+  lastCents: number | null;
+  previousCents: number | null;
+  lastDate: string | null;
+  historyOpen: boolean;
+  layers: CostLayerRow[];
+  weighed: boolean;
+  onToggleHistory: () => void;
+}) {
+  const money = (cents: number | null) => (cents === null ? "—" : formatMoney(cents, currency));
+  const method = costing?.method === "WEIGHTED_AVERAGE" ? "Weighted average" : costing ? "FIFO" : "—";
+  return (
+    <div className="mt-5 rounded-2xl border border-line p-4">
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-sm font-medium">Cost information</p>
+        <button type="button" onClick={onToggleHistory} className="text-xs font-semibold text-accent">
+          {historyOpen ? "Hide cost history" : "View cost history"}
+        </button>
+      </div>
+      <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+        <div>
+          <dt className="text-charcoal/50">On hand</dt>
+          <dd className="font-medium tabular-nums">{onHand}{weighed ? " g" : ""}</dd>
+        </div>
+        <div>
+          <dt className="text-charcoal/50">Inventory value</dt>
+          <dd className="font-medium tabular-nums">{money(valueCents)}</dd>
+        </div>
+        <div>
+          <dt className="text-charcoal/50">Valuation method</dt>
+          <dd className="font-medium">{method}</dd>
+        </div>
+        <div>
+          <dt className="text-charcoal/50">Weighted average</dt>
+          <dd className="font-medium tabular-nums">{money(averageCents)}</dd>
+        </div>
+        <div>
+          <dt className="text-charcoal/50">Last acquisition</dt>
+          <dd className="font-medium tabular-nums">{money(lastCents)}</dd>
+        </div>
+        <div>
+          <dt className="text-charcoal/50">Previous acquisition</dt>
+          <dd className="font-medium tabular-nums">{money(previousCents)}</dd>
+        </div>
+        <div className="col-span-2">
+          <dt className="text-charcoal/50">Most recent acquisition</dt>
+          <dd className="font-medium">{lastDate ? new Date(lastDate).toLocaleDateString() : "Not recorded"}</dd>
+        </div>
+      </dl>
+      {historyOpen ? (
+        layers.length === 0 ? (
+          <p className="mt-3 text-sm text-charcoal/60">No cost layers at this branch yet.</p>
+        ) : (
+          <div className="mt-3 overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead className="text-charcoal/50">
+                <tr>
+                  <th className="py-1 pr-2 font-medium">Date</th>
+                  <th className="py-1 pr-2 font-medium">Source</th>
+                  <th className="py-1 pr-2 font-medium">Reference</th>
+                  <th className="py-1 pr-2 text-right font-medium">Qty</th>
+                  <th className="py-1 pr-2 text-right font-medium">Unit</th>
+                  <th className="py-1 text-right font-medium">Remaining</th>
+                </tr>
+              </thead>
+              <tbody>
+                {layers.map((layer) => (
+                  <tr key={layer.batch_item_id} className="border-t border-line">
+                    <td className="py-1.5 pr-2 tabular-nums">{new Date(layer.receipt_date).toLocaleDateString()}</td>
+                    <td className="py-1.5 pr-2 capitalize">{layer.source ?? "import"}</td>
+                    <td className="py-1.5 pr-2 font-mono">{layer.batch_number}</td>
+                    <td className="py-1.5 pr-2 text-right tabular-nums">{layer.original_quantity}</td>
+                    <td className="py-1.5 pr-2 text-right tabular-nums">{formatMoney(layer.unit_cost_cents, currency)}</td>
+                    <td className="py-1.5 text-right tabular-nums">{layer.remaining_quantity}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )
+      ) : null}
     </div>
   );
 }

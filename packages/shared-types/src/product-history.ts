@@ -80,6 +80,7 @@ export interface CostLayerRow {
   unit_cost_cents: number;
   remaining_value_cents: number;
   consumed_quantity: number;
+  source?: "purchase" | "adjustment" | "import";
 }
 
 export interface StoreCostRow {

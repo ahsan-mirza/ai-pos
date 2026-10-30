@@ -388,6 +388,7 @@ export function PurchasesTab({
                     head={
                       <>
                         <th className={th}>Batch</th>
+                        <th className={th}>Source</th>
                         <th className={th}>Receipt date</th>
                         <th className={`${th} text-right`}>Original</th>
                         <th className={`${th} text-right`}>Remaining</th>
@@ -399,6 +400,7 @@ export function PurchasesTab({
                     {costing.data.layers.map((layer) => (
                       <tr key={layer.batch_item_id} className="border-t border-line">
                         <td className={`${td} font-mono text-xs font-semibold`}>{layer.batch_number}</td>
+                        <td className={`${td} capitalize text-charcoal/70`}>{layer.source ?? "import"}</td>
                         <td className={`${td} tabular-nums text-charcoal/70`}>{formatDate(layer.receipt_date)}</td>
                         <td className={`${td} text-right tabular-nums`}>{layer.original_quantity}</td>
                         <td className={`${td} text-right tabular-nums`}>

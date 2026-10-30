@@ -54,6 +54,9 @@ class CustomerWrite(ApiModel):
     whatsapp_opt_in: bool = False
     sms_opt_in: bool = False
     email_opt_in: bool = False
+    marketing_whatsapp_opt_in: bool = False
+    marketing_sms_opt_in: bool = False
+    marketing_email_opt_in: bool = False
     group_id: UUID | None = None
     tax_treatment: TaxTreatment = "STANDARD"
     tax_certificate_ref: str | None = Field(default=None, max_length=64)
@@ -109,6 +112,9 @@ class CustomerUpdate(ApiModel):
     whatsapp_opt_in: bool | None = None
     sms_opt_in: bool | None = None
     email_opt_in: bool | None = None
+    marketing_whatsapp_opt_in: bool | None = None
+    marketing_sms_opt_in: bool | None = None
+    marketing_email_opt_in: bool | None = None
     group_id: UUID | None = None
     tax_treatment: TaxTreatment | None = None
     tax_certificate_ref: str | None = Field(default=None, max_length=64)
@@ -162,6 +168,9 @@ class CustomerOut(ApiModel):
     whatsapp_opt_in: bool = False
     sms_opt_in: bool = False
     email_opt_in: bool = False
+    marketing_whatsapp_opt_in: bool = False
+    marketing_sms_opt_in: bool = False
+    marketing_email_opt_in: bool = False
     loyalty_points: int = 0
     risk_score: int | None = None
     risk_grade: str | None = None

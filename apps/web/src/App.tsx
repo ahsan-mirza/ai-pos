@@ -68,6 +68,7 @@ import { ManagerMobilePage } from "./features/manager/ManagerMobilePage";
 import { AssistantPage } from "./features/assistant/AssistantPage";
 import { AccountingPage } from "./features/accounting/AccountingPage";
 import { MessagingPage } from "./features/messaging/MessagingPage";
+import { ReachPage } from "./features/reach/ReachPage";
 import { CurrenciesPage } from "./features/currencies/CurrenciesPage";
 import { MarginPage } from "./features/margin/MarginPage";
 import { WarrantyPage } from "./features/warranty/WarrantyPage";
@@ -560,6 +561,16 @@ function Portal() {
                 element={
                   <RequirePermission permission={Permission.MessagingManage}>
                     <MessagingPage />
+                  </RequirePermission>
+                }
+              />
+              <Route
+                path="settings/reach"
+                element={
+                  <RequirePermission permission={Permission.MessagingManage}>
+                    <RequireCapability capability={Capability.AxizReach}>
+                      <ReachPage />
+                    </RequireCapability>
                   </RequirePermission>
                 }
               />

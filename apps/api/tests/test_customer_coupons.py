@@ -139,7 +139,11 @@ def test_the_same_period_issues_one_voucher_and_win_back_waits(client, session) 
     row.created_at = datetime.now(UTC) - timedelta(days=40)
     person = session.get(Customer, uuid.UUID(quiet["id"]))
     person.email = "quiet@example.com"
-    person.email_opt_in = True
+    person.marketing_email_opt_in = True
+    from app.models.business_settings import BusinessSettings
+
+    settings_row = session.query(BusinessSettings).one()
+    settings_row.capabilities = list(dict.fromkeys([*(settings_row.capabilities or []), "axiz_reach"]))
     session.commit()
 
     assert coupon_service.issue_due(session) == 1

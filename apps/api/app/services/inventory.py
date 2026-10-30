@@ -729,6 +729,56 @@ INBOUND_ONLY_REASONS = frozenset({"SUPPLIER_SAMPLE_IN"})
 WRITE_OFF_STATUS = {"DAMAGED_OR_EXPIRED": "defective", "INTERNAL_DEMO_USE": "quarantine"}
 
 
+def _open_adjustment_layer(
+    db: Session,
+    product: Product,
+    store: Store,
+    data: ManualAdjustment,
+    change: int,
+    user_id: uuid.UUID,
+) -> BatchItem:
+    from app.services.cost_layers import record_adjustment_layer
+
+    if data.unit_cost_cents is None:
+        raise ApiError(422, "cost_required", "Enter the unit acquisition cost for the stock being added.")
+    try:
+        return record_adjustment_layer(
+            db,
+            product=product,
+            store_id=store.id,
+            quantity=change,
+            unit_cost_cents=data.unit_cost_cents,
+            landed_cost_cents=data.landed_cost_cents,
+            user_id=user_id,
+            currency=product.currency,
+            adjustment_id=data.adjustment_id,
+            note=data.note,
+            lot_number=data.lot_number,
+            expiry_date=data.expiry_date,
+            supplier_reference=data.supplier_reference,
+            receipt_date=data.receipt_date,
+        )
+    except IntegrityError:
+        db.rollback()
+        raise ApiError(409, "lot_exists", "That batch or lot number is already used.") from None
+
+
+def _removed_cost(db: Session, product: Product, adjustment_id: uuid.UUID) -> int:
+    from app.models.batch import BatchAllocation
+    from app.services import weighed
+
+    rows = db.execute(
+        select(BatchAllocation.quantity, BatchAllocation.unit_cost_cents)
+        .join(StockMovement, StockMovement.id == BatchAllocation.stock_movement_id)
+        .where(
+            StockMovement.reference_type == MANUAL_REFERENCE,
+            StockMovement.reference_id == adjustment_id,
+        )
+    ).all()
+    scale = weighed.scale_of(product)
+    return sum(weighed.amount(quantity, cost, scale) for quantity, cost in rows)
+
+
 def _adjustment_result(
     db: Session,
     product: Product,
@@ -750,6 +800,9 @@ def _adjustment_result(
         quantity_change=sum(movement.quantity for movement in movements),
         row=_single_row(db, product, store),
         movements=_movements_out(db, movements),
+        unit_cost_cents=None,
+        acquisition_value_cents=None,
+        removed_cost_cents=None,
     )
 
 
@@ -783,6 +836,10 @@ def manual_adjust(db: Session, settings: Settings, principal: Principal, data: M
         raise ApiError(422, "reason_mismatch", "Damage and shrinkage reasons can only remove stock.")
     if change < 0 and data.reason_code in INBOUND_ONLY_REASONS:
         raise ApiError(422, "reason_mismatch", "Supplier samples can only add stock.")
+    if change > 0 and data.unit_cost_cents is None:
+        raise ApiError(422, "cost_required", "Enter the unit acquisition cost for the stock being added.")
+    if data.receipt_date is not None and data.receipt_date > datetime.now(UTC).date():
+        raise ApiError(422, "invalid_request", "The receipt date cannot be in the future.")
     movement_type = "DAMAGE_SHRINKAGE" if data.reason_code in DAMAGE_REASONS else "AUDIT_ADJUSTMENT"
     ledger: dict[str, Any] = {
         "movement_type": movement_type,
@@ -793,6 +850,7 @@ def manual_adjust(db: Session, settings: Settings, principal: Principal, data: M
         "note": data.note,
     }
 
+    inbound: list[SerialNumber] = []
     if not product.is_serialized:
         if data.new_serials or data.remove_serial_ids:
             raise ApiError(422, "invalid_request", f"{product.name} does not track IMEI or serial numbers.")
@@ -807,14 +865,16 @@ def manual_adjust(db: Session, settings: Settings, principal: Principal, data: M
         for entry in data.new_serials:
             normalized, serial = find_serial(db, entry.kind, entry.value)
             if serial is None:
-                register_serial(
-                    db,
-                    settings,
-                    product=product,
-                    store_id=store.id,
-                    kind=entry.kind,
-                    value=normalized,
-                    **ledger,
+                inbound.append(
+                    register_serial(
+                        db,
+                        settings,
+                        product=product,
+                        store_id=store.id,
+                        kind=entry.kind,
+                        value=normalized,
+                        **ledger,
+                    )
                 )
                 continue
             if serial.product_id != product.id:
@@ -825,6 +885,7 @@ def manual_adjust(db: Session, settings: Settings, principal: Principal, data: M
             if serial.status in {"sold", "in_transit"}:
                 raise ApiError(422, "serial_state", f"{normalized} is {serial.status.replace('_', ' ')}.")
             transition_serial(db, serial, status="in_stock", store_id=store.id, **ledger)
+            inbound.append(serial)
     else:
         if data.new_serials or len(set(data.remove_serial_ids)) != -change:
             raise ApiError(
@@ -841,6 +902,12 @@ def manual_adjust(db: Session, settings: Settings, principal: Principal, data: M
                 raise ApiError(422, "serial_state", f"A selected unit is no longer in stock at {store.name}. Refresh.")
             transition_serial(db, serial, status=status, store_id=store.id, **ledger)
 
+    layer = _open_adjustment_layer(db, product, store, data, change, actor.id) if change > 0 else None
+    for serial in inbound:
+        if layer is not None:
+            serial.batch_item_id = layer.id
+    removed_cost = _removed_cost(db, product, data.adjustment_id) if change < 0 else None
+
     audit.log_stock_adjustment(
         db,
         level_id=level.id,
@@ -851,8 +918,23 @@ def manual_adjust(db: Session, settings: Settings, principal: Principal, data: M
         reason=" · ".join(part for part in (data.reason_code, data.note.strip()) if part),
         details={"adjustment_id": data.adjustment_id, "sku": product.sku, "mode": data.mode},
     )
+    from app.services import weighed
+
+    stored_unit = layer.purchase_cost_per_unit if layer is not None else None
+    acquired = (
+        weighed.amount(layer.quantity_imported, layer.purchase_cost_per_unit, weighed.scale_of(product))
+        if layer is not None
+        else None
+    )
     db.commit()
-    return _adjustment_result(db, product, store, data.adjustment_id, duplicate=False)
+    result = _adjustment_result(db, product, store, data.adjustment_id, duplicate=False)
+    return result.model_copy(
+        update={
+            "unit_cost_cents": stored_unit,
+            "acquisition_value_cents": acquired,
+            "removed_cost_cents": removed_cost,
+        }
+    )
 
 
 def list_store_serials(

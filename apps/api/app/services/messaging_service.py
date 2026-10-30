@@ -5,7 +5,7 @@ import re
 import uuid
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import select
+from sqlalchemy import and_, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -64,11 +64,24 @@ def address_for(customer: Customer, channel: str) -> str | None:
 
 
 def consented(customer: Customer, channel: str) -> bool:
+    """Transactional consent: receipts, statements, and other essential notices."""
     return bool(getattr(customer, f"{channel}_opt_in", False))
 
 
-def preferred_channel(customer: Customer) -> str | None:
+def marketing_consented(customer: Customer, channel: str) -> bool:
+    """Marketing consent is separate. A receipt opt-in does not allow a campaign."""
+    return bool(getattr(customer, f"marketing_{channel}_opt_in", False))
+
+
+MARKETING_KEYS = frozenset({"campaign", "coupon_issued"})
+
+
+def preferred_channel(customer: Customer, db: Session | None = None) -> str | None:
+    from app.services.reach_service import channel_enabled
+
     for channel in CHANNELS:
+        if db is not None and not channel_enabled(db, channel):
+            continue
         if consented(customer, channel) and address_for(customer, channel):
             return channel
     return None
@@ -93,7 +106,11 @@ def enqueue(
     template = db.scalar(select(MessageTemplate).where(MessageTemplate.key == template_key))
     if template is None or not template.is_active:
         return None
-    chosen = channel or preferred_channel(customer)
+    from app.services.reach_service import channel_enabled
+
+    chosen = channel or preferred_channel(customer, db)
+    if channel is not None and not channel_enabled(db, channel):
+        chosen = None
     address = address_for(customer, chosen) if chosen else None
     full = {"customer": customer.company_name or customer.name, **context}
     status = "QUEUED"
@@ -141,21 +158,72 @@ def _attachment(db: Session, settings: Settings, message: OutboundMessage) -> tu
     return None
 
 
+def _delivery(db: Session, settings: Settings, channel: str) -> tuple[str, dict]:
+    """Tenant channel row wins. No row keeps the existing server provider, so current tenants keep working."""
+    from app.core.security import decrypt_value
+    from app.models.reach import MessagingChannel
+
+    row = db.scalar(select(MessagingChannel).where(MessagingChannel.channel == channel))
+    if row is None:
+        return providers(db).get(channel, "log"), {}
+    if not row.enabled:
+        raise ProviderError("This channel is turned off.", permanent=False)
+    creds = {key: str(value) for key, value in (row.public_config or {}).items() if value not in (None, "")}
+    if row.secret_encrypted:
+        try:
+            creds["secret"] = decrypt_value(row.secret_encrypted, settings)
+        except Exception as exc:
+            raise ProviderError("The saved credential could not be read. Save it again.", permanent=True) from exc
+    return row.provider, creds
+
+
 def dispatch_due(db: Session, settings: Settings, limit: int = 50) -> dict[str, int]:
     """Sends queued messages whose time has come. Transient failures back off exponentially."""
+    from app.core.capabilities import Capability, has_capability
+
     now = datetime.now(UTC)
-    chosen = providers(db)
+    reach_on = has_capability(db, Capability.AXIZ_REACH)
+    ready = OutboundMessage.next_attempt_at <= now
+    if reach_on:
+        ready = or_(
+            ready,
+            and_(
+                OutboundMessage.template_key == "campaign",
+                OutboundMessage.last_error.like("AxizReach is off%"),
+            ),
+        )
     due = list(
         db.scalars(
             select(OutboundMessage)
-            .where(OutboundMessage.status == "QUEUED", OutboundMessage.next_attempt_at <= now)
+            .where(OutboundMessage.status == "QUEUED", ready)
             .order_by(OutboundMessage.next_attempt_at)
             .limit(limit)
         )
     )
     counts = {"sent": 0, "failed": 0, "retry": 0}
     for message in due:
-        provider = chosen.get(message.channel, "log")
+        if message.template_key == "campaign" and not reach_on:
+            message.next_attempt_at = now + timedelta(hours=6)
+            message.last_error = "AxizReach is off. This campaign stays queued until the add-on is on."
+            counts["retry"] += 1
+            continue
+        if message.template_key in MARKETING_KEYS and message.customer_id is not None:
+            person = db.get(Customer, message.customer_id)
+            if person is None or not marketing_consented(person, message.channel):
+                message.status = "SKIPPED"
+                message.last_error = "Marketing consent was withdrawn before send."
+                continue
+        try:
+            provider, creds = _delivery(db, settings, message.channel)
+        except ProviderError as exc:
+            message.last_error = str(exc)[:500]
+            if exc.permanent:
+                message.status = "FAILED"
+                counts["failed"] += 1
+            else:
+                message.next_attempt_at = now + timedelta(minutes=15)
+                counts["retry"] += 1
+            continue
         message.provider = provider
         message.attempts += 1
         try:
@@ -173,10 +241,13 @@ def dispatch_due(db: Session, settings: Settings, limit: int = 50) -> dict[str, 
                 attachment=_attachment(db, settings, message),
                 html=html_body,
             )
-            message.provider_message_id = deliver(settings, provider, outgoing)[:120] or None
+            message.provider_message_id = deliver(settings, provider, outgoing, creds)[:120] or None
             message.status = "SENT"
             message.sent_at = datetime.now(UTC)
             message.last_error = None
+            from app.services.reach_service import record_usage
+
+            record_usage(db, message)
             counts["sent"] += 1
         except ProviderError as exc:
             message.last_error = str(exc)[:500]

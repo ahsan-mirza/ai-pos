@@ -1,4 +1,5 @@
 import {
+  Capability,
   PROVIDER_LABELS,
   Permission,
   type BackgroundJob,
@@ -9,14 +10,17 @@ import {
 } from "@ai-pos/shared-types";
 import { Mail, MessageCircle, Play, Send, Smartphone, type LucideIcon } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { ErrorNote, GhostButton, PrimaryButton, SelectField, TextField } from "../../components/ui/Field";
 import { Modal } from "../../components/ui/Modal";
 import { Toast } from "../../components/ui/Toast";
 import { Toggle } from "../../components/ui/Toggle";
 import { apiGet, apiPost, apiPut } from "../../lib/api";
 import { useAuth } from "../../lib/auth";
+import { useCapability } from "../../lib/capabilities";
 import { formatDate } from "../inventory/shared";
 import { errorMessage } from "../users/api";
+import { TenantChannelCards } from "./TenantChannelCards";
 
 const channels: { id: MessageChannel; label: string; icon: LucideIcon }[] = [
   { id: "whatsapp", label: "WhatsApp", icon: MessageCircle },
@@ -43,6 +47,7 @@ const statusTone: Record<OutboundMessage["status"], string> = {
 
 export function MessagingPage() {
   const { can } = useAuth();
+  const reachOn = useCapability(Capability.AxizReach);
   const [settings, setSettings] = useState<MessagingSettings | null>(null);
   const [templates, setTemplates] = useState<MessageTemplate[]>([]);
   const [outbox, setOutbox] = useState<OutboundMessage[]>([]);
@@ -111,6 +116,20 @@ export function MessagingPage() {
   return (
     <section className="space-y-4">
       <ErrorNote message={error} />
+      <p className="text-sm text-charcoal/60">
+        These providers send receipts, statements, and other essential messages. They keep working when AxizReach is off.
+        {reachOn ? (
+          <>
+            {" "}
+            Campaign credentials and sending are on{" "}
+            <Link to="/settings/reach" className="font-semibold text-charcoal underline">
+              AxizReach
+            </Link>
+            .
+          </>
+        ) : null}
+      </p>
+      <TenantChannelCards />
       <div className="grid gap-4 md:grid-cols-3">
         {channels.map(({ id, label, icon: Icon }) => (
           <article key={id} className="rounded-card border border-line bg-white p-6">
@@ -120,7 +139,7 @@ export function MessagingPage() {
               </span>
               <div>
                 <h3 className="font-semibold">{label}</h3>
-                <p className="text-xs text-charcoal/50">Credentials come from the server environment.</p>
+                <p className="text-xs text-charcoal/50">Server fallback, used only when this channel has no saved account.</p>
               </div>
             </div>
             <SelectField

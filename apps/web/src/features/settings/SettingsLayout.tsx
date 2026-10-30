@@ -29,6 +29,7 @@ const hints: Record<string, string> = {
   "/downloads": "POS installer",
   "/settings/currencies": "Extra currencies and rates",
   "/settings/messaging": "Messages sent to customers",
+  "/settings/reach": "Campaigns across WhatsApp, SMS, and email",
   "/settings/channels": "How delivery orders arrive",
   "/settings/audit-logs": "Who changed what",
 };

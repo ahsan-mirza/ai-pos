@@ -65,6 +65,9 @@ export function CustomerFormModal({ customer, currency, onClose, onSaved, prefil
     whatsapp_opt_in: customer?.whatsapp_opt_in ?? false,
     sms_opt_in: customer?.sms_opt_in ?? false,
     email_opt_in: customer?.email_opt_in ?? false,
+    marketing_whatsapp_opt_in: customer?.marketing_whatsapp_opt_in ?? false,
+    marketing_sms_opt_in: customer?.marketing_sms_opt_in ?? false,
+    marketing_email_opt_in: customer?.marketing_email_opt_in ?? false,
   });
   const [groups, setGroups] = useState<CustomerGroup[]>([]);
   const [groupId, setGroupId] = useState(customer?.group_id ?? "");
@@ -82,9 +85,11 @@ export function CustomerFormModal({ customer, currency, onClose, onSaved, prefil
     const next: FieldErrors = {};
     const nameProblem = requiredError(name, "the contact name");
     if (nameProblem) next.name = nameProblem;
-    const phoneProblem = phoneError(phone, consent.whatsapp_opt_in || consent.sms_opt_in);
+    const phoneNeeded =
+      consent.whatsapp_opt_in || consent.sms_opt_in || consent.marketing_whatsapp_opt_in || consent.marketing_sms_opt_in;
+    const phoneProblem = phoneError(phone, phoneNeeded);
     if (phoneProblem) next.phone = phoneProblem;
-    const emailProblem = emailError(email, consent.email_opt_in);
+    const emailProblem = emailError(email, consent.email_opt_in || consent.marketing_email_opt_in);
     if (emailProblem) next.email = emailProblem;
     if (wholesale) {
       const limitProblem = moneyError(limit, "the credit limit");
@@ -185,22 +190,34 @@ export function CustomerFormModal({ customer, currency, onClose, onSaved, prefil
           label="Phone"
           value={phone}
           error={errors.phone}
-          required={consent.whatsapp_opt_in || consent.sms_opt_in}
+          required={
+            consent.whatsapp_opt_in || consent.sms_opt_in || consent.marketing_whatsapp_opt_in || consent.marketing_sms_opt_in
+          }
           onChange={(next) => {
             setPhone(next);
-            setErrors((current) => ({ ...current, phone: phoneError(next, consent.whatsapp_opt_in || consent.sms_opt_in) ?? "" }));
+            const needed =
+              consent.whatsapp_opt_in || consent.sms_opt_in || consent.marketing_whatsapp_opt_in || consent.marketing_sms_opt_in;
+            setErrors((current) => ({ ...current, phone: phoneError(next, needed) ?? "" }));
           }}
         />
         <TextField
           label="Email"
           type="email"
           value={email}
-          required={consent.email_opt_in}
+          required={consent.email_opt_in || consent.marketing_email_opt_in}
           error={errors.email}
-          onBlur={() => setErrors((current) => ({ ...current, email: emailError(email, consent.email_opt_in) ?? "" }))}
+          onBlur={() =>
+            setErrors((current) => ({
+              ...current,
+              email: emailError(email, consent.email_opt_in || consent.marketing_email_opt_in) ?? "",
+            }))
+          }
           onChange={(event) => {
             setEmail(event.target.value);
-            setErrors((current) => ({ ...current, email: emailError(event.target.value, consent.email_opt_in) ?? "" }));
+            setErrors((current) => ({
+              ...current,
+              email: emailError(event.target.value, consent.email_opt_in || consent.marketing_email_opt_in) ?? "",
+            }));
           }}
         />
         <TextField
@@ -287,8 +304,8 @@ export function CustomerFormModal({ customer, currency, onClose, onSaved, prefil
         )}
       </div>
       <div className="mt-5">
-        <p className="text-sm font-semibold">Message consent</p>
-        <p className="text-xs text-charcoal/60">Receipts, statements and reminders go only to channels the customer agreed to.</p>
+        <p className="text-sm font-semibold">Receipts and statements</p>
+        <p className="text-xs text-charcoal/60">Essential messages go only to channels the customer agreed to. This does not allow marketing.</p>
         <div className="mt-3 grid gap-3 md:grid-cols-3">
           <Toggle
             label="WhatsApp"
@@ -307,6 +324,28 @@ export function CustomerFormModal({ customer, currency, onClose, onSaved, prefil
             description={email.trim() ? email.trim() : "Needs an email address"}
             checked={consent.email_opt_in}
             onChange={(value) => setConsent((current) => ({ ...current, email_opt_in: value }))}
+          />
+        </div>
+        <p className="mt-4 text-sm font-semibold">Marketing</p>
+        <p className="text-xs text-charcoal/60">Campaigns and promotions need this consent as well. AxizReach is required to send them.</p>
+        <div className="mt-3 grid gap-3 md:grid-cols-3">
+          <Toggle
+            label="WhatsApp marketing"
+            description={phone.trim() ? phone.trim() : "Needs a phone number"}
+            checked={consent.marketing_whatsapp_opt_in}
+            onChange={(value) => setConsent((current) => ({ ...current, marketing_whatsapp_opt_in: value }))}
+          />
+          <Toggle
+            label="SMS marketing"
+            description={phone.trim() ? phone.trim() : "Needs a phone number"}
+            checked={consent.marketing_sms_opt_in}
+            onChange={(value) => setConsent((current) => ({ ...current, marketing_sms_opt_in: value }))}
+          />
+          <Toggle
+            label="Email marketing"
+            description={email.trim() ? email.trim() : "Needs an email address"}
+            checked={consent.marketing_email_opt_in}
+            onChange={(value) => setConsent((current) => ({ ...current, marketing_email_opt_in: value }))}
           />
         </div>
       </div>

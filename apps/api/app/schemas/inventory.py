@@ -1,5 +1,5 @@
 import re
-from datetime import datetime
+from datetime import date, datetime
 from typing import Literal, Self
 from uuid import UUID
 
@@ -377,6 +377,12 @@ class ManualAdjustment(ApiModel):
     note: str = Field(max_length=1000)
     new_serials: list[SerialInput] = Field(default_factory=list, max_length=1000)
     remove_serial_ids: list[UUID] = Field(default_factory=list, max_length=1000)
+    unit_cost_cents: int | None = Field(default=None, ge=0, le=10**11)
+    landed_cost_cents: int = Field(default=0, ge=0, le=10**11)
+    lot_number: str | None = Field(default=None, max_length=32)
+    expiry_date: date | None = None
+    supplier_reference: str | None = Field(default=None, max_length=120)
+    receipt_date: date | None = None
 
     @field_validator("note")
     @classmethod
@@ -385,6 +391,14 @@ class ManualAdjustment(ApiModel):
         if len(stripped) < NOTE_MIN_LENGTH:
             raise ValueError(f"Explain the adjustment in at least {NOTE_MIN_LENGTH} characters.")
         return stripped
+
+    @field_validator("lot_number", "supplier_reference")
+    @classmethod
+    def blank_text(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        stripped = value.strip()
+        return stripped or None
 
     @model_validator(mode="after")
     def coherent(self) -> Self:
@@ -429,6 +443,9 @@ class ManualAdjustmentOut(ApiModel):
     quantity_change: int
     row: StockRow
     movements: list[MovementOut]
+    unit_cost_cents: int | None = None
+    acquisition_value_cents: int | None = None
+    removed_cost_cents: int | None = None
 
 
 class BranchStock(ApiModel):
