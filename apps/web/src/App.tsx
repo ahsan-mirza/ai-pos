@@ -105,7 +105,7 @@ function RequirePermission({
   const { can, user } = useAuth();
   if (!can(permission) || (businessWide && user?.store_id !== null)) {
     return (
-      <section className={`rounded-card border border-line bg-white p-8 ${framed ? "m-4 md:m-6 lg:m-8" : ""}`}>
+      <section className={`rounded-card border border-line bg-white p-6 ${framed ? "m-4 md:m-6" : ""}`}>
         <h2 className="text-2xl font-semibold">Not available</h2>
         <p className="mt-2 text-sm text-charcoal/60">Your role does not include access to this page.</p>
       </section>

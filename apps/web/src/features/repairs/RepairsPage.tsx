@@ -681,7 +681,7 @@ function RepairDrawer({
   );
   if (presentation === "page") {
     return (
-      <section className="mx-auto max-w-3xl space-y-4">
+      <section className="space-y-4">
         <GhostButton onClick={onClose}>Back to repair jobs</GhostButton>
         <h2 className="text-2xl font-semibold">{title}</h2>
         {ticket ? <p className="text-sm text-charcoal/60">{ticket.issue}</p> : null}

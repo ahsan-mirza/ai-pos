@@ -17,25 +17,36 @@ export type Hit = ProductSearchHit<ProductUpsert>;
 
 const REMOTE_TIMEOUT_MS = 4000;
 
-const sellable = (hits: Hit[]) => {
+const offered = (hits: Hit[], hideInactive: boolean) => {
   const profile = registerCapabilities().profile;
-  return hits.filter((hit) => !hit.product.is_ingredient && productFitsRegister(hit.product, profile));
+  return hits.filter(
+    (hit) =>
+      !hit.product.is_ingredient &&
+      productFitsRegister(hit.product, profile) &&
+      (!hideInactive || hit.product.is_active !== false),
+  );
 };
+
+const sellable = (hits: Hit[]) => offered(hits, true);
 
 async function localSearch(products: ProductUpsert[], query: string): Promise<Hit[]> {
   return sellable(inTauri() ? await searchProductsLocal(query) : searchProducts(products, query));
 }
 
-async function remoteSearch(query: string): Promise<Hit[] | null> {
+async function remoteSearch(query: string, hideInactive: boolean): Promise<Hit[] | null> {
   const request = inTauri() ? searchProductsViaShell(query) : searchProductsRemote(query);
   const timeout = new Promise<null>((resolve) => window.setTimeout(() => resolve(null), REMOTE_TIMEOUT_MS));
   try {
     const hits = await Promise.race([request, timeout]);
-    return hits === null ? null : sellable(hits);
+    return hits === null ? null : offered(hits, hideInactive);
   } catch {
     return null;
   }
 }
+
+/** A scanned inactive barcode still resolves, so the register can say it cannot be sold. */
+const scanned = (hits: Hit[]) =>
+  hits.filter((hit) => hit.product.is_active !== false || hit.match === "exact" || hit.match === "identifier");
 
 /**
  * Universal product search: name, model, barcode, SKU, category, and brand match locally (SQLite in Tauri,
@@ -43,7 +54,7 @@ async function remoteSearch(query: string): Promise<Hit[] | null> {
  */
 export function useProductSearch(query: string, products: ProductUpsert[]) {
   const [debounced, setDebounced] = useState(query);
-  const [hits, setHits] = useState<Hit[]>(() => searchProducts(products, ""));
+  const [hits, setHits] = useState<Hit[]>(() => sellable(searchProducts(products, "")));
   const [searching, setSearching] = useState(false);
 
   useEffect(() => {
@@ -62,7 +73,7 @@ export function useProductSearch(query: string, products: ProductUpsert[]) {
     void localSearch(products, debounced).then((local) => {
       if (cancelled) return;
       setHits(local);
-      void remoteSearch(debounced).then((remote) => {
+      void remoteSearch(debounced, true).then((remote) => {
         if (cancelled) return;
         setHits(mergeHits(remote, local));
         setSearching(false);
@@ -76,10 +87,10 @@ export function useProductSearch(query: string, products: ProductUpsert[]) {
   /** Immediate lookup for Enter / scanner input, bypassing the debounce. */
   const resolve = useCallback(
     async (value: string): Promise<Hit[]> => {
-      const local = await localSearch(products, value);
+      const local = offered(inTauri() ? await searchProductsLocal(value) : searchProducts(products, value), false);
       const needsServer = looksLikeIdentifier(value) && !local.some((hit) => hit.match === "exact");
-      if (!needsServer) return local;
-      return mergeHits(await remoteSearch(value), local);
+      if (!needsServer) return scanned(local);
+      return scanned(mergeHits(await remoteSearch(value, false), local));
     },
     [products],
   );

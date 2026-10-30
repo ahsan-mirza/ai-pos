@@ -108,7 +108,7 @@ export function TillRulesSettings() {
   };
 
   return (
-    <div id="till-rules" className="rounded-card border border-line bg-white p-6">
+    <div id="till-rules" className="scroll-mt-6 rounded-card border border-line bg-white p-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="flex items-center gap-3">
           <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-accent text-white">
@@ -130,7 +130,7 @@ export function TillRulesSettings() {
         ) : null}
       </div>
 
-      <div className="mt-6 grid gap-6 lg:grid-cols-2">
+      <div className="mt-6 grid gap-6 xl:grid-cols-2">
         <section className="space-y-4 rounded-2xl border border-line p-4">
           <h3 className="font-semibold">Cashier discounts</h3>
           <TextField

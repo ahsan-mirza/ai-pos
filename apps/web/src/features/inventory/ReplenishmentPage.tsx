@@ -119,7 +119,7 @@ export function ReplenishmentPage() {
     .reduce((sum, row) => sum + (Number(quantities[row.id]) || 0) * row.unit_cost_cents, 0);
 
   return (
-    <section className="space-y-4 p-4 md:p-6">
+    <section className="space-y-4">
       <div className="grid gap-4 md:grid-cols-3">
         <article className="rounded-card bg-charcoal p-6 text-white">
           <p className="text-sm text-white/60">To reorder</p>

@@ -355,7 +355,14 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
     cart.lines.length === 0 || charging || plan.blocker !== null || needsCredit || belowFloor.length > 0;
   const categories = useMemo(
     () =>
-      [...new Set(catalog.products.map((product) => product.category).filter((name): name is string => Boolean(name)))].sort(
+      [
+        ...new Set(
+          catalog.products
+            .filter((product) => product.is_active !== false && !product.is_ingredient)
+            .map((product) => product.category)
+            .filter((name): name is string => Boolean(name)),
+        ),
+      ].sort(
         (left, right) => left.localeCompare(right),
       ),
     [catalog.products],

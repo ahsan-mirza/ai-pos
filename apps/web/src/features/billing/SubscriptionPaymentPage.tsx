@@ -114,7 +114,7 @@ export function SubscriptionPaymentPage() {
 
   if (attention === null) {
     return (
-      <section className="mx-auto max-w-2xl">
+      <section className="w-full">
         <h1 className="text-3xl font-semibold tracking-tight">Subscription payment</h1>
         <ErrorNote message={error} />
         <p className="mt-3 text-sm text-charcoal/60">
@@ -129,7 +129,7 @@ export function SubscriptionPaymentPage() {
   const canSubmit = attention.kind === "awaiting_proof" || attention.kind === "rejected";
 
   return (
-    <section className="mx-auto grid max-w-2xl gap-4">
+    <section className="grid w-full gap-4">
       <header>
         <h1 className="text-3xl font-semibold tracking-tight">{text.title}</h1>
         <p className="mt-2 text-sm text-charcoal/70">{attention.kind === "rejected" && attention.reason ? attention.reason : text.message}</p>

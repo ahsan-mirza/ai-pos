@@ -170,7 +170,7 @@ export function ModuleList({
 }) {
   const shown = (spec: CapabilitySpec) => visible === undefined || visible.has(spec.id);
   return (
-    <div className="grid gap-5 lg:grid-cols-2">
+    <div className="grid gap-5 xl:grid-cols-2">
       {CAPABILITY_GROUPS.filter((group) => CAPABILITIES.some((spec) => spec.group === group && shown(spec))).map((group) => (
         <fieldset key={group}>
           <legend className="mb-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-charcoal/50">

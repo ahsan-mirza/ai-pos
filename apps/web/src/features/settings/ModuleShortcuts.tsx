@@ -49,7 +49,7 @@ export function ModuleShortcuts() {
           <p className="text-sm text-charcoal/60">Shortcuts to where each of your switched-on modules is configured.</p>
         </div>
       </div>
-      <ul className="mt-5 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+      <ul className="mt-5 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
         {shortcuts.map(({ capability, to, title, icon: Icon }) => (
           <li key={capability}>
             <Link

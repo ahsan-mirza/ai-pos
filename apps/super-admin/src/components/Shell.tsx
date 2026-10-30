@@ -349,7 +349,7 @@ function Header({
   const crumbs = crumbsFor(pathname);
 
   return (
-    <header className="relative z-30 flex h-16 shrink-0 items-center gap-2 border-b border-line bg-white/90 px-3 backdrop-blur supports-[backdrop-filter]:bg-white/75 md:px-4 lg:px-6">
+    <header className="relative z-30 flex h-16 shrink-0 items-center gap-2 border-b border-line bg-white/90 px-4 backdrop-blur supports-[backdrop-filter]:bg-white/75 md:px-6">
       <button
         type="button"
         onClick={onToggleCollapsed}
@@ -431,7 +431,7 @@ export function Shell() {
       <div className="flex min-w-0 flex-1 flex-col">
         <Header collapsed={collapsed} onToggleCollapsed={toggleCollapsed} onOpenMobile={() => setMobileOpen(true)} />
         <main className="relative min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
-          <div className="p-4 md:p-6 lg:p-8">
+          <div className="px-4 py-4 md:px-6 md:py-5">
             {cataloguePath(pathname) ? <CatalogueNav /> : null}
             <Outlet />
           </div>

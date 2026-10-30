@@ -113,8 +113,15 @@ async function parseError(response: Response): Promise<ApiRequestError> {
   return new ApiRequestError(`Request failed (${response.status}).`, response.status);
 }
 
-async function request<T>(method: string, path: string, body?: unknown, auth = true, renew = true): Promise<T> {
-  return (await exchange<T>(method, path, body, auth, renew)).data;
+async function request<T>(
+  method: string,
+  path: string,
+  body?: unknown,
+  auth = true,
+  renew = true,
+  extra?: Record<string, string>,
+): Promise<T> {
+  return (await exchange<T>(method, path, body, auth, renew, extra)).data;
 }
 
 async function rejected<T>(response: Response, auth: boolean, renew: boolean, retry: () => Promise<T>): Promise<T> {
@@ -138,8 +145,10 @@ async function exchange<T>(
   body?: unknown,
   auth = true,
   renew = true,
+  extra?: Record<string, string>,
 ): Promise<{ data: T; headers: Headers }> {
   const headers = baseHeaders();
+  if (extra) Object.assign(headers, extra);
   if (body !== undefined) headers["Content-Type"] = "application/json";
   if (auth && accessToken !== null) headers.Authorization = `Bearer ${accessToken}`;
   let response: Response;
@@ -153,7 +162,7 @@ async function exchange<T>(
     throw unreachable();
   }
   if (!response.ok) {
-    return rejected(response, auth, renew, () => exchange(method, path, body, auth, false));
+    return rejected(response, auth, renew, () => exchange(method, path, body, auth, false, extra));
   }
   if (response.status === 204) return { data: undefined as T, headers: response.headers };
   return { data: (await response.json()) as T, headers: response.headers };
@@ -180,8 +189,8 @@ export async function apiGetPage<T>(path: string, page: { offset: number; limit:
   return { rows: data, total: Number.isFinite(total) && headers.has("X-Total-Count") ? total : data.length };
 }
 
-export function apiPost<T>(path: string, body: unknown): Promise<T> {
-  return request<T>("POST", path, body);
+export function apiPost<T>(path: string, body: unknown, extra?: Record<string, string>): Promise<T> {
+  return request<T>("POST", path, body, true, true, extra);
 }
 
 export function apiPatch<T>(path: string, body: unknown): Promise<T> {

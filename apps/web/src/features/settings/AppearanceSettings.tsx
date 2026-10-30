@@ -90,7 +90,7 @@ export function AppearanceSettings() {
         </div>
       </div>
 
-      <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
+      <div className="mt-6 grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
         <div className="space-y-6">
           <fieldset>
             <legend className="mb-3 text-[11px] font-semibold uppercase tracking-wider text-[#6B7280]">Presets</legend>

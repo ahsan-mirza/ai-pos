@@ -83,6 +83,7 @@ export const inventoryApi = {
     apiGet<SerialSearchResult>(`/api/v1/serials/search${query({ status: "any", limit: 25, ...params })}`),
   createProduct: (body: ProductCreate) => apiPost<Product>("/api/v1/inventory/products", body),
   updateProduct: (id: string, body: ProductUpdate) => apiPatch<Product>(`/api/v1/products/${id}`, body),
+  deleteProduct: (id: string) => apiDelete(`/api/v1/products/${id}`),
   products: (params: { store_id?: string | null; limit?: number; q?: string }) =>
     params.q
       ? apiGet<{ product: Product }[]>(`/api/v1/products/search${query({ q: params.q, limit: params.limit ?? 50, store_id: params.store_id })}`).then(

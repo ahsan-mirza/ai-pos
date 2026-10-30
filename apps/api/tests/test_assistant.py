@@ -132,9 +132,14 @@ def test_openai_provider_calls_tools_and_falls_back(client, sold, monkeypatch) -
     monkeypatch.setattr(
         assistant_service.httpx, "Client", lambda **kwargs: real_client(transport=httpx.MockTransport(handler))
     )
-    reply = client.post(
+    direct = client.post(
         "/api/v1/assistant/ask", headers=sold, json={"question": "How much did we sell this year?"}
     ).json()
+    assert direct["provider"] == "builtin"
+    assert "USD 60.00" in direct["answer"]
+    assert seen == []
+
+    reply = client.post("/api/v1/assistant/ask", headers=sold, json={"question": "Give me a briefing"}).json()
     assert reply["provider"] == "openai:gpt-4o-mini"
     assert reply["answer"] == "You sold USD 60.00 this year."
     assert reply["results"][0]["tool"] == "sales_summary"
@@ -144,11 +149,10 @@ def test_openai_provider_calls_tools_and_falls_back(client, sold, monkeypatch) -
         "Client",
         lambda **kwargs: real_client(transport=httpx.MockTransport(lambda request: httpx.Response(500))),
     )
-    fallback = client.post(
-        "/api/v1/assistant/ask", headers=sold, json={"question": "Sales in the last 400 days"}
-    ).json()
+    fallback = client.post("/api/v1/assistant/ask", headers=sold, json={"question": "Give me a briefing"}).json()
     assert fallback["provider"] == "builtin (fallback)"
-    assert "USD 60.00" in fallback["answer"]
+    assert fallback["results"] == []
+    assert "only answer from your reports" in fallback["answer"]
 
 
 def test_assistant_respects_permissions(client, session) -> None:
@@ -268,9 +272,37 @@ def test_context_is_a_hint_and_does_not_change_the_builtin_answer(client, sold, 
     reply = client.post(
         "/api/v1/assistant/ask",
         headers=sold,
-        json={"question": "How much did we sell this year?", "context": context},
+        json={"question": "Give me a briefing", "context": context},
     ).json()
     assert reply["answer"] == "From the reports."
+
+
+def test_greetings_do_not_call_the_model_or_a_report(client, sold, monkeypatch) -> None:
+    settings = get_settings()
+    monkeypatch.setattr(settings, "assistant_provider", "ollama")
+    called = {"n": 0}
+
+    def complete(*_args, **_kwargs):
+        called["n"] += 1
+        raise RuntimeError("should not run")
+
+    monkeypatch.setattr("app.services.assistant_llm.complete", complete)
+    hello = client.post("/api/v1/assistant/ask", headers=sold, json={"question": "Hello how are u"}).json()
+    assert hello["results"] == []
+    assert "Hello" in hello["answer"]
+    thanks = client.post("/api/v1/assistant/ask", headers=sold, json={"question": "Thank you"}).json()
+    assert thanks["results"] == [] and "welcome" in thanks["answer"].lower()
+    mood = client.post("/api/v1/assistant/ask", headers=sold, json={"question": "How are you?"}).json()
+    assert mood["results"] == []
+    sales = client.post(
+        "/api/v1/assistant/ask", headers=sold, json={"question": "What were my sales yesterday?"}
+    ).json()
+    assert sales["results"][0]["tool"] == "sales_summary"
+    low = client.post(
+        "/api/v1/assistant/ask", headers=sold, json={"question": "Which products are running low?"}
+    ).json()
+    assert low["results"][0]["tool"] == "reorder_forecast"
+    assert called["n"] == 0
 
 
 def test_assistant_lives_in_the_navbar_not_the_sidebar() -> None:
@@ -284,6 +316,11 @@ def test_assistant_lives_in_the_navbar_not_the_sidebar() -> None:
     assert '"/assistant"' in nav
     assert "AI Assistant" in header
     assert "Ask your business" in header
+    drawer = (root / "apps/web/src/features/assistant/AssistantDrawer.tsx").read_text(encoding="utf-8")
+    assert "Your intelligent business assistant" in drawer
+    assert "Welcome, ${name}" in drawer
+    assert "qwen3" not in drawer
+    assert "moduleLabel" not in drawer
     assert "AssistantDrawer" in shell
     assert 'path="assistant"' in app
     assert "InsightsPage" in app

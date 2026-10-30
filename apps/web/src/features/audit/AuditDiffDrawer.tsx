@@ -201,7 +201,7 @@ export function AuditDiffDrawer({
         role="dialog"
         aria-labelledby={titleId}
         data-state={closing ? "closing" : "open"}
-        className="drawer-panel fixed inset-y-0 right-0 z-40 flex w-full flex-col overflow-hidden bg-white shadow-2xl outline-none sm:max-w-xl md:max-w-2xl split-drawer-h lg:sticky lg:top-8 lg:z-auto lg:w-auto lg:min-w-0 lg:max-w-none lg:basis-[46%] lg:self-start lg:rounded-card lg:border lg:border-line lg:shadow-none"
+        className="drawer-panel fixed inset-y-0 right-0 z-40 flex w-full flex-col overflow-hidden bg-white shadow-2xl outline-none sm:max-w-xl md:max-w-2xl split-drawer-h lg:sticky lg:top-5 lg:z-auto lg:w-auto lg:min-w-0 lg:max-w-none lg:basis-[46%] lg:self-start lg:rounded-card lg:border lg:border-line lg:shadow-none"
       >
         <header className="sticky top-0 z-20 flex-none border-b border-line bg-white px-5 pb-4 pt-5 sm:px-6">
           <div className="flex items-start justify-between gap-3">

@@ -204,7 +204,7 @@ export function SizeCurvePage() {
   const reorderOk = bulk !== "reorder" || (bulkStore !== "" && Number.isInteger(Number(bulkReorder)) && Number(bulkReorder) >= 0);
 
   return (
-    <div className="mx-auto max-w-6xl space-y-5 p-6">
+    <div className="space-y-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold text-charcoal">Size & color matrix</h1>

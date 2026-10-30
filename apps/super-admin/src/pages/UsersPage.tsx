@@ -74,7 +74,7 @@ export function UsersPage() {
 
   if (!admin) {
     return (
-      <section className="max-w-xl">
+      <section>
         <PageHeader title="Users" description="Only an admin can manage users." />
       </section>
     );
@@ -184,7 +184,7 @@ export function UsersPage() {
   };
 
   return (
-    <section className="max-w-3xl">
+    <section>
       <PageHeader
         title="Users"
         description="Admins manage billing, mail, WhatsApp, and these users. Support can work with stores only."

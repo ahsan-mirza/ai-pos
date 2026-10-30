@@ -7,7 +7,7 @@ import { SegmentedControl } from "../../components/ui/SegmentedControl";
 import { Toast } from "../../components/ui/Toast";
 import { useTenant } from "../../context/TenantContext";
 import { useAuth } from "../../lib/auth";
-import { mediaSrc } from "../../lib/media";
+import { ProductImage } from "../../components/ui/ProductImage";
 import { AdjustStockModal } from "./AdjustStockModal";
 import { inventoryApi, message } from "./api";
 import { FashionFilters, NO_FASHION_FILTER, type FashionFilterValue } from "./FashionFilters";
@@ -110,14 +110,17 @@ export function StockPage() {
     id: "photo",
     header: "Photo",
     className: "w-14",
-    cell: (row) =>
-      row.thumb_url ? (
-        <img src={mediaSrc(row.thumb_url)} alt="" className="h-10 w-10 rounded-lg object-cover" />
-      ) : (
-        <span className="grid h-10 w-10 place-items-center rounded-lg bg-surface text-charcoal/35" aria-hidden="true">
-          {menu ? <UtensilsCrossed size={16} /> : <Package size={16} />}
-        </span>
-      ),
+    cell: (row) => (
+      <ProductImage
+        url={row.thumb_url}
+        className="h-10 w-10 rounded-lg object-cover"
+        fallback={
+          <span className="grid h-10 w-10 place-items-center rounded-lg bg-surface text-charcoal/35" aria-hidden="true">
+            {menu ? <UtensilsCrossed size={16} /> : <Package size={16} />}
+          </span>
+        }
+      />
+    ),
   };
   const columns: DataTableColumn<StockRow>[] = menu
     ? [

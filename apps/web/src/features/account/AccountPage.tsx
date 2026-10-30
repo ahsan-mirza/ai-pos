@@ -137,7 +137,7 @@ export function AccountPage() {
   };
 
   return (
-    <section className="mx-auto grid max-w-3xl gap-4">
+    <section className="grid w-full gap-4">
       <header>
         <h1 className="text-3xl font-semibold tracking-tight">Your account</h1>
         <p className="mt-1 text-sm text-charcoal/60">Your sign-in details. Store settings stay on the business settings page.</p>

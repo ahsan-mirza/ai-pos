@@ -72,7 +72,7 @@ export function WastePage() {
   };
 
   return (
-    <div className="page-enter mx-auto max-w-3xl">
+    <div className="page-enter">
       <h1 className="text-2xl font-semibold">Produce waste</h1>
       <p className="mt-1 text-sm text-charcoal/60">Take spoiled or rejected stock off a batch, including batches that have not expired yet.</p>
       <div className="mt-6 space-y-3 rounded-2xl border border-line p-4">

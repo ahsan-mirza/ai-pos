@@ -475,3 +475,49 @@ def test_portal_product_creation_with_opening_stock(client) -> None:
     assert (product["category"], product["sub_category"], product["stock_quantity"]) == ("Audio", "Earbuds", 12)
     earbuds = row(stock(client, headers, store_id=SHJ), "AUD-EARBUDS-01")
     assert (earbuds["quantity_on_hand"], earbuds["min_reorder_level"]) == (12, 3)
+
+
+def test_unused_product_can_be_deleted_and_stocked_ones_cannot(client) -> None:
+    headers = admin(client)
+    seed(client)
+    category = client.post("/api/v1/categories", headers=headers, json={"name": "Audio"}).json()
+    spare = client.post(
+        "/api/v1/inventory/products",
+        headers=headers,
+        json={
+            "sku": "AUD-SPARE-01",
+            "barcode": "100000000010",
+            "name": "Spare Cable",
+            "category_id": category["id"],
+            "price_cents": 900,
+        },
+    )
+    assert spare.status_code == 201, spare.text
+    product_id = spare.json()["id"]
+    hidden = client.patch(f"/api/v1/products/{product_id}", headers=headers, json={"is_active": False})
+    assert hidden.status_code == 200, hidden.text
+    assert hidden.json()["is_active"] is False
+    listed = client.get("/api/v1/products", headers=headers, params={"limit": 500})
+    assert listed.status_code == 200, listed.text
+    assert any(item["id"] == product_id and item["is_active"] is False for item in listed.json())
+    removed = client.delete(f"/api/v1/products/{product_id}", headers=headers)
+    assert removed.status_code == 204, removed.text
+    assert client.get(f"/api/v1/products/{product_id}", headers=headers).status_code == 404
+
+    stocked = client.post(
+        "/api/v1/inventory/products",
+        headers=headers,
+        json={
+            "sku": "AUD-STOCK-01",
+            "barcode": "100000000011",
+            "name": "Stocked Cable",
+            "category_id": category["id"],
+            "price_cents": 900,
+            "opening_store_id": SHJ,
+            "opening_quantity": 4,
+        },
+    )
+    assert stocked.status_code == 201, stocked.text
+    refused = client.delete(f"/api/v1/products/{stocked.json()['id']}", headers=headers)
+    assert refused.status_code == 409, refused.text
+    assert "Deactivate" in refused.json()["error"]["message"]

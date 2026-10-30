@@ -164,6 +164,16 @@ def product_movements(
     )
 
 
+@router.delete("/{product_id}", status_code=204)
+def delete_product(
+    product_id: uuid.UUID,
+    db: Annotated[Session, Depends(get_db)],
+    _: Annotated[Principal, Depends(authorize(Permission.PORTAL_INVENTORY_MANAGE))],
+) -> Response:
+    inventory.delete_product(db, product_id)
+    return Response(status_code=204)
+
+
 @router.patch("/{product_id}", response_model=ProductOut)
 def update_product(
     product_id: uuid.UUID,

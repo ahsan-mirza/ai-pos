@@ -3,7 +3,7 @@ import { TableGridNode } from "@ai-pos/ui";
 import { Bell, Receipt, Sparkles } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { ApiRequestError, apiPublicPost, apiTerminal } from "../../lib/api";
-import { mediaSrc } from "../../lib/media";
+import { ProductImage } from "../../components/ui/ProductImage";
 import { useCurrency } from "../../lib/currency";
 import { emitTableEvent, listenForTableEvents, type TableEvent } from "./live";
 
@@ -851,11 +851,11 @@ function DishCard({ item, onAdd }: { item: MenuItem; onAdd: () => void }) {
   return (
     <article className="flex flex-col overflow-hidden rounded-3xl border border-slate-800 bg-slate-900">
       <div className="relative aspect-[4/3] bg-slate-800">
-        {item.image_url ? (
-          <img src={mediaSrc(item.image_url)} alt="" className="h-full w-full object-cover" />
-        ) : (
-          <DishPlaceholder name={item.name} />
-        )}
+        <ProductImage
+          url={item.image_url}
+          className="h-full w-full object-cover"
+          fallback={<DishPlaceholder name={item.name} />}
+        />
         {item.groups.length > 0 ? (
           <span className="absolute left-2 top-2 rounded-full bg-slate-950/80 px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-orange-200">
             Modifiers

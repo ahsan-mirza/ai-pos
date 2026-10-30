@@ -163,7 +163,7 @@ export function WhatsAppPage() {
   const preview = form.enabled ? previewUrl(form.phone, form.message) : null;
 
   return (
-    <section className="max-w-xl" aria-busy={busy}>
+    <section aria-busy={busy}>
       <PageHeader
         title="WhatsApp Sales Contact"
         description="The landing-page demo form, the floating button, and the site footer use this WhatsApp number. The footer also shows the sales email. The visitor still has to press Send in WhatsApp."

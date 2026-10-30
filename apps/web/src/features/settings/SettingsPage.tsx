@@ -1,6 +1,8 @@
 import { profileSpec } from "@ai-pos/shared-types";
 import { countryOption } from "@ai-pos/ui";
+import { Link, useLocation } from "react-router-dom";
 import { useCapabilities } from "../../lib/capabilities";
+import { generalSections } from "./SettingsLayout";
 import { useCurrency } from "../../lib/currency";
 import { AppearanceSettings } from "./AppearanceSettings";
 import { BusinessProfileSettings } from "./BusinessProfileSettings";
@@ -12,23 +14,17 @@ import { TillRulesSettings } from "./TillRulesSettings";
 import { BranchTaxSettings } from "./BranchTaxSettings";
 import { VatSettings } from "./VatSettings";
 
-function SectionHeading({ title, hint }: { title: string; hint: string }) {
-  return (
-    <div className="mt-4 xl:col-span-2">
-      <h2 className="text-xs font-semibold uppercase tracking-[0.14em] text-charcoal/45">{title}</h2>
-      <p className="mt-0.5 text-sm text-charcoal/60">{hint}</p>
-    </div>
-  );
-}
-
 export function SettingsPage() {
   const { settings } = useCurrency();
   const { profile, enabled } = useCapabilities();
   const spec = profileSpec(profile);
+  const { hash } = useLocation();
+  const requested = hash.replace("#", "");
+  const section = generalSections.some((item) => item.id === requested) ? requested : "currency";
 
   return (
-    <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
-      <header className="flex items-center justify-between gap-4 xl:col-span-2">
+    <section className="grid gap-4">
+      <header className="flex flex-wrap items-center justify-between gap-3">
         <div className="min-w-0">
           <h1 className="truncate text-3xl font-semibold tracking-tight">{spec.settingsLabel}</h1>
           <p className="mt-1 text-sm text-charcoal/60">Business-wide settings shared by every branch and register.</p>
@@ -39,20 +35,20 @@ export function SettingsPage() {
               {settings.store_code}
             </p>
           ) : null}
-          <a
-            href="#business-profile"
-            className="inline-flex items-center gap-2 rounded-full border border-line bg-white px-3 py-1.5 text-sm font-medium hover:border-charcoal/20"
+          <Link
+            to="/settings#business-profile"
+            className="inline-flex max-w-full items-center gap-2 rounded-full border border-line bg-white px-3 py-1.5 text-sm font-medium hover:border-charcoal/20"
           >
             <span className="h-2 w-2 rounded-full bg-accent" aria-hidden="true" />
             {spec.shortLabel}
             <span className="text-charcoal/50">
               · {enabled.size} module{enabled.size === 1 ? "" : "s"} on
             </span>
-          </a>
+          </Link>
         </div>
       </header>
       {settings ? (
-        <dl className="grid gap-3 rounded-card border border-line bg-white p-4 text-sm sm:grid-cols-3 xl:col-span-2 xl:grid-cols-5">
+        <dl className="grid grid-cols-2 gap-3 rounded-card border border-line bg-white p-4 text-sm sm:grid-cols-3 xl:grid-cols-5">
           <div>
             <dt className="text-charcoal/50">Country</dt>
             <dd className="font-medium">
@@ -78,48 +74,51 @@ export function SettingsPage() {
         </dl>
       ) : null}
 
-      <SectionHeading title="General" hint="Currency, tax, receipts and the look of the portal and registers." />
-
-      <div className="xl:col-span-2">
-        <CurrencySettings />
-      </div>
-
-      <div className="xl:col-span-2">
-        <BranchTaxSettings />
-      </div>
-
-      <div className="xl:col-span-2">
-        <VatSettings />
-      </div>
-
-      <div className="xl:col-span-2">
-        <ReceiptSettingsCard />
-      </div>
-
-      <div className="xl:col-span-2">
-        <TillRulesSettings />
-      </div>
-
-      <div className="xl:col-span-2">
-        <AppearanceSettings />
-      </div>
-
-      <SectionHeading
-        title="Business type & modules"
-        hint={`What your ${spec.shortLabel.toLowerCase()} business runs on: the portal and registers show only these modules.`}
-      />
-
-      <div className="xl:col-span-2">
-        <BusinessProfileSettings />
-      </div>
-
-      <div className="xl:col-span-2">
-        <ModuleSettingsPanel />
-      </div>
-
-      <div className="xl:col-span-2">
-        <ModuleShortcuts />
-      </div>
+      {section === "currency" ? (
+        <div id="currency">
+          <CurrencySettings />
+        </div>
+      ) : null}
+      {section === "branch-tax" ? (
+        <div id="branch-tax">
+          <BranchTaxSettings />
+        </div>
+      ) : null}
+      {section === "vat" ? (
+        <div id="vat">
+          <VatSettings />
+        </div>
+      ) : null}
+      {section === "receipts" ? (
+        <div id="receipts">
+          <ReceiptSettingsCard />
+        </div>
+      ) : null}
+      {section === "till-rules" ? (
+        <div>
+          <TillRulesSettings />
+        </div>
+      ) : null}
+      {section === "appearance" ? (
+        <div id="appearance">
+          <AppearanceSettings />
+        </div>
+      ) : null}
+      {section === "business-profile" ? (
+        <div>
+          <BusinessProfileSettings />
+        </div>
+      ) : null}
+      {section === "module-settings" ? (
+        <div id="module-settings">
+          <ModuleSettingsPanel />
+        </div>
+      ) : null}
+      {section === "module-setup" ? (
+        <div id="module-setup">
+          <ModuleShortcuts />
+        </div>
+      ) : null}
     </section>
   );
 }

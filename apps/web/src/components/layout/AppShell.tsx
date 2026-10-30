@@ -156,7 +156,7 @@ function IndustryGate() {
   if (!allowed) {
     const name = recognized ? profileSpec(businessType).label : "This business";
     return (
-      <section className="m-6 max-w-lg rounded-card border border-line bg-white p-8">
+      <section className="m-4 max-w-lg rounded-card border border-line bg-white p-6 md:m-6">
         <h1 className="text-xl font-semibold">Not part of this portal</h1>
         <p className="mt-2 text-sm text-charcoal/70">{name} does not use this page.</p>
         <Link to={portalHomePath()} className="mt-4 inline-block text-sm font-semibold text-accent">
@@ -168,10 +168,10 @@ function IndustryGate() {
   return <Outlet />;
 }
 
-/** Padding for card-based pages; full-bleed workspaces such as Purchase Batches render outside it. */
+/** Shared page gutter. Full-bleed workspaces such as Purchase Batches render outside it. */
 export function PageFrame() {
   return (
-    <div className="p-4 md:p-6 lg:p-8">
+    <div className="px-4 py-4 md:px-6 md:py-5">
       <Outlet />
     </div>
   );

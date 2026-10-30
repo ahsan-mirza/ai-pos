@@ -1,13 +1,20 @@
 """Ollama chat through LangChain. The model name comes from settings. Tools stay on the allowlist.
 
 This module does not open the database. The caller executes tools with the authenticated store.
+One chat client is reused per configuration so the model stays loaded (`keep_alive`) instead of
+being constructed again on every question. A timeout is not retried: the wait already happened.
 """
 
 from __future__ import annotations
 
+import threading
 from typing import Any
 
 from app.core.config import Settings
+
+# One local 8B model. A second request waits briefly instead of loading the weights twice.
+_GATE = threading.BoundedSemaphore(1)
+_CLIENTS: dict[tuple[Any, ...], Any] = {}
 
 
 def _text(content: Any) -> str:
@@ -65,27 +72,70 @@ def _reply(message: Any) -> dict[str, Any]:
     return {"content": _text(getattr(message, "content", "")), "tool_calls": calls}
 
 
-def complete(settings: Settings, turns: list[dict[str, Any]], schemas: list[dict[str, Any]]) -> dict[str, Any]:
-    """One Ollama round. `schemas` are the allowlisted tool definitions for this user."""
+def _timed_out(error: BaseException) -> bool:
+    if isinstance(error, TimeoutError):
+        return True
+    return "timeout" in type(error).__name__.lower()
+
+
+def _client(settings: Settings, mode: str) -> Any:
     from langchain_ollama import ChatOllama
 
+    chat_mode = mode == "chat"
+    num_ctx = min(settings.ollama_num_ctx, 2048) if chat_mode else settings.ollama_num_ctx
+    num_predict = min(settings.ollama_num_predict, 96) if chat_mode else settings.ollama_num_predict
+    timeout = settings.ollama_chat_timeout_seconds if chat_mode else settings.ollama_timeout_seconds
+    key = (
+        id(ChatOllama),
+        settings.ollama_base_url,
+        settings.ollama_model,
+        num_ctx,
+        num_predict,
+        settings.ollama_temperature,
+        settings.ollama_keep_alive,
+        timeout,
+    )
+    cached = _CLIENTS.get(key)
+    if cached is not None:
+        return cached
     chat = ChatOllama(
         model=settings.ollama_model,
         base_url=settings.ollama_base_url,
         temperature=settings.ollama_temperature,
-        num_ctx=settings.ollama_num_ctx,
+        num_ctx=num_ctx,
+        num_predict=num_predict,
         keep_alive=settings.ollama_keep_alive,
         reasoning=False,
-        client_kwargs={"timeout": settings.ollama_timeout_seconds},
-        sync_client_kwargs={"timeout": settings.ollama_timeout_seconds},
+        client_kwargs={"timeout": timeout},
+        sync_client_kwargs={"timeout": timeout},
     )
-    bound = chat.bind_tools(schemas) if schemas else chat
-    messages = _messages(turns)
-    last: Exception | None = None
-    for _attempt in range(settings.ollama_max_retries + 1):
-        try:
-            return _reply(bound.invoke(messages))
-        except Exception as error:
-            last = error
-    assert last is not None
-    raise RuntimeError(type(last).__name__) from last
+    _CLIENTS[key] = chat
+    return chat
+
+
+def complete(
+    settings: Settings, turns: list[dict[str, Any]], schemas: list[dict[str, Any]], *, mode: str = "tools"
+) -> dict[str, Any]:
+    """One Ollama round. `schemas` are the allowlisted tool definitions for this user.
+
+    `mode="chat"` is a short reply with no tools. A timeout is not sent again.
+    """
+    if not _GATE.acquire(timeout=5):
+        raise RuntimeError("Busy")
+    try:
+        chat = _client(settings, mode)
+        bound = chat.bind_tools(schemas) if schemas else chat
+        messages = _messages(turns)
+        last: Exception | None = None
+        attempts = settings.ollama_max_retries + 1
+        for attempt in range(attempts):
+            try:
+                return _reply(bound.invoke(messages))
+            except Exception as error:
+                last = error
+                if _timed_out(error) or attempt + 1 >= attempts:
+                    break
+        assert last is not None
+        raise RuntimeError(type(last).__name__) from last
+    finally:
+        _GATE.release()

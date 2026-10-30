@@ -81,6 +81,9 @@ pub struct ProductRow {
     /// Price before the active markdown; the card strikes it through.
     #[serde(default)]
     pub compare_at_cents: Option<i64>,
+    /// Inactive products stay in the cache for returns, but the register does not offer them.
+    #[serde(default = "active_product")]
+    pub is_active: bool,
 }
 
 fn standard_tax() -> String {
@@ -93,6 +96,10 @@ fn seed_origin() -> String {
 
 fn one() -> i64 {
     1
+}
+
+fn active_product() -> bool {
+    true
 }
 
 fn piece_only() -> Vec<String> {
@@ -180,8 +187,8 @@ const PRODUCT_COLUMNS: &str = "id, store_id, sku, barcode, name, category, price
      stock_quantity, model_number, brand, min_order_quantity, sellable_units, prices_json, tax_category, \
      is_open_price, origin, is_service, product_model_id, model_name, variant_json, sold_by_weight, plu_code, \
      tare_grams, nearest_expiry, units_json, has_recipe, is_ingredient, price_lists_json, image_url, thumb_url, \
-     season, collection, gender, compare_at_cents";
-const PRODUCT_COLUMN_COUNT: usize = 36;
+     season, collection, gender, compare_at_cents, is_active";
+const PRODUCT_COLUMN_COUNT: usize = 37;
 
 pub struct Db {
     conn: Mutex<Connection>,
@@ -754,6 +761,7 @@ fn migrate(conn: &Connection) -> Result<(), String> {
         ("collection", "TEXT"),
         ("gender", "TEXT"),
         ("compare_at_cents", "INTEGER"),
+        ("is_active", "INTEGER NOT NULL DEFAULT 1"),
     ] {
         if !has_column(conn, "products", column)? {
             conn.execute_batch(&format!(
@@ -875,7 +883,7 @@ fn insert_product(conn: &Connection, product: &ProductRow) -> Result<(), String>
         &format!(
             "INSERT INTO products ({PRODUCT_COLUMNS})
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22,
-                     ?23, ?24, ?25, ?26, ?27, ?28, ?29, ?30, ?31, ?32, ?33, ?34, ?35, ?36)"
+                     ?23, ?24, ?25, ?26, ?27, ?28, ?29, ?30, ?31, ?32, ?33, ?34, ?35, ?36, ?37)"
         ),
         params![
             product.id,
@@ -913,7 +921,8 @@ fn insert_product(conn: &Connection, product: &ProductRow) -> Result<(), String>
             product.season,
             product.collection,
             product.gender,
-            product.compare_at_cents
+            product.compare_at_cents,
+            if product.is_active { 1 } else { 0 }
         ],
     )
     .map_err(|err| err.to_string())?;
@@ -967,5 +976,6 @@ fn read_product(row: &rusqlite::Row<'_>) -> rusqlite::Result<ProductRow> {
         collection: row.get(33)?,
         gender: row.get(34)?,
         compare_at_cents: row.get(35)?,
+        is_active: row.get::<_, i64>(36)? != 0,
     })
 }

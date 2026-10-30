@@ -224,7 +224,7 @@ export function MailPage() {
   };
 
   return (
-    <section className="max-w-xl">
+    <section>
       <PageHeader
         title="Email"
         description="The mailbox that sends password-reset codes to store users. For Spacemail use mail.spacemail.com, port 465, and SSL. Port 587 uses STARTTLS."

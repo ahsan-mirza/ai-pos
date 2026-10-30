@@ -23,9 +23,10 @@ interface AssistantState {
   activeId: string | null;
   busy: boolean;
   error: string | null;
-  moduleLabel: string;
-  storeLabel: string;
-  ask: (text: string) => Promise<void>;
+  failedQuestion: string | null;
+  userName: string;
+  businessName: string;
+  ask: (text: string, options?: { retry?: boolean }) => Promise<void>;
   startNew: () => void;
   resume: (id: string) => void;
   clearCurrent: () => void;
@@ -47,6 +48,7 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
   const [ready, setReady] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [failedQuestion, setFailedQuestion] = useState<string | null>(null);
   const sending = useRef(false);
   const returnFocus = useRef<HTMLElement | null>(null);
   const infoLoaded = useRef(false);
@@ -55,6 +57,8 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
   const moduleLabel = crumbsFor(pathname, { profile, has }).at(-1)?.label ?? "This page";
   const store = stores.find((row) => row.id === storeId);
   const storeLabel = store ? store.name : "All branches";
+  const userName = givenName(user?.full_name, user?.username);
+  const businessName = store?.name ?? "";
 
   useEffect(() => {
     infoLoaded.current = false;
@@ -116,12 +120,14 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const ask = useCallback(
-    async (text: string) => {
+    async (text: string, options?: { retry?: boolean }) => {
       const trimmed = text.trim();
       const threadId = activeId;
       if (!threadId || trimmed.length < 2 || sending.current) return;
-      const userMessage: AssistantMessage = { id: crypto.randomUUID(), role: "user", content: trimmed };
-      const history: AssistantTurn[] = messages.slice(-8).map((message) => ({
+      const last = messages.at(-1);
+      const retrying = options?.retry === true && last?.role === "user" && last.content === trimmed;
+      const userMessage: AssistantMessage = retrying ? last : { id: crypto.randomUUID(), role: "user", content: trimmed };
+      const history: AssistantTurn[] = (retrying ? messages.slice(0, -1) : messages).slice(-4).map((message) => ({
         role: message.role,
         content: message.content.slice(0, 2000),
       }));
@@ -129,17 +135,25 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
       sending.current = true;
       setBusy(true);
       setError(null);
-      updateThread(threadId, (thread) => ({
-        ...thread,
-        updatedAt: new Date().toISOString(),
-        messages: [...thread.messages, userMessage].slice(-30),
-      }));
+      setFailedQuestion(null);
+      if (!retrying) {
+        updateThread(threadId, (thread) => ({
+          ...thread,
+          updatedAt: new Date().toISOString(),
+          messages: [...thread.messages, userMessage].slice(-30),
+        }));
+      }
       try {
-        const reply = await apiPost<AssistantReply>("/api/v1/assistant/ask", {
-          question: trimmed.slice(0, 500),
-          history,
-          context,
-        });
+        const reply = await apiPost<AssistantReply>(
+          "/api/v1/assistant/ask",
+          {
+            question: trimmed.slice(0, 500),
+            history,
+            context,
+            ...(storeId ? { store_id: storeId } : {}),
+          },
+          { "X-Request-Id": crypto.randomUUID() },
+        );
         const answer: AssistantMessage = {
           id: crypto.randomUUID(),
           role: "assistant",
@@ -155,13 +169,14 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
           ),
         );
       } catch (caught) {
-        setError(errorMessage(caught, "Could not get an answer."));
+        setFailedQuestion(trimmed);
+        setError(assistantFailure(caught));
       } finally {
         sending.current = false;
         setBusy(false);
       }
     },
-    [activeId, messages, moduleLabel, storeLabel, updateThread],
+    [activeId, messages, moduleLabel, storeId, storeLabel, updateThread],
   );
 
   const startNew = useCallback(() => {
@@ -170,11 +185,13 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
     setThreads((current) => [thread, ...current.filter((item) => item.messages.length > 0)].slice(0, 20));
     setActiveId(thread.id);
     setError(null);
+    setFailedQuestion(null);
   }, [messages.length]);
 
   const resume = useCallback((id: string) => {
     setActiveId(id);
     setError(null);
+    setFailedQuestion(null);
   }, []);
 
   const clearCurrent = useCallback(() => {
@@ -183,6 +200,7 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
     setThreads((current) => [thread, ...current.filter((item) => item.id !== activeId && item.messages.length > 0)].slice(0, 20));
     setActiveId(thread.id);
     setError(null);
+    setFailedQuestion(null);
   }, [activeId]);
 
   const value = useMemo<AssistantState>(
@@ -198,8 +216,9 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
       activeId,
       busy,
       error,
-      moduleLabel,
-      storeLabel,
+      failedQuestion,
+      userName,
+      businessName,
       ask,
       startNew,
       resume,
@@ -217,8 +236,9 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
       activeId,
       busy,
       error,
-      moduleLabel,
-      storeLabel,
+      failedQuestion,
+      userName,
+      businessName,
       ask,
       startNew,
       resume,
@@ -233,4 +253,20 @@ export function useAssistant(): AssistantState {
   const context = useContext(AssistantContext);
   if (context === null) throw new Error("useAssistant must be used inside AssistantProvider.");
   return context;
+}
+
+function givenName(fullName: string | undefined, username: string | undefined): string {
+  const full = fullName?.trim() ?? "";
+  if (full && !full.includes("@")) return full.split(/\s+/)[0] ?? "";
+  const handle = username?.trim() ?? "";
+  if (handle && !handle.includes("@")) return handle;
+  return "";
+}
+
+function assistantFailure(caught: unknown): string {
+  const message = errorMessage(caught, "Could not get an answer.");
+  if (message.startsWith("Request failed") || message.includes("Cannot reach the API")) {
+    return "The assistant could not finish that answer. Your question is still here.";
+  }
+  return message;
 }

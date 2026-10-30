@@ -90,9 +90,14 @@ def preview_matrix(model_id: uuid.UUID, payload: MatrixWrite, db: Db, _: CanRead
 
 
 @models_router.post("/{model_id}/matrix", response_model=MatrixOut, dependencies=[MatrixModule])
-def generate_matrix(model_id: uuid.UUID, payload: MatrixWrite, db: Db, _: CanManage) -> MatrixOut:
-    """Creates a product for every combination the model does not have yet."""
-    return variant_matrix_service.generate(db, model_id, payload, business_currency(db))
+def generate_matrix(model_id: uuid.UUID, payload: MatrixWrite, db: Db, principal: CanManage) -> MatrixOut:
+    """Creates a product for every requested combination the model does not have yet."""
+    from app.services.inventory import _require_store_access
+
+    if payload.opening_store_id is not None:
+        _require_store_access(principal, payload.opening_store_id)
+    user_id = principal.user.id if principal.user is not None else None
+    return variant_matrix_service.generate(db, model_id, payload, business_currency(db), user_id=user_id)
 
 
 @models_router.post("/{model_id}/matrix/bulk", response_model=MatrixBulkResult, dependencies=[MatrixModule])

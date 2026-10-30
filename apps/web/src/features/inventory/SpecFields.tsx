@@ -1,5 +1,5 @@
 import { specKey, type SpecSchema } from "@ai-pos/shared-types";
-import { SearchableSpecSelect } from "@ai-pos/ui";
+import { SearchableMultiSpecSelect, SearchableSpecSelect } from "@ai-pos/ui";
 import {
   Battery,
   Box,
@@ -74,10 +74,17 @@ export function SpecFields({
   schema,
   specs,
   onChange,
+  multiKeys = [],
+  multiValues = {},
+  onMultiChange,
 }: {
   schema: SpecSchema;
   specs: Record<string, string>;
   onChange: (next: Record<string, string>) => void;
+  /** Fashion size and color. Other business types keep a single value. */
+  multiKeys?: readonly string[];
+  multiValues?: Record<string, string[]>;
+  onMultiChange?: (key: string, values: string[]) => void;
 }) {
   const [draftName, setDraftName] = useState("");
   const [draftValue, setDraftValue] = useState("");
@@ -164,6 +171,25 @@ export function SpecFields({
     <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
       {schema.fields.map((field) => {
         const current = specs[field.key] ?? "";
+        if (multiKeys.includes(field.key)) {
+          const selected = multiValues[field.key] ?? [];
+          return (
+            <SearchableMultiSpecSelect
+              key={field.key}
+              label={field.label}
+              icon={FIELD_ICONS[field.key] ?? Tag}
+              placeholder={field.placeholder}
+              values={selected}
+              options={withCurrent(field.options, [...(added[field.key] ?? []), ...selected], "")}
+              onChange={(next) => onMultiChange?.(field.key, next)}
+              onCreateOption={(next) => {
+                setAdded((previous) => ({ ...previous, [field.key]: [...(previous[field.key] ?? []), next] }));
+                const already = selected.some((value) => value.toLowerCase() === next.toLowerCase());
+                if (!already) onMultiChange?.(field.key, [...selected, next]);
+              }}
+            />
+          );
+        }
         return (
           <SearchableSpecSelect
             key={field.key}

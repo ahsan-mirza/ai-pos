@@ -72,7 +72,7 @@ export function ModuleSettingsPanel() {
         </PrimaryButton>
       </div>
 
-      <div className="mt-6 grid gap-6 lg:grid-cols-2">
+      <div className="mt-6 grid gap-6 xl:grid-cols-2">
         {has(Capability.Fefo) ? (
           <fieldset className="space-y-3 rounded-2xl border border-line p-4">
             <legend className="px-1 text-sm font-semibold">Expiry-first stock</legend>

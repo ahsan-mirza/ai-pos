@@ -1,10 +1,10 @@
-import type { ProductImage } from "@ai-pos/shared-types";
+import type { ProductImage as ProductImageRecord } from "@ai-pos/shared-types";
 import { Select } from "@ai-pos/ui";
 import { ImagePlus, Loader2, Star, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { apiDelete, apiGet, apiPatch, apiUpload } from "../../lib/api";
 import { compressImageToWebp } from "../../lib/imageFile";
-import { mediaSrc } from "../../lib/media";
+import { ProductImage } from "../../components/ui/ProductImage";
 import { errorMessage } from "../users/api";
 
 interface PhotoGalleryProps {
@@ -24,7 +24,7 @@ const ACCEPT = "image/jpeg,image/png,image/webp";
 
 /** Upload, order and tag product photos. Each file is compressed to WebP here, then stored as WebP on the server. */
 export function PhotoGallery({ path, canManage, colours = [], fallbackUrl = null, onChange, version = 0 }: PhotoGalleryProps) {
-  const [images, setImages] = useState<ProductImage[] | null>(null);
+  const [images, setImages] = useState<ProductImageRecord[] | null>(null);
   const [colour, setColour] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -32,7 +32,7 @@ export function PhotoGallery({ path, canManage, colours = [], fallbackUrl = null
 
   const load = useCallback(async () => {
     try {
-      setImages(await apiGet<ProductImage[]>(path));
+      setImages(await apiGet<ProductImageRecord[]>(path));
     } catch (caught) {
       setError(errorMessage(caught, "Could not load photos."));
     }
@@ -56,7 +56,7 @@ export function PhotoGallery({ path, canManage, colours = [], fallbackUrl = null
         const form = new FormData();
         form.append("file", await compressImageToWebp(file));
         if (colour) form.append("attribute_value", colour);
-        await apiUpload<ProductImage>(path, form);
+        await apiUpload<ProductImageRecord>(path, form);
       }
       await changed();
     } catch (caught) {
@@ -124,7 +124,7 @@ export function PhotoGallery({ path, canManage, colours = [], fallbackUrl = null
       {empty ? (
         fallbackUrl ? (
           <div className="flex items-center gap-3 rounded-2xl bg-surface p-3 text-sm text-charcoal/60">
-            <img src={mediaSrc(fallbackUrl)} alt="" className="h-16 w-16 rounded-xl object-cover" />
+            <ProductImage url={fallbackUrl} className="h-16 w-16 rounded-xl object-cover" />
             Showing the model&apos;s photo. Add a photo here to show this variant on its own.
           </div>
         ) : (
@@ -136,7 +136,7 @@ export function PhotoGallery({ path, canManage, colours = [], fallbackUrl = null
         <ul className="grid grid-cols-3 gap-2 sm:grid-cols-4">
           {(images ?? []).map((image) => (
             <li key={image.id} className="relative overflow-hidden rounded-2xl border border-line bg-surface">
-              <img src={mediaSrc(image.thumb_url)} alt="" className="aspect-square w-full object-cover" />
+              <ProductImage url={image.thumb_url} className="aspect-square w-full object-cover" />
               <div className="absolute inset-x-1 top-1 flex justify-between gap-1">
                 {image.is_primary ? (
                   <span className="rounded-full bg-accent px-2 py-0.5 text-[10px] font-semibold text-white">Main</span>

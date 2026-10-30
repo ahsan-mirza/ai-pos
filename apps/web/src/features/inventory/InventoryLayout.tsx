@@ -72,7 +72,7 @@ export function InventoryLayout() {
         <nav
           ref={navRef}
           aria-label="Inventory sections"
-          className="no-scrollbar flex h-12 shrink-0 gap-1 overflow-x-auto px-2 md:px-3 lg:px-4"
+          className="no-scrollbar flex h-12 shrink-0 gap-1 overflow-x-auto px-4 md:px-6"
         >
           {visible.map((tab) => (
             <NavLink

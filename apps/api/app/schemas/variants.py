@@ -33,8 +33,42 @@ class MatrixAxis(ApiModel):
         return cleaned
 
 
+class MatrixVariantDraft(ApiModel):
+    """One size/colour combination to create or update. Omitted combinations are not created."""
+
+    attributes: dict[str, str]
+    product_id: UUID | None = None
+    sku: str | None = Field(default=None, max_length=64)
+    barcode: str | None = Field(default=None, max_length=64)
+    price_cents: int | None = Field(default=None, ge=0)
+    cost_cents: int | None = Field(default=None, ge=0)
+    opening_quantity: int | None = Field(default=None, ge=0, le=1_000_000)
+    min_reorder_level: int | None = Field(default=None, ge=0, le=1_000_000)
+    is_active: bool | None = None
+
+    @field_validator("attributes")
+    @classmethod
+    def normalize_attributes(cls, value: dict[str, str]) -> dict[str, str]:
+        cleaned = variant_attributes(value)
+        if not cleaned:
+            raise ValueError("Each variant needs its attributes.")
+        return cleaned
+
+    @field_validator("sku", "barcode")
+    @classmethod
+    def clean_code(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        text = value.strip()
+        return text or None
+
+
 class MatrixWrite(ApiModel):
-    """Size x colour (and optionally a third axis) for one model. Existing combinations are left as they are."""
+    """Size x colour (and optionally a third axis) for one model.
+
+    Without `variants`, every combination is created and existing ones are left as they are.
+    With `variants`, only that list is created or updated, so excluded combinations stay absent.
+    """
 
     axes: list[MatrixAxis] = Field(min_length=1, max_length=3)
     price_cents: int = Field(ge=0)
@@ -42,19 +76,54 @@ class MatrixWrite(ApiModel):
     price_by_value: dict[str, int] = Field(default_factory=dict)
     sku_prefix: str | None = Field(default=None, max_length=24, pattern=r"^[A-Za-z0-9-]+$")
     tax_category: TaxCategory = "STANDARD"
+    variants: list[MatrixVariantDraft] | None = Field(default=None, max_length=MAX_MATRIX_CELLS)
+    opening_store_id: UUID | None = None
+    specifications: dict[str, str] = Field(default_factory=dict)
+
+    @field_validator("specifications")
+    @classmethod
+    def clean_specifications(cls, value: dict[str, str]) -> dict[str, str]:
+        from app.schemas.inventory import specifications
+
+        return specifications(value)
 
     @model_validator(mode="after")
     def bounded(self) -> "MatrixWrite":
         keys = [axis.key for axis in self.axes]
         if len(set(keys)) != len(keys):
             raise ValueError("Each axis needs its own attribute.")
+        if any(price < 0 for price in self.price_by_value.values()):
+            raise ValueError("Prices cannot be negative.")
+        if self.variants is not None:
+            if not self.variants:
+                raise ValueError("Include at least one combination.")
+            if len(self.variants) > MAX_MATRIX_CELLS:
+                raise ValueError(
+                    f"A matrix can have at most {MAX_MATRIX_CELLS} combinations; this one has {len(self.variants)}."
+                )
+            expected = set(keys)
+            seen: set[tuple[tuple[str, str], ...]] = set()
+            for draft in self.variants:
+                if set(draft.attributes) != expected:
+                    raise ValueError("Each combination must use the same attributes as the axes.")
+                identity = tuple(sorted((key, value.lower()) for key, value in draft.attributes.items()))
+                if identity in seen:
+                    raise ValueError("That size and color combination is listed twice.")
+                seen.add(identity)
+            needs_store = any(
+                (draft.opening_quantity or 0) > 0
+                or (draft.min_reorder_level or 0) > 0
+                or draft.cost_cents is not None
+                for draft in self.variants
+            )
+            if needs_store and self.opening_store_id is None:
+                raise ValueError("Choose the store that holds the opening stock.")
+            return self
         cells = 1
         for axis in self.axes:
             cells *= len(axis.values)
         if cells > MAX_MATRIX_CELLS:
             raise ValueError(f"A matrix can have at most {MAX_MATRIX_CELLS} combinations; this one has {cells}.")
-        if any(price < 0 for price in self.price_by_value.values()):
-            raise ValueError("Prices cannot be negative.")
         return self
 
 
@@ -100,6 +169,8 @@ class MatrixBulk(ApiModel):
     store_id: UUID | None = None
     min_reorder_level: int | None = Field(default=None, ge=0, le=1_000_000)
     assign_missing_barcodes: bool = False
+    # Leave a variant's own price or reorder level alone. Only fill ones still on the model default or zero.
+    only_unset: bool = False
 
     @model_validator(mode="after")
     def has_action(self) -> "MatrixBulk":

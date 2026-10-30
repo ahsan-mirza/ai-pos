@@ -57,7 +57,7 @@ export function VariantGrid({
         </div>
       ) : null}
       <div className="overflow-x-auto">
-        <table className="text-sm">
+        <table className="w-full min-w-max text-sm">
           <thead>
             <tr>
               <th className="px-2 pb-2 text-left text-[11px] font-semibold uppercase tracking-wider text-charcoal/50">

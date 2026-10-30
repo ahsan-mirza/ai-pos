@@ -112,7 +112,7 @@ export function VatSettings() {
         </PrimaryButton>
       </div>
 
-      <div className="mt-6 grid gap-4 lg:grid-cols-[minmax(0,1fr)_280px]">
+      <div className="mt-6 grid gap-4 xl:grid-cols-[minmax(0,1fr)_280px]">
         <div className="space-y-4">
           <div className="grid gap-4 md:grid-cols-2">
             <CountryField

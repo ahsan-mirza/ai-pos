@@ -1,7 +1,7 @@
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from sqlalchemy.orm import Session
 
 from app.core.config import Settings, get_settings
@@ -49,7 +49,7 @@ def remove_conversation(conversation_id: uuid.UUID, principal: CanAsk) -> None:
 
 
 @router.post("/ask", response_model=AssistantReply)
-def ask(payload: AssistantAsk, db: Db, principal: CanAsk, settings: Config) -> AssistantReply:
+def ask(payload: AssistantAsk, request: Request, db: Db, principal: CanAsk, settings: Config) -> AssistantReply:
     from app.console import transfers
     from app.core.errors import ApiError
     from app.tenancy import registry
@@ -65,4 +65,5 @@ def ask(payload: AssistantAsk, db: Db, principal: CanAsk, settings: Config) -> A
                         "subscription_required",
                         "AI stays off until the subscription is paid. Submit the transfer receipt from billing.",
                     )
-    return assistant_service.ask(db, principal, settings, payload)
+    correlation = request.headers.get("x-request-id") or None
+    return assistant_service.ask(db, principal, settings, payload, correlation_id=correlation)

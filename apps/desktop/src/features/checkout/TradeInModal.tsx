@@ -36,7 +36,10 @@ interface TradeInModalProps {
 }
 
 export function TradeInModal({ products, cashierId, customer, currency, saleCents, onClose, onDone }: TradeInModalProps) {
-  const models = useMemo(() => products.filter((product) => product.is_serialized && !product.sku.startsWith("PO-")), [products]);
+  const models = useMemo(
+    () => products.filter((product) => product.is_active !== false && product.is_serialized && !product.sku.startsWith("PO-")),
+    [products],
+  );
   const [query, setQuery] = useState("");
   const [productId, setProductId] = useState<string | null>(null);
   const [identifier, setIdentifier] = useState("");

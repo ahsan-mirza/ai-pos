@@ -179,12 +179,14 @@ class Settings(BaseSettings):
     # Hostname "ollama" is the Compose service. A host-run API uses the loopback publish instead.
     ollama_base_url: str = "http://127.0.0.1:11434"
     ollama_model: str = "qwen3:8b"
-    ollama_timeout_seconds: int = Field(default=90, ge=5, le=180)
+    ollama_timeout_seconds: int = Field(default=45, ge=5, le=180)
+    ollama_chat_timeout_seconds: int = Field(default=20, ge=5, le=60)
     ollama_keep_alive: str = "10m"
     ollama_temperature: float = Field(default=0.2, ge=0, le=1)
-    ollama_num_ctx: int = Field(default=8192, ge=512, le=32768)
+    ollama_num_ctx: int = Field(default=4096, ge=512, le=32768)
+    ollama_num_predict: int = Field(default=192, ge=32, le=1024)
     ollama_max_retries: int = Field(default=1, ge=0, le=3)
-    ollama_max_tool_rounds: int = Field(default=4, ge=1, le=8)
+    ollama_max_tool_rounds: int = Field(default=2, ge=1, le=8)
 
     # Self-service signup on the bare domain (multi-tenant mode only). The one-time code goes out on this channel
     # through the messaging adapters; "log" writes it to the API log and, outside production, returns it.

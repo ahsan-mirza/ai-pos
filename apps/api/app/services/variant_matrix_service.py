@@ -8,12 +8,12 @@ import uuid
 from collections import defaultdict
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.core.errors import ApiError
-from app.models.batch import BatchItem
+from app.core.errors import ApiError, field_conflict
+from app.models.batch import BatchItem, PurchaseBatch
 from app.models.brand import ProductModel
 from app.models.inventory import InventoryLevel
 from app.models.product import Product
@@ -27,11 +27,12 @@ from app.schemas.variants import (
     MatrixCell,
     MatrixOut,
     MatrixPreview,
+    MatrixVariantDraft,
     MatrixWrite,
 )
 from app.services import barcodes
-from app.services.inventory import _classify, level_for
-from app.services.variant_keys import resolved_price, rules_from_values
+from app.services.inventory import _classify, _store, level_for, move_stock
+from app.services.variant_keys import apply_signature, resolved_price, rules_from_values
 
 POSTED = ("completed", "partially_refunded", "refunded")
 SIZE_ORDER = ("XXXS", "XXS", "XS", "S", "M", "L", "XL", "XXL", "2XL", "XXXL", "3XL", "4XL", "5XL")
@@ -103,6 +104,147 @@ def _combinations(data: MatrixWrite) -> list[dict[str, str]]:
     for combination in itertools.product(*(axis.values for axis in data.axes)):
         rows.append({axis.key: value for axis, value in zip(data.axes, combination, strict=True)})
     return rows
+
+
+def _requested(data: MatrixWrite) -> list[tuple[dict[str, str], MatrixVariantDraft | None]]:
+    """Explicit drafts when the caller chose combinations; otherwise the full grid."""
+    if data.variants is not None:
+        return [(dict(draft.attributes), draft) for draft in data.variants]
+    return [(attributes, None) for attributes in _combinations(data)]
+
+
+def _clash(db: Session, code: str, reserved: set[str], *, ignore: uuid.UUID | None = None) -> bool:
+    lowered = code.lower()
+    if lowered in reserved:
+        return True
+    statement = select(Product.id).where(
+        or_(func.lower(Product.sku) == lowered, func.lower(Product.barcode) == lowered)
+    )
+    if ignore is not None:
+        statement = statement.where(Product.id != ignore)
+    return db.scalar(statement) is not None
+
+
+def _opening_batch(
+    db: Session,
+    product: Product,
+    *,
+    store_id: uuid.UUID,
+    user_id: uuid.UUID,
+    quantity: int,
+    cost_cents: int,
+) -> None:
+    """Records this variant's own cost. A positive quantity is also the opening receipt."""
+    batch = PurchaseBatch(
+        batch_number=f"OPEN-{uuid.uuid4().hex[:12]}".upper(),
+        store_id=store_id,
+        import_source="MANUAL",
+        total_cost_amount=quantity * cost_cents,
+        total_items_count=quantity,
+        currency=product.currency,
+        status="ACTIVE",
+        notes="Opening stock",
+        created_by_id=user_id,
+    )
+    db.add(batch)
+    db.flush()
+    db.add(
+        BatchItem(
+            batch_id=batch.id,
+            position=0,
+            product_id=product.id,
+            store_id=store_id,
+            quantity_imported=quantity,
+            quantity_remaining=quantity,
+            purchase_cost_per_unit=cost_cents,
+            selling_price_per_unit=product.price_cents,
+            imported_serials=[],
+        )
+    )
+    db.flush()
+    if quantity > 0:
+        move_stock(
+            db,
+            product_id=product.id,
+            store_id=store_id,
+            quantity=quantity,
+            movement_type="PURCHASE_IN",
+            reference_type="purchase_batch",
+            reference_id=batch.id,
+            user_id=user_id,
+            note=f"{batch.batch_number} · opening stock",
+        )
+
+
+def _stock_new(
+    db: Session,
+    product: Product,
+    draft: MatrixVariantDraft | None,
+    *,
+    store_id: uuid.UUID | None,
+    user_id: uuid.UUID | None,
+) -> None:
+    if draft is None or store_id is None:
+        return
+    quantity = draft.opening_quantity or 0
+    reorder = draft.min_reorder_level
+    if reorder:
+        level_for(db, product.id, store_id).min_reorder_level = reorder
+    if draft.cost_cents is not None and user_id is not None:
+        _opening_batch(
+            db,
+            product,
+            store_id=store_id,
+            user_id=user_id,
+            quantity=quantity,
+            cost_cents=draft.cost_cents,
+        )
+        return
+    if quantity > 0:
+        move_stock(
+            db,
+            product_id=product.id,
+            store_id=store_id,
+            quantity=quantity,
+            movement_type="AUDIT_ADJUSTMENT",
+            reference_type="opening_balance",
+            reference_id=product.id,
+            user_id=user_id,
+            note="Opening stock",
+        )
+
+
+def _touch(
+    db: Session,
+    product: Product,
+    draft: MatrixVariantDraft,
+    model: ProductModel,
+    *,
+    user_id: uuid.UUID | None,
+) -> None:
+    """Updates a variant that already exists. Opening stock is not applied again."""
+    if product.product_model_id not in (None, model.id):
+        raise ApiError(422, "model_mismatch", "That product belongs to another model.")
+    if product.product_model_id != model.id or (product.variant_attributes or {}) != draft.attributes:
+        product.variant_attributes = draft.attributes
+        _classify(db, product, model_id=model.id, category_id=None, sub_category_id=None, brand=None)
+        apply_signature(product)
+    if draft.sku and draft.sku != product.sku:
+        if _clash(db, draft.sku, set(), ignore=product.id):
+            raise field_conflict("SKU is already in use.", sku="SKU is already in use.")
+        product.sku = draft.sku
+    if draft.barcode and draft.barcode != product.barcode:
+        if _clash(db, draft.barcode, set(), ignore=product.id):
+            raise field_conflict("Barcode is already in use.", barcode="Barcode is already in use.")
+        product.barcode = draft.barcode
+    if draft.is_active is not None and draft.is_active != product.is_active:
+        product.is_active = draft.is_active
+    if draft.price_cents is not None and draft.price_cents != product.price_cents:
+        from app.services import markdown_service
+
+        markdown_service.record(db, product, draft.price_cents, "BULK", user_id=user_id)
+        product.price_cents = draft.price_cents
+        product.price_source = "override"
 
 
 def matrix(db: Session, model_id: uuid.UUID, *, store_id: uuid.UUID | None = None) -> MatrixOut:
@@ -178,7 +320,7 @@ def preview(db: Session, model_id: uuid.UUID, data: MatrixWrite) -> MatrixPrevie
     inactive = {_key(product.variant_attributes or {}) for product in products if not product.is_active}
     seen: set[tuple[tuple[str, str], ...]] = set()
     creating = existing = duplicates = 0
-    for attributes in _combinations(data):
+    for attributes, _draft in _requested(data):
         key = _key(attributes)
         if key in seen:
             duplicates += 1
@@ -199,42 +341,79 @@ def preview(db: Session, model_id: uuid.UUID, data: MatrixWrite) -> MatrixPrevie
     )
 
 
-def generate(db: Session, model_id: uuid.UUID, data: MatrixWrite, currency: str) -> MatrixOut:
+def generate(
+    db: Session,
+    model_id: uuid.UUID,
+    data: MatrixWrite,
+    currency: str,
+    *,
+    user_id: uuid.UUID | None = None,
+) -> MatrixOut:
     model = _model(db, model_id, lock=True)
-    existing = {
-        _key(product.variant_attributes or {})
-        for product in db.scalars(select(Product).where(Product.product_model_id == model.id))
-    }
-    # Remember the prices for new cells. Existing variant prices, SKUs, barcodes, and stock stay as they are.
+    if data.opening_store_id is not None:
+        _store(db, data.opening_store_id)
+    products = list(db.scalars(select(Product).where(Product.product_model_id == model.id)))
+    by_key = {_key(product.variant_attributes or {}): product for product in products}
+    by_id = {product.id: product for product in products}
+    # Remember the prices for new cells. An existing variant's own price, SKU, barcode, and stock stay unless a
+    # draft names that combination and sets a new value. Opening stock is applied only when the row is created.
     model.default_price_cents = data.price_cents
     model.price_rules = rules_from_values([(axis.key, axis.values) for axis in data.axes], data.price_by_value)
     prefix = _prefix(model, data.sku_prefix)
     reserved: set[str] = set()
     created = skipped = 0
-    for combination in itertools.product(*(axis.values for axis in data.axes)):
-        attributes = {axis.key: value for axis, value in zip(data.axes, combination, strict=True)}
-        if _key(attributes) in existing:
+    for attributes, draft in _requested(data):
+        key = _key(attributes)
+        current = by_id.get(draft.product_id) if draft and draft.product_id else None
+        if current is None:
+            current = by_key.get(key)
+        if current is not None:
+            owner = by_key.get(key)
+            if owner is not None and owner.id != current.id:
+                raise field_conflict(
+                    "This combination already exists.",
+                    variant_attributes="This combination already exists.",
+                )
+            if draft is not None:
+                _touch(db, current, draft, model, user_id=user_id)
+                by_key[_key(current.variant_attributes or {})] = current
             skipped += 1
             continue
-        stem = f"{prefix}-{'-'.join(_abbreviation(value) for value in combination)}"[:60]
-        sku = stem
-        suffix = 2
-        while barcodes.code_taken(db, sku, reserved):
-            sku = f"{stem}-{suffix}"
-            suffix += 1
+        ordered = [attributes[axis.key] for axis in data.axes if axis.key in attributes]
+        if draft and draft.sku:
+            if _clash(db, draft.sku, reserved):
+                raise field_conflict("SKU is already in use.", sku="SKU is already in use.")
+            sku = draft.sku
+        else:
+            stem = f"{prefix}-{'-'.join(_abbreviation(value) for value in ordered)}"[:60]
+            sku = stem
+            suffix = 2
+            while _clash(db, sku, reserved):
+                sku = f"{stem}-{suffix}"
+                suffix += 1
         reserved.add(sku.lower())
+        if draft and draft.barcode:
+            if _clash(db, draft.barcode, reserved):
+                raise field_conflict("Barcode is already in use.", barcode="Barcode is already in use.")
+            barcode = draft.barcode
+        else:
+            barcode = barcodes.in_store_ean13(db, reserved)
+        reserved.add(barcode.lower())
         price, source = resolved_price(data.price_cents, model.price_rules, attributes)
+        if draft and draft.price_cents is not None:
+            price, source = draft.price_cents, "override"
         product = Product(
             sku=sku,
-            barcode=barcodes.in_store_ean13(db, reserved),
-            name=" ".join([model.name, *combination])[:200],
+            barcode=barcode,
+            name=" ".join([model.name, *ordered])[:200],
             model_number=model.code,
             variant_attributes=attributes,
+            specifications=dict(data.specifications),
             price_cents=price,
             price_source=source,
             currency=currency,
             is_serialized=False,
-            is_active=True,
+            is_active=True if draft is None or draft.is_active is None else draft.is_active,
             tax_category=data.tax_category,
         )
         _classify(db, product, model_id=model.id, category_id=None, sub_category_id=None, brand=None)
@@ -245,7 +424,9 @@ def generate(db: Session, model_id: uuid.UUID, data: MatrixWrite, currency: str)
         except IntegrityError:
             skipped += 1
             continue
-        existing.add(_key(attributes))
+        _stock_new(db, product, draft, store_id=data.opening_store_id, user_id=user_id)
+        by_key[key] = product
+        by_id[product.id] = product
         created += 1
     db.commit()
     result = matrix(db, model.id)
@@ -266,7 +447,7 @@ def bulk(db: Session, model_id: uuid.UUID, data: MatrixBulk, *, user_id: uuid.UU
 
     for product in products:
         changed = False
-        if data.price_cents is not None:
+        if data.price_cents is not None and not (data.only_unset and product.price_source == "override"):
             if data.price_cents != product.price_cents:
                 markdown_service.record(db, product, data.price_cents, "BULK", user_id=user_id)
                 product.price_cents = data.price_cents
@@ -281,7 +462,8 @@ def bulk(db: Session, model_id: uuid.UUID, data: MatrixBulk, *, user_id: uuid.UU
             changed = True
         if data.min_reorder_level is not None and data.store_id is not None:
             level = level_for(db, product.id, data.store_id)
-            if level.min_reorder_level != data.min_reorder_level:
+            untouched = data.only_unset and level.min_reorder_level not in (0, data.min_reorder_level)
+            if not untouched and level.min_reorder_level != data.min_reorder_level:
                 level.min_reorder_level = data.min_reorder_level
                 changed = True
         if changed:

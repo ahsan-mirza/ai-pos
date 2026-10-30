@@ -113,13 +113,9 @@ export function AssistantDrawer() {
   const suggestions = assistant.info
     ? [...assistant.info.suggestions.en.slice(0, 4), ...assistant.info.suggestions.ar.slice(0, 3)]
     : [];
-  const provider =
-    assistant.info == null
-      ? ""
-      : assistant.info.provider === "builtin"
-        ? "built-in"
-        : assistant.info.provider.replace(/^openai:|^ollama:/, "");
   const past = assistant.threads.filter((thread) => thread.messages.length > 0);
+  const pending = assistant.messages.at(-1);
+  const readingReports = assistant.busy && pending?.role === "user" && !isConversational(pending.content);
 
   const send = () => {
     if (assistant.busy || draft.trim().length < 2) return;
@@ -152,13 +148,7 @@ export function AssistantDrawer() {
             <h2 id="ai-assistant-title" className="text-sm font-semibold text-charcoal">
               AI Assistant
             </h2>
-            <p className="truncate text-xs text-charcoal/55">
-              Ask your business
-              {provider ? ` · ${provider}` : ""}
-            </p>
-            <p className="truncate text-[11px] text-charcoal/45">
-              {assistant.moduleLabel} · {assistant.storeLabel}
-            </p>
+            <p className="truncate text-xs text-charcoal/55">Your intelligent business assistant</p>
           </div>
           <button type="button" className={iconAction} aria-label="Conversation history" aria-pressed={historyOpen} onClick={() => setHistoryOpen((value) => !value)}>
             <History size={16} aria-hidden="true" />
@@ -204,11 +194,18 @@ export function AssistantDrawer() {
           </div>
         ) : (
           <div ref={scrollerRef} className="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain px-4 py-4">
-            {assistant.messages.length === 0 ? <Welcome suggestions={suggestions} onAsk={(text) => void assistant.ask(text)} /> : null}
+            {assistant.messages.length === 0 ? (
+              <Welcome
+                name={assistant.userName}
+                business={assistant.businessName}
+                suggestions={suggestions}
+                onAsk={(text) => void assistant.ask(text)}
+              />
+            ) : null}
             {assistant.messages.map((message) => (
               <MessageView key={message.id} message={message} />
             ))}
-            {assistant.busy ? <p className="text-sm text-charcoal/50">Reading the reports…</p> : null}
+            {assistant.busy ? <Typing reading={readingReports} /> : null}
           </div>
         )}
 
@@ -238,6 +235,15 @@ export function AssistantDrawer() {
             </button>
           ) : null}
           <ErrorNote message={assistant.error} />
+          {assistant.failedQuestion && !assistant.busy ? (
+            <button
+              type="button"
+              onClick={() => void assistant.ask(assistant.failedQuestion ?? "", { retry: true })}
+              className="mb-2 text-xs font-semibold text-accent"
+            >
+              Retry
+            </button>
+          ) : null}
           <form
             className="flex items-end gap-2"
             onSubmit={(event) => {
@@ -282,13 +288,53 @@ export function AssistantDrawer() {
   );
 }
 
-function Welcome({ suggestions, onAsk }: { suggestions: string[]; onAsk: (text: string) => void }) {
+function isConversational(text: string): boolean {
+  const plain = text.trim().toLowerCase().replace(/[!.?؟،]+$/g, "");
+  const piece = "(?:hi+|hey+|hello+|yo+|good (?:morning|afternoon|evening|night)|how are (?:you|u)|how r u|there|مرحبا|السلام|كيف حالك)";
+  if (new RegExp(`^(?:${piece})(?:\\s+${piece})*$`).test(plain)) return true;
+  return /^(?:thanks?(?: you)?|thank you|thx|شكرا|what can you do|what do you do|who are you)$/.test(plain);
+}
+
+function Typing({ reading }: { reading: boolean }) {
+  return (
+    <p className="text-sm text-charcoal/50" role="status">
+      <span className="mr-2 inline-flex gap-1 align-middle" aria-hidden="true">
+        <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-charcoal/40" />
+        <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-charcoal/40 [animation-delay:150ms]" />
+        <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-charcoal/40 [animation-delay:300ms]" />
+      </span>
+      {reading ? "Reading the reports…" : "Writing a reply…"}
+    </p>
+  );
+}
+
+function Welcome({
+  name,
+  business,
+  suggestions,
+  onAsk,
+}: {
+  name: string;
+  business: string;
+  suggestions: string[];
+  onAsk: (text: string) => void;
+}) {
   return (
     <div className="py-2">
-      <p className="text-sm font-semibold text-charcoal">How can I help your business?</p>
-      <p className="mt-2 text-sm leading-relaxed text-charcoal/60">
-        Ask about sales, revenue, profit, best-selling products, inventory and stock, purchase orders, suppliers, customer balances, expenses, or branch performance. Answers come only from your reports, in English or العربية.
+      <p className="text-sm font-semibold text-charcoal">{name ? `Welcome, ${name}! 👋` : "Welcome! 👋"}</p>
+      <p className="mt-2 text-sm leading-relaxed text-charcoal/70">
+        {business ? (
+          <>
+            I&apos;m your AI assistant for <strong>{business}</strong>.
+          </>
+        ) : (
+          "I'm your AI assistant across all branches."
+        )}
       </p>
+      <p className="mt-2 text-sm leading-relaxed text-charcoal/60">
+        I can help you understand your sales, inventory, purchases, expenses, and business performance.
+      </p>
+      <p className="mt-2 text-sm text-charcoal/70">What would you like to know today?</p>
       <div className="mt-4 flex flex-wrap gap-2">
         {suggestions.map((item) => (
           <button

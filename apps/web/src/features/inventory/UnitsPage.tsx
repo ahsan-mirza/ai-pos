@@ -63,7 +63,7 @@ export function UnitsPage() {
   };
 
   return (
-    <section className="space-y-4 p-4 lg:p-6">
+    <section className="space-y-4">
       <div className="rounded-card border border-line bg-white p-6">
         <div className="flex items-center gap-3">
           <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-accent text-white">

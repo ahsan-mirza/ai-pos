@@ -29,6 +29,13 @@ function safeFile(pathname) {
 
 createServer((request, response) => {
   const path = request.url || "/";
+  // Photos are served by the API. Falling through to index.html makes the browser show a broken image.
+  if (path === "/media" || path.startsWith("/media/") || path.startsWith("/media?")) {
+    response.writeHead(404, { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" });
+    response.end("not found");
+    console.log(`${request.method} ${path} 404`);
+    return;
+  }
   let file = safeFile(path);
   if (file === null) {
     response.writeHead(403);

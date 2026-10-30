@@ -1,14 +1,15 @@
 import { Permission, formatMoney, noMatchesMessage, type Product } from "@ai-pos/shared-types";
-import { Package, Pencil, Plus, Printer, Search, Upload } from "lucide-react";
+import { Package, Pencil, Plus, Power, Printer, Search, Trash2, Upload } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { DataTable, type DataTableColumn } from "../../components/ui/DataTable";
-import { PrimaryButton, SearchField } from "../../components/ui/Field";
+import { GhostButton, PrimaryButton, SearchField } from "../../components/ui/Field";
+import { Modal } from "../../components/ui/Modal";
 import { apiGet } from "../../lib/api";
-import { mediaSrc } from "../../lib/media";
+import { ProductImage } from "../../components/ui/ProductImage";
 import { useAuth } from "../../lib/auth";
 import { useCurrency } from "../../lib/currency";
-import { labelsApi } from "./api";
+import { inventoryApi, labelsApi, message } from "./api";
 import { ProductDetailDrawer } from "./ProductDetailDrawer";
 import { ImportWizardModal } from "./import/ImportWizardModal";
 import { ProductFormModal } from "./ProductFormModal";
@@ -40,6 +41,9 @@ export function InventoryPage() {
   const manage = can(Permission.PortalInventoryManage);
   const [editing, setEditing] = useState<Product | "new" | null>(null);
   const [importing, setImporting] = useState(false);
+  const [pendingDelete, setPendingDelete] = useState<Product | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [rowBusy, setRowBusy] = useState(false);
   const navigate = useNavigate();
   const [params] = useSearchParams();
   const requestedProduct = params.get("product");
@@ -137,14 +141,17 @@ export function InventoryPage() {
       id: "photo",
       header: "Photo",
       className: "w-14",
-      cell: ({ product }) =>
-        product.thumb_url || product.image_url ? (
-          <img src={mediaSrc(product.thumb_url ?? product.image_url)} alt="" className="h-10 w-10 rounded-lg object-cover" />
-        ) : (
-          <span className="grid h-10 w-10 place-items-center rounded-lg bg-surface text-charcoal/35" aria-hidden="true">
-            <Package size={16} />
-          </span>
-        ),
+      cell: ({ product }) => (
+        <ProductImage
+          url={product.thumb_url ?? product.image_url}
+          className="h-10 w-10 rounded-lg object-cover"
+          fallback={
+            <span className="grid h-10 w-10 place-items-center rounded-lg bg-surface text-charcoal/35" aria-hidden="true">
+              <Package size={16} />
+            </span>
+          }
+        />
+      ),
     },
     {
       id: "product",
@@ -152,6 +159,11 @@ export function InventoryPage() {
       cell: ({ product, match, serial_status: serialStatus }) => (
         <span className={`font-medium ${open && selectedId === product.id ? "text-accent" : ""}`}>
           {product.name}
+          {product.is_active === false ? (
+            <span className="ml-2 rounded-full bg-charcoal/10 px-2 py-0.5 text-[10px] font-semibold uppercase text-charcoal/60">
+              Inactive
+            </span>
+          ) : null}
           {product.is_serialized ? (
             <span className="ml-2 rounded-full bg-accent px-2 py-0.5 text-[10px] font-semibold uppercase text-white">
               IMEI
@@ -208,7 +220,38 @@ export function InventoryPage() {
             align: "right" as const,
             className: splitHide,
             cell: ({ product }: (typeof hits)[number]) => (
-              <div className="flex justify-end gap-1">
+              <div className="flex justify-end gap-1" onClick={(event) => event.stopPropagation()}>
+                <IconButton
+                  label={product.is_active === false ? `Activate ${product.name}` : `Deactivate ${product.name}`}
+                  onClick={() => {
+                    setRowBusy(true);
+                    setNotice(null);
+                    void inventoryApi
+                      .updateProduct(product.id, { is_active: product.is_active === false })
+                      .then(() => {
+                        reload();
+                        setNotice(
+                          product.is_active === false
+                            ? `${product.name} is active and can be sold.`
+                            : `${product.name} is inactive and hidden on the register.`,
+                        );
+                      })
+                      .catch((caught: unknown) => setNotice(message(caught, "Could not update this product.")))
+                      .finally(() => setRowBusy(false));
+                  }}
+                >
+                  <Power size={14} className={product.is_active === false ? "text-charcoal/40" : "text-accent"} />
+                </IconButton>
+                <IconButton
+                  label={`Delete ${product.name}`}
+                  onClick={() => {
+                    if (rowBusy) return;
+                    setDeleteError(null);
+                    setPendingDelete(product);
+                  }}
+                >
+                  <Trash2 size={14} />
+                </IconButton>
                 <IconButton
                   label={`Print labels for ${product.name}`}
                   onClick={() => {
@@ -340,6 +383,45 @@ export function InventoryPage() {
               setRefreshKey((value) => value + 1);
             }}
           />
+        ) : null}
+        {pendingDelete ? (
+          <Modal
+            title={`Delete ${pendingDelete.name}?`}
+            subtitle="Products with sales or stock stay in the catalog. Deactivate those so the register stops selling them."
+            onClose={() => {
+              if (!rowBusy) setPendingDelete(null);
+            }}
+            footer={
+              <>
+                <GhostButton disabled={rowBusy} onClick={() => setPendingDelete(null)}>
+                  Cancel
+                </GhostButton>
+                <PrimaryButton
+                  disabled={rowBusy}
+                  onClick={() => {
+                    const product = pendingDelete;
+                    setRowBusy(true);
+                    setNotice(null);
+                    void inventoryApi
+                      .deleteProduct(product.id)
+                      .then(() => {
+                        if (selectedId === product.id) closeDrawer();
+                        setPendingDelete(null);
+                        reload();
+                        setNotice(`${product.name} was deleted.`);
+                      })
+                      .catch((caught: unknown) => setDeleteError(message(caught, "Could not delete this product.")))
+                      .finally(() => setRowBusy(false));
+                  }}
+                >
+                  {rowBusy ? "Deleting…" : "Delete product"}
+                </PrimaryButton>
+              </>
+            }
+          >
+            <p className="text-sm text-charcoal/70">{pendingDelete.sku} will be removed. This cannot be undone.</p>
+            {deleteError ? <p className="mt-3 text-sm font-medium text-danger">{deleteError}</p> : null}
+          </Modal>
         ) : null}
         {importing ? (
           <ImportWizardModal

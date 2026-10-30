@@ -23,6 +23,8 @@ class AssistantAsk(ApiModel):
     history: list[AssistantTurn] = Field(default_factory=list, max_length=12)
     context: AssistantContext | None = None
     conversation_id: uuid.UUID | None = None
+    # The portal's branch filter. The server checks it against this user's access. The model cannot set it.
+    store_id: uuid.UUID | None = None
 
 
 class ToolResultOut(ApiModel):

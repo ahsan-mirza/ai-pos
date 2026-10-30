@@ -1,5 +1,5 @@
 import { BrandLogo } from "@ai-pos/ui";
-import { LogOut, UserRound, X } from "lucide-react";
+import { ChevronDown, X } from "lucide-react";
 import { useEffect, useRef, useState, type FocusEvent, type MouseEvent, type ReactNode } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { useTenant } from "../../context/TenantContext";
@@ -8,7 +8,6 @@ import { portalHomePath } from "../../lib/portal-home";
 import { useCapabilities } from "../../lib/capabilities";
 import { useCanManageSettings } from "../../lib/currency";
 import { AiMark } from "../ui/AiMark";
-import { ProfileAvatar } from "../ui/ProfileAvatar";
 import { labelOf, navGroups, settingsTabAllowed, settingsTabs, type NavGroup, type NavItem } from "./navigation";
 import { StoreSwitcher } from "./StoreSwitcher";
 
@@ -48,72 +47,8 @@ interface Tip {
   top: number;
 }
 
-type TipHandler = (tip: Tip | null) => void;
-
-function tipEvents(collapsed: boolean, onTip: TipHandler | undefined, label: ReactNode) {
-  if (!collapsed || !onTip) return {};
-  const show = (event: MouseEvent<HTMLElement> | FocusEvent<HTMLElement>) => {
-    const rect = event.currentTarget.getBoundingClientRect();
-    onTip({ label, top: rect.top + rect.height / 2 });
-  };
-  const hide = () => onTip(null);
-  return { onMouseEnter: show, onMouseLeave: hide, onFocus: show, onBlur: hide };
-}
-
-/** The signed-in admin, shown only here: name and role when expanded, an avatar with a tooltip when collapsed. */
-function SidebarProfile({ collapsed, onTip }: { collapsed: boolean; onTip?: TipHandler }) {
-  const { user, logout } = useAuth();
-  if (user === null) return null;
-  const details = (
-    <>
-      <span className="block font-semibold">{user.full_name}</span>
-      <span className="block text-[11px] font-normal text-white/70">
-        {user.role.name} · @{user.username}
-      </span>
-    </>
-  );
-
-  return (
-    <div className="shrink-0 space-y-1 border-t border-line p-3">
-      <div
-        tabIndex={collapsed ? 0 : undefined}
-        role={collapsed ? "img" : undefined}
-        aria-label={collapsed ? `Signed in as ${user.full_name}, ${user.role.name}` : undefined}
-        title={collapsed ? undefined : `${user.full_name} · ${user.role.name}`}
-        {...tipEvents(collapsed, onTip, details)}
-        className={`flex items-center gap-3 overflow-hidden rounded-xl px-2.5 py-2 outline-none transition-colors focus-visible:ring-2 focus-visible:ring-accent/40 ${
-          collapsed ? "" : "bg-[#f8fafc] ring-1 ring-line"
-        }`}
-      >
-        <ProfileAvatar name={user.full_name} url={user.avatar_url} />
-        <span className={`min-w-0 transition-opacity duration-200 ${collapsed ? "pointer-events-none opacity-0" : "opacity-100"}`}>
-          <span className="block truncate text-[13px] font-semibold">{user.full_name}</span>
-          <span className="block truncate text-[11px] text-charcoal/50">{user.role.name}</span>
-        </span>
-      </div>
-      <Link
-        to="/account"
-        aria-label={collapsed ? "Your account" : undefined}
-        {...tipEvents(collapsed, onTip, "Your account")}
-        className="group flex h-10 w-full items-center gap-3 overflow-hidden rounded-lg px-[18px] text-[13px] font-medium text-charcoal/70 outline-none transition-colors hover:bg-charcoal/[0.04] hover:text-charcoal focus-visible:ring-2 focus-visible:ring-accent/40"
-      >
-        <UserRound size={16} strokeWidth={1.75} className="shrink-0" aria-hidden="true" />
-        <span className={`truncate transition-opacity duration-200 ${collapsed ? "opacity-0" : "opacity-100"}`}>Your account</span>
-      </Link>
-      <button
-        type="button"
-        onClick={logout}
-        aria-label={collapsed ? "Sign out" : undefined}
-        {...tipEvents(collapsed, onTip, "Sign out")}
-        className="group flex h-10 w-full items-center gap-3 overflow-hidden rounded-lg px-[18px] text-[13px] font-medium text-charcoal/70 outline-none transition-colors hover:bg-charcoal/[0.04] hover:text-charcoal focus-visible:ring-2 focus-visible:ring-accent/40"
-      >
-        <LogOut size={18} strokeWidth={1.75} aria-hidden="true" className="shrink-0 text-charcoal/50 group-hover:text-charcoal/80" />
-        <span className={`whitespace-nowrap transition-opacity duration-200 ${collapsed ? "opacity-0" : "opacity-100"}`}>
-          Sign out
-        </span>
-      </button>
-    </div>
-  );
+function sectionId(label: string): string {
+  return `nav-section-${label.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
 }
 
 function SidebarNav({
@@ -127,6 +62,14 @@ function SidebarNav({
 }) {
   const { pathname, hash } = useLocation();
   const groups = useVisibleGroups();
+  const activeLabel = groups.find((group) => group.items.some((item) => item.isActive(pathname, hash)))?.label ?? null;
+  // undefined follows the current page. A string is the section the user opened. null means they closed them all.
+  const [chosen, setChosen] = useState<string | null | undefined>(undefined);
+  const openLabel = chosen === undefined ? (activeLabel ?? groups[0]?.label ?? null) : chosen;
+
+  useEffect(() => {
+    setChosen(undefined);
+  }, [pathname, hash]);
 
   const showTip = (item: VisibleItem) => (event: MouseEvent<HTMLElement> | FocusEvent<HTMLElement>) => {
     if (!collapsed || !onTip) return;
@@ -134,69 +77,83 @@ function SidebarNav({
     onTip({ label: item.label, top: rect.top + rect.height / 2 });
   };
   const hideTip = () => onTip?.(null);
+  const toggle = (label: string) => {
+    setChosen(openLabel === label ? null : label);
+  };
 
   return (
     <nav aria-label="Primary" className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-3 py-4" onScroll={hideTip}>
-      {groups.map((group, index) => (
-        <div key={group.label} className={index ? "mt-5" : ""}>
-          <div className="relative mb-1 h-6" aria-hidden={collapsed}>
-            <span
-              className={`absolute inset-0 flex items-center px-3 text-[11px] font-semibold uppercase tracking-[0.12em] text-charcoal/40 transition-opacity duration-200 ${
-                collapsed ? "opacity-0" : "opacity-100"
-              }`}
-            >
-              {group.label}
-            </span>
-            <span
-              className={`absolute inset-x-3 top-1/2 h-px bg-line transition-opacity duration-200 ${
-                collapsed && index ? "opacity-100" : "opacity-0"
-              }`}
-            />
+      {groups.map((group, index) => {
+        const open = openLabel === group.label;
+        const showItems = collapsed || open;
+        const panelId = sectionId(group.label);
+        return (
+          <div key={group.label} className={index ? "mt-2" : ""}>
+            {collapsed ? (
+              index ? <div className="mx-3 mb-1 h-px bg-line" /> : null
+            ) : (
+              <button
+                type="button"
+                aria-expanded={open}
+                aria-controls={panelId}
+                onClick={() => toggle(group.label)}
+                className="flex h-8 w-full items-center justify-between rounded-lg px-3 text-[11px] font-semibold uppercase tracking-[0.12em] text-charcoal/40 outline-none transition-colors hover:bg-charcoal/[0.04] hover:text-charcoal focus-visible:ring-2 focus-visible:ring-accent/40"
+              >
+                <span>{group.label}</span>
+                <ChevronDown
+                  size={14}
+                  aria-hidden="true"
+                  className={`shrink-0 transition-transform duration-200 motion-reduce:transition-none ${open ? "rotate-180" : ""}`}
+                />
+              </button>
+            )}
+            {showItems ? (
+              <ul id={panelId} className="space-y-0.5">
+                {group.items.map((item) => {
+                  const active = item.isActive(pathname, hash);
+                  return (
+                    <li key={item.to}>
+                      <Link
+                        to={item.to}
+                        onClick={onNavigate}
+                        aria-current={active ? "page" : undefined}
+                        aria-label={collapsed ? item.label : undefined}
+                        onMouseEnter={showTip(item)}
+                        onMouseLeave={hideTip}
+                        onFocus={showTip(item)}
+                        onBlur={hideTip}
+                        className={`group relative flex h-10 items-center gap-3 overflow-hidden rounded-lg px-[18px] text-[13px] font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-accent/40 ${
+                          active
+                            ? "bg-accent/[0.08] text-accent"
+                            : "text-charcoal/70 hover:bg-charcoal/[0.04] hover:text-charcoal"
+                        }`}
+                      >
+                        {active ? (
+                          <span aria-hidden="true" className="absolute inset-y-2 left-0 w-[3px] rounded-r-full bg-accent" />
+                        ) : null}
+                        {item.ai ? <AiMark size={13} /> : null}
+                        <item.icon
+                          aria-hidden="true"
+                          size={18}
+                          strokeWidth={active ? 2 : 1.75}
+                          className={`shrink-0 ${active ? "" : "text-charcoal/50 group-hover:text-charcoal/80"}`}
+                        />
+                        <span
+                          className={`whitespace-nowrap transition-opacity duration-200 ${
+                            collapsed ? "pointer-events-none opacity-0" : "opacity-100"
+                          } ${active ? "font-semibold" : ""}`}
+                        >
+                          {item.label}
+                        </span>
+                      </Link>
+                    </li>
+                  );
+                })}
+              </ul>
+            ) : null}
           </div>
-          <ul className="space-y-0.5">
-            {group.items.map((item) => {
-              const active = item.isActive(pathname, hash);
-              return (
-                <li key={item.to}>
-                  <Link
-                    to={item.to}
-                    onClick={onNavigate}
-                    aria-current={active ? "page" : undefined}
-                    aria-label={collapsed ? item.label : undefined}
-                    onMouseEnter={showTip(item)}
-                    onMouseLeave={hideTip}
-                    onFocus={showTip(item)}
-                    onBlur={hideTip}
-                    className={`group relative flex h-10 items-center gap-3 overflow-hidden rounded-lg px-[18px] text-[13px] font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-accent/40 ${
-                      active
-                        ? "bg-accent/[0.08] text-accent"
-                        : "text-charcoal/70 hover:bg-charcoal/[0.04] hover:text-charcoal"
-                    }`}
-                  >
-                    {active ? (
-                      <span aria-hidden="true" className="absolute inset-y-2 left-0 w-[3px] rounded-r-full bg-accent" />
-                    ) : null}
-                    {item.ai ? <AiMark size={13} /> : null}
-                    <item.icon
-                      aria-hidden="true"
-                      size={18}
-                      strokeWidth={active ? 2 : 1.75}
-                      className={`shrink-0 ${active ? "" : "text-charcoal/50 group-hover:text-charcoal/80"}`}
-                    />
-                    <span
-                      className={`whitespace-nowrap transition-opacity duration-200 ${
-                        collapsed ? "pointer-events-none opacity-0" : "opacity-100"
-                      } ${active ? "font-semibold" : ""}`}
-                    >
-                      {item.label}
-                    </span>
-                  </Link>
-                </li>
-              );
-            })}
-          </ul>
-        </div>
-      ))}
+        );
+      })}
     </nav>
   );
 }
@@ -248,7 +205,6 @@ export function Sidebar({
       >
         <SidebarBrand collapsed={collapsed} />
         <SidebarNav collapsed={collapsed} onTip={setTip} />
-        <SidebarProfile collapsed={collapsed} onTip={setTip} />
       </aside>
 
       {tip ? (
@@ -282,7 +238,6 @@ export function Sidebar({
               <StoreSwitcher />
             </div>
             <SidebarNav collapsed={false} onNavigate={onCloseMobile} />
-            <SidebarProfile collapsed={false} />
           </div>
         </div>
       ) : null}

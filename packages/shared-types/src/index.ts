@@ -260,9 +260,21 @@ export type {
   MatrixBulkResult,
   MatrixCell,
   MatrixPreview,
+  MatrixVariantInput,
   MatrixWrite,
   VariantMatrix,
 } from "./fashion.js";
+export {
+  abbreviateVariantValue,
+  applyBulkToDrafts,
+  blankDraft,
+  draftSku,
+  draftsFromCells,
+  mergeVariantDrafts,
+  variantCombinations,
+  variantDraftKey,
+} from "./variant-draft.js";
+export type { VariantDraft, VariantDraftField } from "./variant-draft.js";
 export { ANOMALY_LABELS, PRICE_ACTION_LABELS } from "./insights.js";
 export { unitFactor, unitLabel } from "./units.js";
 export type { UnitCreate, UnitOfMeasure, UnitOption } from "./units.js";

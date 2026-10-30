@@ -86,7 +86,7 @@ export function StockCountsPage() {
   const shrinkCents = posted.reduce((sum, count) => sum + Math.min(0, count.variance_value_cents ?? 0), 0);
 
   return (
-    <section className="space-y-4 p-4 md:p-6">
+    <section className="space-y-4">
       <div className="grid gap-4 md:grid-cols-3">
         <article className="rounded-card bg-charcoal p-6 text-white">
           <p className="text-sm text-white/60">Counts in progress</p>
@@ -395,7 +395,7 @@ function CountSheet({
   };
 
   return (
-    <section className="space-y-4 p-4 md:p-6">
+    <section className="space-y-4">
       <button type="button" onClick={onBack} className="inline-flex items-center gap-1.5 text-sm font-medium text-charcoal/60 hover:text-accent">
         <ArrowLeft size={15} aria-hidden="true" /> All counts
       </button>

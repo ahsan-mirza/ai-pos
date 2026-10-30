@@ -274,19 +274,25 @@ def test_assistant_stays_inside_the_authenticated_store(platform, monkeypatch) -
         return {"content": "Alpha sales only.", "tool_calls": []}
 
     monkeypatch.setattr(assistant_llm, "complete", complete)
-    manipulated = _ask(platform, alpha, "How much did we sell today?")
-    assert manipulated["provider"] == "ollama:qwen3:8b"
-    dumped = json.dumps(manipulated)
-    assert "111.11" in dumped and "909.09" in dumped
+    hello = _ask(platform, alpha, "Hello")
+    assert hello["results"] == [] and calls_seen["n"] == 0
+    sales = _ask(platform, alpha, "How much did we sell today?")
+    assert calls_seen["n"] == 0
+    assert sales["results"][0]["tool"] == "sales_summary"
+    dumped = json.dumps(sales)
+    assert ALPHA_TOTAL in dumped or "111.11" in dumped
     assert BRAVO_TOTAL not in dumped and "222.22" not in dumped and "808.08" not in dumped
 
-    def unavailable(_settings, _turns, _schemas):
+    def unavailable(_settings, _turns, _schemas, **_kwargs):
+        calls_seen["n"] += 1
         raise RuntimeError("ollama_unavailable")
 
     monkeypatch.setattr(assistant_llm, "complete", unavailable)
-    fallback = _ask(platform, alpha, "How much did we sell today?")
+    fallback = _ask(platform, alpha, "Give me a briefing")
+    assert calls_seen["n"] == 1
     assert fallback["provider"] == "builtin (fallback)"
-    assert ALPHA_TOTAL in fallback["answer"] and BRAVO_TOTAL not in json.dumps(fallback)
+    assert fallback["results"] == []
+    assert BRAVO_TOTAL not in json.dumps(fallback) and ALPHA_TOTAL not in json.dumps(fallback)
 
     health = platform.client.get("/api/v1/assistant/health", headers=alpha)
     assert health.status_code == 200, health.text

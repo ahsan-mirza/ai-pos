@@ -133,7 +133,7 @@ export function BranchTaxSettings() {
           {busy ? "Saving…" : "Save branch tax"}
         </PrimaryButton>
       </div>
-      <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,1fr)_280px]">
+      <div className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,1fr)_280px]">
         <div className="space-y-4">
           <SelectField
             label="Branch"

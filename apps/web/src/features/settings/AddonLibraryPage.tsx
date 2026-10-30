@@ -138,7 +138,7 @@ export function AddonLibraryPage() {
   };
 
   return (
-    <div className="mx-auto flex max-w-3xl flex-col gap-4 p-4 md:p-6">
+    <div className="flex w-full flex-col gap-4">
       <header>
         <h1 className="text-xl font-semibold">Add-ons</h1>
         <p className="mt-1 text-sm text-charcoal/60">

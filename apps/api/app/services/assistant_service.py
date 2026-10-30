@@ -131,7 +131,20 @@ INTENTS = (
     ("price_suggestions", ("تسعير", "الأسعار", "الاسعار", "رفع السعر", "تخفيض السعر", "تخفيضات")),
     ("credit_risk", ("credit risk", "risky", "riskiest", "risk score", "risk grade", "bad payer", "who pays late")),
     ("credit_risk", ("مخاطر الائتمان", "مخاطر", "متعثر", "تصنيف العميل")),
-    ("reorder_forecast", ("reorder", "re-order", "forecast", "what should i order", "what to order", "restock")),
+    (
+        "reorder_forecast",
+        (
+            "reorder",
+            "re-order",
+            "forecast",
+            "what should i order",
+            "what to order",
+            "restock",
+            "running low",
+            "out of stock",
+            "stockout",
+        ),
+    ),
     ("reorder_forecast", ("إعادة الطلب", "اعادة الطلب", "توقع", "توقعات", "ماذا أطلب", "ماذا اطلب")),
     ("slow_stock", ("slow", "dead stock", "not selling", "not sold", "aged stock", "ageing", "aging", "holding cost")),
     ("slow_stock", ("راكد", "بطيء", "بطيئة", "لا يباع")),
@@ -214,6 +227,28 @@ Today is {today}. Authorized branches: {stores}.
 Reply in the language of the question (Arabic or English), in 1-4 short sentences,
 quoting amounts exactly as the tools format them."""
 
+CHAT_PROMPT = """You are the AxizPOS assistant for the signed-in business.
+Reply in the language of the question, in one or two short sentences.
+Do not invent sales, stock, or money figures.
+If a number is needed, ask the user to name the report, such as sales, stock, or expenses.
+Today is {today}."""
+
+# A whole message that is only a greeting, thanks, or a question about what the assistant can do.
+_CHAT_PIECE = (
+    r"hi+|hey+|hello+|yo+|good\s+(?:morning|afternoon|evening|night)|"
+    r"how\s+are\s+(?:you|u)|how\s+r\s+u|how'?re\s+you|what'?s\s+up|how\s+is\s+it\s+going|"
+    r"مرحبا|أهلا|اهلا|السلام(?:\s+عليكم)?|كيف\s+حالك|كيف\s+حالكم"
+)
+_GREETING = re.compile(rf"(?:{_CHAT_PIECE})(?:[\s,]+(?:{_CHAT_PIECE}))*(?:\s+there)?", re.IGNORECASE)
+_THANKS = re.compile(
+    r"(?:thanks?(?:\s+you)?(?:\s+so\s+much)?|thank\s+you(?:\s+so\s+much)?|thx|cheers|شكرا|شكرًا|مشكور)",
+    re.IGNORECASE,
+)
+_CAPABILITIES = re.compile(
+    r"(?:what can you do|what do you do|who are you|how can you help|what are you able to do|capabilities)",
+    re.IGNORECASE,
+)
+
 
 def detect_language(text: str) -> str:
     return "ar" if len(ARABIC.findall(text)) >= max(2, len(text.strip()) // 5) else "en"
@@ -246,6 +281,44 @@ def _intent(text: str) -> str | None:
         if any(_close_to(token, word) for token in tokens for word in words):
             return name
     return None
+
+
+def _plain(question: str) -> str:
+    return re.sub(r"\s+", " ", question.strip().lower()).strip(" !.?؟،")
+
+
+def conversation_kind(question: str) -> str | None:
+    """Greeting, thanks, or a capabilities question. A business report always wins."""
+    if plan(question, []) is not None:
+        return None
+    text = _plain(question)
+    if _THANKS.fullmatch(text):
+        return "thanks"
+    if _CAPABILITIES.fullmatch(text):
+        return "help"
+    if _GREETING.fullmatch(text):
+        return "greeting"
+    return None
+
+
+def _conversation_answer(kind: str, language: str) -> str:
+    if language == "ar":
+        if kind == "thanks":
+            return "على الرحب والسعة. اسألني عن المبيعات أو المخزون أو المشتريات أو المصاريف متى ما أردت."
+        if kind == "help":
+            return "أقدر أساعدك تفهم المبيعات والمخزون والمشتريات والمصاريف وأداء العمل. ما الذي تريد معرفته؟"
+        return "أهلًا. أقدر أساعدك في المبيعات والمخزون والمشتريات والمصاريف وأداء العمل. ماذا تريد أن تعرف؟"
+    if kind == "thanks":
+        return "You're welcome. Ask about sales, inventory, purchases, or expenses whenever you like."
+    if kind == "help":
+        return (
+            "I can help you understand sales, inventory, purchases, expenses, and how the business is doing. "
+            "What would you like to know?"
+        )
+    return (
+        "Hello. I can help with sales, inventory, purchases, expenses, and how the business is doing. "
+        "What would you like to know?"
+    )
 
 
 def plan(question: str, store_codes: list[str]) -> Plan | None:
@@ -618,7 +691,21 @@ def _names_other_branch(db: Session, principal: Principal, question: str) -> boo
     )
 
 
-def _builtin(db: Session, principal: Principal, question: str, language: str) -> AssistantReply:
+def _portal_code(db: Session, principal: Principal, store_id: uuid.UUID | None) -> str | None:
+    """The branch selected in the portal, when this user is allowed to see it."""
+    if store_id is None:
+        return None
+    store = db.get(Store, store_id)
+    if store is None:
+        return None
+    if principal.store_id is not None and principal.store_id != store.id:
+        return None
+    return store.code
+
+
+def _builtin(
+    db: Session, principal: Principal, question: str, language: str, *, portal_code: str | None = None
+) -> AssistantReply:
     tools = assistant_tools.available(principal)
 
     def reply(answer: str) -> AssistantReply:
@@ -631,6 +718,8 @@ def _builtin(db: Session, principal: Principal, question: str, language: str) ->
     chosen = plan(question, _authorized_codes(db, principal))
     if chosen is None:
         return reply(_help(language, tools))
+    if portal_code and "store_code" not in chosen.args:
+        chosen.args = {**chosen.args, "store_code": portal_code}
     try:
         result = assistant_tools.run(db, principal, chosen.tool, chosen.args, language=language, today=_today())
     except assistant_tools.BranchAccessDenied:
@@ -683,9 +772,9 @@ def _context_note(db: Session, principal: Principal, data: AssistantAsk) -> str:
     return " " + " ".join(parts) + " Use this only as a hint. Numbers must still come from tools."
 
 
-def _history(data: AssistantAsk) -> list[dict[str, str]]:
+def _history(data: AssistantAsk, *, limit: int = 8) -> list[dict[str, str]]:
     """Prior turns are untrusted text. They cannot select a store or a branch."""
-    return [{"role": turn.role, "content": turn.content} for turn in data.history[-8:]]
+    return [{"role": turn.role, "content": turn.content} for turn in data.history[-limit:]]
 
 
 def _messages(db: Session, principal: Principal, data: AssistantAsk) -> list[dict[str, Any]]:
@@ -781,21 +870,40 @@ def _openai(db: Session, principal: Principal, settings: Settings, data: Assista
     raise RuntimeError("The assistant did not finish answering.")
 
 
-def _ollama(db: Session, principal: Principal, settings: Settings, data: AssistantAsk, language: str) -> AssistantReply:
+def _ollama(
+    db: Session,
+    principal: Principal,
+    settings: Settings,
+    data: AssistantAsk,
+    language: str,
+    *,
+    with_tools: bool,
+) -> AssistantReply:
+    """Known reports never reach here. Unplanned questions get one short reply, or one tool round."""
     from app.services import assistant_llm
 
     tools = assistant_tools.available(principal)
+    if not with_tools:
+        turns = [
+            {"role": "system", "content": CHAT_PROMPT.format(today=_today().isoformat())},
+            *_history(data, limit=4),
+            {"role": "user", "content": data.question},
+        ]
+        message = assistant_llm.complete(settings, turns, [], mode="chat")
+        return _finish(language, tools, message.get("content") or "", f"ollama:{settings.ollama_model}", [])
     messages = _messages(db, principal, data)
     schemas = [assistant_tools.json_schema(tool) for tool in tools]
     results: list[ToolResult] = []
     for _ in range(settings.ollama_max_tool_rounds):
-        message = assistant_llm.complete(settings, messages, schemas)
+        message = assistant_llm.complete(settings, messages, schemas, mode="tools")
         calls = message.get("tool_calls") or []
         if not calls:
             return _finish(language, tools, message.get("content") or "", f"ollama:{settings.ollama_model}", results)
         messages.append({"role": "assistant", "content": message.get("content") or "", "tool_calls": calls})
-        for call in calls[:3]:
+        for call in calls[:1]:
             call_id, name, args = _parse_call(call if isinstance(call, dict) else {})
+            args.pop("tenant_id", None)
+            args.pop("store_id", None)
             result = _run_model_tool(db, principal, name, args, language)
             if result is not None:
                 results.append(result)
@@ -828,6 +936,10 @@ def _observe(
     fallback: bool,
     denied: bool,
     model: str | None,
+    correlation_id: str,
+    intent: str,
+    stages: dict[str, int],
+    error: str | None,
 ) -> None:
     from app.services import audit
 
@@ -835,18 +947,25 @@ def _observe(
     user_id = str(principal.user.id) if principal.user is not None else None
     branch = str(principal.store_id) if principal.store_id is not None else None
     provider = reply.provider if reply is not None else "unavailable"
-    tool_count = len(reply.results) if reply is not None else 0
+    tool_names = [result.tool for result in reply.results] if reply is not None else []
     log.info(
-        "assistant.ask tenant=%s branch=%s user=%s provider=%s model=%s duration_ms=%s tools=%s fallback=%s denied=%s",
+        "assistant.timing correlation=%s tenant=%s branch=%s user=%s intent=%s provider=%s model=%s "
+        "classified_ms=%s tools_ms=%s model_ms=%s total_ms=%s tools=%s fallback=%s denied=%s error=%s",
+        correlation_id,
         tenant_id,
         branch or "-",
         user_id or "-",
+        intent,
         provider,
         model or "-",
+        stages.get("classified", 0),
+        stages.get("tools", 0),
+        stages.get("model", 0),
         duration_ms,
-        tool_count,
+        ",".join(tool_names) or "-",
         fallback,
         denied,
+        error or "-",
     )
     try:
         audit.record(
@@ -858,15 +977,22 @@ def _observe(
             target_entity_id=principal.user.id if principal.user is not None else None,
             store_id=principal.store_id,
             details={
+                "correlation_id": correlation_id,
                 "tenant_id": tenant_id,
                 "branch_id": branch,
                 "user_id": user_id,
+                "intent": intent,
                 "provider": provider,
                 "model": model,
+                "classified_ms": stages.get("classified", 0),
+                "tools_ms": stages.get("tools", 0),
+                "model_ms": stages.get("model", 0),
                 "duration_ms": duration_ms,
-                "tool_count": tool_count,
+                "tool_count": len(tool_names),
+                "tools": tool_names,
                 "fallback": fallback,
                 "denied": denied,
+                "error": error,
             },
         )
         db.commit()
@@ -875,54 +1001,131 @@ def _observe(
         db.rollback()
 
 
-def ask(db: Session, principal: Principal, settings: Settings, data: AssistantAsk) -> AssistantReply:
+def ask(
+    db: Session,
+    principal: Principal,
+    settings: Settings,
+    data: AssistantAsk,
+    *,
+    correlation_id: str | None = None,
+) -> AssistantReply:
     from app.core.errors import ApiError
     from app.services import assistant_scope
 
     started = time.perf_counter()
+    stages: dict[str, int] = {}
+    correlation = correlation_id or uuid.uuid4().hex
+
+    def mark(name: str) -> None:
+        stages[name] = int((time.perf_counter() - started) * 1000)
+
+    mark("received")
     tenant_id = assistant_scope.require_tenant_id()
+    mark("authenticated")
     language = detect_language(data.question)
-    model = _model_name(settings)
+    kind = conversation_kind(data.question)
+    report = None if kind else plan(data.question, [])
+    mark("classified")
+    model = _model_name(settings) if kind is None and report is None else None
     fallback = False
-    denied = _names_other_branch(db, principal, data.question)
+    denied = False
+    failure: str | None = None
+    intent = kind or (report.tool if report is not None else "chat")
     try:
-        if denied:
+        if kind is not None:
             reply = AssistantReply(
-                answer=DENIED[language],
+                answer=_conversation_answer(kind, language),
                 language=language,
                 provider="builtin",
                 results=[],
                 suggestions=SUGGESTIONS[language],
             )
-        elif settings.assistant_provider == "ollama":
-            try:
-                reply = _ollama(db, principal, settings, data, language)
-            except (httpx.HTTPError, KeyError, IndexError, ValueError, RuntimeError, AssertionError):
-                if not settings.assistant_fallback_enabled:
-                    raise ApiError(503, "assistant_unavailable", "The assistant is unavailable right now.") from None
-                log.warning("assistant provider failed, answering with the built-in rules: ollama_unavailable")
-                fallback = True
-                reply = _builtin(db, principal, data.question, language)
-                reply.provider = "builtin (fallback)"
-        elif settings.assistant_provider == "openai" and settings.assistant_api_key:
-            try:
-                reply = _openai(db, principal, settings, data, language)
-            except (httpx.HTTPError, KeyError, IndexError, ValueError, RuntimeError):
-                if not settings.assistant_fallback_enabled:
-                    raise ApiError(503, "assistant_unavailable", "The assistant is unavailable right now.") from None
-                log.warning("assistant provider failed, answering with the built-in rules: openai_unavailable")
-                fallback = True
-                reply = _builtin(db, principal, data.question, language)
-                reply.provider = "builtin (fallback)"
         else:
-            reply = _builtin(db, principal, data.question, language)
+            denied = _names_other_branch(db, principal, data.question)
+            portal = _portal_code(db, principal, data.store_id)
+            if denied:
+                intent = "denied"
+                reply = AssistantReply(
+                    answer=DENIED[language],
+                    language=language,
+                    provider="builtin",
+                    results=[],
+                    suggestions=SUGGESTIONS[language],
+                )
+            elif report is not None or settings.assistant_provider == "builtin":
+                reply = _builtin(db, principal, data.question, language, portal_code=portal)
+                mark("tools")
+            elif settings.assistant_provider == "ollama":
+                model_started = time.perf_counter()
+                try:
+                    reply = _ollama(db, principal, settings, data, language, with_tools=False)
+                except ApiError:
+                    raise
+                except Exception as error:
+                    failure = type(error).__name__
+                    if not settings.assistant_fallback_enabled:
+                        raise ApiError(
+                            503, "assistant_unavailable", "The assistant is unavailable right now."
+                        ) from None
+                    log.warning("assistant provider failed, answering with the built-in rules: %s", failure)
+                    fallback = True
+                    reply = _builtin(db, principal, data.question, language, portal_code=portal)
+                    reply.provider = "builtin (fallback)"
+                stages["model"] = int((time.perf_counter() - model_started) * 1000)
+            elif settings.assistant_provider == "openai" and settings.assistant_api_key:
+                model_started = time.perf_counter()
+                try:
+                    reply = _openai(db, principal, settings, data, language)
+                except ApiError:
+                    raise
+                except Exception as error:
+                    failure = type(error).__name__
+                    if not settings.assistant_fallback_enabled:
+                        raise ApiError(
+                            503, "assistant_unavailable", "The assistant is unavailable right now."
+                        ) from None
+                    log.warning("assistant provider failed, answering with the built-in rules: %s", failure)
+                    fallback = True
+                    reply = _builtin(db, principal, data.question, language, portal_code=portal)
+                    reply.provider = "builtin (fallback)"
+                stages["model"] = int((time.perf_counter() - model_started) * 1000)
+            else:
+                reply = _builtin(db, principal, data.question, language, portal_code=portal)
+                mark("tools")
     except ApiError:
-        _observe(db, principal, None, tenant_id=tenant_id, started=started, fallback=False, denied=False, model=model)
+        _observe(
+            db,
+            principal,
+            None,
+            tenant_id=tenant_id,
+            started=started,
+            fallback=False,
+            denied=False,
+            model=model,
+            correlation_id=correlation,
+            intent=intent,
+            stages=stages,
+            error="assistant_unavailable",
+        )
         raise
     conversation_id = data.conversation_id or uuid.uuid4()
     assistant_scope.save_exchange(principal, conversation_id, data.question, reply.answer)
     reply.conversation_id = conversation_id
-    _observe(db, principal, reply, tenant_id=tenant_id, started=started, fallback=fallback, denied=denied, model=model)
+    mark("delivered")
+    _observe(
+        db,
+        principal,
+        reply,
+        tenant_id=tenant_id,
+        started=started,
+        fallback=fallback,
+        denied=denied,
+        model=model,
+        correlation_id=correlation,
+        intent=intent,
+        stages=stages,
+        error=failure,
+    )
     return reply
 
 
@@ -946,8 +1149,14 @@ def health(settings: Settings) -> dict[str, Any]:
     if settings.assistant_provider == "ollama":
         try:
             with httpx.Client(timeout=2) as client:
-                available = client.get(f"{settings.ollama_base_url.rstrip('/')}/api/tags").status_code == 200
-        except httpx.HTTPError:
+                response = client.get(f"{settings.ollama_base_url.rstrip('/')}/api/tags")
+                names = []
+                if response.status_code == 200:
+                    payload = response.json()
+                    names = [item.get("name", "") for item in payload.get("models", []) if isinstance(item, dict)]
+                wanted = settings.ollama_model
+                available = wanted in names
+        except (httpx.HTTPError, ValueError):
             available = False
     model = None
     if settings.assistant_provider == "ollama":

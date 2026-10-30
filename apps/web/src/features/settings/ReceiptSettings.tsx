@@ -179,7 +179,7 @@ export function ReceiptSettingsCard() {
         ) : null}
       </div>
 
-      <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
+      <div className="mt-6 grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
         <fieldset disabled={!canManage} className="min-w-0 space-y-5">
           <div>
             <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-charcoal/50">Logo</p>

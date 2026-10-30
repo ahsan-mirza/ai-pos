@@ -10,7 +10,7 @@ export function AssistantPage() {
   }, [assistant.openDrawer]);
 
   return (
-    <section className="mx-auto max-w-lg p-6">
+    <section>
       <h1 className="flex items-center gap-2 text-xl font-semibold">
         <AiMark size={18} /> AI Assistant
       </h1>

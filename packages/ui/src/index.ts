@@ -54,6 +54,7 @@ export {
 } from "./useAvailabilityCheck";
 export { focusFirstInvalid, useFormValidation } from "./useFormValidation";
 export { RepairJobsToolbar, type RepairJobsToolbarProps } from "./RepairJobsToolbar";
+export { SearchableMultiSpecSelect, type SearchableMultiSpecSelectProps } from "./SearchableMultiSpecSelect";
 export { SearchableSpecSelect, type SearchableSpecSelectProps } from "./SearchableSpecSelect";
 export { Select, billingCycleBadge, billingCycleOption, type SelectOption, type SelectProps } from "./Select";
 export {

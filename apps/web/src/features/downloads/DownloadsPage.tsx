@@ -61,7 +61,7 @@ export function DownloadsPage() {
 
   if (data === null) {
     return (
-      <section className="mx-auto max-w-6xl rounded-card border border-line bg-white p-8 text-sm text-charcoal/60">
+      <section className="rounded-card border border-line bg-white p-6 text-sm text-charcoal/60">
         {error ?? "Loading the installer…"}
       </section>
     );
@@ -71,7 +71,7 @@ export function DownloadsPage() {
   const installer = latest?.files.find((file) => file.kind === "exe");
 
   return (
-    <section className="mx-auto max-w-6xl">
+    <section>
       <div className="mb-6 grid gap-3 sm:grid-cols-2">
         <p className="rounded-2xl border border-line bg-white px-4 py-3 text-sm text-charcoal/70">
           <span className="font-semibold text-charcoal">AxizPOS Register.</span> Checkout, sales, and the register workflows that keep working offline and sync when the store is back online.

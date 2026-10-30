@@ -57,7 +57,9 @@ def test_ollama_chat_uses_the_configured_model(monkeypatch) -> None:
     assert reply["tool_calls"][0]["function"]["arguments"]["period"] == "today"
 
 
-def test_ollama_chat_retries_then_reports_the_error_type(monkeypatch) -> None:
+def test_ollama_chat_does_not_retry_a_timeout(monkeypatch) -> None:
+    attempts = {"n": 0}
+
     class Down:
         def __init__(self, **_kwargs) -> None:
             pass
@@ -66,6 +68,7 @@ def test_ollama_chat_retries_then_reports_the_error_type(monkeypatch) -> None:
             return self
 
         def invoke(self, _messages):
+            attempts["n"] += 1
             raise TimeoutError("timed out talking to the model server")
 
     import langchain_ollama
@@ -77,6 +80,32 @@ def test_ollama_chat_retries_then_reports_the_error_type(monkeypatch) -> None:
         assistant_llm.complete(settings, [{"role": "user", "content": "Sales today"}], [])
     except RuntimeError as error:
         assert str(error) == "TimeoutError"
+        assert attempts["n"] == 1
         assert "model server" not in str(error)
+    else:
+        raise AssertionError("The chat should fail once.")
+
+
+def test_ollama_chat_retries_a_dropped_connection(monkeypatch) -> None:
+    attempts = {"n": 0}
+
+    class Down:
+        def __init__(self, **_kwargs) -> None:
+            pass
+
+        def invoke(self, _messages):
+            attempts["n"] += 1
+            raise ConnectionError("connection reset")
+
+    import langchain_ollama
+
+    monkeypatch.setattr(langchain_ollama, "ChatOllama", Down)
+    settings = get_settings()
+    monkeypatch.setattr(settings, "ollama_max_retries", 1)
+    try:
+        assistant_llm.complete(settings, [{"role": "user", "content": "Hello there"}], [], mode="chat")
+    except RuntimeError as error:
+        assert str(error) == "ConnectionError"
+        assert attempts["n"] == 2
     else:
         raise AssertionError("The chat should fail after the retry.")

@@ -423,7 +423,9 @@ export function OrdersPage({ session }: { session: CashierSession }) {
   const seats = [...new Set(unpaid.map((item) => item.seat).filter((value): value is number => value !== null))].sort((a, b) => a - b);
   const hits = useMemo(() => {
     const needle = query.trim().toLowerCase();
-    const sellable = products.filter((product) => !product.is_serialized && !product.sold_by_weight);
+    const sellable = products.filter(
+      (product) => product.is_active !== false && !product.is_serialized && !product.sold_by_weight,
+    );
     return (needle ? sellable.filter((product) => `${product.name} ${product.sku} ${product.category}`.toLowerCase().includes(needle)) : sellable).slice(0, 24);
   }, [products, query]);
 

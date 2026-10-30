@@ -79,7 +79,7 @@ export function KitchenAgentPage() {
   const cards = brief?.cards ?? [];
 
   return (
-    <div className="mx-auto flex w-full max-w-5xl flex-col gap-6 p-6">
+    <div className="flex w-full flex-col gap-5">
       <div>
         <h1 className="flex items-center gap-2 text-2xl font-semibold text-charcoal">
           <AiMark size={20} /> Kitchen agent

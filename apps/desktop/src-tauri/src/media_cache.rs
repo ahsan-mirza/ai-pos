@@ -32,7 +32,7 @@ fn file_for(dir: &Path, url: &str) -> Option<PathBuf> {
 
 pub fn local_path(dir: &Path, url: &str) -> Option<PathBuf> {
     let path = file_for(dir, url)?;
-    path.is_file().then_some(path)
+    file_is_webp(&path).then_some(path)
 }
 
 pub fn urls(products: &[ProductRow]) -> Vec<String> {
@@ -78,8 +78,11 @@ pub fn download_missing(dir: &Path, urls: &[String]) -> bool {
         };
         wanted.push(name.clone());
         let path = dir.join(&name);
-        if path.is_file() {
+        if file_is_webp(&path) {
             continue;
+        }
+        if path.is_file() {
+            let _ = fs::remove_file(&path);
         }
         if save(&client, url, &path) {
             saved = true;
@@ -89,11 +92,31 @@ pub fn download_missing(dir: &Path, urls: &[String]) -> bool {
     saved
 }
 
+fn is_webp(bytes: &[u8]) -> bool {
+    bytes.len() >= 12 && &bytes[..4] == b"RIFF" && &bytes[8..12] == b"WEBP"
+}
+
+fn file_is_webp(path: &Path) -> bool {
+    let Ok(mut file) = fs::File::open(path) else {
+        return false;
+    };
+    let mut header = [0u8; 12];
+    file.read_exact(&mut header).is_ok() && is_webp(&header)
+}
+
 fn save(client: &reqwest::blocking::Client, url: &str, path: &Path) -> bool {
     let response = match client.get(url).send() {
         Ok(response) if response.status().is_success() => response,
         _ => return false,
     };
+    let content_type = response
+        .headers()
+        .get(reqwest::header::CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or("");
+    if !content_type.is_empty() && !content_type.starts_with("image/webp") {
+        return false;
+    }
     if response
         .content_length()
         .is_some_and(|length| length > MAX_BYTES)
@@ -102,7 +125,7 @@ fn save(client: &reqwest::blocking::Client, url: &str, path: &Path) -> bool {
     }
     let mut body = Vec::new();
     if response.take(MAX_BYTES + 1).read_to_end(&mut body).is_err()
-        || body.is_empty()
+        || !is_webp(&body)
         || body.len() as u64 > MAX_BYTES
     {
         return false;
@@ -154,5 +177,14 @@ mod tests {
             None
         );
         assert_eq!(cache_name("../0123456789abcdef0123456789abcdef.webp"), None);
+    }
+
+    #[test]
+    fn rejects_html_saved_as_a_photo() {
+        let html = b"<!doctype html><html></html>";
+        assert!(!super::is_webp(html));
+        let mut webp = b"RIFF\0\0\0\0WEBP".to_vec();
+        webp.extend_from_slice(&[0, 1, 2, 3]);
+        assert!(super::is_webp(&webp));
     }
 }

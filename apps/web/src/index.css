@@ -68,9 +68,9 @@
     .drawer-panel[data-state="closing"] {
       animation-name: drawer-out-split;
     }
-    /* Sticky split-view drawers: viewport minus the app chrome above the scroller and the page's 2rem padding. */
+    /* Sticky split-view drawers: viewport minus the app chrome above the scroller and the page gutter. */
     .split-drawer-h {
-      height: calc(100dvh - var(--chrome, 4rem) - 4rem);
+      height: calc(100dvh - var(--chrome, 4rem) - 2.5rem);
     }
   }
 

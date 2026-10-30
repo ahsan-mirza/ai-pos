@@ -1,11 +1,15 @@
 import {
   allSpecKeys,
   Capability,
+  compareVariantValues,
+  draftsFromCells,
   GENDER_LABELS,
   ItemType,
   Permission,
   specSchemaFor,
   titleFromSpecs,
+  variantCombinations,
+  variantDraftKey,
   type Gender,
   type SpecSchema,
   type ItemType as ItemTypeId,
@@ -13,6 +17,7 @@ import {
   type ProductImage,
   type ProductSearchHit,
   type TaxCategory,
+  type VariantDraft,
 } from "@ai-pos/shared-types";
 import { Zap } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
@@ -27,6 +32,7 @@ import { useCapabilities } from "../../lib/capabilities";
 import { useTenant } from "../../context/TenantContext";
 import { brandsApi, categoriesApi, inventoryApi, message, modelsApi } from "./api";
 import { barcodeError, randomCode128, randomEan13, skuFromParts } from "./barcodeDraft";
+import { FashionVariantComposer } from "./FashionVariantComposer";
 import { SpecFields } from "./SpecFields";
 import { fieldErrors, useInvalidFocus, type FieldErrors } from "./formErrors";
 import { BarcodePrintFlow } from "./BarcodePrintFlow";
@@ -103,8 +109,19 @@ export function ProductFormModal({
   const [brandId, setBrandId] = useState(product?.brand_id ?? preset?.brandId ?? "");
   const [modelId, setModelId] = useState(product?.product_model_id ?? preset?.modelId ?? "");
   const [specs, setSpecs] = useState<Record<string, string>>(() => initialSpecs(product));
+  const [matrixAxes, setMatrixAxes] = useState<Record<string, string[]>>(() => {
+    const axes: Record<string, string[]> = {};
+    for (const key of ["size", "color"]) {
+      const value = (product?.variant_attributes?.[key] || product?.specifications?.[key] || "").trim();
+      if (value) axes[key] = [value];
+    }
+    return axes;
+  });
+  const [variantRows, setVariantRows] = useState<VariantDraft[]>([]);
   const sku = editing || skuManual ? skuTyped : skuFromParts(skuPrefix, name, specs);
   const [price, setPrice] = useState(product ? (product.price_cents / 100).toFixed(2) : "");
+  const [active, setActive] = useState(product?.is_active !== false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const [serialized, setSerialized] = useState(product?.is_serialized ?? preset?.serialized ?? false);
   const [taxCategory, setTaxCategory] = useState<TaxCategory>(product?.tax_category ?? "STANDARD");
   const [openPrice, setOpenPrice] = useState(product?.is_open_price ?? false);
@@ -150,10 +167,38 @@ export function ProductFormModal({
     productName: [name, model?.name].filter(Boolean).join(" "),
     profile,
   });
+  const fashionMatrix = fashionOn && schema.id.startsWith("FASHION");
+  const matrixKeys = fashionMatrix
+    ? schema.fields.filter((field) => field.key === "size" || field.key === "color").map((field) => field.key)
+    : [];
+  const matrixKeyList = matrixKeys.join(",");
 
   useEffect(() => {
     if (!nameTouched && model && name === "") setName(model.name);
   }, [model, name, nameTouched]);
+
+  useEffect(() => {
+    if (!fashionMatrix || !product?.product_model_id) return;
+    let cancel = false;
+    void modelsApi.matrix(product.product_model_id).then(
+      (grid) => {
+        if (cancel) return;
+        setMatrixAxes((current) => {
+          const next = { ...current };
+          for (const key of matrixKeyList.split(",").filter(Boolean)) {
+            const axis = grid.axes.find((item) => item.key === key || (key === "color" && item.key === "colour"));
+            if (axis && axis.values.length > 0) next[key] = axis.values;
+          }
+          return next;
+        });
+        setVariantRows(draftsFromCells(grid.cells));
+      },
+      () => undefined,
+    );
+    return () => {
+      cancel = true;
+    };
+  }, [fashionMatrix, product?.product_model_id, matrixKeyList]);
 
   useEffect(() => {
     const value = barcode.trim();
@@ -255,6 +300,146 @@ export function ProductFormModal({
   const setSpec = (next: Record<string, string>) => {
     setSpecs(next);
     suggestName(model?.name, next);
+  };
+
+  const setAxisValues = (key: string, values: string[]) => {
+    const seen = new Set<string>();
+    const next: string[] = [];
+    for (const value of values) {
+      const name = value.trim();
+      const token = name.toLowerCase();
+      if (name === "" || seen.has(token)) continue;
+      seen.add(token);
+      next.push(name);
+    }
+    next.sort(compareVariantValues);
+    setMatrixAxes((current) => ({ ...current, [key]: next }));
+  };
+
+  const saveFashionVariants = async (cents: number) => {
+    const payloadRows = variantRows.filter((row) => row.included || row.existingId);
+    if (!payloadRows.some((row) => row.included)) {
+      setError("Include at least one size and color combination.");
+      return;
+    }
+    if (!modelId && (brandId === "" || subCategoryId === "")) {
+      setError("Choose a brand and sub-category so the size and color variants stay under one style.");
+      return;
+    }
+    for (const row of payloadRows) {
+      if (!row.included) continue;
+      if (toCents(row.price) === null) {
+        setError(`Enter a selling price for ${Object.values(row.attributes).join(" ")}.`);
+        return;
+      }
+      if (row.cost.trim() !== "" && toCents(row.cost) === null) {
+        setError(`Enter a cost like 20.00 for ${Object.values(row.attributes).join(" ")}, or leave it blank.`);
+        return;
+      }
+    }
+    const adoptId = (row: VariantDraft): string | null => {
+      if (row.existingId) return row.existingId;
+      if (!product || product.product_model_id) return null;
+      const current: Record<string, string> = {};
+      for (const key of Object.keys(row.attributes)) {
+        const value = (product.variant_attributes?.[key] || product.specifications?.[key] || "").trim();
+        if (value) current[key] = value;
+      }
+      return variantDraftKey(current) === row.key ? product.id : null;
+    };
+    if (product && !product.product_model_id && product.stock_quantity > 0) {
+      const kept = payloadRows.some((row) => row.included && adoptId(row) === product.id);
+      if (!kept) {
+        setError("Include this product's current size and color. Its stock stays on that variant.");
+        return;
+      }
+    }
+    const needsStore = payloadRows.some((row) => {
+      if (row.existingId || adoptId(row) || !row.included) return false;
+      return (Number(row.opening) || 0) > 0 || (Number(row.reorder) || 0) > 0 || row.cost.trim() !== "";
+    });
+    if (needsStore && storeId === "") {
+      setError("Choose the store that holds the opening stock.");
+      return;
+    }
+    const axisKeys = matrixKeys.filter((key) => payloadRows.every((row) => (row.attributes[key] ?? "").trim() !== ""));
+    if (axisKeys.length === 0) {
+      setError("Choose a size or a color before generating variants.");
+      return;
+    }
+    const prefix = skuPrefix.toUpperCase().replace(/[^A-Z0-9-]/g, "").slice(0, 24);
+    setBusy(true);
+    setError(null);
+    try {
+      let targetModel = modelId;
+      if (!targetModel) {
+        const code = prefix && /^[A-Z0-9][A-Z0-9-]{0,31}$/.test(prefix) ? prefix : null;
+        const createdModel = await modelsApi.create({
+          name: name.trim(),
+          brand_id: brandId,
+          sub_category_id: subCategoryId,
+          code,
+          season: season.trim() || null,
+          collection: collection.trim() || null,
+          gender: (gender || null) as Gender | null,
+        });
+        targetModel = createdModel.id;
+        setModelId(createdModel.id);
+      }
+      const specifications = specsToSave(schema, specs);
+      for (const key of matrixKeys) delete specifications[key];
+      await modelsApi.generateMatrix(targetModel, {
+        axes: axisKeys.map((key) => ({
+          key,
+          values: [...new Set(payloadRows.map((row) => row.attributes[key]).filter((value): value is string => Boolean(value)))],
+        })),
+        price_cents: cents,
+        sku_prefix: prefix || null,
+        tax_category: taxCategory,
+        opening_store_id: needsStore ? storeId : null,
+        specifications,
+        variants: payloadRows.map((row) => {
+          const adopted = adoptId(row);
+          const cost = row.cost.trim() === "" ? null : toCents(row.cost);
+          const fresh = adopted === null;
+          return {
+            attributes: Object.fromEntries(axisKeys.map((key) => [key, row.attributes[key] ?? ""])),
+            ...(adopted ? { product_id: adopted } : {}),
+            sku: row.sku.trim() || null,
+            barcode: row.barcode.trim() || null,
+            price_cents: toCents(row.price) ?? cents,
+            is_active: row.included,
+            ...(fresh
+              ? {
+                  ...(cost !== null ? { cost_cents: cost } : {}),
+                  opening_quantity: Number(row.opening) || 0,
+                  min_reorder_level: Number(row.reorder) || 0,
+                }
+              : {}),
+          };
+        }),
+      });
+      if (editing && product && product.name !== name.trim()) {
+        await inventoryApi.updateProduct(product.id, { name: name.trim() });
+      }
+      if (pendingPhotos.length > 0) {
+        const chosen = pendingPhotos.find((item) => item.key === mainPhotoKey) ?? pendingPhotos[0];
+        if (chosen) {
+          const ordered = [chosen, ...pendingPhotos.filter((item) => item.key !== chosen.key)];
+          for (const item of ordered) {
+            const form = new FormData();
+            form.append("file", await compressImageToWebp(item.file));
+            await apiUpload(`/api/v1/product-models/${targetModel}/images`, form);
+          }
+          setPendingPhotos([]);
+        }
+      }
+      onSaved();
+    } catch (caught) {
+      setError(message(caught, "Could not save the variants."));
+    } finally {
+      setBusy(false);
+    }
   };
 
   const generateFromSpecs = () => {
@@ -360,28 +545,51 @@ export function ProductFormModal({
     const pluProblem = pluMessage();
     const storeProblem = storeMessage();
     const openingProblem = openingMessage();
+    const possible = variantCombinations(
+      matrixKeys.map((key) => ({ key, values: matrixAxes[key] ?? [] })),
+    ).length;
+    const matrixSave = fashionMatrix && variantRows.length > 0;
+    if (fashionMatrix && possible > 1 && variantRows.length === 0) {
+      setSubmitted(true);
+      setError("Generate variants before saving. Each size and color is stocked on its own.");
+      return;
+    }
     if (
       nameProblem ||
       priceProblem ||
       categoryProblem ||
-      skuProblem ||
-      barcodeProblem ||
+      (!matrixSave && skuProblem) ||
+      (!matrixSave && barcodeProblem) ||
       pluProblem ||
-      storeProblem ||
-      openingProblem ||
+      (!matrixSave && storeProblem) ||
+      (!matrixSave && openingProblem) ||
       cents === null
     ) {
       focusInvalid();
       return;
     }
-    const specifications = specsToSave(schema, specs);
+    if (matrixSave) {
+      await saveFashionVariants(cents);
+      return;
+    }
+    const specsForSave = { ...specs };
+    if (fashionMatrix) {
+      for (const key of matrixKeys) {
+        const value = (matrixAxes[key] ?? [])[0];
+        if (value) specsForSave[key] = value;
+        else delete specsForSave[key];
+      }
+    }
+    const specifications = specsToSave(schema, specsForSave);
     const specKeys = allSpecKeys();
     const kept = Object.fromEntries(
       Object.entries(product?.variant_attributes ?? {}).filter(([key]) => !specKeys.has(key) && key.trim() !== ""),
     );
     const variant_attributes = {
       ...kept,
-      ...Object.fromEntries(schema.variantKeys.map((key) => [key, (specs[key] ?? "").trim()]).filter(([, value]) => value !== "")),
+      ...Object.fromEntries(
+        schema.variantKeys.map((key) => [key, (specsForSave[key] ?? "").trim()]).filter(([, value]) => value !== ""),
+      ),
     };
     const classification = {
       category_id: categoryId || null,
@@ -429,6 +637,7 @@ export function ProductFormModal({
           ...recipes,
           ...fashion,
           sellable_units,
+          is_active: active,
         });
       } else {
         // Weighed stock is entered in kg and stored in grams.
@@ -539,7 +748,48 @@ export function ProductFormModal({
       }
       footer={
         <>
-          <GhostButton onClick={onClose}>Cancel</GhostButton>
+          {editing && confirmDelete ? (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => {
+                if (!product) return;
+                setBusy(true);
+                setError(null);
+                void inventoryApi
+                  .deleteProduct(product.id)
+                  .then(() => onSaved())
+                  .catch((caught: unknown) => {
+                    setError(message(caught, "Could not delete this product."));
+                    setBusy(false);
+                  });
+              }}
+              className="mr-auto text-sm font-semibold text-danger disabled:opacity-40"
+            >
+              {busy ? "Deleting…" : "Confirm delete"}
+            </button>
+          ) : editing ? (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => setConfirmDelete(true)}
+              className="mr-auto text-sm font-semibold text-charcoal/50 hover:text-danger disabled:opacity-40"
+            >
+              Delete product
+            </button>
+          ) : null}
+          <GhostButton
+            onClick={() => {
+              if (confirmDelete) {
+                setConfirmDelete(false);
+                return;
+              }
+              onClose();
+            }}
+            disabled={busy}
+          >
+            {confirmDelete ? "Keep product" : "Cancel"}
+          </GhostButton>
           <button
             type="button"
             disabled={busy}
@@ -586,6 +836,8 @@ export function ProductFormModal({
             setSubCategoryId("");
             setModelId("");
             setSpecs({});
+            setMatrixAxes({});
+            setVariantRows([]);
             touch("category");
             clearServer("category");
           }}
@@ -604,6 +856,8 @@ export function ProductFormModal({
             setSubCategoryId(next);
             setModelId("");
             setSpecs({});
+            setMatrixAxes({});
+            setVariantRows([]);
             clearServer("sub");
           }}
         />
@@ -662,7 +916,30 @@ export function ProductFormModal({
             Auto-Generate Name & SKU from Specs
           </button>
         </div>
-        <SpecFields schema={schema} specs={specs} onChange={setSpec} />
+        <SpecFields
+          schema={schema}
+          specs={specs}
+          onChange={setSpec}
+          multiKeys={matrixKeys}
+          multiValues={matrixAxes}
+          onMultiChange={setAxisValues}
+        />
+        {fashionMatrix ? (
+          <FashionVariantComposer
+            axes={matrixKeys.map((key) => ({
+              key,
+              label: schema.fields.find((field) => field.key === key)?.label ?? key,
+              values: matrixAxes[key] ?? [],
+            }))}
+            productName={name}
+            skuPrefix={skuPrefix}
+            defaultPrice={price}
+            defaultOpening={opening}
+            defaultReorder={reorder}
+            rows={variantRows}
+            onChange={setVariantRows}
+          />
+        ) : null}
       </div>
 
       <h3 id="product-section-product" className="mb-3 mt-6 scroll-mt-4 text-sm font-semibold">
@@ -992,24 +1269,42 @@ export function ProductFormModal({
                 clearServer("store");
               }}
             />
-            <TextField
-              label={byWeight ? "Opening stock (kg)" : "Opening quantity"}
-              type="number"
-              min={0}
-              value={opening}
-              disabled={serialized || storeId === ""}
-              error={fieldMessage("opening", openingMessage())}
-              onChange={(event) => setOpening(event.target.value)}
-            />
-            <TextField
-              label="Min reorder level"
-              type="number"
-              min={0}
-              value={reorder}
-              disabled={storeId === ""}
-              onChange={(event) => setReorder(event.target.value)}
-            />
+            {variantRows.length > 0 ? (
+              <p className="text-sm text-charcoal/60 md:col-span-2">
+                Opening stock and reorder level are set on each size and color. The branch above is where that stock is received.
+              </p>
+            ) : (
+              <>
+                <TextField
+                  label={byWeight ? "Opening stock (kg)" : "Opening quantity"}
+                  type="number"
+                  min={0}
+                  value={opening}
+                  disabled={serialized || storeId === ""}
+                  error={fieldMessage("opening", openingMessage())}
+                  onChange={(event) => setOpening(event.target.value)}
+                />
+                <TextField
+                  label="Min reorder level"
+                  type="number"
+                  min={0}
+                  value={reorder}
+                  disabled={storeId === ""}
+                  onChange={(event) => setReorder(event.target.value)}
+                />
+              </>
+            )}
           </div>
+        </div>
+      ) : null}
+      {editing ? (
+        <div className="mt-4">
+          <Toggle
+            label="Active"
+            description="Inactive products stay in the catalog and in past sales. The register does not show or sell them."
+            checked={active}
+            onChange={setActive}
+          />
         </div>
       ) : null}
       <ErrorNote message={error} />

@@ -10,6 +10,7 @@ from collections.abc import Callable, Iterable
 from datetime import UTC, date, datetime
 from typing import Any
 
+from sqlalchemy import delete as sa_delete
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -1235,6 +1236,59 @@ def _update_weighing(db: Session, product: Product, data: ProductUpdate) -> None
         product.tare_grams = data.tare_grams
     if "minimum_age" in fields:
         product.minimum_age = data.minimum_age
+
+
+_IN_USE = (
+    "This product has sales or stock, so it cannot be deleted. Deactivate it to hide it from the register."
+)
+
+
+def _product_in_use(db: Session, product_id: uuid.UUID) -> bool:
+    """Sales, purchases, and stock on hand stay in history. An unused catalog row can be removed."""
+    from app.models.recipe import RecipeLine
+    from app.models.return_item import ReturnItem
+    from app.models.sale_item import SaleItem
+    from app.models.sales_order import SalesOrderLine
+
+    on_hand = db.scalar(
+        select(func.coalesce(func.sum(InventoryLevel.quantity_on_hand), 0)).where(
+            InventoryLevel.product_id == product_id
+        )
+    )
+    if on_hand:
+        return True
+    for model, column in (
+        (SaleItem, SaleItem.product_id),
+        (ReturnItem, ReturnItem.product_id),
+        (PurchaseOrderLine, PurchaseOrderLine.product_id),
+        (GoodsReceiptLine, GoodsReceiptLine.product_id),
+        (BatchItem, BatchItem.product_id),
+        (SerialNumber, SerialNumber.product_id),
+        (StockTransferLine, StockTransferLine.product_id),
+        (SalesOrderLine, SalesOrderLine.product_id),
+        (RecipeLine, RecipeLine.ingredient_id),
+    ):
+        if db.scalar(select(func.count()).select_from(model).where(column == product_id)):
+            return True
+    return False
+
+
+@portal_errors
+def delete_product(db: Session, product_id: uuid.UUID) -> None:
+    product = _product(db, product_id)
+    if _product_in_use(db, product.id):
+        raise ApiError(409, "product_in_use", _IN_USE)
+    from app.models.markdown import PriceChange
+
+    db.execute(sa_delete(StockMovement).where(StockMovement.product_id == product.id))
+    db.execute(sa_delete(InventoryLevel).where(InventoryLevel.product_id == product.id))
+    db.execute(sa_delete(PriceChange).where(PriceChange.product_id == product.id))
+    db.delete(product)
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise ApiError(409, "product_in_use", _IN_USE) from None
 
 
 @portal_errors

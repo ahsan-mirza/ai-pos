@@ -5,6 +5,19 @@ export interface MatrixAxis {
   values: string[];
 }
 
+/** One combination to create or update. Combinations left off this list are not created. */
+export interface MatrixVariantInput {
+  attributes: Record<string, string>;
+  product_id?: string | null;
+  sku?: string | null;
+  barcode?: string | null;
+  price_cents?: number | null;
+  cost_cents?: number | null;
+  opening_quantity?: number | null;
+  min_reorder_level?: number | null;
+  is_active?: boolean | null;
+}
+
 export interface MatrixWrite {
   axes: MatrixAxis[];
   price_cents: number;
@@ -12,6 +25,10 @@ export interface MatrixWrite {
   price_by_value?: Record<string, number>;
   sku_prefix?: string | null;
   tax_category?: "STANDARD" | "ZERO" | "EXEMPT";
+  /** When set, only these combinations are created. Existing ones are updated and not duplicated. */
+  variants?: MatrixVariantInput[] | null;
+  opening_store_id?: string | null;
+  specifications?: Record<string, string>;
 }
 
 export interface MatrixCell {
@@ -45,6 +62,8 @@ export interface MatrixBulk {
   store_id?: string | null;
   min_reorder_level?: number | null;
   assign_missing_barcodes?: boolean;
+  /** Skip variants that already have their own price or reorder level. */
+  only_unset?: boolean;
 }
 
 export interface MatrixBulkResult {
