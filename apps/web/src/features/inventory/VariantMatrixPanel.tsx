@@ -199,8 +199,7 @@ export function MatrixBuilderModal({
         .catch(() => setPreview(null));
     }, 250);
     return () => window.clearTimeout(handle);
-    // The payload is rebuilt from the same fields listed here.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // payload is rebuilt from valid, model.id, price, extra, prefix, and axes.
   }, [valid, model.id, price, extra, prefix, axes]);
 
   const generate = async () => {
