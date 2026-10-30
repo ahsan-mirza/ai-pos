@@ -50,9 +50,14 @@ export function CountryField({
     };
   }, [open]);
 
+  const menuReady = menuBox !== null;
+  useLayoutEffect(() => {
+    if (!open || !menuReady) return;
+    searchRef.current?.focus({ preventScroll: true });
+  }, [open, menuReady]);
+
   useEffect(() => {
     if (!open) return;
-    searchRef.current?.focus();
     const close = (event: MouseEvent) => {
       const target = event.target as Node;
       if (!rootRef.current?.contains(target) && !menuRef.current?.contains(target)) setOpen(false);

@@ -71,6 +71,15 @@ function ResultTable({ result }: { result: AssistantToolResult }) {
 const iconAction =
   "flex h-8 w-8 items-center justify-center rounded-lg text-charcoal/60 outline-none hover:bg-charcoal/[0.05] hover:text-charcoal focus-visible:ring-2 focus-visible:ring-accent/40";
 
+const fallbackSuggestions = [
+  "How much did we sell today?",
+  "Top 10 products last month",
+  "What is our profit this month?",
+  "Which cashier sold the most this week?",
+  "What should I reorder?",
+  "Who owes us money?",
+];
+
 export function AssistantDrawer() {
   const assistant = useAssistant();
   const [draft, setDraft] = useState("");
@@ -111,8 +120,8 @@ export function AssistantDrawer() {
   if (!assistant.allowed || !assistant.open) return null;
 
   const suggestions = assistant.info
-    ? [...assistant.info.suggestions.en.slice(0, 4), ...assistant.info.suggestions.ar.slice(0, 3)]
-    : [];
+    ? [...assistant.info.suggestions.en, ...assistant.info.suggestions.ar.slice(0, 2)]
+    : fallbackSuggestions;
   const past = assistant.threads.filter((thread) => thread.messages.length > 0);
   const pending = assistant.messages.at(-1);
   const readingReports = assistant.busy && pending?.role === "user" && !isConversational(pending.content);
@@ -145,10 +154,15 @@ export function AssistantDrawer() {
             <AiMark size={16} className="text-accent" />
           </span>
           <div className="min-w-0 flex-1">
-            <h2 id="ai-assistant-title" className="text-sm font-semibold text-charcoal">
+            <h2 id="ai-assistant-title" className="flex items-center gap-2 text-sm font-semibold text-charcoal">
               AI Assistant
+              <span className="rounded-full bg-accent/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-accent">
+                Beta
+              </span>
             </h2>
-            <p className="truncate text-xs text-charcoal/55">Your intelligent business assistant</p>
+            <p className="text-xs leading-snug text-charcoal/55">
+              AI can make mistakes. This assistant is still in training.
+            </p>
           </div>
           <button type="button" className={iconAction} aria-label="Conversation history" aria-pressed={historyOpen} onClick={() => setHistoryOpen((value) => !value)}>
             <History size={16} aria-hidden="true" />
@@ -234,6 +248,9 @@ export function AssistantDrawer() {
               Clear conversation
             </button>
           ) : null}
+          {!historyOpen && assistant.messages.length > 0 && suggestions.length > 0 ? (
+            <Suggestions items={suggestions} disabled={assistant.busy} onAsk={(text) => void assistant.ask(text)} />
+          ) : null}
           <ErrorNote message={assistant.error} />
           {assistant.failedQuestion && !assistant.busy ? (
             <button
@@ -305,6 +322,34 @@ function Typing({ reading }: { reading: boolean }) {
       </span>
       {reading ? "Reading the reports…" : "Writing a reply…"}
     </p>
+  );
+}
+
+function Suggestions({
+  items,
+  disabled,
+  onAsk,
+}: {
+  items: string[];
+  disabled: boolean;
+  onAsk: (text: string) => void;
+}) {
+  return (
+    <div className="-mx-1 mb-2 flex gap-2 overflow-x-auto px-1 pb-1">
+      {items.map((item) => (
+        <button
+          key={item}
+          type="button"
+          dir={isArabic(item) ? "rtl" : "ltr"}
+          disabled={disabled}
+          onClick={() => onAsk(item)}
+          className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-surface px-3 py-1.5 text-left text-xs hover:bg-accent hover:text-white disabled:opacity-40"
+        >
+          <AiMark size={12} className="text-current" />
+          {item}
+        </button>
+      ))}
+    </div>
   );
 }
 

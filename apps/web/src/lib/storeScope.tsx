@@ -13,10 +13,35 @@ interface StoreScopeState {
 
 const StoreScopeContext = createContext<StoreScopeState | null>(null);
 
+const BRANCH_COOKIE = "axiz_branch";
+const BRANCH_MAX_AGE = 60 * 60 * 24 * 365;
+
+function readBranchCookie(): string | null {
+  if (typeof document === "undefined") return null;
+  const row = document.cookie.split("; ").find((part) => part.startsWith(`${BRANCH_COOKIE}=`));
+  if (!row) return null;
+  try {
+    const value = decodeURIComponent(row.slice(BRANCH_COOKIE.length + 1));
+    return /^[0-9a-f-]{36}$/i.test(value) ? value : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeBranchCookie(storeId: string | null): void {
+  if (typeof document === "undefined") return;
+  const secure = window.location.protocol === "https:" ? "; Secure" : "";
+  if (!storeId) {
+    document.cookie = `${BRANCH_COOKIE}=; Path=/; Max-Age=0; SameSite=Lax${secure}`;
+    return;
+  }
+  document.cookie = `${BRANCH_COOKIE}=${encodeURIComponent(storeId)}; Path=/; Max-Age=${BRANCH_MAX_AGE}; SameSite=Lax${secure}`;
+}
+
 export function StoreScopeProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth();
   const pinnedId = user?.store_id ?? null;
-  const [selected, setSelected] = useState<string | null>(null);
+  const [selected, setSelected] = useState<string | null>(() => readBranchCookie());
   const [stores, setStores] = useState<Store[]>([]);
 
   useEffect(() => {
@@ -29,7 +54,17 @@ export function StoreScopeProvider({ children }: { children: ReactNode }) {
     };
   }, [user?.id]);
 
-  const setStoreId = useCallback((storeId: string | null) => setSelected(storeId), []);
+  useEffect(() => {
+    if (pinnedId !== null || stores.length === 0 || selected === null) return;
+    if (stores.some((store) => store.id === selected)) return;
+    setSelected(null);
+    writeBranchCookie(null);
+  }, [pinnedId, stores, selected]);
+
+  const setStoreId = useCallback((storeId: string | null) => {
+    setSelected(storeId);
+    writeBranchCookie(storeId);
+  }, []);
   const value = useMemo<StoreScopeState>(
     () => ({ storeId: pinnedId ?? selected, setStoreId, pinned: pinnedId !== null, stores }),
     [pinnedId, selected, setStoreId, stores],

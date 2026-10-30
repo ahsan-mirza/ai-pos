@@ -1,9 +1,12 @@
-import { profileSpec } from "@ai-pos/shared-types";
+import { profileSpec, type Store } from "@ai-pos/shared-types";
 import { countryOption } from "@ai-pos/ui";
+import { useEffect, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
+import { apiGet } from "../../lib/api";
 import { useCapabilities } from "../../lib/capabilities";
 import { generalSections } from "./SettingsLayout";
 import { useCurrency } from "../../lib/currency";
+import { useStoreScope } from "../../lib/storeScope";
 import { AppearanceSettings } from "./AppearanceSettings";
 import { BusinessProfileSettings } from "./BusinessProfileSettings";
 import { CurrencySettings } from "./CurrencySettings";
@@ -16,11 +19,36 @@ import { VatSettings } from "./VatSettings";
 
 export function SettingsPage() {
   const { settings } = useCurrency();
+  const { storeId } = useStoreScope();
+  const [branches, setBranches] = useState<Store[]>([]);
   const { profile, enabled } = useCapabilities();
   const spec = profileSpec(profile);
   const { hash } = useLocation();
   const requested = hash.replace("#", "");
   const section = generalSections.some((item) => item.id === requested) ? requested : "currency";
+
+  useEffect(() => {
+    let live = true;
+    apiGet<Store[]>("/api/v1/stores?limit=200")
+      .then((rows) => {
+        if (live) setBranches(rows);
+      })
+      .catch(() => undefined);
+    return () => {
+      live = false;
+    };
+  }, []);
+
+  const selected = storeId
+    ? branches.find((store) => store.id === storeId)
+    : branches.length === 1
+      ? branches[0]
+      : undefined;
+  const firstCountry = branches[0]?.country;
+  const sharedCountry =
+    branches.length > 0 && branches.every((store) => store.country && store.country === firstCountry) ? firstCountry : null;
+  const countryCode = selected?.country || sharedCountry || settings?.country || "";
+  const location = selected?.city || settings?.location || "";
 
   return (
     <section className="grid gap-4">
@@ -52,12 +80,12 @@ export function SettingsPage() {
           <div>
             <dt className="text-charcoal/50">Country</dt>
             <dd className="font-medium">
-              {settings.country ? (countryOption(settings.country)?.name ?? settings.country) : "Not recorded"}
+              {countryCode ? (countryOption(countryCode)?.name ?? countryCode) : "Not recorded"}
             </dd>
           </div>
           <div>
             <dt className="text-charcoal/50">Location</dt>
-            <dd className="font-medium">{settings.location || "Not recorded"}</dd>
+            <dd className="font-medium">{location || "Not recorded"}</dd>
           </div>
           <div>
             <dt className="text-charcoal/50">Currency</dt>
