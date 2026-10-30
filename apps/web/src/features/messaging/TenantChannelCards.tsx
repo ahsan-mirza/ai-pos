@@ -75,7 +75,14 @@ export function TenantChannelCards() {
         public_config: draft?.config || {},
         secret: draft?.secret || null,
       });
-      setDrafts((current) => ({ ...current, [card.channel]: { ...current[card.channel], secret: "" } }));
+      setDrafts((current) => ({
+        ...current,
+        [card.channel]: {
+          provider: current[card.channel]?.provider ?? card.provider,
+          config: current[card.channel]?.config ?? {},
+          secret: "",
+        },
+      }));
       setNotice(enabled ? `${labels[card.channel]} saved.` : `${labels[card.channel]} turned off. History is kept.`);
       await load();
     } catch (caught) {

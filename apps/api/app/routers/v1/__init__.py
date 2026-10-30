@@ -47,7 +47,6 @@ from app.routers.v1.markdowns import router as markdowns_router
 from app.routers.v1.menu import router as menu_router
 from app.routers.v1.messaging import jobs_router
 from app.routers.v1.messaging import router as messaging_router
-from app.routers.v1.reach import router as reach_router
 from app.routers.v1.onboarding import router as onboarding_router
 from app.routers.v1.orders import router as orders_router
 from app.routers.v1.payables import router as payables_router
@@ -57,6 +56,7 @@ from app.routers.v1.pricing import router as pricing_router
 from app.routers.v1.products import router as products_router
 from app.routers.v1.promotions import router as promotions_router
 from app.routers.v1.quotes import router as quotes_router
+from app.routers.v1.reach import router as reach_router
 from app.routers.v1.recipes import router as recipes_router
 from app.routers.v1.register import router as register_router
 from app.routers.v1.rentals import router as rentals_router

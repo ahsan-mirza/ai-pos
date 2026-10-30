@@ -26,7 +26,6 @@ from app.models.margin import MarginPolicy
 from app.models.markdown import MarkdownEvent, PriceChange
 from app.models.menu import ComboSlot, ComboSlotOption, ModifierGroup, ModifierOption, ProductModifierGroup
 from app.models.messaging import MessageTemplate, OutboundMessage
-from app.models.reach import MessagingChannel, ReachCampaign, ReachUsage
 from app.models.payables import SupplierBill, SupplierBillLine, SupplierPayment, SupplierPaymentAllocation
 from app.models.payment_intent import PaymentIntent, PaymentRefund, PaymentTerminal
 from app.models.price_list import (
@@ -42,6 +41,7 @@ from app.models.product_price import ProductPrice
 from app.models.promotion import Promotion, PromotionRedemption
 from app.models.purchasing import GoodsReceipt, GoodsReceiptLine, PurchaseOrder, PurchaseOrderLine
 from app.models.quote_payment import QuotePayment
+from app.models.reach import MessagingChannel, ReachCampaign, ReachUsage
 from app.models.recipe import ModifierIngredient, Recipe, RecipeLine, RecipeUsage
 from app.models.rental import ProductRental, Rental, RentalLine, RentalPayment
 from app.models.reorder import CustomerReorderOccurrence, CustomerReorderPlan, CustomerReorderPlanItem
