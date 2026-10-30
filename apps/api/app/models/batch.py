@@ -87,6 +87,10 @@ class PurchaseBatch(TenantScoped, Base):
         Uuid(as_uuid=True), ForeignKey("suppliers.id"), nullable=True, index=True
     )
     store_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("stores.id"), index=True)
+    # Set when this layer was opened by a goods receipt. That receipt already posts the inventory journal.
+    goods_receipt_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("goods_receipts.id"), nullable=True, index=True
+    )
     import_source: Mapped[str] = mapped_column(String(16))
     file_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     file_url: Mapped[str | None] = mapped_column(String(255), nullable=True)

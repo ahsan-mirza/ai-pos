@@ -390,6 +390,7 @@ def unbilled_receipts(db: Session, store_scope: uuid.UUID | None) -> list[Unbill
         .where(
             PurchaseBatch.id.not_in(billed_batches),
             PurchaseBatch.status != "REVERSED",
+            PurchaseBatch.goods_receipt_id.is_(None),
             PurchaseBatch.total_cost_amount > 0,
             PurchaseBatch.is_consignment.is_(False),
             ~PurchaseBatch.items.any(BatchItem.id.in_(trade_in_items)),

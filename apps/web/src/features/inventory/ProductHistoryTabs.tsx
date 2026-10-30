@@ -3,11 +3,13 @@ import {
   SerialStatus,
   formatMoney,
   movementLabel,
+  type ProductCosting,
   type ProductPurchaseHistory,
   type ProductSalesHistory,
   type ProductSerials,
   type StockMovement,
 } from "@ai-pos/shared-types";
+import { Link } from "react-router-dom";
 import {
   ArrowDownLeft,
   ArrowLeftRight,
@@ -198,8 +200,9 @@ export function SalesTab({ resource }: { resource: Resource<ProductSalesHistory>
                   <th className={th}>Cashier</th>
                   <th className={`${th} text-right`}>Qty</th>
                   <th className={`${th} text-right`}>Unit price</th>
-                  <th className={`${th} text-right`}>Discount</th>
-                  <th className={`${th} pr-0 text-right`}>Total</th>
+                  <th className={`${th} text-right`}>Unit cost</th>
+                  <th className={`${th} text-right`}>COGS</th>
+                  <th className={`${th} pr-0 text-right`}>Gross profit</th>
                 </>
               }
             >
@@ -221,9 +224,15 @@ export function SalesTab({ resource }: { resource: Resource<ProductSalesHistory>
                   <td className={td}>{row.cashier_name ?? "—"}</td>
                   <td className={`${td} text-right tabular-nums`}>{row.quantity}</td>
                   <td className={`${td} text-right tabular-nums`}>{formatMoney(row.unit_price_cents, row.currency)}</td>
-                  <td className={`${td} text-right tabular-nums text-charcoal/40`}>—</td>
+                  <td className={`${td} text-right tabular-nums`}>
+                    {row.cost_cents === null ? "Uncosted" : formatMoney(Math.round(row.cost_cents / row.quantity), row.currency)}
+                    {row.cost_estimated ? <span className="block text-[11px] text-charcoal/40">estimated</span> : null}
+                  </td>
+                  <td className={`${td} text-right tabular-nums`}>
+                    {row.cost_cents === null ? "—" : formatMoney(row.cost_cents, row.currency)}
+                  </td>
                   <td className={`${td} pr-0 text-right font-semibold tabular-nums`}>
-                    {formatMoney(row.line_total_cents, row.currency)}
+                    {row.gross_profit_cents === null ? "—" : formatMoney(row.gross_profit_cents, row.currency)}
                   </td>
                 </tr>
               ))}
@@ -237,7 +246,15 @@ export function SalesTab({ resource }: { resource: Resource<ProductSalesHistory>
 
 // --- Purchases -----------------------------------------------------------------------------------
 
-export function PurchasesTab({ resource, currency }: { resource: Resource<ProductPurchaseHistory>; currency: string }) {
+export function PurchasesTab({
+  resource,
+  costing,
+  currency,
+}: {
+  resource: Resource<ProductPurchaseHistory>;
+  costing: Resource<ProductCosting>;
+  currency: string;
+}) {
   return (
     <ResourceView
       resource={resource}
@@ -327,7 +344,9 @@ export function PurchasesTab({ resource, currency }: { resource: Resource<Produc
                     className="border-t border-line"
                   >
                     <td className={td}>
-                      <span className="font-mono text-xs font-semibold">{row.po_number}</span>
+                      <Link to="/inventory/purchase-orders" className="font-mono text-xs font-semibold text-accent hover:underline">
+                        {row.po_number}
+                      </Link>
                       <span className="ml-1 text-xs text-charcoal/50">{row.grn_number ?? row.store_code}</span>
                       {row.goods_receipt_id === null ? (
                         <span className="ml-2">
@@ -351,6 +370,51 @@ export function PurchasesTab({ resource, currency }: { resource: Resource<Produc
                 ))}
               </HistoryTable>
             )}
+            {costing.state === "ready" ? (
+              <div className="space-y-3">
+                <div>
+                  <h4 className="font-semibold">Cost layers</h4>
+                  <p className="text-xs text-charcoal/50">
+                    Each receipt keeps its own unit cost. A later purchase does not rewrite an earlier one.
+                    Realized gross profit {formatMoney(costing.data.realized_profit_cents, currency)} is from posted
+                    sales. Unsold stock is not counted as profit.
+                  </p>
+                </div>
+                {costing.data.layers.length === 0 ? (
+                  <Empty>No cost layers yet. Stock received before cost layers, or never received, stays uncosted.</Empty>
+                ) : (
+                  <HistoryTable
+                    minWidth="min-w-[760px]"
+                    head={
+                      <>
+                        <th className={th}>Batch</th>
+                        <th className={th}>Receipt date</th>
+                        <th className={`${th} text-right`}>Original</th>
+                        <th className={`${th} text-right`}>Remaining</th>
+                        <th className={`${th} text-right`}>Unit cost</th>
+                        <th className={`${th} pr-0 text-right`}>Remaining value</th>
+                      </>
+                    }
+                  >
+                    {costing.data.layers.map((layer) => (
+                      <tr key={layer.batch_item_id} className="border-t border-line">
+                        <td className={`${td} font-mono text-xs font-semibold`}>{layer.batch_number}</td>
+                        <td className={`${td} tabular-nums text-charcoal/70`}>{formatDate(layer.receipt_date)}</td>
+                        <td className={`${td} text-right tabular-nums`}>{layer.original_quantity}</td>
+                        <td className={`${td} text-right tabular-nums`}>
+                          {layer.remaining_quantity}
+                          <span className="text-charcoal/40"> · {layer.consumed_quantity} used</span>
+                        </td>
+                        <td className={`${td} text-right tabular-nums`}>{formatMoney(layer.unit_cost_cents, currency)}</td>
+                        <td className={`${td} pr-0 text-right font-semibold tabular-nums`}>
+                          {formatMoney(layer.remaining_value_cents, currency)}
+                        </td>
+                      </tr>
+                    ))}
+                  </HistoryTable>
+                )}
+              </div>
+            ) : null}
           </div>
         );
       }}

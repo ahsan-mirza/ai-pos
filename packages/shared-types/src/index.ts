@@ -103,12 +103,15 @@ export type { AnalyticsSummary, CategorySlice, PaymentSplit } from "./analytics.
 export { productSyncPayload } from "./product.js";
 export type { Product, ProductMatch, ProductPricing, ProductSearchHit, ProductUpsert } from "./product.js";
 export type {
+  CostLayerRow,
+  ProductCosting,
   ProductPurchaseHistory,
   ProductPurchaseRow,
   ProductSaleRow,
   ProductSalesHistory,
   ProductSerialRow,
   ProductSerials,
+  StoreCostRow,
 } from "./product-history.js";
 export {
   SEARCH_DEBOUNCE_MS,

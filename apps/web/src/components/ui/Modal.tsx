@@ -4,7 +4,7 @@ import { useEffect, useId, type ReactNode } from "react";
 /** Shared shell so every dialog keeps its title and actions visible while the form scrolls. */
 export const modalHeader =
   "sticky top-0 z-20 flex flex-none items-start justify-between gap-4 border-b border-line bg-white px-6 py-4 sm:px-7";
-export const modalBody = "min-h-0 flex-1 overflow-y-auto px-6 py-4 sm:px-7";
+export const modalBody = "min-h-0 flex-1 overflow-y-auto overscroll-contain px-6 py-4 sm:px-7";
 export const modalFooter =
   "sticky bottom-0 z-20 flex flex-none flex-wrap items-center justify-end gap-3 border-t border-line bg-white px-6 py-4 sm:px-7";
 

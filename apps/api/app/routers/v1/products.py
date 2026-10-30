@@ -15,7 +15,7 @@ from app.models.product import Product
 from app.routers.v1.deps import assert_store_access, require_device_id, require_idempotency_key
 from app.schemas.inventory import MovementOut, MovementType, ProductUpdate
 from app.schemas.payloads import ProductOut, ProductPayload, ProductSearchHit, SerialStatus
-from app.schemas.product_history import ProductPurchaseHistory, ProductSalesHistory, ProductSerials
+from app.schemas.product_history import ProductCosting, ProductPurchaseHistory, ProductSalesHistory, ProductSerials
 from app.services import catalog_service, inventory, product_history
 from app.services.product_search import search_products
 from app.services.sync_service import ingest_one
@@ -132,6 +132,17 @@ def purchase_history(
 ) -> ProductPurchaseHistory:
     scope = product_history.scope_for(principal, store_id)
     return product_history.purchase_history(db, product_id, store_id=scope, limit=limit)
+
+
+@router.get("/{product_id}/costing", response_model=ProductCosting)
+def product_costing(
+    product_id: uuid.UUID,
+    db: Annotated[Session, Depends(get_db)],
+    principal: Annotated[Principal, Depends(authorize(Permission.PORTAL_INVENTORY_MANAGE))],
+    store_id: StoreParam = None,
+) -> ProductCosting:
+    scope = product_history.scope_for(principal, store_id)
+    return product_history.product_costing(db, product_id, store_id=scope)
 
 
 @router.get("/{product_id}/serials", response_model=ProductSerials)

@@ -42,7 +42,7 @@ def test_sale_lines_carry_fifo_cost(client, session) -> None:
     assert item.cost_estimated is False
 
 
-def test_unbatched_stock_uses_latest_receipt_cost(client, session) -> None:
+def test_goods_receipt_opens_a_cost_layer(client, session) -> None:
     seed(client)
     headers, _ = admin(client)
     order = client.post(
@@ -64,7 +64,7 @@ def test_unbatched_stock_uses_latest_receipt_cost(client, session) -> None:
     body = sale([line(CABLE, 2, 1500)])
     assert push(client, [event("estimated-sale", "sale", body)]).status_code == 200
     item = session.get(SaleItem, uuid.UUID(body["items"][0]["id"]))
-    assert (item.cost_cents, item.cost_estimated) == (1280, True)
+    assert (item.cost_cents, item.cost_estimated) == (1280, False)
     summary = client.get("/api/v1/analytics/summary", headers=device()).json()
     assert summary["cogs_cents"] == 1280
     assert summary["gross_margin_cents"] == 3000 - 1280

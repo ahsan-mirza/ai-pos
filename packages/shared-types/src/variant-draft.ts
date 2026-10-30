@@ -107,7 +107,8 @@ export function blankDraft(
 
 /**
  * Adds combinations that are not in `previous`. Rows already listed keep their edits and their excluded state,
- * so regenerating does not duplicate or resurrect a combination the user turned off.
+ * so regenerating does not duplicate or resurrect a combination the user turned off. A saved variant whose size
+ * or color was removed stays in the list, unchecked, so it can be marked inactive instead of deleted.
  */
 export function mergeVariantDrafts(
   previous: VariantDraft[],
@@ -132,7 +133,14 @@ export function mergeVariantDrafts(
     next.push(blankDraft(attributes, { price: defaults.price, opening: defaults.opening, reorder: defaults.reorder, sku }));
   }
   for (const row of previous) {
-    if (row.manual && !seen.has(row.key)) next.push(options?.includeAll ? { ...row, included: true } : row);
+    if (seen.has(row.key)) continue;
+    if (row.manual) {
+      next.push(options?.includeAll ? { ...row, included: true } : row);
+      continue;
+    }
+    // A size or color that was removed from the selection. Keep a saved variant so it can be turned off
+    // instead of being deleted, and drop a combination that was never saved.
+    if (row.existingId) next.push({ ...row, included: false });
   }
   return next;
 }

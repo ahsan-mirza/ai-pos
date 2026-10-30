@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, datetime
 
-from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Integer, String, Uuid
+from sqlalchemy import JSON, Boolean, CheckConstraint, DateTime, ForeignKey, Integer, String, Uuid
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, TenantScoped, TimestampMixin
@@ -14,11 +14,19 @@ class BusinessSettings(TenantScoped, TimestampMixin, Base):
     """One row per store, holding settings that apply to every branch and register."""
 
     __tablename__ = "business_settings"
+    __table_args__ = (
+        CheckConstraint(
+            "inventory_costing IN ('FIFO', 'WEIGHTED_AVERAGE')",
+            name="ck_business_settings_inventory_costing",
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
     # Bumped when the row changes so cached copies can tell they are stale.
     cache_generation: Mapped[int] = mapped_column(Integer, default=1)
     currency: Mapped[str] = mapped_column(String(3))
+    # FIFO or WEIGHTED_AVERAGE. Historical sale costs stay as posted when this changes.
+    inventory_costing: Mapped[str] = mapped_column(String(20), default="FIFO")
     # VAT. While vat_registered is false the API keeps the register's line tax as sent (legacy behaviour).
     vat_registered: Mapped[bool] = mapped_column(Boolean, default=False)
     trn: Mapped[str | None] = mapped_column(String(32), nullable=True)

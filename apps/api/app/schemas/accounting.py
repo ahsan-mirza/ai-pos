@@ -29,6 +29,14 @@ class GlAccountRow(ApiModel):
 class AccountingSettings(ApiModel):
     fiscal_year_start_month: int = Field(default=1, ge=1, le=12)
     locked_until: date | None = None
+    inventory_costing: str = "FIFO"
+
+
+class CostingMethodWrite(ApiModel):
+    method: Literal["FIFO", "WEIGHTED_AVERAGE"]
+    reason: str = Field(min_length=3, max_length=500)
+    # Required once a sale has a posted cost. Posted costs are not rewritten.
+    convert: bool = False
 
 
 class LockWrite(ApiModel):

@@ -31,6 +31,10 @@ class InventoryLevel(TenantScoped, TimestampMixin, Base):
         CheckConstraint("quantity_on_hand >= 0", name="on_hand_nonnegative"),
         CheckConstraint("quantity_reserved >= 0", name="reserved_nonnegative"),
         CheckConstraint("min_reorder_level >= 0", name="min_reorder_nonnegative"),
+        CheckConstraint(
+            "weighted_average_cost_cents IS NULL OR weighted_average_cost_cents >= 0",
+            name="ck_inventory_levels_average_nonnegative",
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -41,6 +45,8 @@ class InventoryLevel(TenantScoped, TimestampMixin, Base):
     min_reorder_level: Mapped[int] = mapped_column(Integer, default=0)
     max_stock_level: Mapped[int | None] = mapped_column(Integer, nullable=True)
     aisle_shelf_location: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # Perpetual average for this branch. Sales snapshot it; receipts are the only thing that moves it.
+    weighted_average_cost_cents: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     @property
     def available(self) -> int:

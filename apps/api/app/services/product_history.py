@@ -10,6 +10,8 @@ from app.core.config import Settings
 from app.core.deps import Principal
 from app.core.errors import ApiError
 from app.core.security import decrypt_value
+from app.models.batch import BatchItem, PurchaseBatch
+from app.models.inventory import InventoryLevel
 from app.models.product import Product
 from app.models.purchasing import GoodsReceipt, GoodsReceiptLine, PurchaseOrder, PurchaseOrderLine
 from app.models.sale import Sale
@@ -18,13 +20,19 @@ from app.models.serial_number import SerialNumber
 from app.models.store import Store
 from app.models.user import User
 from app.schemas.product_history import (
+    CostGapRow,
+    CostLayerRow,
+    CostReconciliation,
+    ProductCosting,
     ProductPurchaseHistory,
     ProductPurchaseRow,
     ProductSaleRow,
     ProductSalesHistory,
     ProductSerialRow,
     ProductSerials,
+    StoreCostRow,
 )
+from app.services.cost_layers import WEIGHTED_AVERAGE, costing_method, layered_quantity
 from app.services.search_terms import identifier_candidates
 from app.services.settings_service import business_currency
 
@@ -100,6 +108,11 @@ def sales_history(db: Session, product_id: uuid.UUID, *, store_id: uuid.UUID | N
                 unit_price_cents=item.unit_price_cents,
                 tax_cents=item.tax_cents,
                 line_total_cents=item.line_total_cents,
+                cost_cents=item.cost_cents,
+                cost_estimated=item.cost_estimated,
+                gross_profit_cents=(
+                    None if item.cost_cents is None else item.line_total_cents - item.tax_cents - item.cost_cents
+                ),
             )
             for item, sale, store, cashier_name in rows
         ],
@@ -271,3 +284,145 @@ def serials(
             for unit, last4 in pairs
         ],
     )
+
+
+def _layer_value(db: Session, product_id: uuid.UUID, store_id: uuid.UUID) -> int:
+    return int(
+        db.scalar(
+            select(func.coalesce(func.sum(BatchItem.quantity_remaining * BatchItem.purchase_cost_per_unit), 0))
+            .join(PurchaseBatch, PurchaseBatch.id == BatchItem.batch_id)
+            .where(
+                BatchItem.product_id == product_id,
+                BatchItem.store_id == store_id,
+                PurchaseBatch.status != "REVERSED",
+                PurchaseBatch.is_consignment.is_(False),
+            )
+        )
+        or 0
+    )
+
+
+def product_costing(db: Session, product_id: uuid.UUID, *, store_id: uuid.UUID | None) -> ProductCosting:
+    product = require_product(db, product_id)
+    method = costing_method(db)
+    currency = business_currency(db)
+    scope = [InventoryLevel.store_id == store_id] if store_id is not None else []
+    levels = list(
+        db.execute(
+            select(InventoryLevel, Store)
+            .join(Store, Store.id == InventoryLevel.store_id)
+            .where(InventoryLevel.product_id == product_id, *scope)
+        ).all()
+    )
+    stores: list[StoreCostRow] = []
+    on_hand = reserved = value = uncosted = average_weight = average_units = 0
+    for level, store in levels:
+        layered = layered_quantity(db, product_id, level.store_id)
+        gap = max(0, level.quantity_on_hand - layered)
+        if method == WEIGHTED_AVERAGE and level.weighted_average_cost_cents is not None:
+            branch_value = level.quantity_on_hand * level.weighted_average_cost_cents
+        else:
+            branch_value = _layer_value(db, product_id, level.store_id)
+        stores.append(
+            StoreCostRow(
+                store_id=store.id,
+                store_code=store.code,
+                on_hand=level.quantity_on_hand,
+                reserved=level.quantity_reserved,
+                available=level.available,
+                weighted_average_cost_cents=level.weighted_average_cost_cents,
+                inventory_value_cents=branch_value,
+                uncosted_quantity=gap,
+            )
+        )
+        on_hand += level.quantity_on_hand
+        reserved += level.quantity_reserved
+        value += branch_value
+        uncosted += gap
+        if level.weighted_average_cost_cents is not None and level.quantity_on_hand:
+            average_weight += level.quantity_on_hand * level.weighted_average_cost_cents
+            average_units += level.quantity_on_hand
+    layer_rows = db.execute(
+        select(BatchItem, PurchaseBatch)
+        .join(PurchaseBatch, PurchaseBatch.id == BatchItem.batch_id)
+        .where(BatchItem.product_id == product_id, *([BatchItem.store_id == store_id] if store_id else []))
+        .order_by(BatchItem.created_at, BatchItem.id)
+    ).all()
+    revenue, cogs = db.execute(
+        select(
+            func.coalesce(func.sum(SaleItem.line_total_cents - SaleItem.tax_cents), 0),
+            func.coalesce(func.sum(SaleItem.cost_cents), 0),
+        )
+        .join(Sale, Sale.id == SaleItem.sale_id)
+        .where(
+            SaleItem.product_id == product_id,
+            SaleItem.cost_cents.is_not(None),
+            Sale.status.not_in(EXCLUDED_SALE_STATUSES),
+            Sale.currency == currency,
+            *([Sale.store_id == store_id] if store_id else []),
+        )
+    ).one()
+    return ProductCosting(
+        method=method,
+        currency=currency,
+        default_cost_cents=product.default_cost_cents,
+        last_purchase_cost_cents=product.last_purchase_cost_cents,
+        weighted_average_cost_cents=round(average_weight / average_units) if average_units else None,
+        on_hand=on_hand,
+        reserved=reserved,
+        available=on_hand - reserved,
+        inventory_value_cents=value,
+        uncosted_quantity=uncosted,
+        realized_revenue_cents=int(revenue),
+        realized_cogs_cents=int(cogs),
+        realized_profit_cents=int(revenue) - int(cogs),
+        layers=[
+            CostLayerRow(
+                batch_item_id=item.id,
+                batch_id=batch.id,
+                batch_number=batch.batch_number,
+                goods_receipt_id=batch.goods_receipt_id,
+                receipt_date=item.created_at,
+                original_quantity=item.quantity_imported,
+                remaining_quantity=item.quantity_remaining,
+                unit_cost_cents=item.purchase_cost_per_unit,
+                remaining_value_cents=item.quantity_remaining * item.purchase_cost_per_unit,
+                consumed_quantity=item.quantity_imported - item.quantity_remaining,
+            )
+            for item, batch in layer_rows
+            if batch.status != "REVERSED"
+        ],
+        stores=stores,
+    )
+
+
+def cost_reconciliation(db: Session, *, store_id: uuid.UUID | None) -> CostReconciliation:
+    """Quantities on hand with no remaining cost layer. No opening cost is invented for them."""
+    query = (
+        select(InventoryLevel, Product, Store)
+        .join(Product, Product.id == InventoryLevel.product_id)
+        .join(Store, Store.id == InventoryLevel.store_id)
+        .where(InventoryLevel.quantity_on_hand > 0)
+    )
+    if store_id is not None:
+        query = query.where(InventoryLevel.store_id == store_id)
+    rows: list[CostGapRow] = []
+    for level, product, store in db.execute(query).all():
+        layered = layered_quantity(db, product.id, level.store_id)
+        gap = level.quantity_on_hand - layered
+        if gap == 0:
+            continue
+        rows.append(
+            CostGapRow(
+                product_id=product.id,
+                sku=product.sku,
+                name=product.name,
+                store_id=store.id,
+                store_code=store.code,
+                on_hand=level.quantity_on_hand,
+                layered_quantity=layered,
+                uncosted_quantity=gap,
+            )
+        )
+    rows.sort(key=lambda row: (-row.uncosted_quantity, row.sku))
+    return CostReconciliation(method=costing_method(db), rows=rows)

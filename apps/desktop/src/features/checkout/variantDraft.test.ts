@@ -34,6 +34,19 @@ describe("fashion variant drafts", () => {
     expect(added).toHaveLength(6);
     expect(added.filter((row) => row.attributes.size === "S")).toHaveLength(2);
     expect(new Set(added.map((row) => row.sku)).size).toBe(6);
+    const saved = added.map((row, index) => ({ ...row, existingId: `id-${index}` }));
+    const narrowed = mergeVariantDrafts(
+      saved,
+      variantCombinations([
+        { key: "size", values: ["S"] },
+        { key: "color", values: ["Black", "White"] },
+      ]),
+      defaults,
+    );
+    const dropped = narrowed.filter((row) => row.attributes.size === "M" || row.attributes.size === "L");
+    expect(dropped.length).toBeGreaterThan(0);
+    expect(dropped.every((row) => row.included === false)).toBe(true);
+    expect(narrowed.filter((row) => row.attributes.size === "S").every((row) => row.included)).toBe(true);
   });
 
   it("bulk fill skips a cell that was edited and existing stock", () => {

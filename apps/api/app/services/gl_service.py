@@ -67,11 +67,13 @@ def _today() -> date:
 
 
 def settings(db: Session) -> AccountingSettings:
-    raw = load_settings(db).accounting or {}
+    row = load_settings(db)
+    raw = row.accounting or {}
     locked = raw.get("locked_until")
     return AccountingSettings(
         fiscal_year_start_month=int(raw.get("fiscal_year_start_month") or 1),
         locked_until=date.fromisoformat(locked) if locked else None,
+        inventory_costing=row.inventory_costing,
     )
 
 

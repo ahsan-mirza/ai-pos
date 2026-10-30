@@ -15,6 +15,7 @@ from app.schemas.accounting import (
     BalanceSheet,
     CloseYearRequest,
     CorporateTaxEstimate,
+    CostingMethodWrite,
     GlAccountRow,
     GlAccountWrite,
     IncomeStatement,
@@ -27,7 +28,9 @@ from app.schemas.accounting import (
     ReverseRequest,
     TrialBalance,
 )
-from app.services import gl_service
+from app.schemas.product_history import CostReconciliation
+from app.services import gl_service, product_history
+from app.services.cost_layers import set_costing_method
 
 router = APIRouter()
 Db = Annotated[Session, Depends(get_db)]
@@ -44,6 +47,29 @@ def get_settings(db: Db, _: CanAccount) -> AccountingSettings:
 @router.put("/settings", response_model=AccountingSettings)
 def put_settings(payload: AccountingSettings, db: Db, _: CanAccount) -> AccountingSettings:
     return gl_service.update_settings(db, payload.fiscal_year_start_month)
+
+
+@router.put("/costing-method", response_model=AccountingSettings)
+def put_costing_method(payload: CostingMethodWrite, db: Db, principal: CanAccount) -> AccountingSettings:
+    set_costing_method(
+        db,
+        payload.method,
+        user_id=principal.user.id if principal.user else None,
+        reason=payload.reason,
+        convert=payload.convert,
+    )
+    return gl_service.settings(db)
+
+
+@router.get("/cost-reconciliation", response_model=CostReconciliation)
+def cost_reconciliation(
+    db: Db,
+    principal: CanAccount,
+    store_id: uuid.UUID | None = None,
+) -> CostReconciliation:
+    if principal.store_id is not None:
+        store_id = principal.store_id
+    return product_history.cost_reconciliation(db, store_id=store_id)
 
 
 @router.post("/lock", response_model=AccountingSettings)

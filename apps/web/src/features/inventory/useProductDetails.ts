@@ -2,6 +2,7 @@ import {
   Permission,
   type Availability,
   type Product,
+  type ProductCosting,
   type ProductPurchaseHistory,
   type ProductSalesHistory,
   type ProductSerials,
@@ -74,6 +75,11 @@ export function useProductDetails(productId: string | null, serialFilters: Seria
     can(Permission.PortalInventoryManage),
     version,
   );
+  const costing = useResource<ProductCosting>(
+    base && `${base}/costing`,
+    can(Permission.PortalInventoryManage),
+    version,
+  );
   const serialParams = new URLSearchParams({ limit: "500" });
   if (serialFilters.status) serialParams.set("status", serialFilters.status);
   if (serialFilters.query.trim()) serialParams.set("q", serialFilters.query.trim());
@@ -84,5 +90,5 @@ export function useProductDetails(productId: string | null, serialFilters: Seria
   );
   const movements = useResource<StockMovement[]>(base && `${base}/movements?limit=300`, true, version);
 
-  return { product, availability, sales, purchases, serials, movements, reload };
+  return { product, availability, sales, purchases, costing, serials, movements, reload };
 }

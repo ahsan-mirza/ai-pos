@@ -75,6 +75,14 @@ class Product(TenantScoped, TimestampMixin, Base):
         # Null signature (a product that is not a variant) is allowed many times. A real combination is not.
         tenant_unique("product_model_id", "variant_signature", name="uq_products_model_variant"),
         CheckConstraint("price_cents >= 0", name="price_nonnegative"),
+        CheckConstraint(
+            "default_cost_cents IS NULL OR default_cost_cents >= 0",
+            name="ck_products_default_cost_nonnegative",
+        ),
+        CheckConstraint(
+            "last_purchase_cost_cents IS NULL OR last_purchase_cost_cents >= 0",
+            name="ck_products_last_cost_nonnegative",
+        ),
         CheckConstraint("min_order_quantity >= 1", name="moq_positive"),
         CheckConstraint("tare_grams >= 0", name="tare_nonnegative"),
         CheckConstraint(
@@ -167,6 +175,10 @@ class Product(TenantScoped, TimestampMixin, Base):
     # Technical details that follow the category (processor, capacity, fabric). JSON on SQLite tests, JSONB in Postgres.
     specifications: Mapped[dict[str, str]] = mapped_column(JSON().with_variant(JSONB(), "postgresql"), default=dict)
     price_cents: Mapped[int] = mapped_column(Integer)
+    # Reference cost for the next purchase. Receipts do not overwrite it.
+    default_cost_cents: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Unit cost on the latest goods receipt. Earlier receipts keep their own layers.
+    last_purchase_cost_cents: Mapped[int | None] = mapped_column(Integer, nullable=True)
     # The price before the active markdown; null when the product is not marked down.
     compare_at_cents: Mapped[int | None] = mapped_column(Integer, nullable=True)
     markdown_event_id: Mapped[uuid.UUID | None] = mapped_column(

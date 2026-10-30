@@ -1,6 +1,6 @@
 import { BrandLogo } from "@ai-pos/ui";
 import { ChevronDown, X } from "lucide-react";
-import { useEffect, useRef, useState, type FocusEvent, type MouseEvent, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type FocusEvent, type MouseEvent, type ReactNode } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { useTenant } from "../../context/TenantContext";
 import { useAuth, useIsSuperAdmin } from "../../lib/auth";
@@ -8,13 +8,20 @@ import { portalHomePath } from "../../lib/portal-home";
 import { useCapabilities } from "../../lib/capabilities";
 import { useCanManageSettings } from "../../lib/currency";
 import { AiMark } from "../ui/AiMark";
-import { labelOf, navGroups, settingsTabAllowed, settingsTabs, type NavGroup, type NavItem } from "./navigation";
+import { labelOf, navGroups, settingsTabAllowed, settingsTabs, type NavItem } from "./navigation";
+import { revealSection, toggleSection } from "./sidebarSections";
 import { StoreSwitcher } from "./StoreSwitcher";
 
 type VisibleItem = NavItem & { label: string };
 
+interface VisibleGroup {
+  id: string;
+  label: string;
+  items: VisibleItem[];
+}
+
 /** The groups this user may open for this business type, with names resolved for it. */
-function useVisibleGroups(): { label: NavGroup["label"]; items: VisibleItem[] }[] {
+function useVisibleGroups(): VisibleGroup[] {
   const { can } = useAuth();
   const canManageSettings = useCanManageSettings();
   const superAdmin = useIsSuperAdmin();
@@ -23,6 +30,7 @@ function useVisibleGroups(): { label: NavGroup["label"]; items: VisibleItem[] }[
   const gate = { can, canManageSettings, superAdmin, has: capabilities.has, allows: tenant.allows };
   return navGroups
     .map((group) => ({
+      id: group.id,
       label: group.label,
       items: group.items.flatMap((item) => {
         if (item.hub) {
@@ -47,29 +55,61 @@ interface Tip {
   top: number;
 }
 
-function sectionId(label: string): string {
-  return `nav-section-${label.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
+function sectionId(id: string): string {
+  return `nav-section-${id}`;
+}
+
+/**
+ * One expansion set for the desktop rail and the mobile drawer.
+ * The first visible section starts open. A route change opens the section
+ * that contains the page and leaves every other section as the user left it.
+ */
+function useSectionExpansion() {
+  const { pathname, hash } = useLocation();
+  const groups = useVisibleGroups();
+  const activeId = groups.find((group) => group.items.some((item) => item.isActive(pathname, hash)))?.id ?? null;
+  const followed = activeId ?? groups[0]?.id ?? null;
+  const [openIds, setOpenIds] = useState<ReadonlySet<string>>(() => new Set());
+  const touched = useRef(false);
+  const revealedRoute = useRef<string | null>(null);
+
+  useLayoutEffect(() => {
+    const route = `${pathname}${hash}`;
+    const routeChanged = revealedRoute.current !== route;
+    revealedRoute.current = route;
+    setOpenIds((current) => {
+      if (!touched.current && current.size === 0) return new Set(followed ? [followed] : []);
+      if (!routeChanged) return current;
+      return revealSection(current, activeId);
+    });
+  }, [pathname, hash, activeId, followed]);
+
+  const toggle = (id: string) => {
+    touched.current = true;
+    setOpenIds((current) => toggleSection(current, id));
+  };
+
+  return { groups, isOpen: (id: string) => openIds.has(id), toggle };
 }
 
 function SidebarNav({
+  instance,
   collapsed,
+  groups,
+  isOpen,
+  onToggle,
   onNavigate,
   onTip,
 }: {
+  instance: "rail" | "drawer";
   collapsed: boolean;
+  groups: VisibleGroup[];
+  isOpen: (id: string) => boolean;
+  onToggle: (id: string) => void;
   onNavigate?: () => void;
   onTip?: (tip: Tip | null) => void;
 }) {
   const { pathname, hash } = useLocation();
-  const groups = useVisibleGroups();
-  const activeLabel = groups.find((group) => group.items.some((item) => item.isActive(pathname, hash)))?.label ?? null;
-  // undefined follows the current page. A string is the section the user opened. null means they closed them all.
-  const [chosen, setChosen] = useState<string | null | undefined>(undefined);
-  const openLabel = chosen === undefined ? (activeLabel ?? groups[0]?.label ?? null) : chosen;
-
-  useEffect(() => {
-    setChosen(undefined);
-  }, [pathname, hash]);
 
   const showTip = (item: VisibleItem) => (event: MouseEvent<HTMLElement> | FocusEvent<HTMLElement>) => {
     if (!collapsed || !onTip) return;
@@ -77,18 +117,15 @@ function SidebarNav({
     onTip({ label: item.label, top: rect.top + rect.height / 2 });
   };
   const hideTip = () => onTip?.(null);
-  const toggle = (label: string) => {
-    setChosen(openLabel === label ? null : label);
-  };
 
   return (
     <nav aria-label="Primary" className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-3 py-4" onScroll={hideTip}>
       {groups.map((group, index) => {
-        const open = openLabel === group.label;
+        const open = isOpen(group.id);
         const showItems = collapsed || open;
-        const panelId = sectionId(group.label);
+        const panelId = `${sectionId(group.id)}-${instance}`;
         return (
-          <div key={group.label} className={index ? "mt-2" : ""}>
+          <div key={group.id} className={index ? "mt-2" : ""}>
             {collapsed ? (
               index ? <div className="mx-3 mb-1 h-px bg-line" /> : null
             ) : (
@@ -96,7 +133,7 @@ function SidebarNav({
                 type="button"
                 aria-expanded={open}
                 aria-controls={panelId}
-                onClick={() => toggle(group.label)}
+                onClick={() => onToggle(group.id)}
                 className="flex h-8 w-full items-center justify-between rounded-lg px-3 text-[11px] font-semibold uppercase tracking-[0.12em] text-charcoal/40 outline-none transition-colors hover:bg-charcoal/[0.04] hover:text-charcoal focus-visible:ring-2 focus-visible:ring-accent/40"
               >
                 <span>{group.label}</span>
@@ -181,6 +218,7 @@ export function Sidebar({
 }) {
   const [tip, setTip] = useState<Tip | null>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
+  const sections = useSectionExpansion();
 
   useEffect(() => {
     if (!collapsed) setTip(null);
@@ -204,7 +242,7 @@ export function Sidebar({
         }`}
       >
         <SidebarBrand collapsed={collapsed} />
-        <SidebarNav collapsed={collapsed} onTip={setTip} />
+        <SidebarNav instance="rail" collapsed={collapsed} groups={sections.groups} isOpen={sections.isOpen} onToggle={sections.toggle} onTip={setTip} />
       </aside>
 
       {tip ? (
@@ -237,7 +275,7 @@ export function Sidebar({
             <div className="border-b border-line px-4 py-3 md:hidden">
               <StoreSwitcher />
             </div>
-            <SidebarNav collapsed={false} onNavigate={onCloseMobile} />
+            <SidebarNav instance="drawer" collapsed={false} groups={sections.groups} isOpen={sections.isOpen} onToggle={sections.toggle} onNavigate={onCloseMobile} />
           </div>
         </div>
       ) : null}

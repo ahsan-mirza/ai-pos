@@ -8,10 +8,13 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.models.batch import BatchAllocation, BatchItem
+from app.models.inventory import InventoryLevel
 from app.models.product import Product
 from app.models.purchasing import GoodsReceipt, GoodsReceiptLine, PurchaseOrderLine
+from app.models.sale import Sale
 from app.models.sale_item import SaleItem
 from app.services import batch_ledger, weighed
+from app.services.cost_layers import WEIGHTED_AVERAGE, costing_method
 
 
 def fallback_unit_cost(db: Session, product_id: uuid.UUID) -> int | None:
@@ -67,9 +70,25 @@ def cost_sale(db: Session, sale_id: uuid.UUID) -> None:
             )
         ).all()
     )
+    average_cost = costing_method(db) == WEIGHTED_AVERAGE
+    sale = db.get(Sale, sale_id) if average_cost else None
+    averages: dict[uuid.UUID, int | None] = {}
     fallbacks: dict[uuid.UUID, int | None] = {}
     for item in items:
         scale = weighed.GRAMS_PER_KG if item.product_id in weighed_ids else 1
+        if average_cost and sale is not None:
+            if item.product_id not in averages:
+                averages[item.product_id] = db.scalar(
+                    select(InventoryLevel.weighted_average_cost_cents).where(
+                        InventoryLevel.product_id == item.product_id,
+                        InventoryLevel.store_id == sale.store_id,
+                    )
+                )
+            average = averages[item.product_id]
+            if average is not None:
+                item.cost_cents = weighed.amount(item.quantity, int(average), scale)
+                item.cost_estimated = False
+                continue
         quantity, cost = drawn.get(item.id, (0, 0))
         # Weighed goods: allocations are grams and costs per kilogram.
         cost = weighed.amount(1, cost, scale)

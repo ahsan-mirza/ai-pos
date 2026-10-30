@@ -1249,7 +1249,7 @@ export function ProductFormModal({
           </div>
         </fieldset>
       ) : null}
-      {!editing && itemType !== ItemType.MadeToOrder ? (
+      {itemType !== ItemType.MadeToOrder && (!editing || variantRows.some((row) => row.included && !row.existingId)) ? (
         <div id="product-section-stock" className="mt-4 scroll-mt-4 space-y-4">
           <Toggle
             label="Track IMEI / serial numbers"

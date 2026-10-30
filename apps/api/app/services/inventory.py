@@ -1588,6 +1588,8 @@ def receive_purchase_order(
     )
     db.add(receipt)
     db.flush()
+    from app.services.cost_layers import record_receipt_layer
+
     seen: set[uuid.UUID] = set()
     for entry in data.lines:
         line = lines.get(entry.purchase_order_line_id)
@@ -1600,6 +1602,7 @@ def receive_purchase_order(
         if entry.quantity > outstanding:
             raise ApiError(422, "over_receipt", f"Only {outstanding} left to receive on this line.")
         product = _product(db, line.product_id)
+        registered: list[SerialNumber] = []
         if product.is_serialized:
             serials = _serial_inputs(entry.serials)
             if len(serials) != entry.quantity:
@@ -1609,17 +1612,19 @@ def receive_purchase_order(
                     f"Scan {entry.quantity} IMEI/serial numbers for {product.name}; got {len(serials)}.",
                 )
             for serial in serials:
-                register_serial(
-                    db,
-                    settings,
-                    product=product,
-                    store_id=store.id,
-                    kind=serial.kind,
-                    value=serial.value,
-                    movement_type="PURCHASE_IN",
-                    reference_type="goods_receipt",
-                    reference_id=receipt.id,
-                    user_id=actor.id,
+                registered.append(
+                    register_serial(
+                        db,
+                        settings,
+                        product=product,
+                        store_id=store.id,
+                        kind=serial.kind,
+                        value=serial.value,
+                        movement_type="PURCHASE_IN",
+                        reference_type="goods_receipt",
+                        reference_id=receipt.id,
+                        user_id=actor.id,
+                    )
                 )
         else:
             if entry.serials:
@@ -1635,6 +1640,21 @@ def receive_purchase_order(
                 user_id=actor.id,
                 note=f"{order.number} from {order.supplier_name}",
             )
+        layer = record_receipt_layer(
+            db,
+            product=product,
+            store_id=store.id,
+            quantity=entry.quantity,
+            unit_cost_cents=line.unit_cost_cents,
+            goods_receipt_id=receipt.id,
+            user_id=actor.id,
+            supplier_id=order.supplier_id,
+            currency=product.currency,
+            note=f"{receipt.number} {order.number}",
+            batch_number=f"{receipt.number}-{line.position}",
+        )
+        for serial in registered:
+            serial.batch_item_id = layer.id
         if entry.aisle_shelf_location:
             level_for(db, product.id, store.id).aisle_shelf_location = entry.aisle_shelf_location.strip()
         line.quantity_received += entry.quantity

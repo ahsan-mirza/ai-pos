@@ -8,6 +8,7 @@ import {
   formatMoney,
   type Availability,
   type Product,
+  type ProductCosting,
   type ProductPurchaseHistory,
   type SerialStatus,
 } from "@ai-pos/shared-types";
@@ -95,24 +96,26 @@ function DetailsTab({
   product,
   availability,
   purchases,
+  costing,
   canManagePhotos,
 }: {
   product: Product;
   availability: Resource<Availability>;
   purchases: Resource<ProductPurchaseHistory>;
+  costing: Resource<ProductCosting>;
   canManagePhotos: boolean;
 }) {
-  const cost = purchases.state === "ready" ? purchases.data.latest_unit_cost_cents : null;
-  const costHint =
-    purchases.state === "forbidden"
-      ? "Managers only"
-      : purchases.state === "loading"
-        ? "Loading…"
-        : cost === null
-          ? "No goods received yet"
-          : "Latest goods receipt";
+  const latest = purchases.state === "ready" ? purchases.data.latest_unit_cost_cents : null;
+  const costs = costing.state === "ready" ? costing.data : null;
+  const lastPurchase = costs?.last_purchase_cost_cents ?? latest;
+  const valuationUnit =
+    costs && costs.on_hand > 0 ? Math.round(costs.inventory_value_cents / costs.on_hand) : lastPurchase;
   const margin =
-    cost !== null && product.price_cents > 0 ? ((product.price_cents - cost) / product.price_cents) * 100 : null;
+    valuationUnit !== null && product.price_cents > 0
+      ? ((product.price_cents - valuationUnit) / product.price_cents) * 100
+      : null;
+  const money = (cents: number | null | undefined) =>
+    cents === null || cents === undefined ? "—" : formatMoney(cents, product.currency);
 
   return (
     <ResourceView
@@ -137,18 +140,33 @@ function DetailsTab({
                 value={formatMoney(product.price_cents, product.currency)}
                 tone="dark"
               />
+              <Stat label="Last purchase price" value={money(lastPurchase)} hint="Latest receipt. Older receipts keep their own cost." />
               <Stat
-                label="Cost price"
-                value={cost === null ? "—" : formatMoney(cost, product.currency)}
-                hint={costHint}
+                label="Weighted average"
+                value={money(costs?.weighted_average_cost_cents ?? null)}
+                hint={costs ? `Running average. Valuation method: ${costs.method === "FIFO" ? "FIFO" : "Weighted average"}` : "Managers only"}
               />
               <Stat
-                label="Margin"
+                label="Default purchase cost"
+                value={money(costs?.default_cost_cents ?? null)}
+                hint="Reference for the next purchase"
+              />
+              <Stat
+                label="Inventory value"
+                value={costs ? formatMoney(costs.inventory_value_cents, product.currency) : "—"}
+                hint={
+                  costs
+                    ? `${costs.on_hand} on hand, ${costs.available} available${costs.uncosted_quantity ? `, ${costs.uncosted_quantity} uncosted` : ""}`
+                    : "From cost layers"
+                }
+              />
+              <Stat
+                label="Estimated margin"
                 value={margin === null ? "—" : `${margin.toFixed(1)}%`}
                 hint={
                   margin === null
-                    ? "Needs a cost price"
-                    : formatMoney(product.price_cents - (cost ?? 0), product.currency) + " per unit"
+                    ? "Needs a current cost"
+                    : `${money(product.price_cents - (valuationUnit ?? 0))} per unsold unit. Not realized profit.`
                 }
                 tone={margin !== null && margin < 10 ? "accent" : "light"}
               />
@@ -513,12 +531,13 @@ export function ProductDetailDrawer({
               product={product}
               availability={detail.availability}
               purchases={detail.purchases}
+              costing={detail.costing}
               canManagePhotos={can(Permission.PortalInventoryManage)}
             />
           ) : active === "sales" ? (
             <SalesTab resource={detail.sales} />
           ) : active === "purchases" ? (
-            <PurchasesTab resource={detail.purchases} currency={product.currency} />
+            <PurchasesTab resource={detail.purchases} costing={detail.costing} currency={product.currency} />
           ) : active === "serials" ? (
             <SerialsTab
               resource={detail.serials}

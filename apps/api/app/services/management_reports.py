@@ -41,6 +41,7 @@ from app.schemas.management import (
     ValuationRow,
 )
 from app.services import consignment_service, costing, expense_service, margin_service, sales_velocity, weighed
+from app.services.cost_layers import costing_method
 from app.services.settings_service import cached_settings, pos_policy
 from app.services.tax import div_half_up
 from app.services.tax import policy as tax_policy
@@ -354,9 +355,14 @@ def valuation(db: Session, *, store_id: uuid.UUID | None) -> ValuationReport:
         supplier_owned = min(level.quantity_on_hand, consigned.get((product.id, level.store_id), 0))
         owned = level.quantity_on_hand - supplier_owned
         scale = weighed.scale_of(product)
-        value, guessed, estimated, _missing = _value(
-            owned, layers.get((product.id, level.store_id), []), fallback(product.id), scale=scale
-        )
+        average = level.weighted_average_cost_cents
+        if costing_method(db) == "WEIGHTED_AVERAGE" and average is not None and owned:
+            value = weighed.amount(owned, average, scale)
+            guessed, estimated = 0, False
+        else:
+            value, guessed, estimated, _missing = _value(
+                owned, layers.get((product.id, level.store_id), []), fallback(product.id), scale=scale
+            )
         estimated_units += guessed
         rows.append(
             ValuationRow(

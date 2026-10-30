@@ -35,16 +35,75 @@
   }
 }
 
-html,
-* {
+/* Anchor jumps only. Setting this on every element makes each overflow box a smooth-scroll
+   target, so a wheel tick over a button is swallowed instead of moving the sidebar or page. */
+html {
   scroll-behavior: smooth;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  html,
-  * {
+  html {
     scroll-behavior: auto;
   }
+}
+
+/*
+ * overflow:hidden is a scrollport. Chromium then keeps the wheel on that box when its content
+ * is wider than the box (a nowrap menu label, a tab, a card). The sidebar or page underneath
+ * never scrolls while the pointer is on the control. clip still hides the overflow and still
+ * follows border-radius, but it is not a scrollport, so the wheel reaches the real scroller.
+ * A container that also scrolls (overflow-x/y-auto or scroll) keeps hidden on the other axis.
+ */
+/* Doubled class so this beats Tailwind's later single-class utilities. */
+.overflow-hidden.overflow-hidden {
+  overflow: clip;
+}
+
+.overflow-x-hidden.overflow-x-hidden:not(.overflow-y-auto):not(.overflow-y-scroll) {
+  overflow-x: clip;
+}
+
+.overflow-y-hidden.overflow-y-hidden:not(.overflow-x-auto):not(.overflow-x-scroll) {
+  overflow-y: clip;
+}
+
+/* A horizontal scroller (overflow-x: auto) otherwise becomes a vertical scrollport too,
+   because a visible axis next to auto computes to auto. That eats the vertical wheel
+   over a wide table. clip keeps the other axis from becoming a scrollport. */
+.overflow-x-auto:not(.overflow-y-auto):not(.overflow-y-scroll) {
+  overflow-y: clip;
+}
+
+.overflow-y-auto:not(.overflow-x-auto):not(.overflow-x-scroll) {
+  overflow-x: clip;
+}
+
+/* Truncation and line clamps use overflow:hidden, so the same wheel capture applies. */
+.truncate.truncate,
+[class*="line-clamp-"][class*="line-clamp-"] {
+  overflow: clip;
+}
+
+/* Dialogs, drawers, and fixed panels stay scrollports so a wheel over their chrome
+   does not move the page behind them. Their inner overflow-y-auto regions still scroll. */
+.modal-card.overflow-hidden,
+.drawer-panel.overflow-hidden,
+[role="dialog"].overflow-hidden,
+.fixed.overflow-hidden {
+  overflow: hidden;
+}
+
+[role="listbox"],
+[role="menu"] {
+  overscroll-behavior: contain;
+}
+
+/* Reaching the end of a dialog or drawer must not scroll the page behind it. */
+.modal-card,
+.drawer-panel,
+.modal-card .overflow-y-auto,
+.drawer-panel .overflow-y-auto {
+  overscroll-behavior: contain;
 }
 
 /* Chromium (incl. the Tauri WebView) and Safari. Standard scrollbar-* properties must stay unset here:

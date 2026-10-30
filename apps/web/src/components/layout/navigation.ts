@@ -122,6 +122,8 @@ export function inSettingsHub(pathname: string): boolean {
 }
 
 export interface NavGroup {
+  /** Stable accordion id. Independent of the label shown for a business type. */
+  id: string;
   label: string;
   items: NavItem[];
 }
@@ -153,6 +155,7 @@ const inventoryOwn = (pathname: string) =>
 /** Grouped by domain; a group whose items are all switched off for this business type disappears. */
 export const navGroups: NavGroup[] = [
   {
+    id: "workspace",
     label: "Workspace",
     items: [
       { to: portalHomePath(), label: "Dashboard", icon: LayoutDashboard, permission: Permission.PortalReportsRead, isActive: (path) => path === "/" || path === "/dashboard" },
@@ -183,6 +186,7 @@ export const navGroups: NavGroup[] = [
     ],
   },
   {
+    id: "sales",
     label: "Sales",
     items: [
       {
@@ -222,6 +226,7 @@ export const navGroups: NavGroup[] = [
     ],
   },
   {
+    id: "wholesale",
     label: "Wholesale & credit",
     items: [
       {
@@ -267,6 +272,7 @@ export const navGroups: NavGroup[] = [
     ],
   },
   {
+    id: "service",
     label: "Service",
     items: [
       {
@@ -296,6 +302,7 @@ export const navGroups: NavGroup[] = [
     ],
   },
   {
+    id: "food",
     label: "Food & Beverage",
     items: [
       {
@@ -351,6 +358,7 @@ export const navGroups: NavGroup[] = [
     ],
   },
   {
+    id: "finance",
     label: "Finance",
     items: [
       { to: "/payables", label: "Payables", icon: HandCoins, permission: Permission.PayablesManage, isActive: under("/payables") },
@@ -385,6 +393,7 @@ export const navGroups: NavGroup[] = [
     ],
   },
   {
+    id: "administration",
     label: "Administration",
     items: [
       { to: "/users", label: "Users", icon: UserCog, permission: Permission.UsersRead, isActive: under("/users") },

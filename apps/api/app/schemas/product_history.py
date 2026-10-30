@@ -20,6 +20,10 @@ class ProductSaleRow(ApiModel):
     unit_price_cents: int
     tax_cents: int
     line_total_cents: int
+    # Cost snapshotted when the sale posted. Null when the units had no cost layer.
+    cost_cents: int | None = None
+    cost_estimated: bool = False
+    gross_profit_cents: int | None = None
 
 
 class ProductSalesHistory(ApiModel):
@@ -75,3 +79,63 @@ class ProductSerials(ApiModel):
     total: int
     status_counts: dict[str, int]
     rows: list[ProductSerialRow]
+
+
+class CostLayerRow(ApiModel):
+    batch_item_id: UUID
+    batch_id: UUID
+    batch_number: str
+    goods_receipt_id: UUID | None
+    receipt_date: datetime
+    original_quantity: int
+    remaining_quantity: int
+    unit_cost_cents: int
+    remaining_value_cents: int
+    consumed_quantity: int
+
+
+class StoreCostRow(ApiModel):
+    store_id: UUID
+    store_code: str
+    on_hand: int
+    reserved: int
+    available: int
+    weighted_average_cost_cents: int | None
+    inventory_value_cents: int
+    uncosted_quantity: int
+
+
+class ProductCosting(ApiModel):
+    method: str
+    currency: str
+    default_cost_cents: int | None
+    last_purchase_cost_cents: int | None
+    weighted_average_cost_cents: int | None
+    on_hand: int
+    reserved: int
+    available: int
+    inventory_value_cents: int
+    uncosted_quantity: int
+    realized_revenue_cents: int
+    realized_cogs_cents: int
+    realized_profit_cents: int
+    layers: list[CostLayerRow]
+    stores: list[StoreCostRow]
+
+
+class CostGapRow(ApiModel):
+    product_id: UUID
+    sku: str
+    name: str
+    store_id: UUID
+    store_code: str
+    on_hand: int
+    layered_quantity: int
+    uncosted_quantity: int
+
+
+class CostReconciliation(ApiModel):
+    """Stock with no cost layer. Opening quantities are not given a made-up purchase."""
+
+    method: str
+    rows: list[CostGapRow]

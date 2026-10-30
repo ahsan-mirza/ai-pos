@@ -61,7 +61,7 @@ export function SettingsLayout() {
       <aside className="rounded-card bg-charcoal p-3 text-white sm:p-4 lg:p-5 md:sticky md:top-0 md:max-h-[calc(100dvh-6.5rem)] md:overflow-y-auto">
         <h2 className="px-1 text-base font-semibold sm:text-lg">{title}</h2>
         <p className="mt-1 px-1 text-xs text-white/55">Each section opens on its own.</p>
-        <nav ref={navRef} aria-label={title} className="mt-3 max-h-[min(20rem,48vh)] overflow-y-auto overscroll-contain md:max-h-none">
+        <nav ref={navRef} aria-label={title} className="mt-3 max-h-[min(20rem,48vh)] overflow-y-auto overscroll-contain md:max-h-none md:overflow-visible">
           <ul className="space-y-1.5">
             {tabs.map((tab) => {
               const here = onTab(tab, pathname);
