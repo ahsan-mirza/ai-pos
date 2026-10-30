@@ -8,6 +8,7 @@ import uuid
 from dataclasses import dataclass
 from datetime import timedelta
 from pathlib import Path
+from types import SimpleNamespace
 
 import segno
 from fpdf import FPDF
@@ -27,6 +28,7 @@ from app.models.store import Store
 from app.services.ledger_service import as_utc
 from app.services.settings_service import cached_settings, pos_policy
 from app.tax_authority import adapter_for, einvoice_for
+from app.tenancy.country_tax import describe
 
 FONTS = Path(__file__).resolve().parent.parent / "assets" / "fonts"
 ACCENT = (242, 106, 33)
@@ -115,6 +117,23 @@ class _Line:
     total_cents: int
 
 
+def _seller(sale: Sale | None, fallback: object) -> tuple[object, str, str]:
+    """The legal identity frozen on the sale, or the current business settings when the sale has none."""
+    snap = sale.tax_snapshot if sale is not None and sale.tax_snapshot else None
+    if not snap:
+        return fallback, "fta", "AE"
+    language = snap.get("legal_local_language")
+    local = snap.get("legal_name_local")
+    row = SimpleNamespace(
+        legal_name=snap.get("legal_name"),
+        legal_name_ar=local if language == "ar" else None,
+        legal_name_local=local,
+        legal_local_language=language,
+        trn=snap.get("registration_number") if snap.get("registered") else None,
+    )
+    return row, str(snap.get("tax_authority") or "fta"), str(snap.get("country") or "AE")
+
+
 def _document(
     *,
     title_en: str,
@@ -183,8 +202,9 @@ def _document(
             pdf.font(10 if index == 0 else 8.5, bold=index == 0, color=CHARCOAL if index == 0 else MUTED)
             pdf.multi_cell(column - 4, 4.6, text, new_x="LEFT", new_y="NEXT")
 
-    region = EMIRATES.get(store.emirate or "", "") if country == "AE" else ""
-    tax_id = "TRN" if country == "AE" else "VAT No."
+    region = EMIRATES.get(store.emirate or "", "") if country == "AE" else (store.city or "")
+    tax_id = describe(country).registration_label
+    notes = {"AE": LEGAL_NOTES["fta"], "SA": LEGAL_NOTES["zatca"]}
     block(
         pdf.l_margin,
         "Supplier",
@@ -192,7 +212,7 @@ def _document(
             legal,
             store.address or "",
             ", ".join(item for item in (region, COUNTRY_NAMES.get(country, country)) if item),
-            f"{tax_id} {trn}" if trn else f"{tax_id} not registered",
+            f"{tax_id} {trn}" if trn else "Not tax-registered",
         ],
     )
     if full and customer is not None:
@@ -208,9 +228,14 @@ def _document(
         )
     elif customer is not None:
         block(pdf.l_margin + column, "Customer", [customer.company_name or customer.name, customer.phone or ""])
+    local_name = getattr(settings_row, "legal_name_local", None)
+    local_language = getattr(settings_row, "legal_local_language", None)
     if legal_ar and pdf.arabic(10, CHARCOAL):
         pdf.set_xy(pdf.l_margin, top + 26)
         pdf.cell(column - 4, 5, legal_ar)
+    elif local_name and local_language == "ur" and pdf.arabic(10, CHARCOAL):
+        pdf.set_xy(pdf.l_margin, top + 26)
+        pdf.cell(column - 4, 5, local_name)
 
     pdf.set_y(top + 34)
     widths = [8, width - 8 - 16 - 30 - 18 - 26 - 30, 16, 30, 18, 26, 30]
@@ -277,7 +302,7 @@ def _document(
     pdf.multi_cell(
         text_width,
         4.4,
-        f"Amounts in {currency}. {LEGAL_NOTES.get(authority, '')}".strip() if trn else f"Amounts in {currency}.",
+        f"Amounts in {currency}. {notes.get(country, '')}".strip(),
     )
     if qr:
         pdf.image(qr_png(qr), x=x - 34, y=top, w=29, h=29)
@@ -324,6 +349,9 @@ def render_sale_invoice(db: Session, settings: Settings, sale_id: uuid.UUID, sto
             )
         )
     adapter = adapter_for(db)
+    seller, authority, country = _seller(sale, cached_settings(db))
+    if not sale.tax_snapshot:
+        authority, country = adapter.code, adapter.country
     full = invoice_kind(db, sale.total_cents, customer) == "FULL"
     einvoice = einvoice_for(db, "sale", sale.id)
     simplified_title = adapter.code == "zatca" and not full
@@ -341,10 +369,10 @@ def render_sale_invoice(db: Session, settings: Settings, sale_id: uuid.UUID, sto
         tax=sale.tax_cents,
         total=sale.total_cents,
         currency=sale.currency,
-        settings_row=cached_settings(db),
+        settings_row=seller,
         note="Tax invoice. Keep it for returns and warranty claims.",
-        authority=adapter.code,
-        country=adapter.country,
+        authority=authority,
+        country=country,
         qr=einvoice.qr if einvoice is not None else None,
     )
 
@@ -437,6 +465,9 @@ def render_credit_note(db: Session, settings: Settings, return_id: uuid.UUID, st
         for item in items
     ]
     adapter = adapter_for(db)
+    seller, authority, country = _seller(sale, cached_settings(db))
+    if not sale.tax_snapshot:
+        authority, country = adapter.code, adapter.country
     einvoice = einvoice_for(db, "return", record.id)
     return _document(
         title_en="Tax Credit Note",
@@ -452,9 +483,9 @@ def render_credit_note(db: Session, settings: Settings, return_id: uuid.UUID, st
         tax=record.tax_refund_cents,
         total=record.total_refund_cents,
         currency=record.currency,
-        settings_row=cached_settings(db),
+        settings_row=seller,
         note="Tax credit note against the referenced tax invoice.",
-        authority=adapter.code,
-        country=adapter.country,
+        authority=authority,
+        country=country,
         qr=einvoice.qr if einvoice is not None else None,
     )

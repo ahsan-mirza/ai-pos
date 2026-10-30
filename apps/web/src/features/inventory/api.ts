@@ -30,6 +30,9 @@ import type {
   TransferCreate,
   TransferShip,
   LabelLayout,
+  MatrixBulk,
+  MatrixBulkResult,
+  MatrixPreview,
   MatrixWrite,
   VariantMatrix,
 } from "@ai-pos/shared-types";
@@ -134,8 +137,12 @@ export const modelsApi = {
   variants: (modelId: string) => apiGet<Product[]>(`/api/v1/products${query({ product_model_id: modelId, limit: 500 })}`),
   matrix: (modelId: string, storeId?: string | null) =>
     apiGet<VariantMatrix>(`/api/v1/product-models/${modelId}/matrix${query({ store_id: storeId ?? null })}`),
+  previewMatrix: (modelId: string, body: MatrixWrite) =>
+    apiPost<MatrixPreview>(`/api/v1/product-models/${modelId}/matrix/preview`, body),
   generateMatrix: (modelId: string, body: MatrixWrite) =>
     apiPost<VariantMatrix>(`/api/v1/product-models/${modelId}/matrix`, body),
+  bulkMatrix: (modelId: string, body: MatrixBulk) =>
+    apiPost<MatrixBulkResult>(`/api/v1/product-models/${modelId}/matrix/bulk`, body),
   attributes: () => apiGet<CatalogAttributes>("/api/v1/catalog/attributes"),
 };
 

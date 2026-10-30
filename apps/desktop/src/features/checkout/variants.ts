@@ -15,6 +15,15 @@ export function isVariant(product: ProductUpsert): boolean {
   return Boolean(product.product_model_id) && Object.keys(product.variant_attributes ?? {}).length > 0;
 }
 
+export function inactiveSaleMessage(product: ProductUpsert): string | null {
+  return product.is_active === false ? `${product.name} is inactive and cannot be sold.` : null;
+}
+
+export function swatchFor(variants: ProductUpsert[], key: string, value: string): string | null {
+  const match = variants.find((product) => product.variant_attributes?.[key] === value && product.variant_swatches?.[key]);
+  return match?.variant_swatches?.[key] ?? null;
+}
+
 export function modelName(product: ProductUpsert): string {
   if (product.model_name) return product.model_name;
   const values = Object.values(product.variant_attributes ?? {});
@@ -25,7 +34,9 @@ export function modelName(product: ProductUpsert): string {
 
 /** All of a model's variants from the register catalog (search may have matched only some of them). */
 export function modelGroup(modelId: string, catalog: ProductUpsert[]): ModelGroup | null {
-  const variants = catalog.filter((product) => product.product_model_id === modelId && isVariant(product));
+  const variants = catalog.filter(
+    (product) => product.product_model_id === modelId && isVariant(product) && product.is_active !== false,
+  );
   if (variants.length === 0) return null;
   const prices = variants.map((product) => product.price_cents);
   return {
@@ -44,9 +55,12 @@ export function groupHits<H extends { product: ProductUpsert }>(hits: H[], catal
   const seen = new Set<string>();
   const counts = new Map<string, number>();
   for (const product of catalog) {
-    if (isVariant(product)) counts.set(product.product_model_id!, (counts.get(product.product_model_id!) ?? 0) + 1);
+    if (isVariant(product) && product.is_active !== false) {
+      counts.set(product.product_model_id!, (counts.get(product.product_model_id!) ?? 0) + 1);
+    }
   }
   for (const hit of hits) {
+    if (hit.product.is_active === false) continue;
     const modelId = hit.product.product_model_id;
     if (!modelId || !isVariant(hit.product) || (counts.get(modelId) ?? 0) < 2) {
       entries.push({ kind: "product", hit });

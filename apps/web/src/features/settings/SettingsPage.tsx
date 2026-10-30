@@ -9,6 +9,7 @@ import { ModuleSettingsPanel } from "./ModuleSettingsPanel";
 import { ModuleShortcuts } from "./ModuleShortcuts";
 import { ReceiptSettingsCard } from "./ReceiptSettings";
 import { TillRulesSettings } from "./TillRulesSettings";
+import { BranchTaxSettings } from "./BranchTaxSettings";
 import { VatSettings } from "./VatSettings";
 
 function SectionHeading({ title, hint }: { title: string; hint: string }) {
@@ -27,21 +28,28 @@ export function SettingsPage() {
 
   return (
     <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
-      <header className="flex flex-wrap items-end justify-between gap-3 xl:col-span-2">
-        <div>
-          <h1 className="text-3xl font-semibold tracking-tight">{spec.settingsLabel}</h1>
+      <header className="flex items-center justify-between gap-4 xl:col-span-2">
+        <div className="min-w-0">
+          <h1 className="truncate text-3xl font-semibold tracking-tight">{spec.settingsLabel}</h1>
           <p className="mt-1 text-sm text-charcoal/60">Business-wide settings shared by every branch and register.</p>
         </div>
-        <a
-          href="#business-profile"
-          className="inline-flex items-center gap-2 rounded-full border border-line bg-white px-3 py-1.5 text-sm font-medium hover:border-charcoal/20"
-        >
-          <span className="h-2 w-2 rounded-full bg-accent" aria-hidden="true" />
-          {spec.shortLabel}
-          <span className="text-charcoal/50">
-            · {enabled.size} module{enabled.size === 1 ? "" : "s"} on
-          </span>
-        </a>
+        <div className="flex shrink-0 items-center gap-2">
+          {settings?.store_code ? (
+            <p className="font-mono text-sm font-semibold tracking-tight text-charcoal" title="Store code">
+              {settings.store_code}
+            </p>
+          ) : null}
+          <a
+            href="#business-profile"
+            className="inline-flex items-center gap-2 rounded-full border border-line bg-white px-3 py-1.5 text-sm font-medium hover:border-charcoal/20"
+          >
+            <span className="h-2 w-2 rounded-full bg-accent" aria-hidden="true" />
+            {spec.shortLabel}
+            <span className="text-charcoal/50">
+              · {enabled.size} module{enabled.size === 1 ? "" : "s"} on
+            </span>
+          </a>
+        </div>
       </header>
       {settings ? (
         <dl className="grid gap-3 rounded-card border border-line bg-white p-4 text-sm sm:grid-cols-3 xl:col-span-2 xl:grid-cols-5">
@@ -74,6 +82,10 @@ export function SettingsPage() {
 
       <div className="xl:col-span-2">
         <CurrencySettings />
+      </div>
+
+      <div className="xl:col-span-2">
+        <BranchTaxSettings />
       </div>
 
       <div className="xl:col-span-2">

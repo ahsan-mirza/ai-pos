@@ -8,6 +8,8 @@ import { PracticeBanner, PracticeProvider, TaxPortalBanner } from "../../feature
 import { portalRouteAllowed } from "../../lib/industry";
 import { portalHomePath } from "../../lib/portal-home";
 import { StoreScopeProvider } from "../../lib/storeScope";
+import { AssistantDrawer } from "../../features/assistant/AssistantDrawer";
+import { AssistantProvider } from "../../features/assistant/AssistantProvider";
 import { Header } from "./Header";
 import { Sidebar } from "./Sidebar";
 
@@ -49,19 +51,24 @@ export function AppShell() {
   return (
     <StoreScopeProvider>
       <PracticeProvider>
-        <div className="flex h-dvh w-screen overflow-hidden bg-[#f8fafc] font-sans text-charcoal">
-          <Sidebar collapsed={collapsed} mobileOpen={mobileOpen} onCloseMobile={closeMobile} />
-          <div className="flex min-w-0 flex-1 flex-col">
-            <PracticeBanner />
-            <TaxPortalBanner />
-            <SubscriptionNotice />
-            <Header collapsed={collapsed} onToggleCollapsed={toggleCollapsed} onOpenMobile={() => setMobileOpen(true)} />
-            <main className="relative min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
-              <IndustryGate />
-            </main>
+        <AssistantProvider>
+          <div className="flex h-dvh w-screen overflow-hidden bg-[#f8fafc] font-sans text-charcoal">
+            <Sidebar collapsed={collapsed} mobileOpen={mobileOpen} onCloseMobile={closeMobile} />
+            <div className="flex min-w-0 flex-1 flex-col">
+              <PracticeBanner />
+              <TaxPortalBanner />
+              <SubscriptionNotice />
+              <Header collapsed={collapsed} onToggleCollapsed={toggleCollapsed} onOpenMobile={() => setMobileOpen(true)} />
+              <div className="relative min-h-0 flex-1">
+                <main className="h-full overflow-y-auto overflow-x-hidden">
+                  <IndustryGate />
+                </main>
+                <AssistantDrawer />
+              </div>
+            </div>
           </div>
-        </div>
-        <FirstWinChecklist />
+          <FirstWinChecklist />
+        </AssistantProvider>
       </PracticeProvider>
     </StoreScopeProvider>
   );

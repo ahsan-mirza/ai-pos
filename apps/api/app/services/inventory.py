@@ -74,6 +74,7 @@ from app.services import (
 )
 from app.services.identifiers import identifier_hash, identifier_suffix, normalize_identifier
 from app.services.search_terms import identifier_candidates, token_condition
+from app.services.variant_keys import apply_signature, variant_swatches
 
 MAX_STOCK_ROWS = 500
 
@@ -419,6 +420,9 @@ def products_out(db: Session, products: list[Product], store_id: uuid.UUID | Non
                 variant_attributes=product.variant_attributes or {},
                 specifications=product.specifications or {},
                 price_cents=product.price_cents,
+                price_source=product.price_source,
+                is_active=product.is_active,
+                variant_swatches=variant_swatches(product.product_model, product.variant_attributes),
                 compare_at_cents=product.compare_at_cents,
                 currency=product.currency,
                 is_serialized=product.is_serialized,
@@ -1118,6 +1122,7 @@ def _classify(
     product.brand = brand.name if brand is not None else None
     if brand is not None:
         brand_service.link(brand, sub)
+    apply_signature(product)
 
 
 @portal_errors
@@ -1185,7 +1190,14 @@ def create_product(db: Session, principal: Principal, data: ProductCreate, curre
                 user_id=_user_id(principal),
                 note="Opening stock",
             )
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise field_conflict(
+            "This model already has that variant.",
+            variant_attributes="This combination already exists.",
+        ) from None
     db.refresh(product)
     from app.services import list_cache
 
@@ -1238,11 +1250,15 @@ def update_product(
         product.variant_attributes = data.variant_attributes
     if data.specifications is not None:
         product.specifications = data.specifications
-    if data.price_cents is not None and data.price_cents != product.price_cents:
-        from app.services import markdown_service
+    if "price_cents" in data.model_fields_set and data.price_cents is not None:
+        if data.price_cents != product.price_cents:
+            from app.services import markdown_service
 
-        markdown_service.record(db, product, data.price_cents, "MANUAL", user_id=user_id)
-        product.price_cents = data.price_cents
+            markdown_service.record(db, product, data.price_cents, "MANUAL", user_id=user_id)
+            product.price_cents = data.price_cents
+        product.price_source = "override"
+    if data.is_active is not None:
+        product.is_active = data.is_active
     if data.tax_category is not None:
         product.tax_category = data.tax_category
     if data.is_open_price is not None:
@@ -1287,7 +1303,15 @@ def update_product(
         _classify(db, product, model_id=model_id, category_id=category_id, sub_category_id=sub_id, brand=brand)
     if product.product_model_id is None:
         fashion_attributes.apply(product, data, only_sent=True)
-    db.commit()
+    apply_signature(product)
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise field_conflict(
+            "This model already has that variant.",
+            variant_attributes="This combination already exists.",
+        ) from None
     db.refresh(product)
     from app.services import list_cache
 
@@ -1308,6 +1332,19 @@ def update_store(db: Session, principal: Principal, store_id: uuid.UUID, data: S
             setattr(store, field, (getattr(data, field) or "").strip() or None)
     if "emirate" in data.model_fields_set:
         store.emirate = data.emirate
+    if "city" in data.model_fields_set:
+        store.city = (data.city or "").strip() or None
+    if data.country:
+        from app.services.branch_tax import assign_country
+
+        assign_country(
+            db,
+            store,
+            data.country,
+            city=data.city if "city" in data.model_fields_set else None,
+            region=data.region if "region" in data.model_fields_set else None,
+            confirm=data.confirm_country_change,
+        )
     if data.is_warehouse is not None:
         store.is_warehouse = data.is_warehouse
     if data.is_active is not None:

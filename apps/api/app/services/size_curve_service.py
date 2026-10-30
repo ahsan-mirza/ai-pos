@@ -26,9 +26,18 @@ def _bounds(start: date, end: date) -> tuple[datetime, datetime]:
     )
 
 
+def _ordered_keys(attributes: dict[str, str]) -> list[str]:
+    """Size and colour first when those axes exist; otherwise the attributes in stored order."""
+    preferred = ("size", "color", "colour")
+    ordered = [key for key in preferred if key in attributes]
+    ordered.extend(key for key in attributes if key not in ordered)
+    return ordered
+
+
 def _size_color(attributes: dict[str, str]) -> tuple[str, str | None]:
-    size = attributes.get("size") or next(iter(attributes.values()), "—")
-    color = attributes.get("color") or attributes.get("colour")
+    ordered = _ordered_keys(attributes)
+    size = attributes[ordered[0]] if ordered else "—"
+    color = attributes[ordered[1]] if len(ordered) > 1 else None
     return size, color
 
 
@@ -112,6 +121,7 @@ def report(
             SizeCell(
                 product_id=product.id,
                 sku=product.sku,
+                attributes=product.variant_attributes or {},
                 size=size,
                 color=color,
                 received=received.get(product.id, 0),

@@ -331,10 +331,26 @@ class PaymentAttention(ApiModel):
     reason: str | None = None
 
 
+class AccessSubscription(ApiModel):
+    """The store's current package, as stored. Status is the subscription row, not a second calculation."""
+
+    id: UUID
+    plan_code: str
+    plan_name: str
+    cycle_name: str
+    status: str
+    price_fils: int
+    currency: str
+    trial_ends_at: datetime | None = None
+    current_period_end: datetime | None = None
+    grace_ends_at: datetime | None = None
+
+
 class AccessOut(ApiModel):
     state: str
     ai_allowed: bool
     attention: PaymentAttention | None = None
+    subscription: AccessSubscription | None = None
 
 
 class SubscriptionAssign(ApiModel):

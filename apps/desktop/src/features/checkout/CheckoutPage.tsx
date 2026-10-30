@@ -89,7 +89,7 @@ import {
   type TicketDetails,
 } from "./fnb/tableSessions";
 import { invoiceOf, prepareNumberedBatch, submitCharge, submitQuote, type ChargeBatch } from "./checkout";
-import { activeStore, businessTax, customerTax, useBusinessCurrency } from "./currency";
+import { activeStore, businessTax, customerTax, taxConfigurationRequired, useBusinessCurrency } from "./currency";
 import { RentModal } from "./RentModal";
 import { refreshPricing } from "./customerPricing";
 import { CustomerBar } from "./CustomerBar";
@@ -122,7 +122,7 @@ import { emptyPayment, planTenders, splitEqually, tenderOptions, type PaymentDra
 import { useProductSearch } from "./useProductSearch";
 import { useSyncEngine } from "./useSyncEngine";
 import { takeExchange, type ExchangeIntent } from "./exchange";
-import { groupHits, modelGroup, type ModelGroup } from "./variants";
+import { groupHits, inactiveSaleMessage, modelGroup, type ModelGroup } from "./variants";
 import { ModelCard, VariantPickerModal } from "./VariantPicker";
 import { syncWholesaleCaches, verifyManager } from "./wholesaleClient";
 
@@ -570,6 +570,11 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
   const select = useCallback(
     (product: ProductUpsert, askQuantity = false, forceSell = false) => {
       if (charging) return;
+      const blocked = inactiveSaleMessage(product);
+      if (blocked) {
+        setNotice(blocked);
+        return;
+      }
       if (!forceSell && rentalIds.has(product.id)) {
         setRentChoice(product);
         return;
@@ -737,6 +742,11 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
         const label = parseEmbeddedBarcode(value, capabilities.modules.weighed_items.embedded_barcodes);
         const product = label ? catalog.products.find((item) => item.sold_by_weight && item.plu_code === label.plu) : undefined;
         if (label && product) {
+          const blocked = inactiveSaleMessage(product);
+          if (blocked) {
+            setNotice(blocked);
+            return;
+          }
           // Price labels carry the line price; the weight is derived from the per-kg price (within a gram).
           const grams =
             label.grams ?? (product.price_cents > 0 ? Math.round(((label.priceCents ?? 0) * 1000) / product.price_cents) : 0);
@@ -751,6 +761,11 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
         const status = identifier.serial_status;
         if (status === "sold" || status === "defective") {
           setNotice(`${value} belongs to ${identifier.product.name} and is already ${status}.`);
+          return;
+        }
+        const inactive = inactiveSaleMessage(identifier.product);
+        if (inactive) {
+          setNotice(inactive);
           return;
         }
         const kind = identifier.serial_kind ?? "serial";
@@ -780,6 +795,10 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
 
   const charge = async () => {
     if (chargeBlocked) return;
+    if (taxConfigurationRequired()) {
+      setNotice("Confirm this branch's tax rate in store settings before selling. Another branch's tax is not used.");
+      return;
+    }
     const pendingAge = cartRef.current.lines.filter(
       (line) => line.product.minimum_age != null && line.ageCheck?.confirmed !== true,
     );

@@ -1,5 +1,5 @@
-import { EMIRATE_LABELS, Permission, type Emirate, type Store } from "@ai-pos/shared-types";
-import { PhoneField, phoneError, requiredError } from "@ai-pos/ui";
+import { EMIRATE_LABELS, Permission, countryTax, type Emirate, type Store } from "@ai-pos/shared-types";
+import { CountryField, PhoneField, phoneError, requiredError } from "@ai-pos/ui";
 import { MapPin, Phone, Warehouse } from "lucide-react";
 import { useEffect, useState } from "react";
 import { ErrorNote, GhostButton, PrimaryButton, SelectField, TextField } from "../../components/ui/Field";
@@ -123,10 +123,13 @@ function StoreModal({
   onClose: () => void;
   onSaved: () => void;
 }) {
-  const inUae = country === "AE" || country === null;
+  const [branchCountry, setBranchCountry] = useState(store.country ?? country ?? "");
+  const inUae = branchCountry === "AE" || (branchCountry === "" && (country === "AE" || country === null));
+  const meta = countryTax(branchCountry || country || "AE");
   const [name, setName] = useState(store.name);
   const [address, setAddress] = useState(store.address ?? "");
   const [phone, setPhone] = useState(store.phone ?? "");
+  const [city, setCity] = useState(store.city ?? "");
   const [emirate, setEmirate] = useState<Emirate | "">(store.emirate ?? "");
   const [warehouse, setWarehouse] = useState(store.is_warehouse ?? false);
   const [active, setActive] = useState(store.is_active ?? true);
@@ -149,7 +152,10 @@ function StoreModal({
         name: name.trim(),
         address: address.trim() || null,
         phone: phone.trim() || null,
+        country: branchCountry || null,
+        city: city.trim() || null,
         emirate: inUae ? emirate || null : null,
+        confirm_country_change: true,
         ...(canChangeType ? { is_warehouse: warehouse, is_active: active } : {}),
       });
       onSaved();
@@ -186,14 +192,31 @@ function StoreModal({
             setErrors((current) => ({ ...current, name: "" }));
           }}
         />
+        <CountryField
+          label="Country"
+          value={branchCountry}
+          onChange={(iso) => {
+            if (store.country && store.country !== iso) {
+              const proceed = window.confirm(
+                "Changing the country does not copy another branch's tax rate. Confirm this branch's tax after saving.",
+              );
+              if (!proceed) return;
+            }
+            setBranchCountry(iso);
+          }}
+        />
+        <TextField label="City" value={city} onChange={(event) => setCity(event.target.value)} />
+        {meta.region_label && meta.region_label !== "Emirate" ? (
+          <p className="text-sm text-charcoal/60">{meta.region_label} is set with this branch&apos;s tax registration.</p>
+        ) : null}
         <TextField
           label="Address"
-          hint={inUae ? undefined : "This branch's location. The business country is set in store settings."}
           value={address}
           onChange={(event) => setAddress(event.target.value)}
         />
         <PhoneField
           label="Phone"
+          defaultCountry={(branchCountry || "AE") as never}
           value={phone}
           error={errors.phone}
           onChange={(next) => {

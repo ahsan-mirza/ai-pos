@@ -5,6 +5,7 @@ from app.models.audit_log import AuditLog
 from app.models.banking import BankAccount, BankStatement, BankStatementLine
 from app.models.base import Base
 from app.models.batch import BatchAllocation, BatchItem, ImportMappingTemplate, PurchaseBatch, Supplier
+from app.models.branch_tax import BranchTaxProfile, LegalEntity
 from app.models.brand import Brand, ProductModel
 from app.models.business_settings import BusinessSettings
 from app.models.cache import CacheInvalidation
@@ -82,6 +83,7 @@ __all__ = [
     "Base",
     "BatchAllocation",
     "BatchItem",
+    "BranchTaxProfile",
     "Brand",
     "CacheInvalidation",
     "BusinessSettings",
@@ -113,6 +115,7 @@ __all__ = [
     "GoodsReceiptLine",
     "ImportMappingTemplate",
     "InventoryLevel",
+    "LegalEntity",
     "KitchenStation",
     "KitchenTicket",
     "KitchenTicketItem",

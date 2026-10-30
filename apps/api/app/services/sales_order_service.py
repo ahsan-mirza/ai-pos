@@ -66,8 +66,8 @@ def _rejected(exc: SyncRejected) -> ApiError:
     return ApiError(422, "rejected", str(exc))
 
 
-def _tax_policy(db: Session, customer: Customer | None) -> TaxPolicy:
-    return for_customer(tax_policy_for(db), customer, _now().date())
+def _tax_policy(db: Session, customer: Customer | None, store_id: uuid.UUID | None = None) -> TaxPolicy:
+    return for_customer(tax_policy_for(db, store_id), customer, _now().date())
 
 
 # --- Reading ----------------------------------------------------------------------------------------------
@@ -361,7 +361,7 @@ def _price_lines(
         pieces[line.product_id] += line.quantity
     tier = price_list_service.tier_for(order.sale_type, customer if order.sale_type == "WHOLESALE" else None, db)
     order.price_tier = tier
-    policy = _tax_policy(db, customer)
+    policy = _tax_policy(db, customer, order.store_id)
     entries = price_list_service.entries_for(
         db, set(products), currency=order.currency, store_id=order.store_id, customer=customer
     )
@@ -702,7 +702,7 @@ def dispatch(
     assert customer is not None
     lines = {line.id: line for line in order.lines}
     products = _products(db, {line.product_id for line in order.lines})
-    policy = _tax_policy(db, customer)
+    policy = _tax_policy(db, customer, order.store_id)
     sale_id = uuid.uuid4()
     items: list[SaleItemPayload] = []
     line_of_item: dict[uuid.UUID, uuid.UUID] = {}
@@ -987,7 +987,7 @@ def from_quote(db: Session, principal: Principal, quote_id: uuid.UUID) -> SalesO
     )
     customer = db.get(Customer, quote.customer_id)
     order.price_tier = price_list_service.tier_for(quote.sale_type, customer, db)
-    policy = _tax_policy(db, customer)
+    policy = _tax_policy(db, customer, order.store_id)
     products = _products(db, {key[0] for key in grouped})
     subtotal = tax = total = 0
     for position, ((product_id, unit, listed, approver), quantity) in enumerate(grouped.items()):

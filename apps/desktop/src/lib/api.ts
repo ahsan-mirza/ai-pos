@@ -116,6 +116,9 @@ function toUpsert(row: Product): ProductUpsert {
     model_name: row.model_name ?? null,
     variant_attributes: row.variant_attributes ?? {},
     specifications: row.specifications ?? {},
+    is_active: row.is_active ?? true,
+    price_source: row.price_source,
+    variant_swatches: row.variant_swatches ?? {},
     origin: "api",
   };
 }

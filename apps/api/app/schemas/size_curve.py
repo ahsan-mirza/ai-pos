@@ -2,12 +2,15 @@
 
 from uuid import UUID
 
+from pydantic import Field
+
 from app.schemas.payloads import ApiModel
 
 
 class SizeCell(ApiModel):
     product_id: UUID
     sku: str
+    attributes: dict[str, str] = Field(default_factory=dict)
     size: str
     color: str | None
     received: int

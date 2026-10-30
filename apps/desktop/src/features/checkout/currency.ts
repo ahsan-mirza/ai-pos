@@ -63,6 +63,13 @@ interface TaxSnapshot {
   legal_name?: string | null;
   legal_name_ar?: string | null;
   tax_authority?: string | null;
+  tax_configuration_required?: boolean;
+}
+
+let branchTaxBlocked = false;
+
+export function taxConfigurationRequired(): boolean {
+  return branchTaxBlocked;
 }
 
 function applyTax(raw: TaxSnapshot | null | undefined): void {
@@ -78,6 +85,7 @@ function applyTax(raw: TaxSnapshot | null | undefined): void {
     legalNameAr: raw.legal_name_ar ?? null,
     taxAuthority: raw.tax_authority === "zatca" ? "zatca" : "fta",
   };
+  branchTaxBlocked = Boolean(raw.tax_configuration_required);
 }
 
 const branches: StoreUpsert[] = [seed.store, ...seed.branches];

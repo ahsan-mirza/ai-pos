@@ -15,7 +15,7 @@ from app.schemas.inventory import (
     ProductModelUpdate,
     ProductModelWrite,
 )
-from app.schemas.variants import MatrixOut, MatrixWrite
+from app.schemas.variants import MatrixBulk, MatrixBulkResult, MatrixOut, MatrixPreview, MatrixWrite
 from app.services import brand_service, variant_matrix_service
 from app.services.settings_service import business_currency
 
@@ -72,8 +72,9 @@ def create_model(payload: ProductModelWrite, db: Db, _: CanManage) -> ProductMod
 
 
 @models_router.patch("/{model_id}", response_model=ProductModelOut)
-def update_model(model_id: uuid.UUID, payload: ProductModelUpdate, db: Db, _: CanManage) -> ProductModelOut:
-    return brand_service.update_model(db, model_id, payload)
+def update_model(model_id: uuid.UUID, payload: ProductModelUpdate, db: Db, principal: CanManage) -> ProductModelOut:
+    user_id = principal.user.id if principal.user is not None else None
+    return brand_service.update_model(db, model_id, payload, user_id=user_id)
 
 
 @models_router.get("/{model_id}/matrix", response_model=MatrixOut, dependencies=[MatrixModule])
@@ -82,10 +83,23 @@ def model_matrix(model_id: uuid.UUID, db: Db, _: CanRead, store_id: uuid.UUID | 
     return variant_matrix_service.matrix(db, model_id, store_id=store_id)
 
 
+@models_router.post("/{model_id}/matrix/preview", response_model=MatrixPreview, dependencies=[MatrixModule])
+def preview_matrix(model_id: uuid.UUID, payload: MatrixWrite, db: Db, _: CanRead) -> MatrixPreview:
+    """Counts combinations that would be created. Writes nothing."""
+    return variant_matrix_service.preview(db, model_id, payload)
+
+
 @models_router.post("/{model_id}/matrix", response_model=MatrixOut, dependencies=[MatrixModule])
 def generate_matrix(model_id: uuid.UUID, payload: MatrixWrite, db: Db, _: CanManage) -> MatrixOut:
     """Creates a product for every combination the model does not have yet."""
     return variant_matrix_service.generate(db, model_id, payload, business_currency(db))
+
+
+@models_router.post("/{model_id}/matrix/bulk", response_model=MatrixBulkResult, dependencies=[MatrixModule])
+def bulk_matrix(model_id: uuid.UUID, payload: MatrixBulk, db: Db, principal: CanManage) -> MatrixBulkResult:
+    """Updates price, status, reorder level, or a missing barcode. Does not change quantities on hand."""
+    user_id = principal.user.id if principal.user is not None else None
+    return variant_matrix_service.bulk(db, model_id, payload, user_id=user_id)
 
 
 @models_router.delete("/{model_id}", status_code=204)

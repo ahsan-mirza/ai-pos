@@ -5,6 +5,7 @@ The public catalog and the Stripe webhook are tenant-free and listed in OPEN_PAT
 
 import json
 import uuid
+from datetime import UTC, timedelta
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
@@ -16,10 +17,19 @@ from app.core.config import Settings, get_settings
 from app.core.deps import Principal, authorize, get_principal
 from app.core.errors import ApiError
 from app.core.permissions import Permission
-from app.schemas.billing import AccessOut, CatalogOut, CheckoutIn, CheckoutOut, CheckoutStatus, QuoteIn, QuoteOut
+from app.schemas.billing import (
+    AccessOut,
+    AccessSubscription,
+    CatalogOut,
+    CheckoutIn,
+    CheckoutOut,
+    CheckoutStatus,
+    QuoteIn,
+    QuoteOut,
+)
 from app.tenancy import registry
 from app.tenancy.context import current_tenant
-from app.tenancy.models import Tenant
+from app.tenancy.models import Subscription, Tenant
 
 router = APIRouter()
 Config = Annotated[Settings, Depends(get_settings)]
@@ -166,10 +176,33 @@ def access_status(principal: Annotated[Principal, Depends(get_principal)], setti
     del principal
     tenant_id = _tenant_id(settings)
     with registry.control_session(settings) as db:
+        tenant = db.get(Tenant, tenant_id)
+        summary = billing.subscription_out(db, tenant) if tenant is not None else None
+        row = db.scalar(select(Subscription).where(Subscription.tenant_id == tenant_id))
+        subscription = None
+        if summary is not None and row is not None:
+            end = summary.current_period_end
+            grace_end = None
+            if end is not None:
+                moment = end if end.tzinfo is not None else end.replace(tzinfo=UTC)
+                grace_end = moment + timedelta(days=transfers.grace_days(db))
+            subscription = AccessSubscription(
+                id=row.id,
+                plan_code=summary.plan_code,
+                plan_name=summary.plan_name,
+                cycle_name=summary.cycle_name,
+                status=summary.status,
+                price_fils=summary.next_recurring_fils,
+                currency="AED",
+                trial_ends_at=summary.trial_ends_at,
+                current_period_end=summary.current_period_end,
+                grace_ends_at=grace_end,
+            )
         return AccessOut(
             state=transfers.access_state(db, tenant_id),
             ai_allowed=transfers.ai_allowed(db, tenant_id),
             attention=transfers.attention(db, tenant_id),
+            subscription=subscription,
         )
 
 

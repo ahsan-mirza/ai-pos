@@ -110,6 +110,9 @@ export interface ProductModel extends FashionAttributes {
   release_year: number | null;
   description: string;
   variant_count: number;
+  default_price_cents?: number | null;
+  price_rules?: { key: string; value: string; price_cents: number }[];
+  axis_swatches?: Record<string, Record<string, string>>;
 }
 
 export interface ProductModelWrite extends FashionAttributes {
@@ -124,7 +127,11 @@ export interface ProductModelWrite extends FashionAttributes {
 /** Attribute fields that are sent replace the model's value (null clears it) and are copied to its variants. */
 export type ProductModelUpdate = Partial<
   Pick<ProductModelWrite, "name" | "code" | "release_year" | "description" | keyof FashionAttributes>
->;
+> & {
+  default_price_cents?: number | null;
+  price_rules?: { key: string; value: string; price_cents: number }[];
+  axis_swatches?: Record<string, Record<string, string>>;
+};
 
 // --- Stock ---------------------------------------------------------------------------------------
 
@@ -490,6 +497,7 @@ export interface ProductUpdate extends FashionAttributes {
   is_ingredient?: boolean;
   item_type?: ItemType;
   sellable_units?: string[];
+  is_active?: boolean;
 }
 
 export function stockStatusLabel(status: StockStatus): string {

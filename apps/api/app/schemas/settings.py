@@ -47,6 +47,8 @@ class BusinessSettingsOut(BaseModel):
     # Live store whose e-invoice authority has no production credential yet. Practice stamps were not copied.
     tax_portal_pending: bool = False
     tax_authority: str = "fta"
+    # True when this register's branch is tax-registered but its rate has not been confirmed.
+    tax_configuration_required: bool = False
     module_settings: ModuleSettings = Field(default_factory=ModuleSettings)
     pos_policy: PosPolicy = Field(default_factory=PosPolicy)
 

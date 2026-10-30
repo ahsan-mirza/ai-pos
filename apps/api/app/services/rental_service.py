@@ -141,8 +141,8 @@ def _charge(policy: ProductRental, days: int, quantity: int) -> int:
     return policy.price_per_day_cents * days * quantity
 
 
-def _tax(db: Session, product: Product, gross: int) -> tuple[int, int]:
-    rules = tax.policy(db)
+def _tax(db: Session, product: Product, gross: int, store_id: uuid.UUID) -> tuple[int, int]:
+    rules = tax.policy(db, store_id)
     rate = rules.rate_for(product.tax_category) if rules.enforced else 0
     inclusive = bool(rules.prices_include_vat and rules.enforced)
     priced = tax.line_tax(gross, 1, rate, inclusive=inclusive)
@@ -208,7 +208,7 @@ def quote(
     gross = _charge(policy, days, quantity)
     if discount_cents > gross:
         raise ApiError(422, "validation_error", "The discount cannot be more than the rental charge.")
-    net, tax_cents = _tax(db, product, gross - discount_cents)
+    net, tax_cents = _tax(db, product, gross - discount_cents, store_id)
     available = _available(
         db,
         product_id,
@@ -269,7 +269,7 @@ def create_rental(db: Session, data: RentalCreate, user: User | None) -> RentalO
         serial_number_id=data.serial_number_id,
         exclude=None,
     )
-    net, tax_cents = _tax(db, product, gross - data.discount_cents)
+    net, tax_cents = _tax(db, product, gross - data.discount_cents, data.store_id)
     deposit = policy.deposit_cents * data.quantity
     if data.pay_charge_cents > net + tax_cents or data.pay_deposit_cents > deposit:
         raise ApiError(422, "validation_error", "A payment cannot be more than the charge or the deposit due.")
@@ -603,7 +603,7 @@ def extend(db: Session, rental_id: uuid.UUID, data: ExtendIn) -> RentalOut:
         exclude=rental.id,
     )
     extra_gross = policy.price_per_day_cents * extra_days * line.quantity
-    net, tax_cents = _tax(db, product, extra_gross)
+    net, tax_cents = _tax(db, product, extra_gross, rental.store_id)
     rental.return_date = data.return_date
     rental.extension_net_cents += net
     rental.extension_tax_cents += tax_cents

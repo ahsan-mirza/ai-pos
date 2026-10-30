@@ -1,6 +1,7 @@
 """VAT arithmetic. Mirrors packages/shared-types/src/tax.ts; both are checked against
 packages/shared-types/fixtures/tax-cases.json. Rounding is half-up on whole cents per line."""
 
+import uuid
 from dataclasses import dataclass, replace
 from datetime import date
 from typing import Any
@@ -65,7 +66,17 @@ def line_tax(unit_price_cents: int, quantity: int, rate_bps: int, *, inclusive: 
     return LineTax(net_cents=gross, tax_cents=tax, line_total_cents=gross + tax)
 
 
-def policy(db: Session) -> TaxPolicy:
+def policy(db: Session, store_id: uuid.UUID | None = None) -> TaxPolicy:
+    """Business-wide tax, or the selling branch's own profile when that branch has one.
+
+    A missing branch profile keeps the business settings. It never borrows another branch's profile.
+    """
+    if store_id is not None:
+        from app.services.branch_tax import policy_for_store
+
+        branch = policy_for_store(db, store_id)
+        if branch is not None:
+            return branch
     from app.services.settings_service import cached_settings
 
     row = cached_settings(db)

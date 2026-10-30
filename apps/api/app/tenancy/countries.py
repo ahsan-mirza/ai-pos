@@ -269,5 +269,13 @@ _COUNTRY_TAX: dict[str, tuple[str, int, bool]] = {
 
 
 def tax_for_country(code: str) -> tuple[str, int, bool]:
-    """Tax authority, standard rate, and whether prices include VAT for an ISO country."""
+    """Tax authority, standard rate, and whether prices include VAT for an ISO country.
+
+    A country without a verified rate starts at 0% on a standard invoice. That 0 is not a statutory rate.
+    """
+    from app.tenancy.country_tax import describe
+
+    row = describe(code)
+    if row.rate_known and row.standard_rate_bps is not None:
+        return (row.tax_authority, row.standard_rate_bps, row.prices_include_vat)
     return _COUNTRY_TAX.get(code.upper(), ("fta", 0, False))

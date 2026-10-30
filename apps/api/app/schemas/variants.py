@@ -65,6 +65,9 @@ class MatrixCell(ApiModel):
     barcode: str
     name: str
     price_cents: int
+    price_source: str = "override"
+    is_active: bool = True
+    cost_cents: int | None = None
     on_hand: int
     sold_90d: int
     by_store: dict[str, int]
@@ -79,3 +82,39 @@ class MatrixOut(ApiModel):
     sold_90d: int
     created: int = 0
     skipped: int = 0
+
+
+class MatrixPreview(ApiModel):
+    possible: int
+    existing: int
+    creating: int
+    inactive: int
+    duplicates: int
+    over_limit: bool
+
+
+class MatrixBulk(ApiModel):
+    product_ids: list[UUID] = Field(min_length=1, max_length=MAX_MATRIX_CELLS)
+    price_cents: int | None = Field(default=None, ge=0)
+    is_active: bool | None = None
+    store_id: UUID | None = None
+    min_reorder_level: int | None = Field(default=None, ge=0, le=1_000_000)
+    assign_missing_barcodes: bool = False
+
+    @model_validator(mode="after")
+    def has_action(self) -> "MatrixBulk":
+        if (
+            self.price_cents is None
+            and self.is_active is None
+            and self.min_reorder_level is None
+            and not self.assign_missing_barcodes
+        ):
+            raise ValueError("Choose a price, a status, a reorder level, or barcode assignment.")
+        if self.min_reorder_level is not None and self.store_id is None:
+            raise ValueError("Choose a store for the reorder level.")
+        return self
+
+
+class MatrixBulkResult(ApiModel):
+    updated: int
+    skipped: list[UUID]

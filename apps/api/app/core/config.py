@@ -166,13 +166,25 @@ class Settings(BaseSettings):
     fx_quote_stale_seconds: int = Field(default=604_800, ge=3600, le=2_592_000)
     fx_refresh_seconds: int = Field(default=30, ge=5, le=600)
 
-    # AI assistant. "builtin" answers common questions with rules, offline; "openai" calls any OpenAI-compatible
-    # chat API with tool calling. Either way answers come only from the read-only report tools.
-    assistant_provider: str = Field(default="builtin", pattern="^(builtin|openai)$")
+    # AI assistant. "builtin" answers from the report tools with no model. "ollama" and "openai" only explain
+    # those same tools. Ollama does not use ASSISTANT_API_KEY. OpenAI stays available and is not the default.
+    assistant_provider: str = Field(default="builtin", pattern="^(builtin|openai|ollama)$")
     assistant_api_key: str | None = None
     assistant_model: str = "gpt-4o-mini"
     assistant_base_url: str = "https://api.openai.com/v1"
     assistant_timeout_seconds: int = Field(default=30, ge=5, le=120)
+    assistant_fallback_provider: str = Field(default="builtin", pattern="^builtin$")
+    assistant_fallback_enabled: bool = True
+    assistant_cache_ttl_seconds: int = Field(default=90, ge=0, le=3600)
+    # Hostname "ollama" is the Compose service. A host-run API uses the loopback publish instead.
+    ollama_base_url: str = "http://127.0.0.1:11434"
+    ollama_model: str = "qwen3:8b"
+    ollama_timeout_seconds: int = Field(default=90, ge=5, le=180)
+    ollama_keep_alive: str = "10m"
+    ollama_temperature: float = Field(default=0.2, ge=0, le=1)
+    ollama_num_ctx: int = Field(default=8192, ge=512, le=32768)
+    ollama_max_retries: int = Field(default=1, ge=0, le=3)
+    ollama_max_tool_rounds: int = Field(default=4, ge=1, le=8)
 
     # Self-service signup on the bare domain (multi-tenant mode only). The one-time code goes out on this channel
     # through the messaging adapters; "log" writes it to the API log and, outside production, returns it.

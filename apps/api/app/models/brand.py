@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Column, ForeignKey, Integer, String, Table, Uuid
+from sqlalchemy import JSON, Column, ForeignKey, Integer, String, Table, Uuid
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, TenantScoped, TimestampMixin, tenant_unique
@@ -73,5 +73,11 @@ class ProductModel(TenantScoped, TimestampMixin, Base):
     material: Mapped[str | None] = mapped_column(String(120), nullable=True)
     fit: Mapped[str | None] = mapped_column(String(40), nullable=True)
     care: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # Retail price new variants inherit, unless an attribute rule or an explicit variant price applies.
+    default_price_cents: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # [{"key", "value", "price_cents"}]. The highest matching price wins over the default.
+    price_rules: Mapped[list] = mapped_column(JSON, default=list)
+    # {"color": {"Black": "#111111"}} so the matrix and the register can tint a value without a new attribute table.
+    axis_swatches: Mapped[dict] = mapped_column(JSON, default=dict)
     brand: Mapped[Brand] = relationship("Brand", lazy="joined")
     sub_category: Mapped[SubCategory] = relationship("SubCategory", lazy="joined")

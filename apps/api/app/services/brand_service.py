@@ -207,6 +207,9 @@ def _model_out(model: ProductModel, variants: dict[uuid.UUID, int]) -> ProductMo
         release_year=model.release_year,
         description=model.description,
         variant_count=variants.get(model.id, 0),
+        default_price_cents=model.default_price_cents,
+        price_rules=model.price_rules or [],
+        axis_swatches=model.axis_swatches or {},
         season=model.season,
         collection=model.collection,
         gender=model.gender,  # type: ignore[arg-type]
@@ -267,6 +270,9 @@ def create_model(db: Session, data: ProductModelWrite) -> ProductModelOut:
         code=data.code,
         release_year=data.release_year,
         description=data.description.strip(),
+        default_price_cents=data.default_price_cents,
+        price_rules=[rule.model_dump() for rule in data.price_rules],
+        axis_swatches=data.axis_swatches,
     )
     fashion_attributes.apply(model, data, only_sent=False)
     link(brand, sub)
@@ -276,7 +282,27 @@ def create_model(db: Session, data: ProductModelWrite) -> ProductModelOut:
     return model_out(db, model)
 
 
-def update_model(db: Session, model_id: uuid.UUID, data: ProductModelUpdate) -> ProductModelOut:
+def _reprice_inherited(db: Session, model: ProductModel, user_id: uuid.UUID | None) -> None:
+    """Rewrites variants that still follow the model. An explicit variant price is left as it is."""
+    if model.default_price_cents is None:
+        return
+    from app.services import markdown_service
+    from app.services.variant_keys import resolved_price
+
+    products = db.scalars(
+        select(Product).where(Product.product_model_id == model.id, Product.price_source != "override")
+    )
+    for product in products:
+        price, source = resolved_price(model.default_price_cents, model.price_rules or [], product.variant_attributes)
+        if price != product.price_cents:
+            markdown_service.record(db, product, price, "BULK", user_id=user_id)
+            product.price_cents = price
+        product.price_source = source
+
+
+def update_model(
+    db: Session, model_id: uuid.UUID, data: ProductModelUpdate, *, user_id: uuid.UUID | None = None
+) -> ProductModelOut:
     model = _model(db, model_id)
     if data.name is not None:
         if _name_taken(db, model.brand_id, model.sub_category_id, data.name, model.id):
@@ -292,6 +318,17 @@ def update_model(db: Session, model_id: uuid.UUID, data: ProductModelUpdate) -> 
     if fashion_attributes.apply(model, data, only_sent=True):
         db.flush()
         fashion_attributes.push_to_variants(db, model)
+    pricing_changed = False
+    if "default_price_cents" in data.model_fields_set:
+        model.default_price_cents = data.default_price_cents
+        pricing_changed = True
+    if "price_rules" in data.model_fields_set and data.price_rules is not None:
+        model.price_rules = [rule.model_dump() for rule in data.price_rules]
+        pricing_changed = True
+    if "axis_swatches" in data.model_fields_set and data.axis_swatches is not None:
+        model.axis_swatches = data.axis_swatches
+    if pricing_changed:
+        _reprice_inherited(db, model, user_id)
     _commit(db)
     list_cache.bump("models")
     return model_out(db, model)

@@ -686,7 +686,11 @@ def change_tax(db: Session, actor: User, data: TaxSettingsUpdate) -> BusinessSet
     row = load_settings(db, lock=True)
     sent = set(data.model_fields_set)
     if data.country and data.country != (row.country or ""):
+        from app.tenancy.country_tax import describe
+
         authority, rate, inclusive = tax_for_country(data.country)
+        if not describe(data.country).rate_known:
+            authority, rate, inclusive = "fta", data.standard_rate_bps, data.prices_include_vat
         try:
             data = TaxSettingsUpdate.model_validate(
                 {

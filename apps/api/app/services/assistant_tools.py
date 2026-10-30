@@ -5,6 +5,7 @@ branch."""
 from __future__ import annotations
 
 import calendar
+import json
 import uuid
 from collections import defaultdict
 from collections.abc import Callable
@@ -160,16 +161,28 @@ def _bounds(period: Period) -> tuple[datetime, datetime]:
     )
 
 
+class BranchAccessDenied(Exception):
+    """The caller named a branch their account cannot see. The query is not run."""
+
+
 def _store_scope(ctx: ToolContext, args: dict[str, Any]) -> tuple[uuid.UUID | None, str | None]:
-    """The user's own branch if they are pinned to one, else the branch the question named (by code)."""
+    """The user's own branch, or one branch in this store when the account covers every branch.
+
+    A code that is not in this store, or a branch the user is not assigned to, is rejected.
+    An unknown code does not widen the query to every branch.
+    """
+    code = args.get("store_code")
+    named = code.strip() if isinstance(code, str) and code.strip() else None
     if ctx.principal.store_id is not None:
         store = ctx.db.get(Store, ctx.principal.store_id)
-        return ctx.principal.store_id, store.code if store else None
-    code = args.get("store_code")
-    if isinstance(code, str) and code.strip():
-        store = ctx.db.scalars(select(Store).where(func.upper(Store.code) == code.strip().upper())).first()
-        if store is not None:
-            return store.id, store.code
+        if store is None or (named is not None and named.upper() != store.code.upper()):
+            raise BranchAccessDenied
+        return ctx.principal.store_id, store.code
+    if named is not None:
+        store = ctx.db.scalars(select(Store).where(func.upper(Store.code) == named.upper())).first()
+        if store is None:
+            raise BranchAccessDenied
+        return store.id, store.code
     return None, None
 
 
@@ -1037,11 +1050,101 @@ def json_schema(tool: Tool) -> dict[str, Any]:
     }
 
 
+# The model is not allowed to name a store, a branch, or a query. These keys are dropped before a tool runs.
+_REJECTED_ARGUMENTS = frozenset(
+    {"tenant_id", "branch_id", "store_id", "user_id", "database", "database_url", "sql", "query"}
+)
+
+
+def accepted_args(tool: Tool, args: dict[str, Any]) -> dict[str, Any]:
+    """Keeps only the arguments declared for this tool. Tenant and branch ids never pass through."""
+    if not isinstance(args, dict):
+        return {}
+    schema = json_schema(tool)["function"]["parameters"]["properties"]
+    clean: dict[str, Any] = {}
+    for key, value in args.items():
+        if key in _REJECTED_ARGUMENTS or key not in schema:
+            continue
+        spec = schema[key]
+        if spec.get("type") == "integer":
+            if isinstance(value, bool):
+                continue
+            if isinstance(value, str) and value.isdigit():
+                value = int(value)
+            if not isinstance(value, int):
+                continue
+            if "minimum" in spec and value < spec["minimum"]:
+                continue
+            if "maximum" in spec and value > spec["maximum"]:
+                continue
+        elif spec.get("type") == "string":
+            if not isinstance(value, str) or ("enum" in spec and value not in spec["enum"]):
+                continue
+            if key in {"from", "to"}:
+                try:
+                    date.fromisoformat(value)
+                except ValueError:
+                    continue
+            if key == "store_code":
+                value = value.strip()[:32]
+                if not value:
+                    continue
+        clean[key] = value
+    return clean
+
+
+def _dump_result(result: ToolResult) -> str:
+    return json.dumps(
+        {
+            "tool": result.tool,
+            "title": result.title,
+            "period": result.period,
+            "facts": result.facts,
+            "columns": result.columns,
+            "rows": result.rows,
+        },
+        default=str,
+    )
+
+
+def _load_result(raw: str) -> ToolResult | None:
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(data, dict) or not isinstance(data.get("tool"), str):
+        return None
+    return ToolResult(
+        tool=data["tool"],
+        title=str(data.get("title") or ""),
+        period=data.get("period") if isinstance(data.get("period"), str) else None,
+        facts=data.get("facts") if isinstance(data.get("facts"), dict) else {},
+        columns=list(data.get("columns") or []),
+        rows=list(data.get("rows") or []),
+    )
+
+
 def run(
     db: Session, principal: Principal, name: str, args: dict[str, Any], *, language: str, today: date
 ) -> ToolResult | None:
+    from app.core.config import get_settings
+    from app.services import assistant_scope
+
     tool = TOOLS.get(name)
     if tool is None or not principal.has(tool.permission):
         return None
+    args = accepted_args(tool, args)
     ctx = ToolContext(db=db, principal=principal, today=today, language=language, currency=business_currency(db))
-    return tool.run(ctx, args)
+    branch_id, _store_code = _store_scope(ctx, args)
+    tenant_id = assistant_scope.require_tenant_id()
+    cache_key = assistant_scope.report_cache_key(
+        tenant_id, str(branch_id) if branch_id is not None else "all", principal, tool.name, args
+    )
+    cached = assistant_scope.read_cached_report(cache_key)
+    if cached is not None:
+        loaded = _load_result(cached)
+        if loaded is not None:
+            return loaded
+    result = tool.run(ctx, args)
+    assistant_scope.store_cached_report(cache_key, _dump_result(result), get_settings().assistant_cache_ttl_seconds)
+    return result

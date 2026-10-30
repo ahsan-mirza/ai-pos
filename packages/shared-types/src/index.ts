@@ -246,6 +246,8 @@ export type {
   TaxSettingsUpdate,
 } from "./settings.js";
 export { TAX_AUTHORITY_LABELS, isSaudiVatNumber, taxForCountry, zatcaQr } from "./taxAuthority.js";
+export { countryTax } from "./countryTax.js";
+export type { CountryTax } from "./countryTax.js";
 export { LABEL_LAYOUT_LABELS, compareVariantValues } from "./fashion.js";
 export type {
   ConsignmentItem,
@@ -254,7 +256,10 @@ export type {
   ConsignmentSupplier,
   LabelLayout,
   MatrixAxis,
+  MatrixBulk,
+  MatrixBulkResult,
   MatrixCell,
+  MatrixPreview,
   MatrixWrite,
   VariantMatrix,
 } from "./fashion.js";
@@ -356,7 +361,7 @@ export type {
   TimeEntry,
   TimesheetReport,
 } from "./staff.js";
-export type { AssistantInfo, AssistantReply, AssistantToolResult, AssistantTurn } from "./assistant.js";
+export type { AssistantContextHint, AssistantInfo, AssistantReply, AssistantToolResult, AssistantTurn } from "./assistant.js";
 export { GL_ACCOUNT_TYPE_LABELS, JOURNAL_LABELS } from "./accounting.js";
 export type {
   AccountLedger,

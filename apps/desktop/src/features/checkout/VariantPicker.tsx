@@ -3,7 +3,7 @@ import { Grid3x3, Package, X } from "lucide-react";
 import { useMemo, useState } from "react";
 import { stockPill } from "../../components/shell/tokens";
 import { ProductPhoto, ProductPhotoFrame } from "./ProductPhoto";
-import { findVariant, variantAxes, type ModelGroup } from "./variants";
+import { findVariant, swatchFor, variantAxes, type ModelGroup } from "./variants";
 
 export function ModelCard({
   group,
@@ -145,7 +145,9 @@ export function VariantPickerModal({
                   <th className="pb-2 pr-2 text-left text-[11px] font-semibold uppercase tracking-wider text-zinc-500">
                     {variantAttributeLabel(rowAxis.key)}
                   </th>
-                  {(columnAxis?.values ?? [""]).map((column) => (
+                  {(columnAxis?.values ?? [""]).map((column) => {
+                    const swatch = columnAxis ? swatchFor(group.variants, columnAxis.key, column) : null;
+                    return (
                     <th key={column} className="px-1 pb-2 text-center text-xs font-semibold">
                       {columnAxis ? (
                         <ProductPhoto
@@ -153,9 +155,15 @@ export function VariantPickerModal({
                           className="mx-auto mb-1 h-12 w-12 rounded-lg object-cover"
                         />
                       ) : null}
-                      {column}
+                      <span className="inline-flex items-center justify-center gap-1">
+                        {swatch ? (
+                          <span aria-hidden="true" className="inline-block h-2.5 w-2.5 rounded-full border border-black/10" style={{ backgroundColor: swatch }} />
+                        ) : null}
+                        {column}
+                      </span>
                     </th>
-                  ))}
+                    );
+                  })}
                 </tr>
               </thead>
               <tbody>

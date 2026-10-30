@@ -24,3 +24,9 @@ export interface AssistantInfo {
   tools: string[];
   suggestions: Record<"en" | "ar", string[]>;
 }
+
+/** Screen the user had open when they asked. The assistant treats it as a hint and still answers from reports. */
+export interface AssistantContextHint {
+  module: string;
+  store: string;
+}

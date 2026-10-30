@@ -128,18 +128,7 @@ export function CurrencySettings() {
   };
 
   return (
-    <div className="grid items-start gap-4 lg:grid-cols-2">
-      <div className="rounded-card border border-line bg-white p-6">
-        <h2 className="text-lg font-semibold">Store code</h2>
-        <p className="mt-1 text-sm text-charcoal/60">Used to sign in to this business. It is the same for every branch.</p>
-        <input
-          readOnly
-          aria-label="Store code"
-          value={settings?.store_code ?? ""}
-          className="mt-4 h-12 w-full rounded-2xl border border-line bg-surface px-4 font-mono text-base text-charcoal"
-        />
-      </div>
-
+    <div>
       <div className="rounded-card border border-line bg-white p-6">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="flex min-w-0 items-center gap-3">

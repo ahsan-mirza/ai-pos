@@ -22,6 +22,9 @@ class Store(TenantScoped, TimestampMixin, Base):
     currency: Mapped[str] = mapped_column(String(3))
     address: Mapped[str | None] = mapped_column(String(255), nullable=True)
     phone: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    # Operating country of this branch. Null means it has not been set apart from the business.
+    country: Mapped[str | None] = mapped_column(String(2), nullable=True)
+    city: Mapped[str | None] = mapped_column(String(120), nullable=True)
     is_warehouse: Mapped[bool] = mapped_column(Boolean, default=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     emirate: Mapped[str | None] = mapped_column(String(16), nullable=True)

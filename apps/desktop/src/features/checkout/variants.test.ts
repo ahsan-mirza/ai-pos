@@ -1,6 +1,6 @@
 import type { ProductUpsert } from "@ai-pos/shared-types";
 import { describe, expect, it } from "vitest";
-import { findVariant, groupHits, modelGroup, modelName, variantAxes } from "./variants";
+import { findVariant, groupHits, inactiveSaleMessage, modelGroup, modelName, variantAxes } from "./variants";
 
 function tee(size: string, color: string, stock = 3, price = 4900): ProductUpsert {
   return {
@@ -53,6 +53,16 @@ describe("variant picker", () => {
     expect(findVariant(group.variants, { size: "XL", color: "Black" })?.sku).toBe("TEE-XL-Black");
     expect(findVariant(group.variants, { size: "S", color: "Black" })).toBeUndefined();
     expect(modelName(group.variants[0]!)).toBe("Classic Tee");
+  });
+
+  it("drops an inactive variant from the picker but still identifies its barcode", () => {
+    const hidden = { ...tee("L", "Navy"), is_active: false as const };
+    const products = [...catalog, hidden];
+    expect(modelGroup("tee", products)!.variants.map((variant) => variant.id)).not.toContain(hidden.id);
+    const scanned = products.find((product) => product.barcode === hidden.barcode);
+    expect(scanned?.id).toBe(hidden.id);
+    expect(inactiveSaleMessage(scanned!)).toMatch(/inactive/);
+    expect(groupHits([{ product: hidden }, { product: catalog[0]! }], products).map((entry) => entry.kind)).toEqual(["model"]);
   });
 
   it("leaves single variants and plain products as cards", () => {

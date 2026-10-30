@@ -26,6 +26,16 @@ from app.services.fx_service import QuoteUnavailable
 router = APIRouter()
 
 
+@router.get("/country-tax/{code}")
+def read_country_tax(code: str) -> dict[str, object]:
+    from app.tenancy.countries import COUNTRY_CURRENCIES
+    from app.tenancy.country_tax import as_dict, describe
+
+    if code.upper() not in COUNTRY_CURRENCIES:
+        raise ApiError(404, "not_found", "That country is not in the list.")
+    return as_dict(describe(code))
+
+
 @router.get("", response_model=BusinessSettingsOut)
 def read_settings(
     db: Annotated[Session, Depends(get_db)],
@@ -44,7 +54,12 @@ def read_settings(
         device.entitlement_revision if device is not None else None,
     )
     db.commit()
-    return settings_service.settings_out(settings)
+    out = settings_service.settings_out(settings)
+    if principal.store_id is None:
+        return out
+    from app.services.branch_tax import overlay_settings
+
+    return overlay_settings(db, principal.store_id, out)  # type: ignore[return-value]
 
 
 @router.put("/currency", response_model=BusinessSettingsOut)

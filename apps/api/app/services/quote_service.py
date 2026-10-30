@@ -323,7 +323,7 @@ def create_quote(db: Session, settings: Settings, data: QuotePayload) -> QuoteOu
             currency=data.currency,
             tier=tier,
             quote=True,
-            tax_policy=tax_policy_for(db),
+            tax_policy=tax_policy_for(db, data.store_id),
             cashier=cashier,
             customer=customer,
         )
@@ -499,7 +499,7 @@ def convert_quote(
 
     try:
         _release(db, quote)
-        policy = tax_policy_for(db)
+        policy = tax_policy_for(db, quote.store_id)
         taken = {item.serial_number_id for item in quote.items if item.serial_number_id is not None}
         items: list[SaleItemPayload] = []
         for item in quote.items:

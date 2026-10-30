@@ -72,6 +72,8 @@ class Product(TenantScoped, TimestampMixin, Base):
         tenant_unique("sku", name="uq_products_sku"),
         tenant_unique("barcode", name="uq_products_barcode"),
         tenant_unique("plu_code", name="uq_products_plu_code"),
+        # Null signature (a product that is not a variant) is allowed many times. A real combination is not.
+        tenant_unique("product_model_id", "variant_signature", name="uq_products_model_variant"),
         CheckConstraint("price_cents >= 0", name="price_nonnegative"),
         CheckConstraint("min_order_quantity >= 1", name="moq_positive"),
         CheckConstraint("tare_grams >= 0", name="tare_nonnegative"),
@@ -82,6 +84,10 @@ class Product(TenantScoped, TimestampMixin, Base):
         CheckConstraint(
             "item_type IN ('MADE_TO_ORDER', 'RAW_INGREDIENT', 'PRE_PACKAGED')",
             name="ck_products_item_type",
+        ),
+        CheckConstraint(
+            "price_source IN ('default', 'rule', 'override')",
+            name="ck_products_price_source",
         ),
         # Keyset paging of the full catalog (GET /products?after=) for registers syncing tens of thousands of SKUs.
         Index("ix_products_name_id", "name", "id"),
@@ -152,6 +158,12 @@ class Product(TenantScoped, TimestampMixin, Base):
         index=True,
     )
     variant_attributes: Mapped[dict[str, str]] = mapped_column(JSON, default=dict)
+    # Sorted key=value pairs. Null when this row is not a variant, so the unique key ignores it.
+    variant_signature: Mapped[str | None] = mapped_column(String(400), nullable=True)
+    # default and rule follow the model. override is a price set on this variant and is left alone.
+    price_source: Mapped[str] = mapped_column(String(16), default="override")
+    # Inactive variants stay in stock and in sales history. The register will not sell them.
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     # Technical details that follow the category (processor, capacity, fabric). JSON on SQLite tests, JSONB in Postgres.
     specifications: Mapped[dict[str, str]] = mapped_column(JSON().with_variant(JSONB(), "postgresql"), default=dict)
     price_cents: Mapped[int] = mapped_column(Integer)

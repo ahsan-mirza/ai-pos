@@ -8,6 +8,7 @@ import { DataTable } from "../../components/ui/DataTable";
 import { ErrorNote, FilterSelect, GhostButton, PrimaryButton, SearchField } from "../../components/ui/Field";
 import { useAuth } from "../../lib/auth";
 import { message, modelsApi } from "./api";
+import { MatrixBuilderModal } from "./VariantMatrixPanel";
 import { ModelFormModal } from "./ModelFormModal";
 import { IconButton } from "./StockPage";
 import { useBrands, useCategories } from "./shared";
@@ -34,6 +35,7 @@ export function ModelsPage() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState<ProductModel | "new" | null>(null);
+  const [configure, setConfigure] = useState<ProductModel | null>(null);
 
   const reload = useCallback(async () => {
     setLoading(true);
@@ -214,9 +216,31 @@ export function ModelsPage() {
           categories={categories}
           initialBrandId={brandId}
           onClose={() => setEditing(null)}
-          onSaved={async () => {
+          onSaved={async (saved) => {
+            const created = editing === "new";
             setEditing(null);
             await reload();
+            if (created) setConfigure(saved);
+          }}
+        />
+      ) : null}
+      {configure ? (
+        <MatrixBuilderModal
+          model={configure}
+          existing={{
+            model_id: configure.id,
+            model_name: configure.name,
+            axes: [],
+            cells: [],
+            on_hand: 0,
+            sold_90d: 0,
+            created: 0,
+            skipped: 0,
+          }}
+          onClose={() => setConfigure(null)}
+          onGenerated={() => {
+            setConfigure(null);
+            void reload();
           }}
         />
       ) : null}

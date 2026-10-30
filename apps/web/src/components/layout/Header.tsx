@@ -9,6 +9,8 @@ import { useCapabilities } from "../../lib/capabilities";
 import { useTenant } from "../../context/TenantContext";
 import { portalRouteAllowed } from "../../lib/industry";
 import { AiMark, isAiFeature } from "../ui/AiMark";
+import { useAssistant } from "../../features/assistant/AssistantProvider";
+import { AccountMenu } from "./AccountMenu";
 import { crumbsFor, settingsLabel } from "./navigation";
 import { StoreSwitcher } from "./StoreSwitcher";
 
@@ -149,6 +151,7 @@ export function Header({
   onOpenMobile: () => void;
 }) {
   const { pathname } = useLocation();
+  const assistant = useAssistant();
   const { currency } = useCurrency();
   const canManageSettings = useCanManageSettings();
   const capabilities = useCapabilities();
@@ -236,7 +239,24 @@ export function Header({
             {currency}
           </span>
         )}
+        {assistant.allowed ? (
+          <button
+            type="button"
+            aria-label="AI Assistant"
+            aria-expanded={assistant.open}
+            aria-controls="ai-assistant-drawer"
+            title="Ask your business"
+            onClick={assistant.toggle}
+            className={`inline-flex h-9 items-center gap-1.5 rounded-full px-2.5 text-[13px] font-semibold outline-none transition-colors focus-visible:ring-2 focus-visible:ring-accent/40 sm:px-3 ${
+              assistant.open ? "bg-accent/10 text-accent" : "bg-[#f8fafc] text-charcoal hover:bg-charcoal/[0.05]"
+            }`}
+          >
+            <AiMark size={15} />
+            <span className="hidden sm:inline">AI Assistant</span>
+          </button>
+        ) : null}
         <Notifications />
+        <AccountMenu />
       </div>
     </header>
   );

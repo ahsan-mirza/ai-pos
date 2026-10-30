@@ -1,6 +1,5 @@
 import { Capability, Permission, profileSpec, type BusinessProfile } from "@ai-pos/shared-types";
 import {
-  ArrowLeftRight,
   BadgeCheck,
   Ban,
   Banknote,
@@ -14,7 +13,6 @@ import {
   Clock,
   CreditCard,
   FileSpreadsheet,
-  FileText,
   Gift,
   HandCoins,
   Handshake,
@@ -26,12 +24,10 @@ import {
   ReceiptText,
   Repeat2,
   RotateCcw,
-  ScanBarcode,
   Settings,
   ShieldCheck,
   SlidersHorizontal,
   Smartphone,
-  Sparkles,
   Tag,
   TicketPercent,
   Timer,
@@ -43,7 +39,7 @@ import {
   Wrench,
   type LucideIcon,
 } from "lucide-react";
-import { FASHION_PROFILES, FNB_PROFILES, RETAIL_PROFILES } from "../../lib/industry";
+import { FNB_PROFILES, RETAIL_PROFILES } from "../../lib/industry";
 import { portalHomePath } from "../../lib/portal-home";
 
 /** What the navigation adapts to: the business type (for names) and its switched-on modules (for visibility). */
@@ -143,15 +139,11 @@ export function settingsLabel(ctx: Pick<NavContext, "profile">): string {
 const under = (...prefixes: string[]) => (pathname: string) =>
   prefixes.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`));
 
+/** Food and beverage screens keep their own sidebar entries. Every other inventory route highlights Inventory. */
 const inventoryOwn = (pathname: string) =>
   under("/inventory")(pathname) &&
   !under(
-    "/inventory/purchase-orders",
-    "/inventory/transfers",
-    "/inventory/serials",
     "/inventory/modifiers",
-    "/inventory/markdowns",
-    "/inventory/size-curve",
     "/inventory/floor-plan",
     "/inventory/kitchen",
     "/inventory/kitchen-agent",
@@ -165,7 +157,6 @@ export const navGroups: NavGroup[] = [
     label: "Workspace",
     items: [
       { to: portalHomePath(), label: "Dashboard", icon: LayoutDashboard, permission: Permission.PortalReportsRead, isActive: (path) => path === "/" || path === "/dashboard" },
-      { to: "/assistant", label: "AI assistant", icon: Sparkles, permission: Permission.PortalReportsRead, isActive: under("/assistant") },
       { to: "/insights", label: "AI insights", icon: Radar, ai: true, permission: Permission.PortalReportsRead, isActive: under("/insights") },
       { to: "/m", label: "Manager app", icon: Smartphone, permission: Permission.PortalReportsRead, isActive: under("/m") },
       {
@@ -176,53 +167,12 @@ export const navGroups: NavGroup[] = [
         isActive: inventoryOwn,
       },
       {
-        to: "/inventory/purchase-orders",
-        label: "Purchase Orders",
-        icon: FileText,
-        permission: Permission.PortalAccess,
-        isActive: under("/inventory/purchase-orders"),
-      },
-      {
-        to: "/inventory/transfers",
-        label: (ctx) =>
-          ctx.profile === "electronics_wholesale" && ctx.has(Capability.SerialTracking) ? "Transfers & IMEI" : "Transfers",
-        icon: ArrowLeftRight,
-        permission: Permission.PortalAccess,
-        isActive: under("/inventory/transfers"),
-      },
-      {
-        to: "/inventory/serials",
-        label: "IMEI / Serial tracking",
-        icon: ScanBarcode,
-        permission: Permission.PortalAccess,
-        capability: Capability.SerialTracking,
-        isActive: under("/inventory/serials"),
-      },
-      {
         to: "/rentals",
         label: "Rentals",
         icon: CalendarRange,
         permission: Permission.PortalInventoryManage,
         capability: Capability.FashionRental,
         isActive: under("/rentals"),
-      },
-      {
-        to: "/inventory/markdowns",
-        label: "Markdowns",
-        icon: Percent,
-        permission: Permission.PortalAccess,
-        capability: Capability.VariantsMatrix,
-        profiles: FASHION_PROFILES,
-        isActive: under("/inventory/markdowns"),
-      },
-      {
-        to: "/inventory/size-curve",
-        label: "Size & color matrix",
-        icon: ChartColumn,
-        permission: Permission.PortalReportsRead,
-        capability: Capability.VariantsMatrix,
-        profiles: FASHION_PROFILES,
-        isActive: under("/inventory/size-curve"),
       },
       {
         to: "/customers",

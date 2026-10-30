@@ -53,6 +53,7 @@ from app.services import (
     warranty_service,
     weighed,
 )
+from app.services.branch_tax import snapshot_for
 from app.services.identifiers import identifier_hash, identifier_suffix, normalize_identifier
 from app.services.inventory import level_for, move_stock, transition_serial
 from app.services.numbering import accept_register_number, next_server_number
@@ -238,7 +239,7 @@ def _service_charge_tax(db: Session, data: SalePayload) -> int:
         if data.service_charge_tax_cents:
             raise SyncRejected("Service charge VAT without a service charge.")
         return 0
-    policy = tax_policy_for(db)
+    policy = tax_policy_for(db, data.store_id)
     taxable = cached_settings(db).module_settings.tips_service_charge.service_charge_taxable
     if not policy.enforced:
         # Legacy registers keep the tax they sent, as for lines.
@@ -705,7 +706,7 @@ def record_sale(
         currency=data.currency,
         tier=tier,
         quote=False,
-        tax_policy=tax_policy_for(db),
+        tax_policy=tax_policy_for(db, data.store_id),
         cashier=cashier,
         customer=customer,
         at=sold_at,
@@ -788,6 +789,8 @@ def record_sale(
         for product in (line.product, *parts.get(line.item.id, ())):
             if product.is_ingredient:
                 raise SyncRejected(f"{product.name} is an ingredient and is not sold on its own.")
+            if not product.is_active:
+                raise SyncRejected(f"{product.name} is inactive and cannot be sold.")
             if has_capability(db, Capability.FASHION_RENTAL):
                 from app.services.rental_service import rental_only
 
@@ -869,6 +872,7 @@ def record_sale(
         service_charge_tax_cents=service_tax,
         tip_cents=data.tip_cents,
         tip_user_id=tip_user.id if tip_user is not None else None,
+        tax_snapshot=snapshot_for(db, data.store_id, data.currency),
         created_at=sold_at,
         updated_at=now,
     )

@@ -6,14 +6,15 @@ from sqlalchemy.orm import Session
 
 from app.core.config import Settings, get_settings
 from app.core.database import get_db
-from app.core.deps import Principal, authorize
+from app.core.deps import Principal, authorize, get_principal
 from app.core.errors import ApiError
 from app.core.permissions import Permission
 from app.models.store import Store
 from app.routers.v1.deps import assert_store_access, require_device_id, require_idempotency_key
+from app.schemas.branch_tax import BranchTaxOut, BranchTaxUpdate, TaxPreviewIn
 from app.schemas.inventory import StoreUpdate
 from app.schemas.payloads import StoreOut, StorePayload
-from app.services import catalog_service, inventory
+from app.services import branch_tax, catalog_service, inventory
 from app.services.sync_service import ingest_one
 
 router = APIRouter()
@@ -67,3 +68,46 @@ def create_store(
     if row is None:
         raise ApiError(500, "not_persisted", "Store was not stored.")
     return StoreOut.model_validate(row)
+
+
+def _tax_editor(principal: Principal, store_id: uuid.UUID) -> None:
+    if principal.user is None:
+        raise ApiError(403, "forbidden", "This action requires a signed-in user.")
+    allowed = {Permission.SETTINGS_MANAGE.value, Permission.PORTAL_INVENTORY_MANAGE.value}
+    if not allowed.intersection(principal.permissions):
+        raise ApiError(403, "forbidden", "You do not have permission to change branch tax.")
+    if principal.store_id is not None and principal.store_id != store_id:
+        raise ApiError(403, "store_forbidden", "You can only change tax for your own branch.")
+
+
+@router.get("/{store_id}/tax", response_model=BranchTaxOut)
+def read_branch_tax(
+    store_id: uuid.UUID,
+    db: Annotated[Session, Depends(get_db)],
+    principal: Annotated[Principal, Depends(get_principal)],
+) -> BranchTaxOut:
+    assert_store_access(principal, store_id)
+    return branch_tax.read_profile(db, store_id)
+
+
+@router.put("/{store_id}/tax", response_model=BranchTaxOut)
+def update_branch_tax(
+    store_id: uuid.UUID,
+    payload: BranchTaxUpdate,
+    db: Annotated[Session, Depends(get_db)],
+    principal: Annotated[Principal, Depends(get_principal)],
+) -> BranchTaxOut:
+    _tax_editor(principal, store_id)
+    assert principal.user is not None
+    return branch_tax.save_profile(db, principal.user, store_id, payload)
+
+
+@router.post("/{store_id}/tax/preview")
+def preview_branch_tax(
+    store_id: uuid.UUID,
+    payload: TaxPreviewIn,
+    db: Annotated[Session, Depends(get_db)],
+    principal: Annotated[Principal, Depends(get_principal)],
+) -> dict[str, int | str | None]:
+    assert_store_access(principal, store_id)
+    return branch_tax.preview(db, store_id, payload.amount_cents, payload.category)

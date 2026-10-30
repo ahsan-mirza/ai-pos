@@ -20,5 +20,24 @@ services:
     ports:
       - "6379:6379"
 
+  # Local model server for the assistant. Not published on 0.0.0.0. Other Compose services use
+  # http://ollama:11434. The host API uses http://127.0.0.1:11434. CPU is the default.
+  # GPU (optional, NVIDIA container toolkit): add under this service
+  #   gpus: all
+  ollama:
+    image: ollama/ollama:0.40.13
+    restart: unless-stopped
+    volumes:
+      - ai_pos_ollama:/root/.ollama
+    ports:
+      - "127.0.0.1:11434:11434"
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 10s
+      retries: 12
+      start_period: 15s
+
 volumes:
   ai_pos_pg:
+  ai_pos_ollama:

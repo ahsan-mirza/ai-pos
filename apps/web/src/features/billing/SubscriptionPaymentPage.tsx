@@ -1,6 +1,7 @@
 import { formatMoney } from "@ai-pos/shared-types";
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
+import { invalidateAccountSubscription } from "../../components/layout/AccountMenu";
 import { ErrorNote, PrimaryButton } from "../../components/ui/Field";
 import { ApiRequestError, apiBlob, apiGet, apiUpload } from "../../lib/api";
 
@@ -87,6 +88,7 @@ export function SubscriptionPaymentPage() {
       form.set("note", note);
       form.set("receipt", file);
       await apiUpload("/api/v1/billing/transfers", form);
+      invalidateAccountSubscription();
       setNotice("Payment proof submitted. Features stay locked until it is verified.");
       setIdempotencyKey(crypto.randomUUID());
       setFile(null);

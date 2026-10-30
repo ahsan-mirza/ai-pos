@@ -47,6 +47,12 @@ export interface ProductPricing {
   care?: string | null;
   /** Price before the active markdown; the register strikes it through. */
   compare_at_cents?: number | null;
+  /** false when the variant is retired. Missing means active. */
+  is_active?: boolean;
+  /** default and rule follow the model. override is a price set on this variant. */
+  price_source?: "default" | "rule" | "override";
+  /** Hex colour for an attribute value on this variant, from the model's swatch map. */
+  variant_swatches?: Record<string, string>;
   /** Technical details for this category (processor, capacity, fabric). Portal-managed. */
   specifications?: Record<string, string>;
 }
@@ -107,7 +113,14 @@ export interface ProductUpsert extends ProductPricing {
   variant_attributes?: Record<string, string>;
 }
 
-type PortalManaged = keyof ProductPricing | "product_model_id" | "model_name" | "variant_attributes";
+type PortalManaged =
+  | keyof ProductPricing
+  | "product_model_id"
+  | "model_name"
+  | "variant_attributes"
+  | "is_active"
+  | "price_source"
+  | "variant_swatches";
 
 /** The fields the sync API accepts for a product upsert; pricing tiers and models are managed in the portal. */
 export function productSyncPayload(product: ProductUpsert): Omit<ProductUpsert, PortalManaged> {
@@ -142,6 +155,9 @@ export function productSyncPayload(product: ProductUpsert): Omit<ProductUpsert, 
     product_model_id: _model,
     model_name: _modelName,
     variant_attributes: _variant,
+    is_active: _active,
+    price_source: _source,
+    variant_swatches: _swatches,
     ...rest
   } = product;
   return rest;

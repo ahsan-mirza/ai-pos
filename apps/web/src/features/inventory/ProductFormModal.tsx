@@ -686,6 +686,11 @@ export function ProductFormModal({
           inputMode="decimal"
           value={price}
           error={fieldMessage("price", priceMessage())}
+          hint={
+            product?.price_source && product.price_source !== "override"
+              ? "Inherited from the model. Changing it makes this an override."
+              : undefined
+          }
           onBlur={() => touch("price")}
           onChange={(event) => {
             setPrice(event.target.value);

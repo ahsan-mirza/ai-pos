@@ -91,6 +91,8 @@ class StorePayload(ApiModel):
     currency: str
     address: str | None = Field(default=None, max_length=255)
     phone: str | None = Field(default=None, max_length=40)
+    country: str | None = None
+    city: str | None = Field(default=None, max_length=120)
     emirate: Emirate | None = None
     is_warehouse: bool = False
     is_active: bool = True
@@ -583,6 +585,9 @@ class ProductOut(ApiModel):
     variant_attributes: dict[str, str] = Field(default_factory=dict)
     specifications: dict[str, str] = Field(default_factory=dict)
     price_cents: int
+    price_source: str = "override"
+    is_active: bool = True
+    variant_swatches: dict[str, str] = Field(default_factory=dict)
     compare_at_cents: int | None = None
     currency: str
     is_serialized: bool

@@ -19,6 +19,8 @@ export interface Store {
   currency: string;
   address?: string | null;
   phone?: string | null;
+  country?: string | null;
+  city?: string | null;
   emirate?: Emirate | null;
   is_warehouse?: boolean;
   is_active?: boolean;
@@ -42,7 +44,10 @@ export interface StoreUpdate {
   name?: string;
   address?: string | null;
   phone?: string | null;
+  country?: string | null;
+  city?: string | null;
   emirate?: Emirate | null;
+  confirm_country_change?: boolean;
   is_warehouse?: boolean;
   is_active?: boolean;
 }

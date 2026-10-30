@@ -4,17 +4,19 @@ import {
   formatMoney,
   type LabelLayout,
   type MatrixAxis,
+  type MatrixPreview,
   type ProductModel,
   type VariantMatrix,
   variantAttributeLabel,
 } from "@ai-pos/shared-types";
 import { Grid3x3, Printer } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Select } from "@ai-pos/ui";
 import { ErrorNote, GhostButton, PrimaryButton, SelectField, TextField } from "../../components/ui/Field";
 import { Modal } from "../../components/ui/Modal";
 import { useCurrency } from "../../lib/currency";
 import { labelsApi, message, modelsApi } from "./api";
+import { VariantGrid } from "./VariantGrid";
 
 const AXIS_PRESETS = ["size", "color", "style", "fit", "length", "material"];
 
@@ -48,7 +50,6 @@ export function VariantMatrixPanel({
   const [error, setError] = useState<string | null>(null);
   const [building, setBuilding] = useState(false);
   const [layout, setLayout] = useState<LabelLayout>("a4_3x8");
-  const [page, setPage] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -62,21 +63,6 @@ export function VariantMatrixPanel({
   useEffect(() => {
     void load();
   }, [load, refreshKey]);
-
-  const [rowAxis, columnAxis, pageAxis] = matrix?.axes ?? [];
-  const pages = pageAxis?.values ?? [];
-  const activePage = page && pages.includes(page) ? page : (pages[0] ?? null);
-  const cellFor = useMemo(() => {
-    const map = new Map<string, VariantMatrix["cells"][number]>();
-    for (const cell of matrix?.cells ?? []) {
-      const key = [rowAxis, columnAxis, pageAxis].map((axis) => (axis ? cell.attributes[axis.key] ?? "" : "")).join("|");
-      map.set(key, cell);
-    }
-    return (row: string, column: string) =>
-      map.get([row, rowAxis && columnAxis ? column : "", pageAxis ? (activePage ?? "") : ""].join("|"));
-  }, [matrix, rowAxis, columnAxis, pageAxis, activePage]);
-
-  const maxSold = Math.max(1, ...(matrix?.cells ?? []).map((cell) => cell.sold_90d));
 
   return (
     <section className="mb-6 rounded-2xl border border-line p-4" aria-labelledby="matrix-title">
@@ -114,85 +100,13 @@ export function VariantMatrixPanel({
       </div>
       <ErrorNote message={error} />
 
-      {pages.length > 1 ? (
-        <div className="mt-3 flex flex-wrap gap-1" role="tablist" aria-label={variantAttributeLabel(pageAxis!.key)}>
-          {pages.map((value) => (
-            <button
-              key={value}
-              type="button"
-              role="tab"
-              aria-selected={value === activePage}
-              onClick={() => setPage(value)}
-              className={`rounded-full px-3 py-1 text-xs font-semibold ${value === activePage ? "bg-charcoal text-white" : "bg-surface text-charcoal/70"}`}
-            >
-              {value}
-            </button>
-          ))}
-        </div>
-      ) : null}
-
-      {matrix && rowAxis ? (
-        <div className="mt-4 overflow-x-auto">
-          <table className="text-sm">
-            <thead>
-              <tr>
-                <th className="px-2 pb-2 text-left text-[11px] font-semibold uppercase tracking-wider text-charcoal/50">
-                  {variantAttributeLabel(rowAxis.key)}
-                  {columnAxis ? ` \\ ${variantAttributeLabel(columnAxis.key)}` : ""}
-                </th>
-                {(columnAxis?.values ?? [""]).map((column) => (
-                  <th key={column} className="min-w-[92px] px-2 pb-2 text-center text-xs font-semibold">
-                    {column || "Units"}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {rowAxis.values.map((row) => (
-                <tr key={row}>
-                  <th scope="row" className="px-2 py-1 text-left text-xs font-semibold">
-                    {row}
-                  </th>
-                  {(columnAxis?.values ?? [""]).map((column) => {
-                    const cell = cellFor(row, column);
-                    if (!cell) {
-                      return (
-                        <td key={column} className="px-1 py-1">
-                          <span className="flex h-14 items-center justify-center rounded-xl border border-dashed border-line text-xs text-charcoal/30">
-                            —
-                          </span>
-                        </td>
-                      );
-                    }
-                    const heat = cell.sold_90d / maxSold;
-                    const out = cell.on_hand <= 0;
-                    return (
-                      <td key={column} className="px-1 py-1">
-                        <div
-                          title={`${cell.sku} · ${cell.barcode}\n${Object.entries(cell.by_store)
-                            .map(([code, units]) => `${code}: ${units}`)
-                            .join(", ") || "No stock rows"}`}
-                          className={`flex h-14 flex-col items-center justify-center rounded-xl border text-center ${
-                            out ? "border-red-200 bg-red-50" : "border-line"
-                          }`}
-                          style={out ? undefined : { backgroundColor: `rgb(var(--primary-rgb) / ${0.04 + heat * 0.22})` }}
-                        >
-                          <span className={`text-base font-semibold tabular-nums ${out ? "text-red-700" : ""}`}>{cell.on_hand}</span>
-                          <span className="text-[10px] text-charcoal/60 tabular-nums">{cell.sold_90d} sold</span>
-                        </div>
-                      </td>
-                    );
-                  })}
-                </tr>
-              ))}
-            </tbody>
-          </table>
+      {matrix ? (
+        <div className="mt-4">
+          <VariantGrid axes={matrix.axes} cells={matrix.cells} swatches={model.axis_swatches} />
           <p className="mt-2 text-[11px] text-charcoal/50">
-            Number = on hand across branches; shading = units sold in 90 days; red = out of stock. Hover for SKU and branches.
+            Number = on hand across branches; shading = units sold in 90 days; red = out of stock.
           </p>
         </div>
-      ) : matrix ? (
-        <p className="mt-4 text-sm text-charcoal/60">No size or colour attributes yet. Build the grid to create the variants.</p>
       ) : null}
 
       {building && matrix ? (
@@ -211,7 +125,7 @@ export function VariantMatrixPanel({
   );
 }
 
-function MatrixBuilderModal({
+export function MatrixBuilderModal({
   model,
   existing,
   onClose,
@@ -236,6 +150,8 @@ function MatrixBuilderModal({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [preview, setPreview] = useState<MatrixPreview | null>(null);
+  const [swatches, setSwatches] = useState<Record<string, string>>({});
 
   const parsed = axes.map((axis) => ({ key: axis.key.trim().toLowerCase(), values: splitValues(axis.text) }));
   const combinations = parsed.reduce((total, axis) => total * Math.max(axis.values.length, 1), 1);
@@ -263,16 +179,45 @@ function MatrixBuilderModal({
     extraPrices !== null &&
     combinations <= 400;
 
+  const payload = {
+    axes: parsed.map((axis) => ({ key: axis.key, values: [...axis.values].sort(compareVariantValues) })),
+    price_cents: priceCents,
+    price_by_value: extraPrices ?? {},
+    sku_prefix: prefix.trim() || null,
+  };
+  const colourAxis = parsed.find((axis) => axis.key === "color" || axis.key === "colour");
+
+  useEffect(() => {
+    if (!valid) {
+      setPreview(null);
+      return;
+    }
+    const handle = window.setTimeout(() => {
+      modelsApi
+        .previewMatrix(model.id, payload)
+        .then(setPreview)
+        .catch(() => setPreview(null));
+    }, 250);
+    return () => window.clearTimeout(handle);
+    // The payload is rebuilt from the same fields listed here.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [valid, model.id, price, extra, prefix, axes]);
+
   const generate = async () => {
     setBusy(true);
     setError(null);
     try {
-      const result = await modelsApi.generateMatrix(model.id, {
-        axes: parsed.map((axis) => ({ key: axis.key, values: [...axis.values].sort(compareVariantValues) })),
-        price_cents: priceCents,
-        price_by_value: extraPrices ?? {},
-        sku_prefix: prefix.trim() || null,
-      });
+      const axisSwatches: Record<string, Record<string, string>> = {};
+      if (colourAxis) {
+        const colours: Record<string, string> = {};
+        for (const value of colourAxis.values) {
+          const hex = swatches[`${colourAxis.key}|${value}`];
+          if (hex) colours[value] = hex;
+        }
+        if (Object.keys(colours).length > 0) axisSwatches[colourAxis.key] = colours;
+      }
+      if (Object.keys(axisSwatches).length > 0) await modelsApi.update(model.id, { axis_swatches: axisSwatches });
+      const result = await modelsApi.generateMatrix(model.id, payload);
       setNotice(`${result.created} variants created, ${result.skipped} already existed.`);
       onGenerated(result);
     } catch (caught) {
@@ -337,6 +282,23 @@ function MatrixBuilderModal({
             Add attribute
           </GhostButton>
         ) : null}
+        {colourAxis && colourAxis.values.length > 0 ? (
+          <div className="flex flex-wrap gap-3">
+            {colourAxis.values.map((value) => (
+              <label key={value} className="flex items-center gap-2 text-sm">
+                <span>{value}</span>
+                <input
+                  type="color"
+                  aria-label={`${value} swatch`}
+                  value={swatches[`${colourAxis.key}|${value}`] ?? "#111111"}
+                  onChange={(event) =>
+                    setSwatches((current) => ({ ...current, [`${colourAxis.key}|${value}`]: event.target.value }))
+                  }
+                />
+              </label>
+            ))}
+          </div>
+        ) : null}
         <div className="grid gap-3 sm:grid-cols-3">
           <TextField label={`Price (${currency})`} inputMode="decimal" value={price} onChange={(event) => setPrice(event.target.value)} />
           <TextField
@@ -348,7 +310,10 @@ function MatrixBuilderModal({
           <TextField label="SKU prefix" hint="Defaults to the model code" value={prefix} onChange={(event) => setPrefix(event.target.value.toUpperCase())} />
         </div>
         <p className="rounded-2xl bg-surface px-4 py-3 text-sm text-charcoal/70">
-          {combinations} combinations, {fresh} new{combinations > 400 ? " (the limit is 400)" : ""}. Example SKU{" "}
+          {combinations} combinations, {fresh} new
+          {preview ? ` · preview ${preview.creating} to create, ${preview.existing} existing` : ""}
+          {preview && preview.inactive > 0 ? `, ${preview.inactive} inactive` : ""}
+          {combinations > 400 ? " (the limit is 400)" : ""}. Example SKU{" "}
           <code>{[prefix || model.code || "VAR", ...parsed.map((axis) => (axis.values[0] ?? "X").toUpperCase().slice(0, 5))].join("-")}</code>
           {priceCents > 0 ? ` at ${formatMoney(priceCents, currency)}` : ""}.
         </p>

@@ -21,9 +21,35 @@ export interface MatrixCell {
   barcode: string;
   name: string;
   price_cents: number;
+  price_source?: "default" | "rule" | "override";
+  is_active?: boolean;
+  cost_cents?: number | null;
   on_hand: number;
   sold_90d: number;
   by_store: Record<string, number>;
+}
+
+export interface MatrixPreview {
+  possible: number;
+  existing: number;
+  creating: number;
+  inactive: number;
+  duplicates: number;
+  over_limit: boolean;
+}
+
+export interface MatrixBulk {
+  product_ids: string[];
+  price_cents?: number | null;
+  is_active?: boolean | null;
+  store_id?: string | null;
+  min_reorder_level?: number | null;
+  assign_missing_barcodes?: boolean;
+}
+
+export interface MatrixBulkResult {
+  updated: number;
+  skipped: string[];
 }
 
 export interface VariantMatrix {

@@ -134,6 +134,8 @@ struct RemoteSettings {
     #[serde(default)]
     tax_authority: Option<String>,
     #[serde(default)]
+    tax_configuration_required: bool,
+    #[serde(default)]
     business_profile: Option<String>,
     #[serde(default)]
     capabilities: Option<Vec<String>>,
@@ -314,6 +316,7 @@ fn fetch(config: &DesktopConfig, pending: Option<i64>) -> Result<(String, Value,
         "legal_name": body.legal_name,
         "legal_name_ar": body.legal_name_ar,
         "tax_authority": body.tax_authority.unwrap_or_else(|| "fta".into()),
+        "tax_configuration_required": body.tax_configuration_required,
     });
     let profile = body.capabilities.as_ref().map(|capabilities| {
         serde_json::json!({

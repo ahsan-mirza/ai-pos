@@ -160,6 +160,48 @@ class BrandWrite(CategoryWrite):
     sub_category_ids: list[UUID] = Field(default_factory=list, max_length=200)
 
 
+HEX_COLOUR = re.compile(r"^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$")
+
+
+class PriceRule(ApiModel):
+    key: str = ""
+    value: str = Field(min_length=1, max_length=60)
+    price_cents: int = Field(ge=0)
+
+    @field_validator("key")
+    @classmethod
+    def normalize_key(cls, value: str) -> str:
+        return value.strip().lower().replace(" ", "_")
+
+    @field_validator("value")
+    @classmethod
+    def normalize_value(cls, value: str) -> str:
+        text = " ".join(value.split())
+        if not text:
+            raise ValueError("A price rule needs a value.")
+        return text
+
+
+def axis_swatches(value: dict[str, dict[str, str]] | None) -> dict[str, dict[str, str]]:
+    cleaned: dict[str, dict[str, str]] = {}
+    for key, colours in (value or {}).items():
+        name = str(key).strip().lower().replace(" ", "_")
+        if not name or not isinstance(colours, dict):
+            raise ValueError("Swatches are a map of attribute values to hex colours.")
+        bucket: dict[str, str] = {}
+        for raw_value, raw_colour in colours.items():
+            text = " ".join(str(raw_value).split())
+            colour = str(raw_colour).strip()
+            if not text:
+                continue
+            if HEX_COLOUR.fullmatch(colour) is None:
+                raise ValueError(f"{text} needs a hex colour such as #112233.")
+            bucket[text] = colour.lower()
+        if bucket:
+            cleaned[name] = bucket
+    return cleaned
+
+
 class ProductModelOut(FashionAttributesOut):
     id: UUID
     brand_id: UUID
@@ -173,6 +215,9 @@ class ProductModelOut(FashionAttributesOut):
     release_year: int | None
     description: str
     variant_count: int
+    default_price_cents: int | None = None
+    price_rules: list[PriceRule] = Field(default_factory=list)
+    axis_swatches: dict[str, dict[str, str]] = Field(default_factory=dict)
 
 
 class ProductModelWrite(FashionAttributes):
@@ -182,6 +227,14 @@ class ProductModelWrite(FashionAttributes):
     code: str | None = Field(default=None, max_length=32)
     release_year: int | None = Field(default=None, ge=1980, le=2100)
     description: str = Field(default="", max_length=255)
+    default_price_cents: int | None = Field(default=None, ge=0)
+    price_rules: list[PriceRule] = Field(default_factory=list, max_length=40)
+    axis_swatches: dict[str, dict[str, str]] = Field(default_factory=dict)
+
+    @field_validator("axis_swatches")
+    @classmethod
+    def normalize_swatches(cls, value: dict[str, dict[str, str]]) -> dict[str, dict[str, str]]:
+        return axis_swatches(value)
 
     @field_validator("name")
     @classmethod
@@ -204,6 +257,14 @@ class ProductModelUpdate(FashionAttributes):
     code: str | None = Field(default=None, max_length=32)
     release_year: int | None = Field(default=None, ge=1980, le=2100)
     description: str | None = Field(default=None, max_length=255)
+    default_price_cents: int | None = Field(default=None, ge=0)
+    price_rules: list[PriceRule] | None = Field(default=None, max_length=40)
+    axis_swatches: dict[str, dict[str, str]] | None = None
+
+    @field_validator("axis_swatches")
+    @classmethod
+    def normalize_swatches(cls, value: dict[str, dict[str, str]] | None) -> dict[str, dict[str, str]] | None:
+        return None if value is None else axis_swatches(value)
 
     @field_validator("name")
     @classmethod
@@ -660,6 +721,7 @@ class ProductUpdate(FashionAttributes):
     is_ingredient: bool | None = None
     item_type: ItemType | None = None
     sellable_units: list[UnitType] | None = Field(default=None, max_length=8)
+    is_active: bool | None = None
 
     @field_validator("variant_attributes")
     @classmethod
@@ -684,5 +746,21 @@ class StoreUpdate(ApiModel):
 
         return normalize_phone(value)
     emirate: Emirate | None = None
+    country: str | None = None
+    city: str | None = Field(default=None, max_length=120)
+    region: str | None = Field(default=None, max_length=80)
+    confirm_country_change: bool = False
     is_warehouse: bool | None = None
     is_active: bool | None = None
+
+    @field_validator("country")
+    @classmethod
+    def _store_country(cls, value: str | None) -> str | None:
+        if value is None or not value.strip():
+            return None
+        from app.tenancy.countries import COUNTRY_CURRENCIES
+
+        code = value.strip().upper()
+        if code not in COUNTRY_CURRENCIES:
+            raise ValueError("Choose a country from the list.")
+        return code

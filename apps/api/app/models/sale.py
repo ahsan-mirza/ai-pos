@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Boolean, CheckConstraint, DateTime, ForeignKey, Index, Integer, String, Uuid
+from sqlalchemy import JSON, Boolean, CheckConstraint, DateTime, ForeignKey, Index, Integer, String, Uuid
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, TenantScoped, TimestampMixin, tenant_unique
@@ -75,6 +75,8 @@ class Sale(TenantScoped, TimestampMixin, Base):
     service_charge_tax_cents: Mapped[int] = mapped_column(Integer, default=0)
     tip_cents: Mapped[int] = mapped_column(Integer, default=0)
     tip_user_id: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    # Identity and rates used for this sale. Later tax edits must not change it.
+    tax_snapshot: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     # The wholesale sales order this sale invoices (one sale per delivery).
     sales_order_id: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True), nullable=True, index=True)
     items: Mapped[list[SaleItem]] = relationship(

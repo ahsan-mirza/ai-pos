@@ -1,10 +1,10 @@
 import { Capability, type BusinessProfile } from "@ai-pos/shared-types";
-import type { CSSProperties } from "react";
-import { NavLink, Outlet } from "react-router-dom";
+import { type CSSProperties, useEffect, useRef, useState } from "react";
+import { NavLink, Outlet, useLocation } from "react-router-dom";
 import { AiMark } from "../../components/ui/AiMark";
 import { useTenant } from "../../context/TenantContext";
 import { useCapabilities } from "../../lib/capabilities";
-import { MODEL_PROFILES, RETAIL_PROFILES } from "../../lib/industry";
+import { FASHION_PROFILES, MODEL_PROFILES, RETAIL_PROFILES } from "../../lib/industry";
 
 const tabs: { to: string; label: string; capability?: Capability; profiles?: readonly BusinessProfile[]; ai?: boolean }[] = [
   { to: "/inventory/stock", label: "Stock" },
@@ -31,6 +31,8 @@ const tabs: { to: string; label: string; capability?: Capability; profiles?: rea
   { to: "/inventory/purchase-orders", label: "Purchase Orders" },
   { to: "/inventory/transfers", label: "Transfers" },
   { to: "/inventory/serials", label: "IMEI Tracker", capability: Capability.SerialTracking },
+  { to: "/inventory/markdowns", label: "Markdowns", capability: Capability.VariantsMatrix, profiles: FASHION_PROFILES },
+  { to: "/inventory/size-curve", label: "Size & color matrix", capability: Capability.VariantsMatrix, profiles: FASHION_PROFILES },
 ];
 
 /** Header (4rem) plus this tab strip (3rem); split-view drawers subtract it from the viewport height. */
@@ -39,29 +41,63 @@ const chrome = { "--chrome": "7rem" } as CSSProperties;
 export function InventoryLayout() {
   const { has } = useCapabilities();
   const { allows } = useTenant();
+  const { pathname } = useLocation();
+  const navRef = useRef<HTMLElement>(null);
+  const [edges, setEdges] = useState({ left: false, right: false });
+  const visible = tabs.filter((tab) => allows(tab.profiles) && (tab.capability === undefined || has(tab.capability)));
+
+  useEffect(() => {
+    const el = navRef.current;
+    if (!el) return;
+    const update = () => {
+      setEdges({
+        left: el.scrollLeft > 4,
+        right: el.scrollLeft + el.clientWidth < el.scrollWidth - 4,
+      });
+    };
+    el.querySelector<HTMLElement>('[aria-current="page"]')?.scrollIntoView({ inline: "nearest", block: "nearest" });
+    update();
+    el.addEventListener("scroll", update, { passive: true });
+    const observer = new ResizeObserver(update);
+    observer.observe(el);
+    return () => {
+      el.removeEventListener("scroll", update);
+      observer.disconnect();
+    };
+  }, [pathname, visible.length]);
+
   return (
     <div className="flex min-h-full flex-col lg:h-full" style={chrome}>
-      <nav
-        aria-label="Inventory sections"
-        className="no-scrollbar sticky top-0 z-20 flex h-12 shrink-0 gap-1 overflow-x-auto border-b border-line bg-white px-2 md:px-3 lg:static lg:px-4"
-      >
-        {tabs.filter((tab) => allows(tab.profiles) && (tab.capability === undefined || has(tab.capability))).map((tab) => (
-          <NavLink
-            key={tab.to}
-            to={tab.to}
-            className={({ isActive }) =>
-              `relative flex shrink-0 items-center whitespace-nowrap px-3 text-[13px] outline-none transition-colors after:absolute after:inset-x-2 after:bottom-0 after:h-0.5 after:rounded-full after:transition-colors focus-visible:bg-charcoal/[0.04] ${
-                isActive
-                  ? "font-semibold text-charcoal after:bg-accent"
-                  : "font-medium text-charcoal/55 after:bg-transparent hover:text-charcoal hover:after:bg-line"
-              }`
-            }
-          >
-            {tab.ai ? <AiMark size={13} className="mr-1.5 text-accent" /> : null}
-            {tab.label}
-          </NavLink>
-        ))}
-      </nav>
+      <div className="sticky top-0 z-20 border-b border-line bg-white lg:static relative">
+        <nav
+          ref={navRef}
+          aria-label="Inventory sections"
+          className="no-scrollbar flex h-12 shrink-0 gap-1 overflow-x-auto px-2 md:px-3 lg:px-4"
+        >
+          {visible.map((tab) => (
+            <NavLink
+              key={tab.to}
+              to={tab.to}
+              className={({ isActive }) =>
+                `relative flex shrink-0 items-center whitespace-nowrap px-3 text-[13px] outline-none transition-colors after:absolute after:inset-x-2 after:bottom-0 after:h-0.5 after:rounded-full after:transition-colors focus-visible:bg-charcoal/[0.04] ${
+                  isActive
+                    ? "font-semibold text-charcoal after:bg-accent"
+                    : "font-medium text-charcoal/55 after:bg-transparent hover:text-charcoal hover:after:bg-line"
+                }`
+              }
+            >
+              {tab.ai ? <AiMark size={13} className="mr-1.5 text-accent" /> : null}
+              {tab.label}
+            </NavLink>
+          ))}
+        </nav>
+        {edges.left ? (
+          <span aria-hidden="true" className="pointer-events-none absolute inset-y-0 left-0 w-8 bg-gradient-to-r from-white to-transparent" />
+        ) : null}
+        {edges.right ? (
+          <span aria-hidden="true" className="pointer-events-none absolute inset-y-0 right-0 w-8 bg-gradient-to-l from-white to-transparent" />
+        ) : null}
+      </div>
       <div className="flex-1 lg:min-h-0 lg:overflow-y-auto">
         <Outlet />
       </div>

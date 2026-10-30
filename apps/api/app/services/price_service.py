@@ -80,7 +80,12 @@ def update_product_pricing(db: Session, product_id: uuid.UUID, data: ProductPric
     if product is None:
         raise ApiError(404, "not_found", "Product was not found.")
     if data.retail_price_cents is not None:
+        if data.retail_price_cents != product.price_cents:
+            from app.services import markdown_service
+
+            markdown_service.record(db, product, data.retail_price_cents, "MANUAL")
         product.price_cents = data.retail_price_cents
+        product.price_source = "override"
     if data.min_order_quantity is not None:
         product.min_order_quantity = data.min_order_quantity
     if data.sellable_units is not None:
@@ -96,7 +101,12 @@ def update_product_pricing(db: Session, product_id: uuid.UUID, data: ProductPric
             continue
         price = tier.price_cents if tier.price_tier != "RETAIL" or tier.price_cents is not None else product.price_cents
         if tier.price_tier == "RETAIL" and tier.price_cents is not None:
+            if tier.price_cents != product.price_cents:
+                from app.services import markdown_service
+
+                markdown_service.record(db, product, tier.price_cents, "MANUAL")
             product.price_cents = tier.price_cents
+            product.price_source = "override"
         if row is None:
             row = ProductPrice(product_id=product.id, price_tier=tier.price_tier)
             product.prices.append(row)
@@ -135,7 +145,12 @@ def bulk_update(db: Session, data: BulkPriceUpdate) -> BulkPriceResult:
             skipped += 1
             continue
         if data.price_tier == "RETAIL":
+            if price != product.price_cents:
+                from app.services import markdown_service
+
+                markdown_service.record(db, product, price, "BULK")
             product.price_cents = price
+            product.price_source = "override"
             if row is None and (data.volume_discounts or data.min_order_quantity):
                 row = ProductPrice(
                     product_id=product.id, price_tier="RETAIL", min_order_quantity=1, volume_discounts=[]

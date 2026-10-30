@@ -1,9 +1,9 @@
 import {
   TAX_AUTHORITY_LABELS,
+  countryTax,
   formatMoney,
   isSaudiVatNumber,
   lineTax,
-  taxForCountry,
   type BusinessSettings,
   type TaxSettingsUpdate,
 } from "@ai-pos/shared-types";
@@ -58,7 +58,9 @@ export function VatSettings() {
   }
 
   const rate = form.standard_rate_bps;
-  const preview = lineTax(SAMPLE, 1, rate, form.prices_include_vat);
+  const meta = countryTax(form.country || "AE");
+  const chargedRate = form.vat_registered ? rate : 0;
+  const preview = lineTax(SAMPLE, 1, chargedRate, form.vat_registered && form.prices_include_vat);
   const changed = JSON.stringify(form) !== JSON.stringify(saved);
   const inclusiveChanged = saved !== null && saved.prices_include_vat !== form.prices_include_vat;
   const authority = TAX_AUTHORITY_LABELS[form.tax_authority];
@@ -118,15 +120,15 @@ export function VatSettings() {
               required
               value={form.country ?? ""}
               onChange={(iso) => {
-                const rule = taxForCountry(iso);
+                const rule = countryTax(iso);
                 const trn = rule.tax_authority === "zatca" ? (form.trn ?? "").replace(/\D/g, "").slice(0, 15) : form.trn;
                 setForm({
                   ...form,
                   country: iso,
                   trn,
                   tax_authority: rule.tax_authority,
-                  standard_rate_bps: rule.standard_rate_bps,
-                  prices_include_vat: rule.prices_include_vat,
+                  standard_rate_bps: rule.rate_known ? (rule.standard_rate_bps ?? 0) : 0,
+                  prices_include_vat: rule.rate_known ? rule.prices_include_vat : false,
                 });
               }}
             />
@@ -141,22 +143,24 @@ export function VatSettings() {
           <div className="rounded-2xl border border-accent bg-accent/5 p-3">
             <p className="text-sm font-semibold">{localTax ? "Standard tax invoice" : authority.name}</p>
             <p className="text-xs text-charcoal/60">
-              {form.tax_authority === "zatca"
+              {form.country === "SA"
                 ? "Saudi Arabia uses ZATCA: signed, hash-chained e-invoices with QR codes (Fatoora phase 2). VAT is 15%."
                 : form.country === "AE" || !form.country
                   ? "The UAE uses the Federal Tax Authority: full and simplified tax invoices, and PINT AE export. VAT is 5%."
-                  : "This country uses a standard tax invoice. UAE and Saudi rules are not applied. The rate below is what the register charges."}
+                  : meta.rate_known
+                    ? "The rate below is this country's verified starting rate. Save, then adjust it if yours is different."
+                    : `No verified ${meta.tax_name.toLowerCase()} rate is stored for this country. Enter the rate this business charges. It is not assumed.`}
             </p>
           </div>
           <div className="grid gap-3 md:grid-cols-2">
             <Toggle
-              label="VAT registered"
-              description="Charge VAT and validate it on every sale"
+              label={`${meta.tax_name} registered`}
+              description="Charge this tax and validate it on every sale from branches that use the business settings"
               checked={form.vat_registered}
               onChange={(value) => setForm({ ...form, vat_registered: value })}
             />
             <Toggle
-              label="Prices include VAT"
+              label={`Prices include ${meta.tax_name}`}
               description={form.country === "AE" ? "Shelf prices include VAT, the UAE retail rule" : "Shelf prices already include this tax"}
               checked={form.prices_include_vat}
               onChange={(value) => setForm({ ...form, prices_include_vat: value })}
@@ -164,7 +168,7 @@ export function VatSettings() {
           </div>
           <div className="grid gap-4 md:grid-cols-3">
             <TextField
-              label={authority.taxId}
+              label={meta.registration_label}
               maxLength={32}
               value={form.trn ?? ""}
               hint={
@@ -190,12 +194,14 @@ export function VatSettings() {
               value={form.legal_name ?? ""}
               onChange={(event) => setForm({ ...form, legal_name: event.target.value })}
             />
-            <TextField
-              label="Legal name (Arabic)"
-              dir="rtl"
-              value={form.legal_name_ar ?? ""}
-              onChange={(event) => setForm({ ...form, legal_name_ar: event.target.value })}
-            />
+            {meta.legal_local_label ? (
+              <TextField
+                label={meta.legal_local_label}
+                dir="rtl"
+                value={form.legal_name_ar ?? ""}
+                onChange={(event) => setForm({ ...form, legal_name_ar: event.target.value })}
+              />
+            ) : null}
           </div>
           <div className="max-w-[200px]">
             <TextField
@@ -226,7 +232,9 @@ export function VatSettings() {
               <dd className="tabular-nums">{formatMoney(preview.net_cents, currency)}</dd>
             </div>
             <div className="flex justify-between">
-              <dt className="text-white/60">VAT {rate / 100}%</dt>
+              <dt className="text-white/60">
+                {form.vat_registered ? `${meta.tax_name} ${chargedRate / 100}%` : "Tax"}
+              </dt>
               <dd className="tabular-nums">{formatMoney(preview.tax_cents, currency)}</dd>
             </div>
             <div className="flex justify-between text-base font-semibold">
@@ -235,7 +243,9 @@ export function VatSettings() {
             </div>
           </dl>
           {!form.vat_registered ? (
-            <p className="mt-4 text-xs text-white/50">Not registered: registers' tax is accepted as sent.</p>
+            <p className="mt-4 text-xs text-white/50">Not tax-registered. No tax is added.</p>
+          ) : !meta.rate_known ? (
+            <p className="mt-4 text-xs text-white/50">This rate is the one you entered. It is not a verified country default.</p>
           ) : null}
         </div>
       </div>

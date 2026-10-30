@@ -21,7 +21,7 @@ export function ModelFormModal({
   categories: Category[];
   initialBrandId: string;
   onClose: () => void;
-  onSaved: () => Promise<void>;
+  onSaved: (saved: ProductModel) => Promise<void>;
 }) {
   const { isFashion } = useTenant();
   const [brandId, setBrandId] = useState(model?.brand_id ?? initialBrandId);
@@ -93,9 +93,10 @@ export function ModelFormModal({
     };
     setBusy(true);
     try {
-      if (model) await modelsApi.update(model.id, body);
-      else await modelsApi.create({ ...body, brand_id: brandId, sub_category_id: subCategoryId });
-      await onSaved();
+      const saved = model
+        ? await modelsApi.update(model.id, body)
+        : await modelsApi.create({ ...body, brand_id: brandId, sub_category_id: subCategoryId });
+      await onSaved(saved);
     } catch (caught) {
       const apiFields = fieldErrors(caught);
       if (Object.keys(apiFields).length > 0) {

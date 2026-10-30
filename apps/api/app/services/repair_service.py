@@ -577,7 +577,7 @@ def invoice(
     )
     if not lines:
         raise ApiError(422, "nothing_to_invoice", "Add the parts and labour before invoicing.")
-    policy = tax_policy_for(db)
+    policy = tax_policy_for(db, ticket.store_id)
     can_override = Permission.POS_PRICE_OVERRIDE.value in principal.permissions
     can_floor = Permission.POS_BELOW_FLOOR_OVERRIDE.value in principal.permissions
     approval = PriceOverridePayload(approved_by_id=user.id, note=f"Repair {_ref(ticket)}")

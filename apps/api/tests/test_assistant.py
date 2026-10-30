@@ -1,6 +1,7 @@
 import json
 import uuid
 from datetime import UTC, date, datetime, timedelta
+from pathlib import Path
 
 import httpx
 import pytest
@@ -236,3 +237,53 @@ def test_top_products_uses_base_units_and_nets_returns(client, session) -> None:
     )
     cable_rank = next(row for row in net if row.sku == "ACC-CABLE-USBC")
     assert cable_rank.units == 3 and cable_rank.revenue_cents == item.line_total_cents - 1500
+
+
+def test_context_is_a_hint_and_does_not_change_the_builtin_answer(client, sold, monkeypatch) -> None:
+    context = {"module": "Purchase Orders", "store": "All branches"}
+    hinted = client.post(
+        "/api/v1/assistant/ask",
+        headers=sold,
+        json={"question": "Sales in the last 400 days", "context": context},
+    )
+    assert hinted.status_code == 200, hinted.text
+    assert "USD 60.00" in hinted.json()["answer"]
+
+    settings = get_settings()
+    monkeypatch.setattr(settings, "assistant_provider", "openai")
+    monkeypatch.setattr(settings, "assistant_api_key", "sk-test")
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        assert "Purchase Orders" in body["messages"][0]["content"]
+        assert "All branches" in body["messages"][0]["content"]
+        return httpx.Response(
+            200, json={"choices": [{"message": {"role": "assistant", "content": "From the reports."}}]}
+        )
+
+    real_client = httpx.Client
+    monkeypatch.setattr(
+        assistant_service.httpx, "Client", lambda **kwargs: real_client(transport=httpx.MockTransport(handler))
+    )
+    reply = client.post(
+        "/api/v1/assistant/ask",
+        headers=sold,
+        json={"question": "How much did we sell this year?", "context": context},
+    ).json()
+    assert reply["answer"] == "From the reports."
+
+
+def test_assistant_lives_in_the_navbar_not_the_sidebar() -> None:
+    root = Path(__file__).resolve().parents[3]
+    nav = (root / "apps/web/src/components/layout/navigation.ts").read_text(encoding="utf-8")
+    header = (root / "apps/web/src/components/layout/Header.tsx").read_text(encoding="utf-8")
+    shell = (root / "apps/web/src/components/layout/AppShell.tsx").read_text(encoding="utf-8")
+    app = (root / "apps/web/src/App.tsx").read_text(encoding="utf-8")
+    assert 'to: "/assistant"' not in nav
+    assert 'to: "/insights"' in nav
+    assert '"/assistant"' in nav
+    assert "AI Assistant" in header
+    assert "Ask your business" in header
+    assert "AssistantDrawer" in shell
+    assert 'path="assistant"' in app
+    assert "InsightsPage" in app
