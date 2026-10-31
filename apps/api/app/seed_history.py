@@ -25,7 +25,7 @@ from app.schemas.inventory import PurchaseOrderCreate, PurchaseOrderLineIn, Rece
 from app.schemas.payloads import SalePayload
 from app.services import credit_risk_service, credit_service, inventory, ledger_service, replenishment_service
 from app.services.sale_service import record_sale
-from app.services.tax import line_tax
+from app.services.tax import entered_includes_tax, line_tax
 from app.services.tax import policy as tax_policy
 
 DAYS = 120
@@ -68,7 +68,7 @@ def _payload(
     items = []
     for product, quantity in lines:
         rate = tax.rate_for(product.tax_category) if tax.enforced else 0
-        priced = line_tax(product.price_cents, quantity, rate, inclusive=tax.prices_include_vat)
+        priced = line_tax(product.price_cents, quantity, rate, inclusive=entered_includes_tax(product))
         items.append(
             {
                 "id": str(uuid.uuid4()),

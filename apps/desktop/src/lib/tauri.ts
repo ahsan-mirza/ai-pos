@@ -78,6 +78,22 @@ export function pinLogin(username: string, pin: string): Promise<CashierSession>
   return invoke<CashierSession>("pin_login", { username, pin });
 }
 
+export interface RegisterCashier {
+  id: string;
+  display_name: string;
+  initials: string;
+  role_label: string;
+  avatar_url: string | null;
+}
+
+export function listRegisterCashiers(): Promise<RegisterCashier[]> {
+  return invoke<RegisterCashier[]>("list_cashiers");
+}
+
+export function unlockSelectedCashier(userId: string, pin: string): Promise<CashierSession> {
+  return invoke<CashierSession>("unlock_cashier", { userId, pin });
+}
+
 export function currentSession(): Promise<CashierSession | null> {
   return invoke<CashierSession | null>("current_session");
 }
@@ -334,6 +350,26 @@ export interface RasterJob {
 
 export function printerSettings(): Promise<PrinterSettings> {
   return invoke<PrinterSettings>("printer_settings");
+}
+
+/** Reachability only. A successful open does not mean the printer has printed. */
+export interface PrinterProbe {
+  configured: boolean;
+  transport: string;
+  address: string;
+  reachable: boolean;
+  reachError: string | null;
+  lastOkAt: number | null;
+  lastError: string | null;
+  lastErrorAt: number | null;
+  lastKickOkAt: number | null;
+  lastKickError: string | null;
+  drawerKick: boolean;
+  printing: boolean;
+}
+
+export function probePrinter(): Promise<PrinterProbe> {
+  return invoke<PrinterProbe>("probe_printer");
 }
 
 export function savePrinterSettings(settings: PrinterSettings): Promise<PrinterSettings> {

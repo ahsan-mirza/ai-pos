@@ -273,6 +273,10 @@ class BillingAddon(ControlBase):
     # Capability keys this commercial add-on is allowed to unlock. Empty means it bills only and grants nothing.
     module_keys: Mapped[list] = mapped_column(JSON, default=list)
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    # Marketplace copy, media references, and publication. Empty until the console or the seed fills it.
+    listing: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    # Previous catalogue prices. Open invoices keep their own line snapshots and are not rewritten from this list.
+    price_history: Mapped[list | None] = mapped_column(JSON, nullable=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
 
 

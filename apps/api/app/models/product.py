@@ -191,6 +191,8 @@ class Product(TenantScoped, TimestampMixin, Base):
     is_serialized: Mapped[bool] = mapped_column(Boolean, default=False)
     min_order_quantity: Mapped[int] = mapped_column(Integer, default=1)
     tax_category: Mapped[str] = mapped_column(String(8), default="STANDARD")
+    # The entered price_cents already contains tax. False adds tax at checkout.
+    price_includes_tax: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     is_open_price: Mapped[bool] = mapped_column(Boolean, default=False)
     # Fixed-price services (warranty plans, setup fees) are sold without stock.
     is_service: Mapped[bool] = mapped_column(Boolean, default=False)

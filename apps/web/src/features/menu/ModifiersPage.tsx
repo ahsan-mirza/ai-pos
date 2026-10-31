@@ -1,10 +1,10 @@
 import { formatMoney, type ModifierGroup, type ModifierGroupInput, type Product } from "@ai-pos/shared-types";
 import { actionHoverClass } from "@ai-pos/ui";
-import { ChefHat, Plus, Trash2 } from "lucide-react";
+import { ChefHat, Copy, Plus, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ErrorNote, GhostButton, PrimaryButton, TextField } from "../../components/ui/Field";
 import { Modal } from "../../components/ui/Modal";
-import { apiGet, apiPost, apiPut } from "../../lib/api";
+import { apiDelete, apiGet, apiPost, apiPut } from "../../lib/api";
 import { useCurrency } from "../../lib/currency";
 import { message } from "../customers/api";
 
@@ -186,9 +186,56 @@ function GroupModal({
           </label>
         ))}
       </div>
+      <div className="mt-6 rounded-2xl border border-line bg-surface p-4">
+        <p className="text-xs font-semibold uppercase tracking-wide text-charcoal/50">POS preview</p>
+        <p className="mt-1 text-base font-semibold">{name.trim() || "Modifier group"}</p>
+        <p className="text-xs text-charcoal/60">
+          {Number(min) > 0 ? "Required" : "Optional"}
+          {Math.max(1, Number(max) || 1) === 1 ? " · one choice" : ` · up to ${Math.max(1, Number(max) || 1)}`}
+        </p>
+        <div className="mt-3 flex flex-wrap gap-2">
+          {options
+            .filter((option) => option.name.trim() !== "")
+            .map((option, index) => (
+              <span key={option.id ?? index} className="inline-flex min-h-11 items-center rounded-2xl border border-line bg-white px-3 text-sm font-semibold">
+                {option.name.trim()}
+                {option.is_default ? " · default" : ""}
+                {option.price && option.price !== "0" && option.price !== "0.00" ? ` · ${option.price}` : ""}
+              </span>
+            ))}
+        </div>
+      </div>
       <ErrorNote message={error} />
     </Modal>
   );
+}
+
+interface ModifierTemplate {
+  key: string;
+  name: string;
+  min_select: number;
+  max_select: number;
+  options: string[];
+  present: boolean;
+}
+
+function groupPayload(group: ModifierGroup, active = group.is_active): ModifierGroupInput {
+  return {
+    name: group.name,
+    min_select: group.min_select,
+    max_select: group.max_select,
+    position: group.position,
+    is_active: active,
+    options: group.options
+      .filter((option) => option.is_active)
+      .map((option) => ({
+        id: option.id,
+        name: option.name,
+        price_delta_cents: option.price_delta_cents,
+        is_default: option.is_default,
+        is_active: true,
+      })),
+  };
 }
 
 /** Menu modifiers: groups of options (size, milk, extras) and the menu items that offer them. */
@@ -197,16 +244,21 @@ export function ModifiersPage() {
   const [groups, setGroups] = useState<ModifierGroup[] | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
   const [editing, setEditing] = useState<ModifierGroup | "new" | null>(null);
+  const [templates, setTemplates] = useState<ModifierTemplate[]>([]);
+  const [showTemplates, setShowTemplates] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [busyId, setBusyId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
-      const [nextGroups, nextProducts] = await Promise.all([
+      const [nextGroups, nextProducts, nextTemplates] = await Promise.all([
         apiGet<ModifierGroup[]>("/api/v1/menu/modifier-groups"),
         apiGet<Product[]>("/api/v1/products?limit=500"),
+        apiGet<ModifierTemplate[]>("/api/v1/menu/modifier-templates"),
       ]);
       setGroups(nextGroups);
       setProducts(nextProducts);
+      setTemplates(nextTemplates);
       setError(null);
     } catch (caught) {
       setError(message(caught, "Could not load the menu."));
@@ -218,6 +270,59 @@ export function ModifiersPage() {
   }, [load]);
 
   const names = new Map(products.map((product) => [product.id, product.name]));
+
+  async function toggle(group: ModifierGroup) {
+    setBusyId(group.id);
+    try {
+      await apiPut(`/api/v1/menu/modifier-groups/${group.id}`, groupPayload(group, !group.is_active));
+      await load();
+    } catch (caught) {
+      setError(message(caught, "Could not update the group."));
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function copy(group: ModifierGroup) {
+    setBusyId(group.id);
+    try {
+      await apiPost(`/api/v1/menu/modifier-groups/${group.id}/duplicate`, {});
+      await load();
+    } catch (caught) {
+      setError(message(caught, "Could not copy the group."));
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function remove(group: ModifierGroup) {
+    const linked = (group.product_ids ?? []).length;
+    const confirmed = linked
+      ? window.confirm(`${group.name} is offered on ${linked} product${linked === 1 ? "" : "s"}. Remove those links and delete the group?`)
+      : window.confirm(`Delete ${group.name}? Past sales keep the choices already printed.`);
+    if (!confirmed) return;
+    setBusyId(group.id);
+    try {
+      await apiDelete(`/api/v1/menu/modifier-groups/${group.id}${linked ? "?detach=true" : ""}`);
+      await load();
+    } catch (caught) {
+      setError(message(caught, "Could not delete the group."));
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function addTemplate(key: string) {
+    setBusyId(key);
+    try {
+      await apiPost("/api/v1/menu/modifier-groups/from-template", { key });
+      await load();
+    } catch (caught) {
+      setError(message(caught, "Could not add that template."));
+    } finally {
+      setBusyId(null);
+    }
+  }
 
   return (
     <section className="space-y-4">
@@ -232,21 +337,25 @@ export function ModifiersPage() {
               <p className="text-sm text-charcoal/60">Sizes, milk choices and add-ons. Registers price them at the till and offline.</p>
             </div>
           </div>
-          <PrimaryButton onClick={() => setEditing("new")}>New group</PrimaryButton>
+          <div className="flex flex-wrap gap-2">
+            <GhostButton onClick={() => setShowTemplates(true)}>Add from template</GhostButton>
+            <PrimaryButton onClick={() => setEditing("new")}>New group</PrimaryButton>
+          </div>
         </div>
         <ErrorNote message={error} />
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-          {(groups ?? []).map((group) => (
-            <button
+          {(groups ?? []).map((group) => {
+            const activeOptions = group.options.filter((option) => option.is_active);
+            return (
+            <article
               key={group.id}
-              type="button"
-              onClick={() => setEditing(group)}
-              className={`rounded-2xl border p-4 text-left transition hover:border-accent ${group.is_active ? "border-line" : "border-dashed border-line opacity-60"}`}
+              className={`rounded-2xl border p-4 text-left ${group.is_active ? "border-line" : "border-dashed border-line opacity-70"}`}
             >
               <span className="flex items-baseline justify-between gap-2">
                 <span className="font-semibold">{group.name}</span>
                 <span className="text-xs text-charcoal/50">
-                  {group.min_select > 0 ? "Required" : "Optional"} · up to {group.max_select}
+                  {group.is_active ? "Active" : "Inactive"} · {group.max_select === 1 ? "Single" : "Multiple"} ·{" "}
+                  {group.min_select > 0 ? "Required" : "Optional"} · {activeOptions.length} options
                 </span>
               </span>
               <span className="mt-2 flex flex-wrap gap-1.5">
@@ -264,11 +373,49 @@ export function ModifiersPage() {
                   ? "Not offered on any item yet"
                   : (group.product_ids ?? []).map((id) => names.get(id) ?? "Item").join(", ")}
               </span>
-            </button>
-          ))}
+              <span className="mt-3 flex flex-wrap gap-2">
+                <button type="button" disabled={busyId === group.id} onClick={() => setEditing(group)} className={`rounded-full px-3 py-1 text-xs font-semibold ${actionHoverClass("primary")}`}>
+                  Edit
+                </button>
+                <button type="button" disabled={busyId === group.id} onClick={() => void copy(group)} className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-semibold ${actionHoverClass("info")}`}>
+                  <Copy size={12} aria-hidden="true" /> Copy
+                </button>
+                <button type="button" disabled={busyId === group.id} onClick={() => void toggle(group)} className={`rounded-full px-3 py-1 text-xs font-semibold ${actionHoverClass("warning")}`}>
+                  {group.is_active ? "Deactivate" : "Activate"}
+                </button>
+                <button type="button" disabled={busyId === group.id} onClick={() => void remove(group)} className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-semibold ${actionHoverClass("danger")}`}>
+                  <Trash2 size={12} aria-hidden="true" /> Delete
+                </button>
+              </span>
+            </article>
+            );
+          })}
         </div>
-        {groups !== null && groups.length === 0 ? <p className="py-6 text-sm text-charcoal/60">No modifier groups yet.</p> : null}
+        {groups !== null && groups.length === 0 ? (
+          <p className="py-6 text-sm text-charcoal/60">
+            Every default group has been removed. Add one back from a template, or create your own.
+          </p>
+        ) : null}
       </div>
+      {showTemplates ? (
+        <Modal title="Add a template" subtitle="Starter groups for this business. Prices stay at zero until you set them." onClose={() => setShowTemplates(false)}>
+          <div className="space-y-2">
+            {templates.map((template) => (
+              <div key={template.key} className="flex items-center justify-between gap-3 rounded-2xl border border-line px-3 py-3">
+                <div>
+                  <p className="font-semibold">{template.name}</p>
+                  <p className="text-xs text-charcoal/60">
+                    {template.max_select === 1 ? "Single" : "Multiple"} · {template.min_select > 0 ? "Required" : "Optional"} · {template.options.join(", ")}
+                  </p>
+                </div>
+                <GhostButton disabled={template.present || busyId === template.key} onClick={() => void addTemplate(template.key)}>
+                  {template.present ? "Added" : "Add"}
+                </GhostButton>
+              </div>
+            ))}
+          </div>
+        </Modal>
+      ) : null}
       {editing ? (
         <GroupModal
           group={editing === "new" ? null : editing}

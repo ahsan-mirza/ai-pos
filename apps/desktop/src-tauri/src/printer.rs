@@ -1,7 +1,8 @@
 use std::io::Write;
 use std::net::{TcpStream, ToSocketAddrs};
 use std::path::Path;
-use std::time::Duration;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
@@ -22,6 +23,14 @@ pub fn migrate(conn: &Connection) -> Result<(), String> {
             drawer_kick INTEGER NOT NULL DEFAULT 1,
             auto_print INTEGER NOT NULL DEFAULT 1,
             copies INTEGER NOT NULL DEFAULT 1
+        );
+        CREATE TABLE IF NOT EXISTS printer_status (
+            id INTEGER PRIMARY KEY CHECK (id = 1),
+            last_ok_at INTEGER,
+            last_error TEXT,
+            last_error_at INTEGER,
+            last_kick_ok_at INTEGER,
+            last_kick_error TEXT
         );
         ",
     )
@@ -119,6 +128,152 @@ pub struct RasterJob {
 
 const DRAWER_KICK: [u8; 5] = [0x1b, b'p', 0, 25, 250];
 const BAND_ROWS: u32 = 256;
+static PRINTING: AtomicBool = AtomicBool::new(false);
+
+fn now_secs() -> i64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|elapsed| elapsed.as_secs() as i64)
+        .unwrap_or(0)
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PrinterProbe {
+    pub configured: bool,
+    pub transport: String,
+    pub address: String,
+    pub reachable: bool,
+    pub reach_error: Option<String>,
+    pub last_ok_at: Option<i64>,
+    pub last_error: Option<String>,
+    pub last_error_at: Option<i64>,
+    pub last_kick_ok_at: Option<i64>,
+    pub last_kick_error: Option<String>,
+    pub drawer_kick: bool,
+    pub printing: bool,
+}
+
+fn remember_print(db: &Db, error: Option<&str>) {
+    let now = now_secs();
+    let _ = db.transaction(|tx| {
+        let saved = if let Some(message) = error {
+            tx.execute(
+                "INSERT INTO printer_status (id, last_error, last_error_at) VALUES (1, ?1, ?2)
+                 ON CONFLICT(id) DO UPDATE SET last_error = excluded.last_error, last_error_at = excluded.last_error_at",
+                params![message, now],
+            )
+        } else {
+            tx.execute(
+                "INSERT INTO printer_status (id, last_ok_at, last_error, last_error_at) VALUES (1, ?1, NULL, NULL)
+                 ON CONFLICT(id) DO UPDATE SET last_ok_at = excluded.last_ok_at, last_error = NULL, last_error_at = NULL",
+                params![now],
+            )
+        };
+        saved.map_err(|err| err.to_string())?;
+        Ok(())
+    });
+}
+
+fn remember_kick(db: &Db, error: Option<&str>) {
+    let now = now_secs();
+    let _ = db.transaction(|tx| {
+        let saved = if let Some(message) = error {
+            tx.execute(
+                "INSERT INTO printer_status (id, last_kick_error) VALUES (1, ?1)
+                 ON CONFLICT(id) DO UPDATE SET last_kick_error = excluded.last_kick_error, last_kick_ok_at = NULL",
+                params![message],
+            )
+        } else {
+            tx.execute(
+                "INSERT INTO printer_status (id, last_kick_ok_at, last_kick_error) VALUES (1, ?1, NULL)
+                 ON CONFLICT(id) DO UPDATE SET last_kick_ok_at = excluded.last_kick_ok_at, last_kick_error = NULL",
+                params![now],
+            )
+        };
+        saved.map_err(|err| err.to_string())?;
+        Ok(())
+    });
+}
+
+fn status_row(db: &Db) -> (Option<i64>, Option<String>, Option<i64>, Option<i64>, Option<String>) {
+    db.read(|conn| {
+        conn.query_row(
+            "SELECT last_ok_at, last_error, last_error_at, last_kick_ok_at, last_kick_error FROM printer_status WHERE id = 1",
+            [],
+            |row| {
+                Ok((
+                    row.get(0)?,
+                    row.get(1)?,
+                    row.get(2)?,
+                    row.get(3)?,
+                    row.get(4)?,
+                ))
+            },
+        )
+        .optional()
+        .map(|row| row.unwrap_or((None, None, None, None, None)))
+        .map_err(|err| err.to_string())
+    })
+    .unwrap_or((None, None, None, None, None))
+}
+
+fn probe_tcp(address: &str) -> Result<(), String> {
+    let target = if address.contains(':') {
+        address.to_string()
+    } else {
+        format!("{address}:9100")
+    };
+    let socket = target
+        .to_socket_addrs()
+        .map_err(|err| format!("Printer address {target} is invalid: {err}"))?
+        .next()
+        .ok_or_else(|| format!("Printer address {target} did not resolve."))?;
+    TcpStream::connect_timeout(&socket, Duration::from_secs(2))
+        .map(|_| ())
+        .map_err(|err| format!("Printer at {target} is unreachable: {err}"))
+}
+
+/// Opens the configured printer and closes it again. A successful open is reachability, not proof it can print.
+pub fn probe(db: &Db) -> Result<PrinterProbe, String> {
+    let settings = load(db)?;
+    let (last_ok_at, last_error, last_error_at, last_kick_ok_at, last_kick_error) = status_row(db);
+    if settings.transport == "none" {
+        return Ok(PrinterProbe {
+            configured: false,
+            transport: settings.transport,
+            address: settings.address,
+            reachable: false,
+            reach_error: None,
+            last_ok_at,
+            last_error,
+            last_error_at,
+            last_kick_ok_at,
+            last_kick_error,
+            drawer_kick: settings.drawer_kick,
+            printing: PRINTING.load(Ordering::Relaxed),
+        });
+    }
+    let reach = match settings.transport.as_str() {
+        "tcp" => probe_tcp(&settings.address),
+        "windows" => probe_spooler(&settings.address),
+        _ => Err("Unknown printer connection.".into()),
+    };
+    Ok(PrinterProbe {
+        configured: true,
+        transport: settings.transport,
+        address: settings.address,
+        reachable: reach.is_ok(),
+        reach_error: reach.err(),
+        last_ok_at,
+        last_error,
+        last_error_at,
+        last_kick_ok_at,
+        last_kick_error,
+        drawer_kick: settings.drawer_kick,
+        printing: PRINTING.load(Ordering::Relaxed),
+    })
+}
 
 pub fn escpos_raster(job: &RasterJob, copies: u32) -> Result<Vec<u8>, String> {
     let row_bytes = job.width.div_ceil(8);
@@ -230,17 +385,54 @@ fn send_spooler(_name: &str, _bytes: &[u8]) -> Result<(), String> {
     Err("Windows printers are only available on Windows; use a network printer.".into())
 }
 
+#[cfg(windows)]
+fn probe_spooler(name: &str) -> Result<(), String> {
+    use windows_sys::Win32::Graphics::Printing::{ClosePrinter, OpenPrinterW, PRINTER_HANDLE};
+
+    let printer: Vec<u16> = name.encode_utf16().chain(std::iter::once(0)).collect();
+    let mut handle = PRINTER_HANDLE::default();
+    unsafe {
+        if OpenPrinterW(printer.as_ptr(), &mut handle, std::ptr::null()) == 0 {
+            return Err(format!("Windows printer \"{name}\" was not found."));
+        }
+        ClosePrinter(handle);
+    }
+    Ok(())
+}
+
+#[cfg(not(windows))]
+fn probe_spooler(name: &str) -> Result<(), String> {
+    Err(format!(
+        "Windows printer \"{name}\" cannot be checked on this system."
+    ))
+}
+
 pub fn print_raster(db: &Db, job: &RasterJob) -> Result<(), String> {
     let settings = load(db)?;
     let bytes = escpos_raster(job, settings.copies)?;
-    send(&settings, &bytes)
+    PRINTING.store(true, Ordering::Relaxed);
+    let result = send(&settings, &bytes);
+    PRINTING.store(false, Ordering::Relaxed);
+    if settings.transport != "none" {
+        remember_print(db, result.as_ref().err().map(String::as_str));
+        if result.is_ok() && job.kick_drawer {
+            remember_kick(db, None);
+        }
+    }
+    result
 }
 
 pub fn kick_drawer(db: &Db) -> Result<(), String> {
     let settings = load(db)?;
     let mut bytes = vec![0x1b, b'@'];
     bytes.extend_from_slice(&DRAWER_KICK);
-    send(&settings, &bytes)
+    PRINTING.store(true, Ordering::Relaxed);
+    let result = send(&settings, &bytes);
+    PRINTING.store(false, Ordering::Relaxed);
+    if settings.transport != "none" {
+        remember_kick(db, result.as_ref().err().map(String::as_str));
+    }
+    result
 }
 
 /// Downloads the API's A4 tax invoice or credit note PDF for the cashier to print or hand over.

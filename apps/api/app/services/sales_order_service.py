@@ -52,7 +52,7 @@ from app.schemas.sales_orders import (
 from app.services import audit, inventory, price_list_service
 from app.services.numbering import next_server_number
 from app.services.sale_service import held_by_quote, record_sale
-from app.services.tax import TaxPolicy, for_customer, line_tax
+from app.services.tax import TaxPolicy, entered_includes_tax, for_customer, line_tax
 from app.services.tax import policy as tax_policy_for
 
 OPEN_STATUSES = ("CONFIRMED", "PICKING", "PARTIALLY_DELIVERED")
@@ -384,7 +384,7 @@ def _price_lines(
             raise ApiError(403, "approval_required", f"A manager must approve the price of {product.name}.")
         if policy.enforced:
             amounts = line_tax(
-                unit, line.quantity, policy.rate_for(product.tax_category), inclusive=policy.prices_include_vat
+                unit, line.quantity, policy.rate_for(product.tax_category), inclusive=entered_includes_tax(product)
             )
             net, line_tax_cents, line_total = amounts.net_cents, amounts.tax_cents, amounts.line_total_cents
         else:
@@ -666,7 +666,7 @@ def _sale_item(
 ) -> SaleItemPayload:
     if policy.enforced:
         rate = policy.rate_for(product.tax_category)
-        amounts = line_tax(line.unit_price_cents, quantity, rate, inclusive=policy.prices_include_vat)
+        amounts = line_tax(line.unit_price_cents, quantity, rate, inclusive=entered_includes_tax(product))
         tax_cents, total_cents = amounts.tax_cents, amounts.line_total_cents
     else:
         tax_cents, total_cents = 0, line.unit_price_cents * quantity
@@ -901,7 +901,10 @@ def cancel_lines(db: Session, principal: Principal, order_id: uuid.UUID, data: C
         store_id=order.store_id,
         user_id=actor.id,
         reason_notes=data.reason,
-        details={"lines": [{"line": str(entry.order_line_id), "quantity": entry.quantity} for entry in data.lines]},
+        details={
+            "lines": [{"line": str(entry.order_line_id), "quantity": entry.quantity} for entry in data.lines],
+            "reason_code": _reason_code(data.reason),
+        },
     )
     if order.status != "DRAFT":
         _refresh_status(order)
@@ -934,9 +937,16 @@ def _finish(db: Session, principal: Principal, order_id: uuid.UUID, reason: str,
         store_id=order.store_id,
         user_id=actor.id,
         reason_notes=reason,
+        details={"reason_code": _reason_code(reason), "status": status},
     )
     db.commit()
     return order_out(db, order)
+
+
+def _reason_code(reason: str) -> str:
+    from app.services.cancellation_report import classify
+
+    return classify(reason)[0]
 
 
 def cancel_order(db: Session, principal: Principal, order_id: uuid.UUID, reason: str) -> SalesOrderOut:
@@ -994,7 +1004,7 @@ def from_quote(db: Session, principal: Principal, quote_id: uuid.UUID) -> SalesO
         product = products[product_id]
         if policy.enforced:
             amounts = line_tax(
-                unit, quantity, policy.rate_for(product.tax_category), inclusive=policy.prices_include_vat
+                unit, quantity, policy.rate_for(product.tax_category), inclusive=entered_includes_tax(product)
             )
             net, line_tax_cents, line_total = amounts.net_cents, amounts.tax_cents, amounts.line_total_cents
         else:

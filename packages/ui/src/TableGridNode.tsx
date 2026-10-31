@@ -1,40 +1,27 @@
 import type { ReactNode } from "react";
-import { DiningTableShape } from "./DiningTableShape";
+import { DiningTableShape, type TableShape } from "./DiningTableShape";
+import {
+  KITCHEN_LABEL,
+  PAYMENT_LABEL,
+  tableTone,
+  toneLabel,
+  type KitchenPhase,
+  type OrderPhase,
+  type PaymentPhase,
+  type TableTone,
+} from "./floorStatus";
 
-export type TableNodeTone = "available" | "occupied" | "billed";
+export type TableNodeTone = TableTone;
 
-const FILL: Record<TableNodeTone, { top: string; chair: string }> = {
-  available: {
-    top: "border border-emerald-500/40 bg-emerald-500/10",
-    chair: "border border-slate-500/70 bg-slate-600/80",
-  },
-  occupied: {
-    top: "border border-amber-500 bg-amber-500/20",
-    chair: "border border-amber-500 bg-amber-500/20",
-  },
-  billed: {
-    top: "border border-blue-500 bg-blue-500/20",
-    chair: "border border-blue-500 bg-blue-500/20",
-  },
-};
-
-const BADGE: Record<TableNodeTone, { label: string; className: string }> = {
-  available: { label: "Available", className: "bg-emerald-500/15 text-emerald-300" },
-  occupied: { label: "Occupied", className: "bg-amber-500/15 text-amber-200" },
-  billed: { label: "Billed", className: "bg-blue-500/15 text-blue-300" },
-};
-
-const TOTAL: Record<TableNodeTone, string> = {
-  available: "text-emerald-300",
-  occupied: "text-amber-300",
-  billed: "text-blue-300",
-};
-
-/** Maps a floor status onto the three table-node colours. */
+/** Maps a floor status onto a card color when kitchen and payment are not supplied. */
 export function tableNodeTone(status: string): TableNodeTone {
-  if (status === "free") return "available";
-  if (status === "bill") return "billed";
-  return "occupied";
+  return tableTone({
+    active: true,
+    status,
+    kitchen: "none",
+    payment: status === "bill" ? "pending" : "none",
+    orderProgress: status === "free" ? "none" : "draft",
+  });
 }
 
 /** "4" and "T4" become "T-04". Named tables keep their label. */
@@ -42,6 +29,16 @@ export function tableDisplayNumber(label: string): string {
   const digits = /^(?:t-?)?(\d+)$/i.exec(label.trim());
   if (digits?.[1]) return `T-${digits[1].padStart(2, "0")}`;
   return label.trim();
+}
+
+/** Elapsed seating time: "35m", "4h 34m", "11h". */
+export function formatSeatedDuration(minutes: number): string {
+  const total = Math.max(0, Math.floor(minutes));
+  const hours = Math.floor(total / 60);
+  const rest = total % 60;
+  if (hours === 0) return `${rest}m`;
+  if (rest === 0) return `${hours}h`;
+  return `${hours}h ${rest}m`;
 }
 
 /** Size band plus seat count, e.g. "Medium · 6 Person". */
@@ -58,36 +55,64 @@ function graphicSeats(seats: number): 2 | 4 | 6 | 8 {
   return 8;
 }
 
-/** Miniature top-down table with a seat pill for each snapped capacity (2, 4, 6, or 8). */
-export function TableSeatGraphic({ seats, tone, size = 76 }: { seats: number; tone: TableNodeTone; size?: number }) {
+/** Miniature top-down table. The tabletop, border, and chair outlines take the status color. */
+export function TableSeatGraphic({
+  seats,
+  tone,
+  shape = "square",
+  size = 72,
+  guests = 0,
+}: {
+  seats: number;
+  tone: TableNodeTone;
+  shape?: TableShape;
+  size?: number;
+  guests?: number;
+}) {
   const shown = graphicSeats(seats);
-  const fill = FILL[tone];
+  const seated = Math.max(0, Math.min(shown, guests));
   return (
-    <span className="relative block shrink-0" style={{ width: size, height: size }} aria-hidden="true">
+    <span
+      className="relative block shrink-0"
+      style={{ width: size, height: size, ["--table-tone-fill" as string]: `var(--table-${tone}-fill)`, ["--table-tone-line" as string]: `var(--table-${tone}-line)` }}
+      aria-hidden="true"
+    >
       <DiningTableShape
-        shape={shown <= 4 ? "round" : "rect"}
+        shape={shape}
         seats={shown}
         width={size}
         height={size}
-        topClassName={fill.top}
-        chairClassName={fill.chair}
+        occupied={seated}
+        topClassName="border-2 border-[var(--table-tone-line)] bg-[var(--table-tone-fill)]"
+        chairClassName="border border-[var(--table-tone-line)] bg-[var(--table-chair-fill)]"
+        occupiedChairClassName="border border-[var(--table-tone-line)] bg-[var(--table-tone-fill)]"
       />
     </span>
   );
 }
 
-/** Dark POS table card: graphic, status pill, number, capacity, elapsed time, and running total. */
+/** Measured height of the current floor card. Status changes color, not this box. */
+const CARD_HEIGHT = "h-[167px]";
 export function TableGridNode({
   label,
   seats,
   status,
   minutes,
   total,
+  shape = "square",
+  active = true,
+  kitchen = "none",
+  payment = "none",
+  orderProgress = "none",
+  orderRef = null,
+  guestName = null,
+  covers = 0,
+  readyCount = 0,
+  sentCount = 0,
   selected = false,
   disabled = false,
   className = "",
   badgeLabel,
-  badgeClassName,
   ariaLabel,
   onClick,
   children,
@@ -97,6 +122,17 @@ export function TableGridNode({
   status: string;
   minutes: number | null;
   total: string | null;
+  shape?: TableShape;
+  active?: boolean;
+  kitchen?: KitchenPhase;
+  payment?: PaymentPhase;
+  orderProgress?: OrderPhase;
+  orderRef?: string | null;
+  guestName?: string | null;
+  covers?: number;
+  /** Sent lines that are ready or already served, and how many lines are in the kitchen. */
+  readyCount?: number;
+  sentCount?: number;
   selected?: boolean;
   disabled?: boolean;
   className?: string;
@@ -106,18 +142,30 @@ export function TableGridNode({
   onClick: () => void;
   children?: ReactNode;
 }) {
-  const tone = tableNodeTone(status);
-  const badge = BADGE[tone];
+  const tone = tableTone({ active, status, kitchen, payment, orderProgress });
   const title = tableDisplayNumber(label);
   const capacity = tableCapacityLabel(seats);
-  const busy = status !== "free";
+  const headline = badgeLabel ?? toneLabel(tone);
+  const occupancy = !active ? "Out of service" : status === "free" ? "Available" : "Occupied";
+  const kitchenNote = kitchen !== "none" && KITCHEN_LABEL[kitchen] !== headline ? KITCHEN_LABEL[kitchen] : "";
+  const paymentNote = payment !== "none" && PAYMENT_LABEL[payment] !== headline ? PAYMENT_LABEL[payment] : "";
+  const progressNote = sentCount > 0 ? `${readyCount}/${sentCount} items ready` : "";
+  const occupied = status !== "free" && active;
+  const details = [occupancy !== headline ? occupancy : "", guestName, kitchenNote, paymentNote].filter(
+    (part): part is string => Boolean(part),
+  );
+  const guestLabel = occupied && covers > 0 ? `${covers} ${covers === 1 ? "Guest" : "Guests"}` : "";
+
   return (
     <div
       role="button"
       tabIndex={disabled ? -1 : 0}
       aria-disabled={disabled || undefined}
       aria-pressed={selected}
-      aria-label={ariaLabel ?? `${title}, ${badgeLabel ?? badge.label}, ${capacity}`}
+      aria-label={
+        ariaLabel ??
+        `${title}, ${headline}, ${capacity}${orderRef ? `, ${orderRef}` : ""}${progressNote ? `, ${progressNote}` : ""}${details.length ? `, ${details.join(", ")}` : ""}`
+      }
       onClick={() => {
         if (!disabled) onClick();
       }}
@@ -128,25 +176,51 @@ export function TableGridNode({
           onClick();
         }
       }}
-      className={`flex min-h-[188px] w-full cursor-pointer flex-col bg-[#121824] border border-slate-800/80 rounded-2xl p-4 text-left text-white shadow-lg transition-all hover:border-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 ${className} ${
-        selected ? "ring-2 ring-amber-300" : ""
-      } ${disabled ? "opacity-60" : ""}`}
+      style={{
+        background: "var(--table-tone-fill)",
+        color: "var(--table-card-ink)",
+        borderColor: "var(--table-tone-line)",
+        ["--table-tone-fill" as string]: `var(--table-${tone}-fill)`,
+        ["--table-tone-line" as string]: `var(--table-${tone}-line)`,
+        ["--table-tone-ink" as string]: `var(--table-${tone}-ink)`,
+      }}
+      className={`flex ${CARD_HEIGHT} w-full min-w-0 cursor-pointer flex-col gap-px overflow-hidden rounded-xl border-2 px-2.5 py-2 text-left shadow-sm transition-colors duration-200 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)] active:scale-[0.98] ${className} ${
+        selected ? "ring-2 ring-[var(--table-tone-line)]" : ""
+      } ${disabled ? "cursor-not-allowed opacity-60 active:scale-100" : ""}`}
     >
-      <span className="flex items-start justify-between gap-2">
-        <TableSeatGraphic seats={seats} tone={tone} />
-        <span className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold ${badgeClassName ?? badge.className}`}>
-          {badgeLabel ?? badge.label}
+      <span className="inline-flex h-5 max-w-full shrink-0 items-center self-start overflow-hidden rounded-full border border-[var(--table-tone-line)] bg-[var(--table-tone-fill)] px-2 text-[var(--table-tone-ink)]">
+        <span className="truncate text-[11px] font-semibold leading-4">{headline}</span>
+      </span>
+      <span className="flex h-[72px] shrink-0 items-center justify-center">
+        <TableSeatGraphic seats={seats} tone={tone} shape={shape} size={72} guests={occupied ? Math.max(covers, 1) : 0} />
+      </span>
+      <span className="flex min-w-0 shrink-0 flex-col">
+        <span className="flex h-5 min-w-0 items-center gap-1">
+          <span className="min-w-0 truncate text-base font-bold leading-5">{title}</span>
+          {orderRef ? <span className="shrink-0 whitespace-nowrap text-xs font-semibold leading-4">{orderRef}</span> : null}
+        </span>
+        <span
+          className="block h-4 min-w-0 truncate text-xs font-medium leading-4"
+          style={{ color: "var(--table-card-muted)" }}
+          title={occupied ? guestLabel || capacity : capacity}
+        >
+          {occupied ? guestLabel || capacity : capacity}
         </span>
       </span>
-      <span className="mt-3 flex flex-col gap-0.5">
-        <span className="text-lg font-bold leading-tight text-white">{title}</span>
-        <span className="text-xs font-medium text-slate-400">{capacity}</span>
+      <span className="mt-auto flex h-4 min-w-0 shrink-0 items-center justify-between gap-2 text-sm leading-4">
+        {children ? (
+          <span className="shrink-0">{children}</span>
+        ) : (
+          <span className="min-w-0 truncate" style={{ color: "var(--table-card-muted)" }}>
+            {occupied && minutes !== null ? formatSeatedDuration(minutes) : ""}
+          </span>
+        )}
+        {occupied && total ? (
+          <span className="shrink-0 whitespace-nowrap font-bold tabular-nums text-[var(--table-tone-ink)]">{total}</span>
+        ) : (
+          <span className="shrink-0" />
+        )}
       </span>
-      <span className="mt-auto flex items-end justify-between gap-2 pt-3">
-        <span className="text-sm text-slate-300">{busy && minutes !== null ? `${minutes} min` : ""}</span>
-        {busy && total ? <span className={`text-sm font-bold tabular-nums ${TOTAL[tone]}`}>{total}</span> : <span />}
-      </span>
-      {children}
     </div>
   );
 }

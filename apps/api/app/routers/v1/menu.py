@@ -1,13 +1,22 @@
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.core.deps import Principal, authorize
 from app.core.permissions import Permission
-from app.schemas.menu import ComboIn, ComboOut, ModifierGroupIn, ModifierGroupOut, ProductGroupsIn, RegisterMenu
+from app.schemas.menu import (
+    ComboIn,
+    ComboOut,
+    ModifierGroupIn,
+    ModifierGroupOut,
+    ModifierTemplateIn,
+    ModifierTemplateOut,
+    ProductGroupsIn,
+    RegisterMenu,
+)
 from app.services import combo_service, menu_service
 
 router = APIRouter()
@@ -23,6 +32,16 @@ def list_groups(db: Db, _: CanRead) -> list[ModifierGroupOut]:
     return menu_service.list_groups(db)
 
 
+@router.get("/modifier-templates", response_model=list[ModifierTemplateOut])
+def list_templates(db: Db, _: CanRead) -> list[dict[str, object]]:
+    return menu_service.list_templates(db)
+
+
+@router.post("/modifier-groups/from-template", response_model=ModifierGroupOut, status_code=201)
+def create_from_template(payload: ModifierTemplateIn, db: Db, _: CanManage) -> ModifierGroupOut:
+    return menu_service.create_from_template(db, payload.key)
+
+
 @router.post("/modifier-groups", response_model=ModifierGroupOut, status_code=201)
 def create_group(payload: ModifierGroupIn, db: Db, _: CanManage) -> ModifierGroupOut:
     return menu_service.create_group(db, payload)
@@ -31,6 +50,16 @@ def create_group(payload: ModifierGroupIn, db: Db, _: CanManage) -> ModifierGrou
 @router.put("/modifier-groups/{group_id}", response_model=ModifierGroupOut)
 def update_group(group_id: uuid.UUID, payload: ModifierGroupIn, db: Db, _: CanManage) -> ModifierGroupOut:
     return menu_service.update_group(db, group_id, payload)
+
+
+@router.post("/modifier-groups/{group_id}/duplicate", response_model=ModifierGroupOut, status_code=201)
+def duplicate_group(group_id: uuid.UUID, db: Db, _: CanManage) -> ModifierGroupOut:
+    return menu_service.duplicate_group(db, group_id)
+
+
+@router.delete("/modifier-groups/{group_id}", status_code=204)
+def delete_group(group_id: uuid.UUID, db: Db, _: CanManage, detach: bool = Query(default=False)) -> None:
+    menu_service.delete_group(db, group_id, detach=detach)
 
 
 @router.put("/products/{product_id}/modifier-groups", response_model=list[uuid.UUID])

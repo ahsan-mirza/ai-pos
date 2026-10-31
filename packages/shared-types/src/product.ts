@@ -13,6 +13,8 @@ export interface ProductPricing {
   unit_options?: UnitOption[];
   prices?: ProductPrice[];
   tax_category?: TaxCategory;
+  /** The entered price_cents already contains tax. Missing or false adds tax at checkout. */
+  price_includes_tax?: boolean;
   is_open_price?: boolean;
   /** Fixed-price services such as warranty plans; sold without stock. */
   is_service?: boolean;
@@ -130,6 +132,7 @@ export function productSyncPayload(product: ProductUpsert): Omit<ProductUpsert, 
     unit_options: _unitOptions,
     prices: _prices,
     tax_category: _tax,
+    price_includes_tax: _includesTax,
     is_open_price: _open,
     is_service: _service,
     origin: _origin,

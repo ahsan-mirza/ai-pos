@@ -187,3 +187,82 @@ def test_starter_modules_stay_free_and_a_paid_optional_module_turns_on(monkeypat
     settings_service._refuse_unpaid("retail_fashion", [*fashion, "serial_tracking"], stored, ["serial_tracking"])
     paid = catalog.resolve("retail_fashion", fashion, None, ["serial_tracking"])
     assert catalog.Capability.SERIAL_TRACKING in paid.enabled
+
+
+def test_marketplace_uses_the_subscription_and_hides_unpublished_rows(monkeypatch) -> None:
+    from app.console.addon_listing import marketplace_for, normalize_listing
+
+    db = _db()
+    ensure_module_addons(db)
+    tenant = Tenant(slug="demo", name="Demo", database_url_encrypted="x")
+    db.add(tenant)
+    db.commit()
+    monkeypatch.setattr("app.console.billing._business_profile", lambda _settings, _tenant: "electronics_wholesale")
+    hidden = db.scalar(select(BillingAddon).where(BillingAddon.code == "uae_einvoicing"))
+    assert hidden is not None
+    hidden.active = False
+    db.commit()
+    found = marketplace_for(db, SimpleNamespace(), tenant)
+    states = {item.addon.code: item.state for item in found.items}
+    assert states["serial_tracking"] == "included"
+    assert "uae_einvoicing" not in states
+    assert states["hardware_lease"] == "available"
+    cleaned = normalize_listing(
+        {"overview": "<b>Hello</b>", "image_url": "javascript:alert(1)", "documentation_url": "https://example.com/a"}
+    )
+    assert "<" not in cleaned["overview"]
+    assert cleaned["image_url"] == ""
+    assert cleaned["documentation_url"] == "https://example.com/a"
+
+
+def test_a_price_change_is_remembered_and_a_second_checkout_reuses_the_invoice(monkeypatch) -> None:
+    from app.console.billing import create_addon_checkout, update_addon
+    from app.console.security import OperatorPrincipal
+    from app.schemas.billing import AddonIn
+
+    db = _db()
+    ensure_module_addons(db)
+    tenant = Tenant(slug="shop", name="Shop", database_url_encrypted="x")
+    db.add(tenant)
+    db.flush()
+    plan = db.scalar(select(BillingPlan).limit(1))
+    cycle = db.scalar(select(BillingCycle).limit(1))
+    assert plan is not None and cycle is not None
+    db.add(Subscription(tenant_id=tenant.id, plan_id=plan.id, cycle_id=cycle.id, status="active"))
+    addon = db.scalar(select(BillingAddon).where(BillingAddon.code == "uae_einvoicing"))
+    assert addon is not None
+    operator = OperatorPrincipal(id=addon.id, email="it@example.com", full_name="IT", role="ADMIN", ip=None)
+    update_addon(
+        db,
+        operator,
+        addon.id,
+        AddonIn(
+            name=addon.name,
+            description=addon.description,
+            monthly_fils=2_000,
+            one_time_fils=0,
+            refundable=False,
+            active=True,
+            module_keys=list(addon.module_keys or []),
+            sort_order=addon.sort_order,
+            reason="Set the monthly price",
+        ),
+    )
+    db.expire_all()
+    priced = db.scalar(select(BillingAddon).where(BillingAddon.code == "uae_einvoicing"))
+    assert priced is not None
+    assert priced.monthly_fils == 2_000
+    assert priced.price_history[-1]["monthly_fils"] == 0
+    monkeypatch.setattr("app.console.billing._business_profile", lambda _settings, _tenant: "electronics_wholesale")
+    monkeypatch.setattr("app.console.transfers.active_bank_snapshot", lambda _db: {"holder": "Axiz"})
+    first = create_addon_checkout(db, SimpleNamespace(), tenant, tenant.id, "uae_einvoicing")
+    second = create_addon_checkout(db, SimpleNamespace(), tenant, tenant.id, "uae_einvoicing")
+    assert first.checkout_id == second.checkout_id
+    invoices = list(db.scalars(select(BillingInvoice).where(BillingInvoice.tenant_id == tenant.id)))
+    assert len(invoices) == 1
+    found = __import__("app.console.addon_listing", fromlist=["marketplace_for"]).marketplace_for(
+        db, SimpleNamespace(), tenant
+    )
+    state = next(item for item in found.items if item.addon.code == "uae_einvoicing")
+    assert state.state == "pending_payment"
+    assert state.invoice_id == first.checkout_id

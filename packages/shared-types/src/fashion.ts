@@ -25,6 +25,8 @@ export interface MatrixWrite {
   price_by_value?: Record<string, number>;
   sku_prefix?: string | null;
   tax_category?: "STANDARD" | "ZERO" | "EXEMPT";
+  /** Copied onto each new variant. It does not rewrite variants that already exist. */
+  price_includes_tax?: boolean;
   /** When set, only these combinations are created. Existing ones are updated and not duplicated. */
   variants?: MatrixVariantInput[] | null;
   opening_store_id?: string | null;

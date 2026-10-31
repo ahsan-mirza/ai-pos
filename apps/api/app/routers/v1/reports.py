@@ -8,11 +8,13 @@ from sqlalchemy.orm import Session
 from app.core.capabilities import Capability, require_capability
 from app.core.database import get_db
 from app.core.deps import Principal, authorize
+from app.core.errors import ApiError
 from app.core.permissions import Permission
+from app.schemas.cancellations import CancellationReport
 from app.schemas.shifts import TipReport
 from app.schemas.size_curve import SizeCurveReport
 from app.schemas.vat import VatReport
-from app.services import shift_service, size_curve_service, vat_report
+from app.services import cancellation_report, shift_service, size_curve_service, vat_report
 
 router = APIRouter()
 CanReadVat = Annotated[Principal, Depends(authorize(Permission.REPORTS_VAT))]
@@ -97,3 +99,27 @@ def size_curve(
         start=start,
         end=end,
     )
+
+
+@router.get("/cancellations", response_model=CancellationReport)
+def cancellations(
+    db: Annotated[Session, Depends(get_db)],
+    principal: CanReadReports,
+    start: Annotated[date, Query(alias="from")],
+    end: Annotated[date, Query(alias="to")],
+    store_id: uuid.UUID | None = None,
+    limit: Annotated[int, Query(ge=1, le=100)] = 50,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> CancellationReport:
+    """Orders cancelled in the window. The figures are not added to completed sales."""
+    if end < start:
+        raise ApiError(422, "invalid_range", "The end date is before the start date.")
+    payload = cancellation_report.build(
+        db,
+        start=start,
+        end=end,
+        store_id=_scope(principal, store_id),
+        limit=limit,
+        offset=offset,
+    )
+    return CancellationReport.model_validate(payload)

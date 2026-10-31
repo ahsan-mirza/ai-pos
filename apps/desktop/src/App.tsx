@@ -1,6 +1,7 @@
 import { Capability } from "@ai-pos/shared-types";
 import { useEffect, useState, type ReactNode } from "react";
 import { ConfirmProvider } from "./components/ConfirmDialog";
+import { useRegisterLayout } from "./components/RegisterLayout";
 import { RegisterShell } from "./components/shell/RegisterShell";
 import type { RegisterView } from "./components/shell/ShellContext";
 import { needsActivation } from "./config/terminal";
@@ -8,6 +9,7 @@ import { ActivationScreen } from "./features/activation/ActivationScreen";
 import { PinUnlock } from "./features/auth/PinUnlock";
 import { lock, restore, type CashierSession } from "./features/auth/session";
 import { CheckoutPage } from "./features/checkout/CheckoutPage";
+import { CustomerDisplay } from "./features/display/CustomerDisplay";
 import { OrdersPage } from "./features/orders/OrdersPage";
 import { RepairsPage } from "./features/repairs/RepairsPage";
 import { ReordersPage } from "./features/reorders/ReordersPage";
@@ -20,13 +22,22 @@ import { UpdatePrompt } from "./features/updates/UpdatePrompt";
 import { VirtualKeyboardProvider } from "./hooks/useVirtualKeyboard";
 import { inTauri } from "./lib/tauri";
 
+const customerDisplay = new URLSearchParams(window.location.search).get("display") === "1";
+
 export function App() {
+  if (customerDisplay) return <CustomerDisplay />;
+  return <RegisterApp />;
+}
+
+function RegisterApp() {
   const [session, setSession] = useState<CashierSession | null>(null);
   const [ready, setReady] = useState(false);
   const [activating, setActivating] = useState(false);
   const [view, setView] = useState<RegisterView>("checkout");
   const shiftState = useShift();
   const { foodAndBeverage, enabled } = useCapabilities();
+  const { theme } = useRegisterLayout();
+  const splash = theme === "dark" ? "min-h-screen bg-zinc-950" : "min-h-screen bg-slate-50";
 
   useEffect(() => {
     if (view === "returns" && foodAndBeverage) setView("checkout");
@@ -63,12 +74,12 @@ export function App() {
     screen = <ActivationScreen onCancel={needsActivation() ? undefined : () => setActivating(false)} />;
   } else if (!ready || session === null) {
     screen = !ready ? (
-      <div className="min-h-screen bg-zinc-950" />
+      <div className={splash} />
     ) : (
       <PinUnlock onUnlocked={setSession} onActivate={() => setActivating(true)} />
     );
   } else if (inTauri() && !shiftState.loaded) {
-    screen = <div className="min-h-screen bg-zinc-950" />;
+    screen = <div className={splash} />;
   } else if (inTauri() && shiftState.shift === null) {
     screen = <OpenShiftScreen session={session} onLock={onLock} />;
   } else {

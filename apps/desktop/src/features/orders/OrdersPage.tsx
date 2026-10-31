@@ -16,12 +16,12 @@ import {
   type KitchenStatus,
   type Order,
   type OrderItem,
-  type OrderProgress,
   type ProductUpsert,
   type ServiceType,
 } from "@ai-pos/shared-types";
-import { FloorTableCard, floorTableGridClass } from "../../components/FloorTableCard";
-import { ChefHat, CreditCard, Merge, MoveRight, Plus, Receipt, Search, Send, Split, Truck, Users, UtensilsCrossed, X } from "lucide-react";
+import { FloorTableCard, serviceOf } from "../../components/FloorTableCard";
+import { FloorBoard, aggregateService, formatSeatedDuration, KITCHEN_LABEL as floorKitchenLabel, tableDisplayNumber } from "@ai-pos/ui";
+import { ChefHat, CreditCard, Merge, Minus, MoveRight, Plus, Receipt, Search, Send, Split, Truck, Users, UtensilsCrossed, X } from "lucide-react";
 import { useCallback, useEffect, useId, useMemo, useState } from "react";
 import { ManagerApprovalModal } from "../../components/ManagerApprovalModal";
 import { DrawerHeader } from "../../components/shell/Drawer";
@@ -40,28 +40,57 @@ import { verifyManager } from "../checkout/wholesaleClient";
 import { printKitchenTickets } from "./kitchenPrint";
 import { SplitChecksModal } from "./SplitChecksModal";
 import { IncomingDeliveries, KeyInDeliveryModal } from "./IncomingDeliveries";
-import { GuestSuggestions, suggestsForGuests } from "./GuestSuggestions";
 import { OrderRequestError, channelsApi, ordersApi, queueOfflineOrder } from "./ordersClient";
 import { listenForTableEvents } from "./tableSync";
 import { startSettlement } from "./settlement";
 
 const POLL_MS = 3000;
 
-const KITCHEN_LABEL: Record<string, string> = {
-  new: ORDER_PROGRESS_LABEL.preparing,
-  preparing: ORDER_PROGRESS_LABEL.preparing,
-  ready: ORDER_PROGRESS_LABEL.ready,
-  bumped: ORDER_PROGRESS_LABEL.completed,
-};
+/** A tab is ready only when every sent line is ready. One finished plate while another is cooking stays partial. */
+function tabKitchen(order: Order): string | null {
+  const live = order.items.filter((item) => item.voided_at === null);
+  const sent = live.filter((item) => item.sent_at !== null || item.kitchen_status);
+  if (sent.length === 0) return null;
+  const kitchen = aggregateService({
+    sent: sent.length,
+    marks: sent.map((item) => item.kitchen_status ?? ""),
+    paid: 0,
+    unpaid: 0,
+    billRequested: false,
+    hasItems: true,
+  }).kitchen;
+  return floorKitchenLabel[kitchen] || null;
+}
 
-/** The most urgent kitchen phase on a ticket: a ready plate beats a line that is still cooking. */
-function orderPhase(order: Order | undefined): OrderProgress | null {
-  if (!order) return null;
-  const live = order.items.filter((item) => !item.voided_at && (item.sent_at || item.kitchen_status));
-  if (live.length === 0) return null;
-  if (live.every((item) => item.kitchen_status === "bumped")) return "completed";
-  if (live.some((item) => item.kitchen_status === "ready")) return "ready";
-  return "preparing";
+function itemStatus(item: OrderItem): string {
+  if (item.voided_at) return "Cancelled";
+  if (item.paid_sale_id) return "Completed";
+  if (!item.sent_at) return "New";
+  if (item.kitchen_status === "preparing") return "Preparing";
+  if (item.kitchen_status === "ready") return "Ready";
+  if (item.kitchen_status === "bumped") return "Served";
+  return "Sent to kitchen";
+}
+
+function orderKitchenLabel(order: Order): string {
+  const live = order.items.filter((item) => item.voided_at === null);
+  if (live.length === 0) return "New";
+  const sent = live.filter((item) => item.sent_at !== null);
+  if (sent.length === 0) return "New";
+  const served = sent.filter((item) => item.kitchen_status === "bumped").length;
+  const ready = sent.filter((item) => item.kitchen_status === "ready" || item.kitchen_status === "bumped").length;
+  const preparing = sent.filter((item) => item.kitchen_status === "preparing").length;
+  if (served === sent.length) return "Served";
+  if (ready === sent.length) return "Ready";
+  if (ready > 0 || (preparing > 0 && sent.length > preparing)) return "Partially ready";
+  if (preparing > 0) return "Preparing";
+  return "Sent to kitchen";
+}
+
+function handoffLabel(service: ServiceType): string {
+  if (service === "TAKEAWAY") return "Picked up";
+  if (service === "DELIVERY") return "Dispatched";
+  return "Served";
 }
 
 function minutesSince(iso: string | null): number {
@@ -173,21 +202,58 @@ interface DraftLine {
   modifiers: ModifierChoice[];
   components: ComboChoice[];
   seat: number | null;
+  note: string;
 }
 
 /** Restaurant floor: tables and open tabs shared by every register, with kitchen sending, voids, merges and pay. */
+const VOID_REASONS = [
+  ["changed_mind", "Customer changed mind"],
+  ["wrong_item", "Incorrect item"],
+  ["wrong_quantity", "Incorrect quantity"],
+  ["stock", "Unavailable"],
+  ["prep_delay", "Preparation delay"],
+  ["entry_mistake", "Entered by mistake"],
+  ["other", "Other"],
+] as const;
+
+function voidCode(reason: string): string {
+  const match = /^\[([a-z_]+)\]/.exec(reason);
+  return match?.[1] ?? "entry_mistake";
+}
+
+function VoidReasonFields({ reason, onChange }: { reason: string; onChange: (reason: string) => void }) {
+  const code = voidCode(reason);
+  const note = reason.replace(/^\[[a-z_]+\]\s*/, "");
+  return (
+    <>
+      <select value={code} onChange={(event) => onChange(`[${event.target.value}] ${note}`)} className="modal-input">
+        {VOID_REASONS.map(([value, label]) => (
+          <option key={value} value={value}>{label}</option>
+        ))}
+      </select>
+      <input
+        autoFocus
+        value={note}
+        onChange={(event) => onChange(`[${code}] ${event.target.value}`)}
+        placeholder="Explanation"
+        className="modal-input"
+      />
+    </>
+  );
+}
+
 export function OrdersPage({ session }: { session: CashierSession }) {
   const { navigate } = useShell();
   const currency = useBusinessCurrency();
   const capabilities = useCapabilities();
   const tablesOn = capabilities.enabled.has(Capability.Tables);
+  const kitchenOn = capabilities.enabled.has(Capability.Kds);
   const menu = useMenu();
   const storeId = activeStore().id;
   const userId = session.user.id;
 
   const [orders, setOrders] = useState<Order[]>([]);
   const [floor, setFloor] = useState<Floor | null>(null);
-  const [areaId, setAreaId] = useState<string>("all");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [offline, setOffline] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
@@ -208,6 +274,7 @@ export function OrdersPage({ session }: { session: CashierSession }) {
   const [keyingIn, setKeyingIn] = useState(false);
   const [busy, setBusy] = useState(false);
   const [seating, setSeating] = useState<DiningTable | null>(null);
+  const [adding, setAdding] = useState(false);
 
   const selected = orders.find((order) => order.id === selectedId) ?? null;
 
@@ -229,7 +296,10 @@ export function OrdersPage({ session }: { session: CashierSession }) {
     const stopLive = listenForTableEvents(storeId, (event) => {
       if (
         event.message &&
-        (event.type === "KDS_ITEM_READY" || event.type === "ORDER_STATUS_CHANGED")
+        (event.type === "KDS_ITEM_READY" ||
+          event.type === "ORDER_STATUS_CHANGED" ||
+          event.type === "ORDER_ITEM_VOIDED" ||
+          event.type === "ORDER_CANCELLED")
       ) {
         setNotice(event.message);
       }
@@ -255,6 +325,8 @@ export function OrdersPage({ session }: { session: CashierSession }) {
         event.type === "TABLE_SESSION_CLOSED" ||
         event.type === "KDS_ITEM_READY" ||
         event.type === "ORDER_STATUS_CHANGED" ||
+        event.type === "ORDER_ITEM_VOIDED" ||
+        event.type === "ORDER_CANCELLED" ||
         event.type === "BILL_REQUESTED"
       ) {
         void refresh();
@@ -279,10 +351,6 @@ export function OrdersPage({ session }: { session: CashierSession }) {
   useEffect(() => {
     if (channelsOn) void channelsApi.list().then(setChannels).catch(() => setChannels([]));
   }, [channelsOn]);
-
-  useEffect(() => {
-    if (floor && areaId !== "all" && !floor.areas.some((area) => area.id === areaId)) setAreaId("all");
-  }, [floor, areaId]);
 
   /** Runs a write; a stale order refreshes and asks the cashier to try again. */
   const write = useCallback(
@@ -318,9 +386,20 @@ export function OrdersPage({ session }: { session: CashierSession }) {
       const order = await ordersApi.create(input, id);
       setOrders((current) => [...current.filter((item) => item.id !== order.id), order]);
       setSelectedId(order.id);
+      setAdding(false);
       setNotice(table ? `Table ${table.label} seated.` : "New tab opened.");
     } catch (caught) {
-      if (caught instanceof OrderRequestError && caught.offline) {
+      if (caught instanceof OrderRequestError && caught.code === "table_occupied" && caught.orderId) {
+        const existing = await ordersApi.get(caught.orderId).catch(() => null);
+        if (existing && existing.status === "OPEN") {
+          setOrders((current) => [...current.filter((item) => item.id !== existing.id), existing]);
+          setSelectedId(existing.id);
+          setAdding(false);
+          setNotice(`Table ${table?.label ?? ""} already has order #${existing.number}. It is open here.`);
+        } else {
+          setNotice("That table already has an open order. Refresh and open it from the floor.");
+        }
+      } else if (caught instanceof OrderRequestError && caught.offline) {
         await queueOfflineOrder({ ...input, id }, false);
         setNotice("Offline: the tab is saved on this register and syncs when the connection is back.");
       } else {
@@ -342,7 +421,7 @@ export function OrdersPage({ session }: { session: CashierSession }) {
           )
         : undefined;
       if (same) return current.map((line) => (line === same ? { ...line, quantity: line.quantity + quantity } : line));
-      return [...current, { id: crypto.randomUUID(), product, quantity, modifiers, components, seat }];
+      return [...current, { id: crypto.randomUUID(), product, quantity, modifiers, components, seat, note: "" }];
     });
   }
 
@@ -356,6 +435,43 @@ export function OrdersPage({ session }: { session: CashierSession }) {
     else setQuantityFor(product);
   }
 
+  async function resumeOrder(orderId: string) {
+    const known = orders.find((item) => item.id === orderId) ?? null;
+    setBusy(true);
+    try {
+      const order = await ordersApi.get(orderId);
+      if (order.status !== "OPEN") {
+        setNotice("This order is already completed. The floor is refreshing.");
+        setSelectedId(null);
+        return;
+      }
+      setOrders((current) => [...current.filter((item) => item.id !== order.id), order]);
+      setSelectedId(order.id);
+      setAdding(false);
+      setDraft([]);
+    } catch (caught) {
+      if (known && known.status === "OPEN" && caught instanceof OrderRequestError && caught.offline) {
+        setSelectedId(known.id);
+        setAdding(false);
+        setNotice("Offline: showing the order saved on this register.");
+        return;
+      }
+      setNotice(caught instanceof Error ? caught.message : "This order could not be opened.");
+    } finally {
+      setBusy(false);
+      void refresh();
+    }
+  }
+
+  async function changeQuantity(item: OrderItem, quantity: number) {
+    if (selected === null) return;
+    if (item.sent_at) {
+      setNotice("This item is already in the kitchen. Void it with a reason instead of changing the quantity.");
+      return;
+    }
+    await write(() => ordersApi.setQuantity(selected, item.id, userId, quantity));
+  }
+
   async function addAndMaybeSend(send: boolean) {
     if (selected === null || draft.length === 0) return;
     const items = draft.map((line) => ({
@@ -366,6 +482,7 @@ export function OrdersPage({ session }: { session: CashierSession }) {
       modifiers: line.modifiers,
       ...(line.components.length ? { components: line.components } : {}),
       seat: line.seat,
+      ...(line.note.trim() ? { note: line.note.trim() } : {}),
     }));
     let added: Order | null = null;
     try {
@@ -377,7 +494,11 @@ export function OrdersPage({ session }: { session: CashierSession }) {
           send,
         );
         setDraft([]);
-        setNotice("Offline: the lines are saved on this register and reach the kitchen when the connection is back.");
+        setNotice(
+          send
+            ? "Offline: the lines are saved on this register and reach the kitchen when the connection is back."
+            : "Offline: the lines are saved on this register and sync when the connection is back.",
+        );
         return;
       }
       if (caught instanceof OrderRequestError && caught.stale) {
@@ -410,15 +531,31 @@ export function OrdersPage({ session }: { session: CashierSession }) {
     await write(() => channelsApi.keyIn(channelId, externalRef, userId, customerName), "Delivery order opened. Add its items, then send.");
   }
 
-  const visibleTables =
-    floor === null
-      ? []
-      : (areaId === "all" ? floor.areas : floor.areas.filter((item) => item.id === areaId)).flatMap((item) =>
-          item.tables.filter((table) => table.is_active),
-        );
-  const occupiedTables = visibleTables.filter((table) => table.status !== "free").length;
+  const floorCards = useMemo(() => {
+    if (floor === null) return [];
+    return floor.areas.flatMap((area) =>
+      area.tables.map((table) => {
+        const order = orders.find((item) => item.id === table.order_id) ?? null;
+        const service = serviceOf(table, order);
+        return {
+          key: table.id,
+          areaId: area.id,
+          search: [table.label, tableDisplayNumber(table.label), table.order_number ? `#${table.order_number}` : "", service.guestName ?? ""].join(" "),
+          active: table.is_active,
+          status: table.status,
+          ...service,
+          table,
+          order,
+        };
+      }),
+    );
+  }, [floor, orders]);
   const incoming = orders.filter((order) => order.channel_status === "PENDING");
   const tabs = orders.filter((order) => order.table_id === null && order.channel_status !== "PENDING");
+  const sectionName =
+    selected?.table_id == null
+      ? null
+      : (floor?.areas.find((area) => area.tables.some((table) => table.id === selected.table_id))?.name ?? null);
   const unpaid = selected ? unpaidItems(selected) : [];
   const seats = [...new Set(unpaid.map((item) => item.seat).filter((value): value is number => value !== null))].sort((a, b) => a - b);
   const hits = useMemo(() => {
@@ -435,68 +572,95 @@ export function OrdersPage({ session }: { session: CashierSession }) {
       sync={{ tone: offline ? "offline" : "live", label: offline ? "Offline" : "Live", title: offline ? "Orders sync when the connection returns." : "Shared with every register." }}
       actions={
         <div className="flex gap-2">
-          <button type="button" className={`${ui.secondaryAction} h-10 px-3`} disabled={busy} onClick={() => void openTab("TAKEAWAY", null)}>
+          <button type="button" className={`${ui.secondaryAction} h-12 px-4`} disabled={busy} onClick={() => void openTab("TAKEAWAY", null)}>
             <Plus size={16} aria-hidden="true" /> Takeaway tab
           </button>
           {!tablesOn ? (
-            <button type="button" className={`${ui.secondaryAction} h-10 px-3`} disabled={busy} onClick={() => void openTab("DINE_IN", null)}>
+            <button type="button" className={`${ui.secondaryAction} h-12 px-4`} disabled={busy} onClick={() => void openTab("DINE_IN", null)}>
               <UtensilsCrossed size={16} aria-hidden="true" /> Dine-in tab
             </button>
           ) : null}
           {channelsOn ? (
-            <button type="button" className={`${ui.secondaryAction} h-10 px-3`} disabled={busy} onClick={() => setKeyingIn(true)}>
+            <button type="button" className={`${ui.secondaryAction} h-12 px-4`} disabled={busy} onClick={() => setKeyingIn(true)}>
               <Truck size={16} aria-hidden="true" /> Delivery order
             </button>
           ) : null}
         </div>
       }
       drawer={
-        <aside aria-label="Order" className="hidden min-h-0 flex-col border-l border-zinc-200 bg-white lg:flex lg:w-[420px] dark:border-white/10 dark:bg-charcoal">
+        <aside
+          aria-label={selected ? "Active order" : "Order"}
+          className={`${selected ? "flex" : "hidden lg:flex"} fixed inset-0 z-30 min-h-0 flex-col border-zinc-200 bg-white lg:static lg:z-auto lg:w-[420px] lg:border-l dark:border-white/10 dark:bg-charcoal`}
+        >
           {selected === null ? (
             <div className="flex flex-1 flex-col items-center justify-center p-8 text-center text-sm text-zinc-500 dark:text-white/50">
               <UtensilsCrossed size={28} aria-hidden="true" />
               <p className="mt-3 font-semibold text-zinc-700 dark:text-white/80">Pick a table or a tab</p>
-              <p className="mt-1">Seat a free table, or open a takeaway tab, then add items and send them to the kitchen.</p>
+              <p className="mt-1">
+                {kitchenOn
+                  ? "Seat a free table, or open a takeaway tab, then add items. Send a round or pay."
+                  : "Seat a free table, or open a takeaway tab, then add items and pay."}
+              </p>
             </div>
           ) : (
             <>
-              <DrawerHeader title={selected.table_label ? `Table ${selected.table_label}` : selected.name || `Tab #${selected.number}`} count={`#${selected.number}`}>
-                <button type="button" aria-label="Close order" onClick={() => setSelectedId(null)} className="flex h-9 w-9 items-center justify-center rounded-full hover:bg-zinc-100 dark:hover:bg-white/10">
+              <DrawerHeader title={selected.table_label ? `Table ${tableDisplayNumber(selected.table_label)}` : selected.name || `Tab #${selected.number}`} count={`#${selected.number}`}>
+                <button type="button" aria-label="Close order" onClick={() => { setSelectedId(null); setAdding(false); }} className="flex h-9 w-9 items-center justify-center rounded-full hover:bg-zinc-100 dark:hover:bg-white/10">
                   <X size={18} aria-hidden="true" />
                 </button>
               </DrawerHeader>
               <div className="custom-scrollbar min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-3">
-                <p className="flex flex-wrap items-center gap-2 text-xs text-zinc-500 dark:text-white/50">
-                  <span className="inline-flex items-center gap-1"><Users size={13} aria-hidden="true" /> {selected.covers} covers</span>
-                  <span>· open {minutesSince(selected.opened_at)} min</span>
-                  {selected.channel_name ? <span className="inline-flex items-center gap-1 text-primary"><Truck size={13} aria-hidden="true" /> {selected.channel_name} {selected.external_ref}</span> : null}
-                  {selected.bill_requested_at ? <span className="font-semibold text-amber-600">Bill requested</span> : null}
+                <div className="flex flex-wrap items-center gap-1.5 text-xs">
+                  {selected.table_id ? <span className="rounded-full bg-violet-100 px-2 py-0.5 font-semibold text-violet-800 dark:bg-violet-500/20 dark:text-violet-200">Occupied</span> : null}
+                  {sectionName ? <span className="text-zinc-500 dark:text-white/50">{sectionName}</span> : null}
+                  <span className="inline-flex items-center gap-1 text-zinc-500 dark:text-white/50"><Users size={13} aria-hidden="true" /> {selected.covers} {selected.covers === 1 ? "guest" : "guests"}</span>
+                  <span className="text-zinc-500 dark:text-white/50">· {formatSeatedDuration(minutesSince(selected.opened_at))}</span>
+                  <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 font-semibold text-primary">
+                    <ChefHat size={12} aria-hidden="true" /> {orderKitchenLabel(selected)}
+                  </span>
+                </div>
+                <p className="text-xs text-zinc-500 dark:text-white/50">
+                  Opened {new Date(selected.opened_at).toLocaleString()}
+                  {selected.opened_by_name ? ` · ${selected.opened_by_name}` : ""}
+                  {selected.name ? ` · Customer ${selected.name}` : ""}
+                  {selected.channel_name ? ` · ${selected.channel_name} ${selected.external_ref ?? ""}` : ""}
+                  {selected.bill_requested_at ? " · Bill requested" : ""}
                 </p>
                 <ul className="space-y-1.5">
-                  {selected.items.map((item) => (
+                  {selected.items.map((item) => {
+                    const editable = !item.voided_at && !item.paid_sale_id && !item.sent_at;
+                    return (
                     <li key={item.id} className={`rounded-2xl border px-3 py-2 text-sm ${item.voided_at ? "border-dashed border-zinc-200 opacity-50 dark:border-white/10" : "border-zinc-200 bg-zinc-50 dark:border-white/[0.06] dark:bg-[#1A191D]"}`}>
                       <div className="flex items-baseline justify-between gap-2">
-                        <span className={`min-w-0 truncate font-semibold ${item.voided_at ? "line-through" : ""}`}>
-                          {item.quantity} × {lineLabel(item)}
-                        </span>
+                        <span className={`min-w-0 truncate font-semibold ${item.voided_at ? "line-through" : ""}`}>{lineLabel(item)}</span>
                         <span className="shrink-0 font-bold tabular-nums">{formatMoney(item.unit_price_cents * item.quantity, currency)}</span>
                       </div>
+                      <p className="mt-0.5 text-[11px] text-zinc-500 dark:text-white/50">
+                        {item.quantity} × {formatMoney(item.unit_price_cents, currency)}
+                        {item.note ? ` · ${item.note}` : ""}
+                      </p>
                       <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] text-zinc-500 dark:text-white/50">
+                        <span className="rounded-full bg-primary/10 px-1.5 font-semibold text-primary">{itemStatus(item)}</span>
                         {item.seat ? <span className="rounded-full bg-zinc-200/70 px-1.5 dark:bg-white/10">Seat {item.seat}</span> : null}
-                        {item.paid_sale_id ? <span className="rounded-full bg-emerald-500/15 px-1.5 text-emerald-700 dark:text-emerald-300">Paid</span> : null}
-                        {item.voided_at ? <span>Voided: {item.void_reason}</span> : item.sent_at ? (
-                          <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-1.5 text-primary">
-                            <ChefHat size={11} aria-hidden="true" /> {KITCHEN_LABEL[item.kitchen_status ?? "new"] ?? "In kitchen"}
+                        {editable ? (
+                          <span className="ml-auto inline-flex items-center gap-1">
+                            <button type="button" aria-label={`Decrease ${item.product_name}`} disabled={busy || item.quantity <= 1} onClick={() => void changeQuantity(item, item.quantity - 1)} className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-zinc-200/80 dark:bg-white/10"><Minus size={12} aria-hidden="true" /></button>
+                            <span className="min-w-4 text-center font-semibold tabular-nums text-zinc-800 dark:text-white">{item.quantity}</span>
+                            <button type="button" aria-label={`Increase ${item.product_name}`} disabled={busy} onClick={() => void changeQuantity(item, item.quantity + 1)} className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-zinc-200/80 dark:bg-white/10"><Plus size={12} aria-hidden="true" /></button>
                           </span>
-                        ) : <span className="rounded-full bg-zinc-200/70 px-1.5 dark:bg-white/10">Not sent</span>}
+                        ) : null}
                         {!item.voided_at && !item.paid_sale_id ? (
-                          <button type="button" disabled={busy} onClick={() => setVoiding({ item, reason: "" })} className="ml-auto font-semibold text-zinc-500 hover:text-red-600">
-                            Void
+                          <button type="button" disabled={busy} onClick={() => setVoiding({ item, reason: "[entry_mistake] " })} className={`${editable ? "" : "ml-auto "}font-semibold text-zinc-500 hover:text-red-600`}>
+                            {item.sent_at ? "Void" : "Remove"}
                           </button>
                         ) : null}
                       </div>
+                      {item.sent_at && !item.voided_at ? (
+                        <p className="mt-1 text-[11px] text-zinc-500 dark:text-white/50">Already in the kitchen. Void it with a reason to correct it. New items do not change this line.</p>
+                      ) : null}
                     </li>
-                  ))}
+                    );
+                  })}
                 </ul>
 
                 {draft.length > 0 ? (
@@ -504,22 +668,33 @@ export function OrdersPage({ session }: { session: CashierSession }) {
                     <p className="px-1 text-[11px] font-semibold uppercase tracking-wide text-primary">Adding</p>
                     <ul className="mt-1 space-y-1 text-sm">
                       {draft.map((line) => (
-                        <li key={line.id} className="flex items-center justify-between gap-2 px-1">
-                          <span className="min-w-0 truncate">
-                            {line.quantity} × {line.product.name}
-                            {line.components.length ? ` · ${comboSummary(line.components)}` : ""}
-                            {line.modifiers.length ? ` · ${modifierSummary(line.modifiers)}` : ""}
-                            {line.seat ? ` · seat ${line.seat}` : ""}
-                          </span>
-                          <button type="button" aria-label={`Remove ${line.product.name}`} onClick={() => setDraft(draft.filter((item) => item.id !== line.id))} className="text-zinc-400 hover:text-red-600">
-                            <X size={14} aria-hidden="true" />
-                          </button>
+                        <li key={line.id} className="px-1">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="min-w-0 truncate">
+                              {line.quantity} × {line.product.name}
+                              {line.components.length ? ` · ${comboSummary(line.components)}` : ""}
+                              {line.modifiers.length ? ` · ${modifierSummary(line.modifiers)}` : ""}
+                              {line.seat ? ` · seat ${line.seat}` : ""}
+                            </span>
+                            <button type="button" aria-label={`Remove ${line.product.name}`} onClick={() => setDraft(draft.filter((item) => item.id !== line.id))} className="text-zinc-400 hover:text-red-600">
+                              <X size={14} aria-hidden="true" />
+                            </button>
+                          </div>
+                          <input
+                            value={line.note}
+                            onChange={(event) => setDraft(draft.map((item) => (item.id === line.id ? { ...item, note: event.target.value.slice(0, 160) } : item)))}
+                            placeholder="Special instructions"
+                            aria-label={`Note for ${line.product.name}`}
+                            className="mt-1 h-8 w-full rounded-xl border border-zinc-200 bg-white px-2 text-xs focus:border-primary focus:outline-none dark:border-white/10 dark:bg-zinc-900/60"
+                          />
                         </li>
                       ))}
                     </ul>
                   </div>
                 ) : null}
 
+                {adding ? (
+                <>
                 <div className="flex items-center gap-1.5 text-[11px] font-semibold">
                   <span className="text-zinc-500 dark:text-white/50">Seat</span>
                   {[null, 1, 2, 3, 4, 5, 6].map((value) => (
@@ -544,53 +719,52 @@ export function OrdersPage({ session }: { session: CashierSession }) {
                     </button>
                   ))}
                 </div>
+                </>
+                ) : (
+                  <p className="text-xs text-zinc-500 dark:text-white/50">
+                    {selected.table_id
+                      ? "Add more items to this same order, or check it out. Closing this panel leaves the table occupied."
+                      : "Add more items to this same order, or check it out. Closing this panel keeps the tab open."}
+                  </p>
+                )}
               </div>
               <div className="shrink-0 space-y-2 border-t border-zinc-200 px-4 py-3 dark:border-white/10">
-                {suggestsForGuests(capabilities.profile) ? (
-                  <GuestSuggestions
-                    storeId={storeId}
-                    customerId={selected.customer_id}
-                    productIds={[
-                      ...selected.items.filter((item) => item.voided_at === null).map((item) => item.product_id),
-                      ...draft.map((line) => line.product.id),
-                    ]}
-                    disabled={busy}
-                    onAdd={(suggestion) => {
-                      const delta = suggestion.modifiers.reduce((sum, choice) => sum + choice.price_delta_cents, 0);
-                      void write(
-                        () =>
-                          ordersApi.addItems(selected, userId, [
-                            {
-                              id: crypto.randomUUID(),
-                              product_id: suggestion.product_id,
-                              quantity: 1,
-                              unit_price_cents: suggestion.price_cents + delta,
-                              modifiers: suggestion.modifiers,
-                              ...(seat !== null ? { seat } : {}),
-                            },
-                          ]),
-                        `${suggestion.name} added.`,
-                      );
-                    }}
-                  />
-                ) : null}
                 <p className="flex items-baseline justify-between text-sm">
                   <span className="font-semibold">Open to pay</span>
                   <span className="text-2xl font-bold tabular-nums text-primary">{formatMoney(selected.open_cents, currency)}</span>
                 </p>
-                <div className="grid grid-cols-3 gap-2">
-                  <button type="button" disabled={busy || draft.length === 0} onClick={() => void addAndMaybeSend(false)} className={`${ui.secondaryAction} h-11 rounded-2xl text-xs`}>
-                    <Plus size={15} aria-hidden="true" /> Add
+                <div className="grid grid-cols-2 gap-2">
+                  <button type="button" disabled={busy} onClick={() => setAdding(true)} className={`${ui.secondaryAction} h-14 rounded-2xl text-sm`}>
+                    <Plus size={16} aria-hidden="true" /> Add More Items
                   </button>
-                  <button type="button" disabled={busy || (draft.length === 0 && !selected.items.some((item) => !item.sent_at && !item.voided_at))}
-                    onClick={() => (draft.length > 0 ? void addAndMaybeSend(true) : void sendToKitchen(selected))}
-                    className={`${ui.secondaryAction} h-11 rounded-2xl text-xs`}>
-                    <Send size={15} aria-hidden="true" /> Send
-                  </button>
-                  <button type="button" disabled={busy || unpaid.length === 0} onClick={() => void write(() => ordersApi.bill(selected, userId), "Bill requested.")} className={`${ui.secondaryAction} h-11 rounded-2xl text-xs`}>
-                    <Receipt size={15} aria-hidden="true" /> Bill
+                  <button type="button" disabled={busy || unpaid.length === 0} onClick={() => pay(unpaid.map((item) => item.id), `order #${selected.number}`)} className={`${ui.primaryAction} h-12 rounded-2xl text-sm`}>
+                    <CreditCard size={16} aria-hidden="true" /> Checkout
                   </button>
                 </div>
+                {adding ? (
+                  <div className={`grid gap-2 ${kitchenOn ? "grid-cols-2" : "grid-cols-1"}`}>
+                    <button type="button" disabled={busy || draft.length === 0} onClick={() => void addAndMaybeSend(false)} className={`${ui.secondaryAction} h-11 rounded-2xl text-xs`}>
+                      <Plus size={15} aria-hidden="true" /> Add to this order
+                    </button>
+                    {kitchenOn ? (
+                      <button type="button" disabled={busy || (draft.length === 0 && !selected.items.some((item) => !item.sent_at && !item.voided_at))}
+                        onClick={() => (draft.length > 0 ? void addAndMaybeSend(true) : void sendToKitchen(selected))}
+                        className={`${ui.secondaryAction} h-11 rounded-2xl text-xs`}>
+                        <Send size={15} aria-hidden="true" /> Send to kitchen
+                      </button>
+                    ) : null}
+                  </div>
+                ) : null}
+                {selected.items.some((item) => !item.voided_at && item.kitchen_status === "ready") ? (
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => void write(() => ordersApi.handOver(selected, userId), `${handoffLabel(selected.service_type)}.`)}
+                    className={`${ui.secondaryAction} h-11 w-full rounded-2xl text-xs`}
+                  >
+                    <UtensilsCrossed size={15} aria-hidden="true" /> {handoffLabel(selected.service_type)}
+                  </button>
+                ) : null}
                 {splitOn && seats.length > 1 ? (
                   <div className="flex flex-wrap gap-1.5">
                     {seats.map((value) => (
@@ -617,8 +791,8 @@ export function OrdersPage({ session }: { session: CashierSession }) {
                       <Split size={16} aria-hidden="true" /> Split
                     </button>
                   ) : null}
-                  <button type="button" disabled={busy || unpaid.length === 0} onClick={() => pay(unpaid.map((item) => item.id), `order #${selected.number}`)} className={`${ui.primaryAction} h-12 flex-1 rounded-full`}>
-                    <CreditCard size={18} aria-hidden="true" /> {selected.table_id ? "Pay & Settle Table" : "Pay"} {formatMoney(selected.open_cents, currency)}
+                  <button type="button" disabled={busy || unpaid.length === 0} onClick={() => void write(() => ordersApi.bill(selected, userId), "Bill requested.")} className={`${ui.secondaryAction} h-12 flex-1 rounded-2xl text-xs`}>
+                    <Receipt size={15} aria-hidden="true" /> Bill
                   </button>
                 </div>
               </div>
@@ -659,68 +833,63 @@ export function OrdersPage({ session }: { session: CashierSession }) {
 
         {tablesOn && floor ? (
           <section aria-label="Floor plan">
-            <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-              <div className="flex flex-wrap gap-1.5" role="group" aria-label="Floor">
-                <button type="button" aria-pressed={areaId === "all"} onClick={() => setAreaId("all")}
-                  className={`h-9 rounded-full px-4 text-sm font-semibold ${areaId === "all" ? "bg-primary text-white" : "bg-zinc-100 dark:bg-white/10"}`}>
-                  All Tables
-                </button>
-                {floor.areas.map((item) => (
-                  <button key={item.id} type="button" aria-pressed={item.id === areaId} onClick={() => setAreaId(item.id)}
-                    className={`h-9 rounded-full px-4 text-sm font-semibold ${item.id === areaId ? "bg-primary text-white" : "bg-zinc-100 dark:bg-white/10"}`}>
-                    {item.name}
-                  </button>
-                ))}
-              </div>
-              <div className="flex flex-wrap gap-1.5" aria-label="Table summary">
-                <span className="rounded-full bg-zinc-100 px-3 py-1.5 text-xs font-semibold dark:bg-white/10">Total {visibleTables.length}</span>
-                <span className="rounded-full bg-amber-500/15 px-3 py-1.5 text-xs font-semibold text-amber-800 dark:text-amber-200">Occupied {occupiedTables}</span>
-                <span className="rounded-full bg-emerald-500/15 px-3 py-1.5 text-xs font-semibold text-emerald-800 dark:text-emerald-200">Available {visibleTables.length - occupiedTables}</span>
-              </div>
-              {floor.areas.length === 0 ? <p className="text-sm text-zinc-500">No dining areas yet. Add them in the portal under Inventory › Floor plan.</p> : null}
-            </div>
-            {visibleTables.length > 0 ? (
-              <div className={`overflow-visible rounded-3xl border border-zinc-200 bg-zinc-950 dark:border-white/10 ${floorTableGridClass}`} aria-label="Floor plan tables">
-                {visibleTables.map((table) => {
-                  return (
-                    <FloorTableCard
-                      key={table.id}
-                      tableId={table.id}
-                      label={table.label}
-                      seats={table.seats}
-                      covers={table.covers}
-                      seatedAt={table.seated_at}
-                      openCents={table.open_cents}
-                      currency={currency}
-                      status={table.status}
-                      selected={Boolean(selectedId && table.order_id === selectedId)}
-                      disabled={busy}
-                      onClick={() => {
-                        const order = orders.find((item) => item.id === table.order_id);
-                        if (moving) {
-                          if (!order) {
-                            const from = moving;
-                            setMoving(null);
-                            void write(() => ordersApi.move(from, userId, table.id), `#${from.number} moved to ${table.label}.`);
-                          }
-                          return;
-                        }
-                        if (mergeFrom) {
-                          if (order && order.id !== mergeFrom.id) {
-                            const from = mergeFrom;
-                            setMergeFrom(null);
-                            void write(() => ordersApi.merge(from, order, userId), `#${from.number} merged into ${table.label}.`);
-                          }
-                          return;
-                        }
-                        if (order) setSelectedId(order.id);
-                        else setSeating(table);
-                      }}
-                    />
-                  );
-                })}
-              </div>
-            ) : null}
+            {floor.areas.length === 0 ? <p className="mb-2 text-sm text-zinc-500">No dining areas yet. Add them in the portal under Inventory › Floor plan.</p> : null}
+            <FloorBoard
+              sections={floor.areas.map((item) => ({ id: item.id, name: item.name }))}
+              items={floorCards}
+              empty="No tables match this floor."
+              renderItem={(card) => (
+                <FloorTableCard
+                  tableId={card.table.id}
+                  label={card.table.label}
+                  seats={card.table.seats}
+                  shape={card.table.shape}
+                  active={card.active}
+                  covers={card.table.covers}
+                  seatedAt={card.table.seated_at}
+                  openCents={card.table.open_cents}
+                  currency={currency}
+                  status={card.table.status}
+                  kitchen={card.kitchen}
+                  payment={card.payment}
+                  orderProgress={card.orderProgress}
+                  orderNumber={card.table.order_number}
+                  guestName={card.guestName}
+                  readyCount={card.readyCount}
+                  sentCount={card.sentCount}
+                  selected={Boolean(selectedId && card.table.order_id === selectedId)}
+                  disabled={busy}
+                  onClick={() => {
+                    if (!card.active) return;
+                    const order = card.order;
+                    if (moving) {
+                      if (!order) {
+                        const from = moving;
+                        setMoving(null);
+                        void write(() => ordersApi.move(from, userId, card.table.id), `#${from.number} moved to ${card.table.label}.`);
+                      }
+                      return;
+                    }
+                    if (mergeFrom) {
+                      if (order && order.id !== mergeFrom.id) {
+                        const from = mergeFrom;
+                        setMergeFrom(null);
+                        void write(() => ordersApi.merge(from, order, userId), `#${from.number} merged into ${card.table.label}.`);
+                      }
+                      return;
+                    }
+                    const occupied = card.table.status !== "free" || card.table.order_id !== null;
+                    if (occupied) {
+                      const orderId = order?.id ?? card.table.order_id;
+                      if (orderId) void resumeOrder(orderId);
+                      else setNotice("This table is occupied, but its order could not be found. The floor is refreshing.");
+                      return;
+                    }
+                    setSeating(card.table);
+                  }}
+                />
+              )}
+            />
           </section>
         ) : null}
 
@@ -728,7 +897,7 @@ export function OrdersPage({ session }: { session: CashierSession }) {
           <h2 className="mb-2 text-sm font-semibold">{tablesOn ? "Tabs without a table" : "Open tabs"}</h2>
           <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
             {(tablesOn ? tabs : orders.filter((order) => order.channel_status !== "PENDING")).map((order) => {
-              const phase = orderPhase(order);
+              const phase = tabKitchen(order);
               return (
               <button key={order.id} type="button" onClick={() => {
                 if (mergeFrom) {
@@ -739,6 +908,7 @@ export function OrdersPage({ session }: { session: CashierSession }) {
                   }
                   return;
                 }
+                setAdding(false);
                 setSelectedId(order.id);
               }}
                 className={`rounded-2xl border p-3 text-left ${order.id === selectedId ? "border-primary" : "border-zinc-200 dark:border-white/10"}`}>
@@ -747,7 +917,7 @@ export function OrdersPage({ session }: { session: CashierSession }) {
                   <span className="text-sm font-bold tabular-nums">{formatMoney(order.open_cents, currency)}</span>
                 </span>
                 <span className="mt-1 block text-xs text-zinc-500 dark:text-white/50">
-                  {order.service_type === "DELIVERY" ? `${order.channel_name ?? "Delivery"} ${order.external_ref ?? ""}` : order.service_type === "TAKEAWAY" ? "Takeaway" : "Dine-in"} · {order.items.filter((item) => !item.voided_at).length} lines · {minutesSince(order.opened_at)} min
+                  {order.service_type === "DELIVERY" ? `${order.channel_name ?? "Delivery"} ${order.external_ref ?? ""}` : order.service_type === "TAKEAWAY" ? "Takeaway" : "Dine-in"} · {order.items.filter((item) => !item.voided_at).length} lines · {formatSeatedDuration(minutesSince(order.opened_at))}
                   {phase ? ` · ${ORDER_PROGRESS_LABEL[phase]}` : ""}
                 </span>
               </button>
@@ -834,10 +1004,13 @@ export function OrdersPage({ session }: { session: CashierSession }) {
               event.preventDefault();
               const item = voiding.item!;
               setVoiding(null);
-              void write(() => ordersApi.voidItem(selected, item.id, userId, voiding.reason.trim() || "Removed before sending", null), "Line removed.");
+              void write(
+                () => ordersApi.voidItem(selected, item.id, userId, (voiding.reason.trim() || "[entry_mistake] Removed before sending").slice(0, 160), null),
+                "Line removed.",
+              );
             }}>
               <h2 className="text-lg font-semibold">Remove {voiding.item?.product_name}?</h2>
-              <input autoFocus value={voiding.reason} onChange={(event) => setVoiding({ ...voiding, reason: event.target.value })} placeholder="Reason (optional)" className="modal-input" />
+              <VoidReasonFields reason={voiding.reason} onChange={(reason) => setVoiding({ ...voiding, reason })} />
               <div className="flex justify-end gap-2">
                 <button type="button" className="modal-cancel" onClick={() => setVoiding(null)}>Cancel</button>
                 <button type="submit" className="modal-save">Remove</button>

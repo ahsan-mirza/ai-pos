@@ -1,0 +1,8 @@
+# Example only. Not included from deploy/nginx/ai-pos.conf.
+# The Business Portal uses the main API at /api/v1/einvoicing and does not need this location.
+
+location /einvoicing-plugin/ {
+    proxy_pass http://127.0.0.1:8090/;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-Proto $scheme;
+}

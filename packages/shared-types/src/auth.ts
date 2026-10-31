@@ -45,6 +45,18 @@ export const Permission = {
   GiftCardsManage: "gift_cards:manage",
   TaxFreeManage: "tax_free:manage",
   OnlineOrders: "online_orders:manage",
+  ReservationsView: "reservations:view",
+  ReservationsCreate: "reservations:create",
+  ReservationsUpdate: "reservations:update",
+  ReservationsConfirm: "reservations:confirm",
+  ReservationsCancel: "reservations:cancel",
+  ReservationsSeat: "reservations:seat",
+  ReservationsMarkNoShow: "reservations:mark_no_show",
+  ReservationsViewHistory: "reservations:view_history",
+  ReservationsViewAll: "reservations:view_all_branches",
+  ReservationsManageSettings: "reservations:manage_settings",
+  TableHistoryView: "table_history:view",
+  TableHistoryViewAll: "table_history:view_all_branches",
 } as const;
 export type Permission = (typeof Permission)[keyof typeof Permission];
 

@@ -58,6 +58,11 @@ export function rateFor(policy: TaxPolicy, category: TaxCategory | undefined | n
   return (policy.treatment ?? "STANDARD") === "STANDARD" ? policy.standard_rate_bps : 0;
 }
 
+/** The product's entered price already contains tax. Missing means exclusive, not the business-wide switch. */
+export function enteredIncludesTax(product: { price_includes_tax?: boolean | null } | null | undefined): boolean {
+  return product?.price_includes_tax === true;
+}
+
 export function lineTax(unitPriceCents: number, quantity: number, rateBps: number, inclusive: boolean): LineTax {
   const gross = unitPriceCents * quantity;
   if (inclusive) {

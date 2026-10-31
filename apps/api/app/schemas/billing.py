@@ -54,6 +54,43 @@ class CycleIn(ApiModel):
     reason: str = Field(min_length=3, max_length=500)
 
 
+class AddonBenefit(ApiModel):
+    title: str = ""
+    description: str = ""
+
+
+class AddonFaq(ApiModel):
+    question: str = ""
+    answer: str = ""
+
+
+class AddonListing(ApiModel):
+    short_description: str = ""
+    overview: str = ""
+    category: str = "operations"
+    tags: list[str] = Field(default_factory=list)
+    benefits: list[AddonBenefit] = Field(default_factory=list)
+    features: list[AddonBenefit] = Field(default_factory=list)
+    steps: list[AddonBenefit] = Field(default_factory=list)
+    requirements: list[str] = Field(default_factory=list)
+    faqs: list[AddonFaq] = Field(default_factory=list)
+    documentation_url: str = ""
+    video_url: str = ""
+    support: str = ""
+    icon: str = "puzzle"
+    image_url: str = ""
+    featured: bool = False
+    publication: Literal["published", "draft", "archived"] = "published"
+
+
+class AddonPricePoint(ApiModel):
+    monthly_fils: int
+    one_time_fils: int
+    refundable: bool
+    effective_at: str
+    reason: str = ""
+
+
 class AddonOut(ApiModel):
     id: UUID
     code: str
@@ -65,6 +102,9 @@ class AddonOut(ApiModel):
     active: bool
     module_keys: list[str] = Field(default_factory=list)
     sort_order: int
+    listing: AddonListing = Field(default_factory=AddonListing)
+    price_history: list[AddonPricePoint] = Field(default_factory=list)
+    updated_at: datetime | None = None
 
 
 class AddonIn(ApiModel):
@@ -75,8 +115,9 @@ class AddonIn(ApiModel):
     refundable: bool = False
     active: bool = True
     module_keys: list[str] = Field(default_factory=list, max_length=40)
-    sort_order: int = Field(default=0, ge=0, le=100)
+    sort_order: int = Field(default=0, ge=0, le=1000)
     reason: str = Field(min_length=3, max_length=500)
+    listing: AddonListing | None = None
 
 
 class ModuleCatalogueItem(ApiModel):
@@ -368,6 +409,36 @@ class AccessOut(ApiModel):
     operational: bool = True
     attention: PaymentAttention | None = None
     subscription: AccessSubscription | None = None
+
+
+MarketplaceState = Literal[
+    "included",
+    "available",
+    "activated",
+    "pending_payment",
+    "pending_activation",
+    "expired",
+    "unavailable",
+    "unpriced",
+]
+
+
+class MarketplaceItem(ApiModel):
+    addon: AddonOut
+    state: MarketplaceState
+    reason: str = ""
+    invoice_id: UUID | None = None
+    compatible_labels: list[str] = Field(default_factory=list)
+    search_text: str = ""
+
+
+class MarketplaceOut(ApiModel):
+    currency: str = "AED"
+    available: int = 0
+    activated: int = 0
+    pending: int = 0
+    recurring_fils: int = 0
+    items: list[MarketplaceItem] = Field(default_factory=list)
 
 
 class SubscriptionAssign(ApiModel):

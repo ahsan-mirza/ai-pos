@@ -9,6 +9,7 @@ from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.capabilities import Capability, has_capability
@@ -16,6 +17,7 @@ from app.core.config import Settings
 from app.core.deps import Principal
 from app.core.errors import ApiError, SyncRejected
 from app.core.permissions import Permission
+from app.models.kitchen import KitchenTicket
 from app.models.product import Product
 from app.models.restaurant import DiningArea, DiningTable, OpenOrder, OpenOrderItem
 from app.models.store import Store
@@ -26,6 +28,7 @@ from app.schemas.orders import (
     DiningTableIn,
     DiningTableOut,
     FloorOut,
+    ItemQuantity,
     ItemVoid,
     OrderAction,
     OrderCreate,
@@ -218,11 +221,42 @@ def _next_number(db: Session, store_id: uuid.UUID) -> int:
 def _table(db: Session, table_id: uuid.UUID | None, store_id: uuid.UUID) -> DiningTable | None:
     if table_id is None:
         return None
-    table = db.get(DiningTable, table_id)
+    statement = select(DiningTable).where(DiningTable.id == table_id)
+    if db.get_bind().dialect.name == "postgresql":
+        statement = statement.with_for_update()
+    table = db.scalar(statement)
     area = db.get(DiningArea, table.area_id) if table is not None else None
     if table is None or area is None or area.store_id != store_id:
         raise ApiError(422, "invalid_request", "That table is not in this store.")
     return table
+
+
+def _open_dine_in(db: Session, table_id: uuid.UUID) -> OpenOrder | None:
+    """The single open dine-in tab on this table, locked on Postgres so two registers cannot both seat it."""
+    statement = select(OpenOrder).where(
+        OpenOrder.table_id == table_id,
+        OpenOrder.status == "OPEN",
+        OpenOrder.service_type == "DINE_IN",
+    )
+    if db.get_bind().dialect.name == "postgresql":
+        statement = statement.with_for_update()
+    return db.scalar(statement)
+
+
+def _reject_second_table_order(
+    db: Session, table_id: uuid.UUID | None, service_type: str, *, ignore_id: uuid.UUID | None = None
+) -> None:
+    if table_id is None or service_type != "DINE_IN":
+        return
+    existing = _open_dine_in(db, table_id)
+    if existing is None or existing.id == ignore_id:
+        return
+    raise ApiError(
+        409,
+        "table_occupied",
+        "That table already has an open order.",
+        details={"order_id": str(existing.id)},
+    )
 
 
 def _item(order: OpenOrder, data: OrderItemIn, position: int, user_id: uuid.UUID | None) -> OpenOrderItem:
@@ -257,7 +291,7 @@ def _check_products(db: Session, items: list[OrderItemIn]) -> None:
             raise ApiError(422, "invalid_meal", exc.message) from exc
 
 
-def create_order(db: Session, principal: Principal, data: OrderCreate) -> OrderOut:
+def create_order(db: Session, principal: Principal, data: OrderCreate, *, commit: bool = True) -> OrderOut:
     _scope(principal, data.store_id)
     existing = db.get(OpenOrder, data.id)
     if existing is not None:
@@ -267,6 +301,7 @@ def create_order(db: Session, principal: Principal, data: OrderCreate) -> OrderO
         raise ApiError(404, "not_found", "Store was not found.")
     actor = _actor(db, principal, data.user_id, data.store_id)
     _table(db, data.table_id, data.store_id)
+    _reject_second_table_order(db, data.table_id, data.service_type)
     _check_products(db, data.items)
     order = OpenOrder(
         id=data.id,
@@ -287,15 +322,131 @@ def create_order(db: Session, principal: Principal, data: OrderCreate) -> OrderO
     db.flush()
     for position, item in enumerate(data.items):
         db.add(_item(order, item, position, actor.id))
-    db.commit()
+    from app.services.reservation_service import attach_order, observe_order
+
+    attach_order(db, order, data.customer_id)
+    if order.table_id is not None:
+        observe_order(db, order, "order_created", f"Order {order.number} created.", actor.id)
+    if not commit:
+        db.flush()
+        return orders_out(db, [order])[0]
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        taken = _open_dine_in(db, data.table_id) if data.table_id is not None else None
+        if taken is not None:
+            raise ApiError(
+                409,
+                "table_occupied",
+                "That table already has an open order.",
+                details={"order_id": str(taken.id)},
+            ) from exc
+        raise
     db.refresh(order)
     return orders_out(db, [order])[0]
 
 
+def _reject_service_change(order: OpenOrder, db: Session) -> None:
+    """Kitchen-fired and dispatched orders keep the type they were sent with."""
+    if order.channel_status in {"ACCEPTED", "COMPLETED", "REJECTED"}:
+        raise ApiError(409, "order_dispatched", "This order has already been dispatched. It cannot change type.")
+    if any(item.sent_at is not None for item in live_items(order)):
+        raise ApiError(409, "order_in_kitchen", "This order is already in the kitchen. It cannot change type.")
+    cooking = db.scalar(
+        select(KitchenTicket.id).where(
+            KitchenTicket.order_id == order.id,
+            KitchenTicket.status.in_(("PREPARING", "READY", "BUMPED")),
+        )
+    )
+    if cooking is not None:
+        raise ApiError(409, "order_in_kitchen", "This order is already in the kitchen. It cannot change type.")
+
+
+def _convert_service(
+    db: Session,
+    order: OpenOrder,
+    actor: User,
+    *,
+    target: str,
+    table_id: uuid.UUID | None,
+    reason: str | None,
+) -> None:
+    """Move an open, unsent order to another service type. The table is released or claimed here."""
+    if target == order.service_type:
+        return
+    _reject_service_change(order, db)
+    previous = order.service_type
+    if target == "DINE_IN":
+        if table_id is None:
+            raise ApiError(422, "table_required", "Choose a free table before seating this order.")
+        _table(db, table_id, order.store_id)
+        taken = db.scalar(
+            select(OpenOrder.id).where(
+                OpenOrder.table_id == table_id,
+                OpenOrder.status == "OPEN",
+                OpenOrder.id != order.id,
+            )
+        )
+        if taken is not None:
+            raise ApiError(409, "table_occupied", "That table already has an open order.")
+        order.table_id = table_id
+    else:
+        order.table_id = None
+    if target == "DELIVERY" and order.customer_id is None and not (order.name or "").strip():
+        raise ApiError(422, "delivery_required", "Add the customer before changing to delivery.")
+    if target == "DELIVERY" and not (order.note or "").strip():
+        raise ApiError(422, "delivery_required", "Add the delivery address before changing to delivery.")
+    order.service_type = target
+    audit.record(
+        db,
+        action_type="UPDATE",
+        action="order.service_change",
+        target_entity="OpenOrder",
+        target_entity_id=order.id,
+        store_id=order.store_id,
+        user_id=actor.id,
+        reason_notes=(reason or "").strip() or "Order type changed",
+        details={"from": previous, "to": target, "table_id": str(order.table_id) if order.table_id else None},
+    )
+
+
+def _announce_service_change(order: OpenOrder, previous_table: uuid.UUID | None, result: OrderOut) -> None:
+    from app.websockets.table_sync import publish, publish_order_status
+
+    if previous_table is not None and order.table_id != previous_table:
+        publish(
+            order.store_id,
+            {
+                "type": "TABLE_SESSION_CLOSED",
+                "store_id": str(order.store_id),
+                "table_id": str(previous_table),
+                "table_label": None,
+                "order_id": str(order.id),
+            },
+        )
+    label = {"DINE_IN": "Dine-in", "TAKEAWAY": "Takeaway", "DELIVERY": "Delivery"}.get(
+        result.service_type, result.service_type
+    )
+    publish_order_status(
+        order.store_id,
+        order_id=order.id,
+        table_id=order.table_id,
+        table_label=result.table_label,
+        ticket_id=None,
+        status="preparing",
+        kitchen_status="none",
+        item_ids=[],
+        message=f"Order #{order.number} changed to {label}.",
+    )
+
+
 def update_order(db: Session, principal: Principal, order_id: uuid.UUID, data: OrderUpdate) -> OrderOut:
     order = _writable(db, principal, order_id, data.revision)
-    _actor(db, principal, data.user_id, order.store_id)
+    actor = _actor(db, principal, data.user_id, order.store_id)
     fields = data.model_fields_set
+    previous_type = order.service_type
+    previous_table = order.table_id
     if data.covers is not None:
         order.covers = data.covers
     if "name" in fields:
@@ -304,11 +455,21 @@ def update_order(db: Session, principal: Principal, order_id: uuid.UUID, data: O
         order.note = (data.note or "").strip() or None
     if "customer_id" in fields:
         order.customer_id = data.customer_id
-    if data.service_type is not None:
-        order.service_type = data.service_type
+    if data.service_type is not None and data.service_type != previous_type:
+        _convert_service(
+            db,
+            order,
+            actor,
+            target=data.service_type,
+            table_id=data.table_id,
+            reason=data.reason,
+        )
     _touch(order)
     db.commit()
-    return orders_out(db, [order])[0]
+    result = orders_out(db, [order])[0]
+    if result.service_type != previous_type:
+        _announce_service_change(order, previous_table, result)
+    return result
 
 
 def add_items(db: Session, principal: Principal, order_id: uuid.UUID, data: OrderItemsAdd) -> OrderOut:
@@ -317,12 +478,55 @@ def add_items(db: Session, principal: Principal, order_id: uuid.UUID, data: Orde
     _check_products(db, data.items)
     known = {item.id for item in order.items}
     position = max((item.position for item in order.items), default=-1) + 1
+    added = 0
     for item in data.items:
         if item.id in known:
             continue
         order.items.append(_item(order, item, position, actor.id))
         position += 1
+        added += 1
+    if added and order.table_id is not None:
+        from app.services.reservation_service import observe_order
+
+        observe_order(db, order, "items_added", f"{added} item(s) added.", actor.id)
     order.bill_requested_at = None
+    _touch(order)
+    db.commit()
+    db.refresh(order)
+    return orders_out(db, [order])[0]
+
+
+def set_item_quantity(
+    db: Session, principal: Principal, order_id: uuid.UUID, item_id: uuid.UUID, data: ItemQuantity
+) -> OrderOut:
+    """Change the quantity of a line that has not been sent. Kitchen lines keep their quantity until a void."""
+    order = _writable(db, principal, order_id, data.revision)
+    actor = _actor(db, principal, data.user_id, order.store_id)
+    item = next((line for line in order.items if line.id == item_id), None)
+    if item is None or item.voided_at is not None:
+        raise ApiError(404, "not_found", "That line is not on this order.")
+    if item.paid_sale_id is not None:
+        raise ApiError(409, "already_paid", "That line is already paid; refund it from Returns.")
+    if item.sent_at is not None:
+        raise ApiError(
+            409,
+            "already_sent",
+            "This item is already in the kitchen. Void it with a reason instead of changing the quantity.",
+        )
+    previous = item.quantity
+    if previous == data.quantity:
+        return orders_out(db, [order])[0]
+    item.quantity = data.quantity
+    audit.record(
+        db,
+        action_type="UPDATE",
+        action="order.item_quantity",
+        target_entity="OpenOrder",
+        target_entity_id=order.id,
+        store_id=order.store_id,
+        user_id=actor.id,
+        details={"item_id": str(item.id), "product_id": str(item.product_id), "from": previous, "to": data.quantity},
+    )
     _touch(order)
     db.commit()
     db.refresh(order)
@@ -332,7 +536,7 @@ def add_items(db: Session, principal: Principal, order_id: uuid.UUID, data: Orde
 def send_order(db: Session, principal: Principal, order_id: uuid.UUID, data: OrderAction) -> OrderOut:
     """Fires every unsent line to the kitchen."""
     order = _writable(db, principal, order_id, data.revision)
-    _actor(db, principal, data.user_id, order.store_id)
+    actor = _actor(db, principal, data.user_id, order.store_id)
     fired = [item for item in live_items(order) if item.sent_at is None]
     if not fired:
         raise ApiError(422, "nothing_to_send", "Every line is already in the kitchen.")
@@ -341,6 +545,10 @@ def send_order(db: Session, principal: Principal, order_id: uuid.UUID, data: Ord
         item.sent_at = now
     for hook in ON_SEND:
         hook(db, order, fired)
+    if order.table_id is not None:
+        from app.services.reservation_service import observe_order
+
+        observe_order(db, order, "items_sent", f"Order sent to the kitchen ({len(fired)} item(s)).", actor.id)
     _touch(order)
     fired_ids = {item.id for item in fired}
     db.commit()
@@ -379,6 +587,55 @@ def send_order(db: Session, principal: Principal, order_id: uuid.UUID, data: Ord
     return result
 
 
+_HANDOFF = {"DINE_IN": "Served", "TAKEAWAY": "Picked up", "DELIVERY": "Dispatched"}
+
+
+def hand_over(db: Session, principal: Principal, order_id: uuid.UUID, data: OrderAction) -> OrderOut:
+    """Waiter or cashier confirms food that is already ready. Cooking tickets are not touched."""
+    order = _writable(db, principal, order_id, data.revision)
+    actor = _actor(db, principal, data.user_id, order.store_id)
+    from app.services import kitchen_service
+
+    tickets = kitchen_service.bump_ready(db, principal, order)
+    if not tickets:
+        raise ApiError(422, "nothing_ready", "Nothing is ready to hand over yet.")
+    phrase = _HANDOFF.get(order.service_type, "Served")
+    audit.record(
+        db,
+        action_type="UPDATE",
+        action="order.hand_over",
+        target_entity="OpenOrder",
+        target_entity_id=order.id,
+        store_id=order.store_id,
+        user_id=actor.id,
+        details={"service_type": order.service_type, "tickets": len(tickets), "phrase": phrase},
+    )
+    _touch(order)
+    db.commit()
+    db.refresh(order)
+    result = orders_out(db, [order])[0]
+    from app.websockets.table_sync import publish_order_status
+
+    label = result.table_label or result.name or f"#{result.number}"
+    for ticket in tickets:
+        publish_order_status(
+            order.store_id,
+            order_id=order.id,
+            table_id=order.table_id,
+            table_label=result.table_label,
+            ticket_id=ticket.id,
+            status="completed",
+            kitchen_status="bumped",
+            item_ids=[
+                str(item.order_item_id)
+                for item in ticket.items
+                if item.order_item_id is not None and item.voided_at is None
+            ],
+            message=f"{label} — {phrase}",
+        )
+    return result
+
+
 def _void_approver(db: Session, approved_by_id: uuid.UUID | None, store_id: uuid.UUID) -> User:
     if approved_by_id is None:
         raise ApiError(403, "approval_required", "A manager must approve voiding an item already sent to the kitchen.")
@@ -388,6 +645,30 @@ def _void_approver(db: Session, approved_by_id: uuid.UUID | None, store_id: uuid
     if approver.store_id is not None and approver.store_id != store_id:
         raise ApiError(403, "store_scope", "The approving manager is not assigned to this store.")
     return approver
+
+
+def _reason_code(reason: str | None) -> str:
+    from app.services.cancellation_report import classify
+
+    return classify(reason)[0]
+
+
+def _fanout(order: OpenOrder, result: OrderOut, event_type: str, message: str, item_ids: list[str]) -> None:
+    """Tell every screen on this store. The message stays free of staff reasons and internal notes."""
+    from app.websockets.table_sync import publish
+
+    publish(
+        order.store_id,
+        {
+            "type": event_type,
+            "store_id": str(order.store_id),
+            "table_id": str(order.table_id) if order.table_id is not None else None,
+            "table_label": result.table_label,
+            "order_id": str(order.id),
+            "item_ids": item_ids,
+            "message": message,
+        },
+    )
 
 
 def void_item(db: Session, principal: Principal, order_id: uuid.UUID, item_id: uuid.UUID, data: ItemVoid) -> OrderOut:
@@ -415,11 +696,24 @@ def void_item(db: Session, principal: Principal, order_id: uuid.UUID, item_id: u
             user_id=actor.id,
             approver_id=approver.id if approver else None,
             reason_notes=item.void_reason,
-            details={"item_id": str(item.id), "product_id": str(item.product_id), "quantity": item.quantity},
+            details={
+                "item_id": str(item.id),
+                "product_id": str(item.product_id),
+                "quantity": item.quantity,
+                "reason_code": _reason_code(item.void_reason),
+            },
         )
+    if order.table_id is not None:
+        from app.services.reservation_service import observe_order
+
+        observe_order(db, order, "item_voided", "An item was removed.", actor.id)
     _touch(order)
     db.commit()
-    return orders_out(db, [order])[0]
+    result = orders_out(db, [order])[0]
+    removed = next((item.product_name for item in result.items if item.id == item_id), "An item")
+    label = result.table_label or result.name or f"#{result.number}"
+    _fanout(order, result, "ORDER_ITEM_VOIDED", f"{label} — {removed} was removed.", [str(item_id)])
+    return result
 
 
 def request_bill(db: Session, principal: Principal, order_id: uuid.UUID, data: OrderAction) -> OrderOut:
@@ -454,21 +748,59 @@ def request_bill(db: Session, principal: Principal, order_id: uuid.UUID, data: O
     return result
 
 
-def void_order(db: Session, principal: Principal, order_id: uuid.UUID, data: ItemVoid) -> OrderOut:
-    order = _writable(db, principal, order_id, data.revision)
-    actor = _actor(db, principal, data.user_id, order.store_id)
-    if any(item.paid_sale_id is not None for item in order.items):
-        raise ApiError(409, "already_paid", "Part of this order is paid; void the remaining lines one by one.")
+def _cancel_stage(db: Session, order: OpenOrder) -> str:
+    """Where this open tab is, using the statuses the kitchen and delivery channel already store."""
+    if order.status == "SETTLED" or any(item.paid_sale_id is not None for item in order.items):
+        return "completed"
+    if order.channel_status in {"ACCEPTED", "COMPLETED"}:
+        return "dispatched"
     sent = [item for item in live_items(order) if item.sent_at is not None]
-    approver = _void_approver(db, data.approved_by_id, order.store_id) if sent else None
+    if not sent:
+        return "draft"
+    marks: dict[uuid.UUID, str] = {}
+    for hook in KITCHEN_STATUS:
+        marks.update(hook(db, [item.id for item in sent]))
+    progress = set(marks.values())
+    if "preparing" in progress:
+        return "preparing"
+    if "ready" in progress:
+        return "ready"
+    return "kitchen"
+
+
+_INVENTORY_OUTCOME = {
+    "draft": "none_reserved",
+    "kitchen": "none_consumed",
+    "preparing": "wastage_recorded",
+    "ready": "wastage_recorded",
+    "dispatched": "awaiting_return",
+}
+
+
+def void_order(db: Session, principal: Principal, order_id: uuid.UUID, data: ItemVoid) -> OrderOut:
+    order = _order(db, principal, order_id, lock=True)
+    if order.status == "VOID":
+        return orders_out(db, [order])[0]
+    if order.status == "SETTLED" or any(item.paid_sale_id is not None for item in order.items):
+        raise ApiError(409, "already_paid", "This sale is complete. Refund it from Returns.")
+    if order.status != "OPEN":
+        raise ApiError(409, "order_closed", f"Order {order.number} is already {order.status.lower()}.")
+    if data.revision != order.revision:
+        raise ApiError(409, "stale_order", f"Order {order.number} changed on another register. Refresh and try again.")
+    actor = _actor(db, principal, data.user_id, order.store_id)
+    stage = _cancel_stage(db, order)
+    sent = [item for item in live_items(order) if item.sent_at is not None]
+    approver = _void_approver(db, data.approved_by_id, order.store_id) if stage != "draft" else None
     now = _now()
+    reason = data.reason.strip()
     for item in live_items(order):
         item.voided_at = now
-        item.void_reason = data.reason.strip()
+        item.void_reason = reason
         item.voided_by_id = (approver or actor).id
     if sent:
         for hook in ON_VOID:
             hook(db, order, sent)
+    previous = order.status
     order.status = "VOID"
     order.closed_at = now
     audit.record(
@@ -480,12 +812,28 @@ def void_order(db: Session, principal: Principal, order_id: uuid.UUID, data: Ite
         store_id=order.store_id,
         user_id=actor.id,
         approver_id=approver.id if approver else None,
-        reason_notes=data.reason.strip(),
-        details={"number": order.number, "sent_lines": len(sent)},
+        reason_notes=reason,
+        details={
+            "number": order.number,
+            "sent_lines": len(sent),
+            "reason_code": _reason_code(reason),
+            "stage": stage,
+            "previous_status": previous,
+            "outcome": "VOID",
+            "inventory": _INVENTORY_OUTCOME[stage],
+            "kitchen_notified": bool(sent),
+            "delivery_notified": stage == "dispatched",
+        },
     )
+    if order.table_id is not None:
+        from app.services.reservation_service import observe_order
+
+        observe_order(db, order, "order_cancelled", f"Order {order.number} cancelled.", actor.id)
     _touch(order)
     db.commit()
     result = orders_out(db, [order])[0]
+    label = result.table_label or result.name or f"#{result.number}"
+    _fanout(order, result, "ORDER_CANCELLED", f"{label} was cancelled.", [])
     if order.table_id is not None:
         from app.websockets.table_sync import publish
 
@@ -582,6 +930,12 @@ def settle(db: Session, data: SalePayload, sale_id: uuid.UUID) -> None:
         if order.channel_id is not None:
             order.channel_status = "COMPLETED"
     _touch(order)
+    if order.table_id is not None:
+        from app.services.reservation_service import observe_order
+
+        discount = sum(item.discount_cents + item.manual_discount_cents for item in data.items)
+        kind = "Payment completed." if order.status == "SETTLED" else "Partial payment recorded."
+        observe_order(db, order, "payment", kind, data.cashier_id, discount_cents=discount)
     db.flush()
 
 
@@ -595,7 +949,12 @@ def apply_open_order(db: Session, settings: Settings, payload: dict[str, object]
     if opener is None:
         raise SyncRejected("The cashier who opened this order does not exist.")
     order = db.get(OpenOrder, data.id)
+    created = order is None
     if order is None:
+        if data.service_type == "DINE_IN" and data.table_id is not None:
+            taken = _open_dine_in(db, data.table_id)
+            if taken is not None:
+                raise SyncRejected("That table already has an open order. Reopen it instead of starting another.")
         order = OpenOrder(
             id=data.id,
             store_id=data.store_id,
@@ -614,11 +973,40 @@ def apply_open_order(db: Session, settings: Settings, payload: dict[str, object]
         db.flush()
     elif order.store_id != data.store_id:
         raise SyncRejected("This order belongs to another store.")
-    known = {item.id for item in order.items}
+    if order.status == "OPEN" and "service_type" in payload and data.service_type != order.service_type:
+        if data.name:
+            order.name = data.name.strip() or order.name
+        if data.note:
+            order.note = data.note.strip() or order.note
+        try:
+            _convert_service(
+                db,
+                order,
+                opener,
+                target=data.service_type,
+                table_id=data.table_id,
+                reason="Synced from the register",
+            )
+        except ApiError as exc:
+            raise SyncRejected(exc.message) from exc
+    known = {item.id: item for item in order.items}
     position = max((item.position for item in order.items), default=-1) + 1
     fresh: list[OpenOrderItem] = []
+    voided_now: list[OpenOrderItem] = []
     for line in data.items:
-        if line.id in known or db.get(Product, line.product_id) is None:
+        existing = known.get(line.id)
+        if existing is not None:
+            if (
+                order.status == "OPEN"
+                and line.voided_at is not None
+                and existing.voided_at is None
+                and existing.paid_sale_id is None
+            ):
+                existing.voided_at = _aware(line.voided_at)
+                existing.void_reason = (line.void_reason or "Cancelled offline").strip()[:160]
+                voided_now.append(existing)
+            continue
+        if db.get(Product, line.product_id) is None:
             continue
         item = _item(order, line, position, opener.id)
         item.sent_at = _aware(line.sent_at)
@@ -631,6 +1019,36 @@ def apply_open_order(db: Session, settings: Settings, payload: dict[str, object]
     if fresh and order.status == "OPEN":
         for hook in ON_SEND:
             hook(db, order, fresh)
+    if voided_now and order.status == "OPEN":
+        sent_voids = [item for item in voided_now if item.sent_at is not None]
+        if sent_voids:
+            for hook in ON_VOID:
+                hook(db, order, sent_voids)
+    if order.status == "OPEN" and order.items and not live_items(order):
+        order.status = "VOID"
+        order.closed_at = _now()
+        audit.record(
+            db,
+            action_type="ITEM_VOID",
+            action="order.void",
+            target_entity="OpenOrder",
+            target_entity_id=order.id,
+            store_id=order.store_id,
+            user_id=opener.id,
+            reason_notes=next((item.void_reason for item in order.items if item.void_reason), "Cancelled offline"),
+            details={"stage": "offline", "previous_status": "OPEN", "outcome": "VOID", "inventory": "none_consumed"},
+        )
+    from app.services.reservation_service import attach_order, observe_order
+
+    attach_order(db, order, order.customer_id)
+    if order.table_id is not None and created:
+        observe_order(db, order, "order_created", f"Order {order.number} created.", opener.id)
+    if fresh:
+        observe_order(db, order, "items_added", f"{len(fresh)} item(s) added.", opener.id)
+    if voided_now:
+        observe_order(db, order, "item_voided", "An item was removed.", opener.id)
+    if order.status == "VOID":
+        observe_order(db, order, "order_cancelled", f"Order {order.number} cancelled.", opener.id)
     _touch(order)
     db.flush()
     return order.id
@@ -642,7 +1060,58 @@ register_handler("open_order", apply_open_order)
 # --- Floor plan -------------------------------------------------------------------------------------------
 
 
-def _table_out(table: DiningTable, order: OpenOrder | None) -> DiningTableOut:
+def service_phases(order: OpenOrder | None, kitchen: dict[uuid.UUID, str]) -> tuple[str, str, str]:
+    """Kitchen, payment, and order progress from the open tab. Occupancy stays on the table status."""
+    if order is None:
+        return "none", "none", "none"
+    live = live_items(order)
+    sent = [item for item in live if item.sent_at is not None]
+    paid = [item for item in live if item.paid_sale_id is not None]
+    unpaid = [item for item in live if item.paid_sale_id is None]
+    if order.bill_requested_at is not None and unpaid:
+        payment = "pending"
+    elif paid and unpaid:
+        payment = "partial"
+    elif unpaid:
+        payment = "unpaid"
+    elif paid:
+        payment = "paid"
+    else:
+        payment = "none"
+    marks = [kitchen[item.id] for item in sent if item.id in kitchen]
+    if not sent:
+        phase = "none"
+    elif not marks:
+        phase = "queued"
+    elif len(marks) == len(sent) and all(mark == "bumped" for mark in marks):
+        phase = "served"
+    elif any(mark == "ready" for mark in marks) and any(mark in {"new", "preparing"} for mark in marks):
+        phase = "partial"
+    elif all(mark in {"ready", "bumped"} for mark in marks) and any(mark == "ready" for mark in marks):
+        phase = "ready"
+    elif any(mark == "preparing" for mark in marks):
+        phase = "preparing"
+    else:
+        phase = "queued"
+    if not live or not sent:
+        progress = "draft"
+    elif phase in {"preparing", "partial", "ready", "served"}:
+        progress = "in_progress"
+    else:
+        progress = "submitted"
+    return phase, payment, progress
+
+
+def kitchen_counts(order: OpenOrder | None, kitchen: dict[uuid.UUID, str]) -> tuple[int, int]:
+    """Ready-or-served lines over lines already sent. Voided lines and unsent drafts stay out of the count."""
+    if order is None:
+        return 0, 0
+    sent = [item for item in live_items(order) if item.sent_at is not None]
+    ready = sum(1 for item in sent if kitchen.get(item.id) in {"ready", "bumped"})
+    return ready, len(sent)
+
+
+def _table_out(table: DiningTable, order: OpenOrder | None, kitchen: dict[uuid.UUID, str]) -> DiningTableOut:
     status = "free"
     if order is not None:
         status = (
@@ -652,6 +1121,8 @@ def _table_out(table: DiningTable, order: OpenOrder | None) -> DiningTableOut:
             if any(item.sent_at is not None for item in live_items(order))
             else "seated"
         )
+    phase, payment, progress = service_phases(order, kitchen)
+    ready_count, sent_count = kitchen_counts(order, kitchen)
     return DiningTableOut(
         id=table.id,
         area_id=table.area_id,
@@ -669,6 +1140,12 @@ def _table_out(table: DiningTable, order: OpenOrder | None) -> DiningTableOut:
         covers=order.covers if order else 0,
         seated_at=order.opened_at if order else None,
         open_cents=open_cents(order) if order else 0,
+        guest_name=(order.name or "").strip() or None if order else None,
+        kitchen=phase,  # type: ignore[arg-type]
+        payment=payment,  # type: ignore[arg-type]
+        order_progress=progress,  # type: ignore[arg-type]
+        kitchen_ready=ready_count,
+        kitchen_sent=sent_count,
     )
 
 
@@ -692,6 +1169,10 @@ def floor(db: Session, principal: Principal, store_id: uuid.UUID) -> FloorOut:
             )
         )
     }
+    kitchen: dict[uuid.UUID, str] = {}
+    item_ids = [item.id for order in open_by_table.values() for item in order.items]
+    for hook in KITCHEN_STATUS:
+        kitchen.update(hook(db, item_ids))
     return FloorOut(
         store_id=store_id,
         areas=[
@@ -701,7 +1182,11 @@ def floor(db: Session, principal: Principal, store_id: uuid.UUID) -> FloorOut:
                 name=area.name,
                 position=area.position,
                 is_active=area.is_active,
-                tables=[_table_out(table, open_by_table.get(table.id)) for table in tables if table.area_id == area.id],
+                tables=[
+                    _table_out(table, open_by_table.get(table.id), kitchen)
+                    for table in tables
+                    if table.area_id == area.id
+                ],
             )
             for area in areas
         ],
@@ -744,6 +1229,25 @@ def save_table(db: Session, principal: Principal, table_id: uuid.UUID | None, da
     db.add(table)
     db.commit()
     return floor(db, principal, area.store_id)
+
+
+def delete_table(db: Session, principal: Principal, table_id: uuid.UUID) -> None:
+    table = db.get(DiningTable, table_id)
+    if table is None:
+        raise ApiError(404, "not_found", "Table was not found.")
+    area = db.get(DiningArea, table.area_id)
+    if area is None:
+        raise ApiError(404, "not_found", "Dining area was not found.")
+    _scope(principal, area.store_id)
+    seated = db.scalar(select(OpenOrder.id).where(OpenOrder.table_id == table.id, OpenOrder.status == "OPEN"))
+    if seated is not None:
+        raise ApiError(
+            409,
+            "table_in_use",
+            f"{table.label} has an open order. Settle or move it before deleting the table.",
+        )
+    db.delete(table)
+    db.commit()
 
 
 def orders_enabled(db: Session) -> bool:

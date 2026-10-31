@@ -1,8 +1,9 @@
-import { formatMoney, variantAttributeLabel, type ProductUpsert } from "@ai-pos/shared-types";
+import { formatMoney, type ProductUpsert } from "@ai-pos/shared-types";
 import { Grid3x3, Package, X } from "lucide-react";
 import { useMemo, useState } from "react";
 import { stockPill } from "../../components/shell/tokens";
-import { ProductPhoto, ProductPhotoFrame } from "./ProductPhoto";
+import { CatalogTile } from "./ProductCard";
+import { ProductPhoto } from "./ProductPhoto";
 import { findVariant, swatchFor, variantAxes, type ModelGroup } from "./variants";
 
 export function ModelCard({
@@ -10,52 +11,51 @@ export function ModelCard({
   currency,
   disabled,
   onOpen,
+  onInfo,
 }: {
   group: ModelGroup;
   currency: string;
   disabled: boolean;
   onOpen: () => void;
+  onInfo: () => void;
 }) {
-  const axes = variantAxes(group.variants);
   const out = group.stock <= 0;
   const first = group.variants[0];
+  const stockLabel = out ? "Out of stock" : "In stock";
   return (
-    <li className="group flex flex-col overflow-hidden rounded-2xl border border-zinc-200 bg-white transition-colors hover:border-zinc-300 dark:border-zinc-800 dark:bg-zinc-800/40 dark:hover:border-zinc-700">
-      <button
-        type="button"
-        disabled={disabled}
-        onClick={onOpen}
-        className="flex flex-1 flex-col p-4 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/70 active:scale-[0.99] disabled:opacity-50"
-      >
-        <ProductPhotoFrame
-          src={group.variants.find((variant) => variant.thumb_url)?.thumb_url}
-          icon={<Package size={28} aria-hidden="true" />}
-        />
-        <span className="flex min-h-6 items-center justify-between gap-2">
-          <span className="truncate text-[11px] font-semibold uppercase tracking-[0.12em] text-zinc-500 dark:text-white/40">
-            {[first?.category ?? "Uncategorized", first?.season, first?.collection].filter(Boolean).join(" · ")}
-          </span>
-          <Grid3x3 size={14} aria-label="Has sizes or colours" className="shrink-0 text-primary" />
+    <CatalogTile
+      imageSrc={group.variants.find((variant) => variant.thumb_url)?.thumb_url}
+      imageIcon={<Package size={28} aria-hidden="true" />}
+      imageDimmed={out}
+      category={[first?.category ?? "Uncategorized", first?.season, first?.collection].filter(Boolean).join(" · ")}
+      marker={<Grid3x3 size={14} aria-label="Has sizes or colours" className="shrink-0 text-primary" />}
+      title={group.name}
+      price={
+        <span className="text-zinc-900 dark:text-white">
+          {group.fromCents === group.toCents
+            ? formatMoney(group.fromCents, currency)
+            : `${formatMoney(group.fromCents, currency)} – ${formatMoney(group.toCents, currency)}`}
         </span>
-        <span className="mt-1.5 line-clamp-2 text-sm font-semibold leading-tight text-zinc-900 dark:text-white">{group.name}</span>
-        <span className="mt-1 truncate text-[11px] text-zinc-500 dark:text-white/50">
-          {axes.map((axis) => `${axis.values.length} ${variantAttributeLabel(axis.key).toLowerCase()}`).join(" × ")}
+      }
+      badge={
+        <span title={stockLabel} className={`inline-flex h-7 max-w-full items-center truncate rounded-full px-2.5 text-[11px] font-semibold tabular-nums ${stockPill[out ? "out" : "in"]}`}>
+          {stockLabel}
         </span>
-        <span className="mt-auto flex flex-wrap items-center justify-between gap-x-2 gap-y-1.5 pt-3">
-          <span className="block truncate text-base font-bold tabular-nums text-zinc-900 dark:text-white">
-            {group.fromCents === group.toCents
-              ? formatMoney(group.fromCents, currency)
-              : `${formatMoney(group.fromCents, currency)} – ${formatMoney(group.toCents, currency)}`}
-          </span>
-          <span className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold tabular-nums ${stockPill[out ? "out" : "in"]}`}>
-            {out ? "Out of stock" : `${group.stock} in stock`}
-          </span>
-        </span>
-      </button>
-      <span className="flex h-11 items-center justify-center border-t border-zinc-200 text-xs font-semibold text-primary dark:border-zinc-800">
-        Choose size & colour
-      </span>
-    </li>
+      }
+      disabled={disabled}
+      onSelect={onOpen}
+      onInfo={onInfo}
+      action={
+        <button
+          type="button"
+          disabled={disabled}
+          onClick={onOpen}
+          className="flex h-12 shrink-0 items-center justify-center border-t border-zinc-200 text-sm font-semibold text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/70 disabled:opacity-50 dark:border-zinc-800"
+        >
+          Choose size & colour
+        </button>
+      }
+    />
   );
 }
 

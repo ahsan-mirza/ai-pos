@@ -21,7 +21,7 @@ export const generalSections: { id: string; label: string }[] = [
 
 const hints: Record<string, string> = {
   "/settings": "Currency, tax, receipts, and appearance",
-  "/settings/addons": "Turn modules on or off",
+  "/settings/addons": "Browse and purchase add-ons",
   "/stores": "Branches and warehouses",
   "/roles": "What each role is allowed to do",
   "/settings/addon-access": "Who can use each add-on",

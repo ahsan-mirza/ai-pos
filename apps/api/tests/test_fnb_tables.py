@@ -3,7 +3,6 @@
 import uuid
 
 from tests.test_capabilities import change_profile
-from tests.test_menu import enable
 from tests.test_orders import settle
 from tests.test_returns import API_KEY, CABLE_ID, STORE_ID, admin_token, bearer, device, push, seed_catalog
 
@@ -19,18 +18,51 @@ def _table(client, token: str) -> dict:
     return tables.json()["areas"][0]["tables"][0]
 
 
+def test_a_free_table_can_be_deleted_and_an_open_one_cannot(client) -> None:
+    seed_catalog(client)
+    token = admin_token(client)
+    assert change_profile(client, bearer(token), "restaurant").status_code == 200
+    floor = client.post("/api/v1/dining/areas", headers=bearer(token), json={"store_id": STORE_ID, "name": "Main hall"})
+    assert floor.status_code == 201, floor.text
+    area_id = floor.json()["areas"][0]["id"]
+    created = client.post(
+        "/api/v1/dining/tables", headers=bearer(token), json={"area_id": area_id, "label": "T9", "seats": 2}
+    )
+    assert created.status_code == 201, created.text
+    table_id = next(item["id"] for area in created.json()["areas"] if area["id"] == area_id for item in area["tables"])
+    removed = client.delete(f"/api/v1/dining/tables/{table_id}", headers=bearer(token))
+    assert removed.status_code == 204, removed.text
+    after = client.get("/api/v1/dining/floor", headers=device(), params={"store_id": STORE_ID}).json()
+    assert all(item["id"] != table_id for area in after["areas"] for item in area["tables"])
+
+    again = client.post(
+        "/api/v1/dining/tables", headers=bearer(token), json={"area_id": area_id, "label": "T9", "seats": 2}
+    )
+    table_id = next(item["id"] for area in again.json()["areas"] if area["id"] == area_id for item in area["tables"])
+    started = client.post(f"/api/v1/fnb/tables/{table_id}/session/start", headers=device(), json={"covers": 2})
+    assert started.status_code == 200, started.text
+    blocked = client.delete(f"/api/v1/dining/tables/{table_id}", headers=bearer(token))
+    assert blocked.status_code == 409
+    assert blocked.json()["error"]["code"] == "table_in_use"
+
+
 def test_electronics_cannot_open_a_table_session(client) -> None:
     seed_catalog(client)
     token = admin_token(client)
-    enable(client, token, "open_orders", "tables")
-    table = _table(client, token)
-    response = client.post(
-        f"/api/v1/fnb/tables/{table['id']}/session/start",
-        headers=device(),
-        json={"phone": "0551234567"},
+    blocked = client.put(
+        "/api/v1/settings/profile",
+        headers=bearer(token),
+        json={"business_profile": "electronics_wholesale", "capabilities": ["open_orders", "tables"]},
     )
-    assert response.status_code == 403
-    assert response.json()["error"]["code"] == "forbidden"
+    assert blocked.status_code == 422, blocked.text
+    assert blocked.json()["error"]["code"] == "module_not_available"
+    started = client.post(
+        f"/api/v1/fnb/tables/{uuid.uuid4()}/session/start",
+        headers=device(),
+        json={"covers": 2},
+    )
+    assert started.status_code == 403
+    assert started.json()["error"]["code"] == "capability_disabled"
 
 
 def test_waiter_rounds_reach_the_cashier_and_payment_closes_the_table(client) -> None:

@@ -1,4 +1,5 @@
 import uuid
+from datetime import date, timedelta
 
 import pytest
 from sqlalchemy import select
@@ -236,6 +237,62 @@ def test_cancel_releases_stock_and_agreed_prices_need_approval(client) -> None:
     assert product(client, CABLE)["quantity_reserved"] == 0
     listing = client.get("/api/v1/sales-orders", headers=headers, params={"status": "CANCELLED"})
     assert listing.headers["X-Total-Count"] == "1"
+
+    today = date.today()
+    report = client.get(
+        "/api/v1/reports/cancellations",
+        headers=headers,
+        params={"from": (today - timedelta(days=1)).isoformat(), "to": (today + timedelta(days=1)).isoformat()},
+    )
+    assert report.status_code == 200, report.text
+    body = report.json()
+    cancelled = [row for row in body["rows"] if row["status"] == "cancelled"]
+    assert len(cancelled) == 1
+    assert cancelled[0]["reason_code"] == "other"
+    assert cancelled[0]["cancelled_value_cents"] == 10 * 1100
+    assert body["fully_cancelled"] >= 1
+
+
+def test_a_customer_reason_is_kept_apart_from_a_partial_cancel(client) -> None:
+    seed(client)
+    headers, _admin = admin(client)
+    customer = create_customer(client, headers, credit_limit_cents=10_000_000)
+    first = create(client, headers, customer["id"], [{"product_id": CABLE, "quantity": 4}], confirm=True).json()
+    second = create(client, headers, customer["id"], [{"product_id": CABLE, "quantity": 6}], confirm=True).json()
+    partial = client.post(
+        f"/api/v1/sales-orders/{first['id']}/cancel-lines",
+        headers=headers,
+        json={
+            "lines": [{"order_line_id": first["lines"][0]["id"], "quantity": 1}],
+            "reason": "[changed_mind] One fewer cable",
+        },
+    )
+    assert partial.status_code == 200, partial.text
+    full = client.post(
+        f"/api/v1/sales-orders/{second['id']}/cancel",
+        headers=headers,
+        json={"reason": "[entry_mistake] Wrong customer"},
+    )
+    assert full.status_code == 200, full.text
+    today = date.today()
+    report = client.get(
+        "/api/v1/reports/cancellations",
+        headers=headers,
+        params={"from": (today - timedelta(days=1)).isoformat(), "to": (today + timedelta(days=1)).isoformat()},
+    )
+    assert report.status_code == 200, report.text
+    body = report.json()
+    assert body["created_orders"] == 2
+    assert body["fully_cancelled"] == 1
+    assert body["partially_cancelled"] == 1
+    assert body["full_cancellation_rate"] == 50.0
+    assert body["partial_cancellation_rate"] == 50.0
+    assert body["customer_requested"] == 1
+    assert body["employee_initiated"] == 1
+    by_code = {row["reason_code"]: row for row in body["rows"]}
+    assert by_code["changed_mind"]["full"] is False
+    assert by_code["changed_mind"]["cancelled_value_cents"] == 1500
+    assert by_code["entry_mistake"]["cancelled_value_cents"] == 6 * 1500
 
 
 def test_register_saves_an_order_for_its_cashier(client) -> None:

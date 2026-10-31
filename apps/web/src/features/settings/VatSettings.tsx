@@ -161,7 +161,7 @@ export function VatSettings() {
             />
             <Toggle
               label={`Prices include ${meta.tax_name}`}
-              description={form.country === "AE" ? "Shelf prices include VAT, the UAE retail rule" : "Shelf prices already include this tax"}
+              description="Starting choice for a new product. Each product has its own Price includes tax checkbox."
               checked={form.prices_include_vat}
               onChange={(value) => setForm({ ...form, prices_include_vat: value })}
             />
@@ -218,9 +218,8 @@ export function VatSettings() {
           </div>
           {inclusiveChanged ? (
             <p className="rounded-2xl bg-warning/10 px-4 py-3 text-sm text-charcoal">
-              Switching this reinterprets every catalog price: {formatMoney(SAMPLE, currency)} will{" "}
-              {form.prices_include_vat ? "already include" : "have VAT added on top of"} its VAT. Sync every register
-              first.
+              This changes the starting choice for new products. Products already saved keep their own Price includes
+              tax setting, and sales already recorded are not recalculated.
             </p>
           ) : null}
         </div>

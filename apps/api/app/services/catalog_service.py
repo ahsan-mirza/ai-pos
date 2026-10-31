@@ -101,6 +101,7 @@ def sale_out(sale: Sale, settings: Settings, customer_name: str | None = None) -
                 list_price_cents=item.list_price_cents,
                 price_override_by_id=item.price_override_by_id,
                 tax_rate_bps=item.tax_rate_bps,
+                price_includes_tax=item.price_includes_tax,
                 description=item.description,
                 cost_cents=item.cost_cents,
             )

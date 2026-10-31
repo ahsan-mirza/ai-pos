@@ -310,6 +310,9 @@ def apply_sale_return(db: Session, settings: Settings, payload: dict[str, object
             record.credit_note_number = next_server_number(db, data.store_id, "CN")
         db.flush()
         tax_authority.issue_for_return(db, settings, record)
+        from app.services.einvoicing_bridge import note_return
+
+        note_return(db, tenant_id=record.tenant_id, return_id=record.id)
     return return_id
 
 

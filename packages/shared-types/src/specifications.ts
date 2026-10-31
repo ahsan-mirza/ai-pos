@@ -17,6 +17,15 @@ export interface SpecSchema {
     | "FASHION_DRESS"
     | "FASHION_FOOTWEAR"
     | "FASHION_BAG"
+    | "RESTAURANT_BURGER"
+    | "RESTAURANT_PIZZA"
+    | "RESTAURANT_SANDWICH"
+    | "RESTAURANT_DRINK"
+    | "RESTAURANT_DESSERT"
+    | "RESTAURANT_MAIN"
+    | "CAFE_DRINK"
+    | "CAFE_BAKERY"
+    | "GROCERY_ITEM"
     | "OTHER";
   title: string;
   fields: readonly SpecField[];
@@ -130,6 +139,117 @@ const BAG: SpecSchema = {
   ],
 };
 
+const BURGER: SpecSchema = {
+  id: "RESTAURANT_BURGER",
+  title: "Burgers",
+  variantKeys: [],
+  fields: [
+    { key: "patty_type", label: "Patty type", placeholder: "Beef", options: ["Beef", "Chicken", "Fish", "Veggie"] },
+    { key: "patty_quantity", label: "Patty quantity", placeholder: "Single", options: ["Single", "Double", "Triple"] },
+    { key: "bun_type", label: "Bun type", placeholder: "Brioche", options: ["Brioche", "Sesame", "Whole wheat", "Gluten-free"] },
+    { key: "cheese_type", label: "Cheese type", placeholder: "Cheddar", options: ["Cheddar", "American", "Swiss", "None"] },
+    { key: "spice_level", label: "Spice level", placeholder: "Mild", options: ["Mild", "Medium", "Hot"] },
+    { key: "serving_size", label: "Serving size", placeholder: "Regular", options: ["Regular", "Large"] },
+    { key: "dietary", label: "Dietary classification", placeholder: "Regular", options: ["Regular", "Vegetarian", "Vegan"] },
+    { key: "allergens", label: "Allergens", placeholder: "Gluten", options: ["None", "Gluten", "Dairy", "Eggs", "Nuts"] },
+  ],
+};
+
+const PIZZA: SpecSchema = {
+  id: "RESTAURANT_PIZZA",
+  title: "Pizza",
+  variantKeys: [],
+  fields: [
+    { key: "pizza_size", label: "Size", placeholder: "Medium", options: ["Personal", "Small", "Medium", "Large"] },
+    { key: "crust", label: "Crust", placeholder: "Thin", options: ["Thin", "Classic", "Thick", "Stuffed"] },
+    { key: "spice_level", label: "Spice level", placeholder: "Mild", options: ["Mild", "Medium", "Hot"] },
+    { key: "dietary", label: "Dietary classification", placeholder: "Regular", options: ["Regular", "Vegetarian", "Vegan"] },
+    { key: "allergens", label: "Allergens", placeholder: "Gluten", options: ["None", "Gluten", "Dairy"] },
+  ],
+};
+
+const SANDWICH: SpecSchema = {
+  id: "RESTAURANT_SANDWICH",
+  title: "Sandwiches",
+  variantKeys: [],
+  fields: [
+    { key: "bread", label: "Bread", placeholder: "White", options: ["White", "Whole wheat", "Wrap", "Gluten-free"] },
+    { key: "filling", label: "Filling", placeholder: "Chicken", options: ["Chicken", "Beef", "Veggie", "Cheese"] },
+    { key: "spice_level", label: "Spice level", placeholder: "Mild", options: ["Mild", "Medium", "Hot"] },
+    { key: "allergens", label: "Allergens", placeholder: "Gluten", options: ["None", "Gluten", "Dairy", "Eggs"] },
+  ],
+};
+
+const FOOD_DRINK: SpecSchema = {
+  id: "RESTAURANT_DRINK",
+  title: "Beverages",
+  variantKeys: [],
+  fields: [
+    { key: "beverage_size", label: "Size", placeholder: "Regular", options: ["Small", "Regular", "Large"] },
+    { key: "temperature", label: "Temperature", placeholder: "Cold", options: ["Hot", "Cold"] },
+  ],
+};
+
+const DESSERT: SpecSchema = {
+  id: "RESTAURANT_DESSERT",
+  title: "Desserts",
+  variantKeys: [],
+  fields: [
+    { key: "serving_size", label: "Serving size", placeholder: "Regular", options: ["Regular", "Sharing"] },
+    { key: "dietary", label: "Dietary classification", placeholder: "Regular", options: ["Regular", "Vegetarian", "Vegan"] },
+    { key: "allergens", label: "Allergens", placeholder: "Dairy", options: ["None", "Dairy", "Eggs", "Nuts", "Gluten"] },
+  ],
+};
+
+const MAIN: SpecSchema = {
+  id: "RESTAURANT_MAIN",
+  title: "Main courses",
+  variantKeys: [],
+  fields: [
+    { key: "serving_size", label: "Serving size", placeholder: "Regular", options: ["Regular", "Large"] },
+    { key: "spice_level", label: "Spice level", placeholder: "Mild", options: ["Mild", "Medium", "Hot"] },
+    { key: "dietary", label: "Dietary classification", placeholder: "Regular", options: ["Regular", "Vegetarian", "Vegan"] },
+    { key: "allergens", label: "Allergens", placeholder: "None", options: ["None", "Gluten", "Dairy", "Nuts", "Shellfish"] },
+  ],
+};
+
+const CAFE_DRINK: SpecSchema = {
+  id: "CAFE_DRINK",
+  title: "Café drinks",
+  variantKeys: [],
+  fields: [
+    { key: "beverage_size", label: "Beverage size", placeholder: "Medium", options: ["Small", "Medium", "Large"] },
+    { key: "temperature", label: "Temperature", placeholder: "Hot", options: ["Hot", "Iced"] },
+    { key: "milk_type", label: "Milk type", placeholder: "Whole", options: ["Whole", "Skim", "Oat", "Almond", "Soy", "None"] },
+    { key: "sugar_level", label: "Sugar level", placeholder: "Regular", options: ["None", "Less", "Regular", "Extra"] },
+    { key: "flavor", label: "Flavor", placeholder: "Plain", options: ["Plain", "Vanilla", "Caramel", "Hazelnut"] },
+    { key: "caffeine", label: "Caffeine", placeholder: "Regular", options: ["Regular", "Decaf"] },
+  ],
+};
+
+const CAFE_BAKERY: SpecSchema = {
+  id: "CAFE_BAKERY",
+  title: "Bakery",
+  variantKeys: [],
+  fields: [
+    { key: "dietary", label: "Dietary classification", placeholder: "Regular", options: ["Regular", "Vegetarian", "Vegan"] },
+    { key: "allergens", label: "Allergens", placeholder: "Gluten", options: ["None", "Gluten", "Dairy", "Eggs", "Nuts"] },
+  ],
+};
+
+const GROCERY: SpecSchema = {
+  id: "GROCERY_ITEM",
+  title: "Grocery",
+  variantKeys: [],
+  fields: [
+    { key: "net_weight", label: "Net weight or volume", placeholder: "500g", options: ["250g", "500g", "1kg", "250ml", "500ml", "1L"] },
+    { key: "storage_temperature", label: "Storage temperature", placeholder: "Chilled", options: ["Ambient", "Chilled", "Frozen"] },
+    { key: "packaging", label: "Packaging type", placeholder: "Carton", options: ["Bottle", "Carton", "Bag", "Tray", "Can"] },
+    { key: "grade", label: "Product grade", placeholder: "Standard", options: ["Standard", "Premium", "A", "B"] },
+    { key: "origin", label: "Origin", placeholder: "Local", options: ["Local", "Imported"] },
+  ],
+};
+
 const OTHER: SpecSchema = {
   id: "OTHER",
   title: "Custom specifications",
@@ -137,7 +257,25 @@ const OTHER: SpecSchema = {
   fields: [],
 };
 
-const SCHEMAS = [LAPTOP, MOBILE, FRIDGE, TV, FASHION, DRESS, FOOTWEAR, BAG] as const;
+const SCHEMAS = [
+  LAPTOP,
+  MOBILE,
+  FRIDGE,
+  TV,
+  FASHION,
+  DRESS,
+  FOOTWEAR,
+  BAG,
+  BURGER,
+  PIZZA,
+  SANDWICH,
+  FOOD_DRINK,
+  DESSERT,
+  MAIN,
+  CAFE_DRINK,
+  CAFE_BAKERY,
+  GROCERY,
+] as const;
 
 function text(value: string): string {
   return value.toLowerCase();
@@ -150,7 +288,7 @@ function mentions(value: string, words: readonly string[]): boolean {
 export interface SpecSchemaHint {
   /** Product or model name, so "Evening dress" picks dress fields even under a broad category. */
   productName?: string;
-  /** Business profile. A fashion store uses apparel fields when the names match nothing else. */
+  /** Business profile. Templates are chosen only from this profile. */
   profile?: string;
 }
 
@@ -183,19 +321,20 @@ const CLOTHING_TERMS = [
   "short",
 ];
 
-/** Pick the specification template from the catalog names the merchant just chose. */
-export function specSchemaFor(categoryName: string, subCategoryName = "", hint?: SpecSchemaHint): SpecSchema {
-  const category = text(categoryName);
-  const sub = text(subCategoryName);
-  const both = `${category} ${sub} ${text(hint?.productName ?? "")}`.trim();
-  const fashionStore = hint?.profile === "retail_fashion";
-  if (both === "") return fashionStore ? FASHION : OTHER;
+function matchElectronics(both: string, category: string, sub: string, productName: string): SpecSchema | null {
   if (mentions(both, ["refrigerator", "fridge", "freezer"])) return FRIDGE;
   if (/(^|[^a-z])tv([^a-z]|$)|television|soundbar/.test(both)) return TV;
   if (mentions(both, ["phone", "mobile", "smartphone", "tablet", "ipad", "handset"])) return MOBILE;
-  const computer = mentions(sub, ["laptop", "desktop", "notebook", "macbook"]) || mentions(text(hint?.productName ?? ""), ["laptop", "notebook", "macbook"]);
+  const computer =
+    mentions(category, ["laptop", "desktop", "notebook", "macbook"]) ||
+    mentions(sub, ["laptop", "desktop", "notebook", "macbook"]) ||
+    mentions(productName, ["laptop", "notebook", "macbook"]);
   const computerCategory = mentions(category, ["computer"]) && (sub === "" || mentions(sub, ["laptop", "desktop", "notebook"]));
   if (computer || computerCategory) return LAPTOP;
+  return null;
+}
+
+function matchFashion(both: string): SpecSchema | null {
   const dress = hasTerm(both, DRESS_TERMS);
   const footwear = hasTerm(both, FOOTWEAR_TERMS);
   const clothing = hasTerm(both, CLOTHING_TERMS);
@@ -203,7 +342,65 @@ export function specSchemaFor(categoryName: string, subCategoryName = "", hint?:
   if (dress && !hasTerm(both, ["shoe", "boot", "sandal", "sneaker"])) return DRESS;
   if (footwear && !hasTerm(both, ["jean", "trouser", "pant"])) return FOOTWEAR;
   if (hasTerm(both, BAG_TERMS)) return BAG;
-  if (clothing || dress || fashionStore) return FASHION;
+  if (clothing || dress) return FASHION;
+  return null;
+}
+
+function matchRestaurant(both: string): SpecSchema | null {
+  if (mentions(both, ["burger"])) return BURGER;
+  if (mentions(both, ["pizza"])) return PIZZA;
+  if (mentions(both, ["sandwich", "wrap"])) return SANDWICH;
+  if (mentions(both, ["dessert", "cake", "sweet"])) return DESSERT;
+  if (mentions(both, ["drink", "beverage", "juice", "soda", "coffee", "tea"])) return FOOD_DRINK;
+  if (mentions(both, ["main", "appetizer", "starter", "grill", "course"])) return MAIN;
+  return null;
+}
+
+function matchCafe(both: string): SpecSchema | null {
+  if (mentions(both, ["coffee", "tea", "latte", "espresso", "chai", "juice", "drink"])) return CAFE_DRINK;
+  if (mentions(both, ["bakery", "muffin", "croissant", "pastry", "cookie", "dessert", "cake"])) return CAFE_BAKERY;
+  return null;
+}
+
+function matchGrocery(both: string): SpecSchema | null {
+  if (
+    mentions(both, [
+      "dairy",
+      "milk",
+      "fruit",
+      "vegetable",
+      "produce",
+      "bakery",
+      "frozen",
+      "beverage",
+      "household",
+      "grocery",
+      "meat",
+      "pantry",
+    ])
+  ) {
+    return GROCERY;
+  }
+  return null;
+}
+
+/**
+ * Specification template for this business type and category.
+ * An unmatched name, or a business type with no template, is an empty custom list.
+ * One business type never receives another type's fields.
+ */
+export function specSchemaFor(categoryName: string, subCategoryName = "", hint?: SpecSchemaHint): SpecSchema {
+  const profile = hint?.profile ?? "";
+  const category = text(categoryName);
+  const sub = text(subCategoryName);
+  const productName = text(hint?.productName ?? "");
+  const both = `${category} ${sub} ${productName}`.trim();
+  if (both === "" || profile === "") return OTHER;
+  if (profile === "electronics_wholesale") return matchElectronics(both, category, sub, productName) ?? OTHER;
+  if (profile === "retail_fashion") return matchFashion(both) ?? OTHER;
+  if (profile === "grocery") return matchGrocery(both) ?? OTHER;
+  if (profile === "restaurant" || profile === "quick_service") return matchRestaurant(both) ?? OTHER;
+  if (profile === "cafe") return matchCafe(both) ?? OTHER;
   return OTHER;
 }
 

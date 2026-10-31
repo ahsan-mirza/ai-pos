@@ -17,7 +17,7 @@ from app.models.store import Store
 from app.models.user import User
 from app.schemas.margin import FloorOut, MarginExceptionOut, MarginPolicyOut, MarginPolicyWrite
 from app.services import costing
-from app.services.tax import TaxPolicy, div_half_up
+from app.services.tax import TaxPolicy, div_half_up, entered_includes_tax
 
 
 @dataclass(frozen=True)
@@ -44,7 +44,7 @@ def active_policies(db: Session) -> tuple[int | None, dict[uuid.UUID, int], dict
 
 def _price_terms(net_floor: int, product: Product, tax: TaxPolicy) -> int:
     """Floors are compared with unit prices, which include VAT when the business prices VAT-inclusive."""
-    if not tax.prices_include_vat:
+    if not entered_includes_tax(product):
         return net_floor
     rate = tax.rate_for(product.tax_category)
     return net_floor + div_half_up(net_floor * rate, 10_000)

@@ -13,7 +13,7 @@ interface CartListProps extends SharedCardProps {
 /** The scrolling item list: it takes every pixel the payment sheet leaves free. */
 export function CartList({ rows, floorFor, ...card }: CartListProps) {
   return (
-    <ul aria-label="Cart items" className="custom-scrollbar flex flex-col gap-1.5 px-4 py-2.5 lg:min-h-[180px] lg:flex-1 lg:overflow-y-auto">
+    <ul aria-label="Cart items" className="custom-scrollbar flex flex-col gap-1.5 px-4 py-2.5 xl:min-h-[180px] xl:flex-1 xl:overflow-y-auto">
       {rows.length === 0 ? (
         <li className="flex flex-1 flex-col items-center justify-center px-6 py-8 text-center">
           <ShoppingCart size={28} aria-hidden="true" className="text-zinc-300 dark:text-zinc-600" />

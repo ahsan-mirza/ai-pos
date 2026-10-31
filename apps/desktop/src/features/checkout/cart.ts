@@ -2,6 +2,7 @@ import {
   comboDelta,
   effectiveTier,
   formatWeight,
+  enteredIncludesTax,
   lineTax,
   modifierDelta,
   weighedLineCents,
@@ -57,6 +58,8 @@ export interface CartLine {
   promotion?: { id: string; name: string; discountCents: number } | null;
   /** Menu modifiers; list and unit prices include their deltas. Lines with modifiers never merge. */
   modifiers?: ModifierChoice[];
+  /** Preparation note for the kitchen. It does not change the price. */
+  instruction?: string;
   /** Meal components; list and unit prices include their surcharges. Meal lines never merge. */
   components?: ComboChoice[];
   /** The restaurant tab line this cart line pays for, when settling an order. */
@@ -97,9 +100,10 @@ export function manualDiscountCents(line: CartLine): number {
 export function lineCharge(line: CartLine, policy: TaxPolicy) {
   const rate = rateFor(policy, line.product.tax_category);
   const discount = (line.promotion?.discountCents ?? 0) + manualDiscountCents(line);
+  const inclusive = enteredIncludesTax(line.product);
   return discount > 0 || line.product.sold_by_weight
-    ? lineTax(lineGross(line) - discount, 1, rate, policy.prices_include_vat)
-    : lineTax(line.unitPriceCents, line.quantity, rate, policy.prices_include_vat);
+    ? lineTax(lineGross(line) - discount, 1, rate, inclusive)
+    : lineTax(line.unitPriceCents, line.quantity, rate, inclusive);
 }
 
 export interface CartState {
@@ -126,7 +130,10 @@ export type CartAction =
       quantity?: number;
       modifiers?: ModifierChoice[];
       components?: ComboChoice[];
+      instruction?: string;
     }
+  | { type: "set_customization"; lineId: string; modifiers: ModifierChoice[]; quantity: number; instruction?: string }
+  | { type: "duplicate_line"; lineId: string }
   /** Settling a restaurant tab: the cart becomes the tab's unpaid lines, one cart line per tab line. */
   | {
       type: "load_order";
@@ -136,6 +143,7 @@ export type CartAction =
         modifiers: ModifierChoice[];
         components?: ComboChoice[];
         orderItemId: string;
+        instruction?: string;
       }[];
     }
   /** One weighing (scale reading or label) of a sold-by-weight product: its own line, in grams. */
@@ -290,6 +298,7 @@ export function applyCart(state: CartState, action: CartAction): CartResult {
           modifiers: line.modifiers,
           components: line.components?.length ? line.components : undefined,
           orderItemId: line.orderItemId,
+          instruction: line.instruction?.trim().slice(0, 160) || undefined,
         }),
       );
       return ok({ ...emptyCart, mode: "RETAIL", lines }, `${lines.length} order line${lines.length === 1 ? "" : "s"} ready to pay.`);
@@ -312,15 +321,20 @@ export function applyCart(state: CartState, action: CartAction): CartResult {
       if (!Number.isInteger(packs) || packs < 1) return refuse(state, "Quantity must be at least 1.");
       const modifiers = action.modifiers?.length ? action.modifiers : undefined;
       const components = action.components?.length ? action.components : undefined;
-      if (modifiers || components) {
+      const instruction = action.instruction?.trim().slice(0, 160) || undefined;
+      if (modifiers || components || instruction) {
         const error = stockError(state.lines, product, packs);
         if (error) return refuse(state, error);
-        const line = newLine(product, packs, "PIECE", { modifiers, components });
+        const line = newLine(product, packs, "PIECE", { modifiers, components, instruction });
         return ok({ ...state, lines: [...state.lines, line] }, `${product.name} added.`);
       }
       const existing = state.lines.find(
         (line) =>
-          line.product.id === product.id && line.serialValue === null && !line.modifiers?.length && !line.components?.length,
+          line.product.id === product.id &&
+          line.serialValue === null &&
+          !line.modifiers?.length &&
+          !line.components?.length &&
+          !line.instruction,
       );
       const unitType = action.unitType ?? existing?.unitType ?? "PIECE";
       const step = unitFactor(product, unitType);
@@ -375,6 +389,30 @@ export function applyCart(state: CartState, action: CartAction): CartResult {
           item.lineId === line.lineId ? { ...item, unitType: action.unitType, quantity: pieces } : item,
         ),
       });
+    }
+    case "set_customization": {
+      const line = state.lines.find((item) => item.lineId === action.lineId);
+      if (!line) return refuse(state, "That item is no longer in the order.");
+      if (line.orderItemId) return refuse(state, "This item is already with the kitchen.");
+      if (!Number.isInteger(action.quantity) || action.quantity < 1) return refuse(state, "Quantity must be at least 1.");
+      const others = state.lines.filter((item) => item.lineId !== line.lineId);
+      const error = stockError(others, line.product, action.quantity);
+      if (error) return refuse(state, error);
+      const instruction = action.instruction?.trim().slice(0, 160) || undefined;
+      const modifiers = action.modifiers.length ? action.modifiers : undefined;
+      const lines = state.lines.map((item) =>
+        item.lineId === line.lineId ? { ...item, quantity: action.quantity, modifiers, instruction } : item,
+      );
+      return ok({ ...state, lines }, `${line.product.name} updated.`);
+    }
+    case "duplicate_line": {
+      const line = state.lines.find((item) => item.lineId === action.lineId);
+      if (!line) return refuse(state, "That item is no longer in the order.");
+      if (line.serialValue || line.orderItemId) return refuse(state, "This item cannot be copied.");
+      const error = stockError(state.lines, line.product, line.quantity);
+      if (error) return refuse(state, error);
+      const copy = { ...line, lineId: crypto.randomUUID(), orderItemId: undefined };
+      return ok({ ...state, lines: [...state.lines, copy] }, `${line.product.name} copied.`);
     }
     case "remove_line":
       return ok({ ...state, lines: state.lines.filter((line) => line.lineId !== action.lineId) });
@@ -459,6 +497,10 @@ export interface CartTotals {
   /** Net of VAT. */
   subtotal: number;
   tax: number;
+  /** Tax extracted from prices that already include it. */
+  inclusiveTax: number;
+  /** Tax added on top of tax-exclusive prices. */
+  exclusiveTax: number;
   total: number;
   /** What the same cart would cost at plain retail (in catalog prices), so wholesale savings can be shown. */
   retailSubtotal: number;
@@ -470,6 +512,8 @@ export interface CartTotals {
 export function cartTotals(lines: CartLine[], policy: TaxPolicy): CartTotals {
   let total = 0;
   let tax = 0;
+  let inclusiveTax = 0;
+  let exclusiveTax = 0;
   let retailSubtotal = 0;
   let chargedSubtotal = 0;
   let pieces = 0;
@@ -477,6 +521,8 @@ export function cartTotals(lines: CartLine[], policy: TaxPolicy): CartTotals {
     const result = lineCharge(line, policy);
     total += result.line_total_cents;
     tax += result.tax_cents;
+    if (enteredIncludesTax(line.product)) inclusiveTax += result.tax_cents;
+    else exclusiveTax += result.tax_cents;
     chargedSubtotal += lineGross(line) - (line.promotion?.discountCents ?? 0) - manualDiscountCents(line);
     retailSubtotal += lineGross(
       line,
@@ -484,7 +530,7 @@ export function cartTotals(lines: CartLine[], policy: TaxPolicy): CartTotals {
     );
     pieces += line.product.sold_by_weight ? 1 : line.quantity;
   }
-  return { subtotal: total - tax, tax, total, retailSubtotal, chargedSubtotal, pieces };
+  return { subtotal: total - tax, tax, inclusiveTax, exclusiveTax, total, retailSubtotal, chargedSubtotal, pieces };
 }
 
 /** Cart rows as displayed: bulk IMEI groups collapse into one row. */

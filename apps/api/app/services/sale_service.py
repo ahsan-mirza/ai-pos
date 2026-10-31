@@ -59,7 +59,7 @@ from app.services.inventory import level_for, move_stock, transition_serial
 from app.services.numbering import accept_register_number, next_server_number
 from app.services.settings_service import cached_settings
 from app.services.sync_validation import register_time, require_cashier, require_store
-from app.services.tax import TaxPolicy, for_customer, line_tax
+from app.services.tax import TaxPolicy, entered_includes_tax, for_customer, line_tax
 from app.services.tax import policy as tax_policy_for
 
 UNSELLABLE_SERIAL = {
@@ -330,13 +330,14 @@ def price_lines(
                 raise SyncRejected("Promotions do not apply to weighed items.")
         rate: int | None = None
         treatment: str | None = None
+        includes_tax = entered_includes_tax(product)
         if enforced and tax_policy is not None and customer_policy is not None:
             rate = customer_policy.rate_for(product.tax_category)
-            expected = line_tax(charged, 1, rate, inclusive=tax_policy.prices_include_vat)
+            expected = line_tax(charged, 1, rate, inclusive=includes_tax)
             standard_rate = tax_policy.rate_for(product.tax_category)
             if rate != standard_rate:
                 treatment = customer_policy.treatment
-                standard = line_tax(charged, 1, standard_rate, inclusive=tax_policy.prices_include_vat)
+                standard = line_tax(charged, 1, standard_rate, inclusive=includes_tax)
                 # A register that did not know the customer's treatment charged standard VAT: keep it.
                 if (item.tax_cents, item.line_total_cents) == (standard.tax_cents, standard.line_total_cents):
                     rate, expected, treatment = standard_rate, standard, None
@@ -348,9 +349,14 @@ def price_lines(
                 raise SyncRejected("Line total does not match unit price, quantity, discount, and VAT.")
             net = expected.net_cents
         else:
-            if item.line_total_cents != charged + item.tax_cents:
-                raise SyncRejected("Line total does not match unit price, quantity, discount, and tax.")
-            net = charged
+            if includes_tax:
+                if item.line_total_cents != charged or item.tax_cents > charged:
+                    raise SyncRejected("Line total does not match a tax-inclusive price.")
+                net = charged - item.tax_cents
+            else:
+                if item.line_total_cents != charged + item.tax_cents:
+                    raise SyncRejected("Line total does not match unit price, quantity, discount, and tax.")
+                net = charged
         if product.currency != currency:
             raise SyncRejected("Product currency does not match the sale.")
         if product.is_serialized:
@@ -912,6 +918,7 @@ def record_sale(
                 price_source=line.price_source,
                 price_list_id=line.price_list_id,
                 tax_treatment=line.tax_treatment,
+                price_includes_tax=entered_includes_tax(line.product),
             )
         )
     for tender in tenders:
@@ -1014,6 +1021,14 @@ def record_sale(
         kitchen_service.fire_sale(db, sale, sold_at)
     warranty_service.register_sale(db, sale, customer)
     tax_authority.issue_for_sale(db, settings, sale, customer)
+    from app.services.einvoicing_bridge import note_sale
+
+    note_sale(
+        db,
+        tenant_id=sale.tenant_id,
+        sale_id=sale.id,
+        buyer_trn=customer.trn_vat_number if customer is not None else None,
+    )
 
     if customer is not None:
         if on_account:

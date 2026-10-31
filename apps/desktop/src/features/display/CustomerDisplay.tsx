@@ -21,6 +21,15 @@ export function CustomerDisplay() {
     void QRCode.toDataURL(payload, { margin: 1, width: 420, color: { dark: "#222026", light: "#FFFFFF" } }).then(setQrImage);
   }, [payload]);
 
+  if (state?.notice && state.lines.length === 0 && !state.thanks) {
+    return (
+      <main className="flex min-h-screen flex-col items-center justify-center bg-charcoal p-10 font-sans text-white">
+        <BrandLogo tone="dark" className="h-16 w-auto" />
+        <h1 className="mt-8 text-5xl font-semibold tracking-tight">{state.notice}</h1>
+      </main>
+    );
+  }
+
   if (state === null || (state.lines.length === 0 && !state.thanks)) {
     return (
       <main className="flex min-h-screen flex-col items-center justify-center bg-charcoal p-10 font-sans text-white">
@@ -63,7 +72,7 @@ export function CustomerDisplay() {
             <dd className="tabular-nums">{formatMoney(state.subtotalCents, state.currency)}</dd>
           </div>
           <div className="flex justify-between text-white/60">
-            <dt>VAT</dt>
+            <dt>{state.vatIncluded ? "VAT included" : "VAT"}</dt>
             <dd className="tabular-nums">{formatMoney(state.taxCents, state.currency)}</dd>
           </div>
         </dl>

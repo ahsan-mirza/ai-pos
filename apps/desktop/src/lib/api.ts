@@ -1,6 +1,8 @@
 import type {
   Availability,
   BusinessSettings,
+  ProductCosting,
+  Recipe,
   Customer,
   Product,
   ProductSearchHit,
@@ -78,6 +80,28 @@ export async function loginPin(username: string, pin: string): Promise<TokenResp
   return (await response.json()) as TokenResponse;
 }
 
+export interface CashierCard {
+  id: string;
+  display_name: string;
+  initials: string;
+  role_label: string;
+  avatar_url: string | null;
+}
+
+/** Cashiers the activated terminal may offer. The server decides the branch. */
+export async function listCashiers(): Promise<CashierCard[]> {
+  const response = await request("/api/v1/auth/cashiers");
+  return (await response.json()) as CashierCard[];
+}
+
+export async function unlockCashier(userId: string, pin: string): Promise<TokenResponse> {
+  const response = await request("/api/v1/auth/unlock", {
+    method: "POST",
+    body: JSON.stringify({ user_id: userId, pin }),
+  });
+  return (await response.json()) as TokenResponse;
+}
+
 /** Catalog row with this branch's stock. Category ids ride along so charge batches keep the product's category. */
 function toUpsert(row: Product): ProductUpsert {
   return {
@@ -100,6 +124,7 @@ function toUpsert(row: Product): ProductUpsert {
     unit_options: row.unit_options ?? [],
     prices: row.prices ?? [],
     tax_category: row.tax_category ?? "STANDARD",
+    price_includes_tax: row.price_includes_tax === true,
     is_open_price: row.is_open_price ?? false,
     is_service: row.is_service ?? false,
     sold_by_weight: row.sold_by_weight ?? false,
@@ -112,6 +137,8 @@ function toUpsert(row: Product): ProductUpsert {
     item_type: row.item_type,
     is_stock_tracked: row.is_stock_tracked ?? true,
     price_lists: row.price_lists ?? [],
+    image_url: row.image_url ?? null,
+    thumb_url: row.thumb_url ?? null,
     product_model_id: row.product_model_id ?? null,
     model_name: row.model_name ?? null,
     variant_attributes: row.variant_attributes ?? {},
@@ -142,6 +169,27 @@ export async function listProducts(): Promise<ProductUpsert[]> {
     products.push(...page.map(toUpsert));
     if (page.length < CATALOG_PAGE) return products;
     after = page[page.length - 1]!.id;
+  }
+}
+
+export async function productCost(productId: string, storeId: string): Promise<ProductCosting | null> {
+  try {
+    const params = new URLSearchParams({ product_id: productId, store_id: storeId });
+    const response = await request(`/api/v1/inventory/adjust/cost?${params.toString()}`);
+    return (await response.json()) as ProductCosting;
+  } catch (error) {
+    if (error instanceof ApiRejectedError || error instanceof ApiUnavailableError) return null;
+    throw error;
+  }
+}
+
+export async function productRecipe(productId: string): Promise<Recipe | null> {
+  try {
+    const response = await request(`/api/v1/recipes/${productId}`);
+    return (await response.json()) as Recipe;
+  } catch (error) {
+    if (error instanceof ApiRejectedError || error instanceof ApiUnavailableError) return null;
+    throw error;
   }
 }
 
@@ -232,6 +280,34 @@ export async function createQuoteRemote(payload: QuoteUpsert): Promise<Quote> {
 }
 
 /** Browser preview: fetch the PDF with the API key and open it from a blob URL. */
+export interface RemotePeripheral {
+  id: string;
+  kind: "kds" | "table_apps" | "customer_display" | "card_terminal";
+  label: string;
+  name: string;
+  light: "green" | "red" | "gray" | "amber";
+  status: string;
+  connection: string;
+  last_seen_at: string | null;
+  last_ok_at: string | null;
+  last_error: string | null;
+  address: string | null;
+  pending: number | null;
+  connected: number | null;
+  configured: number | null;
+}
+
+export async function peripheralSnapshot(): Promise<RemotePeripheral[]> {
+  const response = await request("/api/v1/peripherals");
+  const body = (await response.json()) as { items: RemotePeripheral[] };
+  return body.items;
+}
+
+export async function checkCardTerminal(): Promise<{ ok: boolean; message: string }> {
+  const response = await request("/api/v1/peripherals/card-terminal/check", { method: "POST" });
+  return (await response.json()) as { ok: boolean; message: string };
+}
+
 export async function openQuotePdfRemote(quoteId: string): Promise<void> {
   const response = await request(`/api/v1/quotes/${encodeURIComponent(quoteId)}/pdf`);
   const url = URL.createObjectURL(await response.blob());

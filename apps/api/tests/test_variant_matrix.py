@@ -207,6 +207,12 @@ def test_selected_size_color_variants_stock_sell_and_stay_isolated(client, sessi
     seed_catalog(client)
     token = admin_token(client)
     headers = bearer(token)
+    switched = client.put(
+        "/api/v1/settings/profile",
+        headers=headers,
+        json={"business_profile": "retail_fashion", "capabilities": None},
+    )
+    assert switched.status_code == 200, switched.text
     model_id = tee_model(client, token)
     axes = [{"key": "size", "values": ["S", "M"]}, {"key": "color", "values": ["Black", "White"]}]
     chosen = [

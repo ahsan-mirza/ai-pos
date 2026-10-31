@@ -2,6 +2,8 @@ export interface AddonSearchFields {
   name: string;
   description: string;
   sort_order?: number;
+  /** Benefits, tags, and features. Empty when the caller only has the short description. */
+  search_text?: string;
 }
 
 function searchText(value: string): string {
@@ -17,8 +19,9 @@ export function addonSearchScore(addon: AddonSearchFields, query: string): numbe
   if (needle === "") return 1;
   const name = searchText(addon.name);
   const description = searchText(addon.description);
+  const extra = searchText(addon.search_text ?? "");
   const words = needle.split(" ").filter((word) => word.length > 0);
-  const haystack = `${name} ${description}`;
+  const haystack = `${name} ${description} ${extra}`;
   if (words.some((word) => !haystack.includes(word))) return 0;
   let score = 0;
   if (name === needle) score += 1000;
@@ -31,6 +34,7 @@ export function addonSearchScore(addon: AddonSearchFields, query: string): numbe
     else if (nameWords.some((part) => part.startsWith(word))) score += 180;
     else if (name.includes(word)) score += 100;
     if (description.includes(word)) score += 40;
+    if (extra.includes(word)) score += 30;
   }
   return score;
 }
@@ -77,6 +81,43 @@ export interface BillingCycle {
   sort_order: number;
 }
 
+export interface AddonBenefit {
+  title: string;
+  description: string;
+}
+
+export interface AddonFaq {
+  question: string;
+  answer: string;
+}
+
+export interface AddonListing {
+  short_description: string;
+  overview: string;
+  category: string;
+  tags: string[];
+  benefits: AddonBenefit[];
+  features: AddonBenefit[];
+  steps: AddonBenefit[];
+  requirements: string[];
+  faqs: AddonFaq[];
+  documentation_url: string;
+  video_url: string;
+  support: string;
+  icon: string;
+  image_url: string;
+  featured: boolean;
+  publication: "published" | "draft" | "archived";
+}
+
+export interface AddonPricePoint {
+  monthly_fils: number;
+  one_time_fils: number;
+  refundable: boolean;
+  effective_at: string;
+  reason: string;
+}
+
 export interface BillingAddon {
   id: string;
   code: string;
@@ -88,6 +129,80 @@ export interface BillingAddon {
   active: boolean;
   module_keys: string[];
   sort_order: number;
+  listing?: AddonListing;
+  price_history?: AddonPricePoint[];
+  updated_at?: string;
+}
+
+export type MarketplaceState =
+  | "included"
+  | "available"
+  | "activated"
+  | "pending_payment"
+  | "pending_activation"
+  | "expired"
+  | "unavailable"
+  | "unpriced";
+
+export interface MarketplaceItem {
+  addon: BillingAddon;
+  state: MarketplaceState;
+  reason: string;
+  invoice_id: string | null;
+  compatible_labels: string[];
+  search_text: string;
+}
+
+export interface MarketplaceCatalog {
+  currency: string;
+  available: number;
+  activated: number;
+  pending: number;
+  recurring_fils: number;
+  items: MarketplaceItem[];
+}
+
+export type MarketplaceSort = "recommended" | "name" | "price_asc" | "price_desc" | "recent";
+
+/** Client-side view of a catalogue the server already scoped to this store. */
+export function filterMarketplace(
+  items: readonly MarketplaceItem[],
+  query: string,
+  state: string,
+  category: string,
+  pricing: string,
+  sort: MarketplaceSort,
+): MarketplaceItem[] {
+  const rows = items.filter((item) => {
+    if (state === "available" && item.state !== "available" && item.state !== "unpriced") return false;
+    if (state !== "" && state !== "available" && item.state !== state) return false;
+    if (category !== "" && (item.addon.listing?.category ?? "") !== category) return false;
+    if (pricing === "monthly" && item.addon.monthly_fils <= 0) return false;
+    if (pricing === "once" && item.addon.one_time_fils <= 0) return false;
+    if (pricing === "deposit" && !item.addon.refundable) return false;
+    if (pricing === "unpriced" && item.state !== "unpriced") return false;
+    const score = addonSearchScore(
+      {
+        name: item.addon.name,
+        description: item.addon.description,
+        search_text: `${item.search_text} ${item.addon.listing?.short_description ?? ""}`,
+        sort_order: item.addon.sort_order,
+      },
+      query,
+    );
+    return score > 0;
+  });
+  const price = (item: MarketplaceItem) => item.addon.monthly_fils || item.addon.one_time_fils;
+  rows.sort((left, right) => {
+    if (sort === "name") return left.addon.name.localeCompare(right.addon.name);
+    if (sort === "price_asc") return price(left) - price(right);
+    if (sort === "price_desc") return price(right) - price(left);
+    if (sort === "recent") return (right.addon.updated_at ?? "").localeCompare(left.addon.updated_at ?? "");
+    const featured = Number(right.addon.listing?.featured ?? false) - Number(left.addon.listing?.featured ?? false);
+    if (featured !== 0) return featured;
+    return left.addon.sort_order - right.addon.sort_order;
+  });
+  return rows;
 }
 
 export interface ModuleCatalogueItem {

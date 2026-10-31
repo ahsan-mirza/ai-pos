@@ -1,14 +1,16 @@
-import type { DiningArea } from "@ai-pos/shared-types";
-import { Select } from "@ai-pos/ui";
-import { Bike, ChevronDown, ChevronUp, Minus, Plus, Search, Soup, UtensilsCrossed } from "lucide-react";
+import type { DeliveryChannel, DiningArea } from "@ai-pos/shared-types";
+import { FloorBoard, Select } from "@ai-pos/ui";
+import { ArrowLeft, Bike, ChevronDown, ChevronUp, Minus, Plus, Search, Soup, UtensilsCrossed } from "lucide-react";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { staffApi, type RegisterStaff } from "../../../lib/retailClient";
+import { channelsApi } from "../../orders/ordersClient";
 import type { RegisterCustomer } from "../../../lib/tauri";
 import { searchCustomers } from "../wholesaleClient";
 import { store } from "../catalog";
-import { layoutFallback, TableSelectorGrid, type TableChoice } from "./TableSelectorGrid";
+import { FloorTableCard } from "../../../components/FloorTableCard";
+import { useBusinessCurrency } from "../currency";
+import { layoutFallback, type TableChoice } from "./TableSelectorGrid";
 import {
-  DELIVERY_ZONES,
   FALLBACK_TABLES,
   unpackAddress,
   type OrderMode,
@@ -16,6 +18,7 @@ import {
   type TicketDetails,
   sessionHeading,
 } from "./tableSessions";
+import { changeTypeGate, sectionChoices, serviceLabel } from "./orderTypeNav";
 
 const MODES: { id: OrderMode; label: string; icon: typeof UtensilsCrossed }[] = [
   { id: "dine_in", label: "Dine-in", icon: UtensilsCrossed },
@@ -65,7 +68,7 @@ function summaryDetail(
 }
 
 function cartSheetOpen(): boolean {
-  if (window.matchMedia("(min-width: 1024px)").matches) return false;
+  if (window.matchMedia("(min-width: 1280px)").matches) return false;
   return document.getElementById("current-sale")?.classList.contains("cart-sheet") ?? false;
 }
 
@@ -75,15 +78,16 @@ function areasOf(areas: DiningArea[]): { id: string; name: string; tables: Table
     .map((area) => ({
       id: area.id,
       name: area.name,
-      tables: area.tables
-        .filter((table) => table.is_active)
-        .map(
+      tables: area.tables.map(
           (table): TableChoice => ({
+            key: table.id,
             id: table.id,
+            areaId: area.id,
             label: table.label,
             seats: table.seats,
             busy: table.order_id !== null,
             shape: table.shape,
+            active: table.is_active,
             x: table.x,
             y: table.y,
             w: table.w,
@@ -93,6 +97,12 @@ function areasOf(areas: DiningArea[]): { id: string; name: string; tables: Table
             seatedAt: table.seated_at,
             openCents: table.open_cents,
             orderId: table.order_id,
+            orderNumber: table.order_number,
+            guestName: table.guest_name ?? null,
+            kitchen: table.kitchen ?? "none",
+            payment: table.payment ?? "none",
+            orderProgress: table.order_progress ?? "none",
+            search: [table.label, table.order_number ? `#${table.order_number}` : "", table.guest_name ?? ""].join(" "),
           }),
         ),
     }))
@@ -139,20 +149,30 @@ export function OrderModeBar({
   session,
   areas,
   storeId,
+  pendingCount,
   onMode,
   onSeat,
   onTicket,
+  onCancelOrder,
 }: {
   mode: OrderMode;
   session: TableSession | null;
   areas: DiningArea[];
   storeId: string;
+  pendingCount: number;
   onMode: (mode: OrderMode) => void;
   onSeat: (tableNumber: string, guestCount: number, tableId: string | null, orderId: string | null) => void;
   onTicket: (details: TicketDetails) => void;
+  onCancelOrder?: () => void;
 }) {
   const floors = useMemo(() => areasOf(areas), [areas]);
-  const [floorId, setFloorId] = useState("all");
+  const sections = useMemo(() => sectionChoices(areas), [areas]);
+  const currency = useBusinessCurrency();
+  const [choosing, setChoosing] = useState(session === null);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [blockedOpen, setBlockedOpen] = useState(false);
+  const [channels, setChannels] = useState<DeliveryChannel[]>([]);
+  const picking = useRef(false);
   const [guests, setGuests] = useState(2);
   const [pending, setPending] = useState<TableChoice | null>(null);
   const [name, setName] = useState("");
@@ -172,13 +192,35 @@ export function OrderModeBar({
   const seatKeyRef = useRef(seatKey);
   const pendingRef = useRef(pending);
   pendingRef.current = pending;
-  const floor = floors.find((item) => item.id === floorId) ?? null;
-  const visibleTables = floorId === "all" ? floors.flatMap((item) => item.tables) : (floor?.tables ?? []);
-  const occupiedCount = visibleTables.filter((table) => table.status !== "free").length;
+  const floorTables = floors.flatMap((item) => item.tables);
+  const keptLines = session?.items.filter((item) => item.kitchen_status !== "VOIDED").length ?? 0;
+  const kitchen =
+    session?.items.some((item) => item.kitchen_status === "SENT_TO_KDS" || item.kitchen_status === "SERVED") ?? false;
 
   useEffect(() => {
-    if (floorId !== "all" && !floors.some((item) => item.id === floorId)) setFloorId("all");
-  }, [floors, floorId]);
+    if (picking.current) return;
+    if (session && session.order_mode === mode) setChoosing(false);
+  }, [session, mode]);
+
+  const requestChange = () => {
+    const gate = changeTypeGate(pendingCount, keptLines, kitchen);
+    if (gate === "blocked") {
+      setBlockedOpen(true);
+      return;
+    }
+    if (gate === "confirm") {
+      setConfirmOpen(true);
+      return;
+    }
+    picking.current = true;
+    setChoosing(true);
+  };
+
+  const pickMode = (next: OrderMode) => {
+    picking.current = false;
+    onMode(next);
+    setChoosing(false);
+  };
 
   useEffect(() => {
     if (seatKeyRef.current === seatKey) return;
@@ -245,6 +287,14 @@ export function OrderModeBar({
   useEffect(() => {
     if (mode !== "delivery") return;
     let cancelled = false;
+    channelsApi
+      .list()
+      .then((rows) => {
+        if (!cancelled) setChannels(rows.filter((row) => row.is_active && row.store_id === storeId));
+      })
+      .catch(() => {
+        if (!cancelled) setChannels([]);
+      });
     staffApi
       .list(storeId)
       .then((rows) => {
@@ -299,32 +349,79 @@ export function OrderModeBar({
     });
   };
 
-  const zones = zone && !(DELIVERY_ZONES as readonly string[]).includes(zone) ? [zone, ...DELIVERY_ZONES] : [...DELIVERY_ZONES];
+  const zoneNames = channels.map((item) => item.name);
+  const zones = zone && !zoneNames.includes(zone) ? [zone, ...zoneNames] : zoneNames;
   const drivers = driver && !staff.some((member) => member.full_name === driver) ? [driver, ...staff.map((member) => member.full_name)] : staff.map((member) => member.full_name);
 
   return (
-    <section className="rounded-2xl border border-zinc-200 bg-white p-3 dark:border-zinc-800 dark:bg-zinc-900">
-      <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Order type">
-        {MODES.map((item) => {
-          const Icon = item.icon;
-          const active = mode === item.id;
-          return (
-            <button
-              key={item.id}
-              type="button"
-              aria-pressed={active}
-              onClick={() => onMode(item.id)}
-              className={`inline-flex h-11 items-center gap-2 rounded-full px-4 text-sm font-semibold ${
-                active ? "bg-primary-500 text-white" : "border border-zinc-200 text-zinc-700 dark:border-zinc-700 dark:text-zinc-200"
-              }`}
-            >
-              <Icon size={16} aria-hidden="true" />
-              {item.label}
-            </button>
-          );
-        })}
+    <section className="min-w-0 rounded-2xl border border-zinc-200 bg-white p-2 dark:border-zinc-800 dark:bg-zinc-900">
+      {choosing ? (
+        <div
+          className="grid grid-cols-3 gap-3 max-[480px]:flex max-[480px]:snap-x max-[480px]:overflow-x-auto"
+          role="group"
+          aria-label="Order type"
+        >
+          {MODES.map((item) => {
+            const Icon = item.icon;
+            return (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => pickMode(item.id)}
+                className="flex min-h-24 min-w-0 flex-col items-start justify-center gap-2 rounded-2xl border border-zinc-200 bg-zinc-50 px-5 py-4 text-left transition-colors hover:border-primary-500 hover:bg-primary-500/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 max-[480px]:min-w-40 max-[480px]:shrink-0 max-[480px]:snap-start dark:border-zinc-700 dark:bg-zinc-950 dark:hover:border-primary-500"
+              >
+                <Icon size={28} aria-hidden="true" className="text-primary-500" />
+                <span className="text-lg font-semibold text-zinc-950 dark:text-white">{item.label}</span>
+              </button>
+            );
+          })}
+        </div>
+      ) : (
+      <div className="flex min-w-0 items-center gap-2">
+        <button
+          type="button"
+          onClick={requestChange}
+          className="inline-flex h-12 shrink-0 items-center gap-1.5 rounded-full border border-zinc-300 px-3 text-sm font-semibold text-zinc-800 hover:bg-zinc-50 dark:border-zinc-600 dark:text-zinc-100 dark:hover:bg-zinc-800"
+        >
+          <ArrowLeft size={16} aria-hidden="true" />
+          Change Order Type
+        </button>
+        <span className="inline-flex h-12 shrink-0 items-center gap-2 rounded-full bg-zinc-950 px-4 text-sm font-semibold text-white dark:bg-white dark:text-zinc-950">
+          {serviceLabel(mode)}
+        </span>
+        <div className="flex min-w-0 flex-1 gap-2 overflow-x-auto" role="group" aria-label={`${serviceLabel(mode)} options`}>
+          {mode === "dine_in" && sections.length === 0 ? (
+            <span className="inline-flex h-12 items-center whitespace-nowrap text-sm text-zinc-500 dark:text-zinc-400">
+              No sections are configured for this store.
+            </span>
+          ) : null}
+          {mode === "takeaway" ? (
+            <span className="inline-flex h-12 items-center whitespace-nowrap text-sm text-zinc-500 dark:text-zinc-400">
+              No pickup options are configured. Enter the guest below.
+            </span>
+          ) : null}
+          {mode === "delivery" ? (
+            channels.length === 0 ? (
+              <span className="inline-flex h-12 items-center whitespace-nowrap text-sm text-zinc-500 dark:text-zinc-400">
+                No delivery zones are configured.
+              </span>
+            ) : (
+              channels.map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  aria-pressed={zone === item.name}
+                  onClick={() => setZone(item.name)}
+                  className={`inline-flex h-12 shrink-0 items-center rounded-full px-4 text-sm font-semibold ${zone === item.name ? "bg-primary-500 text-white" : "bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-200"}`}
+                >
+                  {item.name}
+                </button>
+              ))
+            )
+          ) : null}
+        </div>
         {!expanded && seated && session ? (
-          <span className="rounded-full bg-zinc-100 px-3 py-1 text-sm font-medium text-zinc-800 dark:bg-zinc-800 dark:text-zinc-100">
+          <span className="hidden min-w-0 max-w-[10rem] truncate rounded-full bg-zinc-100 px-3 py-1 text-sm font-medium text-zinc-800 lg:inline dark:bg-zinc-800 dark:text-zinc-100">
             {summaryDetail(session, floors)}
           </span>
         ) : null}
@@ -340,12 +437,13 @@ export function OrderModeBar({
           aria-keyshortcuts="Escape F2"
           aria-label={expanded ? "Collapse order setup" : "Expand order setup"}
           onClick={() => setExpanded((open) => !open)}
-          className={`${expanded && session ? "" : "ml-auto "}inline-flex h-9 w-9 items-center justify-center rounded-full border border-zinc-200 text-zinc-600 hover:bg-zinc-50 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800`}
+          className={`${expanded && session ? "" : "ml-auto "}inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-zinc-200 text-zinc-600 hover:bg-zinc-50 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800`}
         >
           {expanded ? <ChevronUp size={16} aria-hidden="true" /> : <ChevronDown size={16} aria-hidden="true" />}
         </button>
       </div>
-      <div id="order-setup-panel" className={`order-setup-panel ${expanded ? "is-open" : ""}`}>
+      )}
+      <div id="order-setup-panel" className={choosing ? "hidden" : `order-setup-panel ${expanded ? "is-open" : ""}`}>
       <div className="order-setup-inner" inert={expanded ? undefined : true}>
 
       {session && session.items.length > 0 ? (
@@ -361,62 +459,42 @@ export function OrderModeBar({
         </ul>
       ) : null}
 
-      <div key={mode} className="context-swap mt-3">
+      <div key={mode} className="context-swap mt-2">
         {mode === "dine_in" ? (
-          <div className="space-y-3">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-orange-500">{venueLabel(store.name)}</p>
-              <h2 className="text-lg font-semibold text-zinc-900 dark:text-white">Choose a table</h2>
-            </div>
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div className="flex flex-wrap gap-1.5" role="group" aria-label="Floor">
-                <button
-                  type="button"
-                  aria-pressed={floorId === "all"}
-                  onClick={() => setFloorId("all")}
-                  className={`h-9 rounded-full px-4 text-sm font-semibold ${
-                    floorId === "all" ? "bg-primary-500 text-white" : "bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-200"
-                  }`}
-                >
-                  All Tables
-                </button>
-                {floors.map((item) => (
-                  <button
-                    key={item.id}
-                    type="button"
-                    aria-pressed={item.id === floorId}
-                    onClick={() => setFloorId(item.id)}
-                    className={`h-9 rounded-full px-4 text-sm font-semibold ${
-                      item.id === floorId ? "bg-primary-500 text-white" : "bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-200"
-                    }`}
-                  >
-                    {item.name}
-                  </button>
-                ))}
-              </div>
-              <div className="flex flex-wrap gap-1.5" aria-label="Table summary">
-                <span className="rounded-full bg-zinc-100 px-3 py-1.5 text-xs font-semibold text-zinc-700 dark:bg-zinc-800 dark:text-zinc-200">
-                  Total {visibleTables.length}
-                </span>
-                <span className="rounded-full bg-amber-500/15 px-3 py-1.5 text-xs font-semibold text-amber-800 dark:text-amber-200">
-                  Occupied {occupiedCount}
-                </span>
-                <span className="rounded-full bg-emerald-500/15 px-3 py-1.5 text-xs font-semibold text-emerald-800 dark:text-emerald-200">
-                  Available {visibleTables.length - occupiedCount}
-                </span>
-              </div>
-            </div>
-            <TableSelectorGrid
-              tables={visibleTables}
-              selected={session?.order_mode === "dine_in" ? session.table_number : null}
-              onSelect={(table) => {
-                if (table.status === "free") {
-                  setGuests(Math.min(Math.max(table.seats, 1), 2));
-                  setPending(table);
-                  return;
-                }
-                onSeat(table.label, table.covers || 1, table.id, table.orderId);
-              }}
+          <div className="space-y-2">
+            <FloorBoard
+              sections={sections}
+              items={floorTables}
+              showSections
+              renderItem={(table) => (
+                <FloorTableCard
+                  tableId={table.id}
+                  label={table.label}
+                  seats={table.seats}
+                  shape={table.shape}
+                  active={table.active}
+                  covers={table.covers}
+                  seatedAt={table.seatedAt}
+                  openCents={table.openCents}
+                  currency={currency}
+                  status={table.status}
+                  kitchen={table.kitchen}
+                  payment={table.payment}
+                  orderProgress={table.orderProgress}
+                  orderNumber={table.orderNumber}
+                  guestName={table.guestName}
+                  selected={session?.order_mode === "dine_in" && session.table_number === table.label}
+                  onClick={() => {
+                    if (!table.active) return;
+                    if (table.status === "free") {
+                      setGuests(Math.min(Math.max(table.seats, 1), 2));
+                      setPending(table);
+                      return;
+                    }
+                    onSeat(table.label, table.covers || 1, table.id, table.orderId);
+                  }}
+                />
+              )}
             />
             {pending ? (
               <div className="modal-backdrop" role="presentation" onClick={() => setPending(null)}>
@@ -577,6 +655,71 @@ export function OrderModeBar({
       </div>
       </div>
       </div>
+      {confirmOpen ? (
+        <div className="modal-backdrop" role="presentation" onClick={() => setConfirmOpen(false)}>
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="change-type-title"
+            className="modal-card max-w-md"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <h2 id="change-type-title" className="text-xl font-semibold">Change Order Type?</h2>
+            <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-300">
+              Changing this order type may affect table assignment, pickup details, delivery information, charges, and kitchen routing. Do you want to continue?
+            </p>
+            <div className="mt-5 flex flex-wrap justify-end gap-2">
+              <button type="button" onClick={() => setConfirmOpen(false)} className="h-12 rounded-full px-4 text-sm font-semibold text-zinc-700 dark:text-zinc-200">
+                Keep Current Order
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setConfirmOpen(false);
+                  picking.current = true;
+                  setChoosing(true);
+                }}
+                className="h-12 rounded-full bg-primary-500 px-4 text-sm font-semibold text-white"
+              >
+                Change Order Type
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+      {blockedOpen ? (
+        <div className="modal-backdrop" role="presentation" onClick={() => setBlockedOpen(false)}>
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="type-locked-title"
+            className="modal-card max-w-md"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <h2 id="type-locked-title" className="text-xl font-semibold">This order cannot change type</h2>
+            <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-300">
+              It has already been sent to the kitchen or dispatched. Keep working in the current order type.
+            </p>
+            <div className="mt-5 flex flex-wrap justify-end gap-2">
+              <button type="button" onClick={() => setBlockedOpen(false)} className="h-12 rounded-full bg-primary-500 px-4 text-sm font-semibold text-white">
+                Keep Current Order
+              </button>
+              {onCancelOrder ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setBlockedOpen(false);
+                    onCancelOrder();
+                  }}
+                  className="h-12 rounded-full border border-red-300 px-4 text-sm font-semibold text-red-700 hover:bg-red-50 dark:border-red-500/40 dark:text-red-300 dark:hover:bg-red-500/10"
+                >
+                  Cancel Order
+                </button>
+              ) : null}
+            </div>
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 }

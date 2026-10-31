@@ -207,6 +207,7 @@
 .order-setup-panel {
   display: grid;
   grid-template-rows: 0fr;
+  min-width: 0;
   transition: grid-template-rows 0.25s ease;
 }
 
@@ -216,11 +217,13 @@
 
 .order-setup-inner {
   min-height: 0;
+  min-width: 0;
   overflow: hidden;
 }
 
 .order-setup-panel.is-open .order-setup-inner {
-  overflow: visible;
+  overflow-x: clip;
+  overflow-y: visible;
 }
 
 @media (prefers-reduced-motion: reduce) {

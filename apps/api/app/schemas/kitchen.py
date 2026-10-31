@@ -32,6 +32,7 @@ class TicketItemOut(ApiModel):
     combo_name: str | None = None
     seat: int | None
     note: str | None
+    ready_at: datetime | None = None
     voided_at: datetime | None
 
 

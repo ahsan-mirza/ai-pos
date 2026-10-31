@@ -57,6 +57,15 @@ class LineTax:
     line_total_cents: int
 
 
+def entered_includes_tax(product: Any) -> bool:
+    """True when this product's entered selling price already contains tax.
+
+    Missing on older rows means tax-exclusive. It does not follow the business-wide
+    prices-include-VAT switch, so two products in one sale can differ.
+    """
+    return bool(getattr(product, "price_includes_tax", False))
+
+
 def line_tax(unit_price_cents: int, quantity: int, rate_bps: int, *, inclusive: bool) -> LineTax:
     gross = unit_price_cents * quantity
     if inclusive:

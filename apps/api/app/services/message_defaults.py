@@ -51,6 +51,21 @@ DEFAULT_TEMPLATES: dict[str, tuple[str, str, str]] = {
         "A code for you: {{code}}",
         "Hi {{customer}}, {{offer}} is ready. Use code {{code}} at the till. {{reason}}.",
     ),
+    "reservation_confirmed": (
+        "Reservation confirmed",
+        "Your table is confirmed",
+        "Hi {{customer}}, reservation {{number}} for {{guests}} at {{store}} is confirmed for {{when}} ({{table}}).",
+    ),
+    "reservation_updated": (
+        "Reservation updated",
+        "Your reservation was updated",
+        "Hi {{customer}}, reservation {{number}} at {{store}} is now {{when}} ({{table}}).",
+    ),
+    "reservation_cancelled": (
+        "Reservation cancelled",
+        "Your reservation was cancelled",
+        "Hi {{customer}}, reservation {{number}} at {{store}} for {{when}} has been cancelled.",
+    ),
 }
 
 DEFAULT_EVENTS: dict[str, bool] = {
@@ -63,4 +78,7 @@ DEFAULT_EVENTS: dict[str, bool] = {
     "layaway_reminder": True,
     "reorder_due": True,
     "coupon_issued": True,
+    "reservation_confirmed": True,
+    "reservation_updated": True,
+    "reservation_cancelled": True,
 }

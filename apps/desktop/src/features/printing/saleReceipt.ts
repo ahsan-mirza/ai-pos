@@ -83,8 +83,10 @@ export function saleReceipt(input: SaleReceiptInput): ReceiptDoc {
     customer: input.customer ? (input.customer.company_name ?? input.customer.name) : null,
     reference: null,
     lines: receiptLines(input.lines, customerTax(input.customer)),
-    subtotalCents: input.totals.subtotal,
+    subtotalCents:
+      input.totals.exclusiveTax === 0 && input.totals.inclusiveTax > 0 ? input.totals.total : input.totals.subtotal,
     taxCents: input.totals.tax,
+    vatIncluded: input.totals.exclusiveTax === 0 && input.totals.inclusiveTax > 0,
     totalCents: input.totals.total,
     youSavedCents: input.lines.reduce((sum, line) => {
       const was = line.product.compare_at_cents;

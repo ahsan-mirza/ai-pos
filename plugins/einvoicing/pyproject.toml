@@ -1,0 +1,9 @@
+[project]
+name = "axizpos-einvoicing"
+version = "0.1.0"
+description = "UAE e-Invoicing plugin for AxizPOS. Shared database, separate process."
+requires-python = ">=3.12"
+dependencies = ["fastapi", "uvicorn", "sqlalchemy>=2", "cryptography", "pyjwt", "psycopg[binary]"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

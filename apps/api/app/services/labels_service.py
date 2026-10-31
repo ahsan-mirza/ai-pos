@@ -18,7 +18,7 @@ from app.models.batch import BatchItem, PurchaseBatch
 from app.models.product import Product
 from app.services import barcodes
 from app.services.settings_service import business_currency
-from app.services.tax import line_tax
+from app.services.tax import entered_includes_tax, line_tax
 from app.services.tax import policy as tax_policy
 
 FONTS = Path(__file__).resolve().parent.parent / "assets" / "fonts"
@@ -57,9 +57,9 @@ def _money(cents: int, currency: str) -> str:
     return f"{currency} {cents / 100:,.2f}"
 
 
-def _shelf_cents(cents: int, tax_category: str, tax) -> int:
-    if tax.enforced and not tax.prices_include_vat:
-        return line_tax(cents, 1, tax.rate_for(tax_category), inclusive=False).line_total_cents
+def _shelf_cents(cents: int, product: Product, tax) -> int:
+    if tax.enforced and not entered_includes_tax(product):
+        return line_tax(cents, 1, tax.rate_for(product.tax_category), inclusive=False).line_total_cents
     return cents
 
 
@@ -80,14 +80,14 @@ def label_data(
     currency = business_currency(db)
     labels: list[LabelData] = []
     for product, copies in products:
-        shelf = _shelf_cents(product.price_cents, product.tax_category, tax)
+        shelf = _shelf_cents(product.price_cents, product, tax)
         amount = f"{shelf / 100:,.2f}"
         price = None
         if show_price and not product.is_open_price:
             price = f"{currency} {amount}" if show_currency else amount
         was = product.compare_at_cents
         if price and was is not None and was > product.price_cents:
-            price = f"{price}  was {_money(_shelf_cents(was, product.tax_category, tax), currency)}"
+            price = f"{price}  was {_money(_shelf_cents(was, product, tax), currency)}"
         data = LabelData(
             name=product.name[:60] if show_name else "",
             variant=_variant_text(product.variant_attributes) if show_variant else "",

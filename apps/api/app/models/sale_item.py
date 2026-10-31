@@ -87,6 +87,8 @@ class SaleItem(TenantScoped, Base):
     price_list_id: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True), nullable=True)
     # The customer's VAT treatment when it zero-rated or exempted this line (ZERO_EXPORT, EXEMPT, DESIGNATED_ZONE).
     tax_treatment: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    # Whether unit_price_cents already contained tax when the line was sold. Null on sales from before this snapshot.
+    price_includes_tax: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     # The first purchase batch this line drew from; batch_allocations holds the full FIFO split.
     batch_item_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid(as_uuid=True), ForeignKey("batch_items.id", ondelete="SET NULL"), nullable=True, index=True

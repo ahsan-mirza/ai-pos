@@ -1,5 +1,5 @@
 import type { GuestSuggestion } from "@ai-pos/shared-types";
-import { TableGridNode } from "@ai-pos/ui";
+import { FloorBoard, TableGridNode, tableDisplayNumber } from "@ai-pos/ui";
 import { Bell, Receipt, Sparkles } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { ApiRequestError, apiPublicPost, apiTerminal } from "../../lib/api";
@@ -32,6 +32,15 @@ interface FloorTable {
   seats: number;
   covers: number;
   seated_at: string | null;
+  is_active?: boolean;
+  shape?: "square" | "round" | "rect";
+  order_number?: number | null;
+  guest_name?: string | null;
+  kitchen?: "none" | "queued" | "preparing" | "partial" | "ready" | "served";
+  payment?: "none" | "unpaid" | "partial" | "pending" | "paid";
+  order_progress?: "none" | "draft" | "submitted" | "in_progress";
+  kitchen_ready?: number;
+  kitchen_sent?: number;
 }
 
 interface FloorArea {
@@ -248,7 +257,6 @@ function Activate({ onActivated }: { onActivated: (device: TableDevice) => void 
 function Service({ device, onForget }: { device: TableDevice; onForget: () => void }) {
   const { currency: businessCurrency } = useCurrency();
   const [areas, setAreas] = useState<FloorArea[]>([]);
-  const [zoneId, setZoneId] = useState("all");
   const [seating, setSeating] = useState<FloorTable | null>(null);
   const [opening, setOpening] = useState(false);
   const [covers, setCovers] = useState(2);
@@ -342,7 +350,7 @@ function Service({ device, onForget }: { device: TableDevice; onForget: () => vo
     return listenForTableEvents(device.store_id, device.token, (event: TableEvent) => {
       const open = tableRef.current;
       const watching = open !== null && (event.table_id === open.id || event.order_id === sessionRef.current?.order?.id);
-      if (event.type === "ORDER_STATUS_CHANGED") {
+      if (event.type === "ORDER_STATUS_CHANGED" || event.type === "ORDER_ITEM_VOIDED" || event.type === "ORDER_CANCELLED") {
         if (event.message) setNotice(event.message);
         if (watching) setSession((current) => patchSession(current, event));
       }
@@ -360,20 +368,31 @@ function Service({ device, onForget }: { device: TableDevice; onForget: () => vo
         setNotice(null);
       }
       if (event.type === "BILL_REQUESTED" && watching && open) void refreshSession(open.id);
-      if (event.type === "TABLE_ITEMS_ADDED" || event.type === "TABLE_SESSION_CLOSED" || event.type === "ORDER_STATUS_CHANGED" || event.type === "KDS_ITEM_READY" || event.type === "BILL_REQUESTED") {
+      if (event.type === "TABLE_ITEMS_ADDED" || event.type === "TABLE_SESSION_CLOSED" || event.type === "ORDER_STATUS_CHANGED" || event.type === "ORDER_ITEM_VOIDED" || event.type === "ORDER_CANCELLED" || event.type === "KDS_ITEM_READY" || event.type === "BILL_REQUESTED") {
         void loadFloor();
         if (watching && open && event.type !== "BILL_REQUESTED") void refreshSession(open.id);
       }
     });
   }, [device.store_id, device.token, loadFloor, refreshSession]);
 
-  const tables = useMemo(() => {
-    const source = zoneId === "all" ? areas : areas.filter((area) => area.id === zoneId);
-    return source.flatMap((area) => area.tables);
-  }, [areas, zoneId]);
-  const occupiedCount = tables.filter((item) => item.status !== "free").length;
+  const tables = useMemo(
+    () =>
+      areas.flatMap((area) =>
+        area.tables.map((item) => ({
+          ...item,
+          key: item.id,
+          areaId: area.id,
+          active: item.is_active !== false,
+          kitchen: item.kitchen ?? "none",
+          payment: item.payment ?? "none",
+          search: [item.label, tableDisplayNumber(item.label), item.order_number ? `#${item.order_number}` : "", item.guest_name ?? ""].join(" "),
+        })),
+      ),
+    [areas],
+  );
 
-  function chooseTable(item: FloorTable) {
+  function chooseTable(item: FloorTable & { active?: boolean }) {
+    if (item.active === false) return;
     if (item.status === "free") {
       setCovers(Math.min(2, Math.max(1, item.seats || 4)));
       setPhone("");
@@ -559,60 +578,46 @@ function Service({ device, onForget }: { device: TableDevice; onForget: () => vo
 
   if (table === null) {
     return (
-      <Shell>
-        <header className="px-6 pt-5">
+      <div className="min-h-screen bg-[var(--table-floor-bg)] text-[var(--table-card-ink)]">
+        <header className="px-4 pt-4">
           <div className="flex items-center justify-between gap-3">
             <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-orange-400">{venueLabel(device.store_name)}</p>
+              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-[var(--primary)]">{venueLabel(device.store_name)}</p>
               <h1 className="text-2xl font-semibold">Choose a table</h1>
             </div>
-            <button type="button" onClick={onForget} className="text-sm text-zinc-400">
+            <button type="button" onClick={onForget} className="text-sm text-[var(--table-card-muted)]">
               Sign out
             </button>
           </div>
-          <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-            <div className="flex gap-1.5 overflow-x-auto" role="group" aria-label="Floor">
-              <button
-                type="button"
-                aria-pressed={zoneId === "all"}
-                onClick={() => setZoneId("all")}
-                className={`h-9 shrink-0 rounded-full px-4 text-sm font-semibold ${zoneId === "all" ? "bg-orange-500 text-white" : "bg-slate-800 text-slate-200"}`}
-              >
-                All Tables
-              </button>
-              {areas.map((area) => (
-                <button
-                  key={area.id}
-                  type="button"
-                  aria-pressed={zoneId === area.id}
-                  onClick={() => setZoneId(area.id)}
-                  className={`h-9 shrink-0 rounded-full px-4 text-sm font-semibold ${zoneId === area.id ? "bg-orange-500 text-white" : "bg-slate-800 text-slate-200"}`}
-                >
-                  {area.name}
-                </button>
-              ))}
-            </div>
-            <div className="flex flex-wrap gap-1.5" aria-label="Table summary">
-              <span className="rounded-full bg-slate-800 px-3 py-1.5 text-xs font-semibold text-slate-200">Total {tables.length}</span>
-              <span className="rounded-full bg-amber-500/15 px-3 py-1.5 text-xs font-semibold text-amber-200">Occupied {occupiedCount}</span>
-              <span className="rounded-full bg-emerald-500/15 px-3 py-1.5 text-xs font-semibold text-emerald-200">Available {tables.length - occupiedCount}</span>
-            </div>
-          </div>
         </header>
-        {notice ? <p className="mx-6 mt-4 rounded-2xl bg-emerald-500/15 px-4 py-3 text-sm text-emerald-200">{notice}</p> : null}
-        {error && seating === null ? <p className="mx-6 mt-3 text-sm text-red-300">{error}</p> : null}
-        <div className="grid grid-cols-2 gap-4 p-6 md:grid-cols-3 lg:grid-cols-4">
-          {tables.map((item) => (
-            <TableGridNode
-              key={item.id}
-              label={item.label}
-              seats={item.seats}
-              status={item.status}
-              minutes={item.status === "free" ? null : minutesOpen(item.seated_at, now)}
-              total={item.status === "free" ? null : price(item.open_cents, currency)}
-              onClick={() => chooseTable(item)}
-            />
-          ))}
+        {notice ? <p className="mx-4 mt-4 rounded-2xl bg-[var(--table-available-fill)] px-4 py-3 text-sm text-[var(--table-available-ink)]">{notice}</p> : null}
+        {error && seating === null ? <p className="mx-4 mt-3 text-sm text-[var(--table-out-ink)]">{error}</p> : null}
+        <div className="p-4">
+          <FloorBoard
+            sections={areas.map((area) => ({ id: area.id, name: area.name }))}
+            items={tables}
+            renderItem={(item) => (
+              <TableGridNode
+                label={item.label}
+                seats={item.seats}
+                shape={item.shape}
+                active={item.active}
+                status={item.status}
+                kitchen={item.kitchen}
+                payment={item.payment}
+                orderProgress={item.order_progress ?? "none"}
+                orderRef={item.order_number != null ? `#${item.order_number}` : null}
+                guestName={item.guest_name}
+                covers={item.covers}
+                readyCount={item.kitchen_ready ?? 0}
+                sentCount={item.kitchen_sent ?? 0}
+                minutes={item.status === "free" || !item.active ? null : minutesOpen(item.seated_at, now)}
+                total={item.status === "free" || !item.active ? null : price(item.open_cents, currency)}
+                disabled={!item.active}
+                onClick={() => chooseTable(item)}
+              />
+            )}
+          />
         </div>
         {seating ? (
           <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 p-4 sm:items-center" role="presentation" onClick={() => setSeating(null)}>
@@ -660,7 +665,7 @@ function Service({ device, onForget }: { device: TableDevice; onForget: () => vo
             </div>
           </div>
         ) : null}
-      </Shell>
+      </div>
     );
   }
 
@@ -750,23 +755,29 @@ function Service({ device, onForget }: { device: TableDevice; onForget: () => vo
           </div>
         </header>
         {suggestions.some((item) => !draft.some((line) => line.product_id === item.product_id)) ? (
-          <div className="flex gap-2 overflow-x-auto px-4 pb-3">
-            {suggestions
-              .filter((item) => !draft.some((line) => line.product_id === item.product_id))
-              .map((item) => (
-                <button
-                  key={`${item.kind}-${item.product_id}`}
-                  type="button"
-                  onClick={() => offer(item)}
-                  className="min-w-[11rem] max-w-[16rem] shrink-0 rounded-2xl bg-slate-800 px-3 py-2 text-left"
-                >
-                  <span className="flex items-center gap-1.5 truncate text-sm font-semibold">
-                    <Sparkles size={13} aria-hidden="true" className="shrink-0 text-orange-400" />
-                    <span className="truncate">{item.name}</span>
-                  </span>
-                  <span className="mt-0.5 block text-xs text-slate-400">{item.pitch}</span>
-                </button>
-              ))}
+          <div className="px-4 pb-3">
+            <p className="mb-1.5 flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+              <Sparkles size={12} aria-hidden="true" className="text-orange-400" /> Suggest
+            </p>
+            <div className="flex gap-2 overflow-x-auto">
+              {suggestions
+                .filter((item) => !draft.some((line) => line.product_id === item.product_id))
+                .map((item) => (
+                  <button
+                    key={`${item.kind}-${item.product_id}`}
+                    type="button"
+                    onClick={() => offer(item)}
+                    className="min-w-[11rem] max-w-[16rem] shrink-0 rounded-2xl bg-slate-800 px-3 py-2 text-left"
+                  >
+                    <span className="flex items-center gap-1.5 truncate text-sm font-semibold">
+                      <Sparkles size={13} aria-hidden="true" className="shrink-0 text-orange-400" />
+                      <span className="truncate">{item.name}</span>
+                    </span>
+                    <span className="mt-0.5 block truncate text-xs text-slate-400">{item.pitch}</span>
+                    <span className="mt-0.5 block text-xs font-semibold text-orange-300">{price(item.price_cents, item.currency)}</span>
+                  </button>
+                ))}
+            </div>
           </div>
         ) : null}
         <nav className="sticky top-0 z-10 flex gap-2 overflow-x-auto bg-slate-900/90 px-4 pb-3 backdrop-blur-md">

@@ -15,6 +15,8 @@ from sqlalchemy import (
     Integer,
     String,
     Uuid,
+    and_,
+    column,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -66,6 +68,14 @@ class OpenOrder(TenantScoped, Base):
         CheckConstraint("covers >= 0", name="covers_nonnegative"),
         # A delivery app's order arrives once however often its webhook retries.
         tenant_unique("channel_id", "external_ref", name="uq_open_orders_channel_ref"),
+        # One open dine-in tab per table. Settled and voided rows drop out of the index.
+        Index(
+            "uq_open_orders_active_dine_in",
+            "table_id",
+            unique=True,
+            sqlite_where=and_(column("status") == "OPEN", column("service_type") == "DINE_IN"),
+            postgresql_where=and_(column("status") == "OPEN", column("service_type") == "DINE_IN"),
+        ),
     )
 
     # Registers mint the id, so an order opened offline keeps it when it syncs.

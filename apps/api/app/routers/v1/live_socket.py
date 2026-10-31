@@ -77,6 +77,7 @@ async def live_events(websocket: WebSocket) -> None:
         return
     station_id: uuid.UUID | None = None
     terminal_id: uuid.UUID | None = None
+    notify_room = ""
     sessions = _socket_session(websocket)
     try:
         db = next(sessions)
@@ -93,6 +94,9 @@ async def live_events(websocket: WebSocket) -> None:
             if not _kds_allowed(db, principal, station_id):
                 await websocket.close(code=1008)
                 return
+            station = db.get(KitchenStation, station_id)
+            if station is not None:
+                notify_room = rooms.pos_terminals_room(station.store_id)
             room = rooms.kitchen_room(station_id)
         else:
             try:
@@ -103,6 +107,9 @@ async def live_events(websocket: WebSocket) -> None:
             if not _terminal_allowed(db, principal, terminal_id):
                 await websocket.close(code=1008)
                 return
+            register = db.get(Device, terminal_id)
+            if register is not None:
+                notify_room = rooms.pos_terminals_room(register.store_id)
             room = rooms.terminal_room(terminal_id) if role == "pos" else rooms.customer_display_room(terminal_id)
     except ApiError:
         await websocket.close(code=1008)
@@ -112,6 +119,8 @@ async def live_events(websocket: WebSocket) -> None:
 
     await websocket.accept()
     await rooms.join(websocket, room)
+    if notify_room:
+        rooms.publish(notify_room, {"type": "peripherals:changed"})
     if role == "customer-display" and terminal_id is not None:
         current = rooms.latest_cart(str(terminal_id))
         if current is not None:
@@ -124,6 +133,8 @@ async def live_events(websocket: WebSocket) -> None:
         pass
     finally:
         await rooms.leave(websocket)
+        if notify_room:
+            rooms.publish(notify_room, {"type": "peripherals:changed"})
 
 
 async def _on_message(

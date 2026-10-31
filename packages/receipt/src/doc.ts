@@ -47,6 +47,8 @@ export interface ReceiptDoc extends Omit<ReceiptIdentity, "taxAuthority"> {
   lines: ReceiptLine[];
   subtotalCents: number;
   taxCents: number;
+  /** Every taxed line already included its tax, so the subtotal is the amount the customer pays. */
+  vatIncluded?: boolean;
   totalCents: number;
   tenders: { label: string; amountCents: number }[];
   changeCents: number | null;
@@ -162,8 +164,8 @@ export function receiptOps(doc: ReceiptDoc): ReceiptOp[] {
   }
   ops.push(
     { kind: "rule" },
-    { kind: "row", left: "Subtotal excl. VAT", right: money(doc.subtotalCents), size: 22 },
-    { kind: "row", left: "VAT", right: money(doc.taxCents), size: 22 },
+    { kind: "row", left: doc.vatIncluded ? "Subtotal" : "Subtotal excl. VAT", right: money(doc.subtotalCents), size: 22 },
+    { kind: "row", left: doc.vatIncluded ? "VAT included" : "VAT", right: money(doc.taxCents), size: 22 },
     { kind: "row", left: "Total", right: money(doc.totalCents), size: 30, bold: true },
   );
   if (doc.youSavedCents) ops.push({ kind: "row", left: "You saved", right: money(doc.youSavedCents), size: 20 });

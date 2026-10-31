@@ -599,6 +599,7 @@ class ProductOut(ApiModel):
     unit_options: list[UnitOption] = Field(default_factory=list)
     prices: list[ProductPriceOut] = Field(default_factory=list)
     tax_category: TaxCategory = "STANDARD"
+    price_includes_tax: bool = False
     is_open_price: bool = False
     is_service: bool = False
     # Weighed goods: stock_quantity counts grams and price_cents is per kilogram.
@@ -650,6 +651,8 @@ class SaleItemOut(ApiModel):
     list_price_cents: int | None = None
     price_override_by_id: UUID | None = None
     tax_rate_bps: int | None = None
+    # Null when the sale was recorded before this snapshot. It is not read back from the product.
+    price_includes_tax: bool | None = None
     description: str | None = None
     cost_cents: int | None = None
 

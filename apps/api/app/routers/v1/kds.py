@@ -47,6 +47,11 @@ def board(
     return kitchen_service.board(db, principal, station_id, since)
 
 
+@router.post("/tickets/{ticket_id}/items/{item_id}/ready", response_model=TicketOut)
+def mark_item_ready(ticket_id: uuid.UUID, item_id: uuid.UUID, db: Db, principal: CanOperate) -> TicketOut:
+    return kitchen_service.mark_item_ready(db, principal, ticket_id, item_id)
+
+
 @router.post("/tickets/{ticket_id}/status", response_model=TicketOut)
 def set_status(ticket_id: uuid.UUID, payload: TicketStatusIn, db: Db, principal: CanOperate) -> TicketOut:
     return kitchen_service.set_status(db, principal, ticket_id, payload.status)

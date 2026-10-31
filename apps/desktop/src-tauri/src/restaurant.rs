@@ -8,13 +8,14 @@ use serde_json::{json, Value};
 
 use crate::AppState;
 
-const PREFIXES: [&str; 6] = [
+const PREFIXES: [&str; 7] = [
     "/api/v1/orders",
     "/api/v1/dining",
     "/api/v1/kds",
     "/api/v1/channels",
     "/api/v1/sales-orders",
     "/api/v1/price-lists/customers",
+    "/api/v1/reservations",
 ];
 
 fn safe(path: &str) -> bool {
@@ -74,7 +75,11 @@ pub async fn restaurant_request(
             let message = value["error"]["message"]
                 .as_str()
                 .unwrap_or("The server refused the request.");
-            return Err(failure(status.as_u16(), code, message));
+            let mut body = serde_json::json!({ "status": status.as_u16(), "code": code, "message": message });
+            if let Some(order_id) = value["error"]["details"]["order_id"].as_str() {
+                body["order_id"] = serde_json::json!(order_id);
+            }
+            return Err(body.to_string());
         }
         Ok(value)
     })
@@ -93,6 +98,7 @@ mod tests {
             "/api/v1/orders/123e4567-e89b-12d3-a456-426614174000/send"
         ));
         assert!(safe("/api/v1/dining/floor?store_id=x"));
+        assert!(safe("/api/v1/reservations?store_id=x"));
         assert!(!safe("/api/v1/users"));
         assert!(!safe("/api/v1/orders/../users"));
         assert!(!safe("/api/v1/ordersx"));

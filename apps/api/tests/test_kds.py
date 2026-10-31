@@ -19,7 +19,7 @@ from tests.test_returns import (
     seed_catalog,
 )
 
-from app.models import KitchenTicket, Product
+from app.models import AuditLog, KitchenTicket, Product
 
 MODULES = ("menu_modifiers", "open_orders", "tables", "kds")
 BURGER_ID = "00000000-0000-4000-8000-000000000077"
@@ -129,6 +129,13 @@ def test_sending_fires_tickets_per_station_and_tracks_progress(client, session: 
         },
     )
     assert voided.status_code == 200, voided.text
+    voided_line = next(item for item in voided.json()["items"] if item["product_id"] == BURGER_ID)
+    assert voided_line["void_reason"] == "Kitchen ran out"
+    guest = client.get(f"/api/v1/fnb/tables/{table['id']}/active-session", headers=device())
+    assert guest.status_code == 200, guest.text
+    guest_line = next(item for item in guest.json()["order"]["items"] if item["product_id"] == BURGER_ID)
+    assert guest_line["voided_at"] is not None
+    assert guest_line.get("void_reason") in (None, "")
     kitchen_ticket = board(client, kitchen)["tickets"][0]
     assert kitchen_ticket["status"] == "BUMPED" and kitchen_ticket["items"][0]["voided_at"] is not None
 
@@ -147,3 +154,90 @@ def test_counter_sales_fire_without_an_order(client, session: Session) -> None:
     assert push(client, "sale", sale).status_code == 200
     tickets = session.scalars(select(KitchenTicket).where(KitchenTicket.sale_id == uuid.UUID(sale["id"]))).all()
     assert len(tickets) == 1 and tickets[0].station_id == uuid.UUID(bar["id"]) and tickets[0].number == 1
+
+
+def test_one_ready_item_does_not_finish_the_ticket_or_the_order(client, session: Session) -> None:
+    seed_catalog(client)
+    token = admin_token(client)
+    enable(client, token, *MODULES)
+    _bar, kitchen = stations(client, token, session)
+    table = floor_table(client, token)
+    burger = {
+        "id": BURGER_ID,
+        "sku": "FD-BURGER",
+        "barcode": "100000000077",
+        "name": "Burger",
+        "category": "Mains",
+        "price_cents": 1500,
+        "is_serialized": False,
+        "stock_quantity": 50,
+    }
+    assert push(client, "product", {**burger, "store_id": STORE_ID, "currency": "USD"}).status_code == 200
+    assert change_profile(client, bearer(token), "restaurant").status_code == 200
+    first_id, second_id = str(uuid.uuid4()), str(uuid.uuid4())
+
+    def burger_line(item_id: str) -> dict:
+        return {"id": item_id, "product_id": BURGER_ID, "quantity": 1, "unit_price_cents": 1500}
+
+    order = open_order(client, table, burger_line(first_id), burger_line(second_id))
+    sent = client.post(
+        f"/api/v1/orders/{order['id']}/send", headers=device(), json={"revision": 1, "user_id": CASHIER_ID}
+    )
+    assert sent.status_code == 200, sent.text
+    ticket = board(client, kitchen)["tickets"][0]
+    assert len(ticket["items"]) == 2
+    early = client.post(
+        f"/api/v1/orders/{order['id']}/hand-over",
+        headers=device(),
+        json={"revision": sent.json()["revision"], "user_id": CASHIER_ID},
+    )
+    assert early.status_code == 422 and early.json()["error"]["code"] == "nothing_ready"
+
+    with client.websocket_connect(f"/api/v1/ws/stores/{STORE_ID}/tables?token={API_KEY}") as socket:
+        marked = client.post(
+            f"/api/v1/kds/tickets/{ticket['id']}/items/{ticket['items'][0]['id']}/ready", headers=device()
+        )
+        assert marked.status_code == 200, marked.text
+        body = marked.json()
+        assert body["status"] == "PREPARING"
+        assert body["items"][0]["ready_at"] is not None and body["items"][1]["ready_at"] is None
+        progress = socket.receive_json()
+        assert progress["type"] == "ORDER_STATUS_CHANGED"
+        assert progress["kitchen_status"] == "ready"
+        assert progress["status"] == "ready"
+        assert progress["item_ids"] == [ticket["items"][0]["order_item_id"]]
+        assert "Burger" in progress["message"]
+        assert socket.receive_json()["type"] == "KDS_ITEM_READY"
+
+    again = client.post(
+        f"/api/v1/kds/tickets/{ticket['id']}/items/{ticket['items'][0]['id']}/ready", headers=device()
+    )
+    assert again.status_code == 200 and again.json()["status"] == "PREPARING"
+    refreshed = client.get(f"/api/v1/orders/{order['id']}", headers=device()).json()
+    by_id = {item["id"]: item["kitchen_status"] for item in refreshed["items"]}
+    assert by_id[ticket["items"][0]["order_item_id"]] == "ready"
+    assert by_id[ticket["items"][1]["order_item_id"]] == "preparing"
+    floor = client.get("/api/v1/dining/floor", headers=device(), params={"store_id": STORE_ID}).json()
+    assert floor["areas"][0]["tables"][0]["kitchen"] == "partial"
+    waiting = client.post(
+        f"/api/v1/orders/{order['id']}/hand-over",
+        headers=device(),
+        json={"revision": refreshed["revision"], "user_id": CASHIER_ID},
+    )
+    assert waiting.status_code == 422 and waiting.json()["error"]["code"] == "nothing_ready"
+
+    finished = client.post(
+        f"/api/v1/kds/tickets/{ticket['id']}/items/{ticket['items'][1]['id']}/ready", headers=device()
+    )
+    assert finished.status_code == 200 and finished.json()["status"] == "READY"
+    current = client.get(f"/api/v1/orders/{order['id']}", headers=device()).json()
+    handed = client.post(
+        f"/api/v1/orders/{order['id']}/hand-over",
+        headers=device(),
+        json={"revision": current["revision"], "user_id": CASHIER_ID},
+    )
+    assert handed.status_code == 200, handed.text
+    assert {item["kitchen_status"] for item in handed.json()["items"]} == {"bumped"}
+    floor = client.get("/api/v1/dining/floor", headers=device(), params={"store_id": STORE_ID}).json()
+    assert floor["areas"][0]["tables"][0]["kitchen"] == "served"
+    assert session.scalar(select(AuditLog).where(AuditLog.action == "order.hand_over")) is not None

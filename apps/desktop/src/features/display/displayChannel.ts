@@ -8,11 +8,15 @@ export interface DisplayState {
   lines: { name: string; quantity: number; totalCents: number }[];
   subtotalCents: number;
   taxCents: number;
+  /** True when the tax shown is already inside the subtotal and the total. */
+  vatIncluded?: boolean;
   totalCents: number;
   /** Set while the customer should scan to pay. */
   qr: { payload: string; status: "PENDING" | "PAID" | "EXPIRED" | "CANCELLED"; amountCents: number } | null;
   /** Shown for a few seconds after a sale completes. */
   thanks: string | null;
+  /** Neutral customer message, such as a cancellation. Never a staff note. */
+  notice?: string | null;
 }
 
 const CHANNEL = "ai-pos-customer-display";

@@ -1,10 +1,13 @@
 import type { DiningArea, DiningTable, Floor } from "@ai-pos/shared-types";
 import { DiningTableShape, tableFootprint } from "@ai-pos/ui";
-import { LayoutGrid, Plus } from "lucide-react";
+import { LayoutGrid, Plus, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { Link } from "react-router-dom";
+import { useTenant } from "../../context/TenantContext";
+import { useConfirm } from "../../components/ui/ConfirmDialog";
 import { ErrorNote, GhostButton, PrimaryButton, SelectField, TextField } from "../../components/ui/Field";
 import { Toggle } from "../../components/ui/Toggle";
-import { apiGet, apiPost, apiPut } from "../../lib/api";
+import { apiDelete, apiGet, apiPost, apiPut } from "../../lib/api";
 import { useAuth } from "../../lib/auth";
 import { message } from "../customers/api";
 import { storeOptions, useStores } from "../inventory/shared";
@@ -19,6 +22,7 @@ type TableDraft = Pick<DiningTable, "label" | "seats" | "shape" | "x" | "y" | "w
 /** Floor plan editor: dining areas and their tables on a grid; registers show live table status on the same plan. */
 export function FloorPlanPage() {
   const { user } = useAuth();
+  const { allows } = useTenant();
   const { stores } = useStores();
   const [storeId, setStoreId] = useState(user?.store_id ?? "");
   const [floor, setFloor] = useState<Floor | null>(null);
@@ -27,6 +31,7 @@ export function FloorPlanPage() {
   const [draft, setDraft] = useState<TableDraft | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const confirm = useConfirm();
   const drag = useRef<{ id: string; dx: number; dy: number } | null>(null);
   const [dragPos, setDragPos] = useState<{ id: string; x: number; y: number } | null>(null);
 
@@ -86,6 +91,28 @@ export function FloorPlanPage() {
     await run(() =>
       apiPost<Floor>("/api/v1/dining/tables", { area_id: area.id, label, seats: 4, shape: "square", ...cell, w: 2, h: 2 }),
     );
+  }
+
+  async function removeTable(table: DiningTable) {
+    const accepted = await confirm({
+      title: "Delete table",
+      message: `Delete ${table.label}? An open order must be settled or moved first. Past checks stay in history.`,
+      confirmLabel: "Delete",
+      tone: "danger",
+    });
+    if (!accepted) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await apiDelete(`/api/v1/dining/tables/${table.id}`);
+      setSelected(null);
+      setDraft(null);
+      await load();
+    } catch (caught) {
+      setError(message(caught, "Could not delete the table."));
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function saveTable(table: DiningTable, changes: Partial<TableDraft>) {
@@ -252,6 +279,14 @@ export function FloorPlanPage() {
                 <PrimaryButton type="submit" disabled={busy}>
                   Save table
                 </PrimaryButton>
+                {allows(["restaurant", "cafe"]) ? (
+                  <Link className="block text-sm font-medium text-accent" to={`/inventory/reservations?store=${storeId}&table=${selected.id}`}>
+                    Table history
+                  </Link>
+                ) : null}
+                <GhostButton intent="danger" disabled={busy} onClick={() => void removeTable(selected)}>
+                  <Trash2 size={15} aria-hidden="true" /> Delete table
+                </GhostButton>
               </form>
             ) : (
               <p className="text-sm text-charcoal/60">Select a table to rename it, change its seats or shape. Drag to move.</p>

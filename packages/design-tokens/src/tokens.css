@@ -23,6 +23,79 @@
   --color-surface: #f3f4f6;
   --radius-card: 20px;
   --font-sans: "Archivo", sans-serif;
+  /* Dining floor. Light is the default; `.dark` and `[data-theme="dark"]` retint the same names. */
+  --table-card-bg: #ffffff;
+  --table-card-ink: #222026;
+  --table-card-muted: #5c6570;
+  --table-card-line: #e7e5e4;
+  --table-floor-bg: #f4f5f7;
+  --table-chair-fill: #e7e5e4;
+  --table-chair-line: #a8a29e;
+  --table-available-fill: #ecfdf3;
+  --table-available-line: #15803d;
+  --table-available-ink: #166534;
+  --table-occupied-fill: #f5f3ff;
+  --table-occupied-line: #7c3aed;
+  --table-occupied-ink: #5b21b6;
+  --table-ordered-fill: #fffbeb;
+  --table-ordered-line: #d97706;
+  --table-ordered-ink: #92400e;
+  --table-preparing-fill: #fff7ed;
+  --table-preparing-line: #ea580c;
+  --table-preparing-ink: #9a3412;
+  --table-partial-fill: #eff6ff;
+  --table-partial-line: #2563eb;
+  --table-partial-ink: #1e3a8a;
+  --table-ready-fill: #ecfeff;
+  --table-ready-line: #0891b2;
+  --table-ready-ink: #155e75;
+  --table-served-fill: #f0fdfa;
+  --table-served-line: #0f766e;
+  --table-served-ink: #115e59;
+  --table-payment-fill: #eef2ff;
+  --table-payment-line: #4f46e5;
+  --table-payment-ink: #3730a3;
+  --table-out-fill: #fef2f2;
+  --table-out-line: #dc2626;
+  --table-out-ink: #991b1b;
+}
+
+.dark,
+[data-theme="dark"] {
+  --table-card-bg: #1c1b1f;
+  --table-card-ink: #f4f4f5;
+  --table-card-muted: #a1a1aa;
+  --table-card-line: #3f3f46;
+  --table-floor-bg: #121215;
+  --table-chair-fill: #3f3f46;
+  --table-chair-line: #71717a;
+  --table-available-fill: #052e16;
+  --table-available-line: #4ade80;
+  --table-available-ink: #86efac;
+  --table-occupied-fill: #2e1065;
+  --table-occupied-line: #c4b5fd;
+  --table-occupied-ink: #ddd6fe;
+  --table-ordered-fill: #451a03;
+  --table-ordered-line: #fbbf24;
+  --table-ordered-ink: #fde68a;
+  --table-preparing-fill: #431407;
+  --table-preparing-line: #fb923c;
+  --table-preparing-ink: #fdba74;
+  --table-partial-fill: #172554;
+  --table-partial-line: #60a5fa;
+  --table-partial-ink: #bfdbfe;
+  --table-ready-fill: #083344;
+  --table-ready-line: #22d3ee;
+  --table-ready-ink: #a5f3fc;
+  --table-served-fill: #042f2e;
+  --table-served-line: #2dd4bf;
+  --table-served-ink: #99f6e4;
+  --table-payment-fill: #1e1b4b;
+  --table-payment-line: #818cf8;
+  --table-payment-ink: #c7d2fe;
+  --table-out-fill: #450a0a;
+  --table-out-line: #f87171;
+  --table-out-ink: #fecaca;
 }
 
 html,

@@ -17,7 +17,7 @@ export interface TableEvent {
 function socketUrl(storeId: string, token: string): string {
   const base = env.apiBaseUrl.replace(/^http/, "ws");
   const tenant = env.tenantDomain ? `&tenant=${encodeURIComponent(env.tenantDomain)}` : "";
-  return `${base}/api/v1/ws/stores/${storeId}/tables?token=${encodeURIComponent(token)}${tenant}`;
+  return `${base}/api/v1/ws/stores/${storeId}/tables?token=${encodeURIComponent(token)}&role=pos${tenant}`;
 }
 
 /**

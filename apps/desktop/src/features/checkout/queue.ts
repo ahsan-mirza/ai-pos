@@ -70,7 +70,7 @@ export function saleItems(lines: CartLine[], policy: TaxPolicy = businessTax()):
       list_price_cents: line.listPriceCents,
       price_override:
         line.override !== null ? { approved_by_id: line.override.approvedById, note: line.override.note } : null,
-      description: line.description ?? null,
+      description: line.description ?? (line.instruction?.trim() ? line.instruction.trim().slice(0, 160) : null),
       below_floor_override:
         line.floorOverride != null
           ? { approved_by_id: line.floorOverride.approvedById, note: line.floorOverride.note }

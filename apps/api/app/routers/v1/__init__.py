@@ -25,6 +25,7 @@ from app.routers.v1.devices import router as devices_router
 from app.routers.v1.dining import router as dining_router
 from app.routers.v1.downloads import router as downloads_router
 from app.routers.v1.einvoices import router as einvoices_router
+from app.routers.v1.einvoicing_addon import router as einvoicing_addon_router
 from app.routers.v1.expenses import router as expenses_router
 from app.routers.v1.expiry import router as expiry_router
 from app.routers.v1.fnb_table_orders import router as fnb_table_orders_router
@@ -51,6 +52,7 @@ from app.routers.v1.onboarding import router as onboarding_router
 from app.routers.v1.orders import router as orders_router
 from app.routers.v1.payables import router as payables_router
 from app.routers.v1.payments import router as payments_router
+from app.routers.v1.peripherals import router as peripherals_router
 from app.routers.v1.price_lists import router as price_lists_router
 from app.routers.v1.pricing import router as pricing_router
 from app.routers.v1.products import router as products_router
@@ -61,6 +63,7 @@ from app.routers.v1.recipes import router as recipes_router
 from app.routers.v1.register import router as register_router
 from app.routers.v1.rentals import router as rentals_router
 from app.routers.v1.reorders import router as reorders_router
+from app.routers.v1.reservations import router as reservations_router
 from app.routers.v1.repair_workshop import router as repair_workshop_router
 from app.routers.v1.repairs import router as repairs_router
 from app.routers.v1.replenishment import router as replenishment_router
@@ -155,6 +158,7 @@ api_router.include_router(sync_router, prefix="/sync", tags=["sync"])
 api_router.include_router(settings_router, prefix="/settings", tags=["settings"])
 api_router.include_router(audit_router, prefix="/audit-logs", tags=["audit"])
 api_router.include_router(devices_router, prefix="/devices", tags=["devices"])
+api_router.include_router(peripherals_router, prefix="/peripherals", tags=["peripherals"])
 api_router.include_router(downloads_router, prefix="/downloads", tags=["downloads"])
 api_router.include_router(management_router, prefix="/reports/management", tags=["management reports"])
 api_router.include_router(insights_router, prefix="/insights", tags=["insights"])
@@ -162,6 +166,7 @@ api_router.include_router(reports_router, prefix="/reports", tags=["reports"])
 api_router.include_router(shifts_router, prefix="/shifts", tags=["shifts"])
 api_router.include_router(cheques_router, prefix="/cheques", tags=["cheques"], dependencies=module(Capability.CHEQUES))
 api_router.include_router(einvoices_router, prefix="/einvoices", tags=["einvoices"])
+api_router.include_router(einvoicing_addon_router, prefix="/einvoicing", tags=["uae e-invoicing"])
 api_router.include_router(labels_router, prefix="/labels", tags=["labels"])
 api_router.include_router(markdowns_router, prefix="/markdowns", tags=["markdowns"])
 api_router.include_router(
@@ -174,6 +179,9 @@ api_router.include_router(margin_router, prefix="/margin", tags=["margin"])
 api_router.include_router(menu_router, prefix="/menu", tags=["menu"], dependencies=module(Capability.MENU_MODIFIERS))
 api_router.include_router(orders_router, prefix="/orders", tags=["orders"], dependencies=module(Capability.OPEN_ORDERS))
 api_router.include_router(dining_router, prefix="/dining", tags=["dining"], dependencies=module(Capability.TABLES))
+api_router.include_router(
+    reservations_router, prefix="/reservations", tags=["reservations"], dependencies=module(Capability.TABLES)
+)
 api_router.include_router(
     fnb_table_orders_router,
     prefix="/fnb",

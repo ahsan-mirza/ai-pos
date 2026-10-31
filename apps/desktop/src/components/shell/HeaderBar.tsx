@@ -59,7 +59,7 @@ export function HeaderBar({ title, sync, actions }: { title: string; sync: SyncS
           <SyncIcon size={13} aria-hidden="true" />
           {sync.label}
         </span>
-        <div role="group" aria-label="Colour theme" className="flex h-8 items-center rounded-full bg-zinc-100 p-0.5 ring-1 ring-zinc-200 dark:bg-zinc-800/60 dark:ring-zinc-800">
+        <div role="group" aria-label="Colour theme" className="flex h-12 items-center rounded-full bg-zinc-100 p-1 ring-1 ring-zinc-200 dark:bg-zinc-800/60 dark:ring-zinc-800">
           {(
             [
               { id: "light", label: "Light", icon: Sun },
@@ -71,7 +71,7 @@ export function HeaderBar({ title, sync, actions }: { title: string; sync: SyncS
               type="button"
               aria-pressed={theme === id}
               onClick={() => setTheme(id)}
-              className={`flex h-7 items-center gap-1 rounded-full px-2.5 text-xs font-medium transition-colors ${
+              className={`flex h-10 items-center gap-1.5 rounded-full px-3 text-sm font-medium transition-colors ${
                 theme === id
                   ? "bg-white text-zinc-900 shadow-sm dark:bg-zinc-700 dark:text-white"
                   : "text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-white"

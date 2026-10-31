@@ -64,7 +64,26 @@ export { RepairJobsToolbar, type RepairJobsToolbarProps } from "./RepairJobsTool
 export { SearchableMultiSpecSelect, type SearchableMultiSpecSelectProps } from "./SearchableMultiSpecSelect";
 export { SearchableSpecSelect, type SearchableSpecSelectProps } from "./SearchableSpecSelect";
 export { Select, billingCycleBadge, billingCycleOption, type SelectOption, type SelectProps } from "./Select";
+export { FloorBoard, floorTableGridClass, type FloorSection } from "./FloorBoard";
 export {
+  aggregateService,
+  floorCounts,
+  matchesFloorFilter,
+  tableTone,
+  toneLabel,
+  KITCHEN_LABEL,
+  ORDER_PHASE_LABEL,
+  PAYMENT_LABEL,
+  type FloorFilter,
+  type FloorFacts,
+  type FloorMatch,
+  type KitchenPhase,
+  type OrderPhase,
+  type PaymentPhase,
+  type ServiceMarks,
+} from "./floorStatus";
+export {
+  formatSeatedDuration,
   TableGridNode,
   TableSeatGraphic,
   tableCapacityLabel,

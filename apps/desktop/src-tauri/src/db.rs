@@ -31,6 +31,9 @@ pub struct ProductRow {
     pub prices: serde_json::Value,
     #[serde(default = "standard_tax")]
     pub tax_category: String,
+    /// The entered price already contains tax. Older catalogue rows are tax-exclusive.
+    #[serde(default)]
+    pub price_includes_tax: bool,
     #[serde(default)]
     pub is_open_price: bool,
     #[serde(default)]
@@ -159,6 +162,31 @@ pub struct CachedUser {
     pub updated_at: i64,
 }
 
+pub struct CashierDirectoryRow {
+    pub user_id: String,
+    pub display_name: String,
+    pub initials: String,
+    pub role_label: String,
+    pub avatar_url: Option<String>,
+}
+
+fn cached_user_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<CachedUser> {
+    Ok(CachedUser {
+        user_id: row.get(0)?,
+        username: row.get(1)?,
+        full_name: row.get(2)?,
+        store_id: row.get(3)?,
+        role_name: row.get(4)?,
+        permissions: row.get(5)?,
+        pin_hash: row.get(6)?,
+        failed_attempts: row.get(7)?,
+        locked_until: row.get(8)?,
+        max_discount_bps: row.get(9)?,
+        addon_modules: row.get(10)?,
+        updated_at: row.get(11)?,
+    })
+}
+
 #[derive(Deserialize)]
 struct SeedFile {
     products: Vec<ProductRow>,
@@ -187,8 +215,8 @@ const PRODUCT_COLUMNS: &str = "id, store_id, sku, barcode, name, category, price
      stock_quantity, model_number, brand, min_order_quantity, sellable_units, prices_json, tax_category, \
      is_open_price, origin, is_service, product_model_id, model_name, variant_json, sold_by_weight, plu_code, \
      tare_grams, nearest_expiry, units_json, has_recipe, is_ingredient, price_lists_json, image_url, thumb_url, \
-     season, collection, gender, compare_at_cents, is_active";
-const PRODUCT_COLUMN_COUNT: usize = 37;
+     season, collection, gender, compare_at_cents, is_active, price_includes_tax";
+const PRODUCT_COLUMN_COUNT: usize = 38;
 
 pub struct Db {
     conn: Mutex<Connection>,
@@ -622,6 +650,68 @@ impl Db {
         tx.commit().map_err(|err| err.to_string())
     }
 
+    pub fn cached_user_by_id(&self, user_id: &str) -> Result<Option<CachedUser>, String> {
+        let conn = self.lock()?;
+        conn.query_row(
+            "SELECT user_id, username, full_name, store_id, role_name, permissions, pin_hash, failed_attempts, locked_until,
+                    max_discount_bps, addon_modules, updated_at
+             FROM cached_users WHERE user_id = ?1",
+            params![user_id],
+            cached_user_row,
+        )
+        .map(Some)
+        .or_else(|err| match err {
+            rusqlite::Error::QueryReturnedNoRows => Ok(None),
+            other => Err(other),
+        })
+        .map_err(|err| err.to_string())
+    }
+
+    pub fn replace_cashier_directory(&self, scope: &str, rows: &[CashierDirectoryRow]) -> Result<(), String> {
+        let mut conn = self.lock()?;
+        let tx = conn.transaction().map_err(|err| err.to_string())?;
+        tx.execute("DELETE FROM cashier_directory", [])
+            .map_err(|err| err.to_string())?;
+        for row in rows {
+            tx.execute(
+                "INSERT INTO cashier_directory (scope_store, user_id, display_name, initials, role_label, avatar_url)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                params![
+                    scope,
+                    row.user_id,
+                    row.display_name,
+                    row.initials,
+                    row.role_label,
+                    row.avatar_url
+                ],
+            )
+            .map_err(|err| err.to_string())?;
+        }
+        tx.commit().map_err(|err| err.to_string())
+    }
+
+    pub fn list_cashier_directory(&self, scope: &str) -> Result<Vec<CashierDirectoryRow>, String> {
+        let conn = self.lock()?;
+        let mut statement = conn
+            .prepare(
+                "SELECT user_id, display_name, initials, role_label, avatar_url
+                 FROM cashier_directory WHERE scope_store = ?1 ORDER BY display_name",
+            )
+            .map_err(|err| err.to_string())?;
+        let rows = statement
+            .query_map(params![scope], |row| {
+                Ok(CashierDirectoryRow {
+                    user_id: row.get(0)?,
+                    display_name: row.get(1)?,
+                    initials: row.get(2)?,
+                    role_label: row.get(3)?,
+                    avatar_url: row.get(4)?,
+                })
+            })
+            .map_err(|err| err.to_string())?;
+        rows.collect::<Result<Vec<_>, _>>().map_err(|err| err.to_string())
+    }
+
     pub fn cached_user(&self, username: &str) -> Result<Option<CachedUser>, String> {
         let conn = self.lock()?;
         conn.query_row(
@@ -629,22 +719,7 @@ impl Db {
                     max_discount_bps, addon_modules, updated_at
              FROM cached_users WHERE username = ?1",
             params![username],
-            |row| {
-                Ok(CachedUser {
-                    user_id: row.get(0)?,
-                    username: row.get(1)?,
-                    full_name: row.get(2)?,
-                    store_id: row.get(3)?,
-                    role_name: row.get(4)?,
-                    permissions: row.get(5)?,
-                    pin_hash: row.get(6)?,
-                    failed_attempts: row.get(7)?,
-                    locked_until: row.get(8)?,
-                    max_discount_bps: row.get(9)?,
-                    addon_modules: row.get(10)?,
-                    updated_at: row.get(11)?,
-                })
-            },
+            cached_user_row,
         )
         .map(Some)
         .or_else(|err| match err {
@@ -681,6 +756,45 @@ impl Db {
 
     fn lock(&self) -> Result<std::sync::MutexGuard<'_, Connection>, String> {
         self.conn.lock().map_err(|err| err.to_string())
+    }
+
+    /// Who is unlocked on this register. The PIN hash and access token stay out of this row.
+    pub fn save_register_session(&self, user: &CashierProfile, mode: &str, unlocked_at: i64) -> Result<(), String> {
+        let user_json = serde_json::to_string(user).map_err(|err| err.to_string())?;
+        self.lock()?
+            .execute(
+                "INSERT INTO register_session (id, user_json, mode, unlocked_at) VALUES (1, ?1, ?2, ?3)
+                 ON CONFLICT(id) DO UPDATE SET
+                   user_json = excluded.user_json,
+                   mode = excluded.mode,
+                   unlocked_at = excluded.unlocked_at",
+                params![user_json, mode, unlocked_at],
+            )
+            .map_err(|err| err.to_string())?;
+        Ok(())
+    }
+
+    pub fn load_register_session(&self) -> Result<Option<(CashierProfile, String, i64)>, String> {
+        let conn = self.lock()?;
+        let mut statement = conn
+            .prepare("SELECT user_json, mode, unlocked_at FROM register_session WHERE id = 1")
+            .map_err(|err| err.to_string())?;
+        let mut rows = statement.query([]).map_err(|err| err.to_string())?;
+        let Some(row) = rows.next().map_err(|err| err.to_string())? else {
+            return Ok(None);
+        };
+        let encoded: String = row.get(0).map_err(|err| err.to_string())?;
+        let user = serde_json::from_str(&encoded).map_err(|err| err.to_string())?;
+        let mode: String = row.get(1).map_err(|err| err.to_string())?;
+        let unlocked_at: i64 = row.get(2).map_err(|err| err.to_string())?;
+        Ok(Some((user, mode, unlocked_at)))
+    }
+
+    pub fn clear_register_session(&self) -> Result<(), String> {
+        self.lock()?
+            .execute("DELETE FROM register_session", [])
+            .map_err(|err| err.to_string())?;
+        Ok(())
     }
 }
 
@@ -762,6 +876,7 @@ fn migrate(conn: &Connection) -> Result<(), String> {
         ("gender", "TEXT"),
         ("compare_at_cents", "INTEGER"),
         ("is_active", "INTEGER NOT NULL DEFAULT 1"),
+        ("price_includes_tax", "INTEGER NOT NULL DEFAULT 0"),
     ] {
         if !has_column(conn, "products", column)? {
             conn.execute_batch(&format!(
@@ -788,7 +903,22 @@ fn migrate(conn: &Connection) -> Result<(), String> {
         .map_err(|err| err.to_string())?;
     }
     conn.execute_batch(
-        "CREATE INDEX IF NOT EXISTS ix_sync_queue_batch ON sync_queue (batch_id, status);",
+        "CREATE INDEX IF NOT EXISTS ix_sync_queue_batch ON sync_queue (batch_id, status);
+         CREATE TABLE IF NOT EXISTS cashier_directory (
+            scope_store TEXT NOT NULL,
+            user_id TEXT NOT NULL,
+            display_name TEXT NOT NULL,
+            initials TEXT NOT NULL,
+            role_label TEXT NOT NULL,
+            avatar_url TEXT,
+            PRIMARY KEY (scope_store, user_id)
+         );
+         CREATE TABLE IF NOT EXISTS register_session (
+            id INTEGER PRIMARY KEY CHECK (id = 1),
+            user_json TEXT NOT NULL,
+            mode TEXT NOT NULL,
+            unlocked_at INTEGER NOT NULL
+         );",
     )
     .map_err(|err| err.to_string())
 }
@@ -883,7 +1013,7 @@ fn insert_product(conn: &Connection, product: &ProductRow) -> Result<(), String>
         &format!(
             "INSERT INTO products ({PRODUCT_COLUMNS})
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22,
-                     ?23, ?24, ?25, ?26, ?27, ?28, ?29, ?30, ?31, ?32, ?33, ?34, ?35, ?36, ?37)"
+                     ?23, ?24, ?25, ?26, ?27, ?28, ?29, ?30, ?31, ?32, ?33, ?34, ?35, ?36, ?37, ?38)"
         ),
         params![
             product.id,
@@ -922,7 +1052,8 @@ fn insert_product(conn: &Connection, product: &ProductRow) -> Result<(), String>
             product.collection,
             product.gender,
             product.compare_at_cents,
-            if product.is_active { 1 } else { 0 }
+            if product.is_active { 1 } else { 0 },
+            if product.price_includes_tax { 1 } else { 0 }
         ],
     )
     .map_err(|err| err.to_string())?;
@@ -977,5 +1108,6 @@ fn read_product(row: &rusqlite::Row<'_>) -> rusqlite::Result<ProductRow> {
         gender: row.get(34)?,
         compare_at_cents: row.get(35)?,
         is_active: row.get::<_, i64>(36)? != 0,
+        price_includes_tax: row.get::<_, i64>(37)? != 0,
     })
 }

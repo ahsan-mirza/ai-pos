@@ -6,13 +6,14 @@ from sqlalchemy.orm import Session
 
 from app.core.config import Settings, get_settings
 from app.core.database import get_db
-from app.core.deps import current_user, renewable_session, require_api_key
+from app.core.deps import Principal, current_user, renewable_session, require_device
 from app.core.errors import ApiError
 from app.core.rate_limit import check_identity
 from app.models.user import User
 from app.schemas.auth import (
     AccountPasswordChange,
     AccountProfileUpdate,
+    CashierOption,
     ForgotPasswordRequest,
     ForgotPasswordResponse,
     PasswordLoginRequest,
@@ -21,6 +22,7 @@ from app.schemas.auth import (
     ResetPasswordRequest,
     StoreCodeVerifyResponse,
     TokenResponse,
+    UnlockRequest,
     UserOut,
     VerifyResetCodeRequest,
 )
@@ -113,14 +115,40 @@ def recover_store_code_verify(
     )
 
 
+@router.get("/cashiers", response_model=list[CashierOption])
+def cashiers(
+    db: Annotated[Session, Depends(get_db)],
+    principal: Annotated[Principal, Depends(require_device)],
+) -> list[CashierOption]:
+    """Profiles for the activated register. The branch comes from the device token, never from the query string."""
+    return rbac_service.list_pos_cashiers(db, principal.store_id)
+
+
 @router.post("/login-pin", response_model=TokenResponse)
 def login_pin(
     request: PinLoginRequest,
     db: Annotated[Session, Depends(get_db)],
     settings: Annotated[Settings, Depends(get_settings)],
-    _: Annotated[None, Depends(require_api_key)],
+    principal: Annotated[Principal, Depends(require_device)],
 ) -> TokenResponse:
-    return rbac_service.authenticate(db, settings, username=request.username, secret=request.pin, method="pin")
+    return rbac_service.authenticate(
+        db,
+        settings,
+        username=request.username,
+        secret=request.pin,
+        method="pin",
+        store_id=principal.store_id,
+    )
+
+
+@router.post("/unlock", response_model=TokenResponse)
+def unlock(
+    request: UnlockRequest,
+    db: Annotated[Session, Depends(get_db)],
+    settings: Annotated[Settings, Depends(get_settings)],
+    principal: Annotated[Principal, Depends(require_device)],
+) -> TokenResponse:
+    return rbac_service.unlock_cashier(db, settings, request.user_id, request.pin, principal.store_id)
 
 
 @router.post("/handoff", response_model=TokenResponse)

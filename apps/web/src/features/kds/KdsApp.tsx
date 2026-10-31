@@ -338,6 +338,33 @@ function Board({
     [device.token, poll, replace],
   );
 
+  const markLine = useCallback(
+    async (ticket: KitchenTicket, itemId: string) => {
+      snapshots.current.set(ticket.id, ticket);
+      replace({
+        ...ticket,
+        status: ticket.status === "NEW" ? "PREPARING" : ticket.status,
+        items: ticket.items.map((item) => (item.id === itemId ? { ...item, ready_at: new Date().toISOString() } : item)),
+      });
+      try {
+        const saved = await apiTerminal<KitchenTicket>(
+          "POST",
+          `/api/v1/kds/tickets/${ticket.id}/items/${itemId}/ready`,
+          device.token,
+        );
+        snapshots.current.delete(ticket.id);
+        replace(saved);
+      } catch (caught) {
+        const previous = snapshots.current.get(ticket.id);
+        if (previous) replace(previous);
+        snapshots.current.delete(ticket.id);
+        setError(errorText(caught, "Could not mark that item ready."));
+        void poll();
+      }
+    },
+    [device.token, poll, replace],
+  );
+
   const recall = useCallback(
     async (ticket: KitchenTicket) => {
       try {
@@ -437,6 +464,18 @@ function Board({
                         <p className="ml-7 font-bold text-amber-300">{modifierSummary(item.modifiers)}</p>
                       ) : null}
                       {item.note ? <p className="ml-7 italic text-zinc-300">“{item.note}”</p> : null}
+                      {!item.voided_at && !item.ready_at && ticket.status !== "READY" && ticket.status !== "BUMPED" ? (
+                        <button
+                          type="button"
+                          onClick={() => void markLine(ticket, item.id)}
+                          className="ml-7 mt-1 h-11 rounded-xl bg-emerald-500 px-3 text-sm font-semibold text-zinc-950"
+                        >
+                          {item.product_name} ready
+                        </button>
+                      ) : null}
+                      {!item.voided_at && item.ready_at && ticket.status !== "READY" && ticket.status !== "BUMPED" ? (
+                        <p className="ml-7 text-xs font-semibold text-emerald-300">Ready</p>
+                      ) : null}
                     </li>
                   ))}
                 </ul>

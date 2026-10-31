@@ -78,4 +78,6 @@ class KitchenTicketItem(TenantScoped, Base):
     seat: Mapped[int | None] = mapped_column(Integer, nullable=True)
     note: Mapped[str | None] = mapped_column(String(160), nullable=True)
     position: Mapped[int] = mapped_column(Integer, default=0)
+    # Set when this line is ready, even if other lines on the same ticket are still cooking.
+    ready_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     voided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

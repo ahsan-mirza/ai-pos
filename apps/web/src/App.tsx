@@ -6,6 +6,7 @@ import { ConfirmProvider } from "./components/ui/ConfirmDialog";
 import { DashboardPage } from "./features/analytics/DashboardPage";
 import { RentalsPage } from "./features/rentals/RentalsPage";
 import { DeepAnalyticsPage } from "./features/analytics/DeepAnalyticsPage";
+import { EInvoicingPage } from "./features/einvoicing/EInvoicingPage";
 import { AuditPage } from "./features/audit/AuditPage";
 import { AccountPage } from "./features/account/AccountPage";
 import { LoginPage } from "./features/auth/LoginPage";
@@ -30,6 +31,7 @@ import { StockCountsPage } from "./features/inventory/StockCountsPage";
 import { ExpiringStockPage } from "./features/inventory/ExpiringStockPage";
 import { WastePage } from "./features/inventory/WastePage";
 import { FloorPlanPage } from "./features/menu/FloorPlanPage";
+import { ReservationsPage } from "./features/reservations/ReservationsPage";
 import { KitchenStationsPage } from "./features/menu/KitchenStationsPage";
 import { RecipesPage } from "./features/menu/RecipesPage";
 import { KitchenAgentPage } from "./features/inventory/KitchenAgentPage";
@@ -49,6 +51,7 @@ import { DownloadsPage } from "./features/downloads/DownloadsPage";
 import { VatReportPage } from "./features/reports/VatReportPage";
 import { ExportsPage } from "./features/reports/ExportsPage";
 import { TipsReportPage } from "./features/reports/TipsReportPage";
+import { CancellationsPage } from "./features/reports/CancellationsPage";
 import { ChannelsPage } from "./features/channels/ChannelsPage";
 import { ShiftsPage } from "./features/shifts/ShiftsPage";
 import { ChequesPage } from "./features/cheques/ChequesPage";
@@ -78,7 +81,7 @@ import { DeliveryPodPage } from "./features/salesOrders/DeliveryPodPage";
 import { SalesOrdersPage } from "./features/salesOrders/SalesOrdersPage";
 import { ReordersPage } from "./features/reorders/ReordersPage";
 import { AddonAccessPage } from "./features/settings/AddonAccessPage";
-import { AddonLibraryPage } from "./features/settings/AddonLibraryPage";
+import { AddonDetailPage, AddonLibraryPage } from "./features/settings/AddonLibraryPage";
 import { SettingsPage } from "./features/settings/SettingsPage";
 import { StoresPage } from "./features/stores/StoresPage";
 import { UsersPage } from "./features/users/UsersPage";
@@ -219,6 +222,7 @@ function Portal() {
               <Route path="modifiers" element={<RequireCapability capability={Capability.MenuModifiers}><ModifiersPage /></RequireCapability>} />
               <Route path="meals" element={<RequireCapability capability={Capability.MenuModifiers}><MealsPage /></RequireCapability>} />
               <Route path="floor-plan" element={<RequireCapability capability={Capability.Tables}><FloorPlanPage /></RequireCapability>} />
+              <Route path="reservations" element={<RequireCapability capability={Capability.Tables}><ReservationsPage /></RequireCapability>} />
               <Route path="kitchen" element={<RequireCapability capability={Capability.Kds}><KitchenStationsPage /></RequireCapability>} />
               <Route path="recipes" element={<RequireCapability capability={Capability.Recipes}><RecipesPage /></RequireCapability>} />
               <Route path="kitchen-agent" element={<RequireCapability capability={Capability.Recipes}><KitchenAgentPage /></RequireCapability>} />
@@ -407,6 +411,16 @@ function Portal() {
             }
           />
           <Route
+            path="einvoicing"
+            element={
+              <RequirePermission permission={Permission.PortalReportsRead}>
+                <RequireCapability capability={Capability.UaeEinvoicing}>
+                  <EInvoicingPage />
+                </RequireCapability>
+              </RequirePermission>
+            }
+          />
+          <Route
             path="analytics/deep"
             element={
               <RequirePermission permission={Permission.PortalReportsRead}>
@@ -481,6 +495,14 @@ function Portal() {
             }
           />
           <Route
+            path="reports/cancellations"
+            element={
+              <RequirePermission permission={Permission.PortalReportsRead}>
+                <CancellationsPage />
+              </RequirePermission>
+            }
+          />
+          <Route
             path="reports/tips"
             element={
               <RequirePermission permission={Permission.PortalReportsRead}>
@@ -513,6 +535,14 @@ function Portal() {
                 element={
                   <RequirePermission permission={Permission.SettingsManage} businessWide>
                     <AddonLibraryPage />
+                  </RequirePermission>
+                }
+              />
+              <Route
+                path="settings/addons/:code"
+                element={
+                  <RequirePermission permission={Permission.SettingsManage} businessWide>
+                    <AddonDetailPage />
                   </RequirePermission>
                 }
               />

@@ -301,6 +301,8 @@ export interface BranchStock {
   quantity_on_hand: number;
   quantity_reserved: number;
   quantity_available: number;
+  /** Branch reorder point. Absent on an older availability response. */
+  min_reorder_level?: number;
   aisle_shelf_location: string | null;
 }
 
@@ -472,6 +474,8 @@ export interface ProductCreate extends FashionAttributes {
   /** Category-specific technical details. Keys follow the specification template. */
   specifications?: Record<string, string>;
   price_cents: number;
+  /** The entered price already contains tax. Omitted means tax-exclusive. */
+  price_includes_tax?: boolean;
   is_serialized: boolean;
   tax_category?: TaxCategory;
   is_open_price?: boolean;
@@ -505,6 +509,7 @@ export interface ProductUpdate extends FashionAttributes {
   variant_attributes?: VariantAttributes;
   specifications?: Record<string, string>;
   price_cents?: number;
+  price_includes_tax?: boolean;
   tax_category?: TaxCategory;
   is_open_price?: boolean;
   sold_by_weight?: boolean;

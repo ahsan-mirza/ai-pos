@@ -10,6 +10,7 @@ from app.core.deps import Principal, authorize
 from app.core.permissions import Permission
 from app.schemas.orders import (
     GuestSuggestionsOut,
+    ItemQuantity,
     ItemVoid,
     OrderAction,
     OrderCreate,
@@ -79,6 +80,16 @@ def add_items(order_id: uuid.UUID, payload: OrderItemsAdd, db: Db, principal: Ca
 @router.post("/{order_id}/send", response_model=OrderOut)
 def send_order(order_id: uuid.UUID, payload: OrderAction, db: Db, principal: CanOrder) -> OrderOut:
     return order_service.send_order(db, principal, order_id, payload)
+
+
+@router.post("/{order_id}/hand-over", response_model=OrderOut)
+def hand_over(order_id: uuid.UUID, payload: OrderAction, db: Db, principal: CanOrder) -> OrderOut:
+    return order_service.hand_over(db, principal, order_id, payload)
+
+
+@router.post("/{order_id}/items/{item_id}/quantity", response_model=OrderOut)
+def set_item_quantity(order_id: uuid.UUID, item_id: uuid.UUID, payload: ItemQuantity, db: Db, principal: CanOrder) -> OrderOut:
+    return order_service.set_item_quantity(db, principal, order_id, item_id, payload)
 
 
 @router.post("/{order_id}/items/{item_id}/void", response_model=OrderOut)

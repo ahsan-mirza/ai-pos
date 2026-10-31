@@ -329,7 +329,7 @@ export function TenderPanel({
                   guests: option.value === "split" && !(draft.guests?.length) ? splitEqually(dueCents, 2) : draft.guests,
                 })
               }
-              className={`flex h-10 min-w-[3.5rem] flex-1 flex-col items-center justify-center gap-0.5 rounded-xl text-[10px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 disabled:opacity-30 ${
+              className={`flex min-h-12 min-w-[4.5rem] flex-1 flex-col items-center justify-center gap-0.5 rounded-xl px-1 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 active:scale-[0.98] disabled:opacity-30 ${
                 active ? "bg-primary text-white shadow-md shadow-primary/25" : "text-zinc-600 dark:text-white/70 hover:bg-white dark:hover:bg-white/5 hover:text-zinc-900 dark:hover:text-white"
               }`}
             >

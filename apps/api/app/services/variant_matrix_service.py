@@ -350,6 +350,16 @@ def generate(
     user_id: uuid.UUID | None = None,
 ) -> MatrixOut:
     model = _model(db, model_id, lock=True)
+    from app.services.inventory import reject_foreign_specs
+
+    sub = model.sub_category
+    reject_foreign_specs(
+        db,
+        dict(data.specifications),
+        category=sub.category.name,
+        sub_category=sub.name,
+        product_name=model.name,
+    )
     if data.opening_store_id is not None:
         _store(db, data.opening_store_id)
     products = list(db.scalars(select(Product).where(Product.product_model_id == model.id)))
@@ -415,6 +425,7 @@ def generate(
             is_serialized=False,
             is_active=True if draft is None or draft.is_active is None else draft.is_active,
             tax_category=data.tax_category,
+            price_includes_tax=data.price_includes_tax,
         )
         _classify(db, product, model_id=model.id, category_id=None, sub_category_id=None, brand=None)
         try:

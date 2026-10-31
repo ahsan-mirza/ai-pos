@@ -350,6 +350,7 @@ def test_availability_shows_every_branch_and_imei_location(client) -> None:
     receive_phones_at_warehouse(client, headers)
     by_product = client.get("/api/v1/inventory/availability", headers=device(), params={"product_id": CABLE}).json()
     assert [(b["store_code"], b["quantity_available"]) for b in by_product["branches"]] == [("DT-01", 10)]
+    assert isinstance(by_product["branches"][0]["min_reorder_level"], int)
     by_serial = client.get("/api/v1/inventory/availability", headers=device(), params={"serial": IMEIS[1]}).json()
     assert by_serial["product"]["sku"] == "PHN-PIXEL-9"
     assert by_serial["serial"]["store_code"] == "WH-01"

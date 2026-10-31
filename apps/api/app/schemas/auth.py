@@ -102,6 +102,28 @@ class PinLoginRequest(ApiModel):
     pin: str = Field(min_length=4, max_length=6)
 
 
+class UnlockRequest(ApiModel):
+    """PIN for a cashier the register already listed. The terminal, not this body, chooses the branch."""
+
+    user_id: UUID
+    pin: str = Field(min_length=4, max_length=6)
+
+    @field_validator("pin")
+    @classmethod
+    def pin_digits(cls, value: str) -> str:
+        return _pin(value)
+
+
+class CashierOption(ApiModel):
+    """The few fields a locked register needs to offer a profile. No email, phone, or PIN material."""
+
+    id: UUID
+    display_name: str
+    initials: str
+    role_label: str
+    avatar_url: str | None = None
+
+
 class RegisterStaffOut(ApiModel):
     """A staff member a register can name as the sales associate ("Served by")."""
 

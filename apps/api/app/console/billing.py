@@ -162,6 +162,7 @@ _MODULE_DESCRIPTIONS: dict[str, str] = {
     "axiz_reach": (
         "Marketing campaigns across WhatsApp, SMS, and email. Provider setup and receipts stay in the starter kit."
     ),
+    "uae_einvoicing": "UAE e-invoicing for in-scope business and government sales. The price is set in the console.",
     "fashion_rental": "Rent catalogue items for a period, with deposits, returns and a booking calendar.",
 }
 
@@ -318,6 +319,21 @@ def cycle_out(row: BillingCycle) -> CycleOut:
 
 
 def addon_out(row: BillingAddon) -> AddonOut:
+    from app.console.addon_listing import listing_out
+    from app.schemas.billing import AddonPricePoint
+
+    history = []
+    for point in row.price_history or []:
+        if isinstance(point, dict):
+            history.append(
+                AddonPricePoint(
+                    monthly_fils=int(point.get("monthly_fils") or 0),
+                    one_time_fils=int(point.get("one_time_fils") or 0),
+                    refundable=bool(point.get("refundable")),
+                    effective_at=str(point.get("effective_at") or ""),
+                    reason=str(point.get("reason") or ""),
+                )
+            )
     return AddonOut(
         id=row.id,
         code=row.code,
@@ -329,6 +345,9 @@ def addon_out(row: BillingAddon) -> AddonOut:
         active=row.active,
         module_keys=list(row.module_keys or []),
         sort_order=row.sort_order,
+        listing=listing_out(row.listing),
+        price_history=history,
+        updated_at=row.updated_at,
     )
 
 
@@ -339,6 +358,9 @@ def fee_out(row: BillingFee) -> FeeOut:
 def catalog(db: Session) -> CatalogOut:
     ensure_catalog(db)
     ensure_module_addons(db)
+    from app.console.addon_listing import fill_listings
+
+    fill_listings(db)
     from app.console import hardware
 
     return CatalogOut(
@@ -408,6 +430,20 @@ def update_addon(db: Session, operator: OperatorPrincipal, addon_id: uuid.UUID, 
     if row is None:
         raise ApiError(404, "not_found", "Add-on was not found.")
     before = addon_out(row).model_dump(mode="json")
+    price_changed = row.monthly_fils != data.monthly_fils or row.one_time_fils != data.one_time_fils
+    price_changed = price_changed or row.refundable != data.refundable
+    if price_changed:
+        history = list(row.price_history or [])
+        history.append(
+            {
+                "monthly_fils": row.monthly_fils,
+                "one_time_fils": row.one_time_fils,
+                "refundable": row.refundable,
+                "effective_at": datetime.now(UTC).isoformat(),
+                "reason": data.reason.strip(),
+            }
+        )
+        row.price_history = history[-20:]
     row.name = data.name.strip()
     row.description = data.description.strip()
     row.monthly_fils = data.monthly_fils
@@ -416,6 +452,15 @@ def update_addon(db: Session, operator: OperatorPrincipal, addon_id: uuid.UUID, 
     row.active = data.active
     row.module_keys = require_module_keys(data.module_keys, with_dependencies=True)
     row.sort_order = data.sort_order
+    if data.listing is not None:
+        from app.console.addon_listing import normalize_listing
+
+        stored = normalize_listing(data.listing.model_dump(), customized=True)
+        if stored["publication"] == "published":
+            row.active = True
+        elif stored["publication"] in {"draft", "archived"}:
+            row.active = False
+        row.listing = stored
     _touch(row)
     _audit_price(db, operator, "billing.addon", before, addon_out(row).model_dump(mode="json"), data.reason)
     db.commit()
@@ -836,10 +881,71 @@ def quote_addon(db: Session, settings: Settings, tenant: Tenant, code: str) -> Q
     )
 
 
+def _open_addon_invoice(db: Session, tenant_id: uuid.UUID, code: str) -> BillingInvoice | None:
+    invoices = db.scalars(
+        select(BillingInvoice).where(BillingInvoice.tenant_id == tenant_id, BillingInvoice.status == "pending")
+    )
+    for invoice in invoices:
+        line = db.scalar(
+            select(BillingInvoiceLine.id).where(
+                BillingInvoiceLine.invoice_id == invoice.id, BillingInvoiceLine.code == code
+            )
+        )
+        if line is not None:
+            return invoice
+    return None
+
+
+def _checkout_from_invoice(db: Session, invoice: BillingInvoice) -> CheckoutOut:
+    plan = db.scalar(select(BillingPlan).where(BillingPlan.code == invoice.plan_code))
+    cycle = db.scalar(select(BillingCycle).where(BillingCycle.code == invoice.cycle_code))
+    lines = list(db.scalars(select(BillingInvoiceLine).where(BillingInvoiceLine.invoice_id == invoice.id)))
+    quote = QuoteOut(
+        currency=invoice.currency,
+        plan_code=invoice.plan_code,
+        plan_name=plan.name if plan is not None else invoice.plan_code,
+        cycle_code=invoice.cycle_code,
+        cycle_name=cycle.name if cycle is not None else invoice.cycle_code,
+        months=cycle.months if cycle is not None else 1,
+        discount_bps=cycle.discount_bps if cycle is not None else 0,
+        included_registers=plan.included_registers if plan is not None else 0,
+        lines=[
+            QuoteLine(
+                code=line.code,
+                label=line.label,
+                quantity=line.quantity,
+                unit_fils=line.unit_fils,
+                amount_fils=line.amount_fils,
+                recurring=line.recurring,
+                refundable=line.refundable,
+            )
+            for line in lines
+        ],
+        recurring_fils=invoice.recurring_fils,
+        one_time_fils=invoice.one_time_fils,
+        total_fils=invoice.total_fils,
+    )
+    return CheckoutOut(checkout_id=invoice.id, mode="transfer", url=None, quote=quote, bank=invoice.bank_snapshot)
+
+
 def create_addon_checkout(
     db: Session, settings: Settings, tenant: Tenant, actor_id: uuid.UUID, code: str
 ) -> CheckoutOut:
     """Issues an invoice for one module add-on. Payment uses the same bank-transfer review as a package."""
+    existing = _open_addon_invoice(db, tenant.id, code)
+    if existing is not None:
+        return _checkout_from_invoice(db, existing)
+    subscription = db.scalar(select(Subscription).where(Subscription.tenant_id == tenant.id))
+    if subscription is not None:
+        held = db.scalar(
+            select(SubscriptionItem.id).where(
+                SubscriptionItem.subscription_id == subscription.id,
+                SubscriptionItem.addon_code == code,
+                SubscriptionItem.quantity > 0,
+            )
+        )
+        if held is not None:
+            raise ApiError(409, "already_subscribed", "This add-on is already on the subscription.")
     priced = quote_addon(db, settings, tenant, code)
     invoice = BillingInvoice(
         tenant_id=tenant.id,

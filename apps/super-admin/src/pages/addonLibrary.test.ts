@@ -1,4 +1,4 @@
-import { acceptBusinessSettings, addonSearchScore, rankAddons, type BillingAddon, type BusinessSettings } from "@ai-pos/shared-types";
+import { acceptBusinessSettings, addonSearchScore, filterMarketplace, rankAddons, type BillingAddon, type BusinessSettings, type MarketplaceItem } from "@ai-pos/shared-types";
 import { describe, expect, it } from "vitest";
 
 function settings(patch: Partial<BusinessSettings> = {}): BusinessSettings {
@@ -97,5 +97,34 @@ describe("rankAddons", () => {
 
   it("matches words in the description when the name does not contain them", () => {
     expect(rankAddons(library, "every sale").map((row) => row.name)).toEqual(["Loyalty points"]);
+  });
+
+  it("matches a benefit that is not in the name", () => {
+    expect(
+      addonSearchScore({ name: "Hardware lease", description: "Rent a register.", search_text: "refundable deposit" }, "deposit"),
+    ).toBeGreaterThan(0);
+  });
+});
+
+function market(name: string, state: MarketplaceItem["state"], monthly = 0): MarketplaceItem {
+  return {
+    addon: addon({ name, description: name, monthly_fils: monthly, sort_order: 1 }),
+    state,
+    reason: "",
+    invoice_id: null,
+    compatible_labels: ["Electronics"],
+    search_text: name,
+  };
+}
+
+describe("filterMarketplace", () => {
+  const items = [market("Included kit", "included"), market("Paid extra", "available", 5000), market("Waiting", "pending_payment", 1000)];
+
+  it("keeps included add-ons out of the available filter", () => {
+    expect(filterMarketplace(items, "", "available", "", "", "recommended").map((row) => row.addon.name)).toEqual(["Paid extra"]);
+  });
+
+  it("shows a pending invoice on its own filter", () => {
+    expect(filterMarketplace(items, "", "pending_payment", "", "", "name").map((row) => row.addon.name)).toEqual(["Waiting"]);
   });
 });

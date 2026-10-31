@@ -121,6 +121,15 @@ export interface DiningTable {
   covers: number;
   seated_at: string | null;
   open_cents: number;
+  /** Guest name on the open tab, when the server recorded one. */
+  guest_name?: string | null;
+  /** Kitchen rollup of sent lines. Absent on older payloads. */
+  kitchen?: "none" | "queued" | "preparing" | "partial" | "ready" | "served";
+  payment?: "none" | "unpaid" | "partial" | "pending" | "paid";
+  order_progress?: "none" | "draft" | "submitted" | "in_progress";
+  /** Sent lines that are ready or served, and how many lines are in the kitchen. */
+  kitchen_ready?: number;
+  kitchen_sent?: number;
 }
 
 export interface DiningArea {

@@ -1,6 +1,10 @@
-import { daysUntil, formatMoney, formatWeight, specSummary, type ProductUpsert } from "@ai-pos/shared-types";
-import { Building2, Package, Scale, ScanLine, UtensilsCrossed } from "lucide-react";
+import { daysUntil, formatMoney, formatWeight, type ProductUpsert } from "@ai-pos/shared-types";
+import { Building2, Info, Package, Scale, ScanLine, UtensilsCrossed } from "lucide-react";
+import type { ReactNode } from "react";
+import { useRegisterLayout } from "../../components/RegisterLayout";
 import { stockPill } from "../../components/shell/tokens";
+import { cardKind, catalogCardClass, stockTone, stockUnit } from "./catalogCard";
+import { useCapabilities } from "../../lib/capabilities";
 import { ProductPhotoFrame } from "./ProductPhoto";
 import type { Hit } from "./useProductSearch";
 
@@ -20,22 +24,10 @@ interface ProductCardProps {
   hasModifiers?: boolean;
   onSelect: (product: ProductUpsert) => void;
   onCheckBranches: (product: ProductUpsert) => void;
+  onInfo: (product: ProductUpsert) => void;
 }
 
-function StockBadge({ product }: { product: ProductUpsert }) {
-  if (product.has_recipe) {
-    return <span className={`shrink-0 whitespace-nowrap rounded-full px-2.5 py-1 text-[11px] font-semibold ${stockPill.in}`}>Made to order</span>;
-  }
-  const out = product.stock_quantity <= 0;
-  const amount = product.sold_by_weight ? formatWeight(product.stock_quantity) : `${product.stock_quantity}${product.is_serialized ? " units" : ""}`;
-  return (
-    <span
-      className={`shrink-0 whitespace-nowrap rounded-full px-2.5 py-1 text-[11px] font-semibold tabular-nums ${stockPill[out ? "out" : "in"]}`}
-    >
-      {out ? "Out of stock" : `In Stock · ${amount}`}
-    </span>
-  );
-}
+const badgeClass = "inline-flex h-7 max-w-full items-center truncate rounded-full px-2.5 text-[11px] font-semibold";
 
 /** Soonest batch expiry at this branch, shown inside two weeks. */
 function ExpiryChip({ date }: { date: string }) {
@@ -54,116 +46,180 @@ function ExpiryChip({ date }: { date: string }) {
   );
 }
 
-export function ProductCard({ hit, preview, currency, disabled, menuItem = false, hasModifiers = false, onSelect, onCheckBranches }: ProductCardProps) {
+export function CatalogTile({
+  imageSrc,
+  imageIcon,
+  imageDimmed = false,
+  category,
+  marker,
+  title,
+  price,
+  priceNote,
+  footnote,
+  badge,
+  action,
+  disabled,
+  selected = false,
+  titleMuted = false,
+  onSelect,
+  onInfo,
+}: {
+  imageSrc?: string | null;
+  imageIcon: ReactNode;
+  imageDimmed?: boolean;
+  category: string;
+  marker?: ReactNode;
+  title: string;
+  price: ReactNode;
+  priceNote?: string | null;
+  footnote?: string | null;
+  badge?: ReactNode;
+  /** A separate control under the card. It does not also select the product. */
+  action?: ReactNode;
+  disabled: boolean;
+  selected?: boolean;
+  titleMuted?: boolean;
+  onSelect: () => void;
+  /** Opens details. It is not inside the card button, so it cannot add the product. */
+  onInfo?: () => void;
+}) {
+  const { density, showImages } = useRegisterLayout();
+  const frame = selected
+    ? "border-primary bg-primary/5 shadow-lg shadow-primary/10"
+    : "border-zinc-200 bg-white hover:border-zinc-300 dark:border-zinc-800 dark:bg-zinc-800/40 dark:hover:border-zinc-700";
+  const pad = density === "compact" ? "px-2.5 pb-2" : "px-3 pb-2.5";
+  const selectClass =
+    "text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/70 disabled:opacity-50";
+  const titleClass = titleMuted ? "text-zinc-600 dark:text-white/60" : "text-zinc-900 dark:text-white";
+  return (
+    <li className={`group flex h-full min-w-0 flex-col overflow-hidden rounded-2xl border transition-colors ${frame} ${disabled ? "opacity-50" : ""}`}>
+      {showImages ? (
+        <button type="button" disabled={disabled} onClick={onSelect} className={`${selectClass} block w-full`}>
+          <ProductPhotoFrame src={imageSrc} dimmed={imageDimmed} compact={density === "compact"} flush icon={imageIcon} />
+        </button>
+      ) : null}
+      <span className={`flex min-h-0 min-w-0 flex-1 flex-col ${pad} ${showImages ? "pt-2" : "pt-2.5"}`}>
+        <button type="button" disabled={disabled} onClick={onSelect} className={`${selectClass} flex h-5 min-w-0 items-center justify-between gap-2`}>
+          <span className="min-w-0 truncate text-[11px] font-semibold uppercase tracking-[0.12em] text-zinc-500 dark:text-white/40">
+            {category}
+          </span>
+          {marker ? <span className="flex h-5 shrink-0 items-center">{marker}</span> : <span className="h-5 w-4 shrink-0" aria-hidden="true" />}
+        </button>
+        <span className="mt-1 flex min-h-11 items-start gap-1">
+          <button type="button" disabled={disabled} title={title} onClick={onSelect} className={`${selectClass} ${catalogCardClass.name} ${titleClass}`}>
+            {title}
+          </button>
+          <button
+            type="button"
+            aria-label={`Details for ${title}`}
+            onClick={(event) => {
+              event.stopPropagation();
+              onInfo?.();
+            }}
+            className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-zinc-200 text-zinc-500 transition-colors hover:border-primary hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 dark:border-zinc-700 dark:text-zinc-300"
+          >
+            <Info size={16} aria-hidden="true" />
+          </button>
+        </span>
+        <button type="button" disabled={disabled} onClick={onSelect} className={`${selectClass} flex min-h-0 min-w-0 flex-1 flex-col`}>
+          <span className={catalogCardClass.footer}>
+            <span className="min-w-0 flex-1">
+              {priceNote ? (
+                <span className="block truncate text-xs tabular-nums leading-4 text-zinc-500 line-through dark:text-white/40">{priceNote}</span>
+              ) : null}
+              <span className="block min-w-0 truncate text-base font-bold leading-5 tabular-nums">{price}</span>
+              {footnote ? (
+                <span className="block truncate text-[11px] leading-4 text-zinc-500 dark:text-white/50">{footnote}</span>
+              ) : null}
+            </span>
+            {badge ? <span className="flex h-7 max-w-[50%] min-w-0 items-center justify-end overflow-hidden">{badge}</span> : null}
+          </span>
+        </button>
+      </span>
+      {action}
+    </li>
+  );
+}
+
+export function ProductCard({ hit, preview, currency, disabled, hasModifiers = false, onSelect, onCheckBranches, onInfo }: ProductCardProps) {
+  const menu = cardKind(useCapabilities().profile) === "menu";
   const { product, match, serial_status: serialStatus } = hit;
-  const highlighted = match === "identifier" || match === "exact";
   const out = product.stock_quantity <= 0 && !product.has_recipe;
+  const strike =
+    preview != null
+      ? formatMoney(product.price_cents, currency)
+      : product.compare_at_cents != null && product.compare_at_cents > product.price_cents
+        ? formatMoney(product.compare_at_cents, currency)
+        : null;
+  const amount = preview ? preview.base : product.price_cents;
+  const priceClass = preview || strike ? "text-primary" : out ? "text-zinc-600 dark:text-white/60" : "text-zinc-900 dark:text-white";
+  const marker =
+    match === "identifier" ? (
+      <span className="shrink-0 rounded-full bg-primary px-2 py-0.5 text-[10px] font-semibold uppercase text-white">
+        IMEI {serialStatus === "in_stock" ? "match" : (serialStatus ?? "match")}
+      </span>
+    ) : product.is_serialized ? (
+      <ScanLine size={14} aria-label="Serialized" className="shrink-0 text-zinc-500 dark:text-white/40" />
+    ) : product.nearest_expiry ? (
+      <ExpiryChip date={product.nearest_expiry} />
+    ) : product.sold_by_weight ? (
+      <Scale size={14} aria-label="Sold by weight" className="shrink-0 text-zinc-500 dark:text-white/40" />
+    ) : null;
+  const tracked = product.is_stock_tracked !== false && !product.is_service && !product.has_recipe;
+  const tone = stockTone({ tracked, available: product.stock_quantity });
+  const stockText =
+    tone === "untracked"
+      ? "Not tracked"
+      : tone === "out"
+        ? "Out of stock"
+        : product.sold_by_weight
+          ? formatWeight(product.stock_quantity)
+          : `${product.stock_quantity} ${stockUnit(product)}`;
+  const stockPillTone = tone === "out" ? "out" : tone === "low" ? "low" : "in";
+  const badge = menu ? (
+    hasModifiers ? (
+      <span title="Modifiers available" className={`${badgeClass} ${stockPill.in}`}>Modifiers available</span>
+    ) : null
+  ) : (
+    <span title={stockText} className={`${badgeClass} tabular-nums ${stockPill[stockPillTone]}`}>{stockText}</span>
+  );
 
   return (
-    <li
-      className={`group flex flex-col overflow-hidden rounded-2xl border bg-white dark:bg-zinc-800/40 transition-colors ${
-        highlighted ? "border-primary shadow-lg shadow-primary/10" : "border-zinc-200 dark:border-zinc-800 hover:border-zinc-300 dark:hover:border-zinc-700"
-      }`}
-    >
-      <button
-        type="button"
-        disabled={disabled}
-        onClick={() => onSelect(product)}
-        className="flex flex-1 flex-col p-4 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/70 active:scale-[0.99] disabled:opacity-50"
-      >
-        <ProductPhotoFrame
-          src={product.thumb_url ?? product.image_url}
-          dimmed={out}
-          icon={menuItem ? <UtensilsCrossed size={28} aria-hidden="true" /> : <Package size={28} aria-hidden="true" />}
-        />
-        <span className="flex min-h-6 items-center justify-between gap-2">
-          <span className="truncate text-[11px] font-semibold uppercase tracking-[0.12em] text-zinc-500 dark:text-white/40">
-            {product.season ? `${product.category ?? "Uncategorized"} · ${product.season}` : (product.category ?? "Uncategorized")}
-          </span>
-          {match === "identifier" ? (
-            <span className="shrink-0 rounded-full bg-primary px-2 py-0.5 text-[10px] font-semibold uppercase text-white">
-              IMEI {serialStatus === "in_stock" ? "match" : (serialStatus ?? "match")}
-            </span>
-          ) : product.is_serialized ? (
-            <ScanLine size={14} aria-label="Serialized" className="shrink-0 text-zinc-500 dark:text-white/40" />
-          ) : product.nearest_expiry ? (
-            <ExpiryChip date={product.nearest_expiry} />
-          ) : product.sold_by_weight ? (
-            <Scale size={14} aria-label="Sold by weight" className="shrink-0 text-zinc-500 dark:text-white/40" />
-          ) : null}
+    <CatalogTile
+      imageSrc={product.thumb_url ?? product.image_url}
+      imageIcon={menu ? <UtensilsCrossed size={28} aria-hidden="true" /> : <Package size={28} aria-hidden="true" />}
+      imageDimmed={out}
+      category={product.season ? `${product.category ?? "Uncategorized"} · ${product.season}` : (product.category ?? "Uncategorized")}
+      marker={marker}
+      title={product.name}
+      titleMuted={out}
+      priceNote={strike}
+      footnote={preview ? `${preview.label}${preview.best ? ` · bulk ${preview.best}` : ""}` : null}
+      price={
+        <span className={priceClass}>
+          {formatMoney(amount, currency)}
+          {product.sold_by_weight ? <span className="text-xs font-semibold text-zinc-500 dark:text-white/50"> /kg</span> : null}
         </span>
-        <span
-          title={product.name}
-          className={`mt-1.5 line-clamp-2 text-sm font-semibold leading-tight ${out ? "text-zinc-600 dark:text-white/60" : "text-zinc-900 dark:text-white"}`}
-        >
-          {product.name}
-        </span>
-        <span className="mt-1 truncate font-mono text-[11px] text-zinc-500 dark:text-white/40">
-          {[product.sku, product.model_number].filter(Boolean).join(" · ")}
-        </span>
-        {specSummary(product.specifications) ? (
-          <span className="mt-1 block truncate text-[11px] tabular-nums text-zinc-500 dark:text-white/50">
-            {specSummary(product.specifications)}
-          </span>
-        ) : null}
-
-        <span className="mt-auto flex flex-wrap items-center justify-between gap-x-2 gap-y-1.5 pt-3">
-          <span className="min-w-0 max-w-full">
-            {preview ? (
-              <>
-                <span className="block truncate text-xs tabular-nums text-zinc-500 dark:text-white/40 line-through">
-                  {formatMoney(product.price_cents, currency)}
-                </span>
-                <span className="block truncate text-base font-bold tabular-nums text-primary">
-                  {formatMoney(preview.base, currency)}
-                </span>
-              </>
-            ) : product.compare_at_cents != null && product.compare_at_cents > product.price_cents ? (
-              <>
-                <span className="block truncate text-xs tabular-nums text-zinc-500 line-through dark:text-white/40">
-                  {formatMoney(product.compare_at_cents, currency)}
-                </span>
-                <span className="block truncate text-base font-bold tabular-nums text-primary">
-                  {formatMoney(product.price_cents, currency)}
-                </span>
-              </>
-            ) : (
-              <span className="block truncate text-base font-bold tabular-nums text-zinc-900 dark:text-white">
-                {formatMoney(product.price_cents, currency)}
-                {product.sold_by_weight ? <span className="text-xs font-semibold text-zinc-500 dark:text-white/50"> /kg</span> : null}
-              </span>
-            )}
-          </span>
-          {menuItem ? (
-            hasModifiers ? (
-              <span className={`shrink-0 whitespace-nowrap rounded-full px-2.5 py-1 text-[11px] font-semibold ${stockPill.in}`}>
-                Modifiers available
-              </span>
-            ) : null
-          ) : (
-            <StockBadge product={product} />
-          )}
-        </span>
-        {preview ? (
-          <span className="mt-1 truncate text-[11px] text-zinc-500 dark:text-white/50">
-            {preview.label}
-            {preview.best ? ` · bulk ${preview.best}` : ""}
-          </span>
-        ) : null}
-      </button>
-
-      {menuItem ? null : (
-      <button
-        type="button"
-        onClick={() => onCheckBranches(product)}
-        className={`flex h-11 items-center justify-center gap-1.5 border-t border-zinc-200 dark:border-zinc-800 text-xs font-semibold transition-colors hover:bg-zinc-100 dark:hover:bg-white/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/70 ${
-          out ? "text-primary" : "text-zinc-500 dark:text-white/50 hover:text-zinc-900 dark:hover:text-white"
-        }`}
-      >
-        <Building2 size={14} aria-hidden="true" />
-        {out ? "Find in other branches" : "Branch stock"}
-      </button>
-      )}
-    </li>
+      }
+      badge={badge}
+      disabled={disabled}
+      selected={match === "identifier" || match === "exact"}
+      onSelect={() => onSelect(product)}
+      onInfo={() => onInfo(product)}
+      action={
+        menu ? null : (
+          <button
+            type="button"
+            onClick={() => onCheckBranches(product)}
+            className={`flex h-12 shrink-0 items-center justify-center gap-1.5 border-t border-zinc-200 text-sm font-semibold transition-colors hover:bg-zinc-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/70 dark:border-zinc-800 dark:hover:bg-white/5 ${
+              out ? "text-primary" : "text-zinc-500 hover:text-zinc-900 dark:text-white/50 dark:hover:text-white"
+            }`}
+          >
+            <Building2 size={14} aria-hidden="true" />
+            {out ? "Find in other branches" : "Branch stock"}
+          </button>
+        )
+      }
+    />
   );
 }

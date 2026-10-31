@@ -748,6 +748,23 @@ function AddonDetail({
           <DetailRow label="Modules" value={addon.module_keys.join(", ") || "None"} />
           <DetailRow label="Already in packages" value={carrying.map((plan) => plan.name).join(", ") || "None"} />
         </DetailSection>
+        <DetailSection title="Marketplace">
+          <DetailRow label="Category" value={addon.listing?.category || "—"} />
+          <DetailRow label="Publication" value={addon.listing?.publication || (addon.active ? "published" : "draft")} />
+          <DetailRow label="Overview" value={addon.listing?.overview || "—"} />
+        </DetailSection>
+        <DetailSection title="Price history">
+          <DetailRow
+            label="Earlier prices"
+            value={
+              (addon.price_history ?? []).length === 0
+                ? "None"
+                : (addon.price_history ?? [])
+                    .map((point) => `${aed(point.monthly_fils)} / month · ${point.effective_at.slice(0, 10)}`)
+                    .join("; ")
+            }
+          />
+        </DetailSection>
         <DetailSection title="Subscriptions">
           <DetailRow
             label="Stores"
@@ -760,9 +777,41 @@ function AddonDetail({
   );
 }
 
+function linesOf(rows: { title: string; description: string }[] | undefined): string {
+  return (rows ?? []).map((row) => `${row.title} | ${row.description}`).join("\n");
+}
+
+function pairsOf(text: string): { title: string; description: string }[] {
+  return text
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0)
+    .map((line) => {
+      const [title, ...rest] = line.split("|");
+      return { title: (title ?? "").trim(), description: rest.join("|").trim() };
+    })
+    .filter((row) => row.title.length > 0 || row.description.length > 0);
+}
+
 function AddonEditor({ addon, onClose, onSaved }: { addon: BillingAddon; onClose: () => void; onSaved: () => void }) {
+  const listing = addon.listing;
   const [name, setName] = useState(addon.name);
   const [description, setDescription] = useState(addon.description);
+  const [overview, setOverview] = useState(listing?.overview ?? "");
+  const [shortText, setShortText] = useState(listing?.short_description ?? "");
+  const [category, setCategory] = useState(listing?.category ?? "operations");
+  const [tags, setTags] = useState((listing?.tags ?? []).join(", "));
+  const [benefits, setBenefits] = useState(linesOf(listing?.benefits));
+  const [features, setFeatures] = useState(linesOf(listing?.features));
+  const [steps, setSteps] = useState(linesOf(listing?.steps));
+  const [requirements, setRequirements] = useState((listing?.requirements ?? []).join("\n"));
+  const [docs, setDocs] = useState(listing?.documentation_url ?? "");
+  const [video, setVideo] = useState(listing?.video_url ?? "");
+  const [support, setSupport] = useState(listing?.support ?? "");
+  const [icon, setIcon] = useState(listing?.icon ?? "puzzle");
+  const [imageUrl, setImageUrl] = useState(listing?.image_url ?? "");
+  const [featured, setFeatured] = useState(listing?.featured ?? false);
+  const [publication, setPublication] = useState(listing?.publication ?? (addon.active ? "published" : "draft"));
   const [monthly, setMonthly] = useState((addon.monthly_fils / 100).toFixed(2));
   const [once, setOnce] = useState((addon.one_time_fils / 100).toFixed(2));
   const [refundable, setRefundable] = useState(addon.refundable);
@@ -798,10 +847,28 @@ function AddonEditor({ addon, onClose, onSaved }: { addon: BillingAddon; onClose
                   monthly_fils: filsOf(monthly),
                   one_time_fils: filsOf(once),
                   refundable,
-                  active,
+                  active: publication === "published" ? active : false,
                   module_keys: modules,
                   sort_order: Number.isFinite(Number(order)) ? Math.max(0, Math.round(Number(order))) : addon.sort_order,
                   reason: reason.trim(),
+                  listing: {
+                    short_description: shortText,
+                    overview,
+                    category,
+                    tags: tags.split(",").map((tag) => tag.trim()).filter(Boolean),
+                    benefits: pairsOf(benefits),
+                    features: pairsOf(features),
+                    steps: pairsOf(steps),
+                    requirements: requirements.split("\n").map((line) => line.trim()).filter(Boolean),
+                    faqs: listing?.faqs ?? [],
+                    documentation_url: docs,
+                    video_url: video,
+                    support,
+                    icon,
+                    image_url: imageUrl,
+                    featured,
+                    publication,
+                  },
                 })
                 .then(onSaved)
                 .catch((caught: unknown) => {
@@ -818,6 +885,30 @@ function AddonEditor({ addon, onClose, onSaved }: { addon: BillingAddon; onClose
       <div className="grid gap-3">
         <Field label="Name" value={name} onChange={(event) => setName(event.target.value)} />
         <Field label="Description" value={description} onChange={(event) => setDescription(event.target.value)} />
+        <Field label="Short description" value={shortText} onChange={(event) => setShortText(event.target.value)} />
+        <Field label="Overview" value={overview} onChange={(event) => setOverview(event.target.value)} />
+        <Field label="Category" value={category} onChange={(event) => setCategory(event.target.value)} />
+        <Field label="Tags" hint="Comma separated. Used by marketplace search." value={tags} onChange={(event) => setTags(event.target.value)} />
+        <Field label="Benefits description" hint="One per line: title | description" value={benefits} onChange={(event) => setBenefits(event.target.value)} />
+        <Field label="Features description" hint="One per line: title | description" value={features} onChange={(event) => setFeatures(event.target.value)} />
+        <Field label="Steps description" hint="One per line: title | description" value={steps} onChange={(event) => setSteps(event.target.value)} />
+        <Field label="Requirements description" hint="One requirement per line." value={requirements} onChange={(event) => setRequirements(event.target.value)} />
+        <Field label="Icon" hint="monitor, hash, layers, landmark, truck, credit-card, receipt, shield, or puzzle." value={icon} onChange={(event) => setIcon(event.target.value)} />
+        <Field label="Logo URL" hint="https link. Leave blank to use the icon." value={imageUrl} onChange={(event) => setImageUrl(event.target.value)} />
+        <Field label="Documentation URL" value={docs} onChange={(event) => setDocs(event.target.value)} />
+        <Field label="Video URL" value={video} onChange={(event) => setVideo(event.target.value)} />
+        <Field label="Support" value={support} onChange={(event) => setSupport(event.target.value)} />
+        <label className="flex items-center gap-2 text-sm">
+          <input type="checkbox" checked={featured} onChange={(event) => setFeatured(event.target.checked)} /> Featured
+        </label>
+        <label className="block text-sm">
+          Publication
+          <select className="mt-1 block w-full rounded-xl border border-line bg-white px-3 py-2" value={publication} onChange={(event) => setPublication(event.target.value as "published" | "draft" | "archived")}>
+            <option value="published">Published</option>
+            <option value="draft">Draft</option>
+            <option value="archived">Archived</option>
+          </select>
+        </label>
         <Field
           label="Monthly price (AED)"
           hint="Charged every month. A longer billing cycle can discount this amount. Use 0 when there is no recurring charge."

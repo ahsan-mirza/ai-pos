@@ -48,6 +48,18 @@ class Permission(StrEnum):
     GIFT_CARDS_MANAGE = "gift_cards:manage"
     TAX_FREE_MANAGE = "tax_free:manage"
     ONLINE_ORDERS = "online_orders:manage"
+    RESERVATIONS_VIEW = "reservations:view"
+    RESERVATIONS_CREATE = "reservations:create"
+    RESERVATIONS_UPDATE = "reservations:update"
+    RESERVATIONS_CONFIRM = "reservations:confirm"
+    RESERVATIONS_CANCEL = "reservations:cancel"
+    RESERVATIONS_SEAT = "reservations:seat"
+    RESERVATIONS_MARK_NO_SHOW = "reservations:mark_no_show"
+    RESERVATIONS_VIEW_HISTORY = "reservations:view_history"
+    RESERVATIONS_VIEW_ALL = "reservations:view_all_branches"
+    RESERVATIONS_MANAGE_SETTINGS = "reservations:manage_settings"
+    TABLE_HISTORY_VIEW = "table_history:view"
+    TABLE_HISTORY_VIEW_ALL = "table_history:view_all_branches"
 
 
 # Granted to Store Managers by migration 20261019_0012.
@@ -74,8 +86,27 @@ BACK_OFFICE_MANAGER_PERMISSIONS = (
 )
 
 # Restaurant permissions, granted by migration 20261021_0050: managers get all of them, cashiers take orders.
-RESTAURANT_MANAGER_PERMISSIONS = ("pos:orders", "pos:void_sent_item", "kds:operate")
-RESTAURANT_CASHIER_PERMISSIONS = ("pos:orders",)
+RESTAURANT_MANAGER_PERMISSIONS = (
+    "pos:orders",
+    "pos:void_sent_item",
+    "kds:operate",
+    "reservations:view",
+    "reservations:create",
+    "reservations:update",
+    "reservations:confirm",
+    "reservations:cancel",
+    "reservations:seat",
+    "reservations:mark_no_show",
+    "reservations:view_history",
+    "reservations:manage_settings",
+    "table_history:view",
+)
+RESTAURANT_CASHIER_PERMISSIONS = (
+    "pos:orders",
+    "reservations:view",
+    "reservations:create",
+    "reservations:seat",
+)
 
 # Wholesale fulfilment, granted to Store Managers by migration 20261021_0058.
 FULFILMENT_MANAGER_PERMISSIONS = ("sales:orders",)
@@ -203,7 +234,15 @@ SYSTEM_ROLES: list[dict[str, object]] = [
         "name": "Cashier",
         "description": "Sells at the register and opens repair tickets.",
         "permissions": sorted(
-            [Permission.POS_ACCESS, Permission.POS_CREDIT_SALE, Permission.REPAIRS_CREATE, Permission.POS_ORDERS]
+            [
+                Permission.POS_ACCESS,
+                Permission.POS_CREDIT_SALE,
+                Permission.REPAIRS_CREATE,
+                Permission.POS_ORDERS,
+                Permission.RESERVATIONS_VIEW,
+                Permission.RESERVATIONS_CREATE,
+                Permission.RESERVATIONS_SEAT,
+            ]
         ),
     },
     {

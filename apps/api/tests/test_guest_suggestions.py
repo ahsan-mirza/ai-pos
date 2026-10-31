@@ -2,7 +2,6 @@ import uuid
 from datetime import UTC, datetime, timedelta
 
 from sqlalchemy.orm import Session
-from tests.test_menu import enable
 from tests.test_returns import CASHIER_ID, STORE_ID, admin_token, bearer, device, seed_catalog
 
 from app.models.customer import Customer
@@ -127,10 +126,16 @@ def test_a_walk_in_hears_about_a_new_dish_without_a_personal_history(client, ses
 def test_electronics_and_quick_service_are_refused(client) -> None:
     seed_catalog(client)
     token = admin_token(client)
-    enable(client, token, "open_orders")
     denied = client.get("/api/v1/orders/suggestions", headers=device(), params={"store_id": STORE_ID})
     assert denied.status_code == 403
-    assert denied.json()["error"]["code"] == "forbidden"
+    assert denied.json()["error"]["code"] == "capability_disabled"
+    blocked = client.put(
+        "/api/v1/settings/profile",
+        headers=bearer(token),
+        json={"business_profile": "electronics_wholesale", "capabilities": ["open_orders"]},
+    )
+    assert blocked.status_code == 422
+    assert blocked.json()["error"]["code"] == "module_not_available"
 
     switched = client.put(
         "/api/v1/settings/profile", headers=bearer(token), json={"business_profile": "quick_service"}

@@ -24,6 +24,7 @@ from app.models.sale_return import SaleReturn
 from app.models.store import Store
 from app.models.user import User
 from app.schemas.auth import (
+    CashierOption,
     PermissionGroupOut,
     PermissionOut,
     RoleCreate,
@@ -224,12 +225,77 @@ def _locked(user: User) -> bool:
     return locked_until is not None and locked_until > datetime.now(UTC)
 
 
-def _register_failure(db: Session, user: User, settings: Settings) -> None:
+def _register_failure(
+    db: Session,
+    user: User,
+    settings: Settings,
+    *,
+    method: Literal["password", "pin"] | None = None,
+) -> None:
+    if method == "pin":
+        audit.record(
+            db,
+            action_type="LOGIN_PIN",
+            action="auth.login_pin_failed",
+            target_entity="User",
+            target_entity_id=user.id,
+            user=user,
+            details={"username": user.username},
+        )
     user.failed_login_attempts += 1
     if user.failed_login_attempts >= settings.login_max_attempts:
         user.locked_until = datetime.now(UTC) + timedelta(minutes=settings.login_lockout_minutes)
         user.failed_login_attempts = 0
     db.commit()
+
+
+def cashier_initials(name: str) -> str:
+    parts = [part for part in name.replace(".", " ").split() if part]
+    if not parts:
+        return "?"
+    if len(parts) == 1:
+        letters = "".join(character for character in parts[0] if character.isalpha())
+        return (letters[:2] or "?").upper()
+    return f"{parts[0][0]}{parts[-1][0]}".upper()
+
+
+def list_pos_cashiers(db: Session, store_id: uuid.UUID | None) -> list[CashierOption]:
+    """Active POS users for this terminal's branch. A bound register ignores any client-supplied store."""
+    statement = select(User).where(
+        User.is_active.is_(True),
+        User.has_pos_access.is_(True),
+        User.hashed_pin.is_not(None),
+    )
+    if store_id is not None:
+        statement = statement.where((User.store_id.is_(None)) | (User.store_id == store_id))
+    cards: list[CashierOption] = []
+    for user in db.scalars(statement).unique():
+        if _locked(user) or Permission.POS_ACCESS.value not in user.permissions:
+            continue
+        cards.append(
+            CashierOption(
+                id=user.id,
+                display_name=user.full_name,
+                initials=cashier_initials(user.full_name),
+                role_label=user.role.name if user.role else "",
+                avatar_url=media_storage.url(user.avatar_key) if user.avatar_key else None,
+            )
+        )
+    cards.sort(key=lambda card: card.display_name.lower())
+    return cards
+
+
+def unlock_cashier(
+    db: Session,
+    settings: Settings,
+    user_id: uuid.UUID,
+    pin: str,
+    store_id: uuid.UUID | None,
+) -> TokenResponse:
+    user = db.get(User, user_id)
+    if user is None:
+        raise ApiError(401, "invalid_credentials", INVALID_CREDENTIALS)
+    return authenticate(db, settings, username=user.username, secret=pin, method="pin", store_id=store_id)
 
 
 def authenticate(
@@ -239,6 +305,7 @@ def authenticate(
     username: str,
     secret: str,
     method: Literal["password", "pin"],
+    store_id: uuid.UUID | None = None,
 ) -> TokenResponse:
     normalized = username.strip().lower()
     if method == "password" and "@" in normalized:
@@ -251,8 +318,11 @@ def authenticate(
         raise ApiError(401, "invalid_credentials", INVALID_CREDENTIALS)
     if _locked(user):
         raise ApiError(423, "account_locked", "Too many failed attempts. Try again later.")
-    if not valid:
-        _register_failure(db, user, settings)
+    wrong_branch = (
+        method == "pin" and store_id is not None and user.store_id is not None and user.store_id != store_id
+    )
+    if wrong_branch or not valid:
+        _register_failure(db, user, settings, method=method)
         raise ApiError(401, "invalid_credentials", INVALID_CREDENTIALS)
 
     scope: Literal["portal", "pos"] = "portal" if method == "password" else "pos"

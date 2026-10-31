@@ -528,6 +528,15 @@ pub fn save_printer_settings(
 }
 
 #[tauri::command]
+pub async fn probe_printer(state: tauri::State<'_, AppState>) -> Result<printer::PrinterProbe, String> {
+    require_session(&state)?;
+    let db = state.db.clone();
+    tauri::async_runtime::spawn_blocking(move || printer::probe(&db))
+        .await
+        .map_err(|err| err.to_string())?
+}
+
+#[tauri::command]
 pub async fn print_receipt(
     state: tauri::State<'_, AppState>,
     job: printer::RasterJob,

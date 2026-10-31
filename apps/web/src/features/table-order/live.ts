@@ -18,10 +18,11 @@ export interface TableEvent {
 }
 
 /** Browser sockets cannot set headers, so the tenant and device token travel in the query. */
-export function tableSocketUrl(storeId: string, token: string): string {
+export function tableSocketUrl(storeId: string, token: string, role?: "customer" | "pos"): string {
   const base = env.apiBaseUrl.replace(/^http/, "ws");
   const tenant = env.tenantDomain ? `&tenant=${encodeURIComponent(env.tenantDomain)}` : "";
-  return `${base}/api/v1/ws/stores/${storeId}/tables?token=${encodeURIComponent(token)}${tenant}`;
+  const staff = role === "pos" ? "&role=pos" : "";
+  return `${base}/api/v1/ws/stores/${storeId}/tables?token=${encodeURIComponent(token)}${staff}${tenant}`;
 }
 
 const openSockets = new Map<string, WebSocket>();
@@ -52,7 +53,12 @@ export function emitTableEvent(
 }
 
 /** Reconnects until `stop` is called. Returns the unsubscribe function. */
-export function listenForTableEvents(storeId: string, token: string, onEvent: (event: TableEvent) => void): () => void {
+export function listenForTableEvents(
+  storeId: string,
+  token: string,
+  onEvent: (event: TableEvent) => void,
+  role?: "customer" | "pos",
+): () => void {
   let socket: WebSocket | null = null;
   let stopped = false;
   let timer = 0;
@@ -60,7 +66,7 @@ export function listenForTableEvents(storeId: string, token: string, onEvent: (e
 
   const open = () => {
     if (stopped) return;
-    socket = new WebSocket(tableSocketUrl(storeId, token));
+    socket = new WebSocket(tableSocketUrl(storeId, token, role));
     openSockets.set(key, socket);
     socket.onmessage = (message) => {
       try {

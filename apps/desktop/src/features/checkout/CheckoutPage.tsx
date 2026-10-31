@@ -7,6 +7,7 @@ import {
   parseEmbeddedBarcode,
   resolveUnitPrice,
   unpaidItems,
+  type ModifierChoice,
   type PaymentMethod,
   type PriceTier,
   type DiningArea,
@@ -32,6 +33,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ManagerApprovalModal } from "../../components/ManagerApprovalModal";
 import { DrawerHeader } from "../../components/shell/Drawer";
 import type { SyncState } from "../../components/shell/HeaderBar";
+import { POS_DOCKED_QUERY, catalogGridClass, useRegisterLayout } from "../../components/RegisterLayout";
 import { PageFrame } from "../../components/shell/RegisterShell";
 import { SearchInput } from "../../components/shell/SearchInput";
 import { useShell, useShellPage } from "../../components/shell/ShellContext";
@@ -58,7 +60,7 @@ import {
   cartTier,
   cartTotals,
   emptyCart,
-  lineGross,
+  lineCharge,
   manualDiscountCents,
   type CartAction,
   type CartLine,
@@ -68,12 +70,15 @@ import {
 import { DiscountModal } from "./DiscountModal";
 import { GiftCardSellModal } from "./GiftCardSellModal";
 import { CartList } from "./CartList";
-import { GuestSuggestions, suggestsForGuests } from "../orders/GuestSuggestions";
 import { GrocerySuggestions } from "./GrocerySuggestions";
 import { CheckoutSidebar } from "./CheckoutSidebar";
 import { loadCatalog, seedProducts, store, useCatalogUpdates, type Catalog } from "./catalog";
+import { CancelOrderDialog } from "./fnb/CancelOrderDialog";
+import { needsCancelApproval, sessionCancelStage } from "./fnb/cancelOrder";
 import { OrderModeBar } from "./fnb/OrderModeBar";
+import { ReservationDesk } from "./fnb/ReservationDesk";
 import {
+  attachForPayment,
   closeSession,
   dispatchKitchen,
   listSessions,
@@ -83,6 +88,7 @@ import {
   openSession,
   packAddress,
   saveSession,
+  serviceTypeOf,
   type OrderMode,
   type SessionItem,
   type TableSession,
@@ -94,6 +100,7 @@ import { RentModal } from "./RentModal";
 import { refreshPricing } from "./customerPricing";
 import { CustomerBar } from "./CustomerBar";
 import { ServedByPicker } from "./ServedByPicker";
+import { listenForTableEvents } from "../orders/tableSync";
 import { linesBelowFloor, loadFloors, type Floor } from "./floors";
 import { holdCart } from "./held";
 import { HeldCartsModal } from "./HeldCartsModal";
@@ -105,11 +112,12 @@ import { WeighModal } from "./WeighModal";
 import { ComboBuilderModal } from "./ComboBuilderModal";
 import { ModifierPickerModal } from "./ModifierPickerModal";
 import { combosFor, groupsFor, refreshMenu, useMenu } from "./menu";
-import { ordersApi } from "../orders/ordersClient";
+import { OrderRequestError, ordersApi, queueOfflineOrder, queueOrderVoid } from "../orders/ordersClient";
 import { serviceCharge, takeSettlement, type SettlementIntent } from "../orders/settlement";
 import { TipRow } from "../orders/TipRow";
 import { PriceOverrideModal } from "./PriceOverrideModal";
 import { ProductCard, type TierPreview } from "./ProductCard";
+import { ProductDetailsModal } from "./ProductDetailsModal";
 import { CouponRow } from "./CouponRow";
 import { customerCoupons } from "../../lib/api";
 import { loadPromotions, withPromotions, type IssuedVoucher } from "./promotions";
@@ -211,6 +219,7 @@ function withPending(state: CartState, items: SessionItem[], products: ProductUp
       type: "add_product",
       product,
       ...(modifiers.length > 0 ? { modifiers } : {}),
+      ...(item.note ? { instruction: item.note } : {}),
     });
     if (added.error) return current;
     if (item.quantity <= 1) return added.state;
@@ -223,6 +232,7 @@ function withPending(state: CartState, items: SessionItem[], products: ProductUp
 
 export function CheckoutPage({ session }: CheckoutPageProps) {
   const currency = useBusinessCurrency();
+  const { density } = useRegisterLayout();
   const [catalog, setCatalog] = useState<Catalog>({ products: seedProducts, source: "seed", message: null });
   const [catalogLoaded, setCatalogLoaded] = useState(false);
   const [cart, setCart] = useState<CartState>(emptyCart);
@@ -245,6 +255,7 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
   const [quantityFor, setQuantityFor] = useState<ProductUpsert | null>(null);
   const [weighFor, setWeighFor] = useState<ProductUpsert | null>(null);
   const [modifierFor, setModifierFor] = useState<ProductUpsert | null>(null);
+  const [modifierEdit, setModifierEdit] = useState<{ lineId: string; quantity: number; choices: ModifierChoice[]; instruction: string } | null>(null);
   const [comboFor, setComboFor] = useState<ProductUpsert | null>(null);
   const menu = useMenu();
   const [floors, setFloors] = useState<Map<string, Floor>>(new Map());
@@ -252,6 +263,7 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
   const [bulkFor, setBulkFor] = useState<ProductUpsert | null>(null);
   const [quoteOpen, setQuoteOpen] = useState(false);
   const [branchCheck, setBranchCheck] = useState<{ product: ProductUpsert | null } | null>(null);
+  const [details, setDetails] = useState<{ product: ProductUpsert; variants: ProductUpsert[]; title?: string; perVariant?: boolean } | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [heldOpen, setHeldOpen] = useState(false);
   const [lastReceipt, setLastReceipt] = useState<{ doc: ReceiptDoc; saleId: string } | null>(null);
@@ -285,6 +297,7 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
     (cart.mode === "RETAIL" && promotions.some((promo) => promo.coupon_code !== null));
   const capabilities = useCapabilities();
   const food = capabilities.foodAndBeverage;
+  const kitchenOn = capabilities.enabled.has(Capability.Kds);
   const [orderMode, setOrderMode] = useState<OrderMode>("dine_in");
   const [tableSession, setTableSession] = useState<TableSession | null>(null);
   const [floorAreas, setFloorAreas] = useState<DiningArea[]>([]);
@@ -317,12 +330,21 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
     capabilities.enabled.has(Capability.B2bCredit) && session.user.permissions.includes(Permission.PosCreditSale);
   const online = catalog.source === "api";
   const [thanks, setThanks] = useState<string | null>(null);
+  const [displayNotice, setDisplayNotice] = useState<string | null>(null);
+  const [cancelOpen, setCancelOpen] = useState(false);
+  const [pendingCancel, setPendingCancel] = useState<string | null>(null);
   const showThanks = useCallback((text: string) => {
     setThanks(text);
     window.setTimeout(() => setThanks(null), 6000);
   }, []);
+  const showCancelled = useCallback(() => {
+    setDisplayNotice("Your order has been cancelled.");
+    window.setTimeout(() => setDisplayNotice(null), 6000);
+  }, []);
 
   useEffect(() => {
+    const taxPolicy = customerTax(cart.customer);
+    const vatIncluded = totals.exclusiveTax === 0 && totals.inclusiveTax > 0;
     const bnpl = payment.choice === "bnpl" ? (payment.bnplIntent ?? null) : null;
     const intent =
       payment.choice === "qr"
@@ -336,15 +358,17 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
       lines: rows.map((row) => ({
         name: row.lines[0]?.description || row.product.name,
         quantity: row.lines.reduce((sum, line) => sum + line.quantity, 0),
-        totalCents: row.lines.reduce((sum, line) => sum + lineGross(line), 0),
+        totalCents: row.lines.reduce((sum, line) => sum + lineCharge(line, taxPolicy).line_total_cents, 0),
       })),
-      subtotalCents: totals.subtotal,
+      subtotalCents: vatIncluded ? totals.total : totals.subtotal,
       taxCents: totals.tax,
+      vatIncluded,
       totalCents: totals.total,
       qr: intent && intent.status !== "CANCELLED" ? { payload: intent.payload, status: intent.status, amountCents: intent.amountCents } : null,
       thanks: rows.length === 0 ? thanks : null,
+      notice: rows.length === 0 ? displayNotice : null,
     });
-  }, [currency, payment.choice, payment.qrIntent, payment.bnplIntent, rows, thanks, totals]);
+  }, [cart.customer, currency, displayNotice, payment.choice, payment.qrIntent, payment.bnplIntent, rows, thanks, totals]);
 
   useEffect(() => onDisplayReady(republishDisplay), []);
   useShellPage(charging, setNotice);
@@ -386,7 +410,7 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
   }, []);
 
   useEffect(() => {
-    if (!cartOpen || window.matchMedia("(min-width: 1024px)").matches) return;
+    if (!cartOpen || window.matchMedia(POS_DOCKED_QUERY).matches) return;
     closeCartRef.current?.focus();
     const previous = document.body.style.overflow;
     document.body.style.overflow = "hidden";
@@ -497,6 +521,55 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
     setCoupon(null);
   }, []);
 
+  const submitCancellation = useCallback((reason: string, approvedById: string | null) => {
+    const current = sessionRef.current;
+    if (!current) return;
+    const orderId = current.server_order_id;
+    const finish = () => {
+      resetSale();
+      showCancelled();
+      setNotice("The order was cancelled.");
+    };
+    if (!orderId) {
+      finish();
+      return;
+    }
+    void ordersApi
+      .get(orderId)
+      .then((order) => ordersApi.voidOrder(order, session.user.id, reason, approvedById))
+      .then(finish)
+      .catch((caught: unknown) => {
+        if (caught instanceof OrderRequestError && caught.offline) {
+          void queueOrderVoid({
+            id: orderId,
+            storeId: current.store_id,
+            userId: session.user.id,
+            serviceType: serviceTypeOf(current.order_mode),
+            openedAt: current.created_at,
+            reason,
+            items: current.items
+              .filter((item) => item.kitchen_status !== "VOIDED")
+              .map((item) => ({
+                id: item.id,
+                product_id: item.product_id,
+                quantity: item.quantity,
+                unit_price_cents: item.unit_price_cents,
+                sent: item.kitchen_status === "SENT_TO_KDS" || item.kitchen_status === "SERVED",
+              })),
+          })
+            .then(finish)
+            .catch(() => setNotice("The cancellation could not be saved. The order is still open."));
+          return;
+        }
+        const message = caught instanceof OrderRequestError ? caught.message : "The order could not be cancelled.";
+        setNotice(
+          caught instanceof OrderRequestError && caught.code === "already_paid"
+            ? "This sale is complete. Refund it from Returns."
+            : message,
+        );
+      });
+  }, [resetSale, session.user.id, showCancelled]);
+
   useEffect(() => {
     setNotice((current) =>
       current === "Search the catalog."
@@ -526,9 +599,13 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
         });
     };
     loadFloor();
+    const stopLive = listenForTableEvents(store.id, (event) => {
+      if (event.type === "RESERVATION_CHANGED" || event.type === "TABLE_SESSION_CLOSED") loadFloor();
+    });
     const timer = window.setInterval(loadFloor, 5000);
     return () => {
       cancelled = true;
+      stopLive();
       window.clearInterval(timer);
     };
   }, [food]);
@@ -651,6 +728,53 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
   // "Split equally into N" from Orders: once the bill is in the cart, open the guest-by-guest split.
   const splitGuests = useRef(settlement?.guests ?? 0);
 
+  const sentToKitchen = (current: TableSession | null) =>
+    current?.items.some((item) => item.kitchen_status === "SENT_TO_KDS" || item.kitchen_status === "SERVED") ?? false;
+
+  const commitService = async (next: TableSession, tableId: string | null) => {
+    const saved = await saveSession(next);
+    sessionRef.current = saved;
+    setTableSession(saved);
+    tableIdRef.current = tableId;
+    if (!saved.server_order_id) return saved;
+    const changes = {
+      service_type: serviceTypeOf(saved.order_mode),
+      table_id: tableId,
+      name: saved.guest_name || null,
+      note: saved.address || null,
+      covers: saved.guest_count,
+      reason: "Changed at the register",
+    };
+    try {
+      const current = await ordersApi.get(saved.server_order_id);
+      const updated = await ordersApi.update(current, session.user.id, changes);
+      const revised = { ...saved, server_order_id: updated.id, server_revision: updated.revision };
+      sessionRef.current = revised;
+      setTableSession(revised);
+      return await saveSession(revised);
+    } catch (caught) {
+      if (caught instanceof OrderRequestError && caught.offline) {
+        await queueOfflineOrder(
+          {
+            id: saved.server_order_id,
+            storeId: saved.store_id,
+            userId: session.user.id,
+            serviceType: serviceTypeOf(saved.order_mode),
+            tableId,
+            covers: saved.guest_count,
+            name: saved.guest_name || null,
+            note: saved.address || null,
+            openedAt: saved.created_at,
+            items: [],
+          },
+          false,
+        );
+        return saved;
+      }
+      throw caught;
+    }
+  };
+
   const sendRound = async () => {
     const current = sessionRef.current;
     if (current === null) {
@@ -680,43 +804,44 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
       return;
     }
     let current = sessionRef.current;
-    if (current === null) {
-      setNotice("Choose a table before checking out.");
-      return;
-    }
-    const unsent = cartRef.current.lines.filter((line) => !line.orderItemId);
-    if (unsent.length > 0) {
-      const mirrored = mirrorCart(current, cartRef.current.lines);
-      const fresh = mirrored.items.filter((item) => item.kitchen_status === "PENDING").map((item) => item.id);
-      if (fresh.length > 0) {
-        const fired = await dispatchKitchen(markSent(mirrored), session.user.id, tableIdRef.current, fresh);
-        current = fired;
-        const sentIds = new Set(fresh);
-        const nextLines = cartRef.current.lines.map((line) => (sentIds.has(line.lineId) ? { ...line, orderItemId: line.lineId } : line));
-        cartRef.current = { ...cartRef.current, lines: nextLines };
-        setCart(cartRef.current);
+    if (current) {
+      const unsent = cartRef.current.lines.filter((line) => !line.orderItemId);
+      if (unsent.length > 0) {
+        const mirrored = mirrorCart(current, cartRef.current.lines);
+        const fresh = mirrored.items.filter((item) => item.kitchen_status === "PENDING").map((item) => item.id);
+        if (fresh.length > 0) {
+          current = await attachForPayment(mirrored, session.user.id, tableIdRef.current, fresh);
+          const attached = new Set(fresh);
+          const nextLines = cartRef.current.lines.map((line) =>
+            attached.has(line.lineId) ? { ...line, orderItemId: line.lineId } : line,
+          );
+          cartRef.current = { ...cartRef.current, lines: nextLines };
+          setCart(cartRef.current);
+          sessionRef.current = current;
+          setTableSession(current);
+        }
       }
-    }
-    if (current.server_order_id) {
-      try {
-        const order = await ordersApi.get(current.server_order_id);
-        const intent: SettlementIntent = {
-          order,
-          itemIds: unpaidItems(order).map((item) => item.id),
-          label: current.table_number,
-        };
-        settlementRef.current = intent;
-        setSettlement(intent);
-        settlementLoaded.current = true;
-      } catch {
-        // The sale still records. The table link is attached when the order can be read.
+      if (current.server_order_id) {
+        try {
+          const order = await ordersApi.get(current.server_order_id);
+          const intent: SettlementIntent = {
+            order,
+            itemIds: unpaidItems(order).map((item) => item.id),
+            label: current.table_number,
+          };
+          settlementRef.current = intent;
+          setSettlement(intent);
+          settlementLoaded.current = true;
+        } catch {
+          // The sale still records. The table link is attached when the order can be read.
+        }
       }
+      if (current.order_mode === "dine_in" && current.guest_count >= 2) splitGuests.current = current.guest_count;
+      const billed = { ...current, status: "BILL_PRINTED" as const };
+      sessionRef.current = billed;
+      setTableSession(billed);
+      void saveSession(billed);
     }
-    if (current.order_mode === "dine_in" && current.guest_count >= 2) splitGuests.current = current.guest_count;
-    const billed = { ...current, status: "BILL_PRINTED" as const };
-    sessionRef.current = billed;
-    setTableSession(billed);
-    void saveSession(billed);
     await charge();
   };
   useEffect(() => {
@@ -864,6 +989,10 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
       const printed = await printReceipt(receipt, { kickDrawer: takesCash });
       setNotice(printed.message ? `${message} Receipt not printed: ${printed.message}` : message);
     };
+    const einvoiceNote =
+      capabilities.enabled.has(Capability.UaeEinvoicing) && cartRef.current.customer?.trn_vat_number
+        ? " UAE e-Invoice is pending. This receipt is not provider acceptance."
+        : "";
     setCharging(true);
     try {
       const outcome = await submitCharge(batch);
@@ -873,7 +1002,7 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
       }
       if (outcome.kind === "recorded") {
         resetSale();
-        await printAfter(summary + invoice);
+        await printAfter(summary + invoice + einvoiceNote);
         await reloadCatalog();
       } else if (outcome.kind === "rejected") {
         batchRef.current = null;
@@ -883,7 +1012,7 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
       } else if (outcome.kind === "queued") {
         resetSale();
         await printAfter(
-          `Saved on this register but not in Postgres yet.${invoice} It will sync when the API is reachable. (${outcome.message})`,
+          `Saved on this register but not in Postgres yet.${invoice} It will sync when the API is reachable. (${outcome.message})${einvoiceNote}`,
         );
       } else {
         setNotice(`Sale not recorded: ${outcome.message} Charge again to retry.`);
@@ -1026,13 +1155,13 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
           </>
         }
         footer={
-          <div className="shrink-0 border-t border-zinc-200 bg-white px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3 lg:hidden dark:border-zinc-800 dark:bg-zinc-900">
+          <div className="shrink-0 border-t border-zinc-200 bg-white px-3 pb-[max(0.5rem,env(safe-area-inset-bottom))] pt-2 xl:hidden dark:border-zinc-800 dark:bg-zinc-900">
             <button
               type="button"
               aria-controls="current-sale"
               aria-expanded={cartOpen}
               onClick={() => setCartOpen(true)}
-              className="flex h-16 w-full items-center gap-4 rounded-xl bg-primary-500 px-5 text-white shadow-lg shadow-primary-500/25 transition-colors hover:bg-primary-600 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-primary-500/30 active:scale-[0.99]"
+              className="flex h-14 w-full items-center gap-3 rounded-xl bg-primary-500 px-4 text-white shadow-lg shadow-primary-500/25 transition-colors hover:bg-primary-600 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-primary-500/30 active:scale-[0.99]"
             >
               <span className="relative">
                 <ShoppingCart size={22} aria-hidden="true" />
@@ -1076,7 +1205,7 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
                   type="button"
                   aria-label="Back to products"
                   onClick={() => setCartOpen(false)}
-                  className="-mr-2 flex h-11 w-11 items-center justify-center rounded-full text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-900 lg:hidden dark:text-zinc-400 dark:hover:bg-white/10 dark:hover:text-white"
+                  className="-mr-2 flex h-12 w-12 items-center justify-center rounded-full text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-900 xl:hidden dark:text-zinc-400 dark:hover:bg-white/10 dark:hover:text-white"
                 >
                   <X size={20} aria-hidden="true" />
                 </button>
@@ -1142,28 +1271,6 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
                   </button>
                 </div>
               ) : null}
-              {suggestsForGuests(capabilities.profile) ? (
-                <div className="px-4 pt-2">
-                <GuestSuggestions
-                  storeId={activeStore().id}
-                  customerId={cart.customer?.id ?? null}
-                  productIds={cart.lines.map((line) => line.product.id)}
-                  disabled={charging}
-                  onAdd={(suggestion) => {
-                    const product = catalog.products.find((item) => item.id === suggestion.product_id);
-                    if (!product) {
-                      setNotice(`${suggestion.name} is not on this register yet.`);
-                      return;
-                    }
-                    dispatch({
-                      type: "add_product",
-                      product,
-                      ...(suggestion.modifiers.length > 0 ? { modifiers: suggestion.modifiers } : {}),
-                    });
-                  }}
-                />
-                </div>
-              ) : null}
               <CartList
                 rows={rows}
                 currency={currency}
@@ -1181,6 +1288,22 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
                 onOverride={setOverrideRow}
                 onClearOverride={(item) => dispatch({ type: "clear_override", lineIds: item.lines.map((line) => line.lineId) })}
                 onAddSerials={(item) => setBulkFor(item.product)}
+                modifierMenu={(productId) => groupsFor(menu, productId).length > 0}
+                onCustomize={(item) => {
+                  const line = item.lines[0];
+                  if (!line || line.orderItemId || groupsFor(menu, line.product.id).length === 0) return;
+                  setModifierEdit({
+                    lineId: line.lineId,
+                    quantity: line.quantity,
+                    choices: line.modifiers ?? [],
+                    instruction: line.instruction ?? "",
+                  });
+                  setModifierFor(line.product);
+                }}
+                onDuplicate={(item) => {
+                  const line = item.lines[0];
+                  if (line) dispatch({ type: "duplicate_line", lineId: line.lineId });
+                }}
                 onApproveFloor={setFloorRow}
                 onDiscount={
                   cart.mode === "RETAIL"
@@ -1300,7 +1423,7 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
                   <PauseCircle size={18} aria-hidden="true" />
                   {cart.lines.length > 0 ? "Hold" : "Recall"}
                 </button>
-                {food ? (
+                {food && kitchenOn ? (
                   <button
                     type="button"
                     disabled={charging || cart.lines.length === 0}
@@ -1324,7 +1447,7 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
           />
         }
       >
-        <div className="flex h-full min-h-0 flex-col">
+        <div className="flex h-full min-h-0 min-w-0 flex-col">
           <div className="shrink-0 space-y-3 px-5 pt-5">
           <p className="flex items-center gap-2 text-xs text-zinc-500 dark:text-zinc-400">
             <span
@@ -1342,24 +1465,54 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
             </p>
           ) : null}
 
+          {food ? <ReservationDesk storeId={store.id} /> : null}
           {food ? (
             <OrderModeBar
               mode={orderMode}
               session={tableSession}
               areas={floorAreas}
               storeId={store.id}
-              onMode={(mode) => {
-                setOrderMode(mode);
-                setTableSession(null);
-                sessionRef.current = null;
-                tableIdRef.current = null;
-                settlementRef.current = null;
-                setSettlement(null);
-                dispatch({ type: "clear" });
-              }}
+              pendingCount={cart.lines.length}
+              onCancelOrder={() => setCancelOpen(true)}
+              onMode={setOrderMode}
               onSeat={(tableNumber, guestCount, tableId, orderId) => {
                 void (async () => {
                   const previous = sessionRef.current;
+                  const converting = previous !== null && previous.order_mode !== "dine_in";
+                  if (converting) {
+                    if (sentToKitchen(previous)) {
+                      setNotice("This order is already in the kitchen. It cannot change type.");
+                      return;
+                    }
+                    if (orderId && orderId !== previous.server_order_id) {
+                      setNotice("That table already has an order. Choose a free table.");
+                      return;
+                    }
+                    const opened = mirrorCart(
+                      openSession({
+                        storeId: store.id,
+                        mode: "dine_in",
+                        tableNumber,
+                        guestCount,
+                        guestName: previous.guest_name,
+                        address: previous.address,
+                        phone: previous.phone,
+                        existing: previous,
+                      }),
+                      cartRef.current.lines,
+                    );
+                    try {
+                      await commitService(opened, tableId);
+                      setNotice(`${tableNumber} is seated. This order is now dine-in.`);
+                    } catch (caught) {
+                      const restored = await saveSession(previous);
+                      sessionRef.current = restored;
+                      setTableSession(restored);
+                      setOrderMode(previous.order_mode);
+                      setNotice(caught instanceof Error ? caught.message : "Could not change the order type.");
+                    }
+                    return;
+                  }
                   if (previous && previous.table_number !== tableNumber) {
                     const mirrored = mirrorCart(previous, cartRef.current.lines);
                     sessionRef.current = mirrored;
@@ -1416,6 +1569,7 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
                     modifiers: item.modifiers ?? [],
                     components: item.components ?? [],
                     orderItemId: item.id,
+                    instruction: item.note ?? undefined,
                   }));
                   const loaded =
                     ordered.length > 0 ? applyCart(emptyCart, { type: "load_order", lines: ordered }) : applyCart(emptyCart, { type: "clear" });
@@ -1439,12 +1593,20 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
                   } else {
                     settlementRef.current = null;
                     setSettlement(null);
-                    setNotice(`${tableNumber} is free. Add dishes, then send the round to the kitchen.`);
+                    setNotice(
+                      kitchenOn
+                        ? `${tableNumber} is free. Add dishes, then send a round or pay.`
+                        : `${tableNumber} is free. Add dishes, then pay.`,
+                    );
                   }
                 })();
               }}
               onTicket={(details: TicketDetails) => {
-                tableIdRef.current = null;
+                const previous = sessionRef.current;
+                if (previous && previous.order_mode !== orderMode && sentToKitchen(previous)) {
+                  setNotice("This order is already in the kitchen. It cannot change type.");
+                  return;
+                }
                 const opened = openSession({
                   storeId: store.id,
                   mode: orderMode,
@@ -1453,13 +1615,22 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
                   guestName: details.guestName,
                   address: packAddress(details),
                   phone: details.phone,
-                  existing: tableSession?.order_mode === orderMode ? tableSession : null,
+                  existing: previous,
                 });
-                void saveSession(opened).then((saved) => {
-                  sessionRef.current = saved;
-                  setTableSession(saved);
-                  setNotice(orderMode === "takeaway" ? "Takeaway ticket is open. Add dishes below." : "Delivery ticket is open. Add dishes below.");
-                });
+                void commitService(opened, null)
+                  .then(() => {
+                    setNotice(orderMode === "takeaway" ? "Takeaway ticket is open. Add dishes below." : "Delivery ticket is open. Add dishes below.");
+                  })
+                  .catch((caught) => {
+                    if (previous) {
+                      void saveSession(previous).then((restored) => {
+                        sessionRef.current = restored;
+                        setTableSession(restored);
+                        setOrderMode(previous.order_mode);
+                      });
+                    }
+                    setNotice(caught instanceof Error ? caught.message : "Could not change the order type.");
+                  });
               }}
             />
           ) : null}
@@ -1535,7 +1706,7 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
                   : "No products in this register's catalog yet."}
             </p>
           ) : null}
-          <ul className="grid grid-cols-1 gap-3 min-[420px]:grid-cols-2 md:grid-cols-3 2xl:grid-cols-4">
+          <ul className={catalogGridClass(density)}>
             {gridEntries.slice(0, GRID_LIMIT).map((entry) =>
               entry.kind === "model" ? (
                 <ModelCard
@@ -1544,6 +1715,11 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
                   currency={currency}
                   disabled={charging}
                   onOpen={() => setPicker({ group: entry.group })}
+                  onInfo={() => {
+                    const first = entry.group.variants[0];
+                    if (!first) return;
+                    setDetails({ product: first, variants: entry.group.variants, title: entry.group.name, perVariant: true });
+                  }}
                 />
               ) : (
                 <ProductCard
@@ -1555,6 +1731,12 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
                   menuItem={food}
                   hasModifiers={groupsFor(menu, entry.hit.product.id).length > 0 || combosFor(menu, entry.hit.product.id).length > 0}
                   onSelect={(product) => select(product, true)}
+                  onInfo={(product) => {
+                    const variants = product.product_model_id
+                      ? catalog.products.filter((item) => item.product_model_id === product.product_model_id && item.is_active !== false)
+                      : [];
+                    setDetails({ product, variants });
+                  }}
                   onCheckBranches={(product) => setBranchCheck({ product })}
                 />
               ),
@@ -1587,9 +1769,19 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
           product={modifierFor}
           groups={groupsFor(menu, modifierFor.id)}
           currency={currency}
-          onClose={() => setModifierFor(null)}
-          onConfirm={(modifiers, quantity) => {
-            if (dispatch({ type: "add_product", product: modifierFor, modifiers, quantity })) setModifierFor(null);
+          initial={modifierEdit}
+          onClose={() => {
+            setModifierFor(null);
+            setModifierEdit(null);
+          }}
+          onConfirm={(modifiers, quantity, instruction) => {
+            const saved = modifierEdit
+              ? dispatch({ type: "set_customization", lineId: modifierEdit.lineId, modifiers, quantity, instruction })
+              : dispatch({ type: "add_product", product: modifierFor, modifiers, quantity, instruction });
+            if (saved) {
+              setModifierFor(null);
+              setModifierEdit(null);
+            }
           }}
         />
       ) : null}
@@ -1827,6 +2019,33 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
           }}
         />
       ) : null}
+      {cancelOpen && tableSession ? (
+        <CancelOrderDialog
+          stage={sessionCancelStage(tableSession)}
+          onClose={() => setCancelOpen(false)}
+          onSubmit={(reason) => {
+            setCancelOpen(false);
+            if (needsCancelApproval(sessionCancelStage(tableSession))) setPendingCancel(reason);
+            else submitCancellation(reason, null);
+          }}
+        />
+      ) : null}
+      {pendingCancel ? (
+        <ManagerApprovalModal
+          reasons={["Cancel an order that has already left the register"]}
+          subtitle="A manager allowed to void sent items must approve. The customer will not see the reason."
+          verify={(username, pin) => verifyManager(session, username, pin, Permission.PosVoidSentItem)}
+          onClose={() => {
+            setPendingCancel(null);
+            setNotice("The order is still open.");
+          }}
+          onApproved={(approver) => {
+            const reason = pendingCancel;
+            setPendingCancel(null);
+            submitCancellation(reason, approver.id);
+          }}
+        />
+      ) : null}
       {quoteOpen ? (
         <QuoteModal
           totalCents={totals.total}
@@ -1862,6 +2081,21 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
             void reloadCatalog();
             return quote;
           }}
+        />
+      ) : null}
+      {details ? (
+        <ProductDetailsModal
+          product={details.product}
+          variants={details.variants}
+          title={details.title}
+          perVariant={details.perVariant}
+          currency={currency}
+          online={online && session.mode === "online"}
+          storeId={store.id}
+          permissions={session.user.permissions}
+          groups={groupsFor(menu, details.product.id)}
+          combos={combosFor(menu, details.product.id)}
+          onClose={() => setDetails(null)}
         />
       ) : null}
       {branchCheck ? (

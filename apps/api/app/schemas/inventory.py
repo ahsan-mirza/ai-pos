@@ -458,6 +458,7 @@ class BranchStock(ApiModel):
     quantity_on_hand: int
     quantity_reserved: int
     quantity_available: int
+    min_reorder_level: int = 0
     aisle_shelf_location: str | None
 
 
@@ -672,6 +673,8 @@ class ProductCreate(FashionAttributes):
     variant_attributes: dict[str, str] = Field(default_factory=dict)
     specifications: dict[str, str] = Field(default_factory=dict)
     price_cents: int = Field(ge=0)
+    # The entered price already contains tax. False adds tax at checkout. It does not change the tax treatment.
+    price_includes_tax: bool = False
     is_serialized: bool = False
     tax_category: TaxCategory = "STANDARD"
     is_open_price: bool = False
@@ -728,6 +731,7 @@ class ProductUpdate(FashionAttributes):
     variant_attributes: dict[str, str] | None = None
     specifications: dict[str, str] | None = None
     price_cents: int | None = Field(default=None, ge=0)
+    price_includes_tax: bool | None = None
     tax_category: TaxCategory | None = None
     is_open_price: bool | None = None
     sold_by_weight: bool | None = None

@@ -36,6 +36,7 @@ pub fn migrate(conn: &Connection) -> Result<(), String> {
             unit_price_cents INTEGER NOT NULL,
             modifiers_json TEXT NOT NULL DEFAULT '[]',
             kitchen_status TEXT NOT NULL DEFAULT 'PENDING',
+            note TEXT,
             FOREIGN KEY(session_id) REFERENCES table_sessions(id) ON DELETE CASCADE
         );
         CREATE TABLE IF NOT EXISTS table_sync_log (
@@ -48,7 +49,25 @@ pub fn migrate(conn: &Connection) -> Result<(), String> {
         CREATE INDEX IF NOT EXISTS ix_table_sync_log_store ON table_sync_log(store_id, id);
         ",
     )
-    .map_err(|err| err.to_string())
+    .map_err(|err| err.to_string())?;
+    add_note_column(conn)
+}
+
+fn add_note_column(conn: &Connection) -> Result<(), String> {
+    let mut info = conn
+        .prepare("PRAGMA table_info(table_session_items)")
+        .map_err(|err| err.to_string())?;
+    let has_note = info
+        .query_map([], |row| row.get::<_, String>(1))
+        .map_err(|err| err.to_string())?
+        .filter_map(Result::ok)
+        .any(|name| name == "note");
+    if has_note {
+        return Ok(());
+    }
+    conn.execute("ALTER TABLE table_session_items ADD COLUMN note TEXT", [])
+        .map_err(|err| err.to_string())?;
+    Ok(())
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -61,6 +80,8 @@ pub struct SessionItem {
     pub unit_price_cents: i64,
     pub modifiers_json: String,
     pub kitchen_status: String,
+    #[serde(default)]
+    pub note: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -152,8 +173,8 @@ pub fn save(db: &Db, session: &TableSession) -> Result<TableSession, String> {
         for item in &session.items {
             tx.execute(
                 "INSERT INTO table_session_items (
-                    id, session_id, product_id, product_name, quantity, unit_price_cents, modifiers_json, kitchen_status
-                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                    id, session_id, product_id, product_name, quantity, unit_price_cents, modifiers_json, kitchen_status, note
+                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
                 params![
                     item.id,
                     session.id,
@@ -163,6 +184,7 @@ pub fn save(db: &Db, session: &TableSession) -> Result<TableSession, String> {
                     item.unit_price_cents,
                     item.modifiers_json,
                     item.kitchen_status,
+                    item.note,
                 ],
             )
             .map_err(|err| err.to_string())?;
@@ -236,7 +258,7 @@ fn session_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<TableSession> {
 fn items(conn: &Connection, session_id: &str) -> Result<Vec<SessionItem>, String> {
     let mut statement = conn
         .prepare(
-            "SELECT id, session_id, product_id, product_name, quantity, unit_price_cents, modifiers_json, kitchen_status
+            "SELECT id, session_id, product_id, product_name, quantity, unit_price_cents, modifiers_json, kitchen_status, note
              FROM table_session_items WHERE session_id = ?1",
         )
         .map_err(|err| err.to_string())?;
@@ -251,6 +273,7 @@ fn items(conn: &Connection, session_id: &str) -> Result<Vec<SessionItem>, String
                 unit_price_cents: row.get(5)?,
                 modifiers_json: row.get(6)?,
                 kitchen_status: row.get(7)?,
+                note: row.get(8)?,
             })
         })
         .map_err(|err| err.to_string())?;

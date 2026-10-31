@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from collections import defaultdict
+from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import WebSocket
@@ -25,9 +26,11 @@ _lock: asyncio.Lock | None = None
 _rooms: dict[str, set[WebSocket]] = defaultdict(set)
 _members: dict[WebSocket, set[str]] = {}
 _carts: dict[str, dict[str, Any]] = {}
+_counts: dict[str, int] = {}
+_seen: dict[str, datetime] = {}
 
 
-def _tenant_prefix() -> str:
+def tenant_prefix() -> str:
     from app.tenancy.context import current_tenant
 
     tenant = current_tenant()
@@ -37,20 +40,39 @@ def _tenant_prefix() -> str:
 
 
 def kitchen_room(station_id: object) -> str:
-    return f"{_tenant_prefix()}:station:kitchen-{station_id}"
+    return f"{tenant_prefix()}:station:kitchen-{station_id}"
 
 
 def terminal_room(terminal_id: object) -> str:
-    return f"{_tenant_prefix()}:terminal:{terminal_id}"
+    return f"{tenant_prefix()}:terminal:{terminal_id}"
 
 
 def customer_display_room(terminal_id: object) -> str:
-    return f"{_tenant_prefix()}:customer-display:{terminal_id}"
+    return f"{tenant_prefix()}:customer-display:{terminal_id}"
 
 
 def pos_terminals_room(store_id: object) -> str:
     """Every register watching one store. The tenant id keeps another store from joining the room."""
-    return f"{_tenant_prefix()}:pos:terminals:{store_id}"
+    return f"{tenant_prefix()}:pos:terminals:{store_id}"
+
+
+def room_count(room: str) -> int:
+    """Open sockets in one room. A missing room is zero, which is a confirmed absence, not an unknown."""
+    return _counts.get(room, 0)
+
+
+def last_seen(room: str) -> datetime | None:
+    return _seen.get(room)
+
+
+def _bump(room: str, delta: int) -> None:
+    count = _counts.get(room, 0) + delta
+    if count <= 0:
+        _counts.pop(room, None)
+    else:
+        _counts[room] = count
+    if delta > 0:
+        _seen[room] = datetime.now(UTC)
 
 
 def publish_table_alert(
@@ -104,7 +126,10 @@ async def join(socket: WebSocket, *names: str) -> None:
     async with _lock:
         joined = _members.setdefault(socket, set())
         for name in names:
-            _rooms[name].add(socket)
+            room = _rooms[name]
+            if socket not in room:
+                room.add(socket)
+                _bump(name, 1)
             joined.add(name)
 
 
@@ -114,9 +139,10 @@ async def leave(socket: WebSocket) -> None:
     async with _lock:
         for name in _members.pop(socket, ()):
             room = _rooms.get(name)
-            if room is None:
+            if room is None or socket not in room:
                 continue
             room.discard(socket)
+            _bump(name, -1)
             if not room:
                 _rooms.pop(name, None)
 

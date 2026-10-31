@@ -15,6 +15,7 @@ import asyncio
 import logging
 import uuid
 from collections import defaultdict
+from datetime import UTC, datetime
 
 from fastapi import WebSocket
 
@@ -23,6 +24,8 @@ logger = logging.getLogger("ai_pos.table_sync")
 _loop: asyncio.AbstractEventLoop | None = None
 _rooms: dict[str, set[WebSocket]] = defaultdict(set)
 _lock: asyncio.Lock | None = None
+_customers: dict[str, int] = {}
+_last_customer: dict[str, datetime] = {}
 
 
 def bind_loop(loop: asyncio.AbstractEventLoop) -> None:
@@ -32,18 +35,39 @@ def bind_loop(loop: asyncio.AbstractEventLoop) -> None:
     _lock = asyncio.Lock()
 
 
-async def connect(store_id: uuid.UUID, socket: WebSocket) -> None:
+def observe_customer(presence_key: str, joined: bool) -> None:
+    """Count table-order sessions. The cashier's own socket is not one of them."""
+    current = _customers.get(presence_key, 0)
+    if joined:
+        _customers[presence_key] = current + 1
+        _last_customer[presence_key] = datetime.now(UTC)
+        return
+    if current <= 1:
+        _customers.pop(presence_key, None)
+    else:
+        _customers[presence_key] = current - 1
+
+
+def customer_presence(presence_key: str) -> tuple[int, datetime | None]:
+    return _customers.get(presence_key, 0), _last_customer.get(presence_key)
+
+
+async def connect(store_id: uuid.UUID, socket: WebSocket, presence_key: str, role: str) -> None:
     await socket.accept()
     assert _lock is not None
     async with _lock:
         _rooms[str(store_id)].add(socket)
+        if role == "customer":
+            observe_customer(presence_key, True)
 
 
-async def disconnect(store_id: uuid.UUID, socket: WebSocket) -> None:
+async def disconnect(store_id: uuid.UUID, socket: WebSocket, presence_key: str, role: str) -> None:
     if _lock is None:
         return
     async with _lock:
         _rooms[str(store_id)].discard(socket)
+        if role == "customer":
+            observe_customer(presence_key, False)
 
 
 async def _broadcast(store_id: str, event: dict[str, object]) -> None:

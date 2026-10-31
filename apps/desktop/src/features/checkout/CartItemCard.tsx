@@ -3,7 +3,6 @@ import {
   comboSummary,
   formatMoney,
   formatWeight,
-  modifierSummary,
   nextVolumeBreak,
   unitFactor,
   unitLabel,
@@ -43,6 +42,11 @@ export interface CartItemCardProps {
   /** Cashier discount on the line (with a reason); absent when discounts are not offered. */
   onDiscount?: (row: CartRow) => void;
   onClearDiscount?: (row: CartRow) => void;
+  /** Reopen the modifier panel for a line that has not been sent to the kitchen. */
+  onCustomize?: (row: CartRow) => void;
+  /** True when this product has modifier groups, even if none are chosen yet. */
+  modifierMenu?: (productId: string) => boolean;
+  onDuplicate?: (row: CartRow) => void;
 }
 
 function sourceLabel(row: CartRow): string {
@@ -55,9 +59,9 @@ function sourceLabel(row: CartRow): string {
 }
 
 const microAction =
-  "inline-flex h-7 items-center gap-1 rounded-lg px-1.5 text-[11px] font-medium text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-900 disabled:opacity-40 dark:text-white/55 dark:hover:bg-white/10 dark:hover:text-white";
+  "inline-flex h-12 items-center gap-1 rounded-xl px-3 text-sm font-semibold text-zinc-600 transition-colors hover:bg-zinc-100 hover:text-zinc-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 disabled:opacity-40 dark:text-white/70 dark:hover:bg-white/10 dark:hover:text-white";
 const stepButton =
-  "flex h-7 w-6 items-center justify-center rounded-md transition-colors hover:bg-white/60 disabled:opacity-30 dark:hover:bg-white/10";
+  "flex h-12 w-12 items-center justify-center rounded-xl transition-colors hover:bg-white/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 disabled:opacity-30 dark:hover:bg-white/10";
 
 /** One cart line in two compact rows: name + total, then badge, stepper, unit price and actions. */
 export function CartItemCard({
@@ -75,6 +79,9 @@ export function CartItemCard({
   onApproveFloor,
   onDiscount,
   onClearDiscount,
+  onCustomize,
+  modifierMenu,
+  onDuplicate,
 }: CartItemCardProps) {
   const [showSerials, setShowSerials] = useState(false);
   const first = row.lines[0];
@@ -101,23 +108,41 @@ export function CartItemCard({
   const belowFloor = floorCents !== null && first.unitPriceCents < floorCents;
   const moqHint = first.moqShortfall > 0 && tier !== "RETAIL";
   const serialLabel = serialized && row.lines.length === 1 ? first.serialValue : null;
-  const modifiers = [comboSummary(first.components), modifierSummary(first.modifiers)].filter(Boolean).join(" · ");
+  const combo = comboSummary(first.components);
+  const choices = first.modifiers ?? [];
+  const instruction = first.instruction?.trim() || "";
+  const canEditModifiers =
+    Boolean(onCustomize) && !first.orderItemId && !serialized && (choices.length > 0 || (modifierMenu?.(row.product.id) ?? false));
   const hasMeta =
     serialLabel !== null ||
     promoName !== null ||
     moqHint ||
     next !== null ||
-    modifiers !== "" ||
+    combo !== "" ||
+    instruction !== "" ||
     manualCents > 0 ||
     giftCode !== null;
 
   return (
     <li className="rounded-2xl border border-zinc-200 bg-zinc-50 px-3.5 py-2.5 font-sans tabular-nums dark:border-white/[0.06] dark:bg-[#1A191D]">
       <div className="flex items-baseline justify-between gap-3">
-        <p className="min-w-0 truncate text-sm font-semibold leading-5" title={row.product.name}>
-          {serialized && row.lines.length > 1 ? `${row.lines.length} × ` : ""}
-          {row.product.name}
-        </p>
+        {canEditModifiers ? (
+          <button
+            type="button"
+            disabled={disabled}
+            onClick={() => onCustomize?.(row)}
+            className="min-w-0 truncate text-left text-sm font-semibold leading-5"
+            title={`Edit modifiers for ${row.product.name}`}
+          >
+            {serialized && row.lines.length > 1 ? `${row.lines.length} × ` : ""}
+            {row.product.name}
+          </button>
+        ) : (
+          <p className="min-w-0 truncate text-sm font-semibold leading-5" title={row.product.name}>
+            {serialized && row.lines.length > 1 ? `${row.lines.length} × ` : ""}
+            {row.product.name}
+          </p>
+        )}
         <p className="shrink-0 text-sm font-bold leading-5">
           {promoCents || manualCents ? (
             <span className="mr-1.5 text-[11px] font-normal text-zinc-500 line-through dark:text-white/40">{formatMoney(gross, currency)}</span>
@@ -148,7 +173,7 @@ export function CartItemCard({
             </button>
           ) : null
         ) : (
-          <div className="inline-flex h-7 items-center rounded-lg bg-zinc-200/70 px-0.5 text-xs font-semibold dark:bg-[#2D2A32]">
+          <div className="inline-flex h-12 items-center rounded-xl bg-zinc-200/70 px-0.5 text-base font-semibold dark:bg-[#2D2A32]">
             <button
               type="button"
               aria-label={`One less ${unitName}`}
@@ -156,7 +181,7 @@ export function CartItemCard({
               onClick={() => onPacks(first.lineId, packs - 1)}
               className={stepButton}
             >
-              <Minus size={12} aria-hidden="true" />
+              <Minus size={18} aria-hidden="true" />
             </button>
             <input
               aria-label="Quantity"
@@ -167,7 +192,7 @@ export function CartItemCard({
                 const value = Number(event.target.value.replace(/\D/g, ""));
                 if (value >= 1) onPacks(first.lineId, value);
               }}
-              className="h-7 w-8 bg-transparent text-center text-xs font-semibold focus:outline-none"
+              className="h-12 w-12 bg-transparent text-center text-base font-semibold focus:outline-none"
             />
             <button
               type="button"
@@ -176,13 +201,13 @@ export function CartItemCard({
               onClick={() => onPacks(first.lineId, packs + 1)}
               className={stepButton}
             >
-              <Plus size={12} aria-hidden="true" />
+              <Plus size={18} aria-hidden="true" />
             </button>
           </div>
         )}
 
         {!serialized && !weighedLine && units.length > 1 ? (
-          <div className="inline-flex h-7 items-center rounded-lg bg-zinc-200/70 p-0.5 dark:bg-[#2D2A32]" role="group" aria-label="Unit">
+          <div className="inline-flex h-12 items-center rounded-xl bg-zinc-200/70 p-1 dark:bg-[#2D2A32]" role="group" aria-label="Unit">
             {units.map((unit) => (
               <button
                 key={unit}
@@ -190,7 +215,7 @@ export function CartItemCard({
                 aria-pressed={first.unitType === unit}
                 disabled={disabled}
                 onClick={() => onUnit(first.lineId, unit)}
-                className={`h-6 rounded-md px-2 text-[11px] font-semibold ${
+                className={`h-10 rounded-lg px-3 text-sm font-semibold ${
                   first.unitType === unit ? "bg-white text-charcoal" : "text-zinc-600 hover:text-zinc-900 dark:text-white/70 dark:hover:text-white"
                 }`}
               >
@@ -237,6 +262,16 @@ export function CartItemCard({
               </button>
             )
           ) : null}
+          {canEditModifiers ? (
+            <button type="button" disabled={disabled} onClick={() => onCustomize?.(row)} className={microAction}>
+              Edit modifiers
+            </button>
+          ) : null}
+          {canEditModifiers && onDuplicate && (choices.length > 0 || instruction !== "") ? (
+            <button type="button" disabled={disabled} onClick={() => onDuplicate(row)} className={microAction}>
+              Copy
+            </button>
+          ) : null}
           <button
             type="button"
             disabled={disabled}
@@ -251,7 +286,8 @@ export function CartItemCard({
 
       {hasMeta ? (
         <p className="mt-1 flex flex-wrap items-center gap-x-2 text-[11px] text-zinc-500 dark:text-white/50">
-          {modifiers ? <span className="font-semibold text-zinc-700 dark:text-white/80">{modifiers}</span> : null}
+          {combo ? <span className="font-semibold text-zinc-700 dark:text-white/80">{combo}</span> : null}
+          {instruction ? <span className="font-medium text-zinc-700 dark:text-white/80">“{instruction}”</span> : null}
           {serialLabel ? <span className="font-mono">{serialLabel}</span> : null}
           {giftCode ? <span className="font-mono font-semibold text-primary">{giftCode}</span> : null}
           {promoName ? <span className="font-semibold text-primary">{promoName}</span> : null}
@@ -271,6 +307,21 @@ export function CartItemCard({
             </span>
           ) : null}
         </p>
+      ) : null}
+
+      {choices.length > 0 ? (
+        <ul className="mt-2 space-y-0.5 rounded-xl bg-zinc-100 px-2.5 py-1.5 dark:bg-white/[0.06]" aria-label={`Modifiers for ${row.product.name}`}>
+          {choices.map((choice) => (
+            <li key={`${choice.group_id}:${choice.option_id}`} className="flex items-baseline justify-between gap-3 pl-2 text-xs leading-5">
+              <span className="min-w-0 truncate font-medium text-zinc-800 dark:text-white/85">{choice.option || choice.group}</span>
+              <span className="shrink-0 tabular-nums text-zinc-500 dark:text-white/55">
+                {choice.price_delta_cents === 0
+                  ? "No additional charge"
+                  : `${choice.price_delta_cents > 0 ? "+" : "−"}${formatMoney(Math.abs(choice.price_delta_cents), currency)}`}
+              </span>
+            </li>
+          ))}
+        </ul>
       ) : null}
 
       {belowFloor && floorCents !== null ? (

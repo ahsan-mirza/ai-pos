@@ -166,10 +166,18 @@ async def table_events(websocket: WebSocket, store_id: uuid.UUID) -> None:
         await websocket.close(code=1008)
         return
     sessions = _socket_session(websocket)
+    presence_key = ""
+    notify_room = ""
+    pos_room = ""
     try:
         db = next(sessions)
         principal = _socket_principal(db, token)
         allowed = principal is not None and _socket_allowed(db, principal, store_id)
+        if allowed:
+            presence_key = f"{rooms.tenant_prefix()}:{store_id}"
+            notify_room = rooms.pos_terminals_room(store_id)
+            if role == "pos":
+                pos_room = notify_room
     except ApiError:
         await websocket.close(code=1008)
         return
@@ -178,9 +186,11 @@ async def table_events(websocket: WebSocket, store_id: uuid.UUID) -> None:
     if not allowed:
         await websocket.close(code=1008)
         return
-    await table_sync.connect(store_id, websocket)
-    if role == "pos":
-        await rooms.join(websocket, rooms.pos_terminals_room(store_id))
+    await table_sync.connect(store_id, websocket, presence_key, role)
+    if pos_room:
+        await rooms.join(websocket, pos_room)
+    if notify_room:
+        rooms.publish(notify_room, {"type": "peripherals:changed"})
     try:
         while True:
             raw = await websocket.receive_text()
@@ -188,8 +198,10 @@ async def table_events(websocket: WebSocket, store_id: uuid.UUID) -> None:
     except WebSocketDisconnect:
         pass
     finally:
-        await table_sync.disconnect(store_id, websocket)
+        await table_sync.disconnect(store_id, websocket, presence_key, role)
         await rooms.leave(websocket)
+        if notify_room:
+            rooms.publish(notify_room, {"type": "peripherals:changed"})
 
 
 async def _on_table_message(

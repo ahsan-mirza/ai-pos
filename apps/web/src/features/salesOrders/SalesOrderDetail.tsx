@@ -560,6 +560,7 @@ function ReasonModal({
   onClose: () => void;
   onSave: (reason: string) => Promise<void>;
 }) {
+  const [code, setCode] = useState("changed_mind");
   const [reason, setReason] = useState("");
   return (
     <Modal
@@ -569,13 +570,36 @@ function ReasonModal({
       footer={
         <>
           <GhostButton onClick={onClose}>Back</GhostButton>
-          <PrimaryButton disabled={busy || reason.trim().length < 3} onClick={() => void onSave(reason.trim())}>
+          <PrimaryButton
+            disabled={busy || reason.trim().length < 3}
+            onClick={() => void onSave(`[${code}] ${reason.trim()}`)}
+          >
             {action}
           </PrimaryButton>
         </>
       }
     >
-      <TextField label="Reason" value={reason} maxLength={255} onChange={(event) => setReason(event.target.value)} />
+      <label className="mb-3 block text-sm font-medium">
+        Why
+        <select
+          value={code}
+          onChange={(event) => setCode(event.target.value)}
+          className="mt-1.5 h-11 w-full rounded-xl border border-line bg-white px-3 text-sm"
+        >
+          <option value="changed_mind">Customer changed mind</option>
+          <option value="duplicate">Duplicate order</option>
+          <option value="wrong_item">Incorrect product</option>
+          <option value="wrong_quantity">Incorrect quantity</option>
+          <option value="price">Price or promotion</option>
+          <option value="stock">Stock unavailable</option>
+          <option value="payment">Payment failure</option>
+          <option value="delivery">Delivery issue</option>
+          <option value="entry_mistake">Employee mistake</option>
+          <option value="operational">Operational issue</option>
+          <option value="other">Other</option>
+        </select>
+      </label>
+      <TextField label="Explanation" value={reason} maxLength={220} onChange={(event) => setReason(event.target.value)} />
     </Modal>
   );
 }

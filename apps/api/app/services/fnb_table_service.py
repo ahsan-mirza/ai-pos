@@ -105,11 +105,16 @@ def _attach_customer(db: Session, phone: str) -> Customer:
 
 def _session(db: Session, table: DiningTable, order: OpenOrder | None) -> ActiveSessionOut:
     customer = db.get(Customer, order.customer_id) if order is not None and order.customer_id is not None else None
+    shown = order_service.orders_out(db, [order])[0] if order is not None else None
+    if shown is not None:
+        shown = shown.model_copy(
+            update={"items": [item.model_copy(update={"void_reason": None}) for item in shown.items]}
+        )
     return ActiveSessionOut(
         status="OCCUPIED" if order is not None else "FREE",
         table_id=table.id,
         table_label=table.label,
-        order=order_service.orders_out(db, [order])[0] if order is not None else None,
+        order=shown,
         customer_name=customer.name if customer is not None else (order.name if order is not None else None),
         phone=customer.phone if customer is not None else None,
         loyalty_points=customer.loyalty_points if customer is not None else 0,
@@ -243,7 +248,10 @@ def start_session(db: Session, principal: Principal, table_id: uuid.UUID, data: 
         db.commit()
         db.refresh(order)
     assert order is not None
-    return _session(db, table, order)
+    from app.services.reservation_service import ensure_seating_for_order
+
+    ensure_seating_for_order(db, order)
+    return _session(db, table, db.get(OpenOrder, order.id) or order)
 
 
 def active_session(db: Session, principal: Principal, table_id: uuid.UUID) -> ActiveSessionOut:

@@ -136,7 +136,11 @@ function SidebarNav({
                 aria-expanded={open}
                 aria-controls={panelId}
                 onClick={() => onToggle(group.id)}
-                className="flex h-8 w-full items-center justify-between rounded-lg px-3 text-[11px] font-semibold uppercase tracking-[0.12em] text-charcoal/40 outline-none transition-colors hover:bg-charcoal/[0.04] hover:text-charcoal focus-visible:ring-2 focus-visible:ring-accent/40"
+                className={`flex h-8 w-full items-center justify-between rounded-lg px-3 text-[11px] font-semibold uppercase tracking-[0.12em] outline-none transition-colors focus-visible:ring-2 focus-visible:ring-accent/40 ${
+                  open
+                    ? "text-charcoal/40 hover:bg-charcoal/[0.04] hover:text-charcoal"
+                    : "text-charcoal/40 hover:bg-accent/[0.08] hover:text-accent"
+                }`}
               >
                 <span>{group.label}</span>
                 <ChevronDown

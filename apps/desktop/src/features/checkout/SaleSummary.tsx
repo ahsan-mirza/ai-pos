@@ -33,9 +33,14 @@ export function SaleSummary({
   settling = null,
 }: SaleSummaryProps) {
   const wholesaleSavings = Math.max(totals.retailSubtotal - totals.chargedSubtotal - promotionCents - discountCents, 0);
-  const taxLabel = taxRateBps ? `Tax (${(taxRateBps / 100).toLocaleString(undefined, { maximumFractionDigits: 2 })}%)` : "Tax";
+  const includedOnly = totals.exclusiveTax === 0 && totals.inclusiveTax > 0;
+  const taxLabel = includedOnly
+    ? "VAT included"
+    : taxRateBps
+      ? `Tax (${(taxRateBps / 100).toLocaleString(undefined, { maximumFractionDigits: 2 })}%)`
+      : "Tax";
   const parts = [
-    { label: "Subtotal", value: formatMoney(totals.subtotal, currency) },
+    { label: "Subtotal", value: formatMoney(includedOnly ? totals.total : totals.subtotal, currency) },
     { label: taxLabel, value: formatMoney(totals.tax + serviceChargeTaxCents, currency) },
     ...(serviceChargeCents > 0 ? [{ label: "Service", value: formatMoney(serviceChargeCents, currency) }] : []),
     ...(tipCents > 0 ? [{ label: "Tip", value: formatMoney(tipCents, currency) }] : []),

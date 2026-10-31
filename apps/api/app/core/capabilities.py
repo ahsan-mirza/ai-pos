@@ -51,6 +51,7 @@ class Capability(StrEnum):
     CUSTOMER_REORDERS = "customer_reorders"
     DEEP_ANALYTICS = "deep_analytics"
     AXIZ_REACH = "axiz_reach"
+    UAE_EINVOICING = "uae_einvoicing"
 
 
 C = Capability
@@ -98,6 +99,7 @@ SPECS: dict[Capability, CapabilitySpec] = {
     C.CUSTOMER_REORDERS: CapabilitySpec("Customer reorder plans", True),
     C.DEEP_ANALYTICS: CapabilitySpec("Deep analytics", True),
     C.AXIZ_REACH: CapabilitySpec("AxizReach — Customer Engagement", True),
+    C.UAE_EINVOICING: CapabilitySpec("UAE e-Invoicing", True),
 }
 ORDER: tuple[Capability, ...] = tuple(SPECS)
 BUILT_TODAY: tuple[Capability, ...] = tuple(capability for capability in ORDER if SPECS[capability].available)
@@ -199,6 +201,7 @@ _RETAIL_CORE = (
     C.ONLINE_STORE,
     C.DEEP_ANALYTICS,
     C.AXIZ_REACH,
+    C.UAE_EINVOICING,
 )
 _FOOD_CORE = (
     C.LOYALTY,
@@ -216,6 +219,7 @@ _FOOD_CORE = (
     C.CARD_TERMINALS,
     C.DEEP_ANALYTICS,
     C.AXIZ_REACH,
+    C.UAE_EINVOICING,
 )
 COMPATIBLE: dict[str, frozenset[Capability]] = {
     "electronics_wholesale": frozenset(

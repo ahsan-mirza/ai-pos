@@ -1,7 +1,7 @@
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Response
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
@@ -39,3 +39,9 @@ def create_table(payload: DiningTableIn, db: Db, principal: CanManage) -> FloorO
 @router.put("/tables/{table_id}", response_model=FloorOut)
 def update_table(table_id: uuid.UUID, payload: DiningTableIn, db: Db, principal: CanManage) -> FloorOut:
     return order_service.save_table(db, principal, table_id, payload)
+
+
+@router.delete("/tables/{table_id}", status_code=204)
+def delete_table(table_id: uuid.UUID, db: Db, principal: CanManage) -> Response:
+    order_service.delete_table(db, principal, table_id)
+    return Response(status_code=204)

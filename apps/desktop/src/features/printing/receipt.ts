@@ -7,7 +7,8 @@ export function receiptLines(lines: CartLine[], policy: TaxPolicy): ReceiptLine[
   const merged = new Map<string, ReceiptLine>();
   for (const line of lines) {
     const priced = lineCharge(line, policy);
-    const name = line.description?.trim() || line.product.name;
+    const name = line.product.is_open_price ? line.description?.trim() || line.product.name : line.product.name;
+    const instruction = line.instruction?.trim() || null;
     const promo = line.promotion && line.promotion.discountCents > 0 ? line.promotion : null;
     const manual = manualDiscountCents(line);
     const variant = Object.values(line.product.variant_attributes ?? {}).join(" · ");
@@ -17,6 +18,8 @@ export function receiptLines(lines: CartLine[], policy: TaxPolicy): ReceiptLine[
         variant || null,
         promo ? `${promo.name} −${(promo.discountCents / 100).toFixed(2)}` : null,
         manual > 0 && line.discount ? `${line.discount.reasonLabel} −${(manual / 100).toFixed(2)}` : null,
+        line.modifiers?.length ? modifierSummary(line.modifiers) : null,
+        instruction ? `"${instruction}"` : null,
       ].filter(Boolean);
       if (promo || manual > 0) {
         merged.set(line.lineId, {
@@ -46,6 +49,7 @@ export function receiptLines(lines: CartLine[], policy: TaxPolicy): ReceiptLine[
         (part) => `+ ${part.name ?? ""}${part.surcharge_cents > 0 ? ` (+${(part.surcharge_cents / 100).toFixed(2)})` : ""}`,
       );
       if (line.modifiers?.length) parts.push(modifierSummary(line.modifiers));
+      if (instruction) parts.push(`"${instruction}"`);
       merged.set(line.lineId, {
         name,
         detail: parts.join("\n"),
@@ -55,10 +59,10 @@ export function receiptLines(lines: CartLine[], policy: TaxPolicy): ReceiptLine[
       });
       continue;
     }
-    if (line.modifiers?.length) {
+    if (line.modifiers?.length || instruction) {
       merged.set(line.lineId, {
         name,
-        detail: modifierSummary(line.modifiers),
+        detail: [line.modifiers?.length ? modifierSummary(line.modifiers) : null, instruction ? `"${instruction}"` : null].filter(Boolean).join("\n"),
         quantity: line.quantity,
         unitCents: line.unitPriceCents,
         totalCents: priced.line_total_cents,

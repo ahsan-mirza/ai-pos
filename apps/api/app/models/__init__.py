@@ -47,6 +47,14 @@ from app.models.rental import ProductRental, Rental, RentalLine, RentalPayment
 from app.models.reorder import CustomerReorderOccurrence, CustomerReorderPlan, CustomerReorderPlanItem
 from app.models.repair_ticket import RepairAttachment, RepairDeposit, RepairEvent, RepairLine, RepairTicket
 from app.models.replenishment import DemandDaily, ReplenishmentRun, ReplenishmentSuggestion, SeasonalEvent
+from app.models.reservation import (
+    Reservation,
+    ReservationSettings,
+    ReservationStatusEvent,
+    SeatingSessionOrder,
+    TableActivityEvent,
+    TableSeatingSession,
+)
 from app.models.restaurant import DiningArea, DiningTable, OpenOrder, OpenOrderItem
 from app.models.return_item import ReturnItem
 from app.models.return_tender import ReturnTender
@@ -127,6 +135,12 @@ __all__ = [
     "DiningTable",
     "OpenOrder",
     "OpenOrderItem",
+    "Reservation",
+    "ReservationSettings",
+    "ReservationStatusEvent",
+    "SeatingSessionOrder",
+    "TableActivityEvent",
+    "TableSeatingSession",
     "MarginPolicy",
     "ComboSlot",
     "ComboSlotOption",

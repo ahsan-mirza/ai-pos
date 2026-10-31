@@ -18,7 +18,7 @@ import {
   Zap,
   type LucideIcon,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 const control =
   "mt-1.5 h-12 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 text-sm tabular-nums text-charcoal focus:border-orange-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-orange-500 dark:border-gray-700/80 dark:bg-[#2D2A32] dark:text-white";
@@ -90,7 +90,13 @@ export function SpecFields({
   const [draftValue, setDraftValue] = useState("");
   const [added, setAdded] = useState<Record<string, string[]>>({});
   const draftKey = specKey(draftName);
-  const draftProblem = draftName.trim() !== "" && draftKey === "" ? "Use letters and numbers, like Battery capacity." : "";
+  const draftProblem = draftName.trim() !== "" && draftKey === "" ? "Use letters and numbers." : "";
+
+  useEffect(() => {
+    setDraftName("");
+    setDraftValue("");
+    setAdded({});
+  }, [schema.id]);
 
   if (schema.id === "OTHER") {
     const rows = Object.entries(specs);
@@ -129,7 +135,7 @@ export function SpecFields({
             Attribute name
             <input
               value={draftName}
-              placeholder="Battery capacity"
+              placeholder="Attribute name"
               autoComplete="off"
               onChange={(event) => setDraftName(event.target.value)}
               className={control}
@@ -139,7 +145,7 @@ export function SpecFields({
             Value
             <input
               value={draftValue}
-              placeholder="5000mAh"
+              placeholder="Value"
               autoComplete="off"
               onChange={(event) => setDraftValue(event.target.value)}
               className={control}

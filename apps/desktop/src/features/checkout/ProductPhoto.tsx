@@ -25,22 +25,31 @@ export function ProductPhoto({ src, className = "" }: { src: string | null | und
   return <img src={shown} alt="" loading="lazy" decoding="async" onError={() => setFailed(true)} className={className} />;
 }
 
-/** Top of a till card: the photo covers the frame, and a category icon shows until one loads. */
+/** Top of a till card: every photo sits in the same frame. A category icon shows when there is no picture. */
 export function ProductPhotoFrame({
   src,
   icon,
   dimmed = false,
+  compact = false,
+  flush = false,
 }: {
   src: string | null | undefined;
   icon: ReactNode;
   dimmed?: boolean;
+  compact?: boolean;
+  /** The frame is already the full card width, so it does not cancel parent padding. */
+  flush?: boolean;
 }) {
+  const inset = flush ? "w-full" : compact ? "-mx-3 -mt-3 w-[calc(100%+1.5rem)]" : "-mx-4 -mt-4 w-[calc(100%+2rem)]";
   return (
     <span
-      className={`relative -mx-4 -mt-4 mb-3 block aspect-[4/3] w-[calc(100%+2rem)] overflow-hidden bg-zinc-100 dark:bg-zinc-900 ${dimmed ? "opacity-60" : ""}`}
+      className={`relative block shrink-0 overflow-hidden bg-zinc-100 dark:bg-zinc-900 ${flush ? "mb-0" : "mb-3"} ${inset} ${compact ? "aspect-video" : "aspect-[4/3]"} ${dimmed ? "opacity-60" : ""}`}
     >
       <span className="absolute inset-0 flex items-center justify-center text-zinc-400 dark:text-zinc-500">{icon}</span>
-      <ProductPhoto src={src} className="absolute inset-0 h-full w-full object-cover" />
+      <ProductPhoto
+        src={src}
+        className="absolute inset-0 block h-full w-full object-cover object-center"
+      />
     </span>
   );
 }

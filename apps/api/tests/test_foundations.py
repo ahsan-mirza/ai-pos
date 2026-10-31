@@ -111,6 +111,8 @@ def test_vat_inclusive_pricing(client) -> None:
     seed(client)
     headers, _ = admin(client)
     set_tax(client, headers, prices_include_vat=True)
+    updated = client.patch(f"/api/v1/products/{CABLE}", headers=headers, json={"price_includes_tax": True})
+    assert updated.status_code == 200, updated.text
     body = taxed_sale([taxed_line(1575, 4, inclusive=True)])
     assert (body["total_cents"], body["tax_cents"]) == (6300, 300)
     assert push(client, [event("vat-inclusive", "sale", body)]).status_code == 200

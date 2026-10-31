@@ -80,6 +80,9 @@ def load_food_kit(db: Session, settings: Settings, *, profile: str, sample: bool
     skus = [item["sku"] for item in kit["products"]]
     if db.scalar(select(Product.id).where(Product.sku.in_(skus)).limit(1)) is not None:
         ensure_starter_pantry(db)
+        from app.services.menu_service import ensure_default_groups
+
+        ensure_default_groups(db)
         return 0
     modules = set(cached_settings(db).capabilities)
     currency = business_currency(db)
@@ -210,6 +213,9 @@ def load_food_kit(db: Session, settings: Settings, *, profile: str, sample: bool
         customer.is_sample = sample
     db.commit()
     ensure_starter_pantry(db)
+    from app.services.menu_service import ensure_default_groups
+
+    ensure_default_groups(db)
     return len(products) + meals
 
 

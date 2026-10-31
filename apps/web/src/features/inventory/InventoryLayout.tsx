@@ -22,6 +22,7 @@ const tabs: { to: string; label: string; capability?: Capability; profiles?: rea
   { to: "/inventory/modifiers", label: "Modifiers", capability: Capability.MenuModifiers },
   { to: "/inventory/meals", label: "Meals", capability: Capability.MenuModifiers },
   { to: "/inventory/floor-plan", label: "Floor plan", capability: Capability.Tables },
+  { to: "/inventory/reservations", label: "Table reservations", capability: Capability.Tables, profiles: ["restaurant", "cafe"] },
   { to: "/inventory/kitchen", label: "Kitchen stations", capability: Capability.Kds },
   { to: "/inventory/kitchen-agent", label: "Kitchen agent", capability: Capability.Recipes, ai: true },
   { to: "/inventory/recipes", label: "Recipes", capability: Capability.Recipes },

@@ -3,7 +3,6 @@ import {
   SyncOperation,
   type DeliveryChannel,
   type Floor,
-  type GuestSuggestions,
   type KitchenTicket,
   type Order,
   type OrderItemInput,
@@ -16,11 +15,13 @@ import { enqueueBatch, inTauri } from "../../lib/tauri";
 export class OrderRequestError extends Error {
   readonly status: number;
   readonly code: string;
+  readonly orderId: string | null;
 
-  constructor(status: number, code: string, message: string) {
+  constructor(status: number, code: string, message: string, orderId: string | null = null) {
     super(message);
     this.status = status;
     this.code = code;
+    this.orderId = orderId;
   }
 
   get offline(): boolean {
@@ -41,8 +42,8 @@ export async function call<T>(method: "GET" | "POST" | "PATCH" | "PUT", path: st
     } catch (caught) {
       const raw = String(caught);
       try {
-        const parsed = JSON.parse(raw) as { status: number; code: string; message: string };
-        throw new OrderRequestError(parsed.status, parsed.code, parsed.message);
+        const parsed = JSON.parse(raw) as { status: number; code: string; message: string; order_id?: string };
+        throw new OrderRequestError(parsed.status, parsed.code, parsed.message, parsed.order_id ?? null);
       } catch (inner) {
         if (inner instanceof OrderRequestError) throw inner;
         throw new OrderRequestError(0, "offline", raw);
@@ -59,9 +60,16 @@ export async function call<T>(method: "GET" | "POST" | "PATCH" | "PUT", path: st
   } catch {
     throw new OrderRequestError(0, "offline", "The server is unreachable.");
   }
-  const value = (await response.json().catch(() => null)) as { error?: { code?: string; message?: string } } | null;
+  const value = (await response.json().catch(() => null)) as {
+    error?: { code?: string; message?: string; details?: { order_id?: string } };
+  } | null;
   if (!response.ok) {
-    throw new OrderRequestError(response.status, value?.error?.code ?? "rejected", value?.error?.message ?? "Request failed.");
+    throw new OrderRequestError(
+      response.status,
+      value?.error?.code ?? "rejected",
+      value?.error?.message ?? "Request failed.",
+      value?.error?.details?.order_id ?? null,
+    );
   }
   return value as T;
 }
@@ -78,12 +86,6 @@ export interface OpenOrderInput {
 
 export const ordersApi = {
   list: (storeId: string) => call<Order[]>("GET", `/api/v1/orders?store_id=${storeId}&status=OPEN`),
-  suggestions: (storeId: string, customerId: string | null, productIds: string[]) => {
-    const params = new URLSearchParams({ store_id: storeId });
-    if (customerId) params.set("customer_id", customerId);
-    for (const id of productIds) params.append("product_id", id);
-    return call<GuestSuggestions>("GET", `/api/v1/orders/suggestions?${params.toString()}`);
-  },
   get: (id: string) => call<Order>("GET", `/api/v1/orders/${id}`),
   create: (input: OpenOrderInput, id: string = crypto.randomUUID()) =>
     call<Order>("POST", "/api/v1/orders", {
@@ -98,12 +100,30 @@ export const ordersApi = {
     }),
   addItems: (order: Order, userId: string, items: OrderItemInput[]) =>
     call<Order>("POST", `/api/v1/orders/${order.id}/items`, { revision: order.revision, user_id: userId, items }),
+  setQuantity: (order: Order, itemId: string, userId: string, quantity: number) =>
+    call<Order>("POST", `/api/v1/orders/${order.id}/items/${itemId}/quantity`, {
+      revision: order.revision,
+      user_id: userId,
+      quantity,
+    }),
   send: (order: Order, userId: string) =>
     call<Order>("POST", `/api/v1/orders/${order.id}/send`, { revision: order.revision, user_id: userId }),
   bill: (order: Order, userId: string) =>
     call<Order>("POST", `/api/v1/orders/${order.id}/bill`, { revision: order.revision, user_id: userId }),
-  update: (order: Order, userId: string, changes: { covers?: number; name?: string | null; note?: string | null }) =>
-    call<Order>("PATCH", `/api/v1/orders/${order.id}`, { revision: order.revision, user_id: userId, ...changes }),
+  update: (
+    order: Order,
+    userId: string,
+    changes: {
+      covers?: number;
+      name?: string | null;
+      note?: string | null;
+      service_type?: ServiceType;
+      table_id?: string | null;
+      reason?: string;
+    },
+  ) => call<Order>("PATCH", `/api/v1/orders/${order.id}`, { revision: order.revision, user_id: userId, ...changes }),
+  handOver: (order: Order, userId: string) =>
+    call<Order>("POST", `/api/v1/orders/${order.id}/hand-over`, { revision: order.revision, user_id: userId }),
   voidItem: (order: Order, itemId: string, userId: string, reason: string, approvedById: string | null) =>
     call<Order>("POST", `/api/v1/orders/${order.id}/items/${itemId}/void`, {
       revision: order.revision,
@@ -145,7 +165,10 @@ export const channelsApi = {
  * Offline: the order (or the lines added to it) is queued as an `open_order` sync event and reaches the server
  * with the next sync, where lines merge by id. Lines sent here are marked sent so the kitchen fires them on arrival.
  */
-export async function queueOfflineOrder(input: OpenOrderInput & { id: string; openedAt?: string }, send: boolean): Promise<void> {
+export async function queueOfflineOrder(
+  input: OpenOrderInput & { id: string; openedAt?: string; note?: string | null },
+  send: boolean,
+): Promise<void> {
   const now = new Date().toISOString();
   const payload = {
     id: input.id,
@@ -154,6 +177,7 @@ export async function queueOfflineOrder(input: OpenOrderInput & { id: string; op
     table_id: input.tableId ?? null,
     covers: input.covers ?? 0,
     name: input.name ?? null,
+    note: input.note ?? null,
     opened_by_id: input.userId,
     opened_at: input.openedAt ?? now,
     items: (input.items ?? []).map((item) => ({ ...item, sent_at: send ? now : null })),
@@ -164,6 +188,43 @@ export async function queueOfflineOrder(input: OpenOrderInput & { id: string; op
       entity_type: SyncEntityType.OpenOrder,
       operation: SyncOperation.Upsert,
       payload,
+      occurred_at: now,
+    },
+  ]);
+}
+
+/** Queue a cancellation made while the register is offline. The server voids those lines on the next sync. */
+export async function queueOrderVoid(input: {
+  id: string;
+  storeId: string;
+  userId: string;
+  serviceType: ServiceType;
+  openedAt: string;
+  reason: string;
+  items: { id: string; product_id: string; quantity: number; unit_price_cents: number; sent: boolean }[];
+}): Promise<void> {
+  const now = new Date().toISOString();
+  await enqueueBatch(crypto.randomUUID(), [
+    {
+      idempotency_key: `open_order-void-${input.id}-${crypto.randomUUID()}`,
+      entity_type: SyncEntityType.OpenOrder,
+      operation: SyncOperation.Upsert,
+      payload: {
+        id: input.id,
+        store_id: input.storeId,
+        service_type: input.serviceType,
+        opened_by_id: input.userId,
+        opened_at: input.openedAt,
+        items: input.items.map((item) => ({
+          id: item.id,
+          product_id: item.product_id,
+          quantity: item.quantity,
+          unit_price_cents: item.unit_price_cents,
+          sent_at: item.sent ? now : null,
+          voided_at: now,
+          void_reason: input.reason,
+        })),
+      },
       occurred_at: now,
     },
   ]);

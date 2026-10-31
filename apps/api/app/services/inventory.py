@@ -434,6 +434,7 @@ def products_out(db: Session, products: list[Product], store_id: uuid.UUID | Non
                 unit_options=uom_service.options_for(db, product.sellable_units),
                 prices=[price_out(row) for row in product.prices],
                 tax_category=product.tax_category,  # type: ignore[arg-type]
+                price_includes_tax=product.price_includes_tax,
                 is_open_price=product.is_open_price,
                 is_service=product.is_service,
                 sold_by_weight=product.sold_by_weight,
@@ -1088,6 +1089,7 @@ def availability(
             quantity_on_hand=level.quantity_on_hand,
             quantity_reserved=level.quantity_reserved,
             quantity_available=level.available,
+            min_reorder_level=level.min_reorder_level,
             aisle_shelf_location=level.aisle_shelf_location,
         )
         for level, store in rows
@@ -1208,6 +1210,45 @@ def _classify(
     apply_signature(product)
 
 
+def reject_foreign_specs(
+    db: Session,
+    specifications: dict[str, str],
+    *,
+    category: str,
+    sub_category: str = "",
+    product_name: str = "",
+) -> None:
+    """The business type comes from this tenant's settings, never from the request body."""
+    from app.core.spec_scope import foreign_specification_keys
+    from app.services.settings_service import load_settings
+
+    foreign = foreign_specification_keys(
+        load_settings(db).business_profile,
+        specifications,
+        category=category,
+        sub_category=sub_category,
+        product_name=product_name,
+    )
+    if foreign:
+        listed = ", ".join(foreign)
+        raise ApiError(422, "spec_not_for_business", f"These attributes are not part of this business type: {listed}.")
+
+
+def _spec_names(
+    db: Session,
+    category_id: uuid.UUID | None,
+    sub_category_id: uuid.UUID | None,
+    model_id: uuid.UUID | None,
+) -> tuple[str, str]:
+    if model_id is not None:
+        model = db.get(ProductModel, model_id)
+        if model is not None:
+            return model.sub_category.category.name, model.sub_category.name
+    category = db.get(Category, category_id) if category_id is not None else None
+    sub = db.get(SubCategory, sub_category_id) if sub_category_id is not None else None
+    return (category.name if category is not None else "", sub.name if sub is not None else "")
+
+
 @portal_errors
 def create_product(db: Session, principal: Principal, data: ProductCreate, currency: str) -> ProductOut:
     if db.scalar(select(Product.id).where(Product.sku == data.sku.strip())) is not None:
@@ -1218,6 +1259,14 @@ def create_product(db: Session, principal: Principal, data: ProductCreate, curre
     if data.opening_store_id is not None:
         _require_store_access(principal, data.opening_store_id)
         store = _store(db, data.opening_store_id)
+    category_name, sub_name = _spec_names(db, data.category_id, data.sub_category_id, data.product_model_id)
+    reject_foreign_specs(
+        db,
+        data.specifications,
+        category=category_name,
+        sub_category=sub_name,
+        product_name=data.name,
+    )
     product = Product(
         sku=data.sku.strip(),
         barcode=data.barcode.strip(),
@@ -1229,6 +1278,7 @@ def create_product(db: Session, principal: Principal, data: ProductCreate, curre
         currency=currency,
         is_serialized=data.is_serialized,
         tax_category=data.tax_category,
+        price_includes_tax=data.price_includes_tax,
         is_open_price=data.is_open_price and not data.is_serialized,
         sold_by_weight=data.sold_by_weight,
         plu_code=data.plu_code if data.sold_by_weight else None,
@@ -1378,6 +1428,27 @@ def update_product(
     db: Session, product_id: uuid.UUID, data: ProductUpdate, *, user_id: uuid.UUID | None = None
 ) -> ProductOut:
     product = _product(db, product_id)
+    if data.specifications is not None:
+        category_id = product.category_id
+        sub_id = None if data.clear_sub_category else product.sub_category_id
+        model_id = product.product_model_id
+        if "category_id" in data.model_fields_set and data.category_id is not None:
+            category_id = data.category_id
+        sent_sub = "sub_category_id" in data.model_fields_set and data.sub_category_id is not None
+        if not data.clear_sub_category and sent_sub:
+            sub_id = data.sub_category_id
+        if "product_model_id" in data.model_fields_set:
+            model_id = data.product_model_id
+        category_name, sub_name = _spec_names(db, category_id, sub_id, model_id)
+        if category_name == "" and product.category_id is None:
+            category_name = product.category
+        reject_foreign_specs(
+            db,
+            data.specifications,
+            category=category_name or product.category,
+            sub_category=sub_name,
+            product_name=data.name or product.name,
+        )
     if data.name is not None:
         product.name = data.name.strip()
     if "model_number" in data.model_fields_set:
@@ -1395,6 +1466,8 @@ def update_product(
         product.price_source = "override"
     if data.is_active is not None:
         product.is_active = data.is_active
+    if data.price_includes_tax is not None:
+        product.price_includes_tax = data.price_includes_tax
     if data.tax_category is not None:
         product.tax_category = data.tax_category
     if data.is_open_price is not None:

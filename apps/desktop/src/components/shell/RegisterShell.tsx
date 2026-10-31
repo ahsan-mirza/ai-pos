@@ -66,7 +66,7 @@ export function PageFrame({ title, sync, actions, drawer, footer, children }: Pa
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         <HeaderBar title={title} sync={sync} actions={actions} />
         <POSAlertBanner />
-        <main className="custom-scrollbar min-h-0 flex-1 overflow-y-auto">{children}</main>
+        <main className="custom-scrollbar min-h-0 min-w-0 flex-1 overflow-y-auto">{children}</main>
         {footer}
       </div>
       {drawer}

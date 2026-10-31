@@ -1,6 +1,7 @@
 import { Capability, formatMoney, profileSpec } from "@ai-pos/shared-types";
 import { AlertTriangle, Banknote, Check, Palette, Printer, RotateCcw, Search, ShoppingCart, Store } from "lucide-react";
 import { useCallback, useId, useState } from "react";
+import { useRegisterLayout } from "../../components/RegisterLayout";
 import type { SyncState } from "../../components/shell/HeaderBar";
 import { HeaderBar } from "../../components/shell/HeaderBar";
 import { useShell, useShellPage } from "../../components/shell/ShellContext";
@@ -26,6 +27,7 @@ const MIN_CONTRAST = 3;
 
 export function SettingsPage() {
   const { session } = useShell();
+  const { theme, setTheme, density, setDensity, showImages, setShowImages } = useRegisterLayout();
   const capabilities = useCapabilities();
   const currency = useBusinessCurrency();
   const { report, desktop } = useSyncEngine(0);
@@ -161,6 +163,67 @@ export function SettingsPage() {
                 </p>
               ) : null}
             </div>
+          </section>
+
+          <section aria-labelledby="layout-title" className={`rounded-2xl border p-6 ${ui.panel} ${ui.border}`}>
+            <h2 id="layout-title" className="text-lg font-semibold">
+              Checkout layout
+            </h2>
+            <p className={`mt-1 text-sm ${ui.muted}`}>
+              Saved on this register. These choices change how the catalog is drawn. They do not change prices, tax, or what this store is allowed to sell.
+            </p>
+            <fieldset className="mt-5">
+              <legend className={`mb-3 ${ui.label}`}>Theme</legend>
+              <div className="flex flex-wrap gap-2">
+                {(
+                  [
+                    ["light", "Light"],
+                    ["dark", "Dark"],
+                  ] as const
+                ).map(([id, label]) => (
+                  <button
+                    key={id}
+                    type="button"
+                    aria-pressed={theme === id}
+                    onClick={() => setTheme(id)}
+                    className={`h-12 rounded-xl px-5 text-sm font-semibold ${theme === id ? "bg-primary text-white" : ui.secondaryAction}`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </fieldset>
+            <fieldset className="mt-5">
+              <legend className={`mb-3 ${ui.label}`}>Product tiles</legend>
+              <div className="flex flex-wrap gap-2">
+                {(
+                  [
+                    ["compact", "Compact"],
+                    ["comfortable", "Comfortable"],
+                    ["large", "Large touch"],
+                  ] as const
+                ).map(([id, label]) => (
+                  <button
+                    key={id}
+                    type="button"
+                    aria-pressed={density === id}
+                    onClick={() => setDensity(id)}
+                    className={`h-12 rounded-xl px-5 text-sm font-semibold ${density === id ? "bg-primary text-white" : ui.secondaryAction}`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </fieldset>
+            <label className="mt-5 flex h-12 items-center justify-between gap-3 rounded-xl border border-zinc-200 px-4 text-sm font-semibold dark:border-zinc-800">
+              Show product photos
+              <input
+                type="checkbox"
+                className="h-5 w-5 accent-primary"
+                checked={showImages}
+                onChange={(event) => setShowImages(event.target.checked)}
+              />
+            </label>
           </section>
 
           <aside aria-label="Live preview" className="rounded-2xl border border-zinc-800 bg-zinc-950 p-5 text-zinc-100">

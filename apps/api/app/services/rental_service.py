@@ -144,8 +144,7 @@ def _charge(policy: ProductRental, days: int, quantity: int) -> int:
 def _tax(db: Session, product: Product, gross: int, store_id: uuid.UUID) -> tuple[int, int]:
     rules = tax.policy(db, store_id)
     rate = rules.rate_for(product.tax_category) if rules.enforced else 0
-    inclusive = bool(rules.prices_include_vat and rules.enforced)
-    priced = tax.line_tax(gross, 1, rate, inclusive=inclusive)
+    priced = tax.line_tax(gross, 1, rate, inclusive=tax.entered_includes_tax(product))
     return priced.net_cents, priced.tax_cents
 
 

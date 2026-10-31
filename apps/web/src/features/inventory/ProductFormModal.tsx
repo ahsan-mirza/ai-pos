@@ -3,6 +3,7 @@ import {
   Capability,
   compareVariantValues,
   draftsFromCells,
+  formatMoney,
   GENDER_LABELS,
   ItemType,
   Permission,
@@ -28,6 +29,7 @@ import { apiGet, apiUpload } from "../../lib/api";
 import { cleanCode } from "../../lib/codes";
 import { compressImageToWebp } from "../../lib/imageFile";
 import { useAuth } from "../../lib/auth";
+import { useCurrency } from "../../lib/currency";
 import { useCapabilities } from "../../lib/capabilities";
 import { useTenant } from "../../context/TenantContext";
 import { brandsApi, categoriesApi, inventoryApi, message, modelsApi } from "./api";
@@ -123,7 +125,9 @@ export function ProductFormModal({
   const [active, setActive] = useState(product?.is_active !== false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [serialized, setSerialized] = useState(product?.is_serialized ?? preset?.serialized ?? false);
+  const { currency, settings } = useCurrency();
   const [taxCategory, setTaxCategory] = useState<TaxCategory>(product?.tax_category ?? "STANDARD");
+  const [includesTax, setIncludesTax] = useState(product?.price_includes_tax ?? Boolean(settings?.prices_include_vat));
   const [openPrice, setOpenPrice] = useState(product?.is_open_price ?? false);
   const { has, profile } = useCapabilities();
   const weighing = has(Capability.WeighedItems);
@@ -396,6 +400,7 @@ export function ProductFormModal({
         price_cents: cents,
         sku_prefix: prefix || null,
         tax_category: taxCategory,
+        price_includes_tax: includesTax,
         opening_store_id: needsStore ? storeId : null,
         specifications,
         variants: payloadRows.map((row) => {
@@ -630,6 +635,7 @@ export function ProductFormModal({
           ...classification,
           ...(subCategoryId === "" ? { clear_sub_category: true } : { sub_category_id: subCategoryId }),
           price_cents: cents,
+          price_includes_tax: includesTax,
           tax_category: taxCategory,
           is_open_price: openPrice && !(product?.is_serialized ?? false),
           ...weighed,
@@ -667,6 +673,7 @@ export function ProductFormModal({
           ...classification,
           sub_category_id: subCategoryId || null,
           price_cents: cents,
+          price_includes_tax: includesTax,
           is_serialized: serialized,
           tax_category: taxCategory,
           is_open_price: openPrice && !serialized,
@@ -903,7 +910,13 @@ export function ProductFormModal({
         <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
           <div>
             <h3 className="text-sm font-semibold">
-              {schema.id.startsWith("FASHION") ? "Product attributes" : "Category specifications & technical details"}
+              {schema.id.startsWith("FASHION")
+                ? "Product attributes"
+                : schema.id === "OTHER"
+                  ? "Details"
+                  : schema.id.startsWith("RESTAURANT") || schema.id.startsWith("CAFE")
+                    ? "Menu details"
+                    : "Specifications"}
             </h3>
             <p className="text-xs text-charcoal/50">{schema.title}</p>
           </div>
@@ -958,22 +971,41 @@ export function ProductFormModal({
             clearServer("name");
           }}
         />
-        <TextField
-          label={byWeight ? "Price per kg" : "Price"}
-          inputMode="decimal"
-          value={price}
-          error={fieldMessage("price", priceMessage())}
-          hint={
-            product?.price_source && product.price_source !== "override"
-              ? "Inherited from the model. Changing it makes this an override."
-              : undefined
-          }
-          onBlur={() => touch("price")}
-          onChange={(event) => {
-            setPrice(event.target.value);
-            clearServer("price");
-          }}
-        />
+        <div>
+          <TextField
+            label={byWeight ? "Price per kg" : "Price"}
+            inputMode="decimal"
+            value={price}
+            error={fieldMessage("price", priceMessage())}
+            hint={
+              product?.price_source && product.price_source !== "override"
+                ? "Inherited from the model. Changing it makes this an override."
+                : undefined
+            }
+            onBlur={() => touch("price")}
+            onChange={(event) => {
+              setPrice(event.target.value);
+              clearServer("price");
+            }}
+          />
+          <label className="mt-2 flex items-start gap-2.5 text-sm text-charcoal dark:text-white">
+            <input
+              type="checkbox"
+              checked={includesTax}
+              onChange={(event) => setIncludesTax(event.target.checked)}
+              className="mt-0.5 h-4 w-4 shrink-0 rounded border-gray-300 text-accent focus:ring-accent dark:border-gray-600 dark:bg-[#2D2A32]"
+            />
+            <span>
+              <span className="font-medium">Price includes tax</span>
+              <span className="mt-0.5 block text-xs leading-5 text-charcoal/60 dark:text-white/50">
+                When enabled, the entered selling price already includes the applicable tax.{" "}
+                {includesTax
+                  ? `Customers pay ${formatMoney(toCents(price) ?? 0, currency)}. Applicable tax is calculated within this price.`
+                  : "Applicable tax will be added to the entered price at checkout."}
+              </span>
+            </span>
+          </label>
+        </div>
         <div>
           <label className="block text-sm font-medium" htmlFor="product-sku">
             SKU

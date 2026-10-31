@@ -52,7 +52,7 @@ from app.services.sale_service import (
 )
 from app.services.settings_service import business_currency
 from app.services.sync_validation import require_cashier, require_store
-from app.services.tax import line_tax
+from app.services.tax import entered_includes_tax, line_tax
 from app.services.tax import policy as tax_policy_for
 
 FONT_PATH = Path(__file__).resolve().parent.parent / "assets" / "fonts" / "Archivo.ttf"
@@ -537,7 +537,10 @@ def convert_quote(
             )
             if policy.enforced:
                 unit = line_tax(
-                    item.unit_price_cents, 1, policy.rate_for(product.tax_category), inclusive=policy.prices_include_vat
+                    item.unit_price_cents,
+                    1,
+                    policy.rate_for(product.tax_category),
+                    inclusive=entered_includes_tax(product),
                 )
                 taxes = [unit.tax_cents] * len(serials)
                 totals = [unit.line_total_cents] * len(serials)

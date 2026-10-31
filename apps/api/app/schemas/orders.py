@@ -9,6 +9,9 @@ from app.schemas.payloads import ApiModel, ComboChoice, ModifierChoice
 ServiceType = Literal["DINE_IN", "TAKEAWAY", "DELIVERY"]
 OrderStatus = Literal["OPEN", "SETTLED", "VOID"]
 TableStatus = Literal["free", "seated", "ordered", "bill"]
+KitchenPhase = Literal["none", "queued", "preparing", "partial", "ready", "served"]
+PaymentPhase = Literal["none", "unpaid", "partial", "pending", "paid"]
+OrderPhase = Literal["none", "draft", "submitted", "in_progress"]
 
 
 class OrderItemIn(ApiModel):
@@ -46,6 +49,9 @@ class OrderUpdate(ApiModel):
     note: str | None = Field(default=None, max_length=255)
     customer_id: UUID | None = None
     service_type: ServiceType | None = None
+    # Set when seating an order that is moving to dine-in. Other type changes release the table.
+    table_id: UUID | None = None
+    reason: str | None = Field(default=None, max_length=160)
 
 
 class OrderItemsAdd(ApiModel):
@@ -57,6 +63,12 @@ class OrderItemsAdd(ApiModel):
 class OrderAction(ApiModel):
     revision: int
     user_id: UUID | None = None
+
+
+class ItemQuantity(ApiModel):
+    revision: int
+    user_id: UUID | None = None
+    quantity: int = Field(ge=1, le=1000)
 
 
 class ItemVoid(ApiModel):
@@ -135,8 +147,8 @@ class OrderSyncItem(OrderItemIn):
 
 
 class OrderSyncPayload(ApiModel):
-    """An order a register opened (or added to) while offline. Lines merge by id; existing lines are never
-    overwritten, so an offline copy cannot undo what other registers did online."""
+    """An order a register opened or added to while offline. New lines merge by id. A line that arrives
+    already voided records that cancellation; nothing else on an existing line is overwritten."""
 
     id: UUID
     store_id: UUID
@@ -178,6 +190,13 @@ class DiningTableOut(DiningTableIn):
     covers: int = 0
     seated_at: datetime | None = None
     open_cents: int = 0
+    # Read from the open tab. Not stored on the table, and not inferred from occupancy.
+    guest_name: str | None = None
+    kitchen: KitchenPhase = "none"
+    payment: PaymentPhase = "none"
+    order_progress: OrderPhase = "none"
+    kitchen_ready: int = 0
+    kitchen_sent: int = 0
 
 
 class DiningAreaOut(DiningAreaIn):

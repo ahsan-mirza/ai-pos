@@ -38,7 +38,7 @@ import {
   Wrench,
   type LucideIcon,
 } from "lucide-react";
-import { FNB_PROFILES, RETAIL_PROFILES } from "../../lib/industry";
+import { RETAIL_PROFILES } from "../../lib/industry";
 import { portalHomePath } from "../../lib/portal-home";
 
 /** What the navigation adapts to: the business type (for names) and its switched-on modules (for visibility). */
@@ -152,6 +152,7 @@ const inventoryOwn = (pathname: string) =>
   !under(
     "/inventory/modifiers",
     "/inventory/floor-plan",
+    "/inventory/reservations",
     "/inventory/kitchen",
     "/inventory/kitchen-agent",
     "/inventory/recipes",
@@ -320,6 +321,15 @@ export const navGroups: NavGroup[] = [
         isActive: under("/inventory/floor-plan"),
       },
       {
+        to: "/inventory/reservations",
+        label: "Table reservations",
+        icon: CalendarRange,
+        permission: Permission.ReservationsView,
+        capability: Capability.Tables,
+        profiles: ["restaurant", "cafe"],
+        isActive: under("/inventory/reservations"),
+      },
+      {
         to: "/inventory/kitchen",
         label: "Kitchen display",
         icon: ChefHat,
@@ -352,15 +362,6 @@ export const navGroups: NavGroup[] = [
         capability: Capability.MenuModifiers,
         isActive: under("/inventory/modifiers"),
       },
-      {
-        to: "/settings#void-policy",
-        label: "Void & comp",
-        icon: Ban,
-        permission: Permission.SettingsManage,
-        settingsOnly: true,
-        profiles: FNB_PROFILES,
-        isActive: () => false,
-      },
     ],
   },
   {
@@ -381,6 +382,13 @@ export const navGroups: NavGroup[] = [
         isActive: under("/reports/management"),
       },
       {
+        to: "/reports/cancellations",
+        label: "Cancellations",
+        icon: Ban,
+        permission: Permission.PortalReportsRead,
+        isActive: under("/reports/cancellations"),
+      },
+      {
         to: "/analytics/deep",
         label: "Deep analytics",
         icon: ChartColumn,
@@ -395,6 +403,20 @@ export const navGroups: NavGroup[] = [
         permission: Permission.PortalReportsRead,
         capability: Capability.TipsServiceCharge,
         isActive: under("/reports/tips"),
+      },
+    ],
+  },
+  {
+    id: "compliance",
+    label: "Compliance",
+    items: [
+      {
+        to: "/einvoicing",
+        label: "e-Invoicing",
+        icon: ShieldCheck,
+        permission: Permission.PortalReportsRead,
+        capability: Capability.UaeEinvoicing,
+        isActive: under("/einvoicing"),
       },
     ],
   },
@@ -432,6 +454,7 @@ const inventoryPages: Record<string, string> = {
   markdowns: "Markdowns",
   "size-curve": "Size & color matrix",
   "floor-plan": "Floor plan & tables",
+  reservations: "Table reservations",
   kitchen: "Kitchen display",
   "kitchen-agent": "Kitchen agent",
   recipes: "Recipes & ingredients",
@@ -472,7 +495,9 @@ const singlePages: Record<string, Crumb[]> = {
   "/reports/vat": [{ label: "Finance" }, { label: "VAT report" }],
   "/reports/exports": [{ label: "Finance" }, { label: "Accounting exports & loyalty" }],
   "/reports/management": [{ label: "Finance" }, { label: "Management reports" }],
+  "/reports/cancellations": [{ label: "Finance" }, { label: "Cancellations" }],
   "/analytics/deep": [{ label: "Finance" }, { label: "Deep analytics" }],
+  "/einvoicing": [{ label: "Compliance" }, { label: "e-Invoicing" }],
   "/reports/tips": [{ label: "Finance" }, { label: "Tips & service charge" }],
   "/rentals": [{ label: "Workspace" }, { label: "Rentals" }],
   "/insights": [{ label: "Workspace" }, { label: "AI insights" }],
@@ -481,6 +506,19 @@ const singlePages: Record<string, Crumb[]> = {
   "/users": [{ label: "Administration" }, { label: "Users" }],
   "/staff": [{ label: "Administration" }, { label: "Staff, timesheets & payroll" }],
 };
+
+/** First sidebar or settings destination for a module. Add-ons without a screen return null. */
+export function moduleDestination(capability: string): string | null {
+  for (const group of navGroups) {
+    for (const item of group.items) {
+      if (item.capability === capability) return item.to;
+    }
+  }
+  for (const tab of settingsTabs) {
+    if (tab.capability === capability) return tab.to;
+  }
+  return null;
+}
 
 export function crumbsFor(pathname: string, ctx: NavContext): Crumb[] {
   if (inSettingsHub(pathname)) {

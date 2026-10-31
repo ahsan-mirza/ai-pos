@@ -20,8 +20,8 @@ function ticket(overrides: Partial<KitchenTicket> = {}): KitchenTicket {
     bumped_at: null,
     updated_at: "2026-10-21T12:00:00Z",
     items: [
-      { id: "i1", order_item_id: "x", product_name: "Burger", quantity: 2, modifiers: [{ group_id: "g", option_id: "o", option: "No onion", price_delta_cents: 0 }], seat: 1, note: "well done", voided_at: null },
-      { id: "i2", order_item_id: "y", product_name: "Fries", quantity: 1, modifiers: [], seat: null, note: null, voided_at: "2026-10-21T12:01:00Z" },
+      { id: "i1", order_item_id: "x", product_name: "Burger", quantity: 2, modifiers: [{ group_id: "g", option_id: "o", option: "No onion", price_delta_cents: 0 }], seat: 1, note: "well done", ready_at: null, voided_at: null },
+      { id: "i2", order_item_id: "y", product_name: "Fries", quantity: 1, modifiers: [], seat: null, note: null, ready_at: null, voided_at: "2026-10-21T12:01:00Z" },
     ],
     ...overrides,
   };

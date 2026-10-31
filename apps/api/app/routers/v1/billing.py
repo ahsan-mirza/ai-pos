@@ -24,6 +24,7 @@ from app.schemas.billing import (
     CheckoutIn,
     CheckoutOut,
     CheckoutStatus,
+    MarketplaceOut,
     QuoteIn,
     QuoteOut,
 )
@@ -90,6 +91,23 @@ def public_catalog(settings: Config) -> CatalogOut:
         found = billing.catalog(db)
         db.commit()
         return _active_catalog(found)
+
+
+@router.get("/marketplace", response_model=MarketplaceOut)
+def marketplace(
+    _: Annotated[Principal, Depends(authorize(Permission.SETTINGS_MANAGE))], settings: Config
+) -> MarketplaceOut:
+    """Card state for this store. Activation comes from the subscription and open invoices."""
+    tenant_id = _tenant_id(settings)
+    with registry.control_session(settings) as db:
+        tenant = db.get(Tenant, tenant_id)
+        if tenant is None:
+            raise ApiError(404, "tenant_not_found", "This store is not registered.")
+        from app.console.addon_listing import marketplace_for
+
+        found = marketplace_for(db, settings, tenant)
+        db.commit()
+        return found
 
 
 @router.get("/catalog", response_model=CatalogOut)

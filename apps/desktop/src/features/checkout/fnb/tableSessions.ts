@@ -2,7 +2,7 @@ import type { ModifierChoice, ServiceType } from "@ai-pos/shared-types";
 import { env } from "../../../config/env";
 import { inTauri } from "../../../lib/tauri";
 import type { CartLine } from "../cart";
-import { ordersApi } from "../../orders/ordersClient";
+import { OrderRequestError, ordersApi, queueOfflineOrder } from "../../orders/ordersClient";
 
 export type OrderMode = "dine_in" | "takeaway" | "delivery";
 export type KitchenStatus = "PENDING" | "SENT_TO_KDS" | "SERVED" | "VOIDED";
@@ -17,6 +17,8 @@ export interface SessionItem {
   unit_price_cents: number;
   modifiers_json: string;
   kitchen_status: KitchenStatus;
+  /** Preparation note. Older saved tickets omit it. */
+  note?: string | null;
 }
 
 export interface TableSession {
@@ -189,6 +191,7 @@ export function mirrorCart(session: TableSession, lines: CartLine[]): TableSessi
     unit_price_cents: line.unitPriceCents,
     modifiers_json: JSON.stringify(line.modifiers ?? []),
     kitchen_status: "PENDING",
+    note: line.instruction?.trim().slice(0, 160) || null,
   }));
   return { ...session, items: [...kept, ...pending] };
 }
@@ -219,7 +222,62 @@ function asOrderItems(session: TableSession, ids: Set<string>) {
       quantity: item.quantity,
       unit_price_cents: item.unit_price_cents,
       modifiers: modifiersOf(item),
+      note: item.note?.trim().slice(0, 160) || null,
     }));
+}
+
+/** Put unsent lines on the open order so they can be paid. Does not fire the kitchen. */
+export async function attachForPayment(
+  session: TableSession,
+  userId: string,
+  tableId: string | null,
+  freshIds: string[],
+): Promise<TableSession> {
+  const ids = new Set(freshIds);
+  const items = asOrderItems(session, ids);
+  if (items.length === 0) return session;
+  const orderId = session.server_order_id ?? session.id;
+  try {
+    if (session.server_order_id === null) {
+      const created = await ordersApi.create(
+        {
+          storeId: session.store_id,
+          userId,
+          serviceType: serviceTypeOf(session.order_mode),
+          tableId,
+          covers: session.guest_count,
+          name: session.guest_name || session.table_number,
+          items,
+        },
+        session.id,
+      );
+      return { ...session, server_order_id: created.id, server_revision: created.revision };
+    }
+    const current = await ordersApi.get(session.server_order_id);
+    const added = await ordersApi.addItems(current, userId, items);
+    return { ...session, server_order_id: added.id, server_revision: added.revision };
+  } catch (caught) {
+    if (!(caught instanceof OrderRequestError) || !caught.offline) return session;
+    try {
+      await queueOfflineOrder(
+        {
+          id: orderId,
+          storeId: session.store_id,
+          userId,
+          serviceType: serviceTypeOf(session.order_mode),
+          tableId,
+          covers: session.guest_count,
+          name: session.guest_name || session.table_number,
+          openedAt: session.created_at,
+          items,
+        },
+        false,
+      );
+    } catch {
+      return session;
+    }
+    return { ...session, server_order_id: orderId };
+  }
 }
 
 /** Fire one round at the kitchen. Offline, the local ticket still records the round. */

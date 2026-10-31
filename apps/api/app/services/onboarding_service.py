@@ -180,11 +180,15 @@ def _progress(row: BusinessSettings) -> dict[str, object]:
 
 
 def _write_progress(db: Session, row: BusinessSettings, progress: dict[str, object]) -> None:
-    row.guided_onboarding = {
+    raw = row.guided_onboarding if isinstance(row.guided_onboarding, dict) else {}
+    stored: dict[str, object] = {
         "version": ONBOARDING_VERSION,
         "explored_at": progress.get("explored_at"),
         "skipped": list(progress.get("skipped") or []),
     }
+    if "modifier_templates" in raw:
+        stored["modifier_templates"] = raw["modifier_templates"]
+    row.guided_onboarding = stored
     db.commit()
 
 
@@ -660,6 +664,12 @@ def go_live(
     if payload.mode == "fresh":
         _delete_configuration(db, principal.user.id)
         row.onboarded_at = None
+        progress = dict(row.guided_onboarding) if isinstance(row.guided_onboarding, dict) else {}
+        progress.pop("modifier_templates", None)
+        row.guided_onboarding = progress
+    from app.services.menu_service import ensure_default_groups
+
+    ensure_default_groups(db, commit=False)
     row.live_at = datetime.now(UTC)
     row.promoted_from_practice = True
     db.commit()

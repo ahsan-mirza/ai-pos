@@ -76,6 +76,7 @@ class MatrixWrite(ApiModel):
     price_by_value: dict[str, int] = Field(default_factory=dict)
     sku_prefix: str | None = Field(default=None, max_length=24, pattern=r"^[A-Za-z0-9-]+$")
     tax_category: TaxCategory = "STANDARD"
+    price_includes_tax: bool = False
     variants: list[MatrixVariantDraft] | None = Field(default=None, max_length=MAX_MATRIX_CELLS)
     opening_store_id: UUID | None = None
     specifications: dict[str, str] = Field(default_factory=dict)

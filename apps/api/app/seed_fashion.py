@@ -35,7 +35,7 @@ from app.services.category_service import resolve_by_name
 from app.services.inventory import move_stock
 from app.services.sale_service import record_sale
 from app.services.settings_service import business_currency
-from app.services.tax import line_tax
+from app.services.tax import entered_includes_tax, line_tax
 from app.services.tax import policy as tax_policy
 
 MODELS = (
@@ -275,7 +275,7 @@ def _discounted(db: Session, store: Store, user: User, product: Product, manual:
     """A one-unit sale with a cashier discount, priced the way the register prices it (VAT on the charged amount)."""
     tax = tax_policy(db)
     rate = tax.rate_for(product.tax_category) if tax.enforced else 0
-    priced = line_tax(product.price_cents - manual, 1, rate, inclusive=tax.prices_include_vat)
+    priced = line_tax(product.price_cents - manual, 1, rate, inclusive=entered_includes_tax(product))
     payload = _payload(db, store=store, cashier=user, lines=[(product, 1)], customer=None)
     item = payload.items[0].model_copy(
         update={

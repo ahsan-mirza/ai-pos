@@ -14,6 +14,8 @@ import {
   cartRows,
   cartTotals,
   emptyCart,
+  lineCharge,
+  lineGross,
   manualDiscountCents,
   type CartAction,
   type CartState,
@@ -274,6 +276,54 @@ describe("cart pricing", () => {
     });
     expect(duplicate.error).not.toBeNull();
   });
+
+  it("prices a customized line from its modifiers and keeps the preparation note when copied", () => {
+    const cheese = { group_id: "g", option_id: "o", group: "Cheese", option: "Cheddar", price_delta_cents: 300 };
+    const added = applyCart(emptyCart, {
+      type: "add_product",
+      product: cable,
+      modifiers: [cheese],
+      quantity: 2,
+      instruction: "No onions",
+    });
+    expect(added.error).toBeNull();
+    expect(added.state.lines[0]?.unitPriceCents).toBe(1800);
+    expect(added.state.lines[0]?.instruction).toBe("No onions");
+    const plain = applyCart(added.state, { type: "add_product", product: cable });
+    expect(plain.state.lines).toHaveLength(2);
+    const lineId = added.state.lines[0]?.lineId ?? "";
+    const copy = applyCart(added.state, { type: "duplicate_line", lineId });
+    expect(copy.state.lines).toHaveLength(2);
+    expect(copy.state.lines[1]?.modifiers?.[0]?.option).toBe("Cheddar");
+    expect(copy.state.lines[1]?.instruction).toBe("No onions");
+    expect(copy.state.lines[1]?.unitPriceCents).toBe(1800);
+    const edited = applyCart(added.state, {
+      type: "set_customization",
+      lineId,
+      modifiers: [cheese],
+      quantity: 1,
+      instruction: "Sauce on the side",
+    });
+    expect(edited.state.lines[0]?.quantity).toBe(1);
+    expect(edited.state.lines[0]?.instruction).toBe("Sauce on the side");
+  });
+
+  it("keeps a plain burger apart from a customized one and prices each modifier once", () => {
+    const burger: ProductUpsert = { ...cable, id: "burger", name: "Chicken Patty Burger", price_cents: 10_000, stock_quantity: 20 };
+    const cheese = { group_id: "cheese", option_id: "cheddar", group: "Add-ons", option: "Extra Cheese", price_delta_cents: 1_000 };
+    const sauce = { group_id: "sauce", option_id: "bbq", group: "Sauces", option: "Extra Sauce", price_delta_cents: 500 };
+    const customized = applyCart(emptyCart, { type: "add_product", product: burger, quantity: 2, modifiers: [cheese, sauce] });
+    expect(customized.error).toBeNull();
+    expect(customized.state.lines[0]?.unitPriceCents).toBe(11_500);
+    expect(lineGross(customized.state.lines[0]!)).toBe(23_000);
+    const plain = applyCart(customized.state, { type: "add_product", product: burger });
+    expect(plain.state.lines).toHaveLength(2);
+    expect(plain.state.lines[1]?.modifiers).toBeUndefined();
+    expect(lineGross(plain.state.lines[1]!)).toBe(10_000);
+    const removed = applyCart(plain.state, { type: "remove_line", lineId: customized.state.lines[0]!.lineId });
+    expect(removed.state.lines).toHaveLength(1);
+    expect(removed.state.lines[0]?.modifiers).toBeUndefined();
+  });
 });
 
 describe("tenders", () => {
@@ -297,5 +347,40 @@ describe("tenders", () => {
   it("requires a wholesale customer for on-account sales", () => {
     const plan = planTenders({ ...emptyPayment, choice: "on_account" }, 1000, null);
     expect(plan.blocker).not.toBeNull();
+  });
+});
+
+describe("price includes tax", () => {
+  const policy = { enforced: true, prices_include_vat: true, standard_rate_bps: 500 };
+
+  it("extracts tax from an inclusive price and adds it to an exclusive one", () => {
+    const inclusive = run({ type: "add_product", product: { ...cable, id: "in", price_cents: 10_000, price_includes_tax: true } });
+    const exclusive = run({ type: "add_product", product: { ...cable, id: "ex", price_cents: 10_000, price_includes_tax: false } });
+    expect(lineCharge(inclusive.lines[0]!, policy)).toMatchObject({ net_cents: 9524, tax_cents: 476, line_total_cents: 10_000 });
+    expect(lineCharge(exclusive.lines[0]!, policy)).toMatchObject({ net_cents: 10_000, tax_cents: 500, line_total_cents: 10_500 });
+    const mixed = cartTotals([...inclusive.lines, ...exclusive.lines], policy);
+    expect(mixed).toMatchObject({ subtotal: 19524, tax: 976, inclusiveTax: 476, exclusiveTax: 500, total: 20500 });
+  });
+
+  it("takes a percent discount off the inclusive price before extracting tax", () => {
+    const start = run({ type: "add_product", product: { ...cable, price_cents: 10_000, price_includes_tax: true } });
+    const discounted = applyCart(start, {
+      type: "set_discounts",
+      discounts: [
+        {
+          lineId: start.lines[0]!.lineId,
+          discount: { mode: "percent", value: 1000, reason: "staff", reasonLabel: "Staff", approvedById: null, approverName: null, note: "" },
+        },
+      ],
+    }).state;
+    expect(lineCharge(discounted.lines[0]!, policy)).toMatchObject({ net_cents: 8571, tax_cents: 429, line_total_cents: 9000 });
+  });
+
+  it("charges no tax on a zero-rated inclusive price", () => {
+    const state = run({
+      type: "add_product",
+      product: { ...cable, price_cents: 10_000, price_includes_tax: true, tax_category: "ZERO" },
+    });
+    expect(lineCharge(state.lines[0]!, policy)).toMatchObject({ net_cents: 10_000, tax_cents: 0, line_total_cents: 10_000 });
   });
 });

@@ -44,7 +44,7 @@ from app.services.phone_numbers import search_terms
 from app.services.product_search import search_products
 from app.services.sale_service import record_sale
 from app.services.sync_service import notify_repair_ready
-from app.services.tax import line_tax
+from app.services.tax import entered_includes_tax, line_tax
 from app.services.tax import policy as tax_policy_for
 
 LABOUR_SKU = "SRV-REPAIR-LABOUR"
@@ -590,7 +590,7 @@ def invoice(
             line.unit_price_cents,
             line.quantity,
             policy.rate_for(product.tax_category),
-            inclusive=policy.prices_include_vat,
+            inclusive=entered_includes_tax(product),
         )
         repriced = not product.is_open_price and line.unit_price_cents != product.price_cents
         if repriced and not can_override:

@@ -50,11 +50,11 @@ def recipe_product_ids(db: Session, product_ids: set[uuid.UUID]) -> set[uuid.UUI
 
 def _price_before_vat(db: Session, product: Product) -> int:
     snapshot = cached_settings(db)
-    if not snapshot.prices_include_vat or product.tax_category != "STANDARD" or snapshot.standard_rate_bps <= 0:
+    if not product.price_includes_tax or product.tax_category != "STANDARD" or snapshot.standard_rate_bps <= 0:
         return product.price_cents
-    return (product.price_cents * 10_000 + (10_000 + snapshot.standard_rate_bps) // 2) // (
-        10_000 + snapshot.standard_rate_bps
-    )
+    from app.services.tax import line_tax
+
+    return line_tax(product.price_cents, 1, snapshot.standard_rate_bps, inclusive=True).net_cents
 
 
 def _unit_costs(db: Session, ingredient_ids: set[uuid.UUID]) -> dict[uuid.UUID, int | None]:

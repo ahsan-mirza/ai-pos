@@ -81,7 +81,7 @@ function Tip({ show, children }: { show: boolean; children: ReactNode }) {
 }
 
 const itemBase =
-  "group relative flex h-11 w-full items-center gap-3 rounded-xl px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/50 disabled:cursor-not-allowed disabled:opacity-40";
+  "group relative flex h-12 w-full items-center gap-3 rounded-xl px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/50 disabled:cursor-not-allowed disabled:opacity-40";
 const itemIdle =
   "text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-white/5 dark:hover:text-zinc-100";
 const itemActive = "bg-primary-500 text-white shadow-md shadow-primary-500/25";
@@ -186,7 +186,7 @@ export function SidebarNav({ busy, onNavigate, onLock }: SidebarNavProps) {
             aria-current={view === id ? "page" : undefined}
             disabled={busy && view !== id}
             onClick={() => onNavigate(id)}
-            className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${view === id ? itemActive : itemIdle}`}
+            className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-xl ${view === id ? itemActive : itemIdle}`}
           >
             <Icon size={18} aria-hidden="true" />
           </button>
@@ -199,7 +199,7 @@ export function SidebarNav({ busy, onNavigate, onLock }: SidebarNavProps) {
             aria-current={item.id === "settings" && view === "settings" ? "page" : undefined}
             disabled={!toolAvailable(item)}
             onClick={() => openTool(item.id)}
-            className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl disabled:opacity-40 ${
+            className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-xl disabled:opacity-40 ${
               item.id === "settings" && view === "settings" ? itemActive : itemIdle
             }`}
           >
@@ -211,7 +211,7 @@ export function SidebarNav({ busy, onNavigate, onLock }: SidebarNavProps) {
           aria-label="Lock register"
           onClick={onLock}
           disabled={busy}
-          className={`ml-auto flex h-10 w-10 shrink-0 items-center justify-center rounded-xl disabled:opacity-40 ${itemIdle}`}
+          className={`ml-auto flex h-12 w-12 shrink-0 items-center justify-center rounded-xl disabled:opacity-40 ${itemIdle}`}
         >
           <Lock size={18} aria-hidden="true" />
         </button>

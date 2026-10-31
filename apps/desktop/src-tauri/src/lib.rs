@@ -70,6 +70,40 @@ struct CatalogSnapshot {
 }
 
 #[tauri::command]
+async fn list_cashiers(state: tauri::State<'_, AppState>) -> Result<Vec<auth::CashierCard>, String> {
+    let db = state.db.clone();
+    let config = state.config.clone();
+    tauri::async_runtime::spawn_blocking(move || auth::cashier_directory(&db, &config))
+        .await
+        .map_err(|err| err.to_string())?
+}
+
+#[tauri::command]
+async fn unlock_cashier(
+    state: tauri::State<'_, AppState>,
+    user_id: String,
+    pin: String,
+) -> Result<Session, String> {
+    let db = state.db.clone();
+    let config = state.config.clone();
+    let (session, access_token) = tauri::async_runtime::spawn_blocking(move || {
+        let unlocked = auth::unlock_by_id(&db, &config, &user_id, &pin)?;
+        if unlocked.session.mode == "offline" {
+            audit::record_offline_login(&db, &unlocked.session, &config.store_id)?;
+        }
+        Ok::<_, String>((unlocked.session, unlocked.access_token))
+    })
+    .await
+    .map_err(|err| err.to_string())??;
+    *state.session.lock().map_err(|err| err.to_string())? = Some(session.clone());
+    *state.user_token.lock().map_err(|err| err.to_string())? = access_token;
+    state
+        .db
+        .save_register_session(&session.user, session.mode, session.unlocked_at)?;
+    Ok(session)
+}
+
+#[tauri::command]
 async fn pin_login(
     state: tauri::State<'_, AppState>,
     username: String,
@@ -88,18 +122,44 @@ async fn pin_login(
     .map_err(|err| err.to_string())??;
     *state.session.lock().map_err(|err| err.to_string())? = Some(session.clone());
     *state.user_token.lock().map_err(|err| err.to_string())? = access_token;
+    state
+        .db
+        .save_register_session(&session.user, session.mode, session.unlocked_at)?;
     Ok(session)
 }
 
 #[tauri::command]
 fn current_session(state: tauri::State<AppState>) -> Result<Option<Session>, String> {
-    state.session()
+    {
+        let guard = state.session.lock().map_err(|err| err.to_string())?;
+        if guard.is_some() {
+            return Ok(guard.clone());
+        }
+    }
+    let Some((user, mode, unlocked_at)) = state.db.load_register_session()? else {
+        return Ok(None);
+    };
+    let now = auth::now_secs();
+    let same_store = user.store_id.as_ref().map(|id| id == &state.config.store_id).unwrap_or(true);
+    let fresh = unlocked_at <= now && now - unlocked_at <= auth::REGISTER_SESSION_SECS;
+    if !same_store || !fresh {
+        state.db.clear_register_session()?;
+        return Ok(None);
+    }
+    let session = Session {
+        user,
+        mode: if mode == "offline" { "offline" } else { "online" },
+        unlocked_at,
+    };
+    *state.session.lock().map_err(|err| err.to_string())? = Some(session.clone());
+    Ok(Some(session))
 }
 
 #[tauri::command]
 fn lock_session(state: tauri::State<AppState>) -> Result<(), String> {
     *state.session.lock().map_err(|err| err.to_string())? = None;
     *state.user_token.lock().map_err(|err| err.to_string())? = None;
+    state.db.clear_register_session()?;
     Ok(())
 }
 
@@ -699,6 +759,8 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             pin_login,
+            unlock_cashier,
+            list_cashiers,
             current_session,
             lock_session,
             search_products,
@@ -737,6 +799,7 @@ pub fn run() {
             erp::refresh_series,
             erp::next_document_number,
             erp::printer_settings,
+            erp::probe_printer,
             erp::save_printer_settings,
             erp::print_receipt,
             erp::open_cash_drawer,

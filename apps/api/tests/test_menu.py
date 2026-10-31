@@ -8,12 +8,39 @@ from app.core import capabilities as catalog
 from app.models import SaleItem
 
 
-def enable(client, token: str, *modules: str) -> None:
-    chosen = [capability.value for capability in catalog.ELECTRONICS_WHOLESALE] + list(modules)
+def enable(client, token: str, *names: str) -> None:
+    """Turn modules on for a test store.
+
+    Modules that fit the current business type are added there. Food-service modules do not fit an electronics
+    store, so those tests move onto the restaurant preset, which is allowed to hold them.
+    """
+    current = client.get("/api/v1/settings", headers=bearer(token))
+    assert current.status_code == 200, current.text
+    body = current.json()
+    profile = body["business_profile"]
+    chosen = sorted(set(body["capabilities"]) | set(names))
     response = client.put(
         "/api/v1/settings/profile",
         headers=bearer(token),
-        json={"business_profile": "electronics_wholesale", "capabilities": chosen},
+        json={"business_profile": profile, "capabilities": chosen},
+    )
+    if response.status_code == 422 and response.json()["error"]["code"] == "module_not_available":
+        food = [capability.value for capability in catalog.PROFILES["restaurant"]]
+        response = client.put(
+            "/api/v1/settings/profile",
+            headers=bearer(token),
+            json={"business_profile": "restaurant", "capabilities": sorted(set(food) | set(names))},
+        )
+    assert response.status_code == 200, response.text
+
+
+def as_cafe(client, token: str) -> None:
+    """Menu modifiers belong to a food business. An electronics store cannot turn them on."""
+    chosen = [capability.value for capability in catalog.PROFILES["cafe"]]
+    response = client.put(
+        "/api/v1/settings/profile",
+        headers=bearer(token),
+        json={"business_profile": "cafe", "capabilities": chosen},
     )
     assert response.status_code == 200, response.text
 
@@ -93,7 +120,7 @@ def test_menu_is_gated_and_validated(client) -> None:
     seed_catalog(client)
     token = admin_token(client)
     assert client.get("/api/v1/menu/modifier-groups", headers=bearer(token)).status_code == 403
-    enable(client, token, "menu_modifiers")
+    as_cafe(client, token)
     bad = client.post(
         "/api/v1/menu/modifier-groups",
         headers=bearer(token),
@@ -133,7 +160,7 @@ def test_menu_is_gated_and_validated(client) -> None:
 def test_sales_price_modifiers_from_the_catalogue(client, session: Session) -> None:
     seed_catalog(client)
     token = admin_token(client)
-    enable(client, token, "menu_modifiers")
+    as_cafe(client, token)
     milk, extras = milk_group(client, token), extras_group(client, token)
     client.put(
         f"/api/v1/menu/products/{CABLE_ID}/modifier-groups",
@@ -156,3 +183,11 @@ def test_sales_price_modifiers_from_the_catalogue(client, session: Session) -> N
         ("Extras", "Extra shot", 300),
         ("Extras", "Syrup", 150),
     ]
+
+    lied = choice(milk, 1)
+    lied["price_delta_cents"] = 1
+    priced = sale_with([lied], 1500 + 250)
+    recorded = push(client, "sale", priced)
+    assert recorded.status_code == 200, recorded.text
+    stored = session.scalar(select(SaleItem).where(SaleItem.id == uuid.UUID(priced["items"][0]["id"])))
+    assert stored.modifiers[0]["price_delta_cents"] == 250

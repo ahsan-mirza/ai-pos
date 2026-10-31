@@ -55,6 +55,19 @@ class ModifierGroupOut(ApiModel):
     product_ids: list[UUID] = Field(default_factory=list)
 
 
+class ModifierTemplateOut(ApiModel):
+    key: str
+    name: str
+    min_select: int
+    max_select: int
+    options: list[str]
+    present: bool
+
+
+class ModifierTemplateIn(ApiModel):
+    key: str = Field(min_length=1, max_length=40)
+
+
 class ProductGroupsIn(ApiModel):
     group_ids: list[UUID] = Field(default_factory=list, max_length=20)
 
