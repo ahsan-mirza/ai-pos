@@ -28,6 +28,12 @@ export function bannerVisible(surface: InstallSurface, dismissed: boolean): bool
   return surface === "prompt" || surface === "ios";
 }
 
+/** Install is part of the signed-in portal. The public site and the login screen do not offer it. */
+export function offerInstall(signedIn: boolean, surface: InstallSurface, dismissed: boolean): boolean {
+  if (!signedIn) return false;
+  return bannerVisible(surface, dismissed);
+}
+
 export function menuAction(surface: InstallSurface): "install" | "ios" | null {
   if (surface === "prompt") return "install";
   if (surface === "ios") return "ios";

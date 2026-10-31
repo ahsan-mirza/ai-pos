@@ -1,10 +1,13 @@
 import { Download, RefreshCw, WifiOff, X } from "lucide-react";
 import { useState } from "react";
+import { useAuth } from "../lib/auth";
 import { usePwa } from "./PwaContext";
 import { enablePush, PUSH_NOT_CONFIGURED, pushConfigured } from "./push";
 
 export function PwaChrome() {
   const pwa = usePwa();
+  const { status } = useAuth();
+  const showInstall = status === "signed-in" && pwa.showBanner;
   return (
     <>
       {pwa.updateReady ? (
@@ -21,7 +24,7 @@ export function PwaChrome() {
           <p>You are offline. Business Pro can open, but sales, customers, inventory, and reports need a connection. Nothing on screen should be treated as live.</p>
         </div>
       )}
-      {pwa.showBanner ? (
+      {showInstall ? (
         <div className="flex w-full flex-wrap items-center justify-between gap-2 border-b border-line bg-white px-4 py-2 text-sm">
           <p>Install Business Pro on this device.</p>
           <span className="flex items-center gap-2">

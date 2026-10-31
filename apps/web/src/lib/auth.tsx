@@ -11,15 +11,38 @@ import {
   setUnauthorizedHandler,
 } from "./api";
 import { clearUserCaches } from "../pwa/register";
+import {
+  clearStoredSession,
+  readStoredSession,
+  renewFailureSignsOut,
+  restorePlan,
+  writeStoredSession,
+  type SessionBucket,
+  type StoredSession,
+} from "./sessionStore";
 
-const STORAGE_KEY = "ai-pos.portal-session";
 const RENEW_LEAD_MS = 60_000;
 const RENEW_RETRY_MS = 15_000;
 const PROFILE_RETRY_MS = 3_000;
 
-interface StoredSession {
-  token: string;
-  expiresAt: number;
+function storageBuckets(): { persistent: SessionBucket; legacy: SessionBucket } | null {
+  if (typeof window === "undefined") return null;
+  try {
+    return { persistent: window.localStorage, legacy: window.sessionStorage };
+  } catch {
+    return null;
+  }
+}
+
+function initialSession(): { session: StoredSession | null; status: "checking" | "signed-out" | "signed-in" } {
+  const buckets = storageBuckets();
+  if (buckets === null) return { session: null, status: "signed-out" };
+  const stored = readStoredSession(buckets.persistent, buckets.legacy);
+  if (restorePlan(stored, Date.now()) === "sign-out") {
+    clearStoredSession(buckets.persistent, buckets.legacy);
+    return { session: null, status: "signed-out" };
+  }
+  return { session: stored, status: "checking" };
 }
 
 interface AuthState {
@@ -37,27 +60,17 @@ interface AuthState {
 
 const AuthContext = createContext<AuthState | null>(null);
 
-function readSession(): StoredSession | null {
-  try {
-    const raw = sessionStorage.getItem(STORAGE_KEY);
-    if (raw === null) return null;
-    const parsed = JSON.parse(raw) as StoredSession;
-    if (typeof parsed.token !== "string" || parsed.expiresAt <= Date.now()) return null;
-    return parsed;
-  } catch {
-    return null;
-  }
-}
-
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [session, setSession] = useState<StoredSession | null>(() => readSession());
+  const boot = useState(initialSession)[0];
+  const [session, setSession] = useState<StoredSession | null>(boot.session);
   const [user, setUser] = useState<User | null>(null);
-  const [status, setStatus] = useState<AuthState["status"]>(session ? "checking" : "signed-out");
+  const [status, setStatus] = useState<AuthState["status"]>(boot.status);
   const generation = useRef(0);
 
   const logout = useCallback(() => {
     generation.current += 1;
-    sessionStorage.removeItem(STORAGE_KEY);
+    const buckets = storageBuckets();
+    if (buckets) clearStoredSession(buckets.persistent, buckets.legacy);
     void clearUserCaches();
     setAccessToken(null);
     setSession(null);
@@ -67,7 +80,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const begin = useCallback((response: TokenResponse) => {
     const next = { token: response.access_token, expiresAt: Date.now() + response.expires_in * 1000 };
-    sessionStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+    const buckets = storageBuckets();
+    if (buckets) {
+      writeStoredSession(buckets.persistent, next);
+      clearStoredSession(buckets.legacy);
+    }
     setAccessToken(next.token);
     setUser(response.user);
     setSession(next);
@@ -88,8 +105,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         begin(next);
         return true;
       } catch (error) {
-        if (error instanceof ApiRequestError && error.status === 0) throw error;
-        return false;
+        if (error instanceof ApiRequestError && renewFailureSignsOut(error.status)) return false;
+        throw error;
       }
     });
     return () => setSessionRenewer(null);
@@ -132,8 +149,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       };
       loadProfile();
     }
+    const onOnline = () => {
+      refreshUser().catch((error: unknown) => {
+        if (stopped) return;
+        if (error instanceof ApiRequestError && error.status === 401) logout();
+      });
+    };
+    window.addEventListener("online", onOnline);
     return () => {
       stopped = true;
+      window.removeEventListener("online", onOnline);
       window.clearTimeout(renewTimer);
       window.clearTimeout(profileTimer);
     };

@@ -1,10 +1,10 @@
 /** Identity shared by the Vite PWA plugin and the manifest tests. */
 export const pwaManifest = {
-  id: "/",
+  id: "/dashboard",
   name: "AxizPOS Business Pro",
   short_name: "Business Pro",
   description: "Manage your business operations with AxizPOS Business Pro.",
-  start_url: "/",
+  start_url: "/dashboard",
   scope: "/",
   display: "standalone" as const,
   orientation: "any" as const,
@@ -20,7 +20,7 @@ export const pwaManifest = {
     {
       name: "Dashboard",
       short_name: "Home",
-      url: "/",
+      url: "/dashboard",
       icons: [{ src: "/icons/icon-192.png", sizes: "192x192", type: "image/png" }],
     },
   ],

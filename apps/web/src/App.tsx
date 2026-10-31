@@ -86,7 +86,7 @@ import { SettingsPage } from "./features/settings/SettingsPage";
 import { StoresPage } from "./features/stores/StoresPage";
 import { UsersPage } from "./features/users/UsersPage";
 import { AuthProvider, useAuth, useIsSuperAdmin } from "./lib/auth";
-import { PwaProvider } from "./pwa/PwaContext";
+import { PwaProvider, usePwa } from "./pwa/PwaContext";
 import { useCapability, useSettingsLabel } from "./lib/capabilities";
 import { TenantProvider } from "./context/TenantContext";
 import { CurrencyProvider, useCanManageSettings } from "./lib/currency";
@@ -164,11 +164,18 @@ function DashboardRoute() {
 
 function Portal() {
   const { status } = useAuth();
+  const { online } = usePwa();
   const [welcoming, setWelcoming] = useState(isWelcomeHandoff);
   const welcomed = useCallback(() => setWelcoming(false), []);
   if (welcoming) return <WelcomeHandoff onDone={welcomed} />;
   if (status === "checking") {
-    return <div className="flex min-h-screen items-center justify-center bg-canvas text-sm text-charcoal/60">Loading…</div>;
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-canvas px-6 text-center text-sm text-charcoal/60">
+        {online
+          ? "Loading…"
+          : "You are offline. Your sign-in stays on this device and continues when the connection returns."}
+      </div>
+    );
   }
   if (status === "signed-out") return <LoginPage />;
   return (
