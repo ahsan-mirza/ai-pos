@@ -6,6 +6,7 @@ import {
   type CustomerStatement,
   type LedgerEntryType,
 } from "@ai-pos/shared-types";
+import { actionHoverClass } from "@ai-pos/ui";
 import { ArrowLeft, Banknote, Gift, Printer, Send, SquarePen } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
@@ -67,7 +68,7 @@ export function CustomerStatementPage() {
   if (statement === null) {
     return (
       <section className="rounded-card border border-line bg-white p-8">
-        <Link to="/customers" className="inline-flex items-center gap-2 text-sm font-semibold hover:text-accent">
+        <Link to="/customers" className={`inline-flex items-center gap-2 rounded-full px-2 py-1 text-sm font-semibold ${actionHoverClass("neutral")}`}>
           <ArrowLeft size={16} aria-hidden="true" /> Customers
         </Link>
         {error ? <ErrorNote message={error} /> : <p className="mt-4 text-sm text-charcoal/60">Loading statement…</p>}
@@ -89,7 +90,7 @@ export function CustomerStatementPage() {
   return (
     <section className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <Link to="/customers" className="inline-flex items-center gap-2 text-sm font-semibold hover:text-accent">
+        <Link to="/customers" className={`inline-flex items-center gap-2 rounded-full px-2 py-1 text-sm font-semibold ${actionHoverClass("neutral")}`}>
           <ArrowLeft size={16} aria-hidden="true" /> All customers
         </Link>
         <div className="flex flex-wrap gap-2">

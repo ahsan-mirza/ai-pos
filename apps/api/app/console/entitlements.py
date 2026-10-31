@@ -187,13 +187,13 @@ def _aware(value: datetime) -> datetime:
 def subscription_module_keys(control: Session, tenant_id: uuid.UUID) -> tuple[list[str], datetime | None]:
     """Module ids a verified subscription currently pays for, and the moment that grant runs out.
 
-    Pending receipts and canceled subscriptions grant nothing. Active, trial, and grace keep the
+    Pending receipts and canceled subscriptions grant nothing. Active and grace keep the
     mapped modules. The end is always set, so an offline register cannot treat a paid module as permanent.
     """
     from app.console.transfers import access_state, grace_days
     from app.tenancy.models import BillingAddon, Subscription, SubscriptionItem
 
-    if access_state(control, tenant_id) not in {"active", "trial", "grace"}:
+    if access_state(control, tenant_id) not in {"active", "grace"}:
         return [], None
     subscription = control.scalar(select(Subscription).where(Subscription.tenant_id == tenant_id))
     if subscription is None:

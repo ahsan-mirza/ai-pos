@@ -8,7 +8,7 @@ import uuid
 from collections import defaultdict, deque
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query, Request, Response
+from fastapi import APIRouter, Depends, Query, Request, Response, WebSocket, WebSocketDisconnect
 
 from app.console import (
     auth,
@@ -19,6 +19,7 @@ from app.console import (
     mail,
     migration,
     modules,
+    payment_notices,
     site,
     stats,
     transfers,
@@ -48,6 +49,8 @@ from app.schemas.billing import (
     PlanIn,
     PlanOut,
     RejectIn,
+    ReviewNotice,
+    ReviewSummary,
     SubscriptionAssign,
     SubscriptionOut,
     TransferOut,
@@ -498,6 +501,48 @@ def read_grace(_: CurrentOperator, settings: Config) -> dict[str, int]:
 def write_grace(payload: GraceIn, operator: ConsoleAdmin, settings: Config) -> dict[str, int]:
     with registry.control_session(settings) as db:
         return {"grace_days": transfers.set_grace_days(db, operator, payload.grace_days)}
+
+
+@router.get("/billing/review-summary", response_model=ReviewSummary)
+def review_summary(_: CurrentOperator, settings: Config) -> ReviewSummary:
+    with registry.control_session(settings) as db:
+        return ReviewSummary(pending=payment_notices.pending_count(db))
+
+
+@router.get("/billing/review-notices", response_model=list[ReviewNotice])
+def review_notices(operator: CurrentOperator, settings: Config) -> list[ReviewNotice]:
+    with registry.control_session(settings) as db:
+        return [ReviewNotice.model_validate(row) for row in payment_notices.list_notices(db, operator.id)]
+
+
+@router.post("/billing/review-notices/{notice_id}/read", response_model=ReviewNotice)
+def read_review_notice(notice_id: uuid.UUID, operator: CurrentOperator, settings: Config) -> ReviewNotice:
+    with registry.control_session(settings) as db:
+        return ReviewNotice.model_validate(payment_notices.mark_read(db, operator, notice_id))
+
+
+@router.websocket("/billing/live")
+async def billing_live(websocket: WebSocket) -> None:
+    from app.console.security import operator_from_token
+    from app.websockets import rooms
+
+    settings = get_settings()
+    operator = operator_from_token(websocket.query_params.get("token") or "", settings)
+    if operator is None:
+        await websocket.close(code=1008)
+        return
+    await websocket.accept()
+    await rooms.join(websocket, payment_notices.ROOM)
+    try:
+        with registry.control_session(settings) as db:
+            pending = payment_notices.pending_count(db)
+        await websocket.send_json({"type": "payment.pending_count", "pending": pending})
+        while True:
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        return
+    finally:
+        await rooms.leave(websocket)
 
 
 @router.get("/billing/transfers", response_model=list[TransferOut])

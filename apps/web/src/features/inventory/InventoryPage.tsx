@@ -1,3 +1,4 @@
+import { actionHoverClass } from "@ai-pos/ui";
 import { Permission, formatMoney, noMatchesMessage, type Product } from "@ai-pos/shared-types";
 import { Package, Pencil, Plus, Power, Printer, Search, Trash2, Upload } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -296,7 +297,7 @@ export function InventoryPage() {
               <button
                 type="button"
                 onClick={() => setImporting(true)}
-                className="inline-flex items-center justify-center gap-2 rounded-full border border-charcoal/15 bg-white px-6 py-2.5 text-sm font-medium text-charcoal transition-colors hover:border-accent hover:text-accent"
+                className={`inline-flex items-center justify-center gap-2 rounded-full border border-charcoal/15 bg-white px-6 py-2.5 text-sm font-medium text-charcoal ${actionHoverClass("neutral")}`}
               >
                 <Upload size={16} aria-hidden="true" /> Import purchases
               </button>

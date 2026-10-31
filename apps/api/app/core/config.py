@@ -95,7 +95,7 @@ class Settings(BaseSettings):
     scheduler_enabled: bool = True
     public_base_url: str = "http://localhost:8000"
     # Where tenants send business-type and module change requests.
-    support_email: str = "support@axizpos.com"
+    support_email: str = "info@axizpos.com"
     # POS-company console (apps/super-admin). Its tokens are signed with their own secret and audience, so no
     # store token ever opens it; unset, the console API answers 503.
     console_jwt_secret: str | None = Field(default=None, min_length=32)

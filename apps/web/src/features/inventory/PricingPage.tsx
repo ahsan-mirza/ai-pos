@@ -8,6 +8,7 @@ import {
   type PricingRow,
   type UnitType,
 } from "@ai-pos/shared-types";
+import { actionHoverClass } from "@ai-pos/ui";
 import { Layers, Save, Tags } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { DataTable, type DataTableColumn } from "../../components/ui/DataTable";
@@ -287,7 +288,7 @@ export function PricingPage() {
           <button
             type="button"
             onClick={() => setBreaksFor(row)}
-            className="inline-flex h-9 items-center gap-1.5 whitespace-nowrap rounded-full border border-line px-3.5 text-xs font-semibold hover:border-accent hover:text-accent"
+            className={`inline-flex h-9 items-center gap-1.5 whitespace-nowrap rounded-full border border-line px-3.5 text-xs font-semibold ${actionHoverClass("primary")}`}
           >
             {breakCount ? `${breakCount} ${breakCount === 1 ? "break" : "breaks"}` : canEdit ? "Add breaks" : "None"}
           </button>
@@ -347,7 +348,7 @@ export function PricingPage() {
                 type="button"
                 onClick={() => setBulkOpen(true)}
                 disabled={rows.length === 0}
-                className="inline-flex h-11 items-center gap-2 rounded-full border border-line bg-white px-5 text-sm font-semibold hover:border-accent hover:text-accent disabled:opacity-40"
+                className={`inline-flex h-11 items-center gap-2 rounded-full border border-line bg-white px-5 text-sm font-semibold disabled:opacity-40 ${actionHoverClass("primary")}`}
               >
                 <Layers size={16} aria-hidden="true" />
                 Bulk update{selected.size ? ` (${selected.size})` : ""}

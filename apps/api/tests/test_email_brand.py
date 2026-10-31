@@ -62,7 +62,7 @@ def test_sample_previews_are_marked_sample_data():
         plain, html_body = samples[key]
         assert "000000" in plain
         assert "000 000" in html_body
-        assert "support@axizpos.com" in html_body
+        assert "info@axizpos.com" in html_body
     assert "Sample Store" in samples["store_code_result"][0]
     assert "account was changed" in samples["password_changed"][0].lower()
 

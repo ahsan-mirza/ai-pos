@@ -7,7 +7,7 @@ import {
   type BatchItemUpdate,
   type RollbackResult,
 } from "@ai-pos/shared-types";
-import { DateInput } from "@ai-pos/ui";
+import { DateInput, actionHoverClass } from "@ai-pos/ui";
 import {
   Download,
   FilePlus2,
@@ -312,7 +312,7 @@ export function BatchDrawer({
                   <button
                     type="button"
                     onClick={() => setRollingBack(true)}
-                    className={`${toolbarButton} border border-red-200 text-red-600 hover:bg-red-50`}
+                    className={`${toolbarButton} border border-line text-charcoal ${actionHoverClass("danger")}`}
                   >
                     <Trash2 size={13} aria-hidden="true" /> Delete & rollback
                   </button>
@@ -336,7 +336,7 @@ export function BatchDrawer({
           ) : null}
         </header>
 
-        <div className="min-h-0 flex-1 overflow-y-auto">
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
           {batch === null ? (
             error ? null : (
               <div className="flex items-center gap-2 px-5 py-10 text-sm text-charcoal/60">

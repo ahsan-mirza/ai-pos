@@ -21,6 +21,7 @@ interface PaymentAttention {
 interface AccessStatus {
   state: string;
   ai_allowed: boolean;
+  operational?: boolean;
   attention: PaymentAttention | null;
 }
 
@@ -33,7 +34,7 @@ const copy: Record<PaymentAttention["kind"], { title: string; message: string }>
   pending_review: {
     title: "Payment Verification Pending",
     message:
-      "We have received your payment proof. Our team will review it and update your subscription status. Your features will remain locked until verification is complete.",
+      "We have received your payment proof. Our team will review it and update your subscription status. Your paid features will remain locked until verification and activation are complete.",
   },
   rejected: {
     title: "Payment Proof Needs Attention",

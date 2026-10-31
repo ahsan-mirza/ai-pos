@@ -8,6 +8,7 @@ import {
   type StockCountStatus,
   type StockCountSummary,
 } from "@ai-pos/shared-types";
+import { actionHoverClass } from "@ai-pos/ui";
 import { ArrowLeft, ClipboardCheck, ClipboardList, Plus, ScanLine } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ErrorNote, FilterSelect, GhostButton, PrimaryButton, SearchField, TextField } from "../../components/ui/Field";
@@ -396,7 +397,7 @@ function CountSheet({
 
   return (
     <section className="space-y-4">
-      <button type="button" onClick={onBack} className="inline-flex items-center gap-1.5 text-sm font-medium text-charcoal/60 hover:text-accent">
+      <button type="button" onClick={onBack} className={`inline-flex items-center gap-1.5 rounded-full px-2 py-1 text-sm font-medium text-charcoal/60 ${actionHoverClass("neutral")}`}>
         <ArrowLeft size={15} aria-hidden="true" /> All counts
       </button>
       {count ? (
@@ -518,7 +519,7 @@ function CountSheet({
                           <button
                             type="button"
                             onClick={() => setScanning(line)}
-                            className="inline-flex items-center gap-1.5 rounded-full border border-line px-3 py-1.5 text-xs font-semibold tabular-nums hover:border-accent hover:text-accent"
+                            className={`inline-flex items-center gap-1.5 rounded-full border border-line px-3 py-1.5 text-xs font-semibold tabular-nums ${actionHoverClass("primary")}`}
                           >
                             <ScanLine size={14} aria-hidden="true" />
                             {line.counted_qty === null ? "Scan units" : `${line.counted_qty} scanned`}

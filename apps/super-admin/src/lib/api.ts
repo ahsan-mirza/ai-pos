@@ -43,6 +43,14 @@ export function hasToken(): boolean {
   return token !== null;
 }
 
+/** Console operators only. The token stays in this tab and is not a store session. */
+export function reviewSocketUrl(): string | null {
+  if (!token) return null;
+  const http = apiBase() || (typeof window === "undefined" ? "" : window.location.origin);
+  const ws = http.replace(/^http/, "ws");
+  return `${ws}${PREFIX}/billing/live?token=${encodeURIComponent(token)}`;
+}
+
 export function onSignOut(handler: (() => void) | null): void {
   onSignedOut = handler;
 }

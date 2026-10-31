@@ -1,3 +1,4 @@
+import { actionButtonClass, actionIntentFromLabel } from "@ai-pos/ui";
 import { Permission, type Role, type Store, type User } from "@ai-pos/shared-types";
 import { KeyRound, Pencil, Plus, Smartphone, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
@@ -239,7 +240,7 @@ function IconButton({ label, onClick, children }: { label: string; onClick: () =
       aria-label={label}
       title={label}
       onClick={onClick}
-      className="flex h-9 w-9 items-center justify-center rounded-full border border-line hover:border-accent hover:text-accent"
+      className={actionButtonClass(actionIntentFromLabel(label), "icon")}
     >
       {children}
     </button>

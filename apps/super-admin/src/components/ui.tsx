@@ -1,4 +1,4 @@
-import { DateInput, inputLeadingIcon } from "@ai-pos/ui";
+import { DateInput, actionButtonClass, actionIntentFromNodes, inputLeadingIcon, type ActionIntent } from "@ai-pos/ui";
 import { Eye, EyeOff, X } from "lucide-react";
 import { useEffect, useId, useState, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type TextareaHTMLAttributes } from "react";
 
@@ -12,8 +12,6 @@ interface BusyButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 
 const primaryTone =
   "inline-flex items-center justify-center gap-2 rounded-full bg-accent px-8 py-2.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-accent-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 disabled:hover:bg-accent";
-const ghostTone =
-  "inline-flex items-center justify-center gap-2 rounded-full border border-gray-200 bg-white px-6 py-2.5 text-sm font-medium text-black transition-colors hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2";
 
 function ButtonSpinner({ active }: { active: boolean }) {
   if (!active) return <span className="inline-block h-4 w-4 shrink-0" aria-hidden="true" />;
@@ -77,8 +75,19 @@ export function PrimaryButton({ className = "", ...props }: BusyButtonProps) {
   return <BusyButton tone={primaryTone} className={className} {...props} />;
 }
 
-export function GhostButton({ className = "", ...props }: BusyButtonProps) {
-  return <BusyButton tone={ghostTone} className={className} {...props} />;
+export function GhostButton({
+  className = "",
+  intent,
+  children,
+  ...props
+}: BusyButtonProps & { intent?: ActionIntent }) {
+  const named = typeof props["aria-label"] === "string" ? props["aria-label"] : undefined;
+  const resolved = intent ?? actionIntentFromNodes(children, named);
+  return (
+    <BusyButton tone={actionButtonClass(resolved)} className={className} {...props}>
+      {children}
+    </BusyButton>
+  );
 }
 
 export function Field({

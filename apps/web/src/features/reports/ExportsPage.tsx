@@ -1,4 +1,5 @@
 import { Permission } from "@ai-pos/shared-types";
+import { actionHoverClass } from "@ai-pos/ui";
 import { FileCode2, FileSpreadsheet, Gift, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { ErrorNote, PrimaryButton, TextField } from "../../components/ui/Field";
@@ -388,7 +389,7 @@ export function ExportsPage() {
                           type="button"
                           aria-label={`Remove ${tier.name}`}
                           onClick={() => setRules({ ...rules, tiers: rules.tiers.filter((_, at) => at !== index) })}
-                          className="flex h-8 w-8 items-center justify-center rounded-full text-charcoal/50 hover:bg-surface hover:text-accent"
+                          className={`flex h-8 w-8 items-center justify-center rounded-full text-charcoal/50 ${actionHoverClass("danger")}`}
                         >
                           <Trash2 size={14} aria-hidden="true" />
                         </button>

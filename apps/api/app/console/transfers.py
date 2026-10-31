@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import uuid
 from datetime import UTC, datetime, timedelta
 
@@ -20,6 +21,8 @@ from app.tenancy.models import (
     Subscription,
     Tenant,
 )
+
+logger = logging.getLogger("ai_pos.billing")
 
 PNG = b"\x89PNG\r\n\x1a\n"
 JPEG = b"\xff\xd8\xff"
@@ -83,8 +86,66 @@ def access_state(db: Session, tenant_id: uuid.UUID, now: datetime | None = None)
     return "restricted"
 
 
+def operational_block(db: Session, tenant_id: uuid.UUID) -> dict[str, str] | None:
+    """Why paid operations are closed, or None when they are open.
+
+    An active subscription and its grace period stay open. Uploading a receipt, leaving an invoice
+    pending, or sitting on a trial does not open them.
+    """
+    state = access_state(db, tenant_id)
+    if state in {"active", "grace"}:
+        return None
+    notice = attention(db, tenant_id)
+    kind = None if notice is None else str(notice.get("kind") or "")
+    # A practice trial with no invoice can still open its sample catalog. The first invoice closes paid APIs.
+    if not kind and state in {"unbilled", "trial"}:
+        return None
+    if kind == "pending_review":
+        code, status, message = (
+            "subscription_payment_pending",
+            "pending_review",
+            "Your payment is awaiting verification. Paid features open after verification and activation.",
+        )
+    elif kind == "rejected":
+        code, status, message = (
+            "subscription_payment_rejected",
+            "rejected",
+            "The payment proof was not accepted. Paid features stay locked until a corrected proof is verified.",
+        )
+    elif kind == "revoked":
+        code, status, message = (
+            "subscription_revoked",
+            "revoked",
+            "The previous activation was revoked. Paid features stay locked until a payment is verified again.",
+        )
+    elif state == "restricted":
+        row = db.scalar(select(Subscription).where(Subscription.tenant_id == tenant_id))
+        if row is not None and row.status == "canceled":
+            code, status, message = (
+                "subscription_suspended",
+                "canceled",
+                "This subscription is not active. Paid features stay locked until it is restored.",
+            )
+        else:
+            code, status, message = (
+                "subscription_expired",
+                "expired",
+                "This subscription is past its grace period. Paid features stay locked until it is renewed.",
+            )
+    else:
+        code, status, message = (
+            "subscription_payment_required",
+            "awaiting_payment",
+            "Paid features stay locked until a payment is submitted, verified, and the subscription is activated.",
+        )
+    return {"code": code, "subscription_status": status, "message": message, "redirect": "/subscription"}
+
+
 def ai_allowed(db: Session, tenant_id: uuid.UUID) -> bool:
-    return access_state(db, tenant_id) in {"unbilled", "trial", "active"}
+    """AI stays closed during grace. A pending receipt closes it too."""
+    if operational_block(db, tenant_id) is not None:
+        return False
+    return access_state(db, tenant_id) in {"unbilled", "active"}
 
 
 def list_accounts(db: Session) -> list[PlatformBankAccount]:
@@ -150,6 +211,7 @@ def submit_transfer(
         )
     )
     if existing is not None:
+        _console_after_submit(db, existing)
         return existing
     invoice = db.get(BillingInvoice, invoice_id)
     if invoice is None or invoice.tenant_id != tenant_id:
@@ -189,6 +251,7 @@ def submit_transfer(
     hardware_catalog.mark_under_review(db, invoice.id)
     db.commit()
     db.refresh(row)
+    _console_after_submit(db, row)
     _notify_owner(
         db,
         row.tenant_id,
@@ -321,6 +384,7 @@ def approve(db: Session, operator: OperatorPrincipal, transfer_id: uuid.UUID, se
         after={"invoice_id": str(invoice.id), "amount_fils": payment.amount_fils, "reference": reference},
         reason="Verified bank credit",
     )
+    _console_after_decision(db, row)
     db.commit()
     from app.console.entitlements import publish_purchased
 
@@ -360,6 +424,7 @@ def reject(db: Session, operator: OperatorPrincipal, transfer_id: uuid.UUID, rea
         after={"transfer_id": str(row.id)},
         reason=cleaned,
     )
+    _console_after_decision(db, row)
     db.commit()
     db.refresh(row)
     _notify_owner(
@@ -395,6 +460,7 @@ def reopen(db: Session, operator: OperatorPrincipal, transfer_id: uuid.UUID, rea
         after={"transfer_id": str(row.id), "status": "pending_review"},
         reason=cleaned,
     )
+    _console_after_decision(db, row)
     db.commit()
     db.refresh(row)
     return row
@@ -444,6 +510,28 @@ def revoke(
     )
     db.refresh(payment)
     return payment
+
+
+def _console_after_submit(db: Session, row: BillingTransfer) -> None:
+    """The receipt is already committed. A notice failure leaves that receipt in place."""
+    try:
+        from app.console import payment_notices
+
+        payment_notices.announce_submission(db, row)
+        db.commit()
+    except Exception:
+        logger.exception("Console was not notified about transfer %s", row.id)
+        db.rollback()
+
+
+def _console_after_decision(db: Session, row: BillingTransfer) -> None:
+    """Queue a count update on the decision's own commit. A queue failure still commits the decision."""
+    try:
+        from app.console import payment_notices
+
+        payment_notices.announce_status(db, row)
+    except Exception:
+        logger.exception("Console count was not queued for transfer %s", row.id)
 
 
 def _notify_owner(db: Session, tenant_id: uuid.UUID, heading: str, body: str) -> None:

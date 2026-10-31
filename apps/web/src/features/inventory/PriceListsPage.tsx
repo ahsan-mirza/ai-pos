@@ -15,7 +15,7 @@ import {
 } from "@ai-pos/shared-types";
 import { ArrowLeft, Download, Plus, Tags, Trash2, Upload, Users } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
-import { Select } from "@ai-pos/ui";
+import { Select, actionHoverClass } from "@ai-pos/ui";
 import { DataTable, type DataTableColumn } from "../../components/ui/DataTable";
 import { useConfirm } from "../../components/ui/ConfirmDialog";
 import { ErrorNote, GhostButton, PrimaryButton, SelectField, TextField } from "../../components/ui/Field";
@@ -522,7 +522,7 @@ function ListEditor({
 
   return (
     <section className="space-y-4">
-      <button type="button" onClick={onBack} className="inline-flex items-center gap-1.5 text-sm font-medium text-charcoal/60 hover:text-accent">
+      <button type="button" onClick={onBack} className={`inline-flex items-center gap-1.5 rounded-full px-2 py-1 text-sm font-medium text-charcoal/60 ${actionHoverClass("neutral")}`}>
         <ArrowLeft size={15} aria-hidden="true" /> All price lists
       </button>
       <div className="rounded-card border border-line bg-white p-6">
@@ -553,7 +553,7 @@ function ListEditor({
                     type="button"
                     aria-label="Delete list"
                     onClick={() => void remove()}
-                    className="flex h-10 w-10 items-center justify-center rounded-full border border-line hover:border-accent hover:text-accent"
+                    className={`flex h-10 w-10 items-center justify-center rounded-full border border-line ${actionHoverClass("danger")}`}
                   >
                     <Trash2 size={15} aria-hidden="true" />
                   </button>
@@ -650,7 +650,7 @@ function ListEditor({
                           setDraft((current) => current.filter((_, at) => at !== index));
                           setDirty(true);
                         }}
-                        className="text-charcoal/40 hover:text-accent"
+                        className={`text-charcoal/40 ${actionHoverClass("danger")}`}
                       >
                         <Trash2 size={15} aria-hidden="true" />
                       </button>

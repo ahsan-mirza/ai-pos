@@ -21,6 +21,8 @@ import {
 import { Fragment, useCallback, useEffect, useRef, useState, type FocusEvent, type MouseEvent, type ReactNode } from "react";
 import { Link, NavLink, Outlet, useLocation } from "react-router-dom";
 import { CatalogueNav, cataloguePath } from "./CatalogueNav";
+import { PaymentCountBadge } from "./PaymentCountBadge";
+import { PaymentNoticeBell, PaymentReviewProvider, usePaymentReviews } from "../lib/paymentReviews";
 import { useSession } from "../lib/session";
 
 const COLLAPSED_KEY = "qios.console.sidebar-collapsed";
@@ -144,6 +146,7 @@ function SidebarNav({
   onTip?: TipHandler;
 }) {
   const { pathname } = useLocation();
+  const { pending } = usePaymentReviews();
   const showTip = (item: NavItem) => (event: MouseEvent<HTMLElement> | FocusEvent<HTMLElement>) => {
     if (!collapsed || !onTip) return;
     const rect = event.currentTarget.getBoundingClientRect();
@@ -172,13 +175,16 @@ function SidebarNav({
           <ul className="space-y-0.5">
             {group.items.map((item) => {
               const active = isActive(pathname, item.to);
+              const waiting = item.to === "/payments" ? pending : 0;
+              const accessible =
+                waiting > 0 ? `${item.label}, ${waiting > 99 ? "99+" : waiting} awaiting review` : collapsed ? item.label : undefined;
               return (
                 <li key={item.to}>
                   <NavLink
                     to={item.to}
                     onClick={onNavigate}
                     aria-current={active ? "page" : undefined}
-                    aria-label={collapsed ? item.label : undefined}
+                    aria-label={accessible}
                     onMouseEnter={showTip(item)}
                     onMouseLeave={hideTip}
                     onFocus={showTip(item)}
@@ -205,6 +211,7 @@ function SidebarNav({
                     >
                       {item.label}
                     </span>
+                    {item.to === "/payments" ? <PaymentCountBadge count={pending} collapsed={collapsed} /> : null}
                   </NavLink>
                 </li>
               );
@@ -395,6 +402,7 @@ function Header({
           })}
         </ol>
       </nav>
+      <PaymentNoticeBell />
     </header>
   );
 }
@@ -426,6 +434,7 @@ export function Shell() {
   }, [toggleCollapsed]);
 
   return (
+    <PaymentReviewProvider>
     <div className="flex h-dvh w-screen overflow-hidden bg-[#f8fafc] font-sans text-charcoal">
       <Sidebar collapsed={collapsed} mobileOpen={mobileOpen} onCloseMobile={closeMobile} />
       <div className="flex min-w-0 flex-1 flex-col">
@@ -438,5 +447,6 @@ export function Shell() {
         </main>
       </div>
     </div>
+    </PaymentReviewProvider>
   );
 }

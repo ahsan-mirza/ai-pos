@@ -514,7 +514,7 @@ export function ProductDetailDrawer({
         </header>
 
         <div
-          className="min-h-0 flex-1 overflow-y-auto px-5 py-5 sm:px-6"
+          className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-5 sm:px-6"
           role="tabpanel"
           aria-label={tabs.find((item) => item.id === active)?.label}
         >

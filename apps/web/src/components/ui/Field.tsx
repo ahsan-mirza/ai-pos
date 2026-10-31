@@ -1,4 +1,4 @@
-import { DateInput, inputLeadingIcon } from "@ai-pos/ui";
+import { DateInput, actionButtonClass, actionIntentFromNodes, inputLeadingIcon, type ActionIntent } from "@ai-pos/ui";
 import { Eye, EyeOff, Search } from "lucide-react";
 import { useId, useState, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type TextareaHTMLAttributes } from "react";
 import { Select, type SelectProps } from "./Select";
@@ -232,13 +232,16 @@ export function PrimaryButton({ children, ...props }: ButtonHTMLAttributes<HTMLB
   );
 }
 
-export function GhostButton({ children, ...props }: ButtonHTMLAttributes<HTMLButtonElement>) {
+export function GhostButton({
+  children,
+  className = "",
+  intent,
+  ...props
+}: ButtonHTMLAttributes<HTMLButtonElement> & { intent?: ActionIntent }) {
+  const named = typeof props["aria-label"] === "string" ? props["aria-label"] : undefined;
+  const resolved = intent ?? actionIntentFromNodes(children, named);
   return (
-    <button
-      type="button"
-      {...props}
-      className="inline-flex items-center justify-center rounded-full border border-gray-200 bg-white px-6 py-2.5 text-sm font-medium text-black transition-colors hover:bg-gray-50 disabled:opacity-40"
-    >
+    <button type="button" {...props} className={`${actionButtonClass(resolved)} ${className}`}>
       {children}
     </button>
   );

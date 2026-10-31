@@ -13,6 +13,7 @@ import { Link } from "react-router-dom";
 import { ErrorNote, GhostButton, PrimaryButton, SelectField, TextField } from "../../components/ui/Field";
 import { Modal } from "../../components/ui/Modal";
 import { Toast } from "../../components/ui/Toast";
+import { actionHoverClass, actionIntentFromLabel, type ActionIntent } from "@ai-pos/ui";
 import { ApiRequestError } from "../../lib/api";
 import { useAuth } from "../../lib/auth";
 import { formatDate } from "../inventory/shared";
@@ -21,8 +22,9 @@ import { salesOrdersApi } from "./api";
 import { OrderStatusChip } from "./SalesOrdersPage";
 import { SignaturePad } from "./SignaturePad";
 
-const iconButton =
-  "flex h-9 w-9 items-center justify-center rounded-full border border-line hover:border-accent hover:text-accent disabled:opacity-40";
+function iconAction(intent: ActionIntent) {
+  return `flex h-9 w-9 items-center justify-center rounded-full border border-line disabled:opacity-40 ${actionHoverClass(intent)}`;
+}
 
 export function SalesOrderDetail({ orderId, onBack }: { orderId: string; onBack: () => void }) {
   const { user, can } = useAuth();
@@ -84,7 +86,7 @@ export function SalesOrderDetail({ orderId, onBack }: { orderId: string; onBack:
 
   return (
     <section className="space-y-4">
-      <button type="button" onClick={onBack} className="inline-flex items-center gap-1.5 text-sm font-medium text-charcoal/60 hover:text-accent">
+      <button type="button" onClick={onBack} className={`inline-flex items-center gap-1.5 rounded-full px-2 py-1 text-sm font-medium text-charcoal/60 ${actionHoverClass("neutral")}`}>
         <ArrowLeft size={15} aria-hidden="true" /> All sales orders
       </button>
       {order ? (
@@ -130,7 +132,7 @@ export function SalesOrderDetail({ orderId, onBack }: { orderId: string; onBack:
           </div>
           {order ? (
             <div className="flex flex-wrap items-center gap-2">
-              <button type="button" title="Order confirmation PDF" aria-label="Order PDF" onClick={() => void pdf(() => salesOrdersApi.orderPdf(order.id))} className={iconButton}>
+              <button type="button" title="Order confirmation PDF" aria-label="Order PDF" onClick={() => void pdf(() => salesOrdersApi.orderPdf(order.id))} className={iconAction("info")}>
                 <FileDown size={15} aria-hidden="true" />
               </button>
               {order.status === "DRAFT" ? (
@@ -191,7 +193,7 @@ export function SalesOrderDetail({ orderId, onBack }: { orderId: string; onBack:
                     title={order.delivered_cents ? "Close (short-ship the rest)" : "Cancel the order"}
                     aria-label="End order"
                     onClick={() => setEnding(order.delivered_cents ? "close" : "cancel")}
-                    className={iconButton}
+                    className={iconAction(actionIntentFromLabel(order.delivered_cents ? "Close" : "Cancel the order"))}
                   >
                     <Ban size={15} aria-hidden="true" />
                   </button>
@@ -286,12 +288,12 @@ export function SalesOrderDetail({ orderId, onBack }: { orderId: string; onBack:
                   {note.sale_id ? (
                     <GhostButton onClick={() => void pdf(() => salesOrdersApi.invoicePdf(note.sale_id ?? ""))}>Invoice</GhostButton>
                   ) : null}
-                  <button type="button" title="Delivery note PDF" aria-label={`${note.number} PDF`} onClick={() => void pdf(() => salesOrdersApi.deliveryPdf(note.id))} className={iconButton}>
+                  <button type="button" title="Delivery note PDF" aria-label={`${note.number} PDF`} onClick={() => void pdf(() => salesOrdersApi.deliveryPdf(note.id))} className={iconAction("info")}>
                     <FileDown size={15} aria-hidden="true" />
                   </button>
                   {note.status === "DISPATCHED" ? (
                     <>
-                      <Link to={`/deliveries/${note.id}`} title="Open on the driver's phone" aria-label="Driver page" className={iconButton}>
+                      <Link to={`/deliveries/${note.id}`} title="Open on the driver's phone" aria-label="Driver page" className={iconAction("info")}>
                         <Smartphone size={15} aria-hidden="true" />
                       </Link>
                       <PrimaryButton onClick={() => setSigning(note)}>

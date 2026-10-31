@@ -7,6 +7,7 @@ import { DataTable, usePagination, type DataTableColumn } from "../../components
 import { ErrorNote } from "../../components/ui/Field";
 import { SegmentedControl } from "../../components/ui/SegmentedControl";
 import { Toast } from "../../components/ui/Toast";
+import { actionHoverClass, type ActionIntent } from "@ai-pos/ui";
 import { useAuth } from "../../lib/auth";
 import { useCapability } from "../../lib/capabilities";
 import { useCurrency } from "../../lib/currency";
@@ -136,8 +137,8 @@ export function QuotationsPage() {
     }
   };
 
-  const iconButton =
-    "flex h-9 w-9 items-center justify-center rounded-full border border-line hover:border-accent hover:text-accent disabled:opacity-40";
+  const iconAction = (intent: ActionIntent) =>
+    `flex h-9 w-9 items-center justify-center rounded-full border border-line disabled:opacity-40 ${actionHoverClass(intent)}`;
 
   const columns: DataTableColumn<Quote>[] = [
     {
@@ -221,7 +222,7 @@ export function QuotationsPage() {
             title="Open PDF"
             disabled={busyId === quote.id}
             onClick={() => void openPdf(quote)}
-            className={iconButton}
+            className={iconAction("info")}
           >
             <FileDown size={15} aria-hidden="true" />
           </button>
@@ -233,7 +234,7 @@ export function QuotationsPage() {
                 title="Cancel and release stock"
                 disabled={busyId === quote.id}
                 onClick={() => void cancel(quote)}
-                className={iconButton}
+                className={iconAction("danger")}
               >
                 <Ban size={15} aria-hidden="true" />
               </button>
@@ -244,7 +245,7 @@ export function QuotationsPage() {
                   title="Take a deposit"
                   disabled={busyId === quote.id}
                   onClick={() => setDepositFor(quote)}
-                  className={iconButton}
+                  className={iconAction("neutral")}
                 >
                   <Banknote size={15} aria-hidden="true" />
                 </button>
@@ -256,7 +257,7 @@ export function QuotationsPage() {
                   title="Make a sales order (deliver in parts)"
                   disabled={busyId === quote.id}
                   onClick={() => void toOrder(quote)}
-                  className={iconButton}
+                  className={iconAction("primary")}
                 >
                   <Truck size={15} aria-hidden="true" />
                 </button>

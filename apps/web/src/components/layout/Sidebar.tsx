@@ -100,6 +100,7 @@ function SidebarNav({
   onToggle,
   onNavigate,
   onTip,
+  subscriptionLocked,
 }: {
   instance: "rail" | "drawer";
   collapsed: boolean;
@@ -108,6 +109,7 @@ function SidebarNav({
   onToggle: (id: string) => void;
   onNavigate?: () => void;
   onTip?: (tip: Tip | null) => void;
+  subscriptionLocked: boolean;
 }) {
   const { pathname, hash } = useLocation();
 
@@ -151,8 +153,10 @@ function SidebarNav({
                   return (
                     <li key={item.to}>
                       <Link
-                        to={item.to}
+                        to={subscriptionLocked ? "/subscription" : item.to}
                         onClick={onNavigate}
+                        title={subscriptionLocked ? "Locked until payment is verified" : undefined}
+                        aria-disabled={subscriptionLocked || undefined}
                         aria-current={active ? "page" : undefined}
                         aria-label={collapsed ? item.label : undefined}
                         onMouseEnter={showTip(item)}
@@ -211,10 +215,12 @@ export function Sidebar({
   collapsed,
   mobileOpen,
   onCloseMobile,
+  subscriptionLocked = false,
 }: {
   collapsed: boolean;
   mobileOpen: boolean;
   onCloseMobile: () => void;
+  subscriptionLocked?: boolean;
 }) {
   const [tip, setTip] = useState<Tip | null>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
@@ -242,7 +248,7 @@ export function Sidebar({
         }`}
       >
         <SidebarBrand collapsed={collapsed} />
-        <SidebarNav instance="rail" collapsed={collapsed} groups={sections.groups} isOpen={sections.isOpen} onToggle={sections.toggle} onTip={setTip} />
+        <SidebarNav instance="rail" collapsed={collapsed} groups={sections.groups} isOpen={sections.isOpen} onToggle={sections.toggle} onTip={setTip} subscriptionLocked={subscriptionLocked} />
       </aside>
 
       {tip ? (
@@ -275,7 +281,7 @@ export function Sidebar({
             <div className="border-b border-line px-4 py-3 md:hidden">
               <StoreSwitcher />
             </div>
-            <SidebarNav instance="drawer" collapsed={false} groups={sections.groups} isOpen={sections.isOpen} onToggle={sections.toggle} onNavigate={onCloseMobile} />
+            <SidebarNav instance="drawer" collapsed={false} groups={sections.groups} isOpen={sections.isOpen} onToggle={sections.toggle} onNavigate={onCloseMobile} subscriptionLocked={subscriptionLocked} />
           </div>
         </div>
       ) : null}

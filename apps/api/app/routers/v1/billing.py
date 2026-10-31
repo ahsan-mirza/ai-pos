@@ -201,6 +201,7 @@ def access_status(principal: Annotated[Principal, Depends(get_principal)], setti
         return AccessOut(
             state=transfers.access_state(db, tenant_id),
             ai_allowed=transfers.ai_allowed(db, tenant_id),
+            operational=transfers.operational_block(db, tenant_id) is None,
             attention=transfers.attention(db, tenant_id),
             subscription=subscription,
         )

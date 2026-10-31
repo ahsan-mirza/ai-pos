@@ -8,6 +8,7 @@ import {
   type PettyCash,
   type TaxCategory,
 } from "@ai-pos/shared-types";
+import { actionHoverClass } from "@ai-pos/ui";
 import { Plus, Wallet } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { ErrorNote, FilterSelect, GhostButton, PrimaryButton, TextField } from "../../components/ui/Field";
@@ -166,7 +167,7 @@ export function ExpensesPage() {
                     <td className="py-3 text-right font-semibold tabular-nums">{money(row.total_cents)}</td>
                     <td className="py-3 text-right">
                       {row.status === "RECORDED" ? (
-                        <button type="button" onClick={() => setVoiding(row)} className="text-xs font-semibold text-charcoal/50 hover:text-accent">
+                        <button type="button" onClick={() => setVoiding(row)} className={`rounded-full px-2.5 py-1 text-xs font-semibold text-charcoal/50 ${actionHoverClass("danger")}`}>
                           Void
                         </button>
                       ) : null}

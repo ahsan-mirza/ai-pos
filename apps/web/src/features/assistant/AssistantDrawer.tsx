@@ -1,3 +1,4 @@
+import { actionHoverClass } from "@ai-pos/ui";
 import type { AssistantToolResult } from "@ai-pos/shared-types";
 import { History, Plus, SendHorizontal, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
@@ -244,7 +245,7 @@ export function AssistantDrawer() {
               </div>
             </div>
           ) : assistant.messages.length > 0 && !historyOpen ? (
-            <button type="button" onClick={() => setConfirmClear(true)} className="mb-2 text-xs font-semibold text-charcoal/50 hover:text-accent">
+            <button type="button" onClick={() => setConfirmClear(true)} className={`mb-2 rounded-full px-2 py-1 text-xs font-semibold text-charcoal/50 ${actionHoverClass("danger")}`}>
               Clear conversation
             </button>
           ) : null}

@@ -98,11 +98,11 @@ html {
   overscroll-behavior: contain;
 }
 
-/* Reaching the end of a dialog or drawer must not scroll the page behind it. */
+/* Reaching the end of a dialog or drawer must not scroll the page behind it.
+   Do not mention overflow-y-auto here: the register's .modal-card @applies that utility,
+   and a selector that contains both classes is a circular dependency. */
 .modal-card,
-.drawer-panel,
-.modal-card .overflow-y-auto,
-.drawer-panel .overflow-y-auto {
+.drawer-panel {
   overscroll-behavior: contain;
 }
 

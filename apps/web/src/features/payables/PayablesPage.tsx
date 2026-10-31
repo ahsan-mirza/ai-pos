@@ -12,7 +12,7 @@ import {
 } from "@ai-pos/shared-types";
 import { Banknote, FileInput, Plus, Trash2, UserPlus } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
-import { PhoneField, Select, emailError, phoneError, requiredError } from "@ai-pos/ui";
+import { PhoneField, Select, actionHoverClass, emailError, phoneError, requiredError } from "@ai-pos/ui";
 import { ErrorNote, FilterSelect, GhostButton, PrimaryButton, TextField } from "../../components/ui/Field";
 import { Modal } from "../../components/ui/Modal";
 import { SegmentedControl } from "../../components/ui/SegmentedControl";
@@ -274,7 +274,7 @@ export function PayablesPage() {
                               .then(() => done(`Bill ${bill.number} voided.`))
                               .catch((caught: unknown) => setError(errorMessage(caught, "Could not void the bill.")))
                           }
-                          className="rounded-full p-1.5 text-charcoal/40 hover:bg-surface hover:text-accent"
+                          className={`rounded-full p-1.5 text-charcoal/40 ${actionHoverClass("danger")}`}
                         >
                           <Trash2 size={14} aria-hidden="true" />
                         </button>
@@ -346,7 +346,7 @@ export function PayablesPage() {
                           <button
                             type="button"
                             onClick={() => void paymentAction(payment, "void")}
-                            className="rounded-full border border-line px-3 py-1.5 text-xs font-semibold hover:border-accent hover:text-accent"
+                            className={`rounded-full border border-line px-3 py-1.5 text-xs font-semibold ${actionHoverClass("danger")}`}
                           >
                             {payment.status === "ISSUED" ? "Cancel cheque" : "Void"}
                           </button>
@@ -662,7 +662,7 @@ function BillModal({
                 aria-label="Remove line"
                 disabled={lines.length === 1}
                 onClick={() => setLines(lines.filter((_, at) => at !== index))}
-                className="rounded-full p-1.5 text-charcoal/40 hover:text-accent disabled:opacity-30"
+                className={`rounded-full p-1.5 text-charcoal/40 disabled:opacity-30 ${actionHoverClass("danger")}`}
               >
                 <Trash2 size={14} aria-hidden="true" />
               </button>

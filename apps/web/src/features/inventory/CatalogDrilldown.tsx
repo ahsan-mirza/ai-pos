@@ -8,6 +8,7 @@ import {
   type ProductModel,
   type SubCategory,
 } from "@ai-pos/shared-types";
+import { actionHoverClass } from "@ai-pos/ui";
 import { ChevronRight, Link2, Pencil, Plus, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { ErrorNote, GhostButton, PrimaryButton, SelectField, TextField } from "../../components/ui/Field";
@@ -117,7 +118,7 @@ export function CatalogDrilldown({
                   {crumb.label}
                 </span>
               ) : (
-                <button type="button" onClick={crumb.onClick} className="text-charcoal/60 hover:text-accent">
+                <button type="button" onClick={crumb.onClick} className={`rounded-full px-2 py-0.5 text-charcoal/60 ${actionHoverClass("neutral")}`}>
                   {crumb.label}
                 </button>
               )}

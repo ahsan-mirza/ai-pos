@@ -173,7 +173,7 @@ def password_changed_parts(*, support_email: str) -> tuple[str, str]:
     return plain, html_body
 
 
-def sample_previews(support_email: str = "support@axizpos.com") -> dict[str, tuple[str, str]]:
+def sample_previews(support_email: str = "info@axizpos.com") -> dict[str, tuple[str, str]]:
     """Sample renders. The code is 000000 and these values are not passed to a mailer."""
     return {
         "verification": verification_parts(code="000000", minutes=3, support_email=support_email),

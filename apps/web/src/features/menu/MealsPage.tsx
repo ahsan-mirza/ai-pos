@@ -1,4 +1,5 @@
 import { formatMoney, type Category, type Combo, type ComboInput, type Product } from "@ai-pos/shared-types";
+import { actionHoverClass } from "@ai-pos/ui";
 import { Plus, Trash2, UtensilsCrossed } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useConfirm } from "../../components/ui/ConfirmDialog";
@@ -178,7 +179,7 @@ function MealModal({
                 type="button"
                 aria-label={`Remove ${slot.name || "slot"}`}
                 onClick={() => setSlots(slots.filter((_, at) => at !== index))}
-                className="mb-2 flex h-9 w-9 items-center justify-center rounded-full text-charcoal/50 hover:bg-surface hover:text-accent"
+                className={`mb-2 flex h-9 w-9 items-center justify-center rounded-full text-charcoal/50 ${actionHoverClass("danger")}`}
               >
                 <Trash2 size={16} aria-hidden="true" />
               </button>
@@ -214,7 +215,7 @@ function MealModal({
                     type="button"
                     aria-label={`Remove ${byId.get(option.product_id)?.name ?? "item"}`}
                     onClick={() => update(index, { options: slot.options.filter((_, at) => at !== optionIndex) })}
-                    className="mb-2 flex h-9 w-9 items-center justify-center rounded-full text-charcoal/50 hover:bg-surface hover:text-accent"
+                    className={`mb-2 flex h-9 w-9 items-center justify-center rounded-full text-charcoal/50 ${actionHoverClass("danger")}`}
                   >
                     <Trash2 size={16} aria-hidden="true" />
                   </button>
@@ -341,7 +342,7 @@ export function MealsPage() {
                 <button type="button" onClick={() => setEditing(combo)} className="text-accent">
                   Edit
                 </button>
-                <button type="button" onClick={() => void remove(combo)} className="text-charcoal/50 hover:text-accent">
+                <button type="button" onClick={() => void remove(combo)} className={`rounded-full px-2 py-1 text-charcoal/50 ${actionHoverClass("warning")}`}>
                   Stop as meal
                 </button>
               </div>

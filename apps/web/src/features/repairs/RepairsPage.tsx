@@ -7,7 +7,7 @@ import {
   type RepairDetail,
   type RepairTicket,
 } from "@ai-pos/shared-types";
-import { DataTable, RepairJobsToolbar, usePagination, type DataTableColumn } from "@ai-pos/ui";
+import { DataTable, RepairJobsToolbar, actionHoverClass, actionIntentFromLabel, usePagination, type DataTableColumn } from "@ai-pos/ui";
 import { CircleDot, Package, ReceiptText, Trash2, Wrench } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
@@ -511,7 +511,7 @@ function RepairDrawer({
                         ).then((ok) => ok && setNote(""))
                       }
                       className={`rounded-full px-3 py-1.5 text-xs font-semibold capitalize ${
-                        status === "ready" ? "bg-accent text-white hover:bg-accent-hover" : "border border-line bg-white hover:border-accent hover:text-accent"
+                        status === "ready" ? "bg-accent text-white hover:bg-accent-hover" : `border border-line bg-white ${actionHoverClass(actionIntentFromLabel(statusLabel(status)))}`
                       }`}
                     >
                       {statusLabel(status)}
@@ -578,7 +578,7 @@ function RepairDrawer({
                                 return apiGet<RepairDetail>(`/api/v1/repairs/${ticket.id}`);
                               })
                             }
-                            className="rounded-full p-1.5 text-charcoal/50 hover:bg-surface hover:text-accent"
+                            className={`rounded-full p-1.5 text-charcoal/50 ${actionHoverClass("danger")}`}
                           >
                             <Trash2 size={14} aria-hidden="true" />
                           </button>

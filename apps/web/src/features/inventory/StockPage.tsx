@@ -7,6 +7,7 @@ import { SegmentedControl } from "../../components/ui/SegmentedControl";
 import { Toast } from "../../components/ui/Toast";
 import { useTenant } from "../../context/TenantContext";
 import { useAuth } from "../../lib/auth";
+import { actionButtonClass, actionHoverClass, actionIntentFromLabel } from "@ai-pos/ui";
 import { ProductImage } from "../../components/ui/ProductImage";
 import { AdjustStockModal } from "./AdjustStockModal";
 import { inventoryApi, message } from "./api";
@@ -382,7 +383,7 @@ function AdjustButton({ consolidated, onClick }: { consolidated: boolean; onClic
         className={`flex h-9 items-center gap-1.5 rounded-full border px-3.5 text-xs font-semibold transition-colors ${
           consolidated
             ? "cursor-not-allowed border-line text-charcoal/30"
-            : "border-line text-charcoal hover:border-accent hover:text-accent"
+            : `border-line text-charcoal ${actionHoverClass("primary")}`}
         }`}
       >
         <SquarePen size={14} aria-hidden="true" />
@@ -407,7 +408,7 @@ export function IconButton({ label, onClick, children }: { label: string; onClic
       aria-label={label}
       title={label}
       onClick={onClick}
-      className="flex h-9 w-9 items-center justify-center rounded-full border border-line hover:border-accent hover:text-accent"
+      className={actionButtonClass(actionIntentFromLabel(label), "icon")}
     >
       {children}
     </button>

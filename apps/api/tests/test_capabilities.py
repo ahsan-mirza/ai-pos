@@ -279,7 +279,7 @@ def test_business_type_locks_after_onboarding_and_only_fitting_modules_switch_on
     locked = change_profile(client, headers, "cafe")
     assert locked.status_code == 409
     assert locked.json()["error"]["code"] == "business_type_locked"
-    assert "support@axizpos.com" in locked.json()["error"]["message"]
+    assert "info@axizpos.com" in locked.json()["error"]["message"]
 
     wrong = change_profile(client, headers, "electronics_wholesale", ["loyalty", "weighed_items"])
     assert wrong.status_code == 422 and wrong.json()["error"]["code"] == "module_not_available"
@@ -301,7 +301,7 @@ def test_business_type_locks_after_onboarding_and_only_fitting_modules_switch_on
     assert body["optional"] == [capability.value for capability in listed.optional]
     assert "trade_in" in body["base"] and "trade_in" in body["available"]
     assert "weighed_items" not in body["available"]
-    assert body["support_email"] == "support@axizpos.com"
+    assert body["support_email"] == "info@axizpos.com"
     assert client.get("/api/v1/tenant/modules", headers=device()).status_code == 200
     assert client.get("/api/v1/tenant/modules").status_code == 401
 

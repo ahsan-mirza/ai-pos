@@ -11,6 +11,10 @@
   /* Conventional status colors. Errors stay red and warnings stay amber, separate from the brand primary. */
   --danger-rgb: 220 38 38;
   --warning-rgb: 217 119 6;
+  /* Stronger fills for action-button hover. White text meets contrast on these; banner amber stays lighter. */
+  --warning-strong-rgb: 146 64 14;
+  --success-rgb: 22 101 52;
+  --info-rgb: 30 64 175;
   --color-neutral: #cbcece;
   --color-canvas: #eaeaea;
   --color-border: #dbdbdb;

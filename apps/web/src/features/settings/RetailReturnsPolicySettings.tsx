@@ -1,4 +1,5 @@
 import { RETURNS_PRESETS, type PosPolicy, type ReturnConditionRule } from "@ai-pos/shared-types";
+import { actionHoverClass } from "@ai-pos/ui";
 import { Plus, Trash2 } from "lucide-react";
 import { TextField } from "../../components/ui/Field";
 import { SegmentedControl } from "../../components/ui/SegmentedControl";
@@ -137,7 +138,7 @@ export function RetailReturnsPolicySettings({
                     aria-label={`Remove ${condition.label}`}
                     disabled={returns.conditions.length <= 1}
                     onClick={() => onPatch({ conditions: returns.conditions.filter((_, at) => at !== index) })}
-                    className="flex h-9 w-9 items-center justify-center rounded-full text-charcoal/50 hover:bg-surface hover:text-accent disabled:opacity-30"
+                    className={`flex h-9 w-9 items-center justify-center rounded-full text-charcoal/50 disabled:opacity-30 ${actionHoverClass("danger")}`}
                   >
                     <Trash2 size={15} aria-hidden="true" />
                   </button>

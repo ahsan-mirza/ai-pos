@@ -9,10 +9,11 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.console.billing import _addons, _plans
+from app.console.payment_notices import pending_count
 from app.core import capabilities as catalog
 from app.schemas.billing import BusinessTypeModules, EntitlementLine, ModuleCatalogueItem, ModuleSummary
 from app.schemas.console import ModuleState
-from app.tenancy.models import BillingTransfer, Subscription, SubscriptionItem
+from app.tenancy.models import Subscription, SubscriptionItem
 
 
 def catalogue(db: Session) -> list[ModuleCatalogueItem]:
@@ -73,9 +74,7 @@ def summary(db: Session) -> ModuleSummary:
         addon = by_code.get(item.addon_code)
         if item.subscription_id in active_ids and addon is not None and addon.active:
             addon_mrr += addon.monthly_fils * item.quantity
-    pending = db.scalar(
-        select(func.count()).select_from(BillingTransfer).where(BillingTransfer.status == "pending_review")
-    )
+    pending = pending_count(db)
     implemented = sum(1 for capability in catalog.ORDER if catalog.SPECS[capability].available)
     return ModuleSummary(
         catalogue_total=len(catalog.ORDER),

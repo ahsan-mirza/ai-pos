@@ -15,7 +15,12 @@ const preset = {
           hover: "rgb(var(--primary-hover-rgb) / <alpha-value>)",
         },
         danger: "rgb(var(--danger-rgb) / <alpha-value>)",
-        warning: "rgb(var(--warning-rgb) / <alpha-value>)",
+        warning: {
+          DEFAULT: "rgb(var(--warning-rgb) / <alpha-value>)",
+          strong: "rgb(var(--warning-strong-rgb) / <alpha-value>)",
+        },
+        success: "rgb(var(--success-rgb) / <alpha-value>)",
+        info: "rgb(var(--info-rgb) / <alpha-value>)",
         neutral: "#CBCECE",
         canvas: "#EAEAEA",
         line: "#DBDBDB",

@@ -1,3 +1,4 @@
+import { actionHoverClass } from "@ai-pos/ui";
 import { Permission, type UnitOfMeasure } from "@ai-pos/shared-types";
 import { Package, Plus, Trash2 } from "lucide-react";
 import { useState, type FormEvent } from "react";
@@ -106,14 +107,18 @@ export function UnitsPage() {
                 <td className="py-2.5 pl-4 text-right">
                   {canEdit && !unit.is_system ? (
                     <span className="inline-flex items-center gap-3">
-                      <button type="button" onClick={() => toggle(unit)} className="text-xs font-semibold text-accent hover:underline">
+                      <button
+                        type="button"
+                        onClick={() => toggle(unit)}
+                        className={`rounded-full px-2.5 py-1 text-xs font-semibold ${actionHoverClass(unit.is_active ? "warning" : "success")}`}
+                      >
                         {unit.is_active ? "Switch off" : "Switch on"}
                       </button>
                       <button
                         type="button"
                         aria-label={`Delete ${unit.name}`}
                         onClick={() => remove(unit)}
-                        className="text-charcoal/50 hover:text-red-600"
+                        className={`rounded-full p-1.5 text-charcoal/50 ${actionHoverClass("danger")}`}
                       >
                         <Trash2 size={15} aria-hidden="true" />
                       </button>

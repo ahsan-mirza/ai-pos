@@ -1,6 +1,7 @@
 import { movementLabel, type SerialSearchRow, type SerialTrace } from "@ai-pos/shared-types";
 import { MapPin, ScanLine, Warehouse } from "lucide-react";
 import { useState, type FormEvent } from "react";
+import { actionHoverClass } from "@ai-pos/ui";
 import { ErrorNote, PrimaryButton } from "../../components/ui/Field";
 import { inventoryApi, message } from "./api";
 import { DocStatus, formatDate } from "./shared";
@@ -101,7 +102,7 @@ export function SerialTrackerPage() {
                       <button
                         type="button"
                         onClick={() => void traceValue(row.value)}
-                        className="rounded-full border border-line px-3 py-1 text-xs font-semibold hover:border-accent hover:text-accent"
+                        className={`rounded-full border border-line px-3 py-1 text-xs font-semibold ${actionHoverClass("info")}`}
                       >
                         Trace
                       </button>

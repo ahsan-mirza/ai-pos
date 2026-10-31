@@ -26,6 +26,7 @@ export function AppShell() {
   const { pathname } = useLocation();
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem(COLLAPSED_KEY) === "1");
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [subscriptionLocked, setSubscriptionLocked] = useState(false);
 
   const toggleCollapsed = useCallback(() => {
     setCollapsed((value) => {
@@ -53,15 +54,20 @@ export function AppShell() {
       <PracticeProvider>
         <AssistantProvider>
           <div className="flex h-dvh w-screen overflow-hidden bg-[#f8fafc] font-sans text-charcoal">
-            <Sidebar collapsed={collapsed} mobileOpen={mobileOpen} onCloseMobile={closeMobile} />
+            <Sidebar
+              collapsed={collapsed}
+              mobileOpen={mobileOpen}
+              onCloseMobile={closeMobile}
+              subscriptionLocked={subscriptionLocked}
+            />
             <div className="flex min-w-0 flex-1 flex-col">
               <PracticeBanner />
               <TaxPortalBanner />
-              <SubscriptionNotice />
+              <SubscriptionNotice onAccess={setSubscriptionLocked} />
               <Header collapsed={collapsed} onToggleCollapsed={toggleCollapsed} onOpenMobile={() => setMobileOpen(true)} />
               <div className="relative min-h-0 flex-1">
                 <main className="h-full overflow-y-auto overflow-x-hidden">
-                  <IndustryGate />
+                  <IndustryGate subscriptionLocked={subscriptionLocked} />
                 </main>
                 <AssistantDrawer />
               </div>
@@ -74,10 +80,15 @@ export function AppShell() {
   );
 }
 
-function SubscriptionNotice() {
+function SubscriptionNotice({
+  onAccess,
+}: {
+  onAccess: (locked: boolean) => void;
+}) {
   const { pathname } = useLocation();
   const [access, setAccess] = useState<{
     state: string;
+    operational?: boolean;
     attention: { kind: string; invoice_id: string; reason: string | null } | null;
   } | null>(null);
   useEffect(() => {
@@ -86,13 +97,16 @@ function SubscriptionNotice() {
       "/api/v1/billing/access",
     )
       .then((found) => {
-        if (!cancelled) setAccess(found);
+        if (!cancelled) {
+          setAccess(found);
+          onAccess(found.operational === false);
+        }
       })
       .catch(() => undefined);
     return () => {
       cancelled = true;
     };
-  }, [pathname]);
+  }, [onAccess, pathname]);
   const attention = access?.attention;
   if (attention) {
     const title =
@@ -107,7 +121,7 @@ function SubscriptionNotice() {
       attention.kind === "rejected" && attention.reason
         ? attention.reason
         : attention.kind === "pending_review"
-          ? "We have received your payment proof. Our team will review it and update your subscription status. Your features will remain locked until verification is complete."
+          ? "We have received your payment proof. Our team will review it and update your subscription status. Your paid features will remain locked until verification and activation are complete."
           : attention.kind === "revoked"
             ? "The previous activation was revoked. Paid features stay locked until a payment is verified again."
             : "Your invoice is ready. Transfer the amount shown on your invoice and submit your payment proof. Your subscription features will remain locked until payment is verified.";
@@ -148,9 +162,23 @@ function SubscriptionNotice() {
 }
 
 /** Blocks a deep link when this business type does not use the page. */
-function IndustryGate() {
+function IndustryGate({ subscriptionLocked }: { subscriptionLocked: boolean }) {
   const { pathname } = useLocation();
   const { storedProfile, ready, recognized, businessType } = useTenant();
+  if (subscriptionLocked && pathname !== "/subscription") {
+    return (
+      <section className="m-4 max-w-lg rounded-card border border-line bg-white p-6 md:m-6">
+        <h1 className="text-xl font-semibold">Paid features are locked</h1>
+        <p className="mt-2 text-sm text-charcoal/70">
+          This page stays closed until a Company Console administrator verifies the payment and activates the
+          subscription.
+        </p>
+        <Link to="/subscription" className="mt-4 inline-block text-sm font-semibold text-accent">
+          View subscription
+        </Link>
+      </section>
+    );
+  }
   const allowed = portalRouteAllowed(pathname, ready ? storedProfile : null);
   if (!allowed && !ready) return null;
   if (!allowed) {

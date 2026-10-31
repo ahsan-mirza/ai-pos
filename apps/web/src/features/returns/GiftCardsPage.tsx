@@ -1,3 +1,4 @@
+import { actionHoverClass } from "@ai-pos/ui";
 import { Permission, formatMoney, type GiftCardIssue, type StoreCreditList, type StoreCreditVoucher } from "@ai-pos/shared-types";
 import { Gift, Plus } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
@@ -147,7 +148,7 @@ export function GiftCardsPage() {
                         <button
                           type="button"
                           onClick={() => setVoiding(card)}
-                          className="text-xs font-semibold text-charcoal/60 hover:text-accent"
+                          className={`rounded-full px-2.5 py-1 text-xs font-semibold text-charcoal/60 ${actionHoverClass("danger")}`}
                         >
                           Void
                         </button>

@@ -303,6 +303,22 @@ class TransferOut(ApiModel):
     decision_reason: str | None
 
 
+class ReviewSummary(ApiModel):
+    pending: int
+
+
+class ReviewNotice(ApiModel):
+    id: UUID
+    payment_submission_id: UUID
+    tenant_name: str
+    invoice_reference: str
+    amount_fils: int
+    currency: str
+    submitted_at: datetime
+    status: Literal["pending_review", "approved", "rejected"]
+    read: bool
+
+
 class PaymentOut(ApiModel):
     id: UUID
     invoice_id: UUID
@@ -349,6 +365,7 @@ class AccessSubscription(ApiModel):
 class AccessOut(ApiModel):
     state: str
     ai_allowed: bool
+    operational: bool = True
     attention: PaymentAttention | None = None
     subscription: AccessSubscription | None = None
 

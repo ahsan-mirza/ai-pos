@@ -10,6 +10,7 @@ import {
   type SalesOrderRow,
   type SalesOrderStatus,
 } from "@ai-pos/shared-types";
+import { actionHoverClass } from "@ai-pos/ui";
 import { PackageCheck, Plus, Search, Trash2, Truck } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { DataTable, usePagination, type DataTableColumn } from "../../components/ui/DataTable";
@@ -511,7 +512,7 @@ function NewOrderModal({
                       type="button"
                       aria-label={`Remove ${line.name}`}
                       onClick={() => setLines((current) => current.filter((_, at) => at !== index))}
-                      className="text-charcoal/40 hover:text-accent"
+                      className={`text-charcoal/40 ${actionHoverClass("danger")}`}
                     >
                       <Trash2 size={15} aria-hidden="true" />
                     </button>

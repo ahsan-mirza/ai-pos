@@ -1,9 +1,11 @@
 import { DataTable, Select, type DataTableColumn } from "@ai-pos/ui";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { FilterSearch, FilterSlot, PageHeader } from "../components/PageHeader";
 import { ErrorNote, GhostButton, PrimaryButton } from "../components/ui";
 import { api, consoleBlob, errorText } from "../lib/api";
 import { money, when } from "../lib/format";
+import { usePaymentReviews } from "../lib/paymentReviews";
 import { useSession } from "../lib/session";
 
 interface BankAccount {
@@ -58,6 +60,9 @@ function mask(value: string): string {
 
 export function PaymentsPage() {
   const { operator } = useSession();
+  const { revision } = usePaymentReviews();
+  const [params] = useSearchParams();
+  const focusId = params.get("transfer");
   const admin = operator?.role === "ADMIN";
   const [accounts, setAccounts] = useState<BankAccount[]>([]);
   const [grace, setGrace] = useState("5");
@@ -90,8 +95,12 @@ export function PaymentsPage() {
   }, [status]);
 
   useEffect(() => {
+    if (focusId) setStatus("");
+  }, [focusId]);
+
+  useEffect(() => {
     load();
-  }, [load]);
+  }, [load, revision]);
 
   const needle = query.trim().toLowerCase();
   const visible = useMemo(
@@ -345,6 +354,7 @@ export function PaymentsPage() {
           columns={columns}
           data={visible}
           getRowId={(row) => row.id}
+          rowClassName={(row) => (row.id === focusId ? "bg-accent/10" : "")}
           isLoading={loading}
           error={error}
           onRetry={load}

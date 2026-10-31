@@ -1,5 +1,5 @@
 import { AUDIT_ACTION_LABELS, AuditActionType, type AuditLogRow } from "@ai-pos/shared-types";
-import { DateInput } from "@ai-pos/ui";
+import { DateInput, actionHoverClass } from "@ai-pos/ui";
 import {
   Activity,
   FileDown,
@@ -327,7 +327,7 @@ export function AuditPage() {
           <button
             type="button"
             onClick={() => update({ sensitiveOnly: true, range: "today" })}
-            className="self-start rounded-full bg-white/20 px-3.5 py-1.5 text-xs font-semibold text-white transition hover:bg-white hover:text-accent"
+            className={`self-start rounded-full bg-white/20 px-3.5 py-1.5 text-xs font-semibold text-white ${actionHoverClass("info")}`}
           >
             Review today&rsquo;s overrides
           </button>

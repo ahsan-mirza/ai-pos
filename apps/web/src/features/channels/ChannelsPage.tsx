@@ -5,6 +5,7 @@ import {
   type DeliveryChannelInput,
   type DeliveryChannelSecret,
 } from "@ai-pos/shared-types";
+import { actionHoverClass } from "@ai-pos/ui";
 import { Copy, KeyRound, Plus, Truck } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useConfirm } from "../../components/ui/ConfirmDialog";
@@ -170,7 +171,7 @@ function SecretModal({ secret, onClose }: { secret: DeliveryChannelSecret; onClo
             <p className="text-xs text-charcoal/60">{label}</p>
             <div className="mt-1 flex items-center gap-2 rounded-xl bg-surface px-3 py-2 font-mono text-xs">
               <span className="min-w-0 flex-1 break-all">{value}</span>
-              <button type="button" aria-label={`Copy ${label}`} onClick={() => copy(value!)} className="shrink-0 text-charcoal/60 hover:text-accent">
+              <button type="button" aria-label={`Copy ${label}`} onClick={() => copy(value!)} className={`shrink-0 rounded-full px-2 py-1 text-charcoal/60 ${actionHoverClass("neutral")}`}>
                 <Copy size={14} aria-hidden="true" />
               </button>
             </div>
@@ -317,7 +318,7 @@ export function ChannelsPage() {
                 </p>
                 <p className="mt-1 flex items-center gap-1.5 truncate font-mono text-xs text-charcoal/60">
                   {webhookUrl(channel)}
-                  <button type="button" aria-label="Copy webhook URL" onClick={() => copy(webhookUrl(channel))} className="hover:text-accent">
+                  <button type="button" aria-label="Copy webhook URL" onClick={() => copy(webhookUrl(channel))} className={`rounded-full px-2 py-1 ${actionHoverClass("neutral")}`}>
                     <Copy size={12} aria-hidden="true" />
                   </button>
                 </p>

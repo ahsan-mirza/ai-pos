@@ -26,6 +26,7 @@ interface AccountSubscription {
 
 interface AccountAccess {
   state: string;
+  operational?: boolean;
   attention: PaymentAttention | null;
   subscription: AccountSubscription | null;
 }

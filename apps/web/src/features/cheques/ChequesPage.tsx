@@ -12,6 +12,7 @@ import { ErrorNote, GhostButton, PrimaryButton, TextField } from "../../componen
 import { Modal } from "../../components/ui/Modal";
 import { SegmentedControl } from "../../components/ui/SegmentedControl";
 import { Toast } from "../../components/ui/Toast";
+import { actionHoverClass, type ActionIntent } from "@ai-pos/ui";
 import { apiGet, apiPost } from "../../lib/api";
 import { useCurrency } from "../../lib/currency";
 import { message, toCents } from "../customers/api";
@@ -31,6 +32,13 @@ const actionLabels: Record<ChequeAction, string> = {
   clear: "Mark cleared",
   bounce: "Record bounce",
   cancel: "Return to customer",
+};
+
+const actionIntent: Record<ChequeAction, ActionIntent> = {
+  deposit: "success",
+  clear: "success",
+  bounce: "warning",
+  cancel: "danger",
 };
 
 const today = () => new Date().toISOString().slice(0, 10);
@@ -186,7 +194,7 @@ export function ChequesPage() {
                             className={`rounded-full px-3 py-1.5 text-xs font-semibold ${
                               action === "deposit" || action === "clear"
                                 ? "bg-accent text-white hover:bg-accent-hover"
-                                : "border border-line hover:border-accent hover:text-accent"
+                                : `border border-line ${actionHoverClass(actionIntent[action])}`
                             }`}
                           >
                             {actionLabels[action]}

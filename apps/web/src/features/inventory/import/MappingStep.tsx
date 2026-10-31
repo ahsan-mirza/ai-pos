@@ -7,6 +7,7 @@ import {
   type ImportUpload,
   type MappingTemplate,
 } from "@ai-pos/shared-types";
+import { actionHoverClass } from "@ai-pos/ui";
 import { AlertTriangle, BookmarkPlus, Check, Trash2, Wand2 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Select } from "../../../components/ui/Select";
@@ -104,7 +105,7 @@ export function MappingStep({
               type="button"
               onClick={() => onDeleteTemplate(templateId)}
               aria-label="Delete template"
-              className="flex h-11 w-11 items-center justify-center rounded-full border border-line bg-white text-charcoal/60 transition hover:border-accent hover:text-accent"
+              className={`flex h-11 w-11 items-center justify-center rounded-full border border-line bg-white text-charcoal/60 ${actionHoverClass("danger")}`}
             >
               <Trash2 size={16} aria-hidden="true" />
             </button>

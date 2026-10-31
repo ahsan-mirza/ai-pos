@@ -1,3 +1,4 @@
+import { actionHoverClass } from "@ai-pos/ui";
 import { Eraser } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
@@ -87,7 +88,7 @@ export function SignaturePad({ onChange }: { onChange: (dataUrl: string | null) 
       <button
         type="button"
         onClick={clear}
-        className="mt-2 inline-flex items-center gap-1.5 text-xs font-medium text-charcoal/60 hover:text-accent"
+        className={`mt-2 inline-flex items-center gap-1.5 rounded-full px-2 py-1 text-xs font-medium text-charcoal/60 ${actionHoverClass("danger")}`}
       >
         <Eraser size={13} aria-hidden="true" /> Clear
       </button>

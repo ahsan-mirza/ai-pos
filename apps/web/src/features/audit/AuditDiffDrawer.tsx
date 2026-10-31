@@ -239,7 +239,7 @@ export function AuditDiffDrawer({
           </p>
         </header>
 
-        <div className="min-h-0 flex-1 space-y-6 overflow-y-auto px-5 py-5 sm:px-6">
+        <div className="min-h-0 flex-1 space-y-6 overflow-y-auto overscroll-contain px-5 py-5 sm:px-6">
           <div className="flex items-center gap-3 rounded-2xl bg-charcoal p-4 text-white">
             <Avatar name={row.user_name} />
             <div className="min-w-0 flex-1">

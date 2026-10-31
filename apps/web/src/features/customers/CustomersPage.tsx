@@ -1,3 +1,4 @@
+import { actionHoverClass } from "@ai-pos/ui";
 import { Capability, PAYMENT_TERMS_LABELS, PRICE_TIER_LABELS, formatMoney, type Customer } from "@ai-pos/shared-types";
 import { FileSpreadsheet, Plus, Repeat2, Send, SquarePen, Users } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -175,7 +176,7 @@ export function CustomersPage() {
         <div className="flex items-center justify-end gap-1">
           <Link
             to={`/customers/${row.id}`}
-            className="flex h-9 items-center gap-1.5 rounded-full border border-line px-3.5 text-xs font-semibold hover:border-accent hover:text-accent"
+            className={`flex h-9 items-center gap-1.5 rounded-full border border-line px-3.5 text-xs font-semibold ${actionHoverClass("info")}`}
           >
             <FileSpreadsheet size={14} aria-hidden="true" />
             Statement
@@ -183,7 +184,7 @@ export function CustomersPage() {
           {reorderModule ? (
             <Link
               to={`/reorders?customer=${row.id}`}
-              className="flex h-9 items-center rounded-full border border-line px-3.5 text-xs font-semibold hover:border-accent hover:text-accent"
+              className={`flex h-9 items-center rounded-full border border-line px-3.5 text-xs font-semibold ${actionHoverClass("info")}`}
             >
               <Repeat2 size={14} aria-hidden="true" />
               Reorders
@@ -194,7 +195,7 @@ export function CustomersPage() {
             aria-label={`Edit ${row.company_name ?? row.name}`}
             title="Edit"
             onClick={() => setEditing(row)}
-            className="flex h-9 w-9 items-center justify-center rounded-full border border-line hover:border-accent hover:text-accent"
+            className={`flex h-9 w-9 items-center justify-center rounded-full border border-line ${actionHoverClass("primary")}`}
           >
             <SquarePen size={15} aria-hidden="true" />
           </button>
@@ -262,7 +263,7 @@ export function CustomersPage() {
                 }
               })();
             }}
-            className="inline-flex h-10 items-center gap-2 rounded-full border border-line bg-white px-5 text-sm font-semibold text-charcoal/80 hover:border-accent hover:text-accent"
+            className={`inline-flex h-10 items-center gap-2 rounded-full border border-line bg-white px-5 text-sm font-semibold text-charcoal/80 ${actionHoverClass("info")}`}
           >
             <Send size={15} aria-hidden="true" /> Send statements
           </button>

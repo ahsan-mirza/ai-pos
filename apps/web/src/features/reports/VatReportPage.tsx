@@ -1,3 +1,4 @@
+import { actionHoverClass } from "@ai-pos/ui";
 import { formatMoney, type VatReport } from "@ai-pos/shared-types";
 import { Download, FileText, Landmark } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -160,7 +161,7 @@ export function VatReportPage() {
             <button
               type="button"
               onClick={() => void download("csv")}
-              className="inline-flex h-11 items-center gap-2 rounded-full border border-line px-4 text-sm font-semibold hover:border-accent hover:text-accent"
+              className={`inline-flex h-11 items-center gap-2 rounded-full border border-line px-4 text-sm font-semibold ${actionHoverClass("info")}`}
             >
               <Download size={15} aria-hidden="true" /> CSV
             </button>

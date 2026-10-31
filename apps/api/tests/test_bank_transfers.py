@@ -6,9 +6,122 @@ from datetime import UTC, datetime
 from tests.governance_support import platform  # noqa: F401
 
 from app.console.billing import add_calendar_months, ensure_catalog
-from app.tenancy.models import BillingInvoice, BillingPayment, Subscription
+from app.tenancy.models import BillingInvoice, BillingInvoiceLine, BillingPayment, Subscription
 
 PNG = b"\x89PNG\r\n\x1a\n" + b"\x00" * 16
+
+
+def _package(db, invoice: BillingInvoice) -> None:
+    db.flush()
+    db.add(
+        BillingInvoiceLine(
+            invoice_id=invoice.id,
+            code=invoice.plan_code,
+            label="Package",
+            quantity=1,
+            unit_fils=invoice.total_fils,
+            amount_fils=invoice.total_fils,
+            recurring=True,
+        )
+    )
+
+
+def _pending_invoice(host, slug: str = "alpha") -> str:
+    tenant_id = uuid.UUID(host.tenant_id(slug))
+    with host.control() as db:
+        ensure_catalog(db)
+        invoice = BillingInvoice(
+            tenant_id=tenant_id,
+            status="pending",
+            plan_code="LITE",
+            cycle_code="MONTHLY",
+            recurring_fils=14_900,
+            total_fils=14_900,
+            confirm_name="Alpha",
+        )
+        db.add(invoice)
+        _package(db, invoice)
+        db.commit()
+        return str(invoice.id)
+
+
+def _submit(host, invoice_id: str, key: str) -> dict:
+    response = host.client.post(
+        "/api/v1/billing/transfers",
+        headers=host.headers("alpha"),
+        data={
+            "invoice_id": invoice_id,
+            "amount_fils": "14900",
+            "transferred_on": "2026-10-26",
+            "idempotency_key": key,
+            "bank_reference": key,
+        },
+        files={"receipt": ("pay.png", PNG, "image/png")},
+    )
+    assert response.status_code == 200, response.text
+    return response.json()
+
+
+def test_pending_review_blocks_paid_apis_until_an_admin_activates(platform) -> None:  # noqa: F811
+    admin = platform.operator(email="lock-admin@axizpos.com")
+    support = platform.operator(email="lock-support@axizpos.com", role="SUPPORT")
+    invoice_id = _pending_invoice(platform)
+    store = platform.headers("alpha")
+    waiting = platform.client.get("/api/v1/products", headers=store, params={"limit": 1})
+    assert waiting.status_code == 403, waiting.text
+    assert waiting.json()["error"]["code"] == "subscription_payment_required"
+    forged = platform.client.post(
+        "/api/v1/products",
+        headers=store,
+        json={"is_active": True, "payment_verified": True, "tenant_id": platform.tenant_id("bravo")},
+    )
+    assert forged.status_code == 403
+    billing = platform.client.get("/api/v1/billing/access", headers=store)
+    assert billing.status_code == 200, billing.text
+    assert billing.json()["operational"] is False
+    assert billing.json()["attention"]["kind"] == "awaiting_proof"
+    submitted = _submit(platform, invoice_id, "lock-transfer-1")
+    blocked = platform.client.get("/api/v1/products", headers=store, params={"limit": 1})
+    assert blocked.status_code == 403
+    assert blocked.json()["error"]["code"] == "subscription_payment_pending"
+    assert blocked.json()["error"]["details"]["redirect"] == "/subscription"
+    own = platform.client.get(f"/api/v1/billing/transfers/{submitted['id']}/receipt", headers=store)
+    assert own.status_code == 200
+    other = platform.client.get(
+        f"/api/v1/billing/transfers/{submitted['id']}/receipt", headers=platform.headers("bravo")
+    )
+    assert other.status_code == 404
+    queued = platform.client.post("/api/v1/sync/push", headers=store, json={"events": []})
+    assert queued.json().get("error", {}).get("code") != "subscription_payment_pending"
+    denied = platform.client.post(
+        f"/api/v1/super-admin/billing/transfers/{submitted['id']}/approve", headers=support
+    )
+    assert denied.status_code == 403
+    rejected = platform.client.post(
+        f"/api/v1/super-admin/billing/transfers/{submitted['id']}/reject",
+        headers=admin,
+        json={"reason": "The slip is unreadable."},
+    )
+    assert rejected.status_code == 200, rejected.text
+    still = platform.client.get("/api/v1/products", headers=store, params={"limit": 1})
+    assert still.status_code == 403
+    assert still.json()["error"]["code"] == "subscription_payment_rejected"
+    status = platform.client.get("/api/v1/billing/access", headers=store).json()
+    assert status["attention"]["reason"] == "The slip is unreadable."
+    corrected = _submit(platform, invoice_id, "lock-transfer-2")
+    approved = platform.client.post(
+        f"/api/v1/super-admin/billing/transfers/{corrected['id']}/approve", headers=admin
+    )
+    assert approved.status_code == 200, approved.text
+    opened = platform.client.get("/api/v1/products", headers=store, params={"limit": 1})
+    assert opened.status_code == 200, opened.text
+    again = platform.client.post(
+        f"/api/v1/super-admin/billing/transfers/{corrected['id']}/approve", headers=admin
+    )
+    assert again.json()["id"] == approved.json()["id"]
+    with platform.control() as db:
+        tenant = uuid.UUID(platform.tenant_id("alpha"))
+        assert db.query(Subscription).filter(Subscription.tenant_id == tenant).count() == 1
 
 
 def test_calendar_months_clamp_month_end() -> None:
@@ -46,6 +159,7 @@ def test_receipt_does_not_pay_until_an_admin_approves(platform) -> None:  # noqa
             confirm_name="Alpha",
         )
         db.add(invoice)
+        _package(db, invoice)
         db.commit()
         invoice_id = str(invoice.id)
     store = platform.headers("alpha")
@@ -200,6 +314,7 @@ def test_a_wrong_amount_is_refused_and_review_can_be_reopened_or_revoked(platfor
             },
         )
         db.add(invoice)
+        _package(db, invoice)
         db.commit()
         invoice_id = str(invoice.id)
     short = platform.client.post(

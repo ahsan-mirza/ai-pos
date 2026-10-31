@@ -14,6 +14,15 @@ TENANT_HEADER = "x-tenant-domain"
 # Reachable without a tenant: liveness, API docs, self-service signup on the bare domain, the public
 # package list, the POS-company console (which opens tenant databases explicitly, never through the
 # request's tenant), and media files (the tenant is in their path, so <img> tags need no header).
+# Paid operations stay closed until a verified activation. Billing, sign-in, onboarding, and the
+# offline sales queue stay open so a pending receipt cannot trap the store or drop queued sales.
+OPERATIONAL_ALLOW = (
+    "/api/v1/auth",
+    "/api/v1/billing",
+    "/api/v1/onboarding",
+    "/api/v1/sync",
+    "/api/v1/site",
+)
 OPEN_PATHS = (
     "/health",
     "/docs",
@@ -78,9 +87,47 @@ class TenantContextMiddleware:
                 scope, receive, send
             )
             return
+        if _paid_route(request):
+            blocked = _subscription_block(found.tenant.id)
+            if blocked is not None:
+                payload = error_payload(
+                    blocked["code"],
+                    blocked["message"],
+                    api=api_name(request.method, request.url.path),
+                    details={"subscription_status": blocked["subscription_status"], "redirect": blocked["redirect"]},
+                )
+                await JSONResponse(status_code=403, content=payload)(scope, receive, send)
+                return
         scope.setdefault("state", {})["tenant"] = found.tenant
         with use_tenant(found.tenant):
             await self.app(scope, receive, send)
+
+
+def _paid_route(request: Request) -> bool:
+    path = request.url.path
+    if path.startswith(OPERATIONAL_ALLOW):
+        return False
+    if request.method == "GET" and path in {"/api/v1/settings", "/api/v1/stores"}:
+        return False
+    return path.startswith("/api/v1/")
+
+
+def _subscription_block(tenant_id: str) -> dict[str, str] | None:
+    import uuid
+
+    from app.console.transfers import operational_block
+    from app.tenancy import registry
+
+    try:
+        with registry.control_session() as db:
+            return operational_block(db, uuid.UUID(tenant_id))
+    except Exception:  # noqa: BLE001 - a control-plane failure must not be reported as an active subscription
+        return {
+            "code": "subscription_unavailable",
+            "subscription_status": "unknown",
+            "message": "Subscription access could not be confirmed. Try again.",
+            "redirect": "/subscription",
+        }
 
 
 def install(app: FastAPI, settings: Settings) -> None:

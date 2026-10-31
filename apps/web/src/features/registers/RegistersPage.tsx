@@ -1,3 +1,4 @@
+import { actionHoverClass } from "@ai-pos/ui";
 import type { Device, DeviceActivationKey, DeviceKey } from "@ai-pos/shared-types";
 import { Copy, Download, KeyRound, MonitorSmartphone, Plus, RotateCw, ShieldOff } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
@@ -115,7 +116,7 @@ export function RegistersPage() {
           <div className="flex flex-wrap gap-2">
             <a
               href={`${env.apiBaseUrl}/api/download/installer/win`}
-              className="inline-flex items-center justify-center rounded-full border border-gray-200 bg-white px-6 py-2.5 text-sm font-medium text-black transition-colors hover:bg-gray-50"
+              className={`inline-flex items-center justify-center rounded-full border border-gray-200 bg-white px-6 py-2.5 text-sm font-medium text-black ${actionHoverClass("neutral")}`}
             >
               <Download size={16} aria-hidden="true" className="-ml-2 mr-1.5" />
               Download POS app
@@ -172,7 +173,7 @@ export function RegistersPage() {
                           title="Generate activation key"
                           aria-label={`Generate activation key for ${device.code}`}
                           onClick={() => void issueActivation(device)}
-                          className="inline-flex h-9 items-center gap-1.5 rounded-full border border-line px-3 text-xs font-semibold hover:border-accent hover:text-accent"
+                          className={`inline-flex h-9 items-center gap-1.5 rounded-full border border-line px-3 text-xs font-semibold ${actionHoverClass("success")}`}
                         >
                           <KeyRound size={14} aria-hidden="true" /> Activate
                         </button>
@@ -181,7 +182,7 @@ export function RegistersPage() {
                           title="Issue a new key"
                           aria-label={`Issue a new key for ${device.code}`}
                           onClick={() => void act(device, "rotate")}
-                          className="flex h-9 w-9 items-center justify-center rounded-full border border-line hover:border-accent hover:text-accent"
+                          className={`flex h-9 w-9 items-center justify-center rounded-full border border-line ${actionHoverClass("warning")}`}
                         >
                           <RotateCw size={15} aria-hidden="true" />
                         </button>
@@ -191,7 +192,7 @@ export function RegistersPage() {
                             title="Revoke"
                             aria-label={`Revoke ${device.code}`}
                             onClick={() => void act(device, "revoke")}
-                            className="flex h-9 w-9 items-center justify-center rounded-full border border-line hover:border-accent hover:text-accent"
+                            className={`flex h-9 w-9 items-center justify-center rounded-full border border-line ${actionHoverClass("danger")}`}
                           >
                             <ShieldOff size={15} aria-hidden="true" />
                           </button>
@@ -223,7 +224,14 @@ export function RegistersPage() {
       ) : null}
       {issued ? <KeyModal issued={issued} onClose={() => setIssued(null)} /> : null}
       {activation ? (
-        <ActivationModal device={activation.device} activation={activation.key} onClose={() => setActivation(null)} />
+        <ActivationModal
+          device={activation.device}
+          storeName={
+            stores.find((store) => store.id === activation.device.store_id)?.name ?? activation.device.store_code
+          }
+          activation={activation.key}
+          onClose={() => setActivation(null)}
+        />
       ) : null}
       {toast ? <Toast message={toast} onDismiss={dismissToast} /> : null}
     </section>
@@ -319,10 +327,12 @@ async function copyVisible(value: string): Promise<boolean> {
 
 function ActivationModal({
   device,
+  storeName,
   activation,
   onClose,
 }: {
   device: Device;
+  storeName: string;
   activation: DeviceActivationKey;
   onClose: () => void;
 }) {
@@ -331,14 +341,14 @@ function ActivationModal({
   return (
     <Modal
       title={`Activate ${device.code}`}
-      subtitle="On the new register, enter the store subdomain, then paste this key. The key works once."
+      subtitle="On the new register, enter the store code, then paste this key. The key works once."
       onClose={onClose}
       footer={<PrimaryButton onClick={onClose}>Done</PrimaryButton>}
     >
       <dl className="space-y-3">
         <div className="rounded-2xl bg-surface p-4">
-          <dt className="text-[11px] font-semibold uppercase tracking-[0.18em] text-charcoal/50">Store subdomain</dt>
-          <dd className="mt-1 font-mono text-lg font-semibold">{activation.tenant_domain}</dd>
+          <dt className="text-[11px] font-semibold uppercase tracking-[0.18em] text-charcoal/50">Store name</dt>
+          <dd className="mt-1 text-lg font-semibold">{storeName}</dd>
         </div>
         <div className="rounded-2xl bg-charcoal p-4 text-white">
           <dt className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-white/50">
@@ -357,7 +367,7 @@ function ActivationModal({
             else setCopyError("Could not copy the activation key. Select it and copy it manually.");
           });
         }}
-        className="mt-3 inline-flex items-center gap-2 rounded-full border border-line px-4 py-2 text-sm font-semibold hover:border-accent hover:text-accent"
+        className={`mt-3 inline-flex items-center gap-2 rounded-full border border-line px-4 py-2 text-sm font-semibold ${actionHoverClass("neutral")}`}
       >
         <Copy size={14} aria-hidden="true" /> {copied ? "Copied" : "Copy activation key"}
       </button>
@@ -396,7 +406,7 @@ function KeyModal({ issued, onClose }: { issued: DeviceKey; onClose: () => void 
             else setCopyError("Could not copy the key. Select it and copy it manually.");
           });
         }}
-        className="mt-3 inline-flex items-center gap-2 rounded-full border border-line px-4 py-2 text-sm font-semibold hover:border-accent hover:text-accent"
+        className={`mt-3 inline-flex items-center gap-2 rounded-full border border-line px-4 py-2 text-sm font-semibold ${actionHoverClass("neutral")}`}
       >
         <Copy size={14} aria-hidden="true" /> {copied ? "Copied" : "Copy key"}
       </button>

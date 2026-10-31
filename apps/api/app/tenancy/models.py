@@ -472,6 +472,39 @@ class BillingPayment(ControlBase):
     revoke_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
+class ConsolePaymentNotice(ControlBase):
+    """One console alert per payment proof. Reading it does not review the transfer."""
+
+    __tablename__ = "console_payment_notices"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    transfer_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("billing_transfers.id"), unique=True
+    )
+    tenant_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("tenants.id"), index=True)
+    tenant_name: Mapped[str] = mapped_column(String(120), default="")
+    invoice_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True))
+    invoice_reference: Mapped[str] = mapped_column(String(48), default="")
+    amount_fils: Mapped[int] = mapped_column(Integer)
+    currency: Mapped[str] = mapped_column(String(3), default="AED")
+    submitted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, index=True)
+
+
+class ConsolePaymentNoticeRead(ControlBase):
+    """Per-operator read mark. It is not a payment decision."""
+
+    __tablename__ = "console_payment_notice_reads"
+    __table_args__ = (UniqueConstraint("notice_id", "operator_id", name="uq_console_payment_notice_reads"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    notice_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("console_payment_notices.id"), index=True
+    )
+    operator_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("operators.id"), index=True)
+    read_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
 class HardwareCategory(ControlBase):
     """A catalogue group such as receipt printers. Administrators can add more without a code change."""
 

@@ -121,7 +121,7 @@ Each business type switches on its own modules (Store Settings → Business prof
 
 ## Tenant governance and console
 
-- **Business type lock.** Once a store finishes onboarding, its business type is fixed. `PUT /api/v1/settings/profile` answers 409 `business_type_locked` with the IT Support contact (`SUPPORT_EMAIL`, default support@axizpos.com). Stores can switch on only the modules that fit their type (`COMPATIBLE` in `app/core/capabilities.py`); `GET /api/v1/tenant/modules` returns the locked type and those modules for Store Settings → Business profile.
+- **Business type lock.** Once a store finishes onboarding, its business type is fixed. `PUT /api/v1/settings/profile` answers 409 `business_type_locked` with the IT Support contact (`SUPPORT_EMAIL`, default info@axizpos.com). Stores can switch on only the modules that fit their type (`COMPATIBLE` in `app/core/capabilities.py`); `GET /api/v1/tenant/modules` returns the locked type and those modules for Store Settings → Business profile.
 - **Change requests.** `POST /api/v1/tenant/change-requests` files a business-type or module request in the control database, with a snapshot of the store's size, and emails support. Single-store servers fall back to a mailto link.
 - **Console.** `apps/super-admin` (`pnpm dev:console`, port 5174) is the POS company's own app at `/api/v1/super-admin`, outside tenant resolution:
   - Sign-in uses operator accounts (email and password) and tokens signed with `CONSOLE_JWT_SECRET`, which must differ from `JWT_SECRET`. Store tokens never open it, and console tokens never open a store.

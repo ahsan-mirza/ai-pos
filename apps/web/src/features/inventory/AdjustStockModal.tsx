@@ -14,6 +14,7 @@ import {
   type StockRow,
   type StoreSerial,
 } from "@ai-pos/shared-types";
+import { actionHoverClass } from "@ai-pos/ui";
 import { Minus, Plus, ScanLine, Search, X } from "lucide-react";
 import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { ErrorNote, GhostButton, PrimaryButton, SelectField } from "../../components/ui/Field";
@@ -343,7 +344,7 @@ export function AdjustStockModal({
               aria-label="Decrease"
               disabled={(serialized && mode !== "set") || quantity <= 0}
               onClick={() => setQuantity((value) => Math.max(0, value - 1))}
-              className="flex h-14 w-14 items-center justify-center rounded-2xl border border-line text-charcoal hover:border-accent hover:text-accent disabled:opacity-30"
+              className={`flex h-14 w-14 items-center justify-center rounded-2xl border border-line text-charcoal disabled:opacity-30 ${actionHoverClass("neutral")}`}
             >
               <Minus size={20} aria-hidden="true" />
             </button>
@@ -363,7 +364,7 @@ export function AdjustStockModal({
               aria-label="Increase"
               disabled={serialized && mode !== "set"}
               onClick={() => setQuantity((value) => value + 1)}
-              className="flex h-14 w-14 items-center justify-center rounded-2xl border border-line text-charcoal hover:border-accent hover:text-accent disabled:opacity-30"
+              className={`flex h-14 w-14 items-center justify-center rounded-2xl border border-line text-charcoal disabled:opacity-30 ${actionHoverClass("neutral")}`}
             >
               <Plus size={20} aria-hidden="true" />
             </button>

@@ -8,6 +8,7 @@ import {
   type MessagingSettings,
   type OutboundMessage,
 } from "@ai-pos/shared-types";
+import { actionHoverClass } from "@ai-pos/ui";
 import { Mail, MessageCircle, Play, Send, Smartphone, type LucideIcon } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
@@ -290,7 +291,7 @@ export function MessagingPage() {
                   type="button"
                   aria-label={`Run ${job.description} now`}
                   onClick={() => void runJob(job.name)}
-                  className="flex h-9 w-9 items-center justify-center rounded-full border border-line hover:border-accent hover:text-accent"
+                  className={`flex h-9 w-9 items-center justify-center rounded-full border border-line ${actionHoverClass("primary")}`}
                 >
                   <Play size={14} aria-hidden="true" />
                 </button>

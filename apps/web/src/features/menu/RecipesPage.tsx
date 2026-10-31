@@ -7,6 +7,7 @@ import {
   type Recipe,
   type RecipeInput,
 } from "@ai-pos/shared-types";
+import { actionHoverClass } from "@ai-pos/ui";
 import { BookOpen, Plus, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useConfirm } from "../../components/ui/ConfirmDialog";
@@ -176,7 +177,7 @@ function RecipeEditor({
                     type="button"
                     aria-label="Remove line"
                     onClick={() => setLines(lines.filter((_, at) => at !== index))}
-                    className="mb-2 flex h-8 w-8 items-center justify-center rounded-full text-charcoal/50 hover:bg-surface hover:text-red-600"
+                    className={`mb-2 flex h-8 w-8 items-center justify-center rounded-full text-charcoal/50 ${actionHoverClass("danger")}`}
                   >
                     <Trash2 size={14} aria-hidden="true" />
                   </button>
@@ -284,7 +285,7 @@ function ModifierIngredientsModal({
               type="button"
               aria-label="Remove line"
               onClick={() => setLines(lines.filter((_, at) => at !== index))}
-              className="mb-2 flex h-8 w-8 items-center justify-center rounded-full text-charcoal/50 hover:bg-surface hover:text-red-600"
+              className={`mb-2 flex h-8 w-8 items-center justify-center rounded-full text-charcoal/50 ${actionHoverClass("danger")}`}
             >
               <Trash2 size={14} aria-hidden="true" />
             </button>
@@ -434,7 +435,7 @@ export function RecipesPage() {
                       key={item.id}
                       type="button"
                       onClick={() => setOption({ id: item.id, name: item.name, group: group.name })}
-                      className="h-8 rounded-full border border-line px-3 text-xs font-semibold hover:border-accent"
+                      className={`h-8 rounded-full border border-line px-3 text-xs font-semibold ${actionHoverClass("primary")}`}
                     >
                       {item.name}
                     </button>

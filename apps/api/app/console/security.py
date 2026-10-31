@@ -103,6 +103,36 @@ class OperatorPrincipal:
         return self.role == "ADMIN"
 
 
+def operator_from_token(token: str, settings: Settings) -> OperatorPrincipal | None:
+    """Resolve a console access token. A store token, or a bad one, returns None."""
+    cleaned = token.strip()
+    if not cleaned or not settings.console_jwt_secret or not settings.tenancy_enabled:
+        return None
+    try:
+        claims = jwt.decode(
+            cleaned,
+            settings.console_jwt_secret,
+            algorithms=["HS256"],
+            audience=AUDIENCE,
+            issuer=ISSUER,
+            options={"require": ["sub", "exp", "aud", "iss", "ver"]},
+        )
+        operator_id = uuid.UUID(str(claims["sub"]))
+    except (jwt.PyJWTError, ValueError, KeyError):
+        return None
+    with registry.control_session(settings) as db:
+        operator = db.get(Operator, operator_id)
+        if operator is None or not operator.is_active or operator.token_version != claims.get("ver"):
+            return None
+        return OperatorPrincipal(
+            id=operator.id,
+            email=operator.email,
+            full_name=operator.full_name,
+            role=operator.role,
+            ip=None,
+        )
+
+
 def current_operator(
     request: Request,
     settings: Annotated[Settings, Depends(get_settings)],

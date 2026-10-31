@@ -44,6 +44,13 @@ export {
   storeNameError,
   type FieldErrors,
 } from "./validation";
+export {
+  actionButtonClass,
+  actionHoverClass,
+  actionIntentFromLabel,
+  actionIntentFromNodes,
+  type ActionIntent,
+} from "./actionIntent";
 export { AvailabilityStatus } from "./AvailabilityStatus";
 export {
   AVAILABILITY_DEBOUNCE_MS,

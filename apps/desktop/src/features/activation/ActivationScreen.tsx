@@ -1,7 +1,7 @@
 import { isStoreCode, normalizeStoreCode } from "@ai-pos/shared-types";
 import { BrandLogo } from "@ai-pos/ui";
 import { CheckCircle2, KeyRound, Loader2, ShieldCheck, Store } from "lucide-react";
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useRegisterLayout } from "../../components/RegisterLayout";
 import { activateTerminal, inTauri, type TerminalStatus } from "../../lib/tauri";
 
@@ -33,8 +33,10 @@ export function ActivationScreen({ onCancel }: { onCancel?: () => void }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<TerminalStatus | null>(null);
+  const storeCode = useRef<HTMLInputElement>(null);
   const slug = subdomainOf(subdomain);
-  const ready = isStoreCode(slug) && key.replace(/-/g, "").length === 12;
+  const keyReady = key.replace(/-/g, "").length === 12;
+  const storeReady = isStoreCode(slug);
 
   useEffect(() => {
     if (done === null || inTauri()) return;
@@ -44,7 +46,12 @@ export function ActivationScreen({ onCancel }: { onCancel?: () => void }) {
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
-    if (!ready || busy) return;
+    if (!keyReady || busy) return;
+    if (!storeReady) {
+      setError("Enter the store code. The grey text in that box is only an example.");
+      storeCode.current?.focus();
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
@@ -127,17 +134,25 @@ export function ActivationScreen({ onCancel }: { onCancel?: () => void }) {
               <label className="block">
                 <span className="mb-1.5 block text-sm font-semibold">Store code</span>
                 <input
+                  ref={storeCode}
                   autoFocus
                   autoComplete="off"
                   spellCheck={false}
                   value={subdomain}
-                  onChange={(event) => setSubdomain(normalizeStoreCode(event.target.value))}
-                  placeholder="baristo"
+                  onChange={(event) => {
+                    setError(null);
+                    setSubdomain(normalizeStoreCode(event.target.value));
+                  }}
+                  placeholder="client1"
                   className={input}
                 />
                 {slug ? (
                   <span className="mt-1.5 block text-xs text-zinc-500 dark:text-zinc-400">
                     Connects as store code <span className="font-mono">{slug}</span>
+                  </span>
+                ) : keyReady ? (
+                  <span className="mt-1.5 block text-xs text-zinc-500 dark:text-zinc-400">
+                    Type the store code. The grey text is only an example.
                   </span>
                 ) : null}
               </label>
@@ -159,7 +174,7 @@ export function ActivationScreen({ onCancel }: { onCancel?: () => void }) {
               ) : null}
               <button
                 type="submit"
-                disabled={!ready || busy}
+                disabled={!keyReady || busy}
                 className="flex h-14 w-full items-center justify-center gap-2 rounded-xl bg-orange-500 text-base font-bold text-white shadow-lg shadow-orange-500/25 transition-colors hover:bg-orange-600 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-orange-500/30 disabled:cursor-not-allowed disabled:bg-zinc-200 disabled:text-zinc-500 disabled:shadow-none dark:disabled:bg-zinc-800"
               >
                 {busy ? <Loader2 size={18} aria-hidden="true" className="animate-spin" /> : <KeyRound size={18} aria-hidden="true" />}

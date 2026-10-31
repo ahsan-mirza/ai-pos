@@ -15,6 +15,7 @@ import { ErrorNote, FilterSelect, GhostButton, PrimaryButton, TextField } from "
 import { Modal } from "../../components/ui/Modal";
 import { SegmentedControl } from "../../components/ui/SegmentedControl";
 import { Toast } from "../../components/ui/Toast";
+import { actionHoverClass } from "@ai-pos/ui";
 import { apiGet, apiPost, apiUpload } from "../../lib/api";
 import { useCurrency } from "../../lib/currency";
 import { errorMessage } from "../users/api";
@@ -283,7 +284,7 @@ export function BankPage() {
                         <button
                           type="button"
                           onClick={() => void unmatch(line)}
-                          className="rounded-full border border-line px-3 py-1.5 text-xs font-semibold hover:border-accent hover:text-accent"
+                          className={`rounded-full border border-line px-3 py-1.5 text-xs font-semibold ${actionHoverClass(line.status === "IGNORED" ? "success" : "warning")}`}
                         >
                           {line.status === "IGNORED" ? "Restore" : "Unmatch"}
                         </button>

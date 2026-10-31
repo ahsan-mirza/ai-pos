@@ -1,4 +1,5 @@
 import { formatMoney, type ModifierGroup, type ModifierGroupInput, type Product } from "@ai-pos/shared-types";
+import { actionHoverClass } from "@ai-pos/ui";
 import { ChefHat, Plus, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ErrorNote, GhostButton, PrimaryButton, TextField } from "../../components/ui/Field";
@@ -150,7 +151,7 @@ function GroupModal({
               aria-label={`Remove ${option.name || "option"}`}
               disabled={options.length === 1}
               onClick={() => setOptions(options.filter((_, at) => at !== index))}
-              className="mb-2 flex h-9 w-9 items-center justify-center rounded-full text-charcoal/50 hover:bg-surface hover:text-accent disabled:opacity-30"
+              className={`mb-2 flex h-9 w-9 items-center justify-center rounded-full text-charcoal/50 disabled:opacity-30 ${actionHoverClass("danger")}`}
             >
               <Trash2 size={16} aria-hidden="true" />
             </button>

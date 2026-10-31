@@ -9,6 +9,7 @@ import {
   type TierPriceWrite,
   type VolumeBreak,
 } from "@ai-pos/shared-types";
+import { actionHoverClass } from "@ai-pos/ui";
 import { Plus, Trash2 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { ErrorNote, GhostButton, PrimaryButton, TextField } from "../../components/ui/Field";
@@ -86,7 +87,7 @@ export function BreakRows({
               type="button"
               aria-label="Remove break"
               onClick={() => onChange(breaks.filter((_, position) => position !== index))}
-              className="flex h-9 w-9 items-center justify-center rounded-full text-charcoal/50 hover:bg-surface hover:text-accent"
+              className={`flex h-9 w-9 items-center justify-center rounded-full text-charcoal/50 ${actionHoverClass("danger")}`}
             >
               <Trash2 size={15} aria-hidden="true" />
             </button>

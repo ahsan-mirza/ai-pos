@@ -16,7 +16,7 @@ import {
 } from "@ai-pos/shared-types";
 import { BookOpen, Lock, Plus, RefreshCw, Trash2, Undo2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
-import { Select } from "@ai-pos/ui";
+import { Select, actionHoverClass } from "@ai-pos/ui";
 import { ErrorNote, FilterSelect, GhostButton, PrimaryButton, TextField } from "../../components/ui/Field";
 import { Modal } from "../../components/ui/Modal";
 import { SegmentedControl } from "../../components/ui/SegmentedControl";
@@ -468,7 +468,7 @@ function JournalRow({
                 event.stopPropagation();
                 onReverse();
               }}
-              className="inline-flex items-center gap-1 rounded-full border border-line px-3 py-1 text-xs font-semibold hover:border-accent hover:text-accent"
+              className={`inline-flex items-center gap-1 rounded-full border border-line px-3 py-1 text-xs font-semibold ${actionHoverClass("danger")}`}
             >
               <Undo2 size={12} aria-hidden="true" /> Reverse
             </button>
@@ -611,7 +611,7 @@ function ManualJournalModal({ onClose, onSaved }: { onClose: () => void; onSaved
                 aria-label="Remove line"
                 disabled={lines.length <= 2}
                 onClick={() => setLines(lines.filter((_, at) => at !== index))}
-                className="rounded-full p-1.5 text-charcoal/40 hover:text-accent disabled:opacity-30"
+                className={`rounded-full p-1.5 text-charcoal/40 disabled:opacity-30 ${actionHoverClass("danger")}`}
               >
                 <Trash2 size={14} aria-hidden="true" />
               </button>
@@ -676,10 +676,10 @@ function AccountsView({ money, onOpen, onChanged }: { money: Money; onOpen: (id:
                 <td className="py-2.5 text-right tabular-nums">{money(account.balance_cents)}</td>
                 <td className="py-2.5 text-right">
                   <div className="flex justify-end gap-1">
-                    <button type="button" onClick={() => onOpen(account.id)} className="rounded-full border border-line px-3 py-1 text-xs font-semibold hover:border-accent hover:text-accent">
+                    <button type="button" onClick={() => onOpen(account.id)} className={`rounded-full border border-line px-3 py-1 text-xs font-semibold ${actionHoverClass("info")}`}>
                       <BookOpen size={12} aria-hidden="true" className="mr-1 inline" /> Ledger
                     </button>
-                    <button type="button" onClick={() => setEditing(account)} className="rounded-full border border-line px-3 py-1 text-xs font-semibold hover:border-accent hover:text-accent">
+                    <button type="button" onClick={() => setEditing(account)} className={`rounded-full border border-line px-3 py-1 text-xs font-semibold ${actionHoverClass("primary")}`}>
                       Edit
                     </button>
                   </div>
