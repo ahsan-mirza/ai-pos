@@ -10,6 +10,7 @@ import { portalHomePath } from "../../lib/portal-home";
 import { StoreScopeProvider } from "../../lib/storeScope";
 import { AssistantDrawer } from "../../features/assistant/AssistantDrawer";
 import { AssistantProvider } from "../../features/assistant/AssistantProvider";
+import { PwaChrome } from "../../pwa/PwaChrome";
 import { Header } from "./Header";
 import { Sidebar } from "./Sidebar";
 
@@ -61,6 +62,7 @@ export function AppShell() {
               subscriptionLocked={subscriptionLocked}
             />
             <div className="flex min-w-0 flex-1 flex-col">
+              <PwaChrome />
               <PracticeBanner />
               <TaxPortalBanner />
               <SubscriptionNotice onAccess={setSubscriptionLocked} />

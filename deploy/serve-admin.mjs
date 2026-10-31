@@ -16,8 +16,18 @@ const types = {
   ".png": "image/png",
   ".svg": "image/svg+xml",
   ".webp": "image/webp",
+  ".webmanifest": "application/manifest+json",
   ".woff2": "font/woff2",
 };
+
+function cacheControl(file) {
+  const name = file.split(sep).pop();
+  if (name === "sw.js" || name === "manifest.webmanifest" || name === "index.html" || name === "offline.html") {
+    return "no-cache";
+  }
+  if (file.includes(`${sep}assets${sep}`)) return "public, max-age=31536000, immutable";
+  return "public, max-age=3600";
+}
 
 function safeFile(pathname) {
   const decoded = decodeURIComponent(pathname.split("?")[0]);
@@ -50,7 +60,10 @@ createServer((request, response) => {
     console.log(`${request.method} ${path} 404`);
     return;
   }
-  response.writeHead(200, { "Content-Type": types[extname(file)] || "application/octet-stream" });
+  response.writeHead(200, {
+    "Content-Type": types[extname(file)] || "application/octet-stream",
+    "Cache-Control": cacheControl(file),
+  });
   createReadStream(file).pipe(response);
   console.log(`${request.method} ${path} 200`);
 }).listen(port, host, () => {

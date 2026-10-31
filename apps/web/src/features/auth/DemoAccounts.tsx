@@ -56,7 +56,7 @@ export function DemoAccounts({ onPick }: { onPick: (username: string, password: 
   const users = [...demo.users].sort((a, b) => Number(b.has_portal_access) - Number(a.has_portal_access));
 
   return (
-    <section className="w-full max-w-5xl rounded-[28px] border border-line bg-white p-6" aria-label="Demo accounts">
+    <section className="w-full max-w-5xl rounded-[28px] border border-line bg-white p-6 dark:border-white/10 dark:bg-[#1c1b1f] dark:text-white" aria-label="Demo accounts">
       <div className="mb-4 flex flex-wrap items-end justify-between gap-2">
         <div>
           <h2 className="text-lg font-semibold">Demo accounts</h2>

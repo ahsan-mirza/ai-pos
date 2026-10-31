@@ -226,6 +226,12 @@ export function AccountStep({
       <button type="submit" disabled={!canContinue} className={`${submitClass} mt-6`}>
         {busy ? "Sending code…" : "Continue"}
       </button>
+      <p className="mt-4 text-center text-sm text-charcoal/60">
+        Already have an account?{" "}
+        <a href="/" className="font-semibold text-accent hover:underline">
+          Log in
+        </a>
+      </p>
     </form>
   );
 }

@@ -99,12 +99,15 @@ export function SignupApp() {
             })}
           </ol>
           <p className="mt-10 text-xs text-white/50">
-            Already have a store?{" "}
-            <span className="text-white/70">
-              {env.storesShareThisHost
-                ? `Open ${window.location.host} and enter the store code.`
-                : `Open its address, for example yourstore.${env.tenantBaseDomain()}.`}
-            </span>
+            Already have an account?{" "}
+            <a href="/" className="font-semibold text-white hover:underline">
+              Log in
+            </a>
+            {env.storesShareThisHost ? null : (
+              <span className="mt-1 block text-white/70">
+                Or open your store, for example yourstore.{env.tenantBaseDomain()}.
+              </span>
+            )}
           </p>
         </aside>
         <main className="min-h-[560px] p-6 sm:p-10">

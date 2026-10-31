@@ -1,10 +1,11 @@
 import { formatMoney } from "@ai-pos/shared-types";
-import { ArrowRight, Building2, CreditCard, LogOut, UserRound } from "lucide-react";
+import { ArrowRight, Building2, CreditCard, Download, LogOut, UserRound } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { apiGet } from "../../lib/api";
 import { useAuth } from "../../lib/auth";
 import { useCanManageSettings } from "../../lib/currency";
+import { usePwa } from "../../pwa/PwaContext";
 import { ProfileAvatar } from "../ui/ProfileAvatar";
 
 interface PaymentAttention {
@@ -79,6 +80,7 @@ const itemClass =
 
 export function AccountMenu() {
   const { user, logout } = useAuth();
+  const pwa = usePwa();
   const canBill = useCanManageSettings();
   const [open, setOpen] = useState(false);
   const [access, setAccess] = useState<AccountAccess | null>(null);
@@ -249,6 +251,34 @@ export function AccountMenu() {
               <UserRound size={16} strokeWidth={1.75} aria-hidden="true" />
               My account
             </Link>
+            {pwa.menu === "install" ? (
+              <button
+                type="button"
+                role="menuitem"
+                className={itemClass}
+                onClick={() => {
+                  setOpen(false);
+                  void pwa.install();
+                }}
+              >
+                <Download size={16} strokeWidth={1.75} aria-hidden="true" />
+                Install Business Pro
+              </button>
+            ) : null}
+            {pwa.menu === "ios" ? (
+              <button
+                type="button"
+                role="menuitem"
+                className={itemClass}
+                onClick={() => {
+                  setOpen(false);
+                  pwa.openIosHelp();
+                }}
+              >
+                <Download size={16} strokeWidth={1.75} aria-hidden="true" />
+                Add to Home Screen
+              </button>
+            ) : null}
             {canBill ? (
               <Link to="/settings" role="menuitem" onClick={() => setOpen(false)} className={itemClass}>
                 <Building2 size={16} strokeWidth={1.75} aria-hidden="true" />

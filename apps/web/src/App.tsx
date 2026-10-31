@@ -86,6 +86,7 @@ import { SettingsPage } from "./features/settings/SettingsPage";
 import { StoresPage } from "./features/stores/StoresPage";
 import { UsersPage } from "./features/users/UsersPage";
 import { AuthProvider, useAuth, useIsSuperAdmin } from "./lib/auth";
+import { PwaProvider } from "./pwa/PwaContext";
 import { useCapability, useSettingsLabel } from "./lib/capabilities";
 import { TenantProvider } from "./context/TenantContext";
 import { CurrencyProvider, useCanManageSettings } from "./lib/currency";
@@ -637,14 +638,16 @@ export function App() {
   // Waiter handheld and the tablet left on a table. Same device-token sign-in as the kitchen display.
   if (window.location.pathname === "/table" || window.location.pathname.startsWith("/table/")) return <TableOrderApp />;
   return (
-    <AuthProvider>
-      <CurrencyProvider>
-        <TenantProvider>
-          <ConfirmProvider>
-            <Portal />
-          </ConfirmProvider>
-        </TenantProvider>
-      </CurrencyProvider>
-    </AuthProvider>
+    <PwaProvider>
+      <AuthProvider>
+        <CurrencyProvider>
+          <TenantProvider>
+            <ConfirmProvider>
+              <Portal />
+            </ConfirmProvider>
+          </TenantProvider>
+        </CurrencyProvider>
+      </AuthProvider>
+    </PwaProvider>
   );
 }

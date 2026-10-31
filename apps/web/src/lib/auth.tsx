@@ -10,6 +10,7 @@ import {
   setSessionRenewer,
   setUnauthorizedHandler,
 } from "./api";
+import { clearUserCaches } from "../pwa/register";
 
 const STORAGE_KEY = "ai-pos.portal-session";
 const RENEW_LEAD_MS = 60_000;
@@ -57,6 +58,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const logout = useCallback(() => {
     generation.current += 1;
     sessionStorage.removeItem(STORAGE_KEY);
+    void clearUserCaches();
     setAccessToken(null);
     setSession(null);
     setUser(null);

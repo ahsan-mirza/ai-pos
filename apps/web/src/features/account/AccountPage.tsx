@@ -6,6 +6,7 @@ import { apiDelete, apiPatch, apiPost, apiUpload } from "../../lib/api";
 import { useAuth } from "../../lib/auth";
 import { useCurrency } from "../../lib/currency";
 import { errorMessage } from "../users/api";
+import { DeviceAlertsCard, InstallBusinessProCard } from "../../pwa/PwaChrome";
 
 const regionNames = new Intl.DisplayNames(["en"], { type: "region" });
 
@@ -227,6 +228,9 @@ export function AccountPage() {
           </PrimaryButton>
         </div>
       </form>
+
+      <InstallBusinessProCard />
+      <DeviceAlertsCard />
 
       <section className="rounded-card border border-line bg-white p-6">
         <h2 className="text-lg font-semibold">This business</h2>
