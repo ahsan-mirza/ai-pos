@@ -483,14 +483,18 @@ function jsonLd(page: SeoPage): string {
 export function publicWorkerBoot(): string {
   return `<script>
 (function () {
+  var path = location.pathname.replace(/\\/+$/, "") || "/";
+  var sections = { "/solutions": "solutions", "/features": "features", "/industries": "industries", "/pricing": "pricing", "/contact": "contact" };
   var installed = window.matchMedia("(display-mode: standalone)").matches
     || window.matchMedia("(display-mode: window-controls-overlay)").matches
     || window.matchMedia("(display-mode: minimal-ui)").matches
     || window.matchMedia("(display-mode: fullscreen)").matches
     || window.navigator.standalone === true;
-  if (!installed) return;
-  var path = location.pathname.replace(/\\/+$/, "") || "/";
-  if (path === "/" || path === "/index.html" || path.indexOf("-pos") !== -1 || path === "/pos-software-uae") location.replace("/login");
+  if (installed) {
+    if (path === "/" || path === "/index.html" || path.indexOf("-pos") !== -1 || path === "/pos-software-uae" || sections[path]) location.replace("/login");
+    return;
+  }
+  if (sections[path]) location.replace("/#" + sections[path]);
 })();
 </script>`;
 }

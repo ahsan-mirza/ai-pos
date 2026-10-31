@@ -16,6 +16,8 @@ describe("sign-in return path", () => {
     expect(signedOutLocation("/login", "?next=%2Fdashboard", apex)).toBeNull();
     expect(signedOutLocation("/", "", apex)).toBeNull();
     expect(signedOutLocation("/restaurant-pos", "", apex)).toBeNull();
+    expect(signedOutLocation("/pricing", "", apex)).toBeNull();
+    expect(signedOutLocation("/admin74246/overview", "", apex)).toBeNull();
     expect(signedOutLocation("/signup", "", apex)).toBeNull();
     expect(signedOutLocation("/welcome", "?handoff=once", apex)).toBeNull();
     expect(signedOutLocation("/kds", "", store)).toBeNull();
@@ -39,6 +41,8 @@ describe("sign-in return path", () => {
     expect(safeNextPath("/welcome?handoff=once", apex)).toBeNull();
     expect(safeNextPath("/", apex)).toBeNull();
     expect(safeNextPath("/restaurant-pos", apex)).toBeNull();
+    expect(safeNextPath("/admin74246/tenants", apex)).toBeNull();
+    expect(safeNextPath("/pricing", apex)).toBeNull();
     expect(signedInLanding("/login", "?next=https%3A%2F%2Fevil.example", apex)).toBe("/dashboard");
     expect(signedInLanding("/", "", apex)).toBe("/dashboard");
   });

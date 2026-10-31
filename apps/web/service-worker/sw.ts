@@ -7,6 +7,7 @@ import { isPortalNavigation, isUserScopedCache, mayCacheRequest } from "../src/p
 declare const self: ServiceWorkerGlobalScope;
 
 // The app shell is /index.html. On axizpos.com that URL is the portal, not the marketing page.
+// /admin74246/ is the console. It is not a portal navigation, so this worker fetches it from the network.
 // Marketing HTML is always fetched from the network. The browser HTTP cache must not keep an old landing page inside the installed app.
 self.addEventListener("fetch", (event) => {
   const url = new URL(event.request.url);

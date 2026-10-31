@@ -71,6 +71,13 @@ describe("Business Pro PWA", () => {
     expect(isPortalNavigation({ hostname: "axizpos.com", pathname: "/login" })).toBe(true);
     expect(isPortalNavigation({ hostname: "axizpos.com", pathname: "/dashboard" })).toBe(true);
     expect(isPortalNavigation({ hostname: "axizpos.com", pathname: "/" })).toBe(false);
+    expect(isPortalNavigation({ hostname: "axizpos.com", pathname: "/admin74246/" })).toBe(false);
+    expect(isPortalNavigation({ hostname: "axizpos.com", pathname: "/admin74246/overview" })).toBe(false);
+    expect(isPublicNavigation({ hostname: "axizpos.com", pathname: "/admin74246/overview" })).toBe(false);
+    expect(isPublicNavigation({ hostname: "axizpos.com", pathname: "/pricing" })).toBe(true);
+    expect(isPublicNavigation({ hostname: "axizpos.com", pathname: "/grocery-pos" })).toBe(true);
+    expect(isPortalNavigation({ hostname: "axizpos.com", pathname: "/solutions" })).toBe(false);
+    expect(mayCacheRequest("/admin74246/assets/app.js", false, "axizpos.com")).toBe(false);
     expect(isUserScopedCache("business-pro-user")).toBe(true);
     expect(isUserScopedCache("workbox-precache-v2")).toBe(false);
     expect(isUserScopedCache("api-responses")).toBe(true);
@@ -78,6 +85,8 @@ describe("Business Pro PWA", () => {
     expect(marketingWorkerAction({ hostname: "axizpos.com", pathname: "/", standalone: false, controlled: false })).toBe("none");
     expect(marketingWorkerAction({ hostname: "axizpos.com", pathname: "/", standalone: true, controlled: true })).toBe("open-portal");
     expect(marketingWorkerAction({ hostname: "axizpos.com", pathname: "/restaurant-pos", standalone: true, controlled: false })).toBe("open-portal");
+    expect(marketingWorkerAction({ hostname: "axizpos.com", pathname: "/pricing", standalone: true, controlled: true })).toBe("open-portal");
+    expect(marketingWorkerAction({ hostname: "axizpos.com", pathname: "/admin74246/", standalone: true, controlled: true })).toBe("none");
     expect(marketingWorkerAction({ hostname: "axizpos.com", pathname: "/login", standalone: false, controlled: true })).toBe("none");
     expect(marketingWorkerAction({ hostname: "axizpos.com", pathname: "/dashboard", standalone: true, controlled: true })).toBe("none");
     expect(marketingWorkerAction({ hostname: "baristo.axizpos.com", pathname: "/", standalone: false, controlled: true })).toBe("none");
@@ -124,10 +133,15 @@ describe("Business Pro PWA", () => {
     expect(site).not.toContain("ai-pos.portal-session");
     expect(site).not.toContain("ai-pos.store-code");
     const nginx = readFileSync(join(process.cwd(), "../../deploy/nginx/ai-pos.apex.conf"), "utf8");
-    const shell = nginx.split("location = /index.html")[1]?.split("location = / {")[0] ?? "";
+    const shell = nginx.split("location = /index.html")[1]?.split(/\nlocation /)[0] ?? "";
     expect(shell).toContain("proxy_pass http://ai_pos_admin;");
     expect(shell).not.toContain("ai-pos-site");
     expect(nginx).toContain("rewrite ^ /index.html break;");
+    expect(nginx).toContain("grocery-pos");
+    expect(nginx).toContain("quick-service-pos");
+    expect(nginx).toContain("solutions|features|industries|pricing|contact");
+    expect(site).toContain('"/pricing": "pricing"');
+    expect(site).toContain('location.replace("/#" + sections[path])');
   });
 
   it("updates only when the person confirms, and does not ask for push", () => {

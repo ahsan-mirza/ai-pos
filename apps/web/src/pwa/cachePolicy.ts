@@ -19,6 +19,12 @@ export const PUBLIC_MARKETING_PATHS = [
 
 const PUBLIC_PREFIXES = ["/site-assets/", "/pos/", "/brand/", "/portal/"];
 
+/** Homepage sections. They are anchors on the marketing site, not Business Pro routes. */
+const MARKETING_SECTIONS = ["/solutions", "/features", "/industries", "/pricing", "/contact"];
+
+/** The console is a separate application. The portal shell must not answer for it. */
+const CONSOLE_PREFIX = "/admin74246";
+
 export function isMarketingHost(hostname: string): boolean {
   return MARKETING_HOSTS.has(hostname.toLowerCase());
 }
@@ -28,19 +34,26 @@ function barePath(pathname: string): string {
   return pathname.replace(/\/+$/, "") || "/";
 }
 
+/** The console application, including its assets and nested routes. */
+export function isConsoleNavigation(url: { pathname: string }): boolean {
+  const path = barePath(url.pathname);
+  return path === CONSOLE_PREFIX || url.pathname.startsWith(`${CONSOLE_PREFIX}/`);
+}
+
 /** The public website. On a store host, `/` is the portal and is not public. */
 export function isPublicNavigation(url: { hostname: string; pathname: string }): boolean {
   const path = barePath(url.pathname);
+  if (isConsoleNavigation(url)) return false;
   if (PUBLIC_PREFIXES.some((prefix) => url.pathname.startsWith(prefix))) return true;
   if (path === "/robots.txt" || path === "/sitemap.xml") return true;
   if (PUBLIC_MARKETING_PATHS.includes(path)) return true;
   if (!isMarketingHost(url.hostname)) return false;
-  return path === "/" || path === "/index.html";
+  return path === "/" || path === "/index.html" || MARKETING_SECTIONS.includes(path);
 }
 
 /** Navigations the installed portal may open from its own shell. */
 export function isPortalNavigation(url: { hostname: string; pathname: string }): boolean {
-  return !isPublicNavigation(url);
+  return !isPublicNavigation(url) && !isConsoleNavigation(url);
 }
 
 /**
@@ -56,7 +69,7 @@ export function marketingWorkerAction(input: {
   if (!isPublicNavigation(input)) return "none";
   if (input.standalone) {
     const path = barePath(input.pathname);
-    if (path === "/" || path === "/index.html" || PUBLIC_MARKETING_PATHS.includes(path)) return "open-portal";
+    if (path === "/" || path === "/index.html" || PUBLIC_MARKETING_PATHS.includes(path) || MARKETING_SECTIONS.includes(path)) return "open-portal";
     return "none";
   }
   return input.controlled ? "leave" : "none";
@@ -64,6 +77,7 @@ export function marketingWorkerAction(input: {
 
 export function mayCacheRequest(pathname: string, hasAuthorization: boolean, hostname = ""): boolean {
   if (hasAuthorization) return false;
+  if (isConsoleNavigation({ pathname })) return false;
   if (BLOCKED_PATH.some((rule) => rule.test(pathname))) return false;
   if (hostname !== "" && isPublicNavigation({ hostname, pathname })) return false;
   return true;

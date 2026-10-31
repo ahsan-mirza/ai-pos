@@ -1,4 +1,4 @@
-import { isMarketingHost, isPublicNavigation } from "../pwa/cachePolicy";
+import { isConsoleNavigation, isMarketingHost, isPublicNavigation } from "../pwa/cachePolicy";
 
 /** A same-origin path the portal may reopen after sign-in. Public and auth pages are not destinations. */
 export function safeNextPath(raw: string | null, hostname: string): string | null {
@@ -21,7 +21,7 @@ export function safeNextPath(raw: string | null, hostname: string): string | nul
   ) {
     return null;
   }
-  if (isPublicNavigation({ hostname, pathname: path })) return null;
+  if (isPublicNavigation({ hostname, pathname: path }) || isConsoleNavigation({ pathname: path })) return null;
   return `${path}${url.search}`;
 }
 
@@ -37,7 +37,7 @@ export function signedOutLocation(pathname: string, search: string, hostname: st
   ) {
     return null;
   }
-  if (isPublicNavigation({ hostname, pathname })) return null;
+  if (isPublicNavigation({ hostname, pathname }) || isConsoleNavigation({ pathname })) return null;
   const next = `${pathname}${search}`;
   return `/login?next=${encodeURIComponent(next)}`;
 }
