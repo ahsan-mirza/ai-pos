@@ -1,5 +1,5 @@
 import { Capability, Permission, capabilitySpec } from "@ai-pos/shared-types";
-import { useCallback, useState, type ReactNode } from "react";
+import { useCallback, useLayoutEffect, useState, type ReactNode } from "react";
 import { BrowserRouter, Link, Navigate, Route, Routes } from "react-router-dom";
 import { AppShell, PageFrame } from "./components/layout/AppShell";
 import { ConfirmProvider } from "./components/ui/ConfirmDialog";
@@ -10,6 +10,7 @@ import { EInvoicingPage } from "./features/einvoicing/EInvoicingPage";
 import { AuditPage } from "./features/audit/AuditPage";
 import { AccountPage } from "./features/account/AccountPage";
 import { LoginPage } from "./features/auth/LoginPage";
+import { signedInLanding, signedOutLocation } from "./lib/entry";
 import { portalHomePath } from "./lib/portal-home";
 import { CustomersPage } from "./features/customers/CustomersPage";
 import { CustomerStatementPage } from "./features/customers/CustomerStatementPage";
@@ -162,11 +163,26 @@ function DashboardRoute() {
   );
 }
 
+/** A signed-in visit to the login screen continues to the requested page, or the dashboard. */
+function ResumeSignIn() {
+  const target =
+    signedInLanding(window.location.pathname, window.location.search, window.location.hostname) ?? portalHomePath();
+  return <Navigate to={target} replace />;
+}
+
 function Portal() {
   const { status } = useAuth();
   const { online } = usePwa();
   const [welcoming, setWelcoming] = useState(isWelcomeHandoff);
   const welcomed = useCallback(() => setWelcoming(false), []);
+  useLayoutEffect(() => {
+    if (status !== "signed-out") return;
+    const target = signedOutLocation(window.location.pathname, window.location.search, window.location.hostname);
+    if (target === null) return;
+    const current = `${window.location.pathname}${window.location.search}`;
+    if (current === target) return;
+    window.history.replaceState(null, "", target);
+  }, [status]);
   if (welcoming) return <WelcomeHandoff onDone={welcomed} />;
   if (status === "checking") {
     return (
@@ -182,6 +198,7 @@ function Portal() {
     <BrowserRouter>
       <OnboardingWizard />
       <Routes>
+        <Route path="login" element={<ResumeSignIn />} />
         <Route
           path="m"
           element={

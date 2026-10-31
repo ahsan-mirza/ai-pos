@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { isPortalNavigation, isPublicNavigation, isUserScopedCache, mayCacheRequest } from "./cachePolicy";
+import { isPortalNavigation, isPublicNavigation, isUserScopedCache, marketingWorkerAction, mayCacheRequest } from "./cachePolicy";
 import { bannerVisible, installSurface, isIos, isStandalone, menuAction, offerInstall, shouldApplyUpdate } from "./install";
 import { PWA_ICONS, pwaManifest } from "./manifest";
 import { pushConfigured } from "./push";
@@ -74,6 +74,13 @@ describe("Business Pro PWA", () => {
     expect(isUserScopedCache("business-pro-user")).toBe(true);
     expect(isUserScopedCache("workbox-precache-v2")).toBe(false);
     expect(isUserScopedCache("api-responses")).toBe(true);
+    expect(marketingWorkerAction({ hostname: "axizpos.com", pathname: "/", standalone: false, controlled: true })).toBe("leave");
+    expect(marketingWorkerAction({ hostname: "axizpos.com", pathname: "/", standalone: false, controlled: false })).toBe("none");
+    expect(marketingWorkerAction({ hostname: "axizpos.com", pathname: "/", standalone: true, controlled: true })).toBe("open-portal");
+    expect(marketingWorkerAction({ hostname: "axizpos.com", pathname: "/restaurant-pos", standalone: true, controlled: false })).toBe("open-portal");
+    expect(marketingWorkerAction({ hostname: "axizpos.com", pathname: "/login", standalone: false, controlled: true })).toBe("none");
+    expect(marketingWorkerAction({ hostname: "axizpos.com", pathname: "/dashboard", standalone: true, controlled: true })).toBe("none");
+    expect(marketingWorkerAction({ hostname: "baristo.axizpos.com", pathname: "/", standalone: false, controlled: true })).toBe("none");
   });
 
   it("serves the shell offline and leaves live data on the network", () => {
@@ -82,6 +89,7 @@ describe("Business Pro PWA", () => {
     expect(worker).toContain("isPortalNavigation");
     expect(worker.indexOf("!isPortalNavigation")).toBeLessThan(worker.indexOf("precacheAndRoute(self.__WB_MANIFEST)"));
     expect(worker).not.toContain("navigateFallback");
+    expect(worker).toContain("stopImmediatePropagation");
     expect(worker).toContain("NetworkOnly");
     expect(worker).toContain('caches.match("/offline.html")');
     expect(worker).toContain('let url = "/dashboard"');
@@ -101,8 +109,17 @@ describe("Business Pro PWA", () => {
     expect(store).not.toContain("password:");
     const registration = readFileSync(join(process.cwd(), "src", "pwa", "register.ts"), "utf8");
     expect(registration).toContain('register("/sw.js", { scope: "/" })');
+    expect(registration).toContain("isPublicNavigation");
     expect(registration).toContain("import.meta.env.PROD");
     expect(registration).not.toContain("localStorage");
+    const site = readFileSync(join(process.cwd(), "../site/src/seo.ts"), "utf8");
+    expect(site).toContain("publicWorkerBoot");
+    expect(site).toContain("axiz.public-worker");
+    expect(site).toContain("unregister");
+    expect(site).toContain('location.replace("/dashboard")');
+    expect(site).not.toContain("localStorage");
+    expect(site).not.toContain("ai-pos.portal-session");
+    expect(site).not.toContain("ai-pos.store-code");
   });
 
   it("updates only when the person confirms, and does not ask for push", () => {

@@ -1,4 +1,4 @@
-import { isUserScopedCache } from "./cachePolicy";
+import { isPublicNavigation, isUserScopedCache } from "./cachePolicy";
 
 /** Drops caches that could hold a person's session. The precached shell stays. */
 export async function clearUserCaches(): Promise<void> {
@@ -46,6 +46,7 @@ export function applyAppUpdate(registration: ServiceWorkerRegistration): void {
 
 export function registerAppWorker(): void {
   if (!import.meta.env.PROD || !("serviceWorker" in navigator)) return;
+  if (isPublicNavigation({ hostname: window.location.hostname, pathname: window.location.pathname })) return;
   const register = () => {
     void navigator.serviceWorker.register("/sw.js", { scope: "/" });
   };

@@ -43,6 +43,25 @@ export function isPortalNavigation(url: { hostname: string; pathname: string }):
   return !isPublicNavigation(url);
 }
 
+/**
+ * What a public marketing document should do with the portal service worker.
+ * A normal browser tab lets the worker go. An installed app opens the portal instead.
+ */
+export function marketingWorkerAction(input: {
+  hostname: string;
+  pathname: string;
+  standalone: boolean;
+  controlled: boolean;
+}): "leave" | "open-portal" | "none" {
+  if (!isPublicNavigation(input)) return "none";
+  if (input.standalone) {
+    const path = barePath(input.pathname);
+    if (path === "/" || path === "/index.html" || PUBLIC_MARKETING_PATHS.includes(path)) return "open-portal";
+    return "none";
+  }
+  return input.controlled ? "leave" : "none";
+}
+
 export function mayCacheRequest(pathname: string, hasAuthorization: boolean, hostname = ""): boolean {
   if (hasAuthorization) return false;
   if (BLOCKED_PATH.some((rule) => rule.test(pathname))) return false;

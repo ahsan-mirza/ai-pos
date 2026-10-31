@@ -11,7 +11,7 @@ export function portalHomePath(): string {
   return onMarketingHost() ? "/dashboard" : "/";
 }
 
-/** Sign-in. On axizpos.com `/` is the landing page, so the form lives at `/login`. */
+/** Sign-in. Always a portal route, so the public landing page at `/` is not the form. */
 export function portalSignInPath(): string {
-  return onMarketingHost() ? "/login" : "/";
+  return "/login";
 }

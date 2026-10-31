@@ -6,6 +6,12 @@ import { isPortalNavigation, isUserScopedCache, mayCacheRequest } from "../src/p
 
 declare const self: ServiceWorkerGlobalScope;
 
+// A public document is left to the browser. The marketing site must not become the portal shell.
+self.addEventListener("fetch", (event) => {
+  const url = new URL(event.request.url);
+  if (event.request.mode === "navigate" && !isPortalNavigation(url)) event.stopImmediatePropagation();
+});
+
 // Registered before the precache so a marketing navigation, including /index.html, is never the portal shell.
 registerRoute(
   ({ request, url }) => request.mode === "navigate" && !isPortalNavigation(url),

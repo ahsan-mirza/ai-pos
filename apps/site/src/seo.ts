@@ -475,6 +475,63 @@ function jsonLd(page: SeoPage): string {
   return JSON.stringify(payload).replace(/</g, "\\u003c");
 }
 
+/**
+ * Runs only on public marketing documents.
+ * A normal browser visit drops the portal service worker so this site stays a website.
+ * An installed app opens the portal instead. Stored sessions are left untouched.
+ */
+export function publicWorkerBoot(): string {
+  return `<script>
+(function () {
+  var path = location.pathname.replace(/\\/+$/, "") || "/";
+  var standalone = window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone === true;
+  if (standalone) {
+    if (path === "/" || path === "/index.html" || path.indexOf("-pos") !== -1 || path === "/pos-software-uae") location.replace("/dashboard");
+    return;
+  }
+  if (!("serviceWorker" in navigator)) return;
+  var key = "axiz.public-worker";
+  navigator.serviceWorker.addEventListener("controllerchange", function () {
+    try {
+      if (sessionStorage.getItem(key) === "1") return;
+    } catch (error) {
+      return;
+    }
+    location.reload();
+  });
+  navigator.serviceWorker.getRegistrations().then(function (regs) {
+    var portal = regs.filter(function (reg) {
+      try {
+        var scope = new URL(reg.scope);
+        return scope.origin === location.origin && scope.pathname === "/";
+      } catch (error) {
+        return false;
+      }
+    });
+    if (!portal.length) {
+      try { sessionStorage.removeItem(key); } catch (error) {}
+      return;
+    }
+    if (navigator.serviceWorker.controller === null) {
+      portal.forEach(function (reg) { reg.unregister(); });
+      try { sessionStorage.removeItem(key); } catch (error) {}
+      return;
+    }
+    try {
+      if (sessionStorage.getItem(key) === "1") {
+        sessionStorage.removeItem(key);
+        return;
+      }
+      sessionStorage.setItem(key, "1");
+    } catch (error) {}
+    Promise.all(portal.map(function (reg) { return reg.unregister(); })).then(function () {
+      location.reload();
+    });
+  });
+})();
+</script>`;
+}
+
 /** Head tags for one public page. Injected once, in place of the site-seo comment. */
 export function headTags(page: SeoPage, verification: string | undefined): string {
   const url = canonicalUrl(page);
@@ -500,6 +557,7 @@ export function headTags(page: SeoPage, verification: string | undefined): strin
     `<meta name="twitter:image" content="${image}" />`,
     verificationTag,
     `<script type="application/ld+json">${jsonLd(page)}</script>`,
+    publicWorkerBoot(),
   ]
     .filter(Boolean)
     .join("\n    ");
