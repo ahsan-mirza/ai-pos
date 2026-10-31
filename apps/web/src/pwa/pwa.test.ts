@@ -122,6 +122,11 @@ describe("Business Pro PWA", () => {
     expect(site).not.toContain("localStorage");
     expect(site).not.toContain("ai-pos.portal-session");
     expect(site).not.toContain("ai-pos.store-code");
+    const nginx = readFileSync(join(process.cwd(), "../../deploy/nginx/ai-pos.apex.conf"), "utf8");
+    const shell = nginx.split("location = /index.html")[1]?.split("location = / {")[0] ?? "";
+    expect(shell).toContain("proxy_pass http://ai_pos_admin;");
+    expect(shell).not.toContain("ai-pos-site");
+    expect(nginx).toContain("rewrite ^ /index.html break;");
   });
 
   it("updates only when the person confirms, and does not ask for push", () => {
