@@ -6,10 +6,16 @@ import { isPortalNavigation, isUserScopedCache, mayCacheRequest } from "../src/p
 
 declare const self: ServiceWorkerGlobalScope;
 
-// A public document is left to the browser. The marketing site must not become the portal shell.
+// Marketing HTML is always fetched from the network. The browser HTTP cache must not keep an old landing page inside the installed app.
 self.addEventListener("fetch", (event) => {
   const url = new URL(event.request.url);
-  if (event.request.mode === "navigate" && !isPortalNavigation(url)) event.stopImmediatePropagation();
+  if (event.request.mode !== "navigate" || isPortalNavigation(url)) return;
+  event.stopImmediatePropagation();
+  event.respondWith(fetch(event.request, { cache: "no-store" }));
+});
+
+self.addEventListener("install", () => {
+  self.skipWaiting();
 });
 
 // Registered before the precache so a marketing navigation, including /index.html, is never the portal shell.
@@ -54,7 +60,25 @@ self.addEventListener("message", (event) => {
 });
 
 self.addEventListener("activate", (event) => {
-  event.waitUntil(self.clients.claim());
+  event.waitUntil(
+    (async () => {
+      const names = await caches.keys();
+      await Promise.all(
+        names
+          .filter((name) => !name.includes("precache") && !name.includes("workbox"))
+          .map((name) => caches.delete(name)),
+      );
+      await self.clients.claim();
+      const windows = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+      await Promise.all(
+        windows.map((client) => {
+          const url = new URL(client.url);
+          if (url.origin !== self.location.origin || isPortalNavigation(url)) return undefined;
+          return client.navigate(client.url);
+        }),
+      );
+    })(),
+  );
 });
 
 self.addEventListener("push", (event) => {

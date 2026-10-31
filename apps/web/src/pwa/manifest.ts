@@ -4,7 +4,9 @@ export const pwaManifest = {
   name: "AxizPOS Business Pro",
   short_name: "Business Pro",
   description: "Manage your business operations with AxizPOS Business Pro.",
-  start_url: "/dashboard",
+  // The installed app opens Sign In. A saved session continues to the dashboard from there.
+  // The id stays /dashboard so an existing Windows install updates in place.
+  start_url: "/login",
   scope: "/",
   display: "standalone" as const,
   orientation: "any" as const,

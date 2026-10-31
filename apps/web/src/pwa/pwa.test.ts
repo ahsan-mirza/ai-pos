@@ -12,7 +12,7 @@ describe("Business Pro PWA", () => {
     expect(pwaManifest.short_name).toBe("Business Pro");
     expect(pwaManifest.description).toContain("AxizPOS Business Pro");
     expect(pwaManifest.id).toBe("/dashboard");
-    expect(pwaManifest.start_url).toBe("/dashboard");
+    expect(pwaManifest.start_url).toBe("/login");
     expect(pwaManifest.scope).toBe("/");
     expect(pwaManifest.display).toBe("standalone");
     expect(pwaManifest.orientation).toBe("any");
@@ -97,7 +97,10 @@ describe("Business Pro PWA", () => {
     expect(worker).toContain('addEventListener("push"');
     expect(worker).toContain('addEventListener("notificationclick"');
     expect(worker).not.toContain("requestPermission");
-    expect(worker).not.toContain('addEventListener("install"');
+    expect(worker).toContain('addEventListener("install"');
+    expect(worker).toContain("self.skipWaiting()");
+    expect(worker).toContain('cache: "no-store"');
+    expect(worker).toContain("client.navigate(client.url)");
     const auth = readFileSync(join(process.cwd(), "src", "lib", "auth.tsx"), "utf8");
     expect(auth).toContain("clearUserCaches");
     expect(auth).toContain("writeStoredSession");
@@ -114,9 +117,8 @@ describe("Business Pro PWA", () => {
     expect(registration).not.toContain("localStorage");
     const site = readFileSync(join(process.cwd(), "../site/src/seo.ts"), "utf8");
     expect(site).toContain("publicWorkerBoot");
-    expect(site).toContain("axiz.public-worker");
-    expect(site).toContain("unregister");
-    expect(site).toContain('location.replace("/dashboard")');
+    expect(site).toContain('location.replace("/login")');
+    expect(site).not.toContain("unregister");
     expect(site).not.toContain("localStorage");
     expect(site).not.toContain("ai-pos.portal-session");
     expect(site).not.toContain("ai-pos.store-code");

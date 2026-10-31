@@ -11,6 +11,20 @@
     <meta name="apple-mobile-web-app-title" content="Business Pro" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <title>AxizPOS Business Pro</title>
+    <script>
+      (function () {
+        var installed = window.matchMedia("(display-mode: standalone)").matches
+          || window.matchMedia("(display-mode: window-controls-overlay)").matches
+          || window.matchMedia("(display-mode: minimal-ui)").matches
+          || window.matchMedia("(display-mode: fullscreen)").matches
+          || window.navigator.standalone === true;
+        if (!installed) return;
+        var host = location.hostname.toLowerCase();
+        if (host !== "axizpos.com" && host !== "www.axizpos.com") return;
+        var path = location.pathname.replace(/\/+$/, "") || "/";
+        if (path === "/" || path === "/index.html" || path.indexOf("-pos") !== -1 || path === "/pos-software-uae") location.replace("/login");
+      })();
+    </script>
     <link rel="icon" type="image/svg+xml" href="/brand/fav-icon.svg" media="(prefers-color-scheme: light)" />
     <link rel="icon" type="image/svg+xml" href="/brand/fav-icon-white.svg" media="(prefers-color-scheme: dark)" />
     <link rel="icon" type="image/png" sizes="32x32" href="/icons/favicon-32.png" />
