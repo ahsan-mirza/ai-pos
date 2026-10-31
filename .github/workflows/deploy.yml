@@ -86,13 +86,17 @@ jobs:
 
       - name: Upload API and catalog
         run: |
-          ssh server "mkdir -p $APP_DIR/apps/api $APP_DIR/packages/catalog $WEB_DIR $CONSOLE_DIR $SITE_DIR"
+          ssh server "mkdir -p $APP_DIR/apps/api $APP_DIR/packages/catalog $APP_DIR/plugins/einvoicing $WEB_DIR $CONSOLE_DIR $SITE_DIR"
           rsync -az --delete \
             --exclude '.venv/' --exclude '.env*' --exclude 'storage/' \
             --exclude '__pycache__/' --exclude 'tests/' --exclude '*.db' \
             --exclude '.pytest_cache/' --exclude '.ruff_cache/' \
             apps/api/ server:$APP_DIR/apps/api/
           rsync -az --delete packages/catalog/ server:$APP_DIR/packages/catalog/
+          # The API adds /opt/ai-pos/plugins/einvoicing to sys.path at startup.
+          rsync -az --delete \
+            --exclude '__pycache__/' --exclude '.pytest_cache/' --exclude '.env*' --exclude 'tests/' \
+            plugins/einvoicing/ server:$APP_DIR/plugins/einvoicing/
 
       - name: Ensure production env
         env:

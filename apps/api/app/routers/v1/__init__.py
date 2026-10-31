@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import APIRouter, Depends
 
 from app.core.capabilities import Capability, require_capability
@@ -25,7 +27,6 @@ from app.routers.v1.devices import router as devices_router
 from app.routers.v1.dining import router as dining_router
 from app.routers.v1.downloads import router as downloads_router
 from app.routers.v1.einvoices import router as einvoices_router
-from app.routers.v1.einvoicing_addon import router as einvoicing_addon_router
 from app.routers.v1.expenses import router as expenses_router
 from app.routers.v1.expiry import router as expiry_router
 from app.routers.v1.fnb_table_orders import router as fnb_table_orders_router
@@ -88,6 +89,21 @@ from app.routers.v1.trade_ins import router as trade_ins_router
 from app.routers.v1.units import router as units_router
 from app.routers.v1.users import router as users_router
 from app.routers.v1.warranties import router as warranties_router
+
+log = logging.getLogger("ai-pos.api")
+
+
+def _load_einvoicing_router():
+    """The plugin lives outside the API tree. A missing package must not stop the API."""
+    try:
+        from app.routers.v1.einvoicing_addon import router
+    except ModuleNotFoundError:
+        log.warning("UAE e-Invoicing plugin is not installed; /api/v1/einvoicing is off")
+        return None
+    return router
+
+
+einvoicing_addon_router = _load_einvoicing_router()
 
 
 def module(capability: Capability) -> list:
@@ -166,7 +182,8 @@ api_router.include_router(reports_router, prefix="/reports", tags=["reports"])
 api_router.include_router(shifts_router, prefix="/shifts", tags=["shifts"])
 api_router.include_router(cheques_router, prefix="/cheques", tags=["cheques"], dependencies=module(Capability.CHEQUES))
 api_router.include_router(einvoices_router, prefix="/einvoices", tags=["einvoices"])
-api_router.include_router(einvoicing_addon_router, prefix="/einvoicing", tags=["uae e-invoicing"])
+if einvoicing_addon_router is not None:
+    api_router.include_router(einvoicing_addon_router, prefix="/einvoicing", tags=["uae e-invoicing"])
 api_router.include_router(labels_router, prefix="/labels", tags=["labels"])
 api_router.include_router(markdowns_router, prefix="/markdowns", tags=["markdowns"])
 api_router.include_router(
