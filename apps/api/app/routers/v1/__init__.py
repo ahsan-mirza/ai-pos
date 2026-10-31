@@ -63,11 +63,11 @@ from app.routers.v1.recipes import router as recipes_router
 from app.routers.v1.register import router as register_router
 from app.routers.v1.rentals import router as rentals_router
 from app.routers.v1.reorders import router as reorders_router
-from app.routers.v1.reservations import router as reservations_router
 from app.routers.v1.repair_workshop import router as repair_workshop_router
 from app.routers.v1.repairs import router as repairs_router
 from app.routers.v1.replenishment import router as replenishment_router
 from app.routers.v1.reports import router as reports_router
+from app.routers.v1.reservations import router as reservations_router
 from app.routers.v1.returns import router as returns_router
 from app.routers.v1.roles import router as roles_router
 from app.routers.v1.sales import router as sales_router

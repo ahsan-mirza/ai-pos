@@ -1,4 +1,4 @@
-import { formatMoney, type ProductUpsert } from "@ai-pos/shared-types";
+import { formatMoney, variantAttributeLabel, type ProductUpsert } from "@ai-pos/shared-types";
 import { Grid3x3, Package, X } from "lucide-react";
 import { useMemo, useState } from "react";
 import { stockPill } from "../../components/shell/tokens";

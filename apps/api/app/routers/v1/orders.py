@@ -88,7 +88,9 @@ def hand_over(order_id: uuid.UUID, payload: OrderAction, db: Db, principal: CanO
 
 
 @router.post("/{order_id}/items/{item_id}/quantity", response_model=OrderOut)
-def set_item_quantity(order_id: uuid.UUID, item_id: uuid.UUID, payload: ItemQuantity, db: Db, principal: CanOrder) -> OrderOut:
+def set_item_quantity(
+    order_id: uuid.UUID, item_id: uuid.UUID, payload: ItemQuantity, db: Db, principal: CanOrder
+) -> OrderOut:
     return order_service.set_item_quantity(db, principal, order_id, item_id, payload)
 
 

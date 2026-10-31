@@ -203,7 +203,9 @@ export function ProductDetailsModal({
                 <Field label="Available" value={quantityText(product, available)} />
                 {here ? <Field label="On hand" value={quantityText(product, here.quantity_on_hand)} /> : null}
                 {here && here.quantity_reserved > 0 ? <Field label="Reserved" value={quantityText(product, here.quantity_reserved)} /> : null}
-                {here && here.min_reorder_level > 0 ? <Field label="Reorder level" value={quantityText(product, here.min_reorder_level)} /> : null}
+                {here && (here.min_reorder_level ?? 0) > 0 ? (
+                  <Field label="Reorder level" value={quantityText(product, here.min_reorder_level ?? 0)} />
+                ) : null}
               </dl>
               {live && live.branches.length > 0 ? (
                 <ul className="mt-3 divide-y divide-zinc-200 text-sm dark:divide-zinc-800">

@@ -80,22 +80,22 @@ export function AppShell() {
   );
 }
 
+interface BillingAccess {
+  state: string;
+  operational?: boolean;
+  attention: { kind: string; invoice_id: string; reason: string | null } | null;
+}
+
 function SubscriptionNotice({
   onAccess,
 }: {
   onAccess: (locked: boolean) => void;
 }) {
   const { pathname } = useLocation();
-  const [access, setAccess] = useState<{
-    state: string;
-    operational?: boolean;
-    attention: { kind: string; invoice_id: string; reason: string | null } | null;
-  } | null>(null);
+  const [access, setAccess] = useState<BillingAccess | null>(null);
   useEffect(() => {
     let cancelled = false;
-    apiGet<{ state: string; attention: { kind: string; invoice_id: string; reason: string | null } | null }>(
-      "/api/v1/billing/access",
-    )
+    apiGet<BillingAccess>("/api/v1/billing/access")
       .then((found) => {
         if (!cancelled) {
           setAccess(found);

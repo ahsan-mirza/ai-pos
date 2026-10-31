@@ -607,4 +607,7 @@ def test_occupied_table_reopens_the_same_order(client, session: Session) -> None
     assert cancelled.json()["status"] == "VOID"
     floor = client.get("/api/v1/dining/floor", headers=device(), params={"store_id": STORE_ID}).json()
     assert floor["areas"][0]["tables"][0]["status"] == "free"
-    assert session.scalar(select(AuditLog).where(AuditLog.action == "order.void", AuditLog.target_entity_id == uuid.UUID(again["id"]))) is not None
+    voided = session.scalar(
+        select(AuditLog).where(AuditLog.action == "order.void", AuditLog.target_entity_id == uuid.UUID(again["id"]))
+    )
+    assert voided is not None

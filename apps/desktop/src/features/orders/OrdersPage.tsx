@@ -12,7 +12,6 @@ import {
   type DiningTable,
   type Floor,
   type ModifierChoice,
-  ORDER_PROGRESS_LABEL,
   type KitchenStatus,
   type Order,
   type OrderItem,
@@ -918,7 +917,7 @@ export function OrdersPage({ session }: { session: CashierSession }) {
                 </span>
                 <span className="mt-1 block text-xs text-zinc-500 dark:text-white/50">
                   {order.service_type === "DELIVERY" ? `${order.channel_name ?? "Delivery"} ${order.external_ref ?? ""}` : order.service_type === "TAKEAWAY" ? "Takeaway" : "Dine-in"} · {order.items.filter((item) => !item.voided_at).length} lines · {formatSeatedDuration(minutesSince(order.opened_at))}
-                  {phase ? ` · ${ORDER_PROGRESS_LABEL[phase]}` : ""}
+                  {phase ? ` · ${phase}` : ""}
                 </span>
               </button>
               );

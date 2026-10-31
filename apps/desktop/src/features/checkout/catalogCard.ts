@@ -1,4 +1,4 @@
-import { PROFILE_PRESETS, type BusinessProfile } from "../../../../../packages/shared-types/src/capabilities.ts";
+import { PROFILE_PRESETS, type BusinessProfile } from "@ai-pos/shared-types";
 
 const UNIT_NAMES: Record<string, string> = {
   PIECE: "Pieces",
