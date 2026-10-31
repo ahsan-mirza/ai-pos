@@ -101,6 +101,7 @@ describe("Business Pro PWA", () => {
     expect(worker).toContain("self.skipWaiting()");
     expect(worker).toContain('cache: "no-store"');
     expect(worker).toContain("client.navigate(client.url)");
+    expect(worker).not.toContain("isPortalNavigation(url)) return undefined");
     const auth = readFileSync(join(process.cwd(), "src", "lib", "auth.tsx"), "utf8");
     expect(auth).toContain("clearUserCaches");
     expect(auth).toContain("writeStoredSession");
