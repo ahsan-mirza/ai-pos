@@ -4,6 +4,7 @@ import { Check } from "lucide-react";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { ErrorNote, TextField } from "../../components/ui/Field";
 import { ApiRequestError } from "../../lib/api";
+import { portalSignInPath } from "../../lib/portal-home";
 import { EmailAvailabilityField, PhoneAvailabilityField, useEmailAvailability, usePhoneAvailability } from "./availabilityFields";
 import { sessionFromStarted, signupApi, type SignupSession } from "./signupApi";
 
@@ -228,7 +229,7 @@ export function AccountStep({
       </button>
       <p className="mt-4 text-center text-sm text-charcoal/60">
         Already have an account?{" "}
-        <a href="/" className="font-semibold text-accent hover:underline">
+        <a href={portalSignInPath()} className="font-semibold text-accent hover:underline">
           Log in
         </a>
       </p>

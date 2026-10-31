@@ -4,6 +4,7 @@ import { Check } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { env } from "../../config/env";
 import { ApiRequestError } from "../../lib/api";
+import { portalSignInPath } from "../../lib/portal-home";
 import { AccountStep, VerifyStep } from "./AccountStep";
 import { BusinessStep, WaitlistStep } from "./BusinessStep";
 import { ProvisioningStep } from "./ProvisioningStep";
@@ -100,7 +101,7 @@ export function SignupApp() {
           </ol>
           <p className="mt-10 text-xs text-white/50">
             Already have an account?{" "}
-            <a href="/" className="font-semibold text-white hover:underline">
+            <a href={portalSignInPath()} className="font-semibold text-white hover:underline">
               Log in
             </a>
             {env.storesShareThisHost ? null : (
