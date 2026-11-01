@@ -9,6 +9,7 @@ from collections import defaultdict, deque
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query, Request, Response, WebSocket, WebSocketDisconnect
+from pydantic import BaseModel, Field
 
 from app.console import (
     auth,
@@ -218,6 +219,43 @@ def module_summary(_: CurrentOperator, settings: Config) -> ModuleSummary:
 @router.get("/modules/business-types", response_model=list[BusinessTypeModules])
 def module_business_types(_: CurrentOperator) -> list[BusinessTypeModules]:
     return modules.business_types()
+
+
+class ReachCreditAllocate(BaseModel):
+    units: int = Field(ge=1, le=1_000_000)
+    note: str = Field(default="", max_length=300)
+    idempotency_key: str = Field(min_length=8, max_length=80)
+
+
+@router.post("/tenants/{tenant_id}/reach/credits")
+def allocate_reach_credits(
+    tenant_id: uuid.UUID,
+    payload: ReachCreditAllocate,
+    operator: ConsoleAdmin,
+    settings: Config,
+) -> dict:
+    """Adds prepaid Reach credits for one store. The ledger row is the audit record."""
+    from reach.credits import allocate
+
+    from app.console.security import audit_operator
+    from app.services import reach_bridge
+
+    del reach_bridge
+    with registry.control_session(settings) as control:
+        tenant = entitlements.get_tenant(control, tenant_id)
+        with entitlements.tenant_session(tenant, settings) as db:
+            result = allocate(db, units=payload.units, note=payload.note, idempotency_key=payload.idempotency_key)
+            db.commit()
+        audit_operator(
+            control,
+            operator,
+            "reach.credits.allocate",
+            tenant_id=tenant.id,
+            after={"units": payload.units, **result},
+            reason=payload.note or None,
+        )
+        control.commit()
+    return result
 
 
 @router.get("/tenants/{tenant_id}/addon-access", response_model=ConsoleAddonAccessOut)

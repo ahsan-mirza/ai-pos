@@ -23,7 +23,7 @@ from app.schemas.messaging import (
 from app.services import race
 from app.services.email_brand import notice_html
 from app.services.message_defaults import DEFAULT_EVENTS, DEFAULT_TEMPLATES
-from app.services.messaging_providers import CHANNEL_PROVIDERS, Outgoing, ProviderError, deliver
+from app.services.messaging_providers import CHANNEL_PROVIDERS, Outgoing, ProviderError
 from app.services.settings_service import load_settings
 
 logger = logging.getLogger("ai_pos.messaging")
@@ -77,7 +77,7 @@ MARKETING_KEYS = frozenset({"campaign", "coupon_issued"})
 
 
 def preferred_channel(customer: Customer, db: Session | None = None) -> str | None:
-    from app.services.reach_service import channel_enabled
+    from app.services.reach_bridge import channel_enabled
 
     for channel in CHANNELS:
         if db is not None and not channel_enabled(db, channel):
@@ -106,7 +106,7 @@ def enqueue(
     template = db.scalar(select(MessageTemplate).where(MessageTemplate.key == template_key))
     if template is None or not template.is_active:
         return None
-    from app.services.reach_service import channel_enabled
+    from app.services.reach_bridge import channel_enabled
 
     chosen = channel or preferred_channel(customer, db)
     if channel is not None and not channel_enabled(db, channel):
@@ -160,21 +160,9 @@ def _attachment(db: Session, settings: Settings, message: OutboundMessage) -> tu
 
 def _delivery(db: Session, settings: Settings, channel: str) -> tuple[str, dict]:
     """Tenant channel row wins. No row keeps the existing server provider, so current tenants keep working."""
-    from app.core.security import decrypt_value
-    from app.models.reach import MessagingChannel
+    from app.services.reach_bridge import channel_credentials
 
-    row = db.scalar(select(MessagingChannel).where(MessagingChannel.channel == channel))
-    if row is None:
-        return providers(db).get(channel, "log"), {}
-    if not row.enabled:
-        raise ProviderError("This channel is turned off.", permanent=False)
-    creds = {key: str(value) for key, value in (row.public_config or {}).items() if value not in (None, "")}
-    if row.secret_encrypted:
-        try:
-            creds["secret"] = decrypt_value(row.secret_encrypted, settings)
-        except Exception as exc:
-            raise ProviderError("The saved credential could not be read. Save it again.", permanent=True) from exc
-    return row.provider, creds
+    return channel_credentials(db, settings, channel)
 
 
 def dispatch_due(db: Session, settings: Settings, limit: int = 50) -> dict[str, int]:
@@ -205,6 +193,12 @@ def dispatch_due(db: Session, settings: Settings, limit: int = 50) -> dict[str, 
         if message.template_key == "campaign" and not reach_on:
             message.next_attempt_at = now + timedelta(hours=6)
             message.last_error = "AxizReach is off. This campaign stays queued until the add-on is on."
+            counts["retry"] += 1
+            continue
+        from app.services.reach_bridge import hold_reason
+
+        if hold_reason(db, message):
+            message.next_attempt_at = now + timedelta(minutes=15)
             counts["retry"] += 1
             continue
         if message.template_key in MARKETING_KEYS and message.customer_id is not None:
@@ -241,18 +235,22 @@ def dispatch_due(db: Session, settings: Settings, limit: int = 50) -> dict[str, 
                 attachment=_attachment(db, settings, message),
                 html=html_body,
             )
-            message.provider_message_id = deliver(settings, provider, outgoing, creds)[:120] or None
+            from app.services.reach_bridge import after_sent, record_usage, submit_message
+
+            message.provider_message_id = submit_message(db, settings, provider, outgoing, creds, message)[:120] or None
             message.status = "SENT"
             message.sent_at = datetime.now(UTC)
             message.last_error = None
-            from app.services.reach_service import record_usage
-
             record_usage(db, message)
+            after_sent(db, message)
             counts["sent"] += 1
         except ProviderError as exc:
             message.last_error = str(exc)[:500]
             if exc.permanent or message.attempts >= MAX_ATTEMPTS:
                 message.status = "FAILED"
+                from app.services.reach_bridge import after_failed
+
+                after_failed(db, message)
                 counts["failed"] += 1
             else:
                 message.next_attempt_at = now + timedelta(minutes=2**message.attempts)

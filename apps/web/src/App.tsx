@@ -72,7 +72,7 @@ import { ManagerMobilePage } from "./features/manager/ManagerMobilePage";
 import { AssistantPage } from "./features/assistant/AssistantPage";
 import { AccountingPage } from "./features/accounting/AccountingPage";
 import { MessagingPage } from "./features/messaging/MessagingPage";
-import { ReachPage } from "./features/reach/ReachPage";
+import { ReachPage } from "@reach/ReachPage";
 import { CurrenciesPage } from "./features/currencies/CurrenciesPage";
 import { MarginPage } from "./features/margin/MarginPage";
 import { WarrantyPage } from "./features/warranty/WarrantyPage";

@@ -6,6 +6,7 @@ from alembic import context
 from sqlalchemy import engine_from_config, pool
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "plugins" / "reach"))
 
 from app.core.config import get_settings  # noqa: E402
 from app.models import Base  # noqa: E402
@@ -22,6 +23,10 @@ database_url = config.attributes.get("database_url") or resolve_cli_database_url
 )
 config.set_main_option("sqlalchemy.url", database_url.replace("%", "%%"))
 target_metadata = Base.metadata
+_version_locations = [
+    str(Path(__file__).resolve().parent / "versions"),
+    str(Path(__file__).resolve().parents[3] / "plugins" / "reach" / "backend" / "migrations"),
+]
 
 
 def run_migrations_offline() -> None:
@@ -31,6 +36,7 @@ def run_migrations_offline() -> None:
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
         compare_type=True,
+        version_locations=_version_locations,
     )
     with context.begin_transaction():
         context.run_migrations()
@@ -40,7 +46,12 @@ def run_migrations_online() -> None:
     section = config.get_section(config.config_ini_section, {})
     connectable = engine_from_config(section, prefix="sqlalchemy.", poolclass=pool.NullPool)
     with connectable.connect() as connection:
-        context.configure(connection=connection, target_metadata=target_metadata, compare_type=True)
+        context.configure(
+            connection=connection,
+            target_metadata=target_metadata,
+            compare_type=True,
+            version_locations=_version_locations,
+        )
         with context.begin_transaction():
             # Later revisions run after row-level security is forced on. A local bypass lets DDL
             # and data moves see every row; request sessions never set this.

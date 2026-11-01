@@ -1,0 +1,208 @@
+"""Portal routes for AxizReach. Tenant id comes from the bound request, never the body."""
+
+from __future__ import annotations
+
+from typing import Annotated
+from uuid import UUID
+
+from fastapi import APIRouter, Depends, Header, Request
+from sqlalchemy.orm import Session
+
+from app.core.config import Settings, get_settings
+from app.core.database import get_db
+from app.core.deps import Principal, authorize
+from app.core.permissions import Permission
+from reach import connections, webhooks
+from reach.schemas import (
+    CampaignOut,
+    CampaignWrite,
+    ChannelOut,
+    ChannelWrite,
+    ConnectionCreate,
+    ConnectionOut,
+    CreditOut,
+    CreditTransactionOut,
+    OverviewOut,
+    PreviewOut,
+    PricesWrite,
+    RecipientOut,
+    TemplateOut,
+    TemplateWrite,
+)
+from reach.service import (
+    cancel,
+    delete_template,
+    get_campaign,
+    launch,
+    list_campaigns,
+    list_channels,
+    list_templates,
+    overview,
+    pause,
+    preview,
+    recipients,
+    require_reach,
+    resume,
+    save_channel,
+    save_prices,
+    save_template,
+    search_customers,
+    test_channel,
+)
+from reach import credits as credit_book
+
+router = APIRouter()
+Db = Annotated[Session, Depends(get_db)]
+Config = Annotated[Settings, Depends(get_settings)]
+CanManage = Annotated[Principal, Depends(authorize(Permission.MESSAGING_MANAGE))]
+
+
+def _webhook_db(request: Request, settings: Config):
+    if settings.tenancy_enabled:
+        yield None
+        return
+    override = request.app.dependency_overrides.get(get_db)
+    if override is not None:
+        yield from override()
+        return
+    yield from get_db()
+
+
+WebhookDb = Annotated[Session | None, Depends(_webhook_db)]
+
+
+@router.get("/channels", response_model=list[ChannelOut])
+def channels(db: Db, settings: Config, _: CanManage) -> list[dict]:
+    return list_channels(db, settings)
+
+
+@router.put("/channels", response_model=ChannelOut)
+def save_channel_route(payload: ChannelWrite, db: Db, settings: Config, _: CanManage) -> dict:
+    return save_channel(db, settings, payload.model_dump())
+
+
+@router.post("/channels/{channel}/test", response_model=ChannelOut)
+def test_channel_route(channel: str, db: Db, settings: Config, _: CanManage) -> dict:
+    return test_channel(db, settings, channel)
+
+
+@router.get("/overview", response_model=OverviewOut)
+def overview_route(db: Db, _: CanManage) -> dict:
+    return overview(db)
+
+
+@router.put("/prices")
+def prices(payload: PricesWrite, db: Db, _: CanManage) -> dict[str, int]:
+    require_reach(db)
+    return save_prices(db, payload.model_dump())
+
+
+@router.get("/customers")
+def customers(db: Db, _: CanManage, q: str = "") -> list[dict]:
+    return search_customers(db, q)
+
+
+@router.post("/campaigns/preview", response_model=PreviewOut)
+def preview_route(payload: CampaignWrite, db: Db, _: CanManage) -> dict:
+    return preview(db, payload.model_dump())
+
+
+@router.get("/campaigns", response_model=list[CampaignOut])
+def campaigns(db: Db, _: CanManage) -> list:
+    return list_campaigns(db)
+
+
+@router.get("/campaigns/{campaign_id}", response_model=CampaignOut)
+def campaign(campaign_id: UUID, db: Db, _: CanManage) -> object:
+    return get_campaign(db, campaign_id)
+
+
+@router.post("/campaigns", response_model=CampaignOut, status_code=201)
+def launch_route(payload: CampaignWrite, db: Db, principal: CanManage) -> object:
+    return launch(db, principal.user.id, payload.model_dump())
+
+
+@router.post("/campaigns/{campaign_id}/cancel", response_model=CampaignOut)
+def cancel_route(campaign_id: UUID, db: Db, _: CanManage) -> object:
+    return cancel(db, campaign_id)
+
+
+@router.post("/campaigns/{campaign_id}/pause", response_model=CampaignOut)
+def pause_route(campaign_id: UUID, db: Db, _: CanManage) -> object:
+    return pause(db, campaign_id)
+
+
+@router.post("/campaigns/{campaign_id}/resume", response_model=CampaignOut)
+def resume_route(campaign_id: UUID, db: Db, _: CanManage) -> object:
+    return resume(db, campaign_id)
+
+
+@router.get("/messages", response_model=list[RecipientOut])
+def messages(db: Db, _: CanManage, campaign_id: UUID | None = None, status: str | None = None, limit: int = 50) -> list:
+    return recipients(db, campaign_id, status, limit)
+
+
+@router.get("/templates", response_model=list[TemplateOut])
+def templates(db: Db, _: CanManage) -> list:
+    return list_templates(db)
+
+
+@router.put("/templates", response_model=TemplateOut)
+def template_save(payload: TemplateWrite, db: Db, _: CanManage) -> object:
+    return save_template(db, payload.model_dump())
+
+
+@router.delete("/templates/{template_id}", status_code=204)
+def template_delete(template_id: UUID, db: Db, _: CanManage) -> None:
+    delete_template(db, template_id)
+
+
+@router.get("/connections", response_model=list[ConnectionOut])
+def connection_list(db: Db, _: CanManage) -> list:
+    return [connections._public(row) for row in connections.list_connections(db)]
+
+
+@router.post("/connections", response_model=ConnectionOut, status_code=201)
+def connection_create(payload: ConnectionCreate, db: Db, settings: Config, _: CanManage) -> dict:
+    return connections._public(connections.create_connection(db, settings, payload.name))
+
+
+@router.post("/connections/{connection_id}/connect", response_model=ConnectionOut)
+def connection_connect(connection_id: UUID, db: Db, settings: Config, _: CanManage) -> dict:
+    return connections.connect(db, settings, connection_id)
+
+
+@router.post("/connections/{connection_id}/status", response_model=ConnectionOut)
+def connection_status(connection_id: UUID, db: Db, settings: Config, _: CanManage) -> dict:
+    return connections.refresh_status(db, settings, connection_id)
+
+
+@router.post("/connections/{connection_id}/disconnect", response_model=ConnectionOut)
+def connection_disconnect(connection_id: UUID, db: Db, settings: Config, _: CanManage) -> dict:
+    return connections.disconnect(db, settings, connection_id)
+
+
+@router.get("/credits", response_model=CreditOut)
+def credits(db: Db, _: CanManage) -> dict:
+    require_reach(db)
+    found = credit_book.snapshot(db)
+    return found or {"balance": 0, "reserved": 0, "available": 0}
+
+
+@router.get("/credits/transactions", response_model=list[CreditTransactionOut])
+def credit_transactions(db: Db, _: CanManage) -> list:
+    require_reach(db)
+    return credit_book.transactions(db)
+
+
+@router.post("/webhooks/evolution/{webhook_key}")
+def evolution_webhook(
+    webhook_key: str,
+    payload: dict,
+    settings: Config,
+    db: WebhookDb,
+    apikey: Annotated[str | None, Header()] = None,
+) -> dict:
+    if settings.tenancy_enabled or db is None:
+        return webhooks.accept_across_tenants(settings, webhook_key, payload, apikey)
+    return webhooks.accept(db, settings, webhook_key, payload, apikey)

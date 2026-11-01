@@ -13,7 +13,7 @@ from app.core.config import Settings
 logger = logging.getLogger("ai_pos.messaging")
 
 CHANNEL_PROVIDERS: dict[str, tuple[str, ...]] = {
-    "whatsapp": ("log", "whatsapp_cloud"),
+    "whatsapp": ("log", "whatsapp_cloud", "evolution"),
     "sms": ("log", "http_sms"),
     "email": ("log", "smtp"),
 }

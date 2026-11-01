@@ -28,4 +28,4 @@ select = ["E", "F", "I", "UP", "B", "TID"]
 "psycopg2".msg = "Use the SQLAlchemy session, not the database driver directly."
 
 [tool.pytest.ini_options]
-testpaths = ["tests"]
+testpaths = ["tests", "../../plugins/reach/backend/tests"]

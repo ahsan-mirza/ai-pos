@@ -41,7 +41,17 @@ from app.models.product_price import ProductPrice
 from app.models.promotion import Promotion, PromotionRedemption
 from app.models.purchasing import GoodsReceipt, GoodsReceiptLine, PurchaseOrder, PurchaseOrderLine
 from app.models.quote_payment import QuotePayment
-from app.models.reach import MessagingChannel, ReachCampaign, ReachUsage
+from app.models.reach import (
+    MessagingChannel,
+    ReachCampaign,
+    ReachConnection,
+    ReachCreditAccount,
+    ReachCreditTransaction,
+    ReachRecipient,
+    ReachTemplate,
+    ReachUsage,
+    ReachWebhookEvent,
+)
 from app.models.recipe import ModifierIngredient, Recipe, RecipeLine, RecipeUsage
 from app.models.rental import ProductRental, Rental, RentalLine, RentalPayment
 from app.models.reorder import CustomerReorderOccurrence, CustomerReorderPlan, CustomerReorderPlanItem
@@ -151,7 +161,13 @@ __all__ = [
     "OutboundMessage",
     "MessagingChannel",
     "ReachCampaign",
+    "ReachConnection",
+    "ReachCreditAccount",
+    "ReachCreditTransaction",
+    "ReachRecipient",
+    "ReachTemplate",
     "ReachUsage",
+    "ReachWebhookEvent",
     "PaymentIntent",
     "PaymentRefund",
     "PaymentTerminal",

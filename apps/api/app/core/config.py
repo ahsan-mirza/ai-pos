@@ -123,6 +123,10 @@ class Settings(BaseSettings):
     sms_http_url: str | None = None
     sms_http_token: str | None = None
     sms_sender: str | None = None
+    # Central Evolution API (Baileys). The key stays on the server. Unset disables WhatsApp session calls.
+    evolution_api_url: str | None = None
+    evolution_api_key: str | None = None
+    evolution_webhook_secret: str | None = None
 
     # QR payments. "dev" simulates the customer paying; "emvco" renders a merchant-presented EMVCo QR whose
     # payment the acquirer confirms through the signed webhook.

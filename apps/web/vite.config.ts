@@ -1,7 +1,11 @@
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import react from "@vitejs/plugin-react";
 import { VitePWA } from "vite-plugin-pwa";
 import { defineConfig } from "vite";
 import { pwaManifest } from "./src/pwa/manifest";
+
+const root = path.dirname(fileURLToPath(import.meta.url));
 
 export default defineConfig({
   envDir: "../../",
@@ -24,7 +28,17 @@ export default defineConfig({
       devOptions: { enabled: false },
     }),
   ],
-  resolve: { dedupe: ["react", "react-dom", "lucide-react"] },
+  resolve: {
+    alias: [
+      { find: "@reach", replacement: path.resolve(root, "../../plugins/reach/frontend") },
+      { find: "@ai-pos/shared-types", replacement: path.resolve(root, "../../packages/shared-types/src/index.ts") },
+      { find: "react/jsx-runtime", replacement: path.resolve(root, "node_modules/react/jsx-runtime.js") },
+      { find: "react", replacement: path.resolve(root, "node_modules/react") },
+      { find: "react-dom", replacement: path.resolve(root, "node_modules/react-dom") },
+      { find: "react-router-dom", replacement: path.resolve(root, "node_modules/react-router-dom") },
+    ],
+    dedupe: ["react", "react-dom", "lucide-react"],
+  },
   server: {
     port: 5173,
     strictPort: true,
