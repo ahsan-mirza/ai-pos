@@ -6,7 +6,9 @@ from alembic import context
 from sqlalchemy import engine_from_config, pool
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "plugins" / "reach"))
+_reach_root = Path(__file__).resolve().parents[3] / "plugins" / "reach"
+if _reach_root.is_dir():
+    sys.path.insert(0, str(_reach_root))
 
 from app.core.config import get_settings  # noqa: E402
 from app.models import Base  # noqa: E402
@@ -23,10 +25,10 @@ database_url = config.attributes.get("database_url") or resolve_cli_database_url
 )
 config.set_main_option("sqlalchemy.url", database_url.replace("%", "%%"))
 target_metadata = Base.metadata
-_version_locations = [
-    str(Path(__file__).resolve().parent / "versions"),
-    str(Path(__file__).resolve().parents[3] / "plugins" / "reach" / "backend" / "migrations"),
-]
+_version_locations = [str(Path(__file__).resolve().parent / "versions")]
+_reach_versions = _reach_root / "backend" / "migrations"
+if _reach_versions.is_dir():
+    _version_locations.append(str(_reach_versions))
 
 
 def run_migrations_offline() -> None:

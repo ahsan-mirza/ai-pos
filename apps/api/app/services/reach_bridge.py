@@ -24,12 +24,16 @@ def channel_enabled(db: Session, channel: str) -> bool:
 
 
 def channel_credentials(db: Session, settings: Settings, channel: str) -> tuple[str, dict]:
-    """Tenant channel row wins. No row keeps the server provider, so current stores keep working."""
-    from reach.models import MessagingChannel
+    """Tenant channel row wins. No row, and no plugin, keeps the server provider."""
+    from app.services.messaging_service import providers
+
+    try:
+        from reach.models import MessagingChannel
+    except ModuleNotFoundError:
+        return providers(db).get(channel, "log"), {}
     from sqlalchemy import select
 
     from app.core.security import decrypt_value
-    from app.services.messaging_service import providers
 
     row = db.scalar(select(MessagingChannel).where(MessagingChannel.channel == channel))
     if row is None:
