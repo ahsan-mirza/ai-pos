@@ -46,6 +46,10 @@ def start(settings: Settings) -> None:
     logger.info("scheduler started with %d jobs", len(JOBS))
 
 
+def running() -> bool:
+    return _scheduler is not None and _scheduler.running
+
+
 def stop() -> None:
     global _scheduler
     if _scheduler is not None:

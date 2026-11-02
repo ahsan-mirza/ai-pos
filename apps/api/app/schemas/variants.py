@@ -2,7 +2,7 @@ from uuid import UUID
 
 from pydantic import Field, field_validator, model_validator
 
-from app.schemas.inventory import variant_attributes
+from app.schemas.inventory import stored_cents, variant_attributes
 from app.schemas.payloads import ApiModel, TaxCategory
 
 MAX_MATRIX_CELLS = 400
@@ -54,6 +54,11 @@ class MatrixVariantDraft(ApiModel):
             raise ValueError("Each variant needs its attributes.")
         return cleaned
 
+    @field_validator("price_cents", "cost_cents")
+    @classmethod
+    def money_fits_column(cls, value: int | None) -> int | None:
+        return stored_cents(value)
+
     @field_validator("sku", "barcode")
     @classmethod
     def clean_code(cls, value: str | None) -> str | None:
@@ -80,6 +85,16 @@ class MatrixWrite(ApiModel):
     variants: list[MatrixVariantDraft] | None = Field(default=None, max_length=MAX_MATRIX_CELLS)
     opening_store_id: UUID | None = None
     specifications: dict[str, str] = Field(default_factory=dict)
+
+    @field_validator("price_cents")
+    @classmethod
+    def price_fits_column(cls, value: int) -> int:
+        return stored_cents(value)  # type: ignore[return-value]
+
+    @field_validator("price_by_value")
+    @classmethod
+    def value_prices_fit_column(cls, value: dict[str, int]) -> dict[str, int]:
+        return {key: stored_cents(amount) for key, amount in value.items()}  # type: ignore[misc]
 
     @field_validator("specifications")
     @classmethod

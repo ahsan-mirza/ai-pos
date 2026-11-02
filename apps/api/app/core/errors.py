@@ -1,6 +1,6 @@
 import re
 
-from sqlalchemy.exc import DBAPIError, OperationalError, ProgrammingError
+from sqlalchemy.exc import DBAPIError, DataError, OperationalError, ProgrammingError
 
 # Postgres SQLSTATE for a missing column / table: the code is newer than the database schema.
 _SCHEMA_SQLSTATES = {"42703", "42P01"}
@@ -160,6 +160,9 @@ def unhandled_error(exc: Exception, *, debug: bool, api: str | None = None) -> t
     elif isinstance(exc, OperationalError) or (isinstance(exc, DBAPIError) and exc.connection_invalidated):
         status, code = 503, "database_unavailable"
         message = "The API cannot reach its database. Check that PostgreSQL is running, then retry."
+    elif isinstance(exc, DataError):
+        status, code = 422, "value_out_of_range"
+        message = "A number in this request is outside the range that can be stored."
     else:
         status, code = 500, "internal_error"
         message = "The server hit an unexpected error. Retry, and contact support if it keeps happening."

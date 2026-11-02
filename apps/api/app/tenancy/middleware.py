@@ -25,6 +25,7 @@ OPERATIONAL_ALLOW = (
 )
 OPEN_PATHS = (
     "/health",
+    "/ready",
     "/docs",
     "/redoc",
     "/openapi.json",

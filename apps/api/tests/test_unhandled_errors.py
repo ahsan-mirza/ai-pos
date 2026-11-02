@@ -1,3 +1,4 @@
+import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.exc import OperationalError, ProgrammingError
 
@@ -64,6 +65,61 @@ def test_validation_error_names_the_field() -> None:
         "Password needs an uppercase letter. Full name is required. "
         "Password should have at least 10 characters. Password set cannot be changed here."
     )
+
+
+def test_numeric_overflow_is_a_range_error() -> None:
+    from sqlalchemy.exc import DataError
+
+    status, body = unhandled_error(DataError("INSERT", {}, Exception("integer out of range")), debug=False)
+    assert status == 422
+    assert body["error"]["code"] == "value_out_of_range"  # type: ignore[index]
+    assert "outside the range" in body["error"]["message"]  # type: ignore[index]
+
+
+def test_selling_price_above_integer_column_is_rejected() -> None:
+    import uuid
+
+    from pydantic import ValidationError
+
+    from app.schemas.inventory import ProductCreate
+
+    with pytest.raises(ValidationError) as caught:
+        ProductCreate(
+            sku="SKU-1",
+            barcode="BAR-1",
+            name="Overflow",
+            category_id=uuid.uuid4(),
+            price_cents=3_000_000_000,
+        )
+    assert "21,474,836.47" in str(caught.value)
+
+
+def test_swatch_book_that_is_not_nested_does_not_crash() -> None:
+    from types import SimpleNamespace
+
+    from app.services.variant_keys import variant_swatches
+
+    model = SimpleNamespace(axis_swatches={"color": "#000000"})
+    assert variant_swatches(model, {"color": "Black"}) == {}
+
+
+def test_error_response_carries_a_request_id() -> None:
+    client = TestClient(create_app())
+    response = client.post("/api/v1/inventory/products", json={})
+    assert response.status_code in {401, 422}
+    assert response.headers["x-request-id"]
+    assert response.json()["request_id"] == response.headers["x-request-id"]
+
+
+def test_readiness_hides_infrastructure_details() -> None:
+    client = TestClient(create_app())
+    response = client.get("/ready")
+    body = response.json()
+    assert set(body) == {"status", "database", "redis", "worker"}
+    rendered = response.text.lower()
+    assert "://" not in rendered
+    assert "password" not in rendered
+    assert "redis://" not in rendered
 
 
 def test_database_down_is_503() -> None:

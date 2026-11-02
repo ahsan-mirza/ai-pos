@@ -104,6 +104,17 @@ class CategoryUpdate(ApiModel):
 
 # --- Brands, models, and variants ----------------------------------------------------------------
 
+# products.price_cents is a PostgreSQL INTEGER. A larger value aborts the insert.
+MAX_STORED_CENTS = 2_147_483_647
+
+
+def stored_cents(value: int | None) -> int | None:
+    """Rejects a money amount the products table cannot store. The limit is 21,474,836.47 in major units."""
+    if value is not None and value > MAX_STORED_CENTS:
+        raise ValueError("Selling price must be at most 21,474,836.47.")
+    return value
+
+
 MAX_VARIANT_ATTRIBUTES = 8
 ATTRIBUTE_KEY = re.compile(r"[a-z][a-z0-9_]{0,23}")
 
@@ -694,6 +705,11 @@ class ProductCreate(FashionAttributes):
     opening_quantity: int = Field(default=0, ge=0, le=1_000_000_000)
     min_reorder_level: int = Field(default=0, ge=0, le=1_000_000)
 
+    @field_validator("price_cents")
+    @classmethod
+    def price_fits_column(cls, value: int) -> int:
+        return stored_cents(value)  # type: ignore[return-value]
+
     @field_validator("variant_attributes")
     @classmethod
     def normalize_attributes(cls, value: dict[str, str]) -> dict[str, str]:
@@ -743,6 +759,11 @@ class ProductUpdate(FashionAttributes):
     item_type: ItemType | None = None
     sellable_units: list[UnitType] | None = Field(default=None, max_length=8)
     is_active: bool | None = None
+
+    @field_validator("price_cents")
+    @classmethod
+    def price_fits_column(cls, value: int | None) -> int | None:
+        return stored_cents(value)
 
     @field_validator("variant_attributes")
     @classmethod

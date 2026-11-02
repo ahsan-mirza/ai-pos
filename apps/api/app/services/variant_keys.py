@@ -36,7 +36,10 @@ def variant_swatches(model: Any, attributes: dict[str, str] | None) -> dict[str,
     book = model.axis_swatches or {}
     found: dict[str, str] = {}
     for key, value in (attributes or {}).items():
-        colour = (book.get(key) or {}).get(value)
+        entry = book.get(key) if isinstance(book, dict) else None
+        if not isinstance(entry, dict):
+            continue
+        colour = entry.get(value)
         if isinstance(colour, str) and colour:
             found[key] = colour
     return found

@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import uuid
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Annotated
@@ -65,16 +66,21 @@ def create_app() -> FastAPI:
     # Starlette answers uncaught exceptions outside CORS, so browsers would only see a failed fetch.
     @app.middleware("http")
     async def unhandled_errors(request: Request, call_next):  # type: ignore[no-untyped-def]
+        request_id = uuid.uuid4().hex
+        request.state.request_id = request_id
         try:
-            return await call_next(request)
+            response = await call_next(request)
         except Exception as exc:
-            logger.exception("Unhandled error on %s %s", request.method, request.url.path)
+            logger.exception("Unhandled error %s on %s %s", request_id, request.method, request.url.path)
             status, body = unhandled_error(
                 exc,
                 debug=settings.app_env != "production",
                 api=api_name(request.method, request.url.path),
             )
-            return JSONResponse(status_code=status, content=body)
+            body["request_id"] = request_id
+            response = JSONResponse(status_code=status, content=body)
+        response.headers["X-Request-Id"] = request_id
+        return response
 
     app.add_middleware(
         CORSMiddleware,
@@ -83,7 +89,7 @@ def create_app() -> FastAPI:
         allow_credentials=False,
         allow_methods=["*"],
         allow_headers=["*"],
-        expose_headers=[TOTAL_COUNT_HEADER],
+        expose_headers=[TOTAL_COUNT_HEADER, "X-Request-Id"],
     )
 
     @app.middleware("http")
@@ -116,11 +122,14 @@ def create_app() -> FastAPI:
     async def handle_api_error(request: Request, exc: ApiError) -> JSONResponse:
         return JSONResponse(
             status_code=exc.status_code,
-            content=error_payload(
-                exc.code,
-                exc.message,
-                api=api_name(request.method, request.url.path),
-                details=exc.details,
+            content=_with_request_id(
+                request,
+                error_payload(
+                    exc.code,
+                    exc.message,
+                    api=api_name(request.method, request.url.path),
+                    details=exc.details,
+                ),
             ),
         )
 
@@ -129,12 +138,15 @@ def create_app() -> FastAPI:
         details = jsonable_encoder(exc.errors())
         return JSONResponse(
             status_code=422,
-            content=error_payload(
-                "invalid_request",
-                validation_message(details),
-                api=api_name(request.method, request.url.path),
-                details=details,
-                field_errors=field_error_map(details),
+            content=_with_request_id(
+                request,
+                error_payload(
+                    "invalid_request",
+                    validation_message(details),
+                    api=api_name(request.method, request.url.path),
+                    details=details,
+                    field_errors=field_error_map(details),
+                ),
             ),
         )
 
@@ -143,12 +155,41 @@ def create_app() -> FastAPI:
         code, message = http_error(exc.status_code, exc.detail)
         return JSONResponse(
             status_code=exc.status_code,
-            content=error_payload(code, message, api=api_name(request.method, request.url.path)),
+            content=_with_request_id(
+                request,
+                error_payload(code, message, api=api_name(request.method, request.url.path)),
+            ),
         )
 
     @app.get("/health")
     def health() -> dict[str, str]:
         return {"status": "ok"}
+
+    @app.get("/ready")
+    def ready(settings: Annotated[Settings, Depends(get_settings)]) -> JSONResponse:
+        """Readiness: database and Redis answer, and the in-process worker is running when it is enabled.
+
+        The body names status only. It does not include hosts, URLs, pool sizes, or credentials.
+        """
+        database = _database_ready(settings)
+        from app.core import cache
+        from app.jobs import scheduler
+
+        redis_ok = cache.reachable()
+        if not settings.scheduler_enabled:
+            worker = "disabled"
+        else:
+            worker = "running" if scheduler.running() else "stopped"
+        ready_ok = database and redis_ok and worker != "stopped"
+        return JSONResponse(
+            status_code=200 if ready_ok else 503,
+            content={
+                "status": "ok" if ready_ok else "unavailable",
+                "database": "ok" if database else "unavailable",
+                "redis": "ok" if redis_ok else "unavailable",
+                "worker": worker,
+            },
+        )
 
     @app.get("/api/download/installer/win", include_in_schema=False)
     def download_windows_installer(settings: Annotated[Settings, Depends(get_settings)]) -> FileResponse:
@@ -160,6 +201,37 @@ def create_app() -> FastAPI:
     app.include_router(signup_router, prefix="/api/v1/signup", tags=["signup"])
     app.include_router(super_admin_router, prefix="/api/v1/super-admin", tags=["console"])
     return app
+
+
+def _with_request_id(request: Request, payload: dict[str, object]) -> dict[str, object]:
+    request_id = getattr(request.state, "request_id", None)
+    if isinstance(request_id, str) and request_id:
+        return {**payload, "request_id": request_id}
+    return payload
+
+
+def _database_ready(settings: Settings) -> bool:
+    """True when a control or application database accepts a trivial read. Failures stay in the log."""
+    from sqlalchemy import text
+
+    from app.core.database import get_session_factory
+
+    session = None
+    try:
+        if settings.tenancy_enabled and settings.control_database_url:
+            from app.tenancy import registry
+
+            session = registry.control_session(settings)
+        else:
+            session = get_session_factory()()
+        session.execute(text("SELECT 1"))
+        return True
+    except Exception:
+        logger.warning("readiness database check failed", exc_info=True)
+        return False
+    finally:
+        if session is not None:
+            session.close()
 
 
 app = create_app()

@@ -12,7 +12,7 @@ from typing import Any
 
 from sqlalchemy import delete as sa_delete
 from sqlalchemy import func, select
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import DataError, IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.capabilities import Capability, has_capability
@@ -99,6 +99,12 @@ def portal_errors[**P, R](fn: Callable[P, R]) -> Callable[P, R]:
             if db is not None:
                 db.rollback()
             raise ApiError(409, "conflict", "The change conflicts with existing data. Refresh and try again.") from exc
+        except DataError as exc:
+            if db is not None:
+                db.rollback()
+            raise ApiError(
+                422, "value_out_of_range", "A number in this request is outside the range that can be stored."
+            ) from exc
         except ApiError:
             if db is not None:
                 db.rollback()
