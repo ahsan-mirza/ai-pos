@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pytest
 from sqlalchemy import select
+from sqlalchemy.dialects import postgresql
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from tests.test_fashion import tee_model
@@ -24,6 +25,7 @@ from tests.test_returns import (
 )
 
 from app.models import InventoryLevel, PriceChange, Product, SaleItem
+from app.services import variant_matrix_service
 from app.tenancy.context import TenantRef, use_tenant
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -454,3 +456,25 @@ def test_inventory_pages_stay_on_the_tab_bar() -> None:
         assert f'to: "{path}"' not in nav
         assert path in layout
     assert 'to: "/inventory"' in nav
+
+
+def test_postgres_matrix_lock_targets_only_the_model_row() -> None:
+    """A left join to brand and sub-category cannot be locked, or PostgreSQL rejects the matrix save."""
+    captured: dict[str, str] = {}
+
+    class _Bind:
+        class dialect:
+            name = "postgresql"
+
+    class _Session:
+        def get_bind(self) -> _Bind:
+            return _Bind()
+
+        def scalar(self, statement):  # type: ignore[no-untyped-def]
+            captured["sql"] = str(statement.compile(dialect=postgresql.dialect()))
+            return object()
+
+    variant_matrix_service._model(_Session(), uuid.uuid4(), lock=True)  # type: ignore[arg-type]
+    sql = captured["sql"]
+    assert "FOR UPDATE OF product_models" in sql
+    assert "LEFT OUTER JOIN" in sql

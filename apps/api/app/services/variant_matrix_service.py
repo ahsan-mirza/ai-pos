@@ -74,7 +74,9 @@ def _key(attributes: dict[str, str]) -> tuple[tuple[str, str], ...]:
 def _model(db: Session, model_id: uuid.UUID, *, lock: bool = False) -> ProductModel:
     statement = select(ProductModel).where(ProductModel.id == model_id)
     if lock and db.get_bind().dialect.name == "postgresql":
-        statement = statement.with_for_update()
+        # Brand and sub-category load with a left join. Locking the whole statement makes PostgreSQL
+        # reject the query, so the matrix save fails before any variant is written.
+        statement = statement.with_for_update(of=ProductModel)
     model = db.scalar(statement)
     if model is None:
         raise ApiError(404, "not_found", "Model was not found.")
