@@ -1,6 +1,6 @@
 import re
 
-from sqlalchemy.exc import DBAPIError, DataError, OperationalError, ProgrammingError
+from sqlalchemy.exc import DataError, DBAPIError, OperationalError, ProgrammingError
 
 # Postgres SQLSTATE for a missing column / table: the code is newer than the database schema.
 _SCHEMA_SQLSTATES = {"42703", "42P01"}

@@ -212,7 +212,7 @@ def _with_request_id(request: Request, payload: dict[str, object]) -> dict[str, 
 
 def _database_ready(settings: Settings) -> bool:
     """True when a control or application database accepts a trivial read. Failures stay in the log."""
-    from sqlalchemy import text
+    from sqlalchemy import select
 
     from app.core.database import get_session_factory
 
@@ -224,7 +224,7 @@ def _database_ready(settings: Settings) -> bool:
             session = registry.control_session(settings)
         else:
             session = get_session_factory()()
-        session.execute(text("SELECT 1"))
+        session.scalar(select(1))
         return True
     except Exception:
         logger.warning("readiness database check failed", exc_info=True)
