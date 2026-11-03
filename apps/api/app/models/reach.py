@@ -18,15 +18,15 @@ try:
     from reach.models import (  # noqa: E402
         MessagingChannel,
         ReachCampaign,
+        ReachCampaignSuggestion,
         ReachConnection,
         ReachCreditAccount,
         ReachCreditTransaction,
+        ReachMediaAsset,
         ReachRecipient,
         ReachTemplate,
         ReachUsage,
         ReachWebhookEvent,
-        ReachMediaAsset,
-        ReachCampaignSuggestion,
     )
 except ModuleNotFoundError:
     log.warning("AxizReach plugin is not installed; Reach models are not registered")
@@ -45,13 +45,13 @@ except ModuleNotFoundError:
 __all__ = [
     "MessagingChannel",
     "ReachCampaign",
+    "ReachCampaignSuggestion",
     "ReachConnection",
     "ReachCreditAccount",
     "ReachCreditTransaction",
+    "ReachMediaAsset",
     "ReachRecipient",
     "ReachTemplate",
     "ReachUsage",
     "ReachWebhookEvent",
-    "ReachMediaAsset",
-    "ReachCampaignSuggestion",
 ]
