@@ -106,6 +106,57 @@ def _tenant_script() -> ScriptDirectory:
     return ScriptDirectory.from_config(config)
 
 
+def test_shared_database_reads_the_console_stamp_not_the_store_stamp(tmp_path) -> None:
+    from sqlalchemy import Column, MetaData, String, Table, insert
+
+    from app.core.database import build_engine
+    from app.tenancy import cli
+    from app.tenancy.registry import control_version_table
+
+    url = f"sqlite:///{(tmp_path / 'shared.db').as_posix()}"
+    separate = "postgresql://localhost/qios_control"
+    assert control_version_table(url, url) == "control_alembic_version"
+    assert control_version_table(separate, "postgresql://localhost/ai_pos_db") == "alembic_version"
+
+    meta = MetaData()
+    store_version = Table("alembic_version", meta, Column("version_num", String(32), primary_key=True))
+    console_version = Table("control_alembic_version", meta, Column("version_num", String(32), primary_key=True))
+    Table("stores", meta, Column("id", String(32), primary_key=True))
+    Table("tenants", meta, Column("id", String(32), primary_key=True))
+    engine = build_engine(url)
+    meta.create_all(engine)
+    with engine.begin() as connection:
+        connection.execute(insert(store_version).values(version_num="20261031_0094"))
+        connection.execute(insert(console_version).values(version_num="control_0020"))
+    engine.dispose()
+
+    store_heads, store_exists = cli._database_state(
+        url, version_table="alembic_version", marker_tables=cli._TENANT_MARKERS
+    )
+    console_heads, console_exists = cli._database_state(
+        url, version_table="control_alembic_version", marker_tables=cli._CONTROL_MARKERS
+    )
+    assert store_heads == ("20261031_0094",)
+    assert store_exists is True
+    assert console_heads == ("control_0020",)
+    assert console_exists is True
+
+    script = _control_script()
+    head = script.get_heads()[0]
+    with pytest.raises(MigrationRefused, match="not in this release"):
+        plan_upgrade(script, store_heads, head, has_application_tables=True, label="Control database")
+    plan = plan_upgrade(script, console_heads, head, has_application_tables=True, label="Control database")
+    assert plan.from_base is False
+    assert plan.revisions[-1] == head
+    assert "20261031_0094" not in plan.revisions
+
+
+def _control_script() -> ScriptDirectory:
+    config = Config(str(API / "alembic_control.ini"))
+    config.set_main_option("script_location", str(API / "alembic_control"))
+    return ScriptDirectory.from_config(config)
+
+
 def test_revision_ids_are_unique() -> None:
     for script in ("alembic", "alembic_control"):
         config = Config(str(API / f"{script}.ini"))

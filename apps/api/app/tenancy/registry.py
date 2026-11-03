@@ -103,6 +103,19 @@ def control_url(settings: Settings) -> str:
     return _resolve_control_url(settings.control_database_url, settings.database_url)
 
 
+def control_version_table(control_database_url: str, operational_database_url: str) -> str:
+    """Console revisions use their own table when they share the store database.
+
+    `alembic_version` on that database is the store history (for example `20261031_0094`).
+    Reading it as the console stamp would refuse a real console upgrade.
+    """
+    current = make_url(control_database_url)
+    operational = make_url(operational_database_url)
+    if current.database == operational.database and (current.host or "") == (operational.host or ""):
+        return "control_alembic_version"
+    return "alembic_version"
+
+
 def control_session(settings: Settings | None = None) -> Session:
     settings = settings or get_settings()
     return _control_factory(control_url(settings))()

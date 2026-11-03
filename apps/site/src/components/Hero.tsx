@@ -172,17 +172,17 @@ export function Hero() {
         >
           <div className="flex flex-col gap-8">
             <HeroAsk />
-            <figure className="relative mx-auto w-full max-w-xl px-6 py-6">
+            <figure className="relative mx-auto w-full max-w-2xl px-2 py-6">
               <div className="pointer-events-none absolute inset-10 rounded-full bg-orange-500/15 blur-3xl" aria-hidden="true" />
               <motion.div
                 animate={reduce ? undefined : { y: [0, -8, 0] }}
                 transition={reduce ? undefined : { duration: 5.5, repeat: Infinity, ease: "easeInOut" }}
               >
                 <img
-                  src="/pos/surface.png"
-                  alt="The restaurant register on a Surface tablet, with dine-in tables and checkout."
-                  width={949}
-                  height={706}
+                  src="/pos/terminal.png"
+                  alt="AxizPOS on a register with a customer display, receipt printer, phone, and barcode scanner."
+                  width={1024}
+                  height={978}
                   fetchPriority="high"
                   decoding="async"
                   className="hero-device relative h-auto w-full drop-shadow-2xl"

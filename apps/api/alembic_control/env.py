@@ -10,13 +10,12 @@ from pathlib import Path
 
 from alembic import context
 from sqlalchemy import engine_from_config, pool
-from sqlalchemy.engine import make_url
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app.core.config import get_settings  # noqa: E402
 from app.tenancy.models import ControlBase  # noqa: E402
-from app.tenancy.registry import control_url  # noqa: E402
+from app.tenancy.registry import control_url, control_version_table  # noqa: E402
 
 config = context.config
 if config.config_file_name is not None:
@@ -32,11 +31,7 @@ target_metadata = ControlBase.metadata
 
 def _version_table() -> str:
     """Keep the console revision list away from the store list when both share one database."""
-    other = make_url(settings.database_url)
-    current = make_url(url)
-    if current.database == other.database and (current.host or "") == (other.host or ""):
-        return "control_alembic_version"
-    return "alembic_version"
+    return control_version_table(url, settings.database_url)
 
 
 def run_migrations_offline() -> None:

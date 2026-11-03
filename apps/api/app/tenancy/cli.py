@@ -57,26 +57,34 @@ def _one_head(script: ScriptDirectory, label: str) -> str:
     return heads[0]
 
 
-_VERSION_TABLES = {"alembic_version", "alembic_version_einvoicing"}
+# Tables that mean this history was already created. Store tables in a shared database do not count
+# as console tables, and console tables do not count as store tables.
+_TENANT_MARKERS = frozenset({"stores", "products", "sales"})
+_CONTROL_MARKERS = frozenset({"tenants"})
 
 
-def _database_state(url: str) -> tuple[tuple[str, ...], bool]:
-    """Stamped revisions, and whether any application table already exists."""
+def _database_state(
+    url: str, *, version_table: str, marker_tables: frozenset[str]
+) -> tuple[tuple[str, ...], bool]:
+    """Stamped revisions for this history, and whether its own tables already exist."""
     engine = build_engine(url)
     try:
         with engine.connect() as connection:
-            heads = tuple(MigrationContext.configure(connection).get_current_heads())
-            names = inspect(connection).get_table_names()
+            migration = MigrationContext.configure(connection, opts={"version_table": version_table})
+            heads = tuple(migration.get_current_heads())
+            names = set(inspect(connection).get_table_names())
     finally:
         engine.dispose()
-    return heads, any(name not in _VERSION_TABLES for name in names)
+    return heads, bool(names & marker_tables)
 
 
-def _upgrade_to_head(config: Config, url: str, label: str) -> None:
+def _upgrade_to_head(
+    config: Config, url: str, label: str, *, version_table: str, marker_tables: frozenset[str]
+) -> None:
     """Apply revisions strictly after the stamp. Never downgrades and never replays history over existing tables."""
     script = ScriptDirectory.from_config(config)
     head = _one_head(script, label)
-    current, has_tables = _database_state(url)
+    current, has_tables = _database_state(url, version_table=version_table, marker_tables=marker_tables)
     name = _database_name(url)
     described = f"{label} ({name})"
     try:
@@ -93,7 +101,7 @@ def _upgrade_to_head(config: Config, url: str, label: str) -> None:
         print(f"{described} is at {current[0]}. Applying {len(plan.revisions)} new revision(s) only: {joined}.")
     # upgrade moves forward to head. The plan above is what that command is allowed to run.
     command.upgrade(config, "head")
-    after, _has_tables = _database_state(url)
+    after, _has_tables = _database_state(url, version_table=version_table, marker_tables=marker_tables)
     if after != (head,):
         found = ", ".join(after) if after else "base"
         sys.exit(f"{described} is at {found} after migrate. Expected {head}. Existing rows were not removed.")
@@ -123,7 +131,13 @@ def upgrade_control(settings: Settings) -> None:
     if url != settings.control_database_url:
         missing = make_url(settings.control_database_url).database
         print(f"Control database {missing} does not exist. Using {make_url(url).database}.")
-    _upgrade_to_head(_alembic("alembic_control", "alembic_control.ini", url), url, "Control database")
+    _upgrade_to_head(
+        _alembic("alembic_control", "alembic_control.ini", url),
+        url,
+        "Control database",
+        version_table=registry.control_version_table(url, settings.database_url),
+        marker_tables=_CONTROL_MARKERS,
+    )
 
 
 def upgrade_tenant(url: str, tenant_id: str | None = None) -> None:
@@ -133,7 +147,13 @@ def upgrade_tenant(url: str, tenant_id: str | None = None) -> None:
     else:
         os.environ.pop("ALEMBIC_TENANT_ID", None)
     try:
-        _upgrade_to_head(_alembic("alembic", "alembic.ini", url), url, "Tenant database")
+        _upgrade_to_head(
+            _alembic("alembic", "alembic.ini", url),
+            url,
+            "Tenant database",
+            version_table="alembic_version",
+            marker_tables=_TENANT_MARKERS,
+        )
     finally:
         if previous is None:
             os.environ.pop("ALEMBIC_TENANT_ID", None)
