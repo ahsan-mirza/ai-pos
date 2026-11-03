@@ -278,8 +278,14 @@ export function ReachPage() {
           busy={busy}
           onLaunch={(body) =>
             run(async () => {
-              await apiPost("/api/v1/reach/campaigns", body);
-              setNotice("Campaign started. Messages go out in the background, including if you leave this page.");
+              if (body.origin === "ai" && body.mode === "draft") {
+                const draft = await apiPost<{ id: string }>("/api/v1/reach/campaigns", body);
+                await apiPost(`/api/v1/reach/campaigns/${draft.id}/approve-and-send`, {});
+                setNotice("Approved and queued. Messages continue in the background, including if you leave this page.");
+              } else {
+                await apiPost("/api/v1/reach/campaigns", body);
+                setNotice("Campaign started. Messages go out in the background, including if you leave this page.");
+              }
               setTab("campaigns");
             }, "The campaign was not queued.")
           }
@@ -476,6 +482,9 @@ function CampaignsPanel({
   const [selected, setSelected] = useState<string[]>([]);
   const [optedOnly, setOptedOnly] = useState(true);
   const [picked, setPicked] = useState<MessageChannel[]>([]);
+  const [mediaId, setMediaId] = useState<string | null>(null);
+  const [mediaKind, setMediaKind] = useState<string | null>(null);
+  const [fromAi, setFromAi] = useState(false);
   const [body, setBody] = useState("Hello {{customer_name}}, {{business_name}} has something for you.");
   const [when, setWhen] = useState("");
   const [preview, setPreview] = useState<Preview | null>(null);
@@ -515,8 +524,19 @@ function CampaignsPanel({
       min_loyalty_points: Number(minPoints) || 0,
       customer_ids: selected,
     },
-    content: Object.fromEntries(picked.map((channel) => [channel, { body, subject: name }])),
+    content: Object.fromEntries(
+      picked.map((channel) => [
+        channel,
+        {
+          body,
+          subject: name,
+          ...(channel === "whatsapp" && mediaId ? { media_id: mediaId, media_kind: mediaKind } : {}),
+        },
+      ]),
+    ),
     scheduled_at: when ? new Date(when).toISOString() : null,
+    origin: fromAi ? "ai" : "manual",
+    mode: fromAi ? "draft" : "send",
   });
 
   const review = async () => {
@@ -546,7 +566,14 @@ function CampaignsPanel({
           event.preventDefault();
           if (step < 4) setStep(step + 1);
           else if (step === 4) void review();
-          else onLaunch(payload());
+          else {
+            const eligible = preview?.eligible ?? 0;
+            const credits = preview?.estimated_credits ?? 0;
+            const confirmed = window.confirm(
+              `You're about to send this campaign to ${eligible} eligible customers. ${credits} credits will be reserved. Messages will be sent individually in the background.`,
+            );
+            if (confirmed) onLaunch(payload());
+          }
         }}
       >
         <h2 className="text-lg font-semibold">New campaign · step {step} of 5</h2>
@@ -657,6 +684,49 @@ function CampaignsPanel({
               Message
               <textarea value={body} onChange={(event) => setBody(event.target.value)} rows={4} className="mt-1 w-full rounded-xl bg-surface px-3 py-2 font-normal" />
             </label>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                className="rounded-xl border border-line px-3 py-2 text-sm"
+                onClick={() => {
+                  void apiPost<{ title: string; body: string }>("/api/v1/reach/ai/generate", { objective: "announcement"                   }).then((draft) => {
+                    setName(draft.title);
+                    setBody(draft.body);
+                    setFromAi(true);
+                    setLocalError("AI draft only. Review the wording, then choose Approve and send.");
+                  }).catch((caught) => setLocalError(errorMessage(caught, "A draft could not be generated.")));
+                }}
+              >
+                Generate with AI
+              </button>
+              <label className="rounded-xl border border-line px-3 py-2 text-sm">
+                Attach JPG, PNG, WebP, MP4, or PDF
+                <input
+                  className="mt-1 block text-xs"
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp,video/mp4,application/pdf"
+                  onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    if (!file) return;
+                    const reader = new FileReader();
+                    reader.onload = () => {
+                      const encoded = String(reader.result || "").split(",")[1] || "";
+                      void apiPost<{ id: string; kind: string }>("/api/v1/reach/media", {
+                        file_name: file.name,
+                        mime_type: file.type,
+                        content_base64: encoded,
+                      }).then((saved) => {
+                        setMediaId(saved.id);
+                        setMediaKind(saved.kind);
+                        setLocalError(null);
+                      }).catch((caught) => setLocalError(errorMessage(caught, "The file was not accepted.")));
+                    };
+                    reader.readAsDataURL(file);
+                  }}
+                />
+              </label>
+            </div>
+            {mediaId ? <p className="text-sm text-charcoal/70">File attached ({mediaKind}). The same file and caption go to each recipient.</p> : null}
           </>
         ) : null}
         {step === 4 ? (
@@ -680,7 +750,7 @@ function CampaignsPanel({
             disabled={busy || (step === 1 && name.trim().length < 1) || (step >= 3 && picked.length === 0) || body.trim().length < 2}
             type="submit"
           >
-            {step < 4 ? "Continue" : step === 4 ? "Preview audience" : busy ? "Working…" : "Send campaign"}
+            {step < 4 ? "Continue" : step === 4 ? "Preview audience" : busy ? "Working…" : fromAi ? "Approve and send" : "Send campaign"}
           </PrimaryButton>
         </div>
       </form>

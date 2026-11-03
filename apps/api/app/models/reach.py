@@ -25,6 +25,8 @@ try:
         ReachTemplate,
         ReachUsage,
         ReachWebhookEvent,
+        ReachMediaAsset,
+        ReachCampaignSuggestion,
     )
 except ModuleNotFoundError:
     log.warning("AxizReach plugin is not installed; Reach models are not registered")
@@ -37,6 +39,8 @@ except ModuleNotFoundError:
     ReachTemplate = None  # type: ignore[misc, assignment]
     ReachUsage = None  # type: ignore[misc, assignment]
     ReachWebhookEvent = None  # type: ignore[misc, assignment]
+    ReachMediaAsset = None  # type: ignore[misc, assignment]
+    ReachCampaignSuggestion = None  # type: ignore[misc, assignment]
 
 __all__ = [
     "MessagingChannel",
@@ -48,4 +52,6 @@ __all__ = [
     "ReachTemplate",
     "ReachUsage",
     "ReachWebhookEvent",
+    "ReachMediaAsset",
+    "ReachCampaignSuggestion",
 ]

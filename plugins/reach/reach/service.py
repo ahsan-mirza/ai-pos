@@ -215,11 +215,50 @@ def _unknown_variables(*texts: str) -> list[str]:
     return sorted(found - VARIABLES)
 
 
+def _require_media(db: Session, content: dict, channels: list[str]) -> None:
+    from reach.models import ReachMediaAsset
+
+    for channel in channels:
+        piece = content.get(channel) or {}
+        media_id = piece.get("media_id")
+        if not media_id:
+            continue
+        if channel != "whatsapp":
+            raise ApiError(422, "media_unsupported", "Files are sent only on WhatsApp.")
+        try:
+            asset_id = uuid.UUID(str(media_id))
+        except ValueError as exc:
+            raise ApiError(422, "media_missing", "Upload the file again before sending.") from exc
+        asset = db.get(ReachMediaAsset, asset_id)
+        if asset is None:
+            raise ApiError(422, "media_missing", "Upload the file again before sending.")
+        kind = piece.get("media_kind")
+        if kind and kind != asset.kind:
+            raise ApiError(422, "media_mismatch", "The file type does not match this message.")
+
+
 def _audience(db: Session, audience: dict, store_id: uuid.UUID | None) -> list[Customer]:
     query = select(Customer).where(Customer.is_active.is_(True))
     chosen_ids = audience.get("customer_ids")
     if chosen_ids:
         query = query.where(Customer.id.in_(chosen_ids))
+    if audience.get("group_id"):
+        query = query.where(Customer.group_id == audience["group_id"])
+    location = (audience.get("location") or "").strip()
+    if location:
+        query = query.where(Customer.address.ilike(f"%{location}%"))
+    product_id = audience.get("product_id")
+    category_name = (audience.get("category") or "").strip()
+    if product_id or category_name:
+        from app.models.product import Product
+        from app.models.sale_item import SaleItem
+
+        buyers = select(Sale.customer_id).join(SaleItem, SaleItem.sale_id == Sale.id)
+        if product_id:
+            buyers = buyers.where(SaleItem.product_id == product_id)
+        if category_name:
+            buyers = buyers.join(Product, Product.id == SaleItem.product_id).where(Product.category.ilike(category_name))
+        query = query.where(Customer.id.in_(buyers))
     minimum = int(audience.get("min_loyalty_points") or 0)
     if minimum:
         query = query.where(Customer.loyalty_points >= minimum)
@@ -277,6 +316,19 @@ def _json_audience(audience: dict) -> dict:
     stored = dict(audience)
     if stored.get("customer_ids"):
         stored["customer_ids"] = [str(item) for item in stored["customer_ids"]]
+    for key in ("group_id", "product_id"):
+        if stored.get(key):
+            stored[key] = str(stored[key])
+    return stored
+
+
+def _json_content(content: dict) -> dict:
+    stored: dict = {}
+    for channel, value in content.items():
+        item = dict(value or {})
+        if item.get("media_id"):
+            item["media_id"] = str(item["media_id"])
+        stored[channel] = item
     return stored
 
 
@@ -354,21 +406,28 @@ def preview(db: Session, data: dict) -> dict:
 
 def launch(db: Session, actor_id: uuid.UUID | None, data: dict) -> ReachCampaign:
     require_reach(db)
-    existing = db.scalar(select(ReachCampaign).where(ReachCampaign.idempotency_key == data["idempotency_key"]))
-    if existing is not None:
-        return existing
+    resume_id = data.get("resume_campaign_id")
+    if resume_id is None:
+        existing = db.scalar(select(ReachCampaign).where(ReachCampaign.idempotency_key == data["idempotency_key"]))
+        if existing is not None:
+            return existing
     channels = list(dict.fromkeys(channel for channel in data["channels"] if channel in CHANNELS))
     if not channels:
         raise ApiError(422, "channel_required", "Choose at least one channel.")
-    closed = [channel for channel in channels if not campaign_channel_ready(db, channel)]
-    if closed:
-        if "whatsapp" in closed and _channel_provider(db, "whatsapp") == "evolution":
-            raise ApiError(
-                422,
-                "whatsapp_disconnected",
-                "WhatsApp is not connected. Scan the QR and refresh until the session is open.",
-            )
-        raise ApiError(422, "channel_disabled", f"Turn on {', '.join(closed)} before this campaign can use them.")
+    mode = data.get("mode") or "send"
+    origin = data.get("origin") or "manual"
+    if origin == "ai" and mode == "send":
+        raise ApiError(422, "approval_required", "Review this AI campaign, then choose Approve and send.")
+    if mode == "send":
+        closed = [channel for channel in channels if not campaign_channel_ready(db, channel)]
+        if closed:
+            if "whatsapp" in closed and _channel_provider(db, "whatsapp") == "evolution":
+                raise ApiError(
+                    422,
+                    "whatsapp_disconnected",
+                    "WhatsApp is not connected. Scan the QR and refresh until the session is open.",
+                )
+            raise ApiError(422, "channel_disabled", f"Turn on {', '.join(closed)} before this campaign can use them.")
     audience = data.get("audience") or {}
     if audience.get("customer_ids") is not None and not audience.get("customer_ids"):
         raise ApiError(422, "audience_required", "Select at least one customer.")
@@ -377,7 +436,7 @@ def launch(db: Session, actor_id: uuid.UUID | None, data: dict) -> ReachCampaign
     for channel in channels:
         piece = content.get(channel) or {}
         body = (piece.get("body") or "").strip()
-        if len(body) < 2:
+        if len(body) < 2 and not piece.get("media_id"):
             raise ApiError(422, "message_required", f"Write the {channel} message.")
         texts.append(body)
         texts.append(piece.get("subject") or "")
@@ -394,21 +453,41 @@ def launch(db: Session, actor_id: uuid.UUID | None, data: dict) -> ReachCampaign
     settings = load_settings(db)
     business = settings.legal_name or "AxizPOS"
     store_name = business
-    campaign = ReachCampaign(
-        name=data["name"].strip(),
-        description=(data.get("description") or "").strip(),
-        objective=data.get("objective") or "promotion",
-        status="queued",
-        channels=channels,
-        audience=_json_audience(audience),
-        content=content,
-        store_id=data.get("store_id"),
-        scheduled_at=data.get("scheduled_at"),
-        idempotency_key=data["idempotency_key"],
-        created_by_id=actor_id,
-    )
-    db.add(campaign)
+    if resume_id is not None:
+        campaign = get_campaign(db, uuid.UUID(str(resume_id)))
+        if campaign.status not in {"draft", "pending_approval", "rejected"}:
+            return campaign
+        campaign.approval_state = "approved"
+        campaign.approved_version = campaign.content_version
+        campaign.approved_by_id = actor_id
+        campaign.approved_at = datetime.now(UTC)
+        campaign.channels = channels
+        campaign.audience = _json_audience(audience)
+        campaign.content = _json_content(content)
+    else:
+        campaign = ReachCampaign(
+            name=data["name"].strip(),
+            description=(data.get("description") or "").strip(),
+            objective=data.get("objective") or "promotion",
+            status="queued",
+            channels=channels,
+            audience=_json_audience(audience),
+            content=_json_content(content),
+            store_id=data.get("store_id"),
+            scheduled_at=data.get("scheduled_at"),
+            idempotency_key=data["idempotency_key"],
+            created_by_id=actor_id,
+            origin=origin,
+            approval_state="draft" if mode == "draft" else "not_required",
+        )
+        db.add(campaign)
     db.flush()
+    if mode == "draft":
+        campaign.status = "draft"
+        db.commit()
+        db.refresh(campaign)
+        return campaign
+    _require_media(db, content, channels)
     evolution = _channel_provider(db, "whatsapp") == "evolution"
     connection_id = None
     if evolution:
@@ -447,6 +526,8 @@ def launch(db: Session, actor_id: uuid.UUID | None, data: dict) -> ReachCampaign
                 dedupe_key=f"campaign:{campaign.id}:{customer.id}:{channel}",
                 context=context,
                 next_attempt_at=when,
+                attachment_kind=(piece.get("media_kind") if piece.get("media_id") and channel == "whatsapp" else None),
+                attachment_ref=(str(piece.get("media_id")) if piece.get("media_id") and channel == "whatsapp" else None),
             )
             db.add(message)
             db.flush()
@@ -463,6 +544,29 @@ def launch(db: Session, actor_id: uuid.UUID | None, data: dict) -> ReachCampaign
                 )
             )
     if credit_units:
+        from app.core.config import get_settings
+
+        start = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
+        already = int(
+            db.scalar(
+                select(func.count())
+                .select_from(OutboundMessage)
+                .where(
+                    OutboundMessage.channel == "whatsapp",
+                    OutboundMessage.template_key == "campaign",
+                    OutboundMessage.status.in_(("QUEUED", "SENT")),
+                    OutboundMessage.created_at >= start,
+                )
+            )
+            or 0
+        )
+        if already + credit_units > get_settings().reach_daily_recipient_limit:
+            db.rollback()
+            raise ApiError(
+                422,
+                "daily_limit",
+                "This campaign would pass today's WhatsApp recipient limit. Send a smaller audience or wait until tomorrow.",
+            )
         try:
             credit_book.reserve(db, campaign.id, credit_units)
         except ApiError:
@@ -486,6 +590,76 @@ def launch(db: Session, actor_id: uuid.UUID | None, data: dict) -> ReachCampaign
         if again is not None:
             return again
         raise
+    db.refresh(campaign)
+    return campaign
+
+
+def approve_and_send(db: Session, actor_id: uuid.UUID | None, campaign_id: uuid.UUID) -> ReachCampaign:
+    """Approves the current content version and queues it. A second call returns the same campaign."""
+    campaign = get_campaign(db, campaign_id)
+    if campaign.status in {"processing", "queued", "scheduled", "completed", "paused"}:
+        return campaign
+    if campaign.status not in {"draft", "pending_approval", "rejected"}:
+        raise ApiError(422, "invalid_status", "Only a draft can be approved and sent.")
+    return launch(
+        db,
+        actor_id,
+        {
+            "idempotency_key": campaign.idempotency_key,
+            "name": campaign.name,
+            "description": campaign.description,
+            "objective": campaign.objective,
+            "channels": list(campaign.channels or []),
+            "audience": campaign.audience or {},
+            "content": campaign.content or {},
+            "store_id": campaign.store_id,
+            "scheduled_at": campaign.scheduled_at,
+            "mode": "send",
+            "origin": "manual",
+            "resume_campaign_id": campaign.id,
+        },
+    )
+
+
+def submit_for_approval(db: Session, campaign_id: uuid.UUID) -> ReachCampaign:
+    campaign = get_campaign(db, campaign_id)
+    if campaign.status != "draft":
+        raise ApiError(422, "invalid_status", "Only a draft can be submitted for approval.")
+    campaign.approval_state = "pending_approval"
+    campaign.status = "pending_approval"
+    db.commit()
+    db.refresh(campaign)
+    return campaign
+
+
+def reject_campaign(db: Session, campaign_id: uuid.UUID) -> ReachCampaign:
+    campaign = get_campaign(db, campaign_id)
+    if campaign.status not in {"draft", "pending_approval"}:
+        raise ApiError(422, "invalid_status", "Only a draft waiting for review can be rejected.")
+    campaign.approval_state = "rejected"
+    campaign.status = "rejected"
+    campaign.approved_version = None
+    db.commit()
+    db.refresh(campaign)
+    return campaign
+
+
+def revise_campaign(db: Session, campaign_id: uuid.UUID, content: dict, audience: dict | None) -> ReachCampaign:
+    """Editing after approval clears that approval. The next send must be approved again."""
+    campaign = get_campaign(db, campaign_id)
+    if campaign.status not in {"draft", "pending_approval", "rejected"}:
+        raise ApiError(422, "invalid_status", "A campaign that has already been sent cannot be edited here.")
+    if content:
+        campaign.content = _json_content(content)
+    if audience is not None:
+        campaign.audience = _json_audience(audience)
+    campaign.content_version = int(campaign.content_version or 1) + 1
+    campaign.approved_version = None
+    campaign.approved_at = None
+    campaign.approved_by_id = None
+    campaign.approval_state = "draft"
+    campaign.status = "draft"
+    db.commit()
     db.refresh(campaign)
     return campaign
 

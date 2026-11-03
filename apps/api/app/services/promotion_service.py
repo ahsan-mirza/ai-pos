@@ -138,6 +138,12 @@ def create(db: Session, data: PromotionWrite, user_id: uuid.UUID | None) -> Prom
     _apply(promo, data)
     db.add(promo)
     db.commit()
+    try:
+        from reach.suggestions import on_promotion_created
+
+        on_promotion_created(db, promo)
+    except Exception:
+        pass
     return _out(promo, _stats(db))
 
 

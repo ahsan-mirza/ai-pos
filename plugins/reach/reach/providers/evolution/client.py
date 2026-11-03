@@ -59,7 +59,38 @@ class EvolutionClient:
             raise EvolutionError("Evolution accepted no message id.", permanent=False)
         return message_id
 
-    def _call(self, method: str, path: str, body: dict | None) -> dict[str, Any]:
+    def send_media(
+        self,
+        name: str,
+        number: str,
+        *,
+        mediatype: str,
+        mimetype: str,
+        caption: str,
+        media_b64: str,
+        file_name: str,
+    ) -> str:
+        """Evolution v2 sendMedia. mediatype is image, video, or document."""
+        payload = self._call(
+            "POST",
+            f"/message/sendMedia/{name}",
+            {
+                "number": number,
+                "mediatype": mediatype,
+                "mimetype": mimetype,
+                "caption": caption,
+                "media": media_b64,
+                "fileName": file_name,
+            },
+            timeout=60,
+        )
+        key = payload.get("key") if isinstance(payload.get("key"), dict) else {}
+        message_id = str(key.get("id") or payload.get("messageId") or payload.get("id") or "")
+        if not message_id:
+            raise EvolutionError("Evolution accepted no message id.", permanent=False)
+        return message_id
+
+    def _call(self, method: str, path: str, body: dict | None, timeout: int = 20) -> dict[str, Any]:
         if self.handler is not None:
             return self.handler(method, path, body)
         if not self.base_url or not self.api_key:
@@ -70,7 +101,7 @@ class EvolutionClient:
                 f"{self.base_url}{path}",
                 headers={"apikey": self.api_key},
                 json=body,
-                timeout=20,
+                timeout=timeout,
             )
         except httpx.HTTPError as exc:
             raise EvolutionError("Evolution API could not be reached.", permanent=False) from exc

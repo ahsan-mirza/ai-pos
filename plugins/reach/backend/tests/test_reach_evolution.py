@@ -26,7 +26,7 @@ def _fake_evolution():
         calls.append((method, path))
         if path.startswith("/message/sendText/") and body and body.get("text") == "fail":
             raise ProviderError("Evolution rejected the message.", permanent=True)
-        if path.startswith("/message/sendText/"):
+        if path.startswith("/message/sendText/") or path.startswith("/message/sendMedia/"):
             return {"key": {"id": "MSG-1"}}
         if "/connectionState/" in path:
             return {"instance": {"state": "open", "wuid": "971500000111"}}
@@ -453,6 +453,119 @@ def test_disconnected_session_pauses_the_campaign(client, session) -> None:
     assert queued is not None and queued.status == "QUEUED"
     held = credit_book.snapshot(session)
     assert held is not None and held["reserved"] == 1 and held["balance"] == 2
+
+
+def test_media_upload_and_image_send(client, session, _fake_evolution) -> None:
+    import base64
+
+    seed(client)
+    headers, _ = admin(client)
+    _enable(client, headers)
+    _ready(client, headers)
+    credit_book.allocate(session, units=2, note="seed", idempotency_key="alloc-media")
+    session.commit()
+    client.post(
+        "/api/v1/customers",
+        headers=headers,
+        json={"name": "Noor", "phone": "+971501110061", "marketing_whatsapp_opt_in": True},
+    )
+    rejected = client.post(
+        "/api/v1/reach/media",
+        headers=headers,
+        json={"file_name": "note.png", "mime_type": "image/png", "content_base64": base64.b64encode(b"hello").decode()},
+    )
+    assert rejected.status_code == 422
+    png = b"\x89PNG\r\n\x1a\n" + b"\x00" * 24
+    uploaded = client.post(
+        "/api/v1/reach/media",
+        headers=headers,
+        json={"file_name": "banner.png", "mime_type": "image/png", "content_base64": base64.b64encode(png).decode()},
+    )
+    assert uploaded.status_code == 201, uploaded.text
+    assert uploaded.json()["kind"] == "image"
+    launched = client.post(
+        "/api/v1/reach/campaigns",
+        headers=headers,
+        json={
+            "idempotency_key": str(uuid.uuid4()),
+            "name": "Banner",
+            "channels": ["whatsapp"],
+            "audience": {},
+            "content": {
+                "whatsapp": {
+                    "body": "See this",
+                    "subject": "Banner",
+                    "media_id": uploaded.json()["id"],
+                    "media_kind": "image",
+                }
+            },
+        },
+    )
+    assert launched.status_code == 201, launched.text
+    assert run_job(session, get_settings(), "dispatch_messages") == "ok"
+    assert any(path.startswith("/message/sendMedia/") for _, path in _fake_evolution)
+
+
+def test_ai_campaign_requires_approval_before_send(client, session) -> None:
+    seed(client)
+    headers, _ = admin(client)
+    _enable(client, headers)
+    _ready(client, headers)
+    credit_book.allocate(session, units=2, note="seed", idempotency_key="alloc-ai")
+    session.commit()
+    client.post(
+        "/api/v1/customers",
+        headers=headers,
+        json={"name": "Noor", "phone": "+971501110071", "marketing_whatsapp_opt_in": True},
+    )
+    generated = client.post("/api/v1/reach/ai/generate", headers=headers, json={"objective": "announcement"})
+    assert generated.status_code == 200, generated.text
+    assert generated.json()["origin"] == "ai"
+    blocked = client.post(
+        "/api/v1/reach/campaigns",
+        headers=headers,
+        json={
+            "idempotency_key": str(uuid.uuid4()),
+            "name": generated.json()["title"],
+            "origin": "ai",
+            "channels": ["whatsapp"],
+            "audience": {},
+            "content": {"whatsapp": {"body": generated.json()["body"], "subject": "AI"}},
+        },
+    )
+    assert blocked.status_code == 422
+    assert blocked.json()["error"]["code"] == "approval_required"
+    draft = client.post(
+        "/api/v1/reach/campaigns",
+        headers=headers,
+        json={
+            "idempotency_key": str(uuid.uuid4()),
+            "name": generated.json()["title"],
+            "origin": "ai",
+            "mode": "draft",
+            "channels": ["whatsapp"],
+            "audience": {},
+            "content": {"whatsapp": {"body": generated.json()["body"], "subject": "AI"}},
+        },
+    )
+    assert draft.status_code == 201, draft.text
+    assert draft.json()["status"] == "draft"
+    campaign_id = draft.json()["id"]
+    changed = client.post(
+        f"/api/v1/reach/campaigns/{campaign_id}/revise",
+        headers=headers,
+        json={"content": {"whatsapp": {"body": "A reviewed message for you", "subject": "AI"}}},
+    )
+    assert changed.status_code == 200, changed.text
+    assert changed.json()["content_version"] == 2
+    sent = client.post(f"/api/v1/reach/campaigns/{campaign_id}/approve-and-send", headers=headers)
+    assert sent.status_code == 200, sent.text
+    assert sent.json()["queued_count"] == 1
+    again = client.post(f"/api/v1/reach/campaigns/{campaign_id}/approve-and-send", headers=headers)
+    assert again.status_code == 200, again.text
+    assert again.json()["id"] == campaign_id
+    queued = client.get("/api/v1/messaging/outbox", headers=headers, params={"status": "QUEUED"}).json()
+    assert len([row for row in queued if row["template_key"] == "campaign"]) == 1
 
 
 def _webhook_key(session) -> str:

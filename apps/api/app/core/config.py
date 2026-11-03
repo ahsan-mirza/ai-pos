@@ -130,6 +130,11 @@ class Settings(BaseSettings):
     # Pause between Evolution sends in one dispatch run. Zero disables the pause in tests.
     reach_send_interval_seconds: int = Field(default=3, ge=0, le=30)
     reach_send_batch: int = Field(default=20, ge=1, le=50)
+    reach_daily_recipient_limit: int = Field(default=1000, ge=1, le=5000)
+    reach_inactive_days: int = Field(default=60, ge=7, le=3650)
+    reach_media_max_image_bytes: int = Field(default=5_000_000, ge=50_000, le=20_000_000)
+    reach_media_max_video_bytes: int = Field(default=16_000_000, ge=50_000, le=64_000_000)
+    reach_media_max_document_bytes: int = Field(default=8_000_000, ge=50_000, le=32_000_000)
 
     # QR payments. "dev" simulates the customer paying; "emvco" renders a merchant-presented EMVCo QR whose
     # payment the acquirer confirms through the signed webhook.

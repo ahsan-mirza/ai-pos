@@ -44,6 +44,12 @@ class ReachCampaign(TenantScoped, TimestampMixin, Base):
     scheduled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     idempotency_key: Mapped[str] = mapped_column(String(80))
     created_by_id: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    origin: Mapped[str] = mapped_column(String(16), default="manual")
+    approval_state: Mapped[str] = mapped_column(String(24), default="not_required")
+    content_version: Mapped[int] = mapped_column(Integer, default=1)
+    approved_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    approved_by_id: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     eligible_count: Mapped[int] = mapped_column(Integer, default=0)
     suppressed_count: Mapped[int] = mapped_column(Integer, default=0)
     queued_count: Mapped[int] = mapped_column(Integer, default=0)
@@ -150,6 +156,37 @@ class ReachCreditTransaction(TenantScoped, Base):
     outbound_message_id: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True), nullable=True)
     note: Mapped[str] = mapped_column(String(300), default="")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class ReachMediaAsset(TenantScoped, TimestampMixin, Base):
+    """One uploaded campaign file. Bytes live on the tenant disk, not in this row."""
+
+    __tablename__ = "reach_media_assets"
+    __table_args__ = (tenant_unique("storage_key", name="uq_reach_media_storage_key"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    file_name: Mapped[str] = mapped_column(String(160))
+    mime_type: Mapped[str] = mapped_column(String(80))
+    kind: Mapped[str] = mapped_column(String(16))
+    size_bytes: Mapped[int] = mapped_column(Integer)
+    storage_key: Mapped[str] = mapped_column(String(80))
+
+
+class ReachCampaignSuggestion(TenantScoped, TimestampMixin, Base):
+    """A campaign idea from a business event. It never sends by itself."""
+
+    __tablename__ = "reach_campaign_suggestions"
+    __table_args__ = (tenant_unique("event_key", name="uq_reach_suggestions_event"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    event_key: Mapped[str] = mapped_column(String(80))
+    event_type: Mapped[str] = mapped_column(String(32))
+    title: Mapped[str] = mapped_column(String(120))
+    reason: Mapped[str] = mapped_column(String(300), default="")
+    body: Mapped[str] = mapped_column(Text, default="")
+    audience: Mapped[dict] = mapped_column(JSON, default=dict)
+    status: Mapped[str] = mapped_column(String(16), default="open")
+    campaign_id: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True), ForeignKey("reach_campaigns.id"), nullable=True)
 
 
 class ReachWebhookEvent(TenantScoped, Base):

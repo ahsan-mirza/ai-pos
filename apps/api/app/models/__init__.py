@@ -51,6 +51,8 @@ from app.models.reach import (
     ReachTemplate,
     ReachUsage,
     ReachWebhookEvent,
+    ReachMediaAsset,
+    ReachCampaignSuggestion,
 )
 from app.models.recipe import ModifierIngredient, Recipe, RecipeLine, RecipeUsage
 from app.models.rental import ProductRental, Rental, RentalLine, RentalPayment
@@ -168,6 +170,8 @@ __all__ = [
     "ReachTemplate",
     "ReachUsage",
     "ReachWebhookEvent",
+    "ReachMediaAsset",
+    "ReachCampaignSuggestion",
     "PaymentIntent",
     "PaymentRefund",
     "PaymentTerminal",

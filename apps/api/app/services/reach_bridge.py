@@ -67,6 +67,17 @@ def submit(settings: Settings, provider: str, outgoing: object, creds: dict) -> 
     if not instance:
         raise ProviderError("No Evolution instance is selected for this message.", permanent=True)
     client = client_for(settings.evolution_api_url, settings.evolution_api_key)
+    media = creds.get("media") if isinstance(creds.get("media"), dict) else None
+    if media:
+        return client.send_media(
+            instance,
+            number,
+            mediatype=str(media.get("mediatype") or "document"),
+            mimetype=str(media.get("mimetype") or "application/octet-stream"),
+            caption=outgoing.body,
+            media_b64=str(media.get("data_b64") or ""),
+            file_name=str(media.get("file_name") or "file"),
+        )
     return client.send_text(instance, number, outgoing.body)
 
 
@@ -91,6 +102,15 @@ def submit_message(
             connection = db.scalar(select(ReachConnection).where(ReachConnection.status == "open").limit(1))
             instance = connection.instance_name if connection is not None else ""
         creds = {**creds, "instance_name": instance}
+        if getattr(message, "attachment_ref", None):
+            from reach.media_store import payload_for
+
+            media = payload_for(db, str(message.attachment_ref))
+            if media is None:
+                from app.services.messaging_providers import ProviderError
+
+                raise ProviderError("The campaign file is missing.", permanent=True)
+            creds = {**creds, "media": media}
     return submit(settings, provider, outgoing, creds)
 
 

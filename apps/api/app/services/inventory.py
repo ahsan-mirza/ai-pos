@@ -1338,6 +1338,12 @@ def create_product(db: Session, principal: Principal, data: ProductCreate, curre
             variant_attributes="This combination already exists.",
         ) from None
     db.refresh(product)
+    try:
+        from reach.suggestions import on_product_created
+
+        on_product_created(db, product)
+    except Exception:
+        pass
     from app.services import list_cache
 
     list_cache.bump("models")

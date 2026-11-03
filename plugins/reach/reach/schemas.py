@@ -35,11 +35,17 @@ class Audience(BaseModel):
     customer_type: str | None = None
     # None keeps the filter audience. An empty list means the owner selected nobody.
     customer_ids: list[UUID] | None = Field(default=None, max_length=1000)
+    group_id: UUID | None = None
+    location: str | None = Field(default=None, max_length=120)
+    product_id: UUID | None = None
+    category: str | None = Field(default=None, max_length=80)
 
 
 class ChannelContent(BaseModel):
     body: str = Field(default="", max_length=4000)
     subject: str = Field(default="", max_length=200)
+    media_id: UUID | None = None
+    media_kind: Literal["image", "video", "document"] | None = None
 
 
 class CampaignWrite(BaseModel):
@@ -52,6 +58,8 @@ class CampaignWrite(BaseModel):
     content: dict[str, ChannelContent]
     store_id: UUID | None = None
     scheduled_at: datetime | None = None
+    mode: Literal["send", "draft"] = "send"
+    origin: Literal["manual", "ai"] = "manual"
 
 
 class CampaignOut(BaseModel):
@@ -66,6 +74,9 @@ class CampaignOut(BaseModel):
     queued_count: int
     scheduled_at: datetime | None
     created_at: datetime
+    origin: str = "manual"
+    approval_state: str = "not_required"
+    content_version: int = 1
     pending_count: int = 0
     processing_count: int = 0
     accepted_count: int = 0
@@ -198,3 +209,51 @@ class CreditAllocate(BaseModel):
     units: int = Field(ge=1, le=1_000_000)
     note: str = Field(default="", max_length=300)
     idempotency_key: str = Field(min_length=8, max_length=80)
+
+
+class MediaWrite(BaseModel):
+    file_name: str = Field(min_length=1, max_length=160)
+    mime_type: str = Field(min_length=1, max_length=80)
+    content_base64: str = Field(min_length=8)
+
+
+class MediaOut(BaseModel):
+    id: UUID
+    file_name: str
+    mime_type: str
+    kind: str
+    size_bytes: int
+
+    model_config = {"from_attributes": True}
+
+
+class GenerateWrite(BaseModel):
+    objective: str = Field(default="announcement", max_length=40)
+    product_id: UUID | None = None
+    promotion_id: UUID | None = None
+    include_price: bool = False
+
+
+class GenerateOut(BaseModel):
+    title: str
+    body: str
+    facts: list[str]
+    missing: list[str]
+    origin: str
+
+
+class SuggestionOut(BaseModel):
+    id: UUID
+    event_type: str
+    title: str
+    reason: str
+    body: str
+    status: str
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class ReviseWrite(BaseModel):
+    content: dict[str, ChannelContent]
+    audience: Audience | None = None

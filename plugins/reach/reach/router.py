@@ -6,6 +6,7 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, Request
+from fastapi.responses import FileResponse, Response
 from sqlalchemy.orm import Session
 
 from app.core.config import Settings, get_settings
@@ -22,14 +23,21 @@ from reach.schemas import (
     ConnectionOut,
     CreditOut,
     CreditTransactionOut,
+    GenerateOut,
+    GenerateWrite,
+    MediaOut,
+    MediaWrite,
     OverviewOut,
     PreviewOut,
     PricesWrite,
     RecipientOut,
+    ReviseWrite,
+    SuggestionOut,
     TemplateOut,
     TemplateWrite,
 )
 from reach.service import (
+    approve_and_send,
     cancel,
     delete_template,
     get_campaign,
@@ -46,6 +54,9 @@ from reach.service import (
     require_reach,
     resume,
     retry_failed,
+    reject_campaign,
+    revise_campaign,
+    submit_for_approval,
     save_channel,
     save_prices,
     save_template,
@@ -143,6 +154,113 @@ def resume_route(campaign_id: UUID, db: Db, _: CanManage) -> dict:
 @router.post("/campaigns/{campaign_id}/retry", response_model=CampaignOut)
 def retry_route(campaign_id: UUID, db: Db, _: CanManage) -> dict:
     return present_campaign(db, retry_failed(db, campaign_id))
+
+
+@router.post("/campaigns/{campaign_id}/submit-approval", response_model=CampaignOut)
+def submit_approval_route(campaign_id: UUID, db: Db, _: CanManage) -> dict:
+    return present_campaign(db, submit_for_approval(db, campaign_id))
+
+
+@router.post("/campaigns/{campaign_id}/reject", response_model=CampaignOut)
+def reject_route(campaign_id: UUID, db: Db, _: CanManage) -> dict:
+    return present_campaign(db, reject_campaign(db, campaign_id))
+
+
+@router.post("/campaigns/{campaign_id}/revise", response_model=CampaignOut)
+def revise_route(campaign_id: UUID, payload: ReviseWrite, db: Db, _: CanManage) -> dict:
+    content = {key: value.model_dump(mode="json") for key, value in payload.content.items()}
+    audience = None if payload.audience is None else payload.audience.model_dump(mode="json")
+    return present_campaign(db, revise_campaign(db, campaign_id, content, audience))
+
+
+@router.post("/campaigns/{campaign_id}/approve-and-send", response_model=CampaignOut)
+def approve_send_route(campaign_id: UUID, db: Db, principal: CanManage) -> dict:
+    return present_campaign(db, approve_and_send(db, principal.user.id, campaign_id))
+
+
+@router.post("/media", response_model=MediaOut, status_code=201)
+def media_upload(payload: MediaWrite, db: Db, settings: Config, _: CanManage):
+    import base64
+
+    from reach.media_store import save_upload
+    from reach.service import require_reach
+
+    require_reach(db)
+    try:
+        raw = base64.b64decode(payload.content_base64, validate=True)
+    except Exception as exc:
+        from app.core.errors import ApiError
+
+        raise ApiError(422, "corrupt_media", "The file could not be read.") from exc
+    return save_upload(db, settings, payload.file_name, payload.mime_type, raw)
+
+
+@router.get("/media/{asset_id}")
+def media_download(asset_id: UUID, db: Db, _: CanManage) -> FileResponse:
+    from reach.media_store import file_path
+    from reach.models import ReachMediaAsset
+    from reach.service import require_reach
+
+    require_reach(db)
+    row = db.get(ReachMediaAsset, asset_id)
+    if row is None:
+        from app.core.errors import ApiError
+
+        raise ApiError(404, "not_found", "File not found.")
+    return FileResponse(file_path(row), media_type=row.mime_type, filename=row.file_name)
+
+
+@router.delete("/media/{asset_id}", status_code=204)
+def media_delete(asset_id: UUID, db: Db, _: CanManage) -> None:
+    from reach.media_store import remove
+    from reach.service import require_reach
+
+    require_reach(db)
+    remove(db, asset_id)
+
+
+@router.post("/ai/generate", response_model=GenerateOut)
+def ai_generate(payload: GenerateWrite, db: Db, settings: Config, _: CanManage) -> dict:
+    from reach.assistant import generate
+    from reach.service import require_reach
+
+    require_reach(db)
+    return generate(db, settings, payload.model_dump())
+
+
+@router.get("/suggestions", response_model=list[SuggestionOut])
+def suggestion_list(db: Db, _: CanManage) -> list:
+    from reach.suggestions import list_suggestions
+
+    return list_suggestions(db)
+
+
+@router.post("/suggestions/{suggestion_id}/dismiss", response_model=SuggestionOut)
+def suggestion_dismiss(suggestion_id: UUID, db: Db, _: CanManage):
+    from reach.suggestions import dismiss
+
+    return dismiss(db, suggestion_id)
+
+
+@router.post("/suggestions/{suggestion_id}/draft", response_model=CampaignOut, status_code=201)
+def suggestion_draft(suggestion_id: UUID, db: Db, principal: CanManage) -> dict:
+    from reach.suggestions import draft_from_suggestion
+
+    return present_campaign(db, draft_from_suggestion(db, principal.user.id, suggestion_id))
+
+
+@router.get("/campaigns/{campaign_id}/recipients.csv")
+def recipient_export(campaign_id: UUID, db: Db, _: CanManage) -> Response:
+    from reach.service import get_campaign, recipients
+
+    get_campaign(db, campaign_id)
+    lines = ["phone,status,failure_reason"]
+    for row in recipients(db, campaign_id, None, 1000):
+        digits = "".join(ch for ch in (row.phone or "") if ch.isdigit())
+        masked = f"****{digits[-4:]}" if len(digits) >= 4 else "****"
+        reason = (row.failure_reason or "").replace('"', "'")
+        lines.append(f"{masked},{row.status},\"{reason}\"")
+    return Response("\n".join(lines), media_type="text/csv")
 
 
 @router.get("/messages", response_model=list[RecipientOut])
