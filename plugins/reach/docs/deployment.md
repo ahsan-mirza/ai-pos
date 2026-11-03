@@ -2,7 +2,7 @@
 
 The plugin is imported by the existing API. No extra Compose service or Redis queue is required. `dispatch_messages` already runs inside the API process.
 
-Production deploy copies `plugins/reach` next to `plugins/einvoicing`. The portal bundle includes the Reach page, and that bundle does not install this package. After deploy, `migrate-all` applies `20261101_0095` and `20261103_0096`.
+Production deploy copies `plugins/reach` next to `plugins/einvoicing`. The portal bundle includes the Reach page, and that bundle does not install this package. After deploy, `migration-check` confirms one tenant head, then `migrate-all` applies every pending tenant revision, including the Reach revisions in `plugins/reach/backend/migrations`.
 
 Set these on the API process when a store will use Evolution:
 

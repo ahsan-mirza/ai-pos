@@ -30,6 +30,9 @@ jobs:
           pnpm install --frozen-lockfile
           python -m venv apps/api/.venv
           apps/api/.venv/bin/pip install -r apps/api/requirements-dev.txt
+      - name: Check migration graph
+        working-directory: apps/api
+        run: .venv/bin/python -m app.tenancy.cli migration-check
       - name: Verify
         run: |
           # Python's pkg-config path must not shadow the system libraries Cargo probes.

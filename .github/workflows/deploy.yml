@@ -126,7 +126,7 @@ jobs:
       - name: Grant database creation
         run: ssh server "sudo -n bash ~/ai-pos-deploy/ensure-postgres.sh"
 
-      - name: Install, migrate, restart
+      - name: Install and apply pending migrations
         run: |
           ssh server "APP_DIR=$APP_DIR bash -s" <<'EOF'
           set -euo pipefail
@@ -138,6 +138,11 @@ jobs:
           fi
           .venv/bin/pip install -q -r requirements.txt
           export APP_ENV=production
+          # Fail before touching a database when the revision graph has more than one head.
+          # init and migrate-all upgrade a database only from its stamped revision to head.
+          # A database that already has tables and no stamp is refused, so production rows are not rebuilt.
+          # PM2 reloads in a later step, so a failed migration leaves the running API on the previous release.
+          .venv/bin/python -m app.tenancy.cli migration-check
           .venv/bin/python -m app.tenancy.cli init
           .venv/bin/python -m app.tenancy.cli migrate-all
           EOF

@@ -13,6 +13,7 @@ if _reach_root.is_dir():
 from app.core.config import get_settings  # noqa: E402
 from app.models import Base  # noqa: E402
 from app.tenancy.registry import resolve_cli_database_url  # noqa: E402
+from app.tenancy.revisions import attach_tenant_versions  # noqa: E402
 
 config = context.config
 if config.config_file_name is not None:
@@ -25,10 +26,9 @@ database_url = config.attributes.get("database_url") or resolve_cli_database_url
 )
 config.set_main_option("sqlalchemy.url", database_url.replace("%", "%%"))
 target_metadata = Base.metadata
-_version_locations = [str(Path(__file__).resolve().parent / "versions")]
-_reach_versions = _reach_root / "backend" / "migrations"
-if _reach_versions.is_dir():
-    _version_locations.append(str(_reach_versions))
+# `alembic upgrade` builds the revision map before this file runs. Attach Reach
+# revisions now so `head` includes plugins/reach/backend/migrations.
+attach_tenant_versions(context.script)
 
 
 def run_migrations_offline() -> None:
@@ -38,7 +38,6 @@ def run_migrations_offline() -> None:
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
         compare_type=True,
-        version_locations=_version_locations,
     )
     with context.begin_transaction():
         context.run_migrations()
@@ -52,7 +51,6 @@ def run_migrations_online() -> None:
             connection=connection,
             target_metadata=target_metadata,
             compare_type=True,
-            version_locations=_version_locations,
         )
         with context.begin_transaction():
             # Later revisions run after row-level security is forced on. A local bypass lets DDL

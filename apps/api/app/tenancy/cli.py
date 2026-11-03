@@ -4,7 +4,8 @@ python -m app.tenancy.cli init                                  # create / upgra
 python -m app.tenancy.cli create client1 --name "Client One"    # new database qios_client1, migrated + Super Admin
 python -m app.tenancy.cli create cafe1 --name "Cafe" --profile cafe   # same, with the cafe module preset
 python -m app.tenancy.cli adopt demo --name "Demo" --database ai_pos   # register an existing database
-python -m app.tenancy.cli migrate-all                           # upgrade every tenant database
+python -m app.tenancy.cli migration-check                       # one head, including Reach revisions
+python -m app.tenancy.cli migrate-all                           # upgrade every database that is behind head
 python -m app.tenancy.cli list
 python -m app.tenancy.cli set-status client1 suspended
 python -m app.tenancy.cli create-operator --email it@axizpos.com --name "IT Support" --role ADMIN   # console staff
@@ -19,7 +20,9 @@ from pathlib import Path
 
 from alembic import command
 from alembic.config import Config
-from sqlalchemy import select
+from alembic.runtime.migration import MigrationContext
+from alembic.script import ScriptDirectory
+from sqlalchemy import inspect, select
 from sqlalchemy.engine import make_url
 from sqlalchemy.orm import sessionmaker
 
@@ -30,15 +33,87 @@ from app.services.rbac_service import ensure_super_admin, ensure_system_roles
 from app.tenancy import registry
 from app.tenancy.context import TenantRef
 from app.tenancy.models import TENANT_STATUSES, Tenant
+from app.tenancy.revisions import MigrationRefused, plan_upgrade, version_locations_option
 
 API_ROOT = Path(__file__).resolve().parents[2]
 
 
-def _alembic(script: str, ini: str, url: str) -> Config:
+def _alembic(script: str, ini: str, url: str | None = None) -> Config:
     config = Config(str(API_ROOT / ini))
     config.set_main_option("script_location", str(API_ROOT / script))
-    config.attributes["database_url"] = url
+    if script == "alembic":
+        # Set before ScriptDirectory.from_config. env.py cannot add folders after that.
+        config.set_main_option("version_locations", version_locations_option())
+    if url is not None:
+        config.attributes["database_url"] = url
     return config
+
+
+def _one_head(script: ScriptDirectory, label: str) -> str:
+    heads = script.get_heads()
+    if len(heads) != 1:
+        joined = ", ".join(sorted(heads)) or "none"
+        sys.exit(f"{label} has {len(heads)} migration heads ({joined}). Deploy cannot choose which one to apply.")
+    return heads[0]
+
+
+_VERSION_TABLES = {"alembic_version", "alembic_version_einvoicing"}
+
+
+def _database_state(url: str) -> tuple[tuple[str, ...], bool]:
+    """Stamped revisions, and whether any application table already exists."""
+    engine = build_engine(url)
+    try:
+        with engine.connect() as connection:
+            heads = tuple(MigrationContext.configure(connection).get_current_heads())
+            names = inspect(connection).get_table_names()
+    finally:
+        engine.dispose()
+    return heads, any(name not in _VERSION_TABLES for name in names)
+
+
+def _upgrade_to_head(config: Config, url: str, label: str) -> None:
+    """Apply revisions strictly after the stamp. Never downgrades and never replays history over existing tables."""
+    script = ScriptDirectory.from_config(config)
+    head = _one_head(script, label)
+    current, has_tables = _database_state(url)
+    name = _database_name(url)
+    described = f"{label} ({name})"
+    try:
+        plan = plan_upgrade(script, current, head, has_application_tables=has_tables, label=described)
+    except MigrationRefused as error:
+        sys.exit(str(error))
+    if not plan.revisions and not plan.from_base:
+        print(f"{described} is at {head}. Existing rows were left in place.")
+        return
+    if plan.from_base:
+        print(f"{described} has no tables. Creating the schema from the first revision.")
+    else:
+        joined = ", ".join(plan.revisions)
+        print(f"{described} is at {current[0]}. Applying {len(plan.revisions)} new revision(s) only: {joined}.")
+    # upgrade moves forward to head. The plan above is what that command is allowed to run.
+    command.upgrade(config, "head")
+    after, _has_tables = _database_state(url)
+    if after != (head,):
+        found = ", ".join(after) if after else "base"
+        sys.exit(f"{described} is at {found} after migrate. Expected {head}. Existing rows were not removed.")
+    print(f"{described} is now at {head}.")
+
+
+def check_migration_graph() -> None:
+    """Fail when tenant or control revisions would make `upgrade head` refuse to run."""
+    tenant = ScriptDirectory.from_config(_alembic("alembic", "alembic.ini"))
+    tenant_head = _one_head(tenant, "Tenant migrations")
+    reach = API_ROOT.parent.parent / "plugins" / "reach" / "backend" / "migrations"
+    plugin_revisions = [
+        revision.revision for revision in tenant.walk_revisions() if reach in Path(revision.path).parents
+    ]
+    if not plugin_revisions:
+        sys.exit(f"No Reach migrations found under {reach}. Production would leave those tables missing.")
+    print(f"Tenant migrations: 1 head ({tenant_head}), including {len(plugin_revisions)} Reach revision(s).")
+    control = ScriptDirectory.from_config(_alembic("alembic_control", "alembic_control.ini"))
+    control_head = _one_head(control, "Control migrations")
+    print(f"Control migrations: 1 head ({control_head}).")
 
 
 def upgrade_control(settings: Settings) -> None:
@@ -48,7 +123,7 @@ def upgrade_control(settings: Settings) -> None:
     if url != settings.control_database_url:
         missing = make_url(settings.control_database_url).database
         print(f"Control database {missing} does not exist. Using {make_url(url).database}.")
-    command.upgrade(_alembic("alembic_control", "alembic_control.ini", url), "head")
+    _upgrade_to_head(_alembic("alembic_control", "alembic_control.ini", url), url, "Control database")
 
 
 def upgrade_tenant(url: str, tenant_id: str | None = None) -> None:
@@ -58,7 +133,7 @@ def upgrade_tenant(url: str, tenant_id: str | None = None) -> None:
     else:
         os.environ.pop("ALEMBIC_TENANT_ID", None)
     try:
-        command.upgrade(_alembic("alembic", "alembic.ini", url), "head")
+        _upgrade_to_head(_alembic("alembic", "alembic.ini", url), url, "Tenant database")
     finally:
         if previous is None:
             os.environ.pop("ALEMBIC_TENANT_ID", None)
@@ -184,6 +259,10 @@ def _database_name(url: str) -> str:
 def migrate_all(_: argparse.Namespace, settings: Settings) -> None:
     """Upgrade every live store database, then the shared database.
 
+    Each database moves forward from its stamped revision only. A database already at head is
+    left untouched. A database that already has tables but no stamp is refused, so a deploy
+    cannot replay the initial migration over sales, stock, or customers. Downgrade is never run.
+
     Existing stores are still `legacy` and keep their own databases. Those are the production
     databases. `DATABASE_URL` is the shared database for new stores; it may be empty, and a failure
     there must not skip the databases that are already serving sales.
@@ -207,7 +286,7 @@ def migrate_all(_: argparse.Namespace, settings: Settings) -> None:
             continue
         seen.add(tenant.database_url)
         legacy += 1
-        print(f"Migrating legacy {slug} ({_database_name(tenant.database_url)})...")
+        print(f"Checking legacy {slug} ({_database_name(tenant.database_url)})...")
         upgrade_tenant(tenant.database_url, tenant.id)
         added = _apply_taxonomy(tenant)
         if added:
@@ -216,7 +295,7 @@ def migrate_all(_: argparse.Namespace, settings: Settings) -> None:
     if settings.database_url in seen:
         print(f"Shared database {shared_name} was migrated with its legacy tenant.")
     else:
-        print(f"Migrating the shared operational database ({shared_name})...")
+        print(f"Checking the shared operational database ({shared_name})...")
         upgrade_tenant(settings.database_url)
     for slug, tenant in shared:
         added = _apply_taxonomy(tenant)
@@ -293,6 +372,7 @@ def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(prog="python -m app.tenancy.cli", description="Manage tenants.")
     sub = parser.add_subparsers(dest="command", required=True)
     sub.add_parser("init", help="create or upgrade the control database")
+    sub.add_parser("migration-check", help="fail unless tenant and control revisions each have one head")
     made = sub.add_parser("create", help="provision a new tenant database")
     made.add_argument("slug")
     made.add_argument("--name", required=True)
@@ -321,6 +401,9 @@ def main(argv: list[str] | None = None) -> None:
     demo.add_argument("--only", nargs="*", help="subdomains to include (default: all in demo-businesses.json)")
 
     args = parser.parse_args(argv)
+    if args.command == "migration-check":
+        check_migration_graph()
+        return
     settings = get_settings()
     if args.command == "init":
         upgrade_control(settings)
