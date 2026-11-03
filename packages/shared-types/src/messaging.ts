@@ -48,6 +48,7 @@ export interface BackgroundJob {
 export const PROVIDER_LABELS: Record<string, string> = {
   log: "Log only (no delivery)",
   whatsapp_cloud: "WhatsApp Cloud API",
+  evolution: "Evolution API",
   http_sms: "SMS gateway (HTTP)",
   smtp: "Email (SMTP)",
 };

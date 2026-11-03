@@ -58,6 +58,7 @@ export function MessagingPage() {
   const [testTo, setTestTo] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  const [sending, setSending] = useState(false);
   const dismissToast = useCallback(() => setToast(null), []);
   const canJobs = can(Permission.SettingsManage);
 
@@ -92,12 +93,16 @@ export function MessagingPage() {
   };
 
   const sendTest = async () => {
+    if (sending) return;
+    setSending(true);
     try {
       const result = await apiPost<OutboundMessage>("/api/v1/messaging/test", { channel: testChannel, to: testTo.trim() });
-      setToast(result.status === "SENT" ? "Test message sent." : `Test message ${result.status.toLowerCase()}: ${result.last_error ?? ""}`);
+      setToast(result.status === "SENT" ? "Test message accepted by the provider." : `Test message ${result.status.toLowerCase()}${result.last_error ? `: ${result.last_error}` : ""}`);
       void load();
     } catch (caught) {
       setError(errorMessage(caught, "Could not send the test message."));
+    } finally {
+      setSending(false);
     }
   };
 
@@ -115,74 +120,91 @@ export function MessagingPage() {
   const failed = outbox.filter((row) => row.status === "FAILED").length;
 
   return (
-    <section className="space-y-4">
+    <section className="space-y-6">
       <ErrorNote message={error} />
-      <p className="text-sm text-charcoal/60">
-        These providers send receipts, statements, and other essential messages. They keep working when AxizReach is off.
+      <header>
+        <h1 className="text-3xl font-semibold tracking-tight">Messaging</h1>
+        <p className="mt-1 max-w-2xl text-sm leading-6 text-charcoal/60">
+          Manage customer notifications and automated business communications.
+        </p>
         {reachOn ? (
-          <>
-            {" "}
-            Campaign credentials and sending are on{" "}
-            <Link to="/settings/reach" className="font-semibold text-charcoal underline">
-              AxizReach
+          <p className="mt-2 text-sm text-charcoal/70">
+            <Link to="/settings/reach" className="font-semibold text-accent">
+              Manage marketing campaigns in AxizReach.
             </Link>
-            .
-          </>
+          </p>
         ) : null}
-      </p>
+      </header>
       <TenantChannelCards />
-      <div className="grid gap-4 md:grid-cols-3">
-        {channels.map(({ id, label, icon: Icon }) => (
-          <article key={id} className="rounded-card border border-line bg-white p-6">
-            <div className="flex items-center gap-3">
-              <span className="flex h-10 w-10 items-center justify-center rounded-full bg-charcoal text-white">
-                <Icon size={18} aria-hidden="true" />
-              </span>
-              <div>
-                <h3 className="font-semibold">{label}</h3>
-                <p className="text-xs text-charcoal/50">Server fallback, used only when this channel has no saved account.</p>
+      <section className="grid gap-3">
+        <div>
+          <h2 className="text-lg font-semibold">Server fallback</h2>
+          <p className="mt-1 max-w-2xl text-sm leading-6 text-charcoal/60">
+            Used only when a channel has no saved account above. A saved account always wins.
+          </p>
+        </div>
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+          {channels.map(({ id, label, icon: Icon }) => (
+            <article key={id} className="rounded-card border border-line bg-white p-4 shadow-sm">
+              <div className="flex items-center gap-3">
+                <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-accent/10 text-accent">
+                  <Icon size={16} aria-hidden="true" />
+                </span>
+                <h3 className="text-sm font-semibold">{label}</h3>
               </div>
-            </div>
-            <SelectField
-              className="mt-4"
-              label="Provider"
-              value={settings?.providers[id] ?? "log"}
-              options={(settings?.available[id] ?? ["log"]).map((value) => ({ value, label: PROVIDER_LABELS[value] ?? value }))}
-              onChange={(value) => void save({ providers: { [id]: value } })}
-            />
-          </article>
-        ))}
-      </div>
+              <SelectField
+                className="mt-3"
+                label="Fallback provider"
+                value={settings?.providers[id] ?? "log"}
+                options={(settings?.available[id] ?? ["log"]).map((value) => ({ value, label: PROVIDER_LABELS[value] ?? value }))}
+                onChange={(value) => void save({ providers: { [id]: value } })}
+              />
+            </article>
+          ))}
+        </div>
+      </section>
 
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-        <article className="rounded-card border border-line bg-white p-6">
-          <h2 className="text-xl font-semibold">Automatic messages</h2>
+      <div className="grid gap-4 xl:grid-cols-2">
+        <article className="rounded-card border border-line bg-white p-4 shadow-sm">
+          <h2 className="text-lg font-semibold">Automatic messages</h2>
           <p className="text-sm text-charcoal/60">Sent only to customers who opted in on that channel.</p>
-          <div className="mt-4 space-y-3">
+          <ul className="mt-4 divide-y divide-line">
             {Object.keys(eventLabels).map((key) => {
               const template = templates.find((row) => row.key === key);
+              const on = settings?.events[key] ?? false;
               return (
-                <div key={key} className="flex items-center gap-3 rounded-2xl bg-surface p-3">
+                <li key={key} className="flex items-center gap-3 py-3">
                   <div className="min-w-0 flex-1">
-                    <Toggle
-                      label={eventLabels[key] ?? key}
-                      description={template ? template.body.slice(0, 90) + (template.body.length > 90 ? "…" : "") : ""}
-                      checked={settings?.events[key] ?? false}
-                      onChange={(value) => void save({ events: { [key]: value } })}
-                    />
+                    <p className="text-sm font-medium">{eventLabels[key] ?? key}</p>
+                    <p className="truncate text-xs text-charcoal/50">
+                      {template ? template.body.slice(0, 110) + (template.body.length > 110 ? "…" : "") : "No template"}
+                    </p>
                   </div>
+                  <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${on ? "bg-emerald-50 text-emerald-700" : "bg-surface text-charcoal/50"}`}>
+                    {on ? "On" : "Off"}
+                  </span>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={on}
+                    aria-label={eventLabels[key] ?? key}
+                    onClick={() => void save({ events: { [key]: !on } })}
+                    className={`relative h-6 w-11 shrink-0 rounded-full ${on ? "bg-accent" : "bg-charcoal/15"}`}
+                  >
+                    <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow ${on ? "left-5" : "left-0.5"}`} />
+                  </button>
                   {template ? (
-                    <GhostButton onClick={() => setEditing(template)}>Edit text</GhostButton>
+                    <GhostButton onClick={() => setEditing(template)}>Edit</GhostButton>
                   ) : null}
-                </div>
+                </li>
               );
             })}
-          </div>
+          </ul>
         </article>
 
-        <article className="rounded-card bg-charcoal p-6 text-white">
-          <h2 className="text-xl font-semibold">Send a test</h2>
-          <p className="text-sm text-white/60">Checks the provider for one channel end to end.</p>
+        <article className="rounded-card border border-line bg-white p-4 shadow-sm">
+          <h2 className="text-lg font-semibold">Test a transactional message</h2>
+          <p className="text-sm text-charcoal/60">Sends through the saved provider and records the outbox result.</p>
           <div className="mt-4 flex flex-wrap gap-2">
             {channels.map(({ id, label }) => (
               <button
@@ -190,37 +212,37 @@ export function MessagingPage() {
                 type="button"
                 aria-pressed={testChannel === id}
                 onClick={() => setTestChannel(id)}
-                className={`rounded-full px-4 py-2 text-sm font-semibold ${testChannel === id ? "bg-accent" : "bg-white/10 hover:bg-white/15"}`}
+                className={`rounded-full px-3 py-1.5 text-sm font-medium ${testChannel === id ? "bg-accent text-white" : "border border-line bg-white"}`}
               >
                 {label}
               </button>
             ))}
           </div>
-          <div className="mt-4 flex gap-2">
+          <div className="mt-4 flex flex-col gap-2 sm:flex-row">
             <input
               value={testTo}
               onChange={(event) => setTestTo(event.target.value)}
-              placeholder={testChannel === "email" ? "name@example.com" : "+971 50 123 4567"}
+              placeholder={testChannel === "email" ? "name@example.com" : "+971501234567"}
               aria-label="Send the test to"
-              className="h-12 flex-1 rounded-xl border border-white/10 bg-white/5 px-4 text-white placeholder:text-white/30 focus:border-accent focus:outline-none"
+              className="h-11 flex-1 rounded-xl border border-line bg-surface px-3 text-sm focus:border-accent focus:outline-none"
             />
             <button
               type="button"
-              disabled={testTo.trim().length < 3}
+              disabled={sending || testTo.trim().length < 3}
               onClick={() => void sendTest()}
-              className="inline-flex h-12 items-center gap-2 rounded-xl bg-accent px-5 text-sm font-semibold disabled:opacity-40"
+              className="inline-flex h-11 items-center justify-center gap-2 rounded-full bg-accent px-4 text-sm font-medium text-white disabled:opacity-40"
             >
-              <Send size={16} aria-hidden="true" /> Send
+              <Send size={16} aria-hidden="true" /> {sending ? "Sending…" : "Send test"}
             </button>
           </div>
-          <dl className="mt-6 grid grid-cols-2 gap-3 text-sm">
-            <div className="rounded-2xl bg-white/5 p-4">
-              <dt className="text-white/60">Sent (recent)</dt>
+          <dl className="mt-4 grid grid-cols-2 gap-3 text-sm">
+            <div className="rounded-xl bg-surface p-3">
+              <dt className="text-charcoal/60">Sent recently</dt>
               <dd className="mt-1 text-2xl font-semibold tabular-nums">{sent}</dd>
             </div>
-            <div className="rounded-2xl bg-white/5 p-4">
-              <dt className="text-white/60">Failed (recent)</dt>
-              <dd className={`mt-1 text-2xl font-semibold tabular-nums ${failed ? "text-accent" : ""}`}>{failed}</dd>
+            <div className="rounded-xl bg-surface p-3">
+              <dt className="text-charcoal/60">Failed recently</dt>
+              <dd className="mt-1 text-2xl font-semibold tabular-nums">{failed}</dd>
             </div>
           </dl>
         </article>
@@ -229,7 +251,7 @@ export function MessagingPage() {
       <article className="rounded-card border border-line bg-white p-6">
         <h2 className="text-xl font-semibold">Outbox</h2>
         <div className="mt-4 overflow-x-auto">
-          <table className="w-full min-w-[820px] text-left text-sm">
+          <table className="w-full text-left text-sm">
             <thead className="text-xs uppercase tracking-wide text-charcoal/50">
               <tr>
                 <th className="pb-3 font-medium">When</th>

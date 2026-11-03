@@ -56,28 +56,28 @@ export function AskDemo({ compact = false }: { compact?: boolean }) {
   };
 
   return (
-    <div className="rounded-card border border-primary/30 bg-card p-4 shadow-lg shadow-primary/10">
-      <div className="flex items-center gap-3">
-        <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-primary text-white">
-          <Mark name="spark" className="h-5 w-5" />
+    <div className="ai-assistant-card flex h-full min-h-0 flex-col rounded-[26px] border border-line bg-card p-7 shadow-[0_10px_30px_-18px_rgba(15,23,42,0.28)] lg:p-8">
+      <div className="flex items-center gap-4">
+        <span className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-primary text-white">
+          <Mark name="spark" className="h-7 w-7" />
         </span>
         <div>
-          <p className="text-sm font-semibold text-charcoal">Ask your business</p>
-          <p className="text-xs text-charcoal/60">English or العربية · answers come only from your reports</p>
+          <h3 className="text-2xl font-semibold tracking-tight text-charcoal">Ask your business</h3>
+          <p className="mt-1 text-sm leading-5 text-charcoal/65">English or العربية · Answers based on your business data.</p>
         </div>
       </div>
 
-      <div className="mt-4 space-y-3" aria-live="polite">
+      <div className="mt-6 flex min-h-0 flex-1 flex-col justify-center gap-4" aria-live="polite">
         <p
           dir={item.question.startsWith("ك") ? "rtl" : "ltr"}
-          className="ml-auto max-w-[90%] rounded-2xl rounded-br-md bg-charcoal px-3 py-2 text-sm text-canvas"
+          className="ml-auto max-w-[92%] rounded-2xl rounded-br-md bg-charcoal px-4 py-3 text-[17px] leading-6 text-canvas"
         >
           {item.question}
         </p>
-        <div className="max-w-[92%] rounded-2xl rounded-bl-md border border-line bg-surface px-3 py-2.5 text-sm text-charcoal">
+        <div className="max-w-[92%] rounded-2xl rounded-bl-md border border-line bg-surface px-4 py-3.5 text-[17px] text-charcoal">
           <AnimatePresence mode="wait">
             {phase === "read" && !reduce ? (
-              <motion.p key="read" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="text-charcoal/60">
+              <motion.p key="read" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="leading-7 text-charcoal/60">
                 Reading {item.tool.toLowerCase()}
                 <span className="inline-flex w-6 justify-between px-1" aria-hidden="true">
                   <motion.span animate={{ opacity: [0.2, 1, 0.2] }} transition={{ duration: 1, repeat: Infinity }}>
@@ -93,10 +93,10 @@ export function AskDemo({ compact = false }: { compact?: boolean }) {
               </motion.p>
             ) : (
               <motion.div key={item.question} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35 }}>
-                <p dir={item.question.startsWith("ك") ? "rtl" : "ltr"} className="leading-6">
+                <p dir={item.question.startsWith("ك") ? "rtl" : "ltr"} className="leading-7">
                   {item.answer}
                 </p>
-                <p className="mt-2 inline-flex rounded-full bg-primary/10 px-2 py-0.5 text-xs font-semibold text-primary">{item.tool}</p>
+                <p className="mt-3 inline-flex rounded-full bg-primary/10 px-2.5 py-1 text-xs font-semibold text-primary">{item.tool}</p>
               </motion.div>
             )}
           </AnimatePresence>
@@ -104,11 +104,11 @@ export function AskDemo({ compact = false }: { compact?: boolean }) {
       </div>
 
       {compact ? (
-        <a href="#intelligence" className="mt-4 inline-flex text-sm font-semibold text-primary">
+        <a href="#intelligence" className="mt-6 inline-flex text-sm font-semibold text-primary">
           See what you can ask
         </a>
       ) : (
-        <div className="mt-4 flex flex-wrap gap-2">
+        <div className="mt-6 flex flex-wrap gap-2">
           {EXCHANGES.map((exchange, exchangeIndex) => (
             <button
               key={exchange.question}
@@ -116,7 +116,7 @@ export function AskDemo({ compact = false }: { compact?: boolean }) {
               dir={exchange.question.startsWith("ك") ? "rtl" : "ltr"}
               onClick={() => choose(exchangeIndex)}
               aria-pressed={exchangeIndex === index}
-              className={`rounded-full px-3 py-1.5 text-left text-xs font-semibold ${
+              className={`rounded-full px-3.5 py-2 text-left text-sm font-semibold transition-colors duration-200 ${
                 exchangeIndex === index ? "bg-primary text-white" : "bg-surface text-charcoal hover:text-primary"
               }`}
             >
@@ -125,9 +125,14 @@ export function AskDemo({ compact = false }: { compact?: boolean }) {
           ))}
         </div>
       )}
-      <p className="mt-3 text-xs leading-5 text-charcoal/55">
-        Layout sample. In the portal, every figure comes from that store. The assistant does not invent a number.
-      </p>
+      <div className="mt-6 border-t border-line pt-4">
+        <p className="text-xs leading-5 text-charcoal/55">
+          Layout sample. In the portal, every figure comes from that store. The assistant does not invent a number.
+        </p>
+        <p className="mt-2 text-xs font-medium leading-5 text-charcoal/70">
+          Powered by AxizPOS AI · Your business data, explained clearly.
+        </p>
+      </div>
     </div>
   );
 }

@@ -1,6 +1,6 @@
-import { type MessageChannel } from "@ai-pos/shared-types";
+import { PROVIDER_LABELS, type MessageChannel } from "@ai-pos/shared-types";
 import { useCallback, useEffect, useState } from "react";
-import { ErrorNote, PrimaryButton, SelectField, TextField } from "../../components/ui/Field";
+import { ErrorNote, SelectField, TextField } from "../../components/ui/Field";
 import { apiGet, apiPost, apiPut } from "../../lib/api";
 import { errorMessage } from "../users/api";
 
@@ -18,6 +18,21 @@ interface ChannelCard {
 }
 
 const labels: Record<MessageChannel, string> = { whatsapp: "WhatsApp", sms: "SMS", email: "Email" };
+
+function channelBadge(card: ChannelCard): { label: string; className: string } {
+  if (!card.enabled || card.status === "disabled") {
+    return { label: "Not configured", className: "bg-surface text-charcoal/60" };
+  }
+  if (card.status === "error" || (card.last_error && card.status !== "connected")) {
+    return { label: "Error", className: "bg-rose-50 text-rose-700" };
+  }
+  if (card.provider === "log") return { label: "Configured", className: "bg-surface text-charcoal/70" };
+  if (card.status === "connected") return { label: "Connected", className: "bg-emerald-50 text-emerald-700" };
+  if (card.status === "disconnected" || card.status === "close") {
+    return { label: "Disconnected", className: "bg-rose-50 text-rose-700" };
+  }
+  return { label: "Not configured", className: "bg-surface text-charcoal/60" };
+}
 
 const fields: Record<string, { key: string; label: string }[]> = {
   whatsapp_cloud: [
@@ -113,33 +128,60 @@ export function TenantChannelCards() {
 
   return (
     <div className="grid gap-3">
-      <div>
-        <h2 className="text-xl font-semibold">Your provider accounts</h2>
-        <p className="mt-1 text-sm text-charcoal/60">
-          Each channel is yours to turn on. This is included with the starter kit. AxizReach is only required for
-          marketing campaigns. Leave a credential blank to keep the one already saved.
-        </p>
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h2 className="text-lg font-semibold">Transactional channels</h2>
+          <p className="mt-1 max-w-2xl text-sm leading-6 text-charcoal/60">
+            Receipts, statements, and reminders use these accounts. Leave a credential blank to keep the one already saved.
+          </p>
+        </div>
+        <ul className="flex flex-wrap gap-2">
+          {cards.map((card) => {
+            const badge = channelBadge(card);
+            return (
+              <li key={card.channel} className={`rounded-full px-2.5 py-1 text-xs font-medium ${badge.className}`}>
+                {labels[card.channel]} · {badge.label}
+              </li>
+            );
+          })}
+        </ul>
       </div>
       <ErrorNote message={error} />
-      {notice ? <p className="text-sm text-charcoal/70">{notice}</p> : null}
-      <div className="grid gap-3 lg:grid-cols-3">
+      {notice ? <p className="rounded-xl border border-line bg-surface px-3 py-2 text-sm text-charcoal/70">{notice}</p> : null}
+      <div className="grid grid-cols-1 items-stretch gap-4 md:grid-cols-2 xl:grid-cols-3">
         {cards.map((card) => {
           const draft = drafts[card.channel] ?? { provider: card.provider, config: {}, secret: "" };
           const extra = fields[draft.provider] ?? [];
+          const badge = channelBadge(card);
+          const enabled = card.enabled;
           return (
-            <article key={card.channel} className="rounded-card border border-line bg-white p-4">
-              <div className="flex items-center justify-between gap-2">
+            <article key={card.channel} className="flex h-full flex-col rounded-card border border-line bg-white p-4 shadow-sm">
+              <div className="flex items-start justify-between gap-2">
                 <h3 className="font-semibold">{labels[card.channel]}</h3>
-                <span className="text-xs capitalize text-charcoal/50">{card.status.replaceAll("_", " ")}</span>
+                <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${badge.className}`}>{badge.label}</span>
               </div>
               <p className="mt-1 text-xs text-charcoal/50">
                 {card.secret_set ? `Credential saved ${card.secret_hint ?? ""}` : "No credential stored"}
               </p>
+              <div className="mt-3 flex items-center justify-between gap-3">
+                <span className="text-sm">Enabled</span>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={enabled}
+                  aria-label={`${labels[card.channel]} enabled`}
+                  disabled={busy}
+                  onClick={() => void save(card, !enabled)}
+                  className={`relative h-6 w-11 rounded-full transition ${enabled ? "bg-accent" : "bg-charcoal/15"}`}
+                >
+                  <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow ${enabled ? "left-5" : "left-0.5"}`} />
+                </button>
+              </div>
               <SelectField
                 className="mt-3"
                 label="Provider"
                 value={draft.provider}
-                options={card.providers.map((value) => ({ value, label: value }))}
+                options={card.providers.map((value) => ({ value, label: PROVIDER_LABELS[value] ?? value }))}
                 onChange={(value) =>
                   setDrafts((current) => ({ ...current, [card.channel]: { ...draft, provider: value } }))
                 }
@@ -161,7 +203,7 @@ export function TenantChannelCards() {
                   }
                 />
               ))}
-              {draft.provider !== "log" ? (
+              {draft.provider !== "log" && draft.provider !== "evolution" ? (
                 <label className="mt-3 block text-sm font-medium">
                   Credential
                   <input
@@ -172,42 +214,41 @@ export function TenantChannelCards() {
                       setDrafts((current) => ({ ...current, [card.channel]: { ...draft, secret: event.target.value } }))
                     }
                     placeholder={card.secret_set ? "Leave blank to keep it" : "Access token or password"}
-                    className="mt-1 h-10 w-full rounded-xl bg-surface px-3 text-sm font-normal"
+                    className="mt-1 h-10 w-full rounded-xl border border-line bg-surface px-3 text-sm font-normal"
                   />
                 </label>
               ) : null}
               {draft.provider === "whatsapp_cloud" ? (
-                <p className="mt-2 text-xs text-charcoal/50">
-                  Use the phone number ID and token from your own WhatsApp Business account. Paste a new token here to
-                  rotate it.
+                <p className="mt-2 text-xs leading-5 text-charcoal/50">
+                  Use the phone number ID and token from your WhatsApp Business account.
+                </p>
+              ) : null}
+              {draft.provider === "evolution" ? (
+                <p className="mt-2 text-xs leading-5 text-charcoal/50">
+                  The marketing WhatsApp session is paired in AxizReach. This switch uses that same number.
                 </p>
               ) : null}
               {draft.provider === "smtp" ? (
-                <p className="mt-2 text-xs text-charcoal/50">
+                <p className="mt-2 text-xs leading-5 text-charcoal/50">
                   Publish SPF, DKIM, and DMARC for the sender domain. A completed form is not proof of inbox delivery.
                 </p>
               ) : null}
-              <div className="mt-3 flex flex-wrap gap-2">
-                <PrimaryButton disabled={busy} onClick={() => void save(card, true)}>
-                  {card.enabled ? "Save" : "Turn on"}
-                </PrimaryButton>
+              <div className="mt-auto flex flex-wrap items-center gap-3 pt-4">
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => void save(card, true)}
+                  className="inline-flex rounded-full bg-accent px-4 py-2 text-sm font-medium text-white disabled:opacity-40"
+                >
+                  Save
+                </button>
                 {card.enabled ? (
-                  <button type="button" className="text-sm font-semibold" disabled={busy} onClick={() => void test(card)}>
-                    Test
-                  </button>
-                ) : null}
-                {card.enabled ? (
-                  <button
-                    type="button"
-                    className="text-sm font-semibold text-charcoal/60"
-                    disabled={busy}
-                    onClick={() => void save(card, false)}
-                  >
-                    Turn off
+                  <button type="button" className="text-sm font-semibold text-charcoal" disabled={busy} onClick={() => void test(card)}>
+                    Test connection
                   </button>
                 ) : null}
               </div>
-              {card.last_error ? <p className="mt-2 text-xs text-accent">{card.last_error}</p> : null}
+              {card.last_error ? <p className="mt-2 text-xs text-rose-700">{card.last_error}</p> : null}
             </article>
           );
         })}

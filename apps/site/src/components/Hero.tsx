@@ -3,7 +3,6 @@ import { useEffect, useState } from "react";
 import { portalUrl } from "../env";
 import { AIAnimatedBackground } from "./AIAnimatedBackground";
 import { GET_STARTED_NOTE, GetStartedLink } from "./GetStartedLink";
-import { HeroAsk } from "./HeroAsk";
 import { Mark } from "./icons";
 
 const POINTS = ["Ask in English or Arabic", "Verified store data", "Real-time sync"];
@@ -126,10 +125,15 @@ export function Hero() {
           <div className="mt-4">
             <RotatingTagline reduce={reduce} />
           </div>
-          <motion.p {...reveal(0.3)} className="mb-6 max-w-xl text-base leading-relaxed text-slate-300 sm:text-lg">
-            AxizPOS is point of sale software for restaurants, cafés, quick service, grocery, retail, wholesale, fashion,
-            and electronics. Staff take the sale on the register. Managers ask about that store&apos;s sales, stock, and
-            customers in the portal.
+          <motion.p
+            {...reveal(0.3)}
+            className="mb-8 max-w-[620px] text-[15px] leading-[1.7] text-slate-300 sm:text-[17px] lg:text-[18px]"
+          >
+            <span className="font-semibold text-white">Run your business smarter with AxizPOS.</span> Manage sales,
+            inventory, customers, and daily operations from one intelligent platform. From faster checkout to{" "}
+            <span className="hero-accent font-medium">AI-powered forecasts</span>,{" "}
+            <span className="hero-accent font-medium">actionable insights</span>, and smart alerts, AxizPOS gives you
+            the tools to make better decisions and <span className="hero-accent font-medium">grow your business</span>.
           </motion.p>
           <motion.ul {...reveal(0.45)} className="mb-8 flex flex-wrap gap-2.5">
             {POINTS.map((point) => (
@@ -170,8 +174,7 @@ export function Hero() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.7, delay: reduce ? 0 : 0.2, ease: "easeOut" }}
         >
-          <div className="flex flex-col gap-8">
-            <HeroAsk />
+          <div>
             <figure className="relative mx-auto w-full max-w-2xl px-2 py-6">
               <div className="pointer-events-none absolute inset-10 rounded-full bg-orange-500/15 blur-3xl" aria-hidden="true" />
               <motion.div
@@ -181,8 +184,8 @@ export function Hero() {
                 <img
                   src="/pos/terminal.png"
                   alt="AxizPOS on a register with a customer display, receipt printer, phone, and barcode scanner."
-                  width={1024}
-                  height={978}
+                  width={819}
+                  height={782}
                   fetchPriority="high"
                   decoding="async"
                   className="hero-device relative h-auto w-full drop-shadow-2xl"

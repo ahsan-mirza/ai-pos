@@ -368,8 +368,8 @@ def send_test(db: Session, settings: Settings, channel: str, to: str) -> Outboun
     message = OutboundMessage(
         channel=channel,
         to_address=to,
-        subject="AI POS test message",
-        body="This is a test message from AI POS. Messaging is set up.",
+        subject="AxizPOS test message",
+        body="This is a test message from AxizPOS. Messaging is set up.",
         status="QUEUED",
     )
     db.add(message)

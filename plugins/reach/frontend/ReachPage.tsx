@@ -1,5 +1,6 @@
 import { formatMoney, type MessageChannel } from "@ai-pos/shared-types";
-import { useCallback, useEffect, useState } from "react";
+import { Mail, MessageCircle, Smartphone } from "lucide-react";
+import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
 import { ErrorNote, PrimaryButton, TextField } from "../../../apps/web/src/components/ui/Field";
 import { apiDelete, apiGet, apiPost, apiPut } from "../../../apps/web/src/lib/api";
@@ -13,7 +14,9 @@ interface ChannelCard {
   enabled: boolean;
   provider: string;
   providers: string[];
+  public_config?: Record<string, string>;
   status: string;
+  last_error?: string | null;
 }
 
 interface Campaign {
@@ -49,6 +52,7 @@ interface Overview {
   delivery_rate: number | null;
   by_channel: Record<string, number>;
   usage_cents: number;
+  prices?: Partial<Record<MessageChannel, number>>;
   credits_available: number | null;
   credits_reserved: number | null;
   connection_status: string | null;
@@ -64,6 +68,7 @@ interface Connection {
   last_error: string | null;
   qr_base64: string | null;
   webhook_status?: string;
+  webhook_registered_at?: string | null;
   last_webhook_at?: string | null;
 }
 
@@ -151,6 +156,7 @@ export function ReachPage() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [settingsDirty, setSettingsDirty] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -199,34 +205,52 @@ export function ReachPage() {
     try {
       await work();
       await load();
+      return true;
     } catch (caught) {
       setError(errorMessage(caught, fallback));
+      return false;
     } finally {
       setBusy(false);
     }
   };
+
+  useEffect(() => {
+    if (!settingsDirty) return undefined;
+    const warn = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+    };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [settingsDirty]);
 
   const rate = overview?.delivery_rate == null ? "—" : `${Math.round(overview.delivery_rate * 100)}%`;
 
   return (
     <section className="grid gap-4">
       <header>
-        <h1 className="text-3xl font-semibold tracking-tight">AxizReach</h1>
-        <p className="mt-1 text-sm text-charcoal/60">
-          Marketing campaigns for customers who opted in. Receipts stay in{" "}
-          <Link to="/settings/messaging" className="font-semibold underline">
-            Messaging
-          </Link>
-          .
+        <h1 className="text-3xl font-semibold tracking-tight">
+          {tab === "settings" ? "AxizReach Settings" : "AxizReach"}
+        </h1>
+        <p className="mt-1 max-w-2xl text-sm text-charcoal/60">
+          Manage marketing channels, connections, campaign settings, and usage.
         </p>
       </header>
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap gap-2" role="tablist" aria-label="AxizReach">
         {tabs.map((item) => (
           <button
             key={item.id}
             type="button"
-            className={`rounded-full px-3 py-1 text-sm ${tab === item.id ? "bg-charcoal text-white" : "border border-line bg-white"}`}
-            onClick={() => setTab(item.id)}
+            role="tab"
+            aria-selected={tab === item.id}
+            className={`rounded-full px-3 py-1.5 text-sm ${tab === item.id ? "bg-accent text-white" : "border border-line bg-white text-charcoal"}`}
+            onClick={() => {
+              if (tab === "settings" && item.id !== "settings" && settingsDirty) {
+                const leave = window.confirm("You have unsaved settings. Leave without saving?");
+                if (!leave) return;
+                setSettingsDirty(false);
+              }
+              setTab(item.id);
+            }}
           >
             {item.label}
           </button>
@@ -264,6 +288,9 @@ export function ReachPage() {
             run(async () => {
               await apiPost(`/api/v1/reach/connections/${id}/disconnect`, {});
             }, "The connection could not be disconnected.")
+          }
+          onTest={async (to) =>
+            apiPost("/api/v1/messaging/test", { channel: "whatsapp", to })
           }
         />
       ) : null}
@@ -319,7 +346,18 @@ export function ReachPage() {
       {tab === "settings" ? (
         <SettingsPanel
           channels={channels}
+          prices={overview?.prices}
+          connectionStatus={overview?.connection_status ?? null}
           busy={busy}
+          onDirty={setSettingsDirty}
+          onManageConnection={() => {
+            if (settingsDirty) {
+              const leave = window.confirm("You have unsaved settings. Leave without saving?");
+              if (!leave) return;
+              setSettingsDirty(false);
+            }
+            setTab("connections");
+          }}
           onSave={(body) =>
             run(async () => {
               await apiPut("/api/v1/reach/channels", body);
@@ -329,7 +367,6 @@ export function ReachPage() {
           onPrices={(prices) =>
             run(async () => {
               await apiPut("/api/v1/reach/prices", prices);
-              setNotice("Usage prices saved. They do not change prepaid credits.");
             }, "Prices were not saved.")
           }
         />
@@ -384,6 +421,25 @@ function Stat({ label, value }: { label: string; value: string }) {
   );
 }
 
+function sessionBadge(status: string): { label: string; className: string } {
+  if (status === "open") return { label: "Connected", className: "bg-emerald-50 text-emerald-700" };
+  if (status === "connecting") return { label: "Connecting", className: "bg-sky-50 text-sky-700" };
+  if (status === "qr" || status === "qrcode") return { label: "QR waiting for scan", className: "bg-sky-50 text-sky-700" };
+  if (status === "close" || status === "closed" || status === "disconnected") {
+    return { label: "Disconnected", className: "bg-rose-50 text-rose-700" };
+  }
+  if (status === "error") return { label: "Connection error", className: "bg-rose-50 text-rose-700" };
+  return { label: "Not connected", className: "bg-surface text-charcoal/60" };
+}
+
+function testStatusLabel(status: string) {
+  if (status === "QUEUED") return "Queued. It is in the outbox and has not been accepted yet.";
+  if (status === "SENT") return "Accepted by the provider. Delivered and read are shown only after a webhook.";
+  if (status === "FAILED") return "Failed.";
+  if (status === "SKIPPED") return "Skipped.";
+  return status;
+}
+
 function ConnectionsPanel({
   connections,
   busy,
@@ -391,6 +447,7 @@ function ConnectionsPanel({
   onConnect,
   onStatus,
   onDisconnect,
+  onTest,
 }: {
   connections: Connection[];
   busy: boolean;
@@ -398,54 +455,166 @@ function ConnectionsPanel({
   onConnect: (id: string) => void;
   onStatus: (id: string) => void;
   onDisconnect: (id: string) => void;
+  onTest: (to: string) => Promise<{
+    to_address: string;
+    body: string;
+    status: string;
+    provider: string | null;
+    last_error: string | null;
+    created_at: string;
+    sent_at: string | null;
+  }>;
 }) {
   const [name, setName] = useState("");
+  const [testTo, setTestTo] = useState("");
+  const [testing, setTesting] = useState(false);
+  const [testError, setTestError] = useState<string | null>(null);
+  const [testResult, setTestResult] = useState<Awaited<ReturnType<typeof onTest>> | null>(null);
+  const open = connections.some((row) => row.status === "open");
+
+  const sendTest = async () => {
+    if (testing || testTo.trim().length < 8) return;
+    setTesting(true);
+    setTestError(null);
+    try {
+      setTestResult(await onTest(testTo.trim()));
+    } catch (caught) {
+      setTestError(errorMessage(caught, "The test message was not sent."));
+    } finally {
+      setTesting(false);
+    }
+  };
+
   return (
-    <div className="grid gap-3">
-      <form
-        className="grid gap-3 rounded-card border border-line bg-white p-4 sm:grid-cols-[1fr_auto]"
-        onSubmit={(event) => {
-          event.preventDefault();
-          onCreate(name);
-          setName("");
-        }}
-      >
-        <TextField label="Connection name" value={name} onChange={(event) => setName(event.target.value)} />
-        <div className="self-end">
-          <PrimaryButton disabled={busy || name.trim().length < 1} type="submit">
-            Create
-          </PrimaryButton>
+    <div className="grid gap-6">
+      <section className="grid gap-3">
+        <div>
+          <h2 className="text-lg font-semibold">WhatsApp connection</h2>
+          <p className="mt-1 max-w-2xl text-sm leading-6 text-charcoal/60">
+            Pair the number that will send marketing campaigns. The QR comes from Evolution.
+          </p>
         </div>
-      </form>
-      {connections.length === 0 ? (
-        <p className="rounded-card border border-line bg-white p-4 text-sm text-charcoal/60">
-          No WhatsApp sessions yet. Creating one calls Evolution and returns a QR to scan with an authorized number.
+        <form
+          className="flex flex-col gap-3 rounded-card border border-line bg-white p-4 shadow-sm sm:flex-row sm:items-end"
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (busy || name.trim().length < 1) return;
+            onCreate(name);
+            setName("");
+          }}
+        >
+          <div className="min-w-0 flex-1">
+            <TextField label="Connection name" value={name} onChange={(event) => setName(event.target.value)} />
+          </div>
+          <button
+            type="submit"
+            disabled={busy || name.trim().length < 1}
+            className="inline-flex h-11 items-center justify-center rounded-full bg-accent px-4 text-sm font-medium text-white disabled:opacity-40"
+          >
+            Create connection
+          </button>
+        </form>
+        {connections.length === 0 ? (
+          <p className="rounded-card border border-line bg-white p-4 text-sm text-charcoal/60">
+            No WhatsApp session yet. Create one, then scan the QR with the number that should send campaigns.
+          </p>
+        ) : (
+          <ul className="grid gap-4">
+            {connections.map((row) => {
+              const badge = sessionBadge(row.status);
+              return (
+                <li key={row.id} className="grid gap-4 rounded-card border border-line bg-white p-4 shadow-sm lg:grid-cols-[minmax(0,1fr)_auto]">
+                  <div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h3 className="font-semibold">{row.name}</h3>
+                      <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${badge.className}`}>{badge.label}</span>
+                    </div>
+                    <dl className="mt-3 grid grid-cols-1 gap-2 text-sm sm:grid-cols-2">
+                      <div>
+                        <dt className="text-xs text-charcoal/50">Provider</dt>
+                        <dd>Evolution API</dd>
+                      </div>
+                      <div>
+                        <dt className="text-xs text-charcoal/50">WhatsApp number</dt>
+                        <dd>{row.phone_number || "Not available yet"}</dd>
+                      </div>
+                      <div>
+                        <dt className="text-xs text-charcoal/50">Session</dt>
+                        <dd>{row.status}</dd>
+                      </div>
+                      <div>
+                        <dt className="text-xs text-charcoal/50">Webhook</dt>
+                        <dd>
+                          {row.webhook_status || "pending"}
+                          {row.webhook_registered_at ? ` · registered ${new Date(row.webhook_registered_at).toLocaleString()}` : ""}
+                        </dd>
+                      </div>
+                      <div className="sm:col-span-2">
+                        <dt className="text-xs text-charcoal/50">Last webhook event</dt>
+                        <dd>{row.last_webhook_at ? new Date(row.last_webhook_at).toLocaleString() : "None yet"}</dd>
+                      </div>
+                    </dl>
+                    {row.last_error ? <p className="mt-3 text-sm text-rose-700">{row.last_error}</p> : null}
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      <button type="button" disabled={busy} onClick={() => onConnect(row.id)} className="rounded-full bg-accent px-4 py-2 text-sm font-medium text-white disabled:opacity-40">
+                        {row.qr_base64 ? "Refresh QR" : "Connect"}
+                      </button>
+                      <button type="button" disabled={busy} onClick={() => onStatus(row.id)} className="rounded-full border border-line px-4 py-2 text-sm font-medium disabled:opacity-40">
+                        Refresh status
+                      </button>
+                      <button type="button" disabled={busy} onClick={() => onDisconnect(row.id)} className="rounded-full border border-line px-4 py-2 text-sm font-medium disabled:opacity-40">
+                        Disconnect
+                      </button>
+                    </div>
+                  </div>
+                  {row.qr_base64 ? (
+                    <img
+                      alt={`WhatsApp QR for ${row.name}`}
+                      className="h-44 w-44 justify-self-center rounded-xl bg-white p-2"
+                      src={row.qr_base64.startsWith("data:") ? row.qr_base64 : `data:image/png;base64,${row.qr_base64}`}
+                    />
+                  ) : null}
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </section>
+      <section className="rounded-card border border-line bg-white p-4 shadow-sm">
+        <h2 className="text-lg font-semibold">Send a test message</h2>
+        <p className="mt-1 max-w-2xl text-sm leading-6 text-charcoal/60">
+          Uses the same outbox as other WhatsApp messages. The session must be open, and the channel must use Evolution.
         </p>
-      ) : (
-        <ul className="grid gap-3">
-          {connections.map((row) => (
-            <li key={row.id} className="grid gap-2 rounded-card border border-line bg-white p-4 text-sm">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <span className="font-medium">{row.name}</span>
-                <span className="text-charcoal/50">{row.status}{row.phone_number ? ` · ${row.phone_number}` : ""}</span>
-              </div>
-              {row.last_error ? <p className="text-charcoal/70">{row.last_error}</p> : null}
-              <p className="text-charcoal/50">
-                Delivery updates {row.webhook_status || "pending"}
-                {row.last_webhook_at ? ` · last event ${new Date(row.last_webhook_at).toLocaleString()}` : ""}
-              </p>
-              {row.qr_base64 ? (
-                <img alt="WhatsApp QR" className="h-40 w-40 bg-white" src={row.qr_base64.startsWith("data:") ? row.qr_base64 : `data:image/png;base64,${row.qr_base64}`} />
-              ) : null}
-              <div className="flex flex-wrap gap-2">
-                <PrimaryButton disabled={busy} type="button" onClick={() => onConnect(row.id)}>Connect</PrimaryButton>
-                <button type="button" className="rounded-xl border border-line px-3 py-2" disabled={busy} onClick={() => onStatus(row.id)}>Refresh</button>
-                <button type="button" className="rounded-xl border border-line px-3 py-2" disabled={busy} onClick={() => onDisconnect(row.id)}>Disconnect</button>
-              </div>
-            </li>
-          ))}
-        </ul>
-      )}
+        <div className="mt-4 flex flex-col gap-2 sm:flex-row">
+          <input
+            value={testTo}
+            onChange={(event) => setTestTo(event.target.value)}
+            placeholder="+971501234567"
+            aria-label="Test destination"
+            className="h-11 flex-1 rounded-xl border border-line bg-surface px-3 text-sm"
+          />
+          <button
+            type="button"
+            disabled={testing || !open || testTo.trim().length < 8}
+            onClick={() => void sendTest()}
+            className="inline-flex h-11 items-center justify-center rounded-full bg-accent px-4 text-sm font-medium text-white disabled:opacity-40"
+          >
+            {testing ? "Sending…" : "Send test message"}
+          </button>
+        </div>
+        {!open ? <p className="mt-2 text-sm text-charcoal/60">Refresh until the session is open before sending.</p> : null}
+        {testError ? <p className="mt-2 text-sm text-rose-700">{testError}</p> : null}
+        {testResult ? (
+          <dl className="mt-4 grid gap-2 text-sm">
+            <div><dt className="text-xs text-charcoal/50">Recipient</dt><dd>{testResult.to_address}</dd></div>
+            <div><dt className="text-xs text-charcoal/50">Message</dt><dd>{testResult.body}</dd></div>
+            <div><dt className="text-xs text-charcoal/50">Submitted</dt><dd>{new Date(testResult.created_at).toLocaleString()}</dd></div>
+            <div><dt className="text-xs text-charcoal/50">Outbox</dt><dd>{testResult.status} — {testStatusLabel(testResult.status)}</dd></div>
+            {testResult.provider ? <div><dt className="text-xs text-charcoal/50">Provider</dt><dd>{testResult.provider}</dd></div> : null}
+            {testResult.last_error ? <div><dt className="text-xs text-charcoal/50">Error</dt><dd className="text-rose-700">{testResult.last_error}</dd></div> : null}
+          </dl>
+        ) : null}
+      </section>
     </div>
   );
 }
@@ -908,68 +1077,337 @@ function CreditsPanel({ credits, ledger }: { credits: Credits | null; ledger: Cr
   );
 }
 
+const providerLabels: Record<string, string> = {
+  log: "Log",
+  evolution: "Evolution API",
+  whatsapp_cloud: "WhatsApp Cloud",
+  http_sms: "HTTP SMS",
+  smtp: "SMTP",
+};
+
+const channelIcons: Record<MessageChannel, typeof MessageCircle> = {
+  whatsapp: MessageCircle,
+  sms: Smartphone,
+  email: Mail,
+};
+
+function providerName(provider: string) {
+  return providerLabels[provider] ?? provider;
+}
+
+function wholeCents(value: string): number | null {
+  const trimmed = value.trim();
+  if (!/^\d+$/.test(trimmed)) return null;
+  return Number(trimmed);
+}
+
+function statusBadge(card: ChannelCard, connectionStatus: string | null): { label: string; className: string } {
+  if (card.channel === "whatsapp" && card.provider === "evolution") {
+    if (connectionStatus === "open") return { label: "Connected", className: "bg-emerald-50 text-emerald-700" };
+    if (connectionStatus === "connecting" || connectionStatus === "qr") {
+      return { label: "Connecting", className: "bg-sky-50 text-sky-700" };
+    }
+    if (connectionStatus === "close" || connectionStatus === "closed" || connectionStatus === "disconnected") {
+      return { label: "Disconnected", className: "bg-rose-50 text-rose-700" };
+    }
+    return { label: "Not configured", className: "bg-surface text-charcoal/60" };
+  }
+  if (!card.enabled || card.status === "disabled") return { label: "Disabled", className: "bg-surface text-charcoal/60" };
+  if (card.status === "connected") return { label: "Connected", className: "bg-emerald-50 text-emerald-700" };
+  if (card.status === "connecting") return { label: "Connecting", className: "bg-sky-50 text-sky-700" };
+  if (card.status === "error" || card.status === "disconnected") {
+    return { label: "Disconnected", className: "bg-rose-50 text-rose-700" };
+  }
+  return { label: "Not configured", className: "bg-surface text-charcoal/60" };
+}
+
+function providerNote(card: ChannelCard, provider: string, connectionStatus: string | null) {
+  if (card.channel === "whatsapp" && provider === "evolution") {
+    if (connectionStatus === "open") return "The paired WhatsApp session can send campaigns.";
+    if (connectionStatus === "connecting" || connectionStatus === "qr") return "Finish pairing from Connections.";
+    if (connectionStatus === "close" || connectionStatus === "closed" || connectionStatus === "disconnected") {
+      return "The WhatsApp session is disconnected.";
+    }
+    return "Pair a WhatsApp number from Connections.";
+  }
+  if (provider === "log") return "Messages are recorded in the outbox and are not delivered.";
+  if (provider === "whatsapp_cloud" || provider === "http_sms" || provider === "smtp") {
+    return "Provider credentials stay in Messaging.";
+  }
+  return card.last_error || "Choose a provider, then save.";
+}
+
+function ChannelConfigCard({
+  card,
+  connectionStatus,
+  busy,
+  onSave,
+  onManageConnection,
+  onDirty,
+}: {
+  card: ChannelCard;
+  connectionStatus: string | null;
+  busy: boolean;
+  onSave: (body: { channel: MessageChannel; enabled: boolean; provider: string; public_config: Record<string, string> }) => Promise<boolean>;
+  onManageConnection: () => void;
+  onDirty: (channel: MessageChannel, dirty: boolean) => void;
+}) {
+  const [enabled, setEnabled] = useState(card.enabled);
+  const [provider, setProvider] = useState(card.provider);
+  const [saving, setSaving] = useState(false);
+  const Icon = channelIcons[card.channel];
+  const badge = statusBadge({ ...card, provider }, connectionStatus);
+  const dirty = enabled !== card.enabled || provider !== card.provider;
+
+  useEffect(() => {
+    setEnabled(card.enabled);
+    setProvider(card.provider);
+  }, [card.enabled, card.provider]);
+
+  useEffect(() => {
+    onDirty(card.channel, dirty);
+  }, [card.channel, dirty, onDirty]);
+
+  useEffect(() => {
+    if (!busy) setSaving(false);
+  }, [busy]);
+
+  const save = async (event: FormEvent) => {
+    event.preventDefault();
+    if (busy) return;
+    setSaving(true);
+    const ok = await onSave({
+      channel: card.channel,
+      enabled,
+      provider,
+      public_config: card.public_config ?? {},
+    });
+    if (!ok) setSaving(false);
+  };
+
+  return (
+    <form onSubmit={(event) => void save(event)} className="flex h-full flex-col rounded-card border border-line bg-white p-4 shadow-sm">
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-2.5">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-accent/10 text-accent">
+            <Icon className="h-4 w-4" aria-hidden="true" />
+          </span>
+          <div>
+            <h3 className="text-sm font-semibold text-charcoal">{labels[card.channel]}</h3>
+            <p className="text-xs text-charcoal/50">{providerName(provider)}</p>
+          </div>
+        </div>
+        <span className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-medium ${badge.className}`}>{badge.label}</span>
+      </div>
+      <div className="mt-4 flex items-center justify-between gap-3">
+        <span className="text-sm text-charcoal">Enabled</span>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={enabled}
+          aria-label={`${labels[card.channel]} enabled`}
+          onClick={() => setEnabled((current) => !current)}
+          className={`relative h-6 w-11 rounded-full transition ${enabled ? "bg-accent" : "bg-charcoal/15"}`}
+        >
+          <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition ${enabled ? "left-5" : "left-0.5"}`} />
+        </button>
+      </div>
+      <label className="mt-4 block text-xs font-medium text-charcoal/70">
+        Provider
+        <select
+          className="mt-1.5 w-full rounded-xl border border-line bg-surface px-3 py-2 text-sm text-charcoal"
+          value={provider}
+          onChange={(event) => setProvider(event.target.value)}
+        >
+          {card.providers.map((item) => (
+            <option key={item} value={item}>
+              {providerName(item)}
+            </option>
+          ))}
+        </select>
+      </label>
+      <p className="mt-3 flex-1 text-sm leading-5 text-charcoal/60">{providerNote(card, provider, connectionStatus)}</p>
+      {card.last_error ? <p className="mt-2 text-xs text-rose-700">{card.last_error}</p> : null}
+      {card.channel === "whatsapp" && provider === "evolution" ? (
+        <button type="button" className="mt-3 self-start text-sm font-semibold text-accent" onClick={onManageConnection}>
+          Manage WhatsApp connection
+        </button>
+      ) : null}
+      <button
+        type="submit"
+        disabled={busy}
+        className="mt-4 inline-flex w-fit items-center justify-center rounded-full bg-accent px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-40"
+      >
+        {saving ? "Saving…" : "Save"}
+      </button>
+    </form>
+  );
+}
+
 function SettingsPanel({
   channels,
+  prices,
+  connectionStatus,
   busy,
+  onDirty,
+  onManageConnection,
   onSave,
   onPrices,
 }: {
   channels: ChannelCard[];
+  prices: Partial<Record<MessageChannel, number>> | undefined;
+  connectionStatus: string | null;
   busy: boolean;
-  onSave: (body: { channel: MessageChannel; enabled: boolean; provider: string; public_config: Record<string, string> }) => void;
-  onPrices: (prices: { whatsapp: number; sms: number; email: number }) => void;
+  onDirty: (dirty: boolean) => void;
+  onManageConnection: () => void;
+  onSave: (body: { channel: MessageChannel; enabled: boolean; provider: string; public_config: Record<string, string> }) => Promise<boolean>;
+  onPrices: (prices: { whatsapp: number; sms: number; email: number }) => Promise<boolean>;
 }) {
-  const [whatsapp, setWhatsapp] = useState("0");
-  const [sms, setSms] = useState("0");
-  const [email, setEmail] = useState("0");
+  const [amounts, setAmounts] = useState<Record<MessageChannel, string>>({ whatsapp: "0", sms: "0", email: "0" });
+  const [savedAmounts, setSavedAmounts] = useState<Record<MessageChannel, string>>({ whatsapp: "0", sms: "0", email: "0" });
+  const [priceError, setPriceError] = useState<string | null>(null);
+  const [priceSaved, setPriceSaved] = useState(false);
+  const [savingPrices, setSavingPrices] = useState(false);
+  const [channelDirty, setChannelDirty] = useState<Partial<Record<MessageChannel, boolean>>>({});
+  const priceDirty = (Object.keys(labels) as MessageChannel[]).some((channel) => amounts[channel] !== savedAmounts[channel]);
+
+  useEffect(() => {
+    if (!prices || priceDirty) return;
+    const next = {
+      whatsapp: String(prices.whatsapp ?? 0),
+      sms: String(prices.sms ?? 0),
+      email: String(prices.email ?? 0),
+    };
+    setAmounts(next);
+    setSavedAmounts(next);
+  }, [prices, priceDirty]);
+
+  const reportChannel = useCallback((channel: MessageChannel, dirty: boolean) => {
+    setChannelDirty((current) => (current[channel] === dirty ? current : { ...current, [channel]: dirty }));
+  }, []);
+
+  useEffect(() => {
+    onDirty(priceDirty || Object.values(channelDirty).some(Boolean));
+  }, [priceDirty, channelDirty, onDirty]);
+
+  useEffect(() => {
+    if (!busy) setSavingPrices(false);
+  }, [busy]);
+
+  const savePrices = async (event: FormEvent) => {
+    event.preventDefault();
+    if (busy) return;
+    const parsed = {
+      whatsapp: wholeCents(amounts.whatsapp),
+      sms: wholeCents(amounts.sms),
+      email: wholeCents(amounts.email),
+    };
+    if (parsed.whatsapp == null || parsed.sms == null || parsed.email == null) {
+      setPriceError("Enter a whole number of cents, 0 or greater, for each channel.");
+      setPriceSaved(false);
+      return;
+    }
+    setPriceError(null);
+    setSavingPrices(true);
+    const ok = await onPrices(parsed);
+    if (!ok) {
+      setSavingPrices(false);
+      setPriceSaved(false);
+      return;
+    }
+    const next = {
+      whatsapp: String(parsed.whatsapp),
+      sms: String(parsed.sms),
+      email: String(parsed.email),
+    };
+    setAmounts(next);
+    setSavedAmounts(next);
+    setPriceSaved(true);
+  };
+
   return (
-    <div className="grid gap-3">
-      {channels.map((card) => (
-        <form
-          key={card.channel}
-          className="grid gap-2 rounded-card border border-line bg-white p-4 text-sm"
-          onSubmit={(event) => {
-            event.preventDefault();
-            const data = new FormData(event.currentTarget);
-            onSave({
-              channel: card.channel,
-              enabled: data.get("enabled") === "on",
-              provider: String(data.get("provider") || card.provider),
-              public_config: {},
-            });
-          }}
-        >
-          <h3 className="font-medium">{labels[card.channel]}</h3>
-          <label className="flex items-center gap-2">
-            <input name="enabled" type="checkbox" defaultChecked={card.enabled} />
-            Enabled
-          </label>
-          <label>
-            Provider
-            <select name="provider" className="mt-1 w-full rounded-xl bg-surface px-3 py-2" defaultValue={card.provider}>
-              {card.providers.map((provider) => (
-                <option key={provider} value={provider}>{provider}</option>
-              ))}
-            </select>
-          </label>
-          <p className="text-charcoal/50">Status {card.status}. Cloud, SMS, and email credentials stay in Messaging.</p>
-          <PrimaryButton disabled={busy} type="submit">Save {labels[card.channel]}</PrimaryButton>
-        </form>
-      ))}
-      <form
-        className="grid gap-3 rounded-card border border-line bg-white p-4 sm:grid-cols-3"
-        onSubmit={(event) => {
-          event.preventDefault();
-          onPrices({ whatsapp: Number(whatsapp) || 0, sms: Number(sms) || 0, email: Number(email) || 0 });
-        }}
-      >
-        <TextField label="WhatsApp cents" value={whatsapp} onChange={(event) => setWhatsapp(event.target.value)} />
-        <TextField label="SMS cents" value={sms} onChange={(event) => setSms(event.target.value)} />
-        <TextField label="Email cents" value={email} onChange={(event) => setEmail(event.target.value)} />
-        <div className="sm:col-span-3">
-          <PrimaryButton disabled={busy} type="submit">Save usage prices</PrimaryButton>
+    <div className="grid gap-8">
+      <section className="grid gap-3">
+        <div>
+          <h2 className="text-lg font-semibold text-charcoal">Marketing channel</h2>
+          <p className="mt-1 max-w-2xl text-sm leading-6 text-charcoal/60">
+            WhatsApp campaigns use the Evolution session. SMS, email, and WhatsApp Cloud credentials stay in Messaging.
+          </p>
         </div>
-      </form>
+        <div className="grid grid-cols-1 items-stretch gap-4 lg:grid-cols-3">
+          {channels.filter((card) => card.channel === "whatsapp").map((card) => (
+            <ChannelConfigCard
+              key={card.channel}
+              card={card}
+              connectionStatus={connectionStatus}
+              busy={busy}
+              onSave={onSave}
+              onManageConnection={onManageConnection}
+              onDirty={reportChannel}
+            />
+          ))}
+          {channels.filter((card) => card.channel !== "whatsapp").map((card) => (
+            <article key={card.channel} className="rounded-card border border-line bg-white p-4 shadow-sm">
+              <h3 className="text-sm font-semibold">{labels[card.channel]}</h3>
+              <p className="mt-2 text-sm leading-6 text-charcoal/60">
+                {card.enabled ? "Enabled" : "Not enabled"} · {providerName(card.provider)}. Campaigns can use this channel. Credentials are edited in Messaging.
+              </p>
+              <Link to="/settings/messaging" className="mt-3 inline-block text-sm font-semibold text-accent">
+                Open Messaging
+              </Link>
+            </article>
+          ))}
+        </div>
+      </section>
+      <section className="grid gap-3">
+        <div>
+          <h2 className="text-lg font-semibold text-charcoal">Marketing usage pricing</h2>
+          <p className="mt-1 max-w-2xl text-sm leading-6 text-charcoal/60">
+            Configure the internal usage price per message. These values do not modify prepaid credit balances.
+          </p>
+        </div>
+        {priceSaved ? (
+          <p className="rounded-xl border border-line bg-surface px-3 py-2 text-sm text-charcoal/70">
+            Usage prices saved. They do not change prepaid credits.
+          </p>
+        ) : null}
+        <form onSubmit={(event) => void savePrices(event)} className="grid gap-4">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+            {(Object.keys(labels) as MessageChannel[]).map((channel) => {
+              const Icon = channelIcons[channel];
+              return (
+                <label key={channel} className="rounded-card border border-line bg-white p-4 shadow-sm">
+                  <span className="flex items-center gap-2 text-sm font-semibold text-charcoal">
+                    <Icon className="h-4 w-4 text-accent" aria-hidden="true" />
+                    {labels[channel]}
+                  </span>
+                  <span className="mt-3 flex items-center gap-2">
+                    <input
+                      inputMode="numeric"
+                      aria-label={`${labels[channel]} cents`}
+                      value={amounts[channel]}
+                      onChange={(event) => {
+                        setPriceSaved(false);
+                        setAmounts((current) => ({ ...current, [channel]: event.target.value }));
+                      }}
+                      className="w-full rounded-xl border border-line bg-surface px-3 py-2 text-sm text-charcoal"
+                    />
+                    <span className="shrink-0 text-sm text-charcoal/60">cents</span>
+                  </span>
+                </label>
+              );
+            })}
+          </div>
+          {priceError ? <p className="text-sm text-rose-700">{priceError}</p> : null}
+          <button
+            type="submit"
+            disabled={busy}
+            className="inline-flex w-fit items-center justify-center rounded-full bg-accent px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            {savingPrices ? "Saving…" : "Save Usage Prices"}
+          </button>
+        </form>
+      </section>
     </div>
   );
 }

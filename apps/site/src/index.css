@@ -24,6 +24,42 @@ html.dark {
   }
 }
 
+/* AI features: the assistant and the 2×2 grid share one row, so their boxes match. */
+.ai-features-layout {
+  display: grid;
+  align-items: stretch;
+  gap: 16px;
+}
+
+.ai-assistant-card,
+.ai-features-grid {
+  min-height: 0;
+}
+
+@media (min-width: 768px) {
+  .ai-features-layout {
+    gap: 20px;
+  }
+}
+
+@media (min-width: 1024px) {
+  .ai-features-layout {
+    grid-template-columns: minmax(0, 1.08fr) minmax(0, 1fr);
+    gap: 24px;
+  }
+
+  .ai-assistant-card,
+  .ai-features-grid {
+    height: 100%;
+  }
+
+  .ai-features-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-rows: repeat(2, minmax(min-content, 1fr));
+    gap: 24px;
+  }
+}
+
 /* Gemini-style aurora. Color lives on the layer; motion is transform only. */
 .ai-ambient {
   position: absolute;
