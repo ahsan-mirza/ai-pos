@@ -2,6 +2,7 @@
 
 import logging
 import re
+import time
 import uuid
 from datetime import UTC, datetime, timedelta
 
@@ -189,6 +190,7 @@ def dispatch_due(db: Session, settings: Settings, limit: int = 50) -> dict[str, 
         )
     )
     counts = {"sent": 0, "failed": 0, "retry": 0}
+    evolution_sent = 0
     for message in due:
         if message.template_key == "campaign" and not reach_on:
             message.next_attempt_at = now + timedelta(hours=6)
@@ -197,7 +199,10 @@ def dispatch_due(db: Session, settings: Settings, limit: int = 50) -> dict[str, 
             continue
         from app.services.reach_bridge import hold_reason
 
-        if hold_reason(db, message):
+        reason = hold_reason(db, message)
+        if reason:
+            if " " in reason:
+                message.last_error = reason[:500]
             message.next_attempt_at = now + timedelta(minutes=15)
             counts["retry"] += 1
             continue
@@ -206,6 +211,9 @@ def dispatch_due(db: Session, settings: Settings, limit: int = 50) -> dict[str, 
             if person is None or not marketing_consented(person, message.channel):
                 message.status = "SKIPPED"
                 message.last_error = "Marketing consent was withdrawn before send."
+                from app.services.reach_bridge import after_skipped
+
+                after_skipped(db, message)
                 continue
         try:
             provider, creds = _delivery(db, settings, message.channel)
@@ -218,6 +226,12 @@ def dispatch_due(db: Session, settings: Settings, limit: int = 50) -> dict[str, 
                 message.next_attempt_at = now + timedelta(minutes=15)
                 counts["retry"] += 1
             continue
+        if provider == "evolution" and evolution_sent >= settings.reach_send_batch:
+            message.next_attempt_at = now + timedelta(seconds=max(settings.reach_send_interval_seconds, 1))
+            counts["retry"] += 1
+            continue
+        if provider == "evolution" and evolution_sent and settings.reach_send_interval_seconds:
+            time.sleep(settings.reach_send_interval_seconds)
         message.provider = provider
         message.attempts += 1
         try:
@@ -244,6 +258,8 @@ def dispatch_due(db: Session, settings: Settings, limit: int = 50) -> dict[str, 
             record_usage(db, message)
             after_sent(db, message)
             counts["sent"] += 1
+            if provider == "evolution":
+                evolution_sent += 1
         except ProviderError as exc:
             message.last_error = str(exc)[:500]
             if exc.permanent or message.attempts >= MAX_ATTEMPTS:

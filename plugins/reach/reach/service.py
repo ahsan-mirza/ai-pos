@@ -24,6 +24,7 @@ from reach.models import (
     MessagingChannel,
     ReachCampaign,
     ReachConnection,
+    ReachCreditTransaction,
     ReachRecipient,
     ReachTemplate,
     ReachUsage,
@@ -55,6 +56,21 @@ def _evolution_ready(db: Session) -> bool:
     return (
         db.scalar(select(ReachConnection.id).where(ReachConnection.status == "open").limit(1)) is not None
     )
+
+
+def bind_evolution_channel(db: Session) -> None:
+    """An open WhatsApp session sends as Evolution. A Cloud provider the store already saved is left as-is."""
+    row = db.scalar(select(MessagingChannel).where(MessagingChannel.channel == "whatsapp"))
+    if row is not None and row.provider not in {"log", "evolution"}:
+        return
+    if row is None:
+        row = MessagingChannel(channel="whatsapp", public_config={})
+        db.add(row)
+    row.provider = "evolution"
+    row.enabled = True
+    row.status = "connected"
+    row.last_error = None
+    row.last_checked_at = datetime.now(UTC)
 
 
 def _channel_provider(db: Session, channel: str) -> str:
@@ -201,6 +217,9 @@ def _unknown_variables(*texts: str) -> list[str]:
 
 def _audience(db: Session, audience: dict, store_id: uuid.UUID | None) -> list[Customer]:
     query = select(Customer).where(Customer.is_active.is_(True))
+    chosen_ids = audience.get("customer_ids")
+    if chosen_ids:
+        query = query.where(Customer.id.in_(chosen_ids))
     minimum = int(audience.get("min_loyalty_points") or 0)
     if minimum:
         query = query.where(Customer.loyalty_points >= minimum)
@@ -211,7 +230,7 @@ def _audience(db: Session, audience: dict, store_id: uuid.UUID | None) -> list[C
     inactive_days = int(audience.get("inactive_days") or 0)
     min_spend = int(audience.get("min_spend_cents") or 0)
     if not inactive_days and not min_spend and store_id is None:
-        return customers[:AUDIENCE_CAP]
+        return customers
     ids = [customer.id for customer in customers]
     if not ids:
         return []
@@ -237,7 +256,7 @@ def _audience(db: Session, audience: dict, store_id: uuid.UUID | None) -> list[C
         if cutoff is not None and last is not None and last >= cutoff:
             continue
         chosen.append(customer)
-        if len(chosen) >= AUDIENCE_CAP:
+        if len(chosen) > AUDIENCE_CAP:
             break
     return chosen
 
@@ -252,6 +271,35 @@ def _render(text: str, customer: Customer, business: str, store: str) -> str:
         "discount": "",
     }
     return PLACEHOLDER.sub(lambda match: values.get(match.group(1), ""), text)
+
+
+def _json_audience(audience: dict) -> dict:
+    stored = dict(audience)
+    if stored.get("customer_ids"):
+        stored["customer_ids"] = [str(item) for item in stored["customer_ids"]]
+    return stored
+
+
+def _phone_digits(value: str | None) -> str:
+    return "".join(ch for ch in (value or "") if ch.isdigit())
+
+
+def _gate(customer: Customer, channel: str, seen: set[str]) -> str | None:
+    """Why this customer is excluded. None means the message may be queued."""
+    address = customer.email if channel == "email" else customer.phone
+    if not address:
+        return "No contact address for this channel."
+    if not marketing_consented(customer, channel):
+        return "No marketing consent for this channel."
+    if channel != "whatsapp":
+        return None
+    digits = _phone_digits(customer.phone)
+    if len(digits) < 8:
+        return "Phone number is not valid for WhatsApp."
+    if digits in seen:
+        return "Duplicate phone number in this campaign."
+    seen.add(digits)
+    return None
 
 
 def preview(db: Session, data: dict) -> dict:
@@ -273,14 +321,23 @@ def preview(db: Session, data: dict) -> dict:
     evolution = _channel_provider(db, "whatsapp") == "evolution"
     credit_state = credit_book.snapshot(db)
     eligible = suppressed = estimated = credits = 0
+    seen: set[str] = set()
+    sample = ""
     for customer in people:
         for channel in channels:
-            address = customer.email if channel == "email" else customer.phone
-            if marketing_consented(customer, channel) and address and open_channels[channel]:
+            reason = None if open_channels[channel] else f"Turn on {channel} before this campaign can use it."
+            if reason is None:
+                reason = _gate(customer, channel, seen)
+            if reason is None:
                 eligible += 1
                 estimated += prices[channel]
                 if evolution and channel == "whatsapp":
                     credits += 1
+                if not sample and channel == channels[0]:
+                    piece = data["content"].get(channel) or {}
+                    settings = load_settings(db)
+                    business = settings.legal_name or "AxizPOS"
+                    sample = _render(piece.get("body") or "", customer, business, business)
             else:
                 suppressed += 1
     return {
@@ -291,6 +348,7 @@ def preview(db: Session, data: dict) -> dict:
         "estimated_credits": credits,
         "available_credits": None if credit_state is None else credit_state["available"],
         "unknown_variables": unknown,
+        "sample": sample,
     }
 
 
@@ -304,7 +362,16 @@ def launch(db: Session, actor_id: uuid.UUID | None, data: dict) -> ReachCampaign
         raise ApiError(422, "channel_required", "Choose at least one channel.")
     closed = [channel for channel in channels if not campaign_channel_ready(db, channel)]
     if closed:
+        if "whatsapp" in closed and _channel_provider(db, "whatsapp") == "evolution":
+            raise ApiError(
+                422,
+                "whatsapp_disconnected",
+                "WhatsApp is not connected. Scan the QR and refresh until the session is open.",
+            )
         raise ApiError(422, "channel_disabled", f"Turn on {', '.join(closed)} before this campaign can use them.")
+    audience = data.get("audience") or {}
+    if audience.get("customer_ids") is not None and not audience.get("customer_ids"):
+        raise ApiError(422, "audience_required", "Select at least one customer.")
     content = data["content"]
     texts = []
     for channel in channels:
@@ -317,9 +384,13 @@ def launch(db: Session, actor_id: uuid.UUID | None, data: dict) -> ReachCampaign
     unknown = _unknown_variables(*texts)
     if unknown:
         raise ApiError(422, "invalid_variable", f"Unknown variable: {', '.join(unknown)}.")
-    people = _audience(db, data.get("audience") or {}, data.get("store_id"))
-    if len(people) >= AUDIENCE_CAP:
-        raise ApiError(422, "audience_too_large", f"Narrow the audience to under {AUDIENCE_CAP} customers.")
+    people = _audience(db, audience, data.get("store_id"))
+    if len(people) > AUDIENCE_CAP:
+        raise ApiError(
+            422,
+            "audience_too_large",
+            f"This audience has more than {AUDIENCE_CAP} customers. Remove some or narrow the filters.",
+        )
     settings = load_settings(db)
     business = settings.legal_name or "AxizPOS"
     store_name = business
@@ -329,7 +400,7 @@ def launch(db: Session, actor_id: uuid.UUID | None, data: dict) -> ReachCampaign
         objective=data.get("objective") or "promotion",
         status="queued",
         channels=channels,
-        audience=data.get("audience") or {},
+        audience=_json_audience(audience),
         content=content,
         store_id=data.get("store_id"),
         scheduled_at=data.get("scheduled_at"),
@@ -343,6 +414,7 @@ def launch(db: Session, actor_id: uuid.UUID | None, data: dict) -> ReachCampaign
     if evolution:
         connection_id = db.scalar(select(ReachConnection.id).where(ReachConnection.status == "open").limit(1))
     eligible = suppressed = credit_units = 0
+    seen: set[str] = set()
     when = data.get("scheduled_at") or datetime.now(UTC)
     for customer in people:
         for channel in channels:
@@ -350,9 +422,9 @@ def launch(db: Session, actor_id: uuid.UUID | None, data: dict) -> ReachCampaign
             piece = content.get(channel) or {}
             body = _render(piece.get("body") or "", customer, business, store_name)
             subject = _render(piece.get("subject") or campaign.name, customer, business, store_name)
-            allowed = bool(address) and marketing_consented(customer, channel)
+            error = _gate(customer, channel, seen)
+            allowed = error is None
             status = "QUEUED" if allowed else "SKIPPED"
-            error = None if allowed else "No marketing consent or contact address for this channel."
             charged = allowed and evolution and channel == "whatsapp"
             if allowed:
                 eligible += 1
@@ -384,7 +456,7 @@ def launch(db: Session, actor_id: uuid.UUID | None, data: dict) -> ReachCampaign
                     customer_id=customer.id,
                     outbound_message_id=message.id,
                     connection_id=connection_id if channel == "whatsapp" else None,
-                    phone=address or "",
+                    phone=(_phone_digits(address) or address or "") if channel == "whatsapp" else (address or ""),
                     body=body,
                     status="queued" if allowed else "cancelled",
                     failure_reason=error,
@@ -606,8 +678,14 @@ def hold_reason(db: Session, message: OutboundMessage) -> str | None:
         return None
     campaign = db.get(ReachCampaign, campaign_id)
     if campaign is not None and campaign.status == "paused":
-        return "paused"
+        return "Campaign is paused."
     recipient = db.scalar(select(ReachRecipient).where(ReachRecipient.outbound_message_id == message.id))
+    if recipient is not None and recipient.connection_id is not None:
+        connection = db.get(ReachConnection, recipient.connection_id)
+        if connection is None or connection.status != "open":
+            if campaign is not None and campaign.status in {"processing", "scheduled", "queued"}:
+                campaign.status = "paused"
+            return "WhatsApp session is disconnected. Reconnect, then resume the campaign."
     if recipient is not None and recipient.status in {"cancelled", "failed", "sent", "delivered", "read"}:
         return recipient.status
     return None
@@ -624,12 +702,155 @@ def after_sent(db: Session, message: OutboundMessage) -> None:
         credit_book.consume(db, message.id, _campaign_id(message))
 
 
+def after_skipped(db: Session, message: OutboundMessage) -> None:
+    recipient = db.scalar(select(ReachRecipient).where(ReachRecipient.outbound_message_id == message.id))
+    if recipient is not None and recipient.status not in {"delivered", "read", "sent", "failed"}:
+        recipient.status = "cancelled"
+        recipient.failure_reason = message.last_error
+    _release_message(db, message)
+
+
 def after_failed(db: Session, message: OutboundMessage) -> None:
     recipient = db.scalar(select(ReachRecipient).where(ReachRecipient.outbound_message_id == message.id))
     if recipient is not None and recipient.status not in {"delivered", "read", "cancelled"}:
         recipient.status = "failed"
         recipient.failure_reason = message.last_error
     _release_message(db, message)
+
+
+_PROGRESS_EMPTY = {
+    "pending_count": 0,
+    "processing_count": 0,
+    "accepted_count": 0,
+    "delivered_count": 0,
+    "read_count": 0,
+    "failed_count": 0,
+    "skipped_count": 0,
+    "credits_reserved": 0,
+    "credits_consumed": 0,
+}
+_STATUS_FIELD = {
+    "pending": "pending_count",
+    "queued": "pending_count",
+    "sending": "processing_count",
+    "sent": "accepted_count",
+    "delivered": "delivered_count",
+    "read": "read_count",
+    "failed": "failed_count",
+    "cancelled": "skipped_count",
+}
+
+
+def _open_phone(db: Session) -> str | None:
+    return db.scalar(
+        select(ReachConnection.phone_number).where(ReachConnection.status == "open").limit(1)
+    )
+
+
+def _progress(db: Session, campaign_ids: list[uuid.UUID]) -> dict[uuid.UUID, dict]:
+    found = {campaign_id: dict(_PROGRESS_EMPTY) for campaign_id in campaign_ids}
+    if not campaign_ids:
+        return found
+    counts = db.execute(
+        select(ReachRecipient.campaign_id, ReachRecipient.status, func.count())
+        .where(ReachRecipient.campaign_id.in_(campaign_ids))
+        .group_by(ReachRecipient.campaign_id, ReachRecipient.status)
+    )
+    for campaign_id, status, count in counts:
+        bucket = _STATUS_FIELD.get(status)
+        if bucket and campaign_id in found:
+            found[campaign_id][bucket] += int(count)
+    ledger = db.execute(
+        select(
+            ReachCreditTransaction.campaign_id,
+            ReachCreditTransaction.kind,
+            func.coalesce(func.sum(ReachCreditTransaction.units), 0),
+        )
+        .where(ReachCreditTransaction.campaign_id.in_(campaign_ids))
+        .group_by(ReachCreditTransaction.campaign_id, ReachCreditTransaction.kind)
+    )
+    rolled: dict[uuid.UUID, dict[str, int]] = {}
+    for campaign_id, kind, units in ledger:
+        if campaign_id is None:
+            continue
+        rolled.setdefault(campaign_id, {})[kind] = int(units)
+    for campaign_id, kinds in rolled.items():
+        if campaign_id not in found:
+            continue
+        consumed = kinds.get("consume", 0)
+        released = kinds.get("release", 0)
+        reserved = kinds.get("reserve", 0)
+        found[campaign_id]["credits_consumed"] = consumed
+        found[campaign_id]["credits_reserved"] = max(0, reserved - consumed - released)
+    return found
+
+
+def present_campaign(db: Session, campaign: ReachCampaign) -> dict:
+    from reach.schemas import CampaignOut
+
+    body = CampaignOut.model_validate(campaign).model_dump()
+    body.update(_progress(db, [campaign.id]).get(campaign.id, dict(_PROGRESS_EMPTY)))
+    body["connection_phone"] = _open_phone(db)
+    return body
+
+
+def present_campaigns(db: Session, campaigns: list[ReachCampaign]) -> list[dict]:
+    progress = _progress(db, [campaign.id for campaign in campaigns])
+    phone = _open_phone(db)
+    from reach.schemas import CampaignOut
+
+    rows = []
+    for campaign in campaigns:
+        body = CampaignOut.model_validate(campaign).model_dump()
+        body.update(progress.get(campaign.id, dict(_PROGRESS_EMPTY)))
+        body["connection_phone"] = phone
+        rows.append(body)
+    return rows
+
+
+def retry_failed(db: Session, campaign_id: uuid.UUID) -> ReachCampaign:
+    """Queues failed recipients again. Consent is checked, and one credit is held per WhatsApp retry."""
+    campaign = get_campaign(db, campaign_id)
+    if "whatsapp" in (campaign.channels or []) and _channel_provider(db, "whatsapp") == "evolution":
+        if not _evolution_ready(db):
+            raise ApiError(422, "whatsapp_disconnected", "Reconnect WhatsApp and refresh until the session is open.")
+    failed = list(
+        db.scalars(
+            select(ReachRecipient).where(
+                ReachRecipient.campaign_id == campaign.id,
+                ReachRecipient.status == "failed",
+            )
+        )
+    )
+    if not failed:
+        raise ApiError(422, "nothing_to_retry", "There are no failed messages to retry.")
+    now = datetime.now(UTC)
+    retried = 0
+    for recipient in failed:
+        if recipient.outbound_message_id is None:
+            continue
+        message = db.get(OutboundMessage, recipient.outbound_message_id)
+        customer = db.get(Customer, recipient.customer_id) if recipient.customer_id else None
+        if message is None or customer is None or not marketing_consented(customer, message.channel):
+            continue
+        if message.channel == "whatsapp" and _channel_provider(db, "whatsapp") == "evolution":
+            credit_book.reserve_one(db, campaign.id, message.id)
+            context = dict(message.context or {})
+            context["reach_credit"] = "1"
+            message.context = context
+        message.status = "QUEUED"
+        message.last_error = None
+        message.next_attempt_at = now
+        recipient.status = "queued"
+        recipient.failure_reason = None
+        retried += 1
+    if retried == 0:
+        raise ApiError(422, "nothing_to_retry", "Failed recipients are no longer eligible to receive this message.")
+    if campaign.status in {"paused", "completed", "cancelled"}:
+        campaign.status = "processing"
+    db.commit()
+    db.refresh(campaign)
+    return campaign
 
 
 def list_campaigns(db: Session) -> list[ReachCampaign]:
@@ -687,14 +908,16 @@ def recipients(db: Session, campaign_id: uuid.UUID | None, status: str | None, l
     return list(db.scalars(query.limit(min(limit, 200))))
 
 
-def search_customers(db: Session, q: str) -> list[dict]:
+def search_customers(db: Session, q: str, *, whatsapp_opt_in: bool = False, limit: int = 50) -> list[dict]:
     require_reach(db)
     query = select(Customer).where(Customer.is_active.is_(True))
+    if whatsapp_opt_in:
+        query = query.where(Customer.marketing_whatsapp_opt_in.is_(True))
     text = q.strip()
     if text:
         like = f"%{text}%"
         query = query.where((Customer.name.ilike(like)) | (Customer.phone.ilike(like)) | (Customer.email.ilike(like)))
-    rows = list(db.scalars(query.order_by(Customer.name).limit(30)))
+    rows = list(db.scalars(query.order_by(Customer.name).limit(min(max(limit, 1), AUDIENCE_CAP))))
     return [
         {
             "id": row.id,

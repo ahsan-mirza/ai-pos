@@ -256,7 +256,7 @@ export function estimate(
   };
 }
 
-/** Short note for the existing demo form. Not a binding quote. */
+/** Short note for the contact form. Not a binding quote. */
 export function estimateNote(plan: Plan, quote: Estimate): string {
   const storeWord = quote.stores === 1 ? "store" : "stores";
   const registerWord = quote.registers === 1 ? "register" : "registers";

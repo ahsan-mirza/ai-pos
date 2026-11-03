@@ -39,6 +39,8 @@ def _fake_evolution():
     settings.evolution_api_url = "http://evolution.test"
     settings.evolution_api_key = "test-key"
     settings.evolution_webhook_secret = "hook-secret"
+    settings.public_base_url = "https://axizpos.test"
+    settings.reach_send_interval_seconds = 0
     yield calls
     set_handler(None)
 
@@ -278,6 +280,179 @@ def test_console_allocation_is_idempotent(platform) -> None:
     second = platform.client.post(f"/api/v1/super-admin/tenants/{tenant_id}/reach/credits", headers=admin_headers, json=body)
     assert second.status_code == 200, second.text
     assert second.json()["balance"] == 4
+
+
+def test_open_session_selects_evolution_and_registers_the_webhook(client, session, _fake_evolution) -> None:
+    seed(client)
+    headers, _ = admin(client)
+    _enable(client, headers)
+    created = client.post("/api/v1/reach/connections", headers=headers, json={"name": "Counter"})
+    assert created.status_code == 201, created.text
+    assert created.json()["webhook_status"] == "registered"
+    status = client.post(f"/api/v1/reach/connections/{created.json()['id']}/status", headers=headers)
+    assert status.status_code == 200, status.text
+    assert status.json()["status"] == "open"
+    channels = client.get("/api/v1/reach/channels", headers=headers).json()
+    whatsapp = next(row for row in channels if row["channel"] == "whatsapp")
+    assert whatsapp["provider"] == "evolution"
+    assert whatsapp["enabled"] is True
+    assert any(path.startswith("/webhook/set/") for _, path in _fake_evolution)
+
+
+def test_selected_customers_and_duplicate_phones(client, session) -> None:
+    seed(client)
+    headers, _ = admin(client)
+    _enable(client, headers)
+    _ready(client, headers)
+    credit_book.allocate(session, units=5, note="seed", idempotency_key="alloc-select")
+    session.commit()
+    first = client.post(
+        "/api/v1/customers",
+        headers=headers,
+        json={"name": "Noor", "phone": "+971501110021", "marketing_whatsapp_opt_in": True},
+    ).json()
+    duplicate = client.post(
+        "/api/v1/customers",
+        headers=headers,
+        json={"name": "Same phone", "phone": "+971501110021", "marketing_whatsapp_opt_in": True},
+    ).json()
+    second = client.post(
+        "/api/v1/customers",
+        headers=headers,
+        json={"name": "Other", "phone": "+971501110022", "marketing_whatsapp_opt_in": True},
+    ).json()
+    launched = client.post(
+        "/api/v1/reach/campaigns",
+        headers=headers,
+        json={
+            "idempotency_key": str(uuid.uuid4()),
+            "name": "Picked",
+            "channels": ["whatsapp"],
+            "audience": {"customer_ids": [first["id"], duplicate["id"], second["id"]]},
+            "content": {"whatsapp": {"body": "Hello {{customer_name}}", "subject": "Picked"}},
+        },
+    )
+    assert launched.status_code == 201, launched.text
+    assert launched.json()["queued_count"] == 2
+    assert launched.json()["suppressed_count"] == 1
+    empty = client.post(
+        "/api/v1/reach/campaigns",
+        headers=headers,
+        json={
+            "idempotency_key": str(uuid.uuid4()),
+            "name": "Nobody",
+            "channels": ["whatsapp"],
+            "audience": {"customer_ids": []},
+            "content": {"whatsapp": {"body": "Hello {{customer_name}}", "subject": "Nobody"}},
+        },
+    )
+    assert empty.status_code == 422
+    assert empty.json()["error"]["code"] == "audience_required"
+
+
+def test_evolution_campaign_without_credits_is_refused(client, session) -> None:
+    seed(client)
+    headers, _ = admin(client)
+    _enable(client, headers)
+    _ready(client, headers)
+    client.post(
+        "/api/v1/customers",
+        headers=headers,
+        json={"name": "Noor", "phone": "+971501110031", "marketing_whatsapp_opt_in": True},
+    )
+    launched = client.post(
+        "/api/v1/reach/campaigns",
+        headers=headers,
+        json={
+            "idempotency_key": str(uuid.uuid4()),
+            "name": "Unpaid",
+            "channels": ["whatsapp"],
+            "audience": {},
+            "content": {"whatsapp": {"body": "Hello {{customer_name}}", "subject": "Unpaid"}},
+        },
+    )
+    assert launched.status_code == 422, launched.text
+    assert launched.json()["error"]["code"] == "credits_required"
+
+
+def test_withdrawn_consent_is_rechecked_before_send(client, session) -> None:
+    seed(client)
+    headers, _ = admin(client)
+    _enable(client, headers)
+    _ready(client, headers)
+    credit_book.allocate(session, units=2, note="seed", idempotency_key="alloc-withdraw")
+    session.commit()
+    created = client.post(
+        "/api/v1/customers",
+        headers=headers,
+        json={"name": "Noor", "phone": "+971501110041", "marketing_whatsapp_opt_in": True},
+    ).json()
+    launched = client.post(
+        "/api/v1/reach/campaigns",
+        headers=headers,
+        json={
+            "idempotency_key": str(uuid.uuid4()),
+            "name": "Later",
+            "channels": ["whatsapp"],
+            "audience": {},
+            "scheduled_at": "2099-01-01T00:00:00Z",
+            "content": {"whatsapp": {"body": "Hello {{customer_name}}", "subject": "Later"}},
+        },
+    )
+    assert launched.status_code == 201, launched.text
+    customer = session.get(Customer, uuid.UUID(created["id"]))
+    assert customer is not None
+    customer.marketing_whatsapp_opt_in = False
+    queued = session.scalars(select(OutboundMessage).where(OutboundMessage.template_key == "campaign")).all()
+    for message in queued:
+        message.next_attempt_at = message.created_at
+    session.commit()
+    assert run_job(session, get_settings(), "dispatch_messages") == "ok"
+    session.expire_all()
+    skipped = session.scalars(select(OutboundMessage).where(OutboundMessage.template_key == "campaign")).all()
+    assert skipped and all(row.status == "SKIPPED" for row in skipped)
+    released = credit_book.snapshot(session)
+    assert released is not None and released["reserved"] == 0 and released["balance"] == 2
+
+
+def test_disconnected_session_pauses_the_campaign(client, session) -> None:
+    seed(client)
+    headers, _ = admin(client)
+    _enable(client, headers)
+    _ready(client, headers)
+    credit_book.allocate(session, units=2, note="seed", idempotency_key="alloc-pause")
+    session.commit()
+    client.post(
+        "/api/v1/customers",
+        headers=headers,
+        json={"name": "Noor", "phone": "+971501110051", "marketing_whatsapp_opt_in": True},
+    )
+    launched = client.post(
+        "/api/v1/reach/campaigns",
+        headers=headers,
+        json={
+            "idempotency_key": str(uuid.uuid4()),
+            "name": "Live",
+            "channels": ["whatsapp"],
+            "audience": {},
+            "content": {"whatsapp": {"body": "Hello {{customer_name}}", "subject": "Live"}},
+        },
+    )
+    assert launched.status_code == 201, launched.text
+    from app.models.reach import ReachConnection
+
+    connection = session.scalar(select(ReachConnection))
+    assert connection is not None
+    connection.status = "close"
+    session.commit()
+    assert run_job(session, get_settings(), "dispatch_messages") == "ok"
+    session.expire_all()
+    campaign = session.scalar(select(ReachCampaign))
+    assert campaign is not None and campaign.status == "paused"
+    queued = session.scalar(select(OutboundMessage).where(OutboundMessage.template_key == "campaign"))
+    assert queued is not None and queued.status == "QUEUED"
+    held = credit_book.snapshot(session)
+    assert held is not None and held["reserved"] == 1 and held["balance"] == 2
 
 
 def _webhook_key(session) -> str:

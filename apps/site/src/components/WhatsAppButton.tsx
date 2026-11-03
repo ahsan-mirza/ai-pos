@@ -4,13 +4,13 @@ import { X } from "lucide-react";
 import { whatsappChatUrl, whatsappReady, type PublicWhatsApp } from "../whatsapp";
 
 const TIPS = [
-  "💬 Need a quick live demo?",
+  "💬 Ready to get started with AxizPOS?",
   "⚡ We reply on WhatsApp in < 2 mins!",
   "🇦🇪 Speak to us in English or Arabic!",
   "🛒 Have questions about pricing or setup?",
 ];
 
-const FALLBACK_MESSAGE = "Hi, I would like to learn more about AxizPOS";
+const FALLBACK_MESSAGE = "Hi, I would like to get started with AxizPOS and learn how it can help my business.";
 
 const tipMotion = {
   initial: { opacity: 0, y: 10, filter: "blur(4px)" },

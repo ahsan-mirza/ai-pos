@@ -27,6 +27,16 @@ interface Campaign {
   suppressed_count: number;
   queued_count: number;
   scheduled_at: string | null;
+  pending_count?: number;
+  processing_count?: number;
+  accepted_count?: number;
+  delivered_count?: number;
+  read_count?: number;
+  failed_count?: number;
+  skipped_count?: number;
+  credits_reserved?: number;
+  credits_consumed?: number;
+  connection_phone?: string | null;
 }
 
 interface Overview {
@@ -53,6 +63,8 @@ interface Connection {
   status: string;
   last_error: string | null;
   qr_base64: string | null;
+  webhook_status?: string;
+  last_webhook_at?: string | null;
 }
 
 interface Template {
@@ -103,6 +115,7 @@ interface Preview {
   estimated_credits: number;
   available_credits: number | null;
   unknown_variables: string[];
+  sample?: string;
 }
 
 const labels: Record<MessageChannel, string> = { whatsapp: "WhatsApp", sms: "SMS", email: "Email" };
@@ -119,8 +132,9 @@ const tabs: { id: Tab; label: string }[] = [
 
 function channelReady(card: ChannelCard | undefined, connectionStatus: string | null): boolean {
   if (!card?.enabled) return false;
+  if (card.channel === "whatsapp") return card.provider === "evolution" && connectionStatus === "open";
   if (card.provider === "log" || card.status === "connected") return true;
-  return card.provider === "evolution" && connectionStatus === "open";
+  return false;
 }
 
 export function ReachPage() {
@@ -168,6 +182,15 @@ export function ReachPage() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    const live = campaigns.some((item) => item.status === "processing" || item.status === "queued");
+    if (!live) return;
+    const timer = window.setInterval(() => {
+      void load();
+    }, 5000);
+    return () => window.clearInterval(timer);
+  }, [campaigns, load]);
 
   const run = async (work: () => Promise<void>, fallback: string) => {
     setBusy(true);
@@ -250,12 +273,13 @@ export function ReachPage() {
           channels={channels}
           templates={templates}
           connectionStatus={overview?.connection_status ?? null}
+          history={history}
           currency={currency}
           busy={busy}
           onLaunch={(body) =>
             run(async () => {
               await apiPost("/api/v1/reach/campaigns", body);
-              setNotice("Campaign queued. Delivery runs in the background.");
+              setNotice("Campaign started. Messages go out in the background, including if you leave this page.");
               setTab("campaigns");
             }, "The campaign was not queued.")
           }
@@ -400,6 +424,10 @@ function ConnectionsPanel({
                 <span className="text-charcoal/50">{row.status}{row.phone_number ? ` · ${row.phone_number}` : ""}</span>
               </div>
               {row.last_error ? <p className="text-charcoal/70">{row.last_error}</p> : null}
+              <p className="text-charcoal/50">
+                Delivery updates {row.webhook_status || "pending"}
+                {row.last_webhook_at ? ` · last event ${new Date(row.last_webhook_at).toLocaleString()}` : ""}
+              </p>
               {row.qr_base64 ? (
                 <img alt="WhatsApp QR" className="h-40 w-40 bg-white" src={row.qr_base64.startsWith("data:") ? row.qr_base64 : `data:image/png;base64,${row.qr_base64}`} />
               ) : null}
@@ -421,6 +449,7 @@ function CampaignsPanel({
   channels,
   templates,
   connectionStatus,
+  history,
   currency,
   busy,
   onLaunch,
@@ -430,10 +459,11 @@ function CampaignsPanel({
   channels: ChannelCard[];
   templates: Template[];
   connectionStatus: string | null;
+  history: Recipient[];
   currency: string;
   busy: boolean;
   onLaunch: (body: Record<string, unknown>) => void;
-  onAction: (id: string, action: "pause" | "resume" | "cancel") => void;
+  onAction: (id: string, action: "pause" | "resume" | "cancel" | "retry") => void;
 }) {
   const [step, setStep] = useState(1);
   const [name, setName] = useState("");
@@ -443,18 +473,34 @@ function CampaignsPanel({
   const [minPoints, setMinPoints] = useState("0");
   const [query, setQuery] = useState("");
   const [people, setPeople] = useState<CustomerHit[]>([]);
+  const [selected, setSelected] = useState<string[]>([]);
+  const [optedOnly, setOptedOnly] = useState(true);
   const [picked, setPicked] = useState<MessageChannel[]>([]);
   const [body, setBody] = useState("Hello {{customer_name}}, {{business_name}} has something for you.");
   const [when, setWhen] = useState("");
   const [preview, setPreview] = useState<Preview | null>(null);
+  const [openId, setOpenId] = useState<string | null>(null);
   const [localError, setLocalError] = useState<string | null>(null);
 
-  const search = async () => {
+  const search = async (opted = optedOnly) => {
     setLocalError(null);
     try {
-      setPeople(await apiGet<CustomerHit[]>(`/api/v1/reach/customers?q=${encodeURIComponent(query)}`));
+      const params = new URLSearchParams({ q: query, limit: "100" });
+      if (opted) params.set("whatsapp_opt_in", "true");
+      setPeople(await apiGet<CustomerHit[]>(`/api/v1/reach/customers?${params.toString()}`));
     } catch (caught) {
       setLocalError(errorMessage(caught, "Customers could not be searched."));
+    }
+  };
+
+  const selectEligible = async () => {
+    setLocalError(null);
+    try {
+      const rows = await apiGet<CustomerHit[]>("/api/v1/reach/customers?whatsapp_opt_in=true&limit=1000");
+      setPeople(rows);
+      setSelected(rows.filter((person) => person.marketing_whatsapp_opt_in && person.phone).map((person) => person.id));
+    } catch (caught) {
+      setLocalError(errorMessage(caught, "Eligible customers could not be loaded."));
     }
   };
 
@@ -464,13 +510,21 @@ function CampaignsPanel({
     description,
     objective,
     channels: picked,
-    audience: { inactive_days: Number(inactiveDays) || 0, min_loyalty_points: Number(minPoints) || 0 },
+    audience: {
+      inactive_days: Number(inactiveDays) || 0,
+      min_loyalty_points: Number(minPoints) || 0,
+      customer_ids: selected,
+    },
     content: Object.fromEntries(picked.map((channel) => [channel, { body, subject: name }])),
     scheduled_at: when ? new Date(when).toISOString() : null,
   });
 
   const review = async () => {
     setLocalError(null);
+    if (selected.length === 0) {
+      setLocalError("Select at least one customer. Search results are not the audience until you select them.");
+      return;
+    }
     try {
       const next = await apiPost<Preview>("/api/v1/reach/campaigns/preview", payload());
       if (next.unknown_variables.length > 0) {
@@ -508,22 +562,46 @@ function CampaignsPanel({
           <>
             <TextField label="Inactive days" value={inactiveDays} onChange={(event) => setInactiveDays(event.target.value)} />
             <TextField label="Minimum loyalty points" value={minPoints} onChange={(event) => setMinPoints(event.target.value)} />
+            <label className="flex items-center gap-2 text-sm">
+              <input type="checkbox" checked={optedOnly} onChange={(event) => setOptedOnly(event.target.checked)} />
+              Only customers who opted in to WhatsApp marketing
+            </label>
             <div className="flex flex-wrap items-end gap-2">
               <div className="min-w-48 flex-1">
-                <TextField label="Find a customer" value={query} onChange={(event) => setQuery(event.target.value)} />
+                <TextField label="Find by name or phone" value={query} onChange={(event) => setQuery(event.target.value)} />
               </div>
               <button type="button" className="rounded-xl border border-line px-3 py-2 text-sm" onClick={() => void search()}>
                 Search
               </button>
+              <button type="button" className="rounded-xl border border-line px-3 py-2 text-sm" onClick={() => void selectEligible()}>
+                Select all eligible
+              </button>
+              <button type="button" className="rounded-xl border border-line px-3 py-2 text-sm" onClick={() => setSelected([])}>
+                Clear
+              </button>
             </div>
+            <p className="text-sm text-charcoal/70">
+              {selected.length} selected. A customer is excluded at send time without a valid phone or WhatsApp marketing consent.
+            </p>
             {people.length === 0 ? (
-              <p className="text-sm text-charcoal/60">Search uses the customer master. Consent is still required at send time.</p>
+              <p className="text-sm text-charcoal/60">Search, then tick the customers who should receive this message.</p>
             ) : (
               <ul className="divide-y divide-line text-sm">
                 {people.map((person) => (
-                  <li key={person.id} className="py-2">
-                    {person.name} · {person.phone || person.email || "no contact"} · WhatsApp{" "}
-                    {person.marketing_whatsapp_opt_in ? "opted in" : "not opted in"}
+                  <li key={person.id} className="flex items-center gap-2 py-2">
+                    <input
+                      type="checkbox"
+                      checked={selected.includes(person.id)}
+                      onChange={() =>
+                        setSelected((current) =>
+                          current.includes(person.id) ? current.filter((id) => id !== person.id) : [...current, person.id],
+                        )
+                      }
+                    />
+                    <span>
+                      {person.name} · {person.phone || person.email || "no contact"} · WhatsApp{" "}
+                      {person.marketing_whatsapp_opt_in ? "opted in" : "not opted in"}
+                    </span>
                   </li>
                 ))}
               </ul>
@@ -586,9 +664,10 @@ function CampaignsPanel({
         ) : null}
         {step === 5 && preview ? (
           <p className="text-sm text-charcoal/70">
-            {preview.eligible} eligible, {preview.suppressed} suppressed, of {preview.recipients} customers.
+            {preview.eligible} will be queued, {preview.suppressed} excluded, of {preview.recipients} selected.
             Estimated usage {formatMoney(preview.estimated_cents, currency)}. Credits {preview.estimated_credits}
-            {preview.available_credits == null ? " (no prepaid account)" : ` of ${preview.available_credits} available`}.
+            {preview.available_credits == null ? " (no prepaid account — ask AxizPOS to allocate credits)" : ` of ${preview.available_credits} available`}.
+            {preview.sample ? <span className="mt-2 block">Sample: {preview.sample}</span> : null}
           </p>
         ) : null}
         <div className="flex gap-2">
@@ -601,7 +680,7 @@ function CampaignsPanel({
             disabled={busy || (step === 1 && name.trim().length < 1) || (step >= 3 && picked.length === 0) || body.trim().length < 2}
             type="submit"
           >
-            {step < 4 ? "Continue" : step === 4 ? "Preview audience" : busy ? "Working…" : "Queue campaign"}
+            {step < 4 ? "Continue" : step === 4 ? "Preview audience" : busy ? "Working…" : "Send campaign"}
           </PrimaryButton>
         </div>
       </form>
@@ -611,10 +690,32 @@ function CampaignsPanel({
         <ul className="divide-y divide-line rounded-card border border-line bg-white">
           {campaigns.map((campaign) => (
             <li key={campaign.id} className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 text-sm">
-              <span>
+              <button type="button" className="text-left" onClick={() => setOpenId(openId === campaign.id ? null : campaign.id)}>
                 <span className="font-medium">{campaign.name}</span>
-                <span className="text-charcoal/50"> · {campaign.status} · {campaign.queued_count} queued</span>
-              </span>
+                <span className="text-charcoal/50">
+                  {" "}
+                  · {campaign.status} · {campaign.queued_count} eligible · {campaign.suppressed_count} excluded
+                  {campaign.connection_phone ? ` · ${campaign.connection_phone}` : ""}
+                </span>
+              </button>
+              {openId === campaign.id ? (
+                <div className="basis-full text-charcoal/70">
+                  <p>
+                    Queued {campaign.pending_count ?? 0} · Accepted {campaign.accepted_count ?? 0} · Delivered{" "}
+                    {campaign.delivered_count ?? 0} · Read {campaign.read_count ?? 0} · Failed {campaign.failed_count ?? 0} ·
+                    Skipped {campaign.skipped_count ?? 0} · Credits reserved {campaign.credits_reserved ?? 0} · consumed{" "}
+                    {campaign.credits_consumed ?? 0}
+                  </p>
+                  <ul className="mt-2 divide-y divide-line">
+                    {history.filter((row) => row.campaign_id === campaign.id).map((row) => (
+                      <li key={row.id} className="py-1">
+                        {row.phone || "no phone"} · {row.status}
+                        {row.failure_reason ? ` · ${row.failure_reason}` : ""}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
               <span className="flex gap-2">
                 {campaign.status === "processing" || campaign.status === "scheduled" || campaign.status === "queued" ? (
                   <button type="button" className="underline" disabled={busy} onClick={() => onAction(campaign.id, "pause")}>Pause</button>
@@ -624,6 +725,9 @@ function CampaignsPanel({
                 ) : null}
                 {campaign.status !== "cancelled" && campaign.status !== "completed" ? (
                   <button type="button" className="underline" disabled={busy} onClick={() => onAction(campaign.id, "cancel")}>Cancel</button>
+                ) : null}
+                {(campaign.failed_count ?? 0) > 0 ? (
+                  <button type="button" className="underline" disabled={busy} onClick={() => onAction(campaign.id, "retry")}>Retry failed</button>
                 ) : null}
               </span>
             </li>

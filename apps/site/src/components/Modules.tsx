@@ -2,7 +2,7 @@ import { PROFILE_PRESETS, capabilitySpec, isCapability, type BusinessProfile, ty
 import { motion } from "framer-motion";
 import { useState, type ReactNode } from "react";
 import type { PublicCatalog } from "../catalog";
-import { signupUrl } from "../env";
+import { GET_STARTED_NOTE, GetStartedLink } from "./GetStartedLink";
 import {
   BUSINESS_TYPE_ORDER,
   priceLabel,
@@ -184,12 +184,7 @@ export function Modules({ catalog }: { catalog: PublicCatalog }) {
         </div>
 
         <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
-          <a
-            href={signupUrl}
-            className="inline-flex h-12 items-center justify-center rounded-2xl bg-primary px-5 text-sm font-semibold text-white hover:bg-primary-hover"
-          >
-            Start your free trial
-          </a>
+          <GetStartedLink className="inline-flex h-12 items-center justify-center rounded-2xl bg-primary px-5 text-sm font-semibold text-white hover:bg-primary-hover" />
           <a
             href="#features"
             className="inline-flex h-12 items-center justify-center rounded-2xl border border-line bg-card px-5 text-sm font-semibold text-charcoal"
@@ -209,6 +204,7 @@ export function Modules({ catalog }: { catalog: PublicCatalog }) {
             Contact us
           </a>
         </div>
+        <p className="mt-3 max-w-2xl text-xs leading-5 text-charcoal/60">{GET_STARTED_NOTE}</p>
       </div>
     </section>
   );

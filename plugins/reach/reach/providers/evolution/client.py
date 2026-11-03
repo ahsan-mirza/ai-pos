@@ -34,6 +34,23 @@ class EvolutionClient:
     def logout(self, name: str) -> dict:
         return self._call("DELETE", f"/instance/logout/{name}", None)
 
+    def set_webhook(self, name: str, url: str, secret: str) -> dict:
+        """Registers delivery and connection callbacks. The secret is the webhook header, not the global key."""
+        return self._call(
+            "POST",
+            f"/webhook/set/{name}",
+            {
+                "webhook": {
+                    "enabled": True,
+                    "url": url,
+                    "headers": {"apikey": secret},
+                    "byEvents": False,
+                    "base64": False,
+                    "events": ["CONNECTION_UPDATE", "MESSAGES_UPDATE", "MESSAGES_UPSERT", "SEND_MESSAGE"],
+                }
+            },
+        )
+
     def send_text(self, name: str, number: str, text: str) -> str:
         payload = self._call("POST", f"/message/sendText/{name}", {"number": number, "text": text})
         key = payload.get("key") if isinstance(payload.get("key"), dict) else {}

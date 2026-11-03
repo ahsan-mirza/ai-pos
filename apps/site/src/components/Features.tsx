@@ -1,4 +1,5 @@
 import { motion } from "framer-motion";
+import { GET_STARTED_NOTE, GetStartedLink } from "./GetStartedLink";
 import { IconBadge, type MarkName } from "./icons";
 import { lift, rise, stagger, viewport } from "./motion";
 import { SectionHeading } from "./SectionHeading";
@@ -61,6 +62,13 @@ export function Features() {
           </motion.article>
         ))}
       </motion.div>
+      <div className="mt-8 flex flex-col items-start gap-3">
+        <GetStartedLink className="inline-flex h-12 items-center justify-center rounded-2xl bg-primary px-5 text-sm font-semibold text-white hover:bg-primary-hover" />
+        <p className="max-w-2xl text-sm leading-6 text-charcoal/75">
+          Manage your sales, inventory, customers, and business operations with AxizPOS.
+        </p>
+        <p className="max-w-2xl text-xs leading-5 text-charcoal/60">{GET_STARTED_NOTE}</p>
+      </div>
     </section>
   );
 }

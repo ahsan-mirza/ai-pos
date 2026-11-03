@@ -54,7 +54,7 @@ export const SEO_PAGES: readonly SeoPage[] = [
     path: "/",
     title: "AxizPOS | POS Software for Restaurants, Retail & Cafés",
     description:
-      "AxizPOS is point of sale software for restaurants, cafés, quick service, grocery, fashion, wholesale, and electronics. Each profile starts with the modules that fit that work.",
+      "AI-Powered Business Solutions for Businesses Worldwide. Manage your sales, inventory, customers, and business operations with AxizPOS. Each profile starts with the modules that fit that work. New stores start on the Standard trial.",
     h1: "Smart POS Software for Restaurants, Retail & Growing Businesses",
     kicker: "AI-powered POS",
     lead: "",
@@ -381,7 +381,7 @@ export const SEO_PAGES: readonly SeoPage[] = [
         heading: "What is set up for UAE selling",
         paragraphs: [
           "Package prices on the public pricing section are in AED. The portal includes a VAT report that reads the sales the store recorded. Managers can ask the assistant in English or Arabic. The answers come from that store.",
-          "Sales questions on the website go through the WhatsApp number published in the console. If that number is not published, the demo form says so. It does not pretend a message was sent.",
+          "Sales questions on the website go through the WhatsApp number published in the console. If that number is not published, the contact form says so. It does not pretend a message was sent. Get Started Free opens registration. A new store starts on the Standard trial.",
         ],
       },
       {
@@ -402,7 +402,7 @@ export const SEO_PAGES: readonly SeoPage[] = [
       "Public package prices in AED",
       "VAT report from recorded sales",
       "Assistant in English or Arabic",
-      "WhatsApp demo request when a number is published",
+      "WhatsApp enquiry when a number is published",
       "Profiles for restaurants, cafés, quick service, grocery, fashion, wholesale, and electronics",
     ],
     image: PORTAL,

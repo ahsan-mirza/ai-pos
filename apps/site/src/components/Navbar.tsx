@@ -1,6 +1,7 @@
-import { Calendar, LogIn, Menu, Moon, Sparkles, Sun, UserPlus, X } from "lucide-react";
+import { LogIn, Menu, Moon, Sparkles, Sun, X } from "lucide-react";
 import { useEffect, useState } from "react";
-import { portalUrl, signupUrl } from "../env";
+import { portalUrl } from "../env";
+import { GetStartedLink } from "./GetStartedLink";
 import type { SiteTheme } from "../theme";
 
 const LINKS = [
@@ -24,14 +25,12 @@ export function Navbar({
   atHome = true,
   theme,
   onToggleTheme,
-  onDemo,
   showHardware = false,
 }: {
   atHome?: boolean;
   theme: SiteTheme;
   onToggleTheme: () => void;
   showHardware?: boolean;
-  onDemo: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState("top");
@@ -109,14 +108,7 @@ export function Navbar({
           >
             Sign In
           </a>
-          <button
-            type="button"
-            onClick={onDemo}
-            className="inline-flex cursor-pointer items-center gap-2 whitespace-nowrap rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-orange-500/20 transition-all hover:from-orange-600 hover:to-amber-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-orange-500 motion-safe:hover:scale-[1.02] motion-safe:active:scale-[0.98] sm:px-5"
-          >
-            <Calendar className="h-4 w-4" aria-hidden="true" />
-            Book a Demo
-          </button>
+          <GetStartedLink className="inline-flex cursor-pointer items-center whitespace-nowrap rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 px-3 py-2.5 text-sm font-semibold text-white shadow-lg shadow-orange-500/20 transition-all hover:from-orange-600 hover:to-amber-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-orange-500 motion-safe:hover:scale-[1.02] motion-safe:active:scale-[0.98] sm:px-5" />
           <button
             type="button"
             className="rounded-xl p-2 text-slate-500 transition-all hover:bg-slate-100 hover:text-slate-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-orange-500 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-white lg:hidden"
@@ -149,12 +141,6 @@ export function Navbar({
               <a href={portalUrl} className="flex h-11 items-center gap-2 rounded-xl px-3 text-sm font-medium text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800">
                 <LogIn className="h-4 w-4" aria-hidden="true" />
                 Sign In
-              </a>
-            </li>
-            <li>
-              <a href={signupUrl} className="flex h-11 items-center gap-2 rounded-xl px-3 text-sm font-medium text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800">
-                <UserPlus className="h-4 w-4" aria-hidden="true" />
-                Sign Up
               </a>
             </li>
             <li>

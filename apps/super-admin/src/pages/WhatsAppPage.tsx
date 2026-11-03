@@ -166,7 +166,7 @@ export function WhatsAppPage() {
     <section aria-busy={busy}>
       <PageHeader
         title="WhatsApp Sales Contact"
-        description="The landing-page demo form, the floating button, and the site footer use this WhatsApp number. The footer also shows the sales email. The visitor still has to press Send in WhatsApp."
+        description="Quote requests, the floating button, and the site footer use this WhatsApp number. The footer also shows the sales email. The visitor still has to press Send in WhatsApp. Get Started on the landing page opens the signup wizard and does not send this chat."
       />
       {!ready ? (
         <p className="mt-6 text-sm text-charcoal/60">Loading…</p>

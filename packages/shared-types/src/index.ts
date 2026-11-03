@@ -586,7 +586,10 @@ export type { EmbeddedBarcode } from "./weighed.js";
 export {
   SIGNUP_BUSINESS_CARDS,
   SIGNUP_COUNTRIES,
+  SIGNUP_EMBED_MESSAGE,
+  SIGNUP_EMBED_PARAM,
   SIGNUP_PASSWORD_MIN_LENGTH,
+  isSignupEmbedSearch,
   signupPasswordReady,
   signupPasswordRules,
 } from "./signup.js";

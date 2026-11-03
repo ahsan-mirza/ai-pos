@@ -39,10 +39,13 @@ from reach.service import (
     list_templates,
     overview,
     pause,
+    present_campaign,
+    present_campaigns,
     preview,
     recipients,
     require_reach,
     resume,
+    retry_failed,
     save_channel,
     save_prices,
     save_template,
@@ -98,8 +101,8 @@ def prices(payload: PricesWrite, db: Db, _: CanManage) -> dict[str, int]:
 
 
 @router.get("/customers")
-def customers(db: Db, _: CanManage, q: str = "") -> list[dict]:
-    return search_customers(db, q)
+def customers(db: Db, _: CanManage, q: str = "", whatsapp_opt_in: bool = False, limit: int = 50) -> list[dict]:
+    return search_customers(db, q, whatsapp_opt_in=whatsapp_opt_in, limit=limit)
 
 
 @router.post("/campaigns/preview", response_model=PreviewOut)
@@ -109,32 +112,37 @@ def preview_route(payload: CampaignWrite, db: Db, _: CanManage) -> dict:
 
 @router.get("/campaigns", response_model=list[CampaignOut])
 def campaigns(db: Db, _: CanManage) -> list:
-    return list_campaigns(db)
+    return present_campaigns(db, list_campaigns(db))
 
 
 @router.get("/campaigns/{campaign_id}", response_model=CampaignOut)
-def campaign(campaign_id: UUID, db: Db, _: CanManage) -> object:
-    return get_campaign(db, campaign_id)
+def campaign(campaign_id: UUID, db: Db, _: CanManage) -> dict:
+    return present_campaign(db, get_campaign(db, campaign_id))
 
 
 @router.post("/campaigns", response_model=CampaignOut, status_code=201)
-def launch_route(payload: CampaignWrite, db: Db, principal: CanManage) -> object:
-    return launch(db, principal.user.id, payload.model_dump())
+def launch_route(payload: CampaignWrite, db: Db, principal: CanManage) -> dict:
+    return present_campaign(db, launch(db, principal.user.id, payload.model_dump()))
 
 
 @router.post("/campaigns/{campaign_id}/cancel", response_model=CampaignOut)
-def cancel_route(campaign_id: UUID, db: Db, _: CanManage) -> object:
-    return cancel(db, campaign_id)
+def cancel_route(campaign_id: UUID, db: Db, _: CanManage) -> dict:
+    return present_campaign(db, cancel(db, campaign_id))
 
 
 @router.post("/campaigns/{campaign_id}/pause", response_model=CampaignOut)
-def pause_route(campaign_id: UUID, db: Db, _: CanManage) -> object:
-    return pause(db, campaign_id)
+def pause_route(campaign_id: UUID, db: Db, _: CanManage) -> dict:
+    return present_campaign(db, pause(db, campaign_id))
 
 
 @router.post("/campaigns/{campaign_id}/resume", response_model=CampaignOut)
-def resume_route(campaign_id: UUID, db: Db, _: CanManage) -> object:
-    return resume(db, campaign_id)
+def resume_route(campaign_id: UUID, db: Db, _: CanManage) -> dict:
+    return present_campaign(db, resume(db, campaign_id))
+
+
+@router.post("/campaigns/{campaign_id}/retry", response_model=CampaignOut)
+def retry_route(campaign_id: UUID, db: Db, _: CanManage) -> dict:
+    return present_campaign(db, retry_failed(db, campaign_id))
 
 
 @router.get("/messages", response_model=list[RecipientOut])
@@ -159,7 +167,7 @@ def template_delete(template_id: UUID, db: Db, _: CanManage) -> None:
 
 @router.get("/connections", response_model=list[ConnectionOut])
 def connection_list(db: Db, _: CanManage) -> list:
-    return [connections._public(row) for row in connections.list_connections(db)]
+    return connections.published(db)
 
 
 @router.post("/connections", response_model=ConnectionOut, status_code=201)

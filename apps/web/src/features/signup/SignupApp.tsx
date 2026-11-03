@@ -1,7 +1,7 @@
-import type { SignupState } from "@ai-pos/shared-types";
+import { SIGNUP_EMBED_MESSAGE, isSignupEmbedSearch, type SignupState } from "@ai-pos/shared-types";
 import { BrandLogo } from "@ai-pos/ui";
 import { Check } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useState } from "react";
 import { env } from "../../config/env";
 import { ApiRequestError } from "../../lib/api";
 import { portalSignInPath } from "../../lib/portal-home";
@@ -35,6 +35,7 @@ function stepFor(state: SignupState): Step {
 
 /** Public signup on the bare domain: account and code, business type, store, then live provisioning. */
 export function SignupApp() {
+  const embed = isSignupEmbedSearch(window.location.search);
   const [session, setSession] = useState<SignupSession | null>(() => readSignupSession());
   const [country, setCountry] = useState("AE");
   const [state, setState] = useState<SignupState | null>(null);
@@ -70,6 +71,113 @@ export function SignupApp() {
 
   const activeIndex = PROGRESS.findIndex((item) => item.steps.includes(step));
 
+  useLayoutEffect(() => {
+    if (!embed) return undefined;
+    document.documentElement.classList.add("signup-embed");
+    const post = () => {
+      const height = Math.ceil(document.documentElement.scrollHeight);
+      window.parent.postMessage({ type: SIGNUP_EMBED_MESSAGE, height }, "*");
+    };
+    post();
+    const observer = new ResizeObserver(post);
+    observer.observe(document.body);
+    return () => {
+      observer.disconnect();
+      document.documentElement.classList.remove("signup-embed");
+    };
+  }, [embed, step]);
+
+  const wizard = (
+    <>
+      {step === "loading" ? <p className="text-sm text-charcoal/60">Loading…</p> : null}
+      <div hidden={step !== "account"}>
+        <AccountStep
+          embedded={embed}
+          country={country}
+          onCountryChange={setCountry}
+          onStarted={(next) => {
+            saveSignupSession(next);
+            setSession(next);
+            setStep("verify");
+          }}
+          onResumed={(next, current) => {
+            saveSignupSession(next);
+            setSession(next);
+            setState(current);
+            setStep(stepFor(current));
+          }}
+        />
+      </div>
+      {session ? (
+        <div hidden={step !== "verify"}>
+          <VerifyStep
+            session={session}
+            onResent={(next) => {
+              saveSignupSession(next);
+              setSession(next);
+            }}
+            onVerified={advance}
+            onRestart={restart}
+          />
+        </div>
+      ) : null}
+      {session ? (
+        <div hidden={step !== "business"}>
+          <BusinessStep
+            session={session}
+            initialProfile={state?.profile ?? null}
+            initialSubType={state?.sub_type ?? null}
+            onChosen={advance}
+          />
+        </div>
+      ) : null}
+      {step === "waitlist" && session && state ? (
+        <WaitlistStep state={state} onBack={() => setStep("business")} />
+      ) : null}
+      {session ? (
+        <div hidden={step !== "store"}>
+          <StoreStep
+            session={session}
+            profile={state?.profile ?? null}
+            subType={state?.sub_type ?? null}
+            country={country}
+            onBack={() => setStep("business")}
+            onSubmitted={advance}
+          />
+        </div>
+      ) : null}
+      {step === "provisioning" && session && state ? (
+        <ProvisioningStep session={session} initial={state} onFinished={forget} />
+      ) : null}
+    </>
+  );
+
+  if (embed) {
+    return (
+      <div className="bg-white p-1 font-sans text-charcoal">
+        <ol className="mb-6 flex flex-wrap gap-x-4 gap-y-2" aria-label="Signup progress">
+          {PROGRESS.map((item, index) => {
+            const done = activeIndex > index;
+            const active = activeIndex === index;
+            return (
+              <li key={item.key} className="flex items-center gap-2 text-sm" aria-current={active ? "step" : undefined}>
+                <span
+                  className={`flex h-6 w-6 items-center justify-center rounded-full text-xs font-semibold ${
+                    done ? "bg-accent text-white" : active ? "bg-charcoal text-white" : "bg-surface text-charcoal/50"
+                  }`}
+                >
+                  {done ? <Check size={12} aria-hidden="true" /> : index + 1}
+                </span>
+                <span className={active ? "font-semibold text-charcoal" : "text-charcoal/60"}>{item.label}</span>
+              </li>
+            );
+          })}
+        </ol>
+        {wizard}
+      </div>
+    );
+  }
+
   return (
     <div className="flex min-h-screen items-center justify-center bg-canvas p-4 font-sans text-charcoal">
       <div className="grid w-full max-w-5xl overflow-hidden rounded-[28px] border border-line bg-white md:grid-cols-[300px_1fr]">
@@ -77,7 +185,9 @@ export function SignupApp() {
           <div>
             <BrandLogo tone="dark" className="h-9 w-auto" />
             <h1 className="mt-10 text-2xl font-semibold leading-tight">Open your store</h1>
-            <p className="mt-2 text-sm text-white/60">About two minutes. Practise with sample items before you go live.</p>
+            <p className="mt-2 text-sm text-white/60">
+              About two minutes. Practise with sample items before you go live. New stores start on the Standard trial. Going live follows that subscription. It is not an unlimited free plan.
+            </p>
           </div>
           <ol className="mt-10 space-y-4" aria-label="Signup progress">
             {PROGRESS.map((item, index) => {
@@ -111,67 +221,7 @@ export function SignupApp() {
             )}
           </p>
         </aside>
-        <main className="min-h-[560px] p-6 sm:p-10">
-          {step === "loading" ? <p className="text-sm text-charcoal/60">Loading…</p> : null}
-          <div hidden={step !== "account"}>
-            <AccountStep
-              country={country}
-              onCountryChange={setCountry}
-              onStarted={(next) => {
-                saveSignupSession(next);
-                setSession(next);
-                setStep("verify");
-              }}
-              onResumed={(next, current) => {
-                saveSignupSession(next);
-                setSession(next);
-                setState(current);
-                setStep(stepFor(current));
-              }}
-            />
-          </div>
-          {session ? (
-            <div hidden={step !== "verify"}>
-              <VerifyStep
-                session={session}
-                onResent={(next) => {
-                  saveSignupSession(next);
-                  setSession(next);
-                }}
-                onVerified={advance}
-                onRestart={restart}
-              />
-            </div>
-          ) : null}
-          {session ? (
-            <div hidden={step !== "business"}>
-              <BusinessStep
-                session={session}
-                initialProfile={state?.profile ?? null}
-                initialSubType={state?.sub_type ?? null}
-                onChosen={advance}
-              />
-            </div>
-          ) : null}
-          {step === "waitlist" && session && state ? (
-            <WaitlistStep state={state} onBack={() => setStep("business")} />
-          ) : null}
-          {session ? (
-            <div hidden={step !== "store"}>
-              <StoreStep
-                session={session}
-                profile={state?.profile ?? null}
-                subType={state?.sub_type ?? null}
-                country={country}
-                onBack={() => setStep("business")}
-                onSubmitted={advance}
-              />
-            </div>
-          ) : null}
-          {step === "provisioning" && session && state ? (
-            <ProvisioningStep session={session} initial={state} onFinished={forget} />
-          ) : null}
-        </main>
+        <main className="min-h-[560px] p-6 sm:p-10">{wizard}</main>
       </div>
     </div>
   );

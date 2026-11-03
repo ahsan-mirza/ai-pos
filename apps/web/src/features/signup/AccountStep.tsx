@@ -37,11 +37,14 @@ export function AccountStep({
   onCountryChange,
   onStarted,
   onResumed,
+  embedded = false,
 }: {
   country: string;
   onCountryChange: (iso: string) => void;
   onStarted: (session: SignupSession) => void;
   onResumed: (session: SignupSession, state: SignupState) => void;
+  /** Fits the landing-page card. Fields, validation, and the start API stay the same. */
+  embedded?: boolean;
 }) {
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
@@ -158,7 +161,7 @@ export function AccountStep({
           status={emailCheck.status}
           onRetry={emailCheck.retry}
         />
-        <div className="grid grid-cols-[minmax(12rem,0.95fr)_minmax(0,1.25fr)] items-start gap-3">
+        <div className={embedded ? "grid grid-cols-1 items-start gap-4 sm:grid-cols-2" : "grid grid-cols-[minmax(12rem,0.95fr)_minmax(0,1.25fr)] items-start gap-3"}>
           <CountryField label="Country" value={country} onChange={onCountryChange} detail={currencyForCountry} required />
           <PhoneAvailabilityField
             value={phone}
@@ -229,7 +232,7 @@ export function AccountStep({
       </button>
       <p className="mt-4 text-center text-sm text-charcoal/60">
         Already have an account?{" "}
-        <a href={portalSignInPath()} className="font-semibold text-accent hover:underline">
+        <a href={portalSignInPath()} target={embedded ? "_top" : undefined} className="font-semibold text-accent hover:underline">
           Log in
         </a>
       </p>

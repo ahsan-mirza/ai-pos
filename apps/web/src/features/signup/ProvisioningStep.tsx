@@ -74,7 +74,12 @@ export function ProvisioningStep({
       saveStoreCode(slug);
       const welcome = new URL("/welcome", window.location.origin);
       welcome.searchParams.set("handoff", token);
-      window.location.assign(welcome.toString());
+      const next = welcome.toString();
+      try {
+        (window.top ?? window).location.assign(next);
+      } catch {
+        window.location.assign(next);
+      }
     }, 900);
     return () => window.clearTimeout(timer);
   }, [state.status, state.handoff_token, state.slug, onFinished]);

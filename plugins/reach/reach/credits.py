@@ -1,4 +1,10 @@
-"""Prepaid credits. One credit is one provider-accepted campaign submission, not a delivery."""
+"""Prepaid credits. One credit is one provider-accepted campaign submission, not a delivery.
+
+A campaign holds one credit per eligible WhatsApp recipient before any send. The hold is consumed
+when Evolution returns a message id, released when the message is skipped, cancelled, or fails before
+acceptance, and left untouched by a retry of the same send until that send is accepted. The same
+message id cannot consume or release twice.
+"""
 
 from __future__ import annotations
 
@@ -90,6 +96,38 @@ def reserve(db: Session, campaign_id: uuid.UUID, units: int) -> None:
             idempotency_key=key,
             campaign_id=campaign_id,
             note="Held for campaign",
+        )
+    )
+    db.flush()
+
+
+def reserve_one(db: Session, campaign_id: uuid.UUID, message_id: uuid.UUID) -> None:
+    """Holds one more credit for a retry. The message id is the idempotency key."""
+    account = _account(db)
+    if account is None:
+        raise ApiError(422, "credits_required", "Ask AxizPOS to allocate Reach credits before sending on Evolution.")
+    key = f"reserve:{message_id}"
+    if db.scalar(select(ReachCreditTransaction.id).where(ReachCreditTransaction.idempotency_key == key)):
+        return
+    updated = db.execute(
+        update(ReachCreditAccount)
+        .where(
+            ReachCreditAccount.id == account.id,
+            ReachCreditAccount.balance - ReachCreditAccount.reserved >= 1,
+        )
+        .values(reserved=ReachCreditAccount.reserved + 1)
+    )
+    if updated.rowcount != 1:
+        raise ApiError(422, "insufficient_credits", "Not enough Reach credits to retry this message.")
+    db.add(
+        ReachCreditTransaction(
+            account_id=account.id,
+            kind="reserve",
+            units=1,
+            idempotency_key=key,
+            campaign_id=campaign_id,
+            outbound_message_id=message_id,
+            note="Held for a retry",
         )
     )
     db.flush()

@@ -110,6 +110,14 @@ def after_sent(db: Session, message: object) -> None:
     sent(db, message)
 
 
+def after_skipped(db: Session, message: object) -> None:
+    try:
+        from reach.service import after_skipped as skipped
+    except Exception:
+        return
+    skipped(db, message)
+
+
 def after_failed(db: Session, message: object) -> None:
     try:
         from reach.service import after_failed as failed

@@ -1,23 +1,11 @@
 import { PROFILE_PRESETS, SIGNUP_BUSINESS_CARDS, capabilitySpec, type Capability } from "@ai-pos/shared-types";
-import { ContactForm } from "../components/ContactForm";
+import { GetStartedSection } from "../components/GetStartedSection";
+import { GET_STARTED_NOTE, GetStartedLink } from "../components/GetStartedLink";
 import type { PublicCatalog } from "../catalog";
 import { profileModules, publicModulePrices } from "../modules";
 import { SEO_PAGES, type SeoPage } from "../seo";
-import type { PublicWhatsApp } from "../whatsapp";
 
-export function IndustryPage({
-  page,
-  catalog,
-  contact,
-  contactStatus,
-  onDemo,
-}: {
-  page: SeoPage;
-  catalog: PublicCatalog;
-  contact: PublicWhatsApp;
-  contactStatus: "loading" | "ready" | "unavailable";
-  onDemo: () => void;
-}) {
+export function IndustryPage({ page, catalog }: { page: SeoPage; catalog: PublicCatalog }) {
   const others = SEO_PAGES.filter((item) => item.id !== "home" && item.id !== page.id);
   const card = SIGNUP_BUSINESS_CARDS.find((item) => item.profile === page.profile);
   const started = new Set<Capability>(card?.subTypes.flatMap((item) => [...item.modules]) ?? []);
@@ -45,14 +33,8 @@ export function IndustryPage({
           <p className="mt-6 text-xs font-semibold uppercase tracking-[0.14em] text-primary">{page.kicker}</p>
           <h1 className="mt-2 max-w-3xl text-4xl font-semibold tracking-tight text-charcoal sm:text-5xl">{page.h1}</h1>
           <p className="mt-4 max-w-2xl text-base leading-7 text-charcoal/75">{page.lead}</p>
-          <div className="mt-6 flex flex-wrap gap-3">
-            <button
-              type="button"
-              onClick={onDemo}
-              className="inline-flex h-12 items-center justify-center rounded-2xl bg-primary px-5 text-sm font-semibold text-white hover:bg-primary-hover"
-            >
-              Book a Demo
-            </button>
+          <div className="mt-6 flex flex-wrap items-center gap-3">
+            <GetStartedLink className="inline-flex h-12 items-center justify-center rounded-2xl bg-primary px-5 text-sm font-semibold text-white hover:bg-primary-hover" />
             <a
               href="/#pricing"
               className="inline-flex h-12 items-center justify-center rounded-2xl border border-line px-5 text-sm font-semibold text-charcoal"
@@ -60,6 +42,9 @@ export function IndustryPage({
               See pricing
             </a>
           </div>
+          <p className="mt-3 max-w-xl text-sm leading-6 text-charcoal/70">
+            Manage your sales, inventory, customers, and business operations with AxizPOS. {GET_STARTED_NOTE}
+          </p>
         </div>
       </section>
       <section className="mx-auto grid max-w-page gap-10 px-4 py-14 sm:px-6 lg:grid-cols-[minmax(0,1fr)_minmax(18rem,24rem)] lg:px-8 lg:py-16">
@@ -169,20 +154,7 @@ export function IndustryPage({
           </ul>
         </div>
       </section>
-      <section id="contact" className="border-t border-line bg-charcoal text-canvas">
-        <div className="mx-auto grid max-w-page gap-10 px-4 py-16 sm:px-6 lg:grid-cols-[minmax(0,20rem)_minmax(0,1fr)] lg:items-start lg:gap-12 lg:px-8 lg:py-20">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-primary">Next step</p>
-            <h2 className="mt-2 text-3xl font-semibold tracking-tight sm:text-4xl">Book a walkthrough</h2>
-            <p className="mt-3 max-w-md text-base leading-7 text-canvas/80">
-              Send opens WhatsApp when a sales number is published. Press Send in WhatsApp to deliver the message.
-            </p>
-          </div>
-          <div className="walkthrough-card w-full rounded-3xl border border-slate-100 bg-white p-6 text-slate-900 shadow-2xl shadow-slate-900/10 sm:p-8">
-            <ContactForm contact={contact} contactStatus={contactStatus} />
-          </div>
-        </div>
-      </section>
+      <GetStartedSection />
     </>
   );
 }

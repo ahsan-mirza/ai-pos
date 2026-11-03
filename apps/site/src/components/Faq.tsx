@@ -38,14 +38,14 @@ const ITEMS = [
       "Yes. The portal has a stores list and stock transfers. How many registers are included depends on the package you choose in Pricing.",
   },
   {
-    question: "How can I request a product demo?",
+    question: "How do I get started?",
     answer:
-      "Use Book a Demo or the contact form. When a sales WhatsApp number is published for this site, the form opens WhatsApp with your details. If it is not published yet, start a practice store from the link in the form.",
+      "Choose Get Started Free. That opens registration: create an account, pick a business type, and finish store setup. A new store starts on the Standard trial shown in Pricing, with sample items so you can practise. Going live follows that subscription. It is not an unlimited free plan. The contact form is for a person on the team. When a sales WhatsApp number is published, the form opens WhatsApp with your details and nothing is delivered until you press Send.",
   },
   {
     question: "How do I get support?",
     answer:
-      "Store users sign in to the admin portal. Sales questions on this page go through the published WhatsApp number. If that number is not set, use the practice-store link and we will not pretend a ticket was filed.",
+      "Store users sign in to the admin portal. Sales questions on this page go through the published WhatsApp number. If that number is not set, use Get Started Free. We will not pretend a ticket was filed.",
   },
 ] as const;
 
@@ -55,7 +55,7 @@ export function Faq() {
 
   return (
     <section id="faq" className="mx-auto max-w-page px-4 py-16 sm:px-6 lg:px-8 lg:py-20">
-      <SectionHeading kicker="Questions" title="Practical answers before you book.">
+      <SectionHeading kicker="Questions" title="Practical answers before you start.">
         Sign-in, roles, and an audit trail are part of the portal. This page does not show customer logos, testimonials, or certifications.
       </SectionHeading>
       <div className="mt-8 divide-y divide-line rounded-card border border-line bg-card">

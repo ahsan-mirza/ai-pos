@@ -82,6 +82,8 @@ class ReachConnection(TenantScoped, TimestampMixin, Base):
     phone_number: Mapped[str | None] = mapped_column(String(32), nullable=True)
     status: Mapped[str] = mapped_column(String(24), default="created")
     webhook_key: Mapped[str] = mapped_column(String(80))
+    webhook_status: Mapped[str] = mapped_column(String(24), default="pending")
+    webhook_registered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     last_error: Mapped[str | None] = mapped_column(String(300), nullable=True)
 
 

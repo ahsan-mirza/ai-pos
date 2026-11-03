@@ -33,6 +33,8 @@ class Audience(BaseModel):
     min_loyalty_points: int = Field(default=0, ge=0)
     min_spend_cents: int = Field(default=0, ge=0)
     customer_type: str | None = None
+    # None keeps the filter audience. An empty list means the owner selected nobody.
+    customer_ids: list[UUID] | None = Field(default=None, max_length=1000)
 
 
 class ChannelContent(BaseModel):
@@ -64,6 +66,16 @@ class CampaignOut(BaseModel):
     queued_count: int
     scheduled_at: datetime | None
     created_at: datetime
+    pending_count: int = 0
+    processing_count: int = 0
+    accepted_count: int = 0
+    delivered_count: int = 0
+    read_count: int = 0
+    failed_count: int = 0
+    skipped_count: int = 0
+    credits_reserved: int = 0
+    credits_consumed: int = 0
+    connection_phone: str | None = None
 
     model_config = {"from_attributes": True}
 
@@ -76,6 +88,7 @@ class PreviewOut(BaseModel):
     estimated_credits: int = 0
     available_credits: int | None = None
     unknown_variables: list[str]
+    sample: str = ""
 
 
 class FailureOut(BaseModel):
@@ -125,6 +138,9 @@ class ConnectionOut(BaseModel):
     status: str
     last_error: str | None
     qr_base64: str | None = None
+    webhook_status: str = "pending"
+    webhook_registered_at: datetime | None = None
+    last_webhook_at: datetime | None = None
 
     model_config = {"from_attributes": True}
 

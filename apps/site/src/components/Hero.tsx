@@ -1,7 +1,8 @@
 import { AnimatePresence, motion, useReducedMotion, type Variants } from "framer-motion";
 import { useEffect, useState } from "react";
-import { portalUrl, signupUrl } from "../env";
+import { portalUrl } from "../env";
 import { AIAnimatedBackground } from "./AIAnimatedBackground";
+import { GET_STARTED_NOTE, GetStartedLink } from "./GetStartedLink";
 import { HeroAsk } from "./HeroAsk";
 import { Mark } from "./icons";
 
@@ -89,7 +90,7 @@ function RotatingTagline({ reduce }: { reduce: boolean }) {
   );
 }
 
-export function Hero({ onDemo }: { onDemo: () => void }) {
+export function Hero() {
   const reduce = useReducedMotion() ?? false;
   const reveal = (delay: number) =>
     reduce
@@ -141,20 +142,12 @@ export function Hero({ onDemo }: { onDemo: () => void }) {
               </li>
             ))}
           </motion.ul>
-          <motion.div {...reveal(0.6)} className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row">
-            <button
-              type="button"
-              onClick={onDemo}
-              className="inline-flex w-full items-center justify-center rounded-xl bg-gradient-to-r from-[#F26A21] to-amber-500 px-6 py-3.5 text-sm font-semibold text-white shadow-lg shadow-orange-500/20 transition-all hover:brightness-110 motion-safe:hover:scale-[1.02] motion-safe:active:scale-[0.98] sm:w-auto"
-            >
-              Book a Demo
-            </button>
-            <a
-              href={signupUrl}
-              className="inline-flex w-full items-center justify-center rounded-xl border border-slate-700 bg-slate-900 px-6 py-3.5 text-sm font-semibold text-white transition-all hover:bg-slate-800 motion-safe:hover:scale-[1.02] motion-safe:active:scale-[0.98] sm:w-auto"
-            >
-              Create a store
-            </a>
+          <motion.div {...reveal(0.6)} className="flex w-full flex-col items-start gap-3 sm:w-auto">
+            <GetStartedLink className="inline-flex w-full items-center justify-center rounded-xl bg-gradient-to-r from-[#F26A21] to-amber-500 px-6 py-3.5 text-sm font-semibold text-white shadow-lg shadow-orange-500/20 transition-all hover:brightness-110 motion-safe:hover:scale-[1.02] motion-safe:active:scale-[0.98] sm:w-auto" />
+            <p className="max-w-xl text-sm leading-6 text-slate-300">
+              Manage your sales, inventory, customers, and business operations with AxizPOS.
+            </p>
+            <p className="max-w-xl text-xs leading-5 text-slate-400">{GET_STARTED_NOTE}</p>
           </motion.div>
           <motion.p {...reveal(0.75)} className="mt-4 flex flex-wrap items-center gap-3 text-xs text-slate-400">
             <a href="#intelligence" className="font-semibold text-slate-200 hover:text-orange-300">

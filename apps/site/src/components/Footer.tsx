@@ -32,7 +32,7 @@ export function Footer({ atHome = true, contact }: { atHome?: boolean; contact: 
           <img src="/brand/logo.svg" alt="AxizPOS" width={137} height={32} className="h-8 w-auto dark:hidden" />
           <img src="/brand/logo-white.svg" alt="" width={137} height={32} className="hidden h-8 w-auto dark:block" />
           <p className="mt-3 max-w-xs text-sm leading-6 text-charcoal/70">
-            An AI-powered point of sale and admin portal. Ask the store in English or Arabic, then sell from the same records.
+            AI-Powered Business Solutions for Businesses Worldwide. Manage your sales, inventory, customers, and business operations with AxizPOS. Ask the store in English or Arabic, then sell from the same records.
           </p>
         </div>
         <div>
@@ -64,7 +64,7 @@ export function Footer({ atHome = true, contact }: { atHome?: boolean; contact: 
             </li>
             <li>
               <a href={signupUrl} className="text-charcoal/75 hover:text-charcoal">
-                Sign Up
+                Get Started Free
               </a>
             </li>
           </ul>

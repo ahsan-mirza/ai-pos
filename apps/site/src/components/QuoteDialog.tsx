@@ -2,7 +2,8 @@ import { useEffect, useId } from "react";
 import type { PublicWhatsApp } from "../whatsapp";
 import { ContactForm } from "./ContactForm";
 
-export function DemoModal({
+/** Pricing and hardware estimates still go to the sales form. Signup does not. */
+export function QuoteDialog({
   contact,
   contactStatus = "ready",
   draft,

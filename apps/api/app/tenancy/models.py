@@ -350,7 +350,7 @@ class BillingInvoice(ControlBase):
 
 # Prefilled chat text for a new marketing-site row. Migrations freeze their own copy of this sentence.
 WHATSAPP_MESSAGE_DEFAULT = (
-    "Hello AxizPOS Sales Team! I would like to learn more about your POS solutions for my business."
+    "Hello AxizPOS. I would like to get started and learn how AxizPOS can help me manage sales, inventory, customers, and business operations."
 )
 WHATSAPP_TOOLTIP_DEFAULT = "Chat with Sales"
 

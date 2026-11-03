@@ -4,15 +4,16 @@ from __future__ import annotations
 
 import secrets
 import uuid
+from datetime import UTC, datetime
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.config import Settings
 from app.core.errors import ApiError
-from reach.models import ReachConnection
+from reach.models import ReachConnection, ReachWebhookEvent
 from reach.providers.evolution.client import client_for
-from reach.service import require_reach
+from reach.service import bind_evolution_channel, require_reach
 
 
 def list_connections(db: Session) -> list[ReachConnection]:
@@ -35,6 +36,8 @@ def create_connection(db: Session, settings: Settings, name: str) -> ReachConnec
         webhook_key=secrets.token_urlsafe(32),
     )
     db.add(row)
+    db.flush()
+    _register_webhook(settings, row)
     db.commit()
     db.refresh(row)
     return row
@@ -52,9 +55,10 @@ def connect(db: Session, settings: Settings, connection_id: uuid.UUID) -> dict:
         raise ApiError(502, "evolution_unavailable", row.last_error) from exc
     row.status = "qr"
     row.last_error = None
+    _register_webhook(settings, row)
     db.commit()
     db.refresh(row)
-    return {**_public(row), "qr_base64": _qr(payload)}
+    return {**_public(row, _last_webhook(db, row.id)), "qr_base64": _qr(payload)}
 
 
 def refresh_status(db: Session, settings: Settings, connection_id: uuid.UUID) -> dict:
@@ -71,9 +75,11 @@ def refresh_status(db: Session, settings: Settings, connection_id: uuid.UUID) ->
     if state == "open":
         row.phone_number = _phone(payload) or row.phone_number
         row.last_error = None
+        bind_evolution_channel(db)
+        _register_webhook(settings, row)
     db.commit()
     db.refresh(row)
-    return _public(row)
+    return _public(row, _last_webhook(db, row.id))
 
 
 def disconnect(db: Session, settings: Settings, connection_id: uuid.UUID) -> dict:
@@ -86,7 +92,7 @@ def disconnect(db: Session, settings: Settings, connection_id: uuid.UUID) -> dic
     row.status = "disconnected"
     db.commit()
     db.refresh(row)
-    return _public(row)
+    return _public(row, _last_webhook(db, row.id))
 
 
 def _row(db: Session, connection_id: uuid.UUID) -> ReachConnection:
@@ -97,7 +103,12 @@ def _row(db: Session, connection_id: uuid.UUID) -> ReachConnection:
     return row
 
 
-def _public(row: ReachConnection) -> dict:
+def published(db: Session) -> list[dict]:
+    rows = list_connections(db)
+    return [_public(row, _last_webhook(db, row.id)) for row in rows]
+
+
+def _public(row: ReachConnection, last_webhook_at: datetime | None = None) -> dict:
     return {
         "id": row.id,
         "name": row.name,
@@ -106,7 +117,38 @@ def _public(row: ReachConnection) -> dict:
         "status": row.status,
         "last_error": row.last_error,
         "qr_base64": None,
+        "webhook_status": row.webhook_status,
+        "webhook_registered_at": row.webhook_registered_at,
+        "last_webhook_at": last_webhook_at,
     }
+
+
+def _register_webhook(settings: Settings, row: ReachConnection) -> None:
+    """Points Evolution at this connection. A failed registration does not drop the QR session."""
+    secret = (settings.evolution_webhook_secret or "").strip()
+    base = (settings.public_base_url or "").rstrip("/")
+    if not secret or not base:
+        row.webhook_status = "error"
+        row.last_error = "Set the public URL and webhook secret so delivery updates can arrive."
+        return
+    url = f"{base}/api/v1/reach/webhooks/evolution/{row.webhook_key}"
+    client = client_for(settings.evolution_api_url, settings.evolution_api_key)
+    try:
+        client.set_webhook(row.instance_name, url, secret)
+    except Exception as exc:
+        row.webhook_status = "error"
+        row.last_error = str(exc)[:300]
+        return
+    row.webhook_status = "registered"
+    row.webhook_registered_at = datetime.now(UTC)
+    if row.status == "open":
+        row.last_error = None
+
+
+def _last_webhook(db: Session, connection_id: uuid.UUID) -> datetime | None:
+    return db.scalar(
+        select(func.max(ReachWebhookEvent.created_at)).where(ReachWebhookEvent.connection_id == connection_id)
+    )
 
 
 def _qr(payload: dict) -> str | None:

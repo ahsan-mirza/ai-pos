@@ -90,8 +90,20 @@ def _dispatch(db: Session, connection: ReachConnection, event_type: str, payload
             number = data.get("wuid") or data.get("number")
             if number:
                 connection.phone_number = "".join(ch for ch in str(number) if ch.isdigit()) or connection.phone_number
+            from reach.service import bind_evolution_channel
+
+            bind_evolution_channel(db)
         elif state in {"close", "closed", "disconnected"}:
             connection.status = "close"
+            from reach.models import ReachCampaign
+
+            campaign_ids = set(
+                db.scalars(select(ReachRecipient.campaign_id).where(ReachRecipient.connection_id == connection.id))
+            )
+            for campaign_id in campaign_ids:
+                campaign = db.get(ReachCampaign, campaign_id)
+                if campaign is not None and campaign.status in {"processing", "queued", "scheduled"}:
+                    campaign.status = "paused"
         return
     if _unsubscribe(db, data):
         return

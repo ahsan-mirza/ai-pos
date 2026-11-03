@@ -33,6 +33,17 @@ export function signupPasswordReady(password: string): boolean {
   return signupPasswordRules(password).every((rule) => rule.met);
 }
 
+/** Query flag for the landing-page card. It carries no account data. */
+export const SIGNUP_EMBED_PARAM = "embed";
+
+/** Height reports from the embedded wizard to the marketing page. */
+export const SIGNUP_EMBED_MESSAGE = "ai-pos.signup-embed";
+
+export function isSignupEmbedSearch(search: string): boolean {
+  const query = search.startsWith("?") ? search.slice(1) : search;
+  return query.split("&").some((part) => part === `${SIGNUP_EMBED_PARAM}=1`);
+}
+
 export interface SignupStart {
   email: string;
   phone: string;

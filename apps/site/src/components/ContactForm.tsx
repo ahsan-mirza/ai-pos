@@ -71,7 +71,7 @@ export function ContactForm({
       return;
     }
     const text = [
-      "AxizPOS demo request",
+      "AxizPOS — getting started",
       `Name: ${fields.name.trim()}`,
       `Email: ${fields.email.trim()}`,
       `Phone: ${fields.phone.trim()}`,
@@ -90,8 +90,11 @@ export function ContactForm({
       <div className="mb-2 pr-10">
         <span className="mb-2 block text-xs font-bold uppercase tracking-widest text-orange-500">Contact</span>
         <h2 id={headingId} className="text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl">
-          Request a walkthrough
+          Get Started with AxizPOS
         </h2>
+        <p className="mt-2 text-sm leading-6 text-slate-600">
+          Tell us about your business and discover how AxizPOS can help you manage sales, inventory, customers, and business operations more efficiently.
+        </p>
       </div>
       <Field id={`${base}-name`} label="Name" error={errors.name}>
         <IconWrap icon={<User size={16} aria-hidden="true" />}>
@@ -147,7 +150,7 @@ export function ContactForm({
           </select>
         </IconWrap>
       </Field>
-      <Field id={`${base}-message`} label="What should we walk through?" error={errors.message}>
+      <Field id={`${base}-message`} label="Tell us about your business" error={errors.message}>
         <IconWrap icon={<MessageSquare size={16} aria-hidden="true" />} align="start">
           <textarea
             id={`${base}-message`}
@@ -176,7 +179,7 @@ export function ContactForm({
               {" "}
               A console admin can publish it under Settings, then WhatsApp Sales Contact. You can still{" "}
               <a href={signupUrl} className="font-semibold text-orange-600">
-                open a practice store
+                Get Started Free
               </a>
               .
             </>
@@ -185,14 +188,14 @@ export function ContactForm({
       )}
       {sent ? (
         <p role="status" className="text-sm font-medium text-slate-800">
-          WhatsApp opened with your request. Press Send there to deliver it.
+          Thank you for your interest in AxizPOS. WhatsApp opened with your details. Press Send there so our team can help you with the next steps to get started. Nothing is delivered until you do.
         </p>
       ) : null}
       <button
         type="submit"
         className="w-full cursor-pointer rounded-xl bg-gradient-to-r from-[#F26A21] to-amber-500 px-6 py-3.5 text-sm font-semibold text-white shadow-lg shadow-orange-500/25 transition-all hover:brightness-110 active:scale-[0.99] motion-reduce:transform-none sm:text-base"
       >
-        Send demo request
+        Send on WhatsApp
       </button>
     </form>
   );
@@ -201,7 +204,7 @@ export function ContactForm({
 function salesChannelMessage(contact: PublicWhatsApp, contactStatus: "loading" | "ready" | "unavailable"): string {
   if (contactStatus === "loading") return "The sales WhatsApp number is still loading. Try again in a moment.";
   if (contactStatus === "unavailable") return "The sales WhatsApp number could not be loaded. Refresh the page and try again.";
-  if (!contact.enabled) return "WhatsApp demo requests are turned off.";
+  if (!contact.enabled) return "WhatsApp enquiries are turned off.";
   return "The sales WhatsApp number is missing or not a valid international number.";
 }
 

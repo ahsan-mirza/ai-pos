@@ -11,6 +11,7 @@ import {
   type PublicCatalog,
 } from "../catalog";
 import { moduleLabel } from "../modules";
+import { GET_STARTED_NOTE, GetStartedLink } from "./GetStartedLink";
 import { Mark, type MarkName } from "./icons";
 import { lift, rise, stagger, viewport } from "./motion";
 import { SectionHeading } from "./SectionHeading";
@@ -24,12 +25,10 @@ const PLAN_ICONS: Record<string, MarkName> = {
 export function Pricing({
   catalog,
   live,
-  onDemo,
   onQuote,
 }: {
   catalog: PublicCatalog;
   live: boolean;
-  onDemo: (note: string) => void;
   onQuote: (note: string) => void;
 }) {
   const [code, setCode] = useState("STANDARD");
@@ -359,21 +358,16 @@ export function Pricing({
                 This estimate is not a final quote. Contact the team to confirm the package, hardware, and onboarding.
               </p>
               <div className="mt-4 flex flex-col gap-2 sm:flex-row lg:flex-col xl:flex-row">
+                <GetStartedLink className="inline-flex h-12 items-center justify-center rounded-2xl bg-primary px-5 text-sm font-semibold text-white hover:bg-primary-hover" />
                 <button
                   type="button"
                   onClick={() => onQuote(note)}
-                  className="inline-flex h-12 items-center justify-center rounded-2xl bg-primary px-5 text-sm font-semibold text-white hover:bg-primary-hover"
+                  className="inline-flex h-12 items-center justify-center rounded-2xl border border-line px-5 text-sm font-semibold text-charcoal"
                 >
                   Request a Quote
                 </button>
-                <button
-                  type="button"
-                  onClick={() => onDemo(note)}
-                  className="inline-flex h-12 items-center justify-center rounded-2xl border border-line px-5 text-sm font-semibold text-charcoal"
-                >
-                  Book a Demo
-                </button>
               </div>
+              <p className="mt-3 text-xs leading-5 text-charcoal/60">{GET_STARTED_NOTE}</p>
             </div>
           </aside>
         </div>

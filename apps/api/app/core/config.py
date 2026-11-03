@@ -127,6 +127,9 @@ class Settings(BaseSettings):
     evolution_api_url: str | None = None
     evolution_api_key: str | None = None
     evolution_webhook_secret: str | None = None
+    # Pause between Evolution sends in one dispatch run. Zero disables the pause in tests.
+    reach_send_interval_seconds: int = Field(default=3, ge=0, le=30)
+    reach_send_batch: int = Field(default=20, ge=1, le=50)
 
     # QR payments. "dev" simulates the customer paying; "emvco" renders a merchant-presented EMVCo QR whose
     # payment the acquirer confirms through the signed webhook.
