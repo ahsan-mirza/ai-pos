@@ -127,6 +127,11 @@ class OverviewOut(BaseModel):
     credits_available: int | None = None
     credits_reserved: int | None = None
     connection_status: str | None = None
+    provider_status: str = "unreachable"
+    provider_detail: str | None = None
+    campaign_readiness: str = "blocked"
+    campaign_blockers: list[str] = []
+    connected_phone: str | None = None
     recent: list[CampaignOut]
     failures: list[FailureOut]
 
@@ -152,6 +157,8 @@ class ConnectionOut(BaseModel):
     webhook_status: str = "pending"
     webhook_registered_at: datetime | None = None
     last_webhook_at: datetime | None = None
+    updated_at: datetime | None = None
+    session_state: str = "not_connected"
 
     model_config = {"from_attributes": True}
 

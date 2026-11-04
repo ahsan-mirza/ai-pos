@@ -10,7 +10,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.capabilities import Capability, has_capability
-from app.core.config import Settings
+from app.core.config import Settings, get_settings
 from app.core.errors import ApiError
 from app.core.security import decrypt_value, encrypt_value
 from app.models.customer import Customer
@@ -56,6 +56,33 @@ def _evolution_ready(db: Session) -> bool:
     return (
         db.scalar(select(ReachConnection.id).where(ReachConnection.status == "open").limit(1)) is not None
     )
+
+
+def _readiness(db: Session) -> dict:
+    """Campaigns are ready only when the provider, channel, session, and credits all allow a send."""
+    from reach.connections import provider_health
+
+    health = provider_health(get_settings())
+    row = db.scalar(select(MessagingChannel).where(MessagingChannel.channel == "whatsapp"))
+    phone = db.scalar(select(ReachConnection.phone_number).where(ReachConnection.status == "open").limit(1))
+    blockers: list[str] = []
+    if row is None or not row.enabled:
+        blockers.append("channel_disabled")
+    if row is not None and row.provider == "evolution":
+        if health["status"] != "healthy":
+            blockers.append("provider_unavailable")
+        if not _evolution_ready(db):
+            blockers.append("session_closed")
+    credits = credit_book.snapshot(db)
+    if credits is None or int(credits["available"]) < 1:
+        blockers.append("credits")
+    return {
+        "provider_status": health["status"],
+        "provider_detail": health["detail"],
+        "campaign_readiness": "ready" if not blockers else "blocked",
+        "campaign_blockers": blockers,
+        "connected_phone": phone,
+    }
 
 
 def bind_evolution_channel(db: Session) -> None:
@@ -418,6 +445,18 @@ def launch(db: Session, actor_id: uuid.UUID | None, data: dict) -> ReachCampaign
     origin = data.get("origin") or "manual"
     if origin == "ai" and mode == "send":
         raise ApiError(422, "approval_required", "Review this AI campaign, then choose Approve and send.")
+    if mode == "send" and "whatsapp" in channels and _channel_provider(db, "whatsapp") == "evolution":
+        from reach.connections import provider_health
+
+        health = provider_health(get_settings())
+        if health["status"] != "healthy":
+            raise ApiError(422, "provider_unavailable", health["detail"] or "Evolution API could not be reached.")
+        if not _evolution_ready(db):
+            raise ApiError(
+                422,
+                "whatsapp_disconnected",
+                "WhatsApp is not connected. Scan the QR and refresh until the session is open.",
+            )
     if mode == "send":
         closed = [channel for channel in channels if not campaign_channel_ready(db, channel)]
         if closed:
@@ -544,8 +583,6 @@ def launch(db: Session, actor_id: uuid.UUID | None, data: dict) -> ReachCampaign
                 )
             )
     if credit_units:
-        from app.core.config import get_settings
-
         start = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
         already = int(
             db.scalar(
@@ -776,6 +813,7 @@ def overview(db: Session) -> dict:
         "credits_available": None if credit_state is None else credit_state["available"],
         "credits_reserved": None if credit_state is None else credit_state["reserved"],
         "connection_status": open_connection or "not_connected",
+        **_readiness(db),
         "recent": recent,
         "failures": failures,
     }

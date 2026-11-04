@@ -283,6 +283,11 @@ def template_delete(template_id: UUID, db: Db, _: CanManage) -> None:
     delete_template(db, template_id)
 
 
+@router.get("/provider")
+def provider(settings: Config, _: CanManage) -> dict:
+    return connections.provider_health(settings)
+
+
 @router.get("/connections", response_model=list[ConnectionOut])
 def connection_list(db: Db, _: CanManage) -> list:
     return connections.published(db)

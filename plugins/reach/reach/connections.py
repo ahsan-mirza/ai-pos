@@ -6,13 +6,13 @@ import secrets
 import uuid
 from datetime import UTC, datetime
 
+from app.core.config import Settings
+from app.core.errors import ApiError
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.core.config import Settings
-from app.core.errors import ApiError
 from reach.models import ReachConnection, ReachWebhookEvent
-from reach.providers.evolution.client import client_for
+from reach.providers.evolution.client import EvolutionError, client_for
 from reach.service import bind_evolution_channel
 
 
@@ -20,13 +20,27 @@ def list_connections(db: Session) -> list[ReachConnection]:
     return list(db.scalars(select(ReachConnection).order_by(ReachConnection.created_at.desc())))
 
 
+def provider_health(settings: Settings) -> dict:
+    """Central Evolution status. This is not the store's WhatsApp session."""
+    client = client_for(settings.evolution_api_url, settings.evolution_api_key)
+    try:
+        client.health()
+    except EvolutionError as exc:
+        return {"status": exc.code, "detail": str(exc)[:300]}
+    return {"status": "healthy", "detail": None}
+
+
 def create_connection(db: Session, settings: Settings, name: str) -> ReachConnection:
+    existing = db.scalar(select(ReachConnection).order_by(ReachConnection.created_at.asc()).limit(1))
+    if existing is not None:
+        return existing
+    _require_healthy(settings)
     instance = f"reach-{uuid.uuid4().hex[:12]}"
     client = client_for(settings.evolution_api_url, settings.evolution_api_key)
     try:
         client.create_instance(instance)
     except Exception as exc:
-        raise ApiError(502, "evolution_unavailable", str(exc)[:300]) from exc
+        raise ApiError(502, _error_code(exc), str(exc)[:300]) from exc
     row = ReachConnection(
         name=name.strip(),
         instance_name=instance,
@@ -43,14 +57,28 @@ def create_connection(db: Session, settings: Settings, name: str) -> ReachConnec
 
 def connect(db: Session, settings: Settings, connection_id: uuid.UUID) -> dict:
     row = _row(db, connection_id)
+    if row.status == "open":
+        return refresh_status(db, settings, connection_id)
+    _require_healthy(settings)
     client = client_for(settings.evolution_api_url, settings.evolution_api_key)
     try:
         payload = client.connect(row.instance_name)
     except Exception as exc:
-        row.status = "error"
-        row.last_error = str(exc)[:300]
-        db.commit()
-        raise ApiError(502, "evolution_unavailable", row.last_error) from exc
+        if "HTTP 404" in str(exc):
+            try:
+                client.create_instance(row.instance_name)
+                payload = client.connect(row.instance_name)
+            except EvolutionError as retry_exc:
+                exc = retry_exc
+                payload = None
+        else:
+            payload = None
+        if payload is None:
+            row.last_error = str(exc)[:300]
+            if row.status != "open":
+                row.status = "error"
+            db.commit()
+            raise ApiError(502, _error_code(exc), row.last_error) from exc
     row.status = "qr"
     row.last_error = None
     _register_webhook(settings, row)
@@ -67,7 +95,7 @@ def refresh_status(db: Session, settings: Settings, connection_id: uuid.UUID) ->
     except Exception as exc:
         row.last_error = str(exc)[:300]
         db.commit()
-        raise ApiError(502, "evolution_unavailable", row.last_error) from exc
+        raise ApiError(502, _error_code(exc), row.last_error) from exc
     state = _state(payload)
     row.status = state
     if state == "open":
@@ -117,7 +145,43 @@ def _public(row: ReachConnection, last_webhook_at: datetime | None = None) -> di
         "webhook_status": row.webhook_status,
         "webhook_registered_at": row.webhook_registered_at,
         "last_webhook_at": last_webhook_at,
+        "updated_at": row.updated_at,
+        "session_state": _session_state(row.status),
     }
+
+
+def _require_healthy(settings: Settings) -> None:
+    health = provider_health(settings)
+    if health["status"] == "healthy":
+        return
+    code = {
+        "authentication_error": "evolution_authentication",
+        "not_configured": "evolution_not_configured",
+    }.get(health["status"], "evolution_unavailable")
+    raise ApiError(502, code, health["detail"] or "Evolution API could not be reached.")
+
+
+def _error_code(exc: Exception) -> str:
+    code = getattr(exc, "code", None)
+    if code == "authentication_error":
+        return "evolution_authentication"
+    if code == "not_configured":
+        return "evolution_not_configured"
+    return "evolution_unavailable"
+
+
+def _session_state(status: str) -> str:
+    if status == "open":
+        return "open"
+    if status == "qr":
+        return "qr_pending"
+    if status == "connecting":
+        return "connecting"
+    if status in {"close", "closed", "disconnected"}:
+        return "disconnected"
+    if status == "error":
+        return "failed"
+    return "not_connected"
 
 
 def _register_webhook(settings: Settings, row: ReachConnection) -> None:

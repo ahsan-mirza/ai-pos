@@ -15,12 +15,22 @@ Handler = Callable[[str, str, dict | None], dict]
 class EvolutionError(ProviderError):
     """Evolution rejected the call or is not configured."""
 
+    def __init__(self, message: str, *, permanent: bool = False, code: str = "unreachable") -> None:
+        super().__init__(message, permanent=permanent)
+        self.code = code
+
 
 class EvolutionClient:
     def __init__(self, base_url: str, api_key: str, handler: Handler | None = None) -> None:
         self.base_url = base_url.rstrip("/")
         self.api_key = api_key
         self.handler = handler
+
+    def health(self) -> None:
+        """Confirms the server can authenticate. This does not create a store instance."""
+        if self.handler is None and (not self.base_url or not self.api_key):
+            raise EvolutionError("Evolution API is not configured on the server.", permanent=True, code="not_configured")
+        self._call("GET", "/instance/fetchInstances", None, timeout=5)
 
     def create_instance(self, name: str) -> dict:
         return self._call("POST", "/instance/create", {"instanceName": name, "integration": "WHATSAPP-BAILEYS", "qrcode": True})
@@ -104,11 +114,14 @@ class EvolutionClient:
                 timeout=timeout,
             )
         except httpx.HTTPError as exc:
-            raise EvolutionError("Evolution API could not be reached.", permanent=False) from exc
+            raise EvolutionError("Evolution API could not be reached.", permanent=False, code="unreachable") from exc
+        if response.status_code in {401, 403}:
+            raise EvolutionError("Evolution API rejected the server key.", permanent=True, code="authentication_error")
         if response.status_code >= 400:
             raise EvolutionError(
-                f"Evolution {response.status_code}: {response.text[:180]}",
+                f"Evolution API returned HTTP {response.status_code}.",
                 permanent=response.status_code < 500,
+                code="unreachable",
             )
         data = response.json() if response.content else {}
         return data if isinstance(data, dict) else {"data": data}

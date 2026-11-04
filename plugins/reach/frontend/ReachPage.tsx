@@ -55,6 +55,11 @@ interface Overview {
   credits_available: number | null;
   credits_reserved: number | null;
   connection_status: string | null;
+  provider_status?: string;
+  provider_detail?: string | null;
+  campaign_readiness?: string;
+  campaign_blockers?: string[];
+  connected_phone?: string | null;
   recent: Campaign[];
 }
 
@@ -69,6 +74,8 @@ interface Connection {
   webhook_status?: string;
   webhook_registered_at?: string | null;
   last_webhook_at?: string | null;
+  updated_at?: string | null;
+  session_state?: string;
 }
 
 interface Template {
@@ -172,7 +179,13 @@ export function ReachPage() {
         ]);
       setChannels(nextChannels);
       setOverview(nextOverview);
-      setConnections(nextConnections);
+      setConnections((current) =>
+        nextConnections.map((row) => {
+          const previous = current.find((item) => item.id === row.id);
+          const keepQr = row.status !== "open" && !row.qr_base64 ? previous?.qr_base64 ?? null : row.qr_base64;
+          return { ...row, qr_base64: keepQr };
+        }),
+      );
       setCampaigns(nextCampaigns);
       setTemplates(nextTemplates);
       setHistory(nextHistory);
@@ -265,27 +278,37 @@ export function ReachPage() {
         <ConnectionsPanel
           connections={connections}
           busy={busy}
-          onCreate={(name) =>
-            run(async () => {
-              await apiPost("/api/v1/reach/connections", { name });
-              setNotice("Connection created. Scan the QR from Connect.");
-            }, "The WhatsApp connection was not created.")
-          }
+          providerStatus={overview?.provider_status ?? "unreachable"}
+          providerDetail={overview?.provider_detail ?? null}
+          onRetry={() => run(async () => undefined, "The service status could not be checked.")}
           onConnect={(id) =>
             run(async () => {
-              const next = await apiPost<Connection>(`/api/v1/reach/connections/${id}/connect`, {});
-              setConnections((current) => current.map((row) => (row.id === id ? next : row)));
-              setNotice(next.qr_base64 ? "Scan the QR with the authorized WhatsApp number." : "Waiting for a QR from Evolution.");
+              const created = id
+                ? connections.find((row) => row.id === id) ?? null
+                : (await apiPost<Connection>("/api/v1/reach/connections", { name: "Store WhatsApp" }));
+              const connectionId = created?.id;
+              if (!connectionId) return;
+              const next = await apiPost<Connection>(`/api/v1/reach/connections/${connectionId}/connect`, {});
+              setConnections((current) => {
+                const rest = current.filter((row) => row.id !== next.id);
+                return [next, ...rest];
+              });
+              setNotice(next.qr_base64 ? "Scan the QR from WhatsApp, Linked devices." : "Waiting for a QR from the connection service.");
             }, "The QR could not be loaded.")
           }
-          onStatus={(id) =>
-            run(async () => {
-              await apiPost(`/api/v1/reach/connections/${id}/status`, {});
-            }, "Status could not be refreshed.")
-          }
+          onStatus={async (id) => {
+            try {
+              const next = await apiPost<Connection>(`/api/v1/reach/connections/${id}/status`, {});
+              setConnections((current) => current.map((row) => (row.id === id ? { ...next, qr_base64: next.qr_base64 || row.qr_base64 } : row)));
+              if (next.status === "open") setNotice("WhatsApp is connected.");
+            } catch (caught) {
+              setError(errorMessage(caught, "Status could not be refreshed."));
+            }
+          }}
           onDisconnect={(id) =>
             run(async () => {
               await apiPost(`/api/v1/reach/connections/${id}/disconnect`, {});
+              setNotice("WhatsApp was disconnected for this store.");
             }, "The connection could not be disconnected.")
           }
           onTest={async (to) =>
@@ -347,6 +370,9 @@ export function ReachPage() {
           channels={channels}
           prices={overview?.prices}
           connectionStatus={overview?.connection_status ?? null}
+          providerStatus={overview?.provider_status ?? "unreachable"}
+          providerDetail={overview?.provider_detail ?? null}
+          connectedPhone={overview?.connected_phone ?? null}
           busy={busy}
           onDirty={setSettingsDirty}
           onManageConnection={() => {
@@ -442,7 +468,9 @@ function testStatusLabel(status: string) {
 function ConnectionsPanel({
   connections,
   busy,
-  onCreate,
+  providerStatus,
+  providerDetail,
+  onRetry,
   onConnect,
   onStatus,
   onDisconnect,
@@ -450,9 +478,11 @@ function ConnectionsPanel({
 }: {
   connections: Connection[];
   busy: boolean;
-  onCreate: (name: string) => void;
-  onConnect: (id: string) => void;
-  onStatus: (id: string) => void;
+  providerStatus: string;
+  providerDetail: string | null;
+  onRetry: () => void;
+  onConnect: (id: string | null) => void;
+  onStatus: (id: string) => Promise<void> | void;
   onDisconnect: (id: string) => void;
   onTest: (to: string) => Promise<{
     to_address: string;
@@ -464,12 +494,39 @@ function ConnectionsPanel({
     sent_at: string | null;
   }>;
 }) {
-  const [name, setName] = useState("");
   const [testTo, setTestTo] = useState("");
   const [testing, setTesting] = useState(false);
   const [testError, setTestError] = useState<string | null>(null);
   const [testResult, setTestResult] = useState<Awaited<ReturnType<typeof onTest>> | null>(null);
-  const open = connections.some((row) => row.status === "open");
+  const [qrAge, setQrAge] = useState(0);
+  const [timedOut, setTimedOut] = useState(false);
+  const row = connections[0] ?? null;
+  const open = row?.status === "open";
+  const serviceDown = providerStatus !== "healthy";
+  const qr = row?.qr_base64 ?? null;
+
+  useEffect(() => {
+    setQrAge(0);
+    setTimedOut(false);
+  }, [qr]);
+
+  useEffect(() => {
+    if (!qr || open) return undefined;
+    const timer = window.setInterval(() => setQrAge((age) => age + 1), 1000);
+    return () => window.clearInterval(timer);
+  }, [qr, open]);
+
+  useEffect(() => {
+    if (!row || !qr || open || serviceDown) return undefined;
+    const timer = window.setInterval(() => {
+      void onStatus(row.id);
+    }, 4000);
+    const stop = window.setTimeout(() => setTimedOut(true), 90000);
+    return () => {
+      window.clearInterval(timer);
+      window.clearTimeout(stop);
+    };
+  }, [row, qr, open, serviceDown, onStatus]);
 
   const sendTest = async () => {
     if (testing || testTo.trim().length < 8) return;
@@ -484,100 +541,87 @@ function ConnectionsPanel({
     }
   };
 
+  const badge = sessionBadge(row?.status ?? "created");
+  const qrStale = qrAge >= 40;
+
   return (
     <div className="grid gap-6">
-      <section className="grid gap-3">
-        <div>
-          <h2 className="text-lg font-semibold">WhatsApp connection</h2>
-          <p className="mt-1 max-w-2xl text-sm leading-6 text-charcoal/60">
-            Pair the number that will send marketing campaigns. The QR comes from Evolution.
-          </p>
-        </div>
-        <form
-          className="flex flex-col gap-3 rounded-card border border-line bg-white p-4 shadow-sm sm:flex-row sm:items-end"
-          onSubmit={(event) => {
-            event.preventDefault();
-            if (busy || name.trim().length < 1) return;
-            onCreate(name);
-            setName("");
-          }}
-        >
-          <div className="min-w-0 flex-1">
-            <TextField label="Connection name" value={name} onChange={(event) => setName(event.target.value)} />
+      <section className="grid gap-4 rounded-card border border-line bg-white p-4 shadow-sm sm:p-5">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-accent/10 text-accent">
+              <ChannelMark channel="whatsapp" className="h-5 w-5" />
+            </span>
+            <div>
+              <h2 className="text-lg font-semibold">Store WhatsApp</h2>
+              <p className="mt-1 max-w-xl text-sm leading-6 text-charcoal/60">
+                Connect the number this store uses for marketing. Scan the QR from WhatsApp, then Linked devices.
+              </p>
+            </div>
           </div>
+          <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${badge.className}`}>{badge.label}</span>
+        </div>
+        {serviceDown ? (
+          <div className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800">
+            <p className="font-medium">WhatsApp connection service is unavailable.</p>
+            <p className="mt-1">{providerDetail || "Evolution API could not be reached."} Existing store settings are unchanged.</p>
+            <button type="button" disabled={busy} onClick={onRetry} className="mt-3 rounded-full border border-rose-300 px-3 py-1.5 text-sm font-medium disabled:opacity-40">
+              Retry
+            </button>
+          </div>
+        ) : null}
+        <dl className="grid grid-cols-1 gap-3 text-sm sm:grid-cols-2">
+          <div>
+            <dt className="text-xs text-charcoal/50">WhatsApp number</dt>
+            <dd>{row?.phone_number || "Not connected"}</dd>
+          </div>
+          <div>
+            <dt className="text-xs text-charcoal/50">Last update</dt>
+            <dd>{row?.updated_at ? new Date(row.updated_at).toLocaleString() : "Not connected yet"}</dd>
+          </div>
+          <div>
+            <dt className="text-xs text-charcoal/50">Webhook</dt>
+            <dd>{row?.webhook_status || "Not registered"}</dd>
+          </div>
+          <div>
+            <dt className="text-xs text-charcoal/50">Service</dt>
+            <dd>{providerStatus === "healthy" ? "Available" : providerStatus === "authentication_error" ? "Authentication error" : "Unavailable"}</dd>
+          </div>
+        </dl>
+        {row?.last_error ? <p className="text-sm text-rose-700">{row.last_error}</p> : null}
+        {timedOut && !open ? <p className="text-sm text-charcoal/70">The connection check timed out. Refresh the QR and scan again.</p> : null}
+        <div className="flex flex-wrap gap-2">
           <button
-            type="submit"
-            disabled={busy || name.trim().length < 1}
-            className="inline-flex h-11 items-center justify-center rounded-full bg-accent px-4 text-sm font-medium text-white disabled:opacity-40"
+            type="button"
+            disabled={busy || serviceDown}
+            onClick={() => (open && row ? void onStatus(row.id) : onConnect(row?.id ?? null))}
+            className="rounded-full bg-accent px-4 py-2 text-sm font-medium text-white disabled:opacity-40"
           >
-            Create connection
+            {busy ? "Working…" : open ? "Check connection" : qr ? "Refresh QR" : "Connect WhatsApp"}
           </button>
-        </form>
-        {connections.length === 0 ? (
-          <p className="rounded-card border border-line bg-white p-4 text-sm text-charcoal/60">
-            No WhatsApp session yet. Create one, then scan the QR with the number that should send campaigns.
-          </p>
-        ) : (
-          <ul className="grid gap-4">
-            {connections.map((row) => {
-              const badge = sessionBadge(row.status);
-              return (
-                <li key={row.id} className="grid gap-4 rounded-card border border-line bg-white p-4 shadow-sm lg:grid-cols-[minmax(0,1fr)_auto]">
-                  <div>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <h3 className="font-semibold">{row.name}</h3>
-                      <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${badge.className}`}>{badge.label}</span>
-                    </div>
-                    <dl className="mt-3 grid grid-cols-1 gap-2 text-sm sm:grid-cols-2">
-                      <div>
-                        <dt className="text-xs text-charcoal/50">Provider</dt>
-                        <dd>Evolution API</dd>
-                      </div>
-                      <div>
-                        <dt className="text-xs text-charcoal/50">WhatsApp number</dt>
-                        <dd>{row.phone_number || "Not available yet"}</dd>
-                      </div>
-                      <div>
-                        <dt className="text-xs text-charcoal/50">Session</dt>
-                        <dd>{row.status}</dd>
-                      </div>
-                      <div>
-                        <dt className="text-xs text-charcoal/50">Webhook</dt>
-                        <dd>
-                          {row.webhook_status || "pending"}
-                          {row.webhook_registered_at ? ` · registered ${new Date(row.webhook_registered_at).toLocaleString()}` : ""}
-                        </dd>
-                      </div>
-                      <div className="sm:col-span-2">
-                        <dt className="text-xs text-charcoal/50">Last webhook event</dt>
-                        <dd>{row.last_webhook_at ? new Date(row.last_webhook_at).toLocaleString() : "None yet"}</dd>
-                      </div>
-                    </dl>
-                    {row.last_error ? <p className="mt-3 text-sm text-rose-700">{row.last_error}</p> : null}
-                    <div className="mt-4 flex flex-wrap gap-2">
-                      <button type="button" disabled={busy} onClick={() => onConnect(row.id)} className="rounded-full bg-accent px-4 py-2 text-sm font-medium text-white disabled:opacity-40">
-                        {row.qr_base64 ? "Refresh QR" : "Connect"}
-                      </button>
-                      <button type="button" disabled={busy} onClick={() => onStatus(row.id)} className="rounded-full border border-line px-4 py-2 text-sm font-medium disabled:opacity-40">
-                        Refresh status
-                      </button>
-                      <button type="button" disabled={busy} onClick={() => onDisconnect(row.id)} className="rounded-full border border-line px-4 py-2 text-sm font-medium disabled:opacity-40">
-                        Disconnect
-                      </button>
-                    </div>
-                  </div>
-                  {row.qr_base64 ? (
-                    <img
-                      alt={`WhatsApp QR for ${row.name}`}
-                      className="h-44 w-44 justify-self-center rounded-xl bg-white p-2"
-                      src={row.qr_base64.startsWith("data:") ? row.qr_base64 : `data:image/png;base64,${row.qr_base64}`}
-                    />
-                  ) : null}
-                </li>
-              );
-            })}
-          </ul>
-        )}
+          {row ? (
+            <button type="button" disabled={busy} onClick={() => void onStatus(row.id)} className="rounded-full border border-line px-4 py-2 text-sm font-medium disabled:opacity-40">
+              Refresh status
+            </button>
+          ) : null}
+          {row && row.status !== "created" ? (
+            <button type="button" disabled={busy || serviceDown} onClick={() => onDisconnect(row.id)} className="rounded-full border border-line px-4 py-2 text-sm font-medium disabled:opacity-40">
+              Disconnect
+            </button>
+          ) : null}
+        </div>
+        {qr && !open ? (
+          <div className="grid justify-items-center gap-2 rounded-xl border border-line bg-surface p-4">
+            <img
+              alt="WhatsApp QR code for this store"
+              className={`h-52 w-52 rounded-xl bg-white p-2 ${qrStale ? "opacity-40" : ""}`}
+              src={qr.startsWith("data:") ? qr : `data:image/png;base64,${qr}`}
+            />
+            <p className="text-center text-sm text-charcoal/70">
+              {qrStale ? "This QR may have expired. Refresh it, then scan again." : `Scan within ${Math.max(0, 40 - qrAge)} seconds, then keep this page open.`}
+            </p>
+          </div>
+        ) : null}
       </section>
       <section className="rounded-card border border-line bg-white p-4 shadow-sm">
         <h2 className="text-lg font-semibold">Send a test message</h2>
@@ -1121,7 +1165,7 @@ function wholeCents(value: string): number | null {
 
 function statusBadge(card: ChannelCard, connectionStatus: string | null): { label: string; className: string } {
   if (card.channel === "whatsapp" && card.provider === "evolution") {
-    if (connectionStatus === "open") return { label: "Connected", className: "bg-emerald-50 text-emerald-700" };
+    if (connectionStatus === "open") return { label: "Session connected", className: "bg-emerald-50 text-emerald-700" };
     if (connectionStatus === "connecting" || connectionStatus === "qr") {
       return { label: "Connecting", className: "bg-sky-50 text-sky-700" };
     }
@@ -1214,7 +1258,12 @@ function ChannelConfigCard({
             <p className="text-xs text-charcoal/50">{providerName(provider)}</p>
           </div>
         </div>
-        <span className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-medium ${badge.className}`}>{badge.label}</span>
+        <span className="flex flex-col items-end gap-1">
+          <span className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-medium ${enabled ? "bg-accent/10 text-accent" : "bg-surface text-charcoal/60"}`}>
+            {enabled ? "Enabled" : "Disabled"}
+          </span>
+          <span className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-medium ${badge.className}`}>{badge.label}</span>
+        </span>
       </div>
       <div className="mt-4 flex items-center justify-between gap-3">
         <span className="text-sm text-charcoal">Enabled</span>
@@ -1265,6 +1314,9 @@ function SettingsPanel({
   channels,
   prices,
   connectionStatus,
+  providerStatus,
+  providerDetail,
+  connectedPhone,
   busy,
   onDirty,
   onManageConnection,
@@ -1274,6 +1326,9 @@ function SettingsPanel({
   channels: ChannelCard[];
   prices: Partial<Record<MessageChannel, number>> | undefined;
   connectionStatus: string | null;
+  providerStatus: string;
+  providerDetail: string | null;
+  connectedPhone: string | null;
   busy: boolean;
   onDirty: (dirty: boolean) => void;
   onManageConnection: () => void;
@@ -1347,6 +1402,14 @@ function SettingsPanel({
 
   return (
     <div className="grid gap-8">
+      {providerStatus !== "healthy" ? (
+        <div className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800">
+          <p className="font-medium">WhatsApp connection service is unavailable.</p>
+          <p className="mt-1">
+            {providerDetail || "Evolution API could not be reached."} Saved channel settings stay as they are. Turning a channel on does not connect a WhatsApp number.
+          </p>
+        </div>
+      ) : null}
       <section className="grid gap-3">
         <div>
           <h2 className="text-lg font-semibold text-charcoal">Marketing channel</h2>

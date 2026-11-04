@@ -2,18 +2,18 @@
 
 import uuid
 
+import httpx
 import pytest
-from sqlalchemy import select
-
 from app.core.config import get_settings
 from app.jobs.runner import run_job
 from app.models.customer import Customer
 from app.models.messaging import OutboundMessage
-from app.models.reach import ReachCampaign, ReachCreditAccount, ReachRecipient
+from app.models.reach import ReachCampaign, ReachConnection, ReachCreditAccount, ReachRecipient
 from app.services.messaging_providers import ProviderError
 from app.tenancy.scoping import DEFAULT_TENANT_ID
 from reach import credits as credit_book
-from reach.providers.evolution.client import set_handler
+from reach.providers.evolution.client import EvolutionClient, EvolutionError, set_handler
+from sqlalchemy import select
 from tests.governance_support import platform  # noqa: F401
 from wholesale_support import admin, seed
 
@@ -579,6 +579,126 @@ def test_ai_campaign_requires_approval_before_send(client, session) -> None:
     assert again.json()["id"] == campaign_id
     queued = client.get("/api/v1/messaging/outbox", headers=headers, params={"status": "QUEUED"}).json()
     assert len([row for row in queued if row["template_key"] == "campaign"]) == 1
+
+
+def test_unreachable_and_authentication_are_distinct(monkeypatch) -> None:
+    set_handler(None)
+
+    def refuse(*_args, **_kwargs):
+        raise httpx.ConnectError("refused")
+
+    monkeypatch.setattr("reach.providers.evolution.client.httpx.request", refuse)
+    client = EvolutionClient("http://127.0.0.1:8080", "server-key")
+    with pytest.raises(EvolutionError) as unreachable:
+        client.health()
+    assert unreachable.value.code == "unreachable"
+    assert "server-key" not in str(unreachable.value)
+
+    class Denied:
+        status_code = 401
+        content = b""
+        text = "unauthorized"
+
+        def json(self) -> dict:
+            return {}
+
+    monkeypatch.setattr("reach.providers.evolution.client.httpx.request", lambda *_args, **_kwargs: Denied())
+    with pytest.raises(EvolutionError) as rejected:
+        client.health()
+    assert rejected.value.code == "authentication_error"
+    assert "server-key" not in str(rejected.value)
+
+
+def test_repeated_pairing_reuses_the_store_instance(client, _fake_evolution) -> None:
+    seed(client)
+    headers, _ = admin(client)
+    first = client.post("/api/v1/reach/connections", headers=headers, json={"name": "Store WhatsApp"})
+    second = client.post("/api/v1/reach/connections", headers=headers, json={"name": "Again"})
+    assert first.status_code == 201, first.text
+    assert second.json()["id"] == first.json()["id"]
+    assert second.json()["instance_name"] == first.json()["instance_name"]
+    assert second.json()["session_state"] == "not_connected"
+    assert [path for _method, path in _fake_evolution if path == "/instance/create"] == ["/instance/create"]
+    paired = client.post(f"/api/v1/reach/connections/{first.json()['id']}/connect", headers=headers)
+    refreshed = client.post(f"/api/v1/reach/connections/{first.json()['id']}/connect", headers=headers)
+    assert paired.status_code == 200, paired.text
+    assert paired.json()["qr_base64"] == "qr-bytes"
+    assert refreshed.json()["instance_name"] == first.json()["instance_name"]
+    assert refreshed.json()["session_state"] == "qr_pending"
+
+
+def test_other_tenant_cannot_read_or_disconnect_a_session(client, session) -> None:
+    seed(client)
+    headers, _ = admin(client)
+    hidden = ReachConnection(
+        name="Other store",
+        instance_name="reach-other",
+        status="open",
+        webhook_key="other-store-key",
+        phone_number="971500000222",
+    )
+    hidden.tenant_id = uuid.UUID("00000000-0000-4000-8000-000000000099")
+    session.add(hidden)
+    session.commit()
+    missing = client.post(f"/api/v1/reach/connections/{hidden.id}/status", headers=headers)
+    assert missing.status_code == 404
+    disconnect = client.post(f"/api/v1/reach/connections/{hidden.id}/disconnect", headers=headers)
+    assert disconnect.status_code == 404
+    assert session.get(ReachConnection, hidden.id) is None
+
+
+def test_cashier_cannot_manage_whatsapp_connections(client) -> None:
+    seed(client)
+    from wholesale_support import device
+
+    login = client.post("/api/v1/auth/login-pin", json={"username": "cashier", "pin": "1357"}, headers=device())
+    assert login.status_code == 200, login.text
+    headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
+    blocked = client.get("/api/v1/reach/connections", headers=headers)
+    assert blocked.status_code == 403
+
+
+def test_campaign_readiness_requires_an_open_session_and_a_healthy_provider(client, session, _fake_evolution) -> None:
+    seed(client)
+    headers, _ = admin(client)
+    _enable(client, headers)
+    client.put(
+        "/api/v1/reach/channels",
+        headers=headers,
+        json={"channel": "whatsapp", "enabled": True, "provider": "evolution", "public_config": {}},
+    )
+    blocked = client.get("/api/v1/reach/overview", headers=headers).json()
+    assert blocked["provider_status"] == "healthy"
+    assert blocked["connection_status"] == "not_connected"
+    assert blocked["campaign_readiness"] == "blocked"
+    assert "session_closed" in blocked["campaign_blockers"]
+    _ready(client, headers)
+    credit_book.allocate(session, units=2, note="seed", idempotency_key="alloc-ready")
+    session.commit()
+    ready = client.get("/api/v1/reach/overview", headers=headers).json()
+    assert ready["connection_status"] == "open"
+    assert ready["campaign_readiness"] == "ready"
+    assert ready["connected_phone"] == "971500000111"
+
+    def down(method: str, path: str, body: dict | None) -> dict:
+        if path == "/instance/fetchInstances":
+            raise EvolutionError("Evolution API could not be reached.", code="unreachable")
+        return {"instance": {"state": "open", "wuid": "971500000111"}, "ok": True}
+
+    set_handler(down)
+    denied = client.post(
+        "/api/v1/reach/campaigns",
+        headers=headers,
+        json={
+            "idempotency_key": str(uuid.uuid4()),
+            "name": "Paused",
+            "channels": ["whatsapp"],
+            "audience": {},
+            "content": {"whatsapp": {"body": "Hello there", "subject": "Paused"}},
+        },
+    )
+    assert denied.status_code == 422, denied.text
+    assert denied.json()["error"]["code"] == "provider_unavailable"
 
 
 def _webhook_key(session) -> str:
