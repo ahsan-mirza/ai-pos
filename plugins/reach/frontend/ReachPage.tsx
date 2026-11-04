@@ -1415,6 +1415,7 @@ function SettingsPanel({
           <h2 className="text-lg font-semibold text-charcoal">Marketing channel</h2>
           <p className="mt-1 max-w-2xl text-sm leading-6 text-charcoal/60">
             WhatsApp campaigns use the Evolution session. SMS, email, and WhatsApp Cloud credentials stay in Messaging.
+            {connectedPhone ? ` Connected number: ${connectedPhone}.` : " Connect a number from Connections."}
           </p>
         </div>
         <div className="grid grid-cols-1 items-stretch gap-4 lg:grid-cols-3">
