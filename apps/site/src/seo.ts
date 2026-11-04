@@ -34,6 +34,13 @@ export interface SeoPage {
   profile?: BusinessProfile;
 }
 
+const TERMINAL: SeoImage = {
+  src: "/pos/terminal.png",
+  alt: "AxizPOS on a register with a customer display, receipt printer, phone, and barcode scanner.",
+  width: 819,
+  height: 782,
+};
+
 const SURFACE: SeoImage = {
   src: "/pos/surface.png",
   alt: "The AxizPOS register on a tablet, with dine-in tables and checkout.",
@@ -52,15 +59,15 @@ export const SEO_PAGES: readonly SeoPage[] = [
   {
     id: "home",
     path: "/",
-    title: "AxizPOS | POS Software for Restaurants, Retail & Cafés",
+    title: "POS Software for Retail & Restaurants | AxizPOS",
     description:
-      "AI-Powered Business Solutions for Businesses Worldwide. Manage your sales, inventory, customers, and business operations with AxizPOS. Each profile starts with the modules that fit that work. New stores start on the Standard trial.",
+      "Manage sales, inventory, customers and operations with AxizPOS, an AI-powered POS system for restaurants, cafés, supermarkets, retail and wholesale businesses.",
     h1: "Smart POS Software for Restaurants, Retail & Growing Businesses",
     kicker: "AI-powered POS",
     lead: "",
     sections: [],
     points: [],
-    image: SURFACE,
+    image: TERMINAL,
     crumb: "Home",
   },
   {
@@ -518,10 +525,14 @@ export function headTags(page: SeoPage, verification: string | undefined): strin
     `<meta property="og:type" content="website" />`,
     `<meta property="og:url" content="${url}" />`,
     `<meta property="og:image" content="${image}" />`,
+    `<meta property="og:image:alt" content="${escapeHtml(page.image.alt)}" />`,
+    `<meta property="og:image:width" content="${page.image.width}" />`,
+    `<meta property="og:image:height" content="${page.image.height}" />`,
     `<meta name="twitter:card" content="summary_large_image" />`,
     `<meta name="twitter:title" content="${escapeHtml(page.title)}" />`,
     `<meta name="twitter:description" content="${escapeHtml(page.description)}" />`,
     `<meta name="twitter:image" content="${image}" />`,
+    `<meta name="twitter:image:alt" content="${escapeHtml(page.image.alt)}" />`,
     verificationTag,
     `<script type="application/ld+json">${jsonLd(page)}</script>`,
     publicWorkerBoot(),

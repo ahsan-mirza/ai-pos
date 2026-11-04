@@ -13,6 +13,12 @@ import { readSignupSession, saveSignupSession, signupApi, type SignupSession } f
 
 type Step = "loading" | "account" | "verify" | "business" | "waitlist" | "store" | "provisioning";
 
+function trackSignup(name: "signup_step_1_complete" | "signup_complete") {
+  const target = window as Window & { dataLayer?: unknown[] };
+  target.dataLayer = target.dataLayer ?? [];
+  target.dataLayer.push({ event: name });
+}
+
 const PROGRESS: { key: string; label: string; steps: Step[] }[] = [
   { key: "account", label: "Your account", steps: ["account", "verify"] },
   { key: "business", label: "Business type", steps: ["business", "waitlist"] },
@@ -62,7 +68,10 @@ export function SignupApp() {
       });
   }, [session, step, restart]);
 
-  const forget = useCallback(() => saveSignupSession(null), []);
+  const forget = useCallback(() => {
+    trackSignup("signup_complete");
+    saveSignupSession(null);
+  }, []);
 
   const advance = (next: SignupState) => {
     setState(next);
@@ -96,6 +105,7 @@ export function SignupApp() {
           country={country}
           onCountryChange={setCountry}
           onStarted={(next) => {
+            trackSignup("signup_step_1_complete");
             saveSignupSession(next);
             setSession(next);
             setStep("verify");

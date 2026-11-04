@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { X } from "lucide-react";
 import { whatsappChatUrl, whatsappReady, type PublicWhatsApp } from "../whatsapp";
+import { track } from "../track";
 
 const TIPS = [
   "💬 Ready to get started with AxizPOS?",
@@ -44,6 +45,7 @@ export function WhatsAppButton({ contact }: { contact: PublicWhatsApp }) {
             href={href}
             target="_blank"
             rel="noopener noreferrer"
+            onClick={() => track("whatsapp_click")}
             aria-label="Chat with Sales on WhatsApp"
             className="flex cursor-pointer items-center whitespace-nowrap rounded-2xl border border-slate-800 bg-slate-900/90 py-2.5 pl-4 pr-9 text-xs font-medium text-white shadow-xl backdrop-blur-md sm:text-sm"
           >
@@ -73,6 +75,7 @@ export function WhatsAppButton({ contact }: { contact: PublicWhatsApp }) {
         href={href}
         target="_blank"
         rel="noopener noreferrer"
+        onClick={() => track("whatsapp_click")}
         aria-label="Chat with Sales on WhatsApp"
         className="relative z-0 flex h-14 w-14 shrink-0 cursor-pointer items-center justify-center rounded-full bg-emerald-500 text-white shadow-lg shadow-emerald-500/30 transition-transform hover:scale-105 hover:bg-emerald-600 active:scale-95 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700 motion-reduce:transform-none"
       >

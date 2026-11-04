@@ -1,5 +1,4 @@
 import { formatMoney, type MessageChannel } from "@ai-pos/shared-types";
-import { Mail, MessageCircle, Smartphone } from "lucide-react";
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
 import { ErrorNote, PrimaryButton, TextField } from "../../../apps/web/src/components/ui/Field";
@@ -1085,11 +1084,30 @@ const providerLabels: Record<string, string> = {
   smtp: "SMTP",
 };
 
-const channelIcons: Record<MessageChannel, typeof MessageCircle> = {
-  whatsapp: MessageCircle,
-  sms: Smartphone,
-  email: Mail,
-};
+function ChannelMark({ channel, className }: { channel: MessageChannel; className?: string }) {
+  const props = { className, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 2, "aria-hidden": true as const };
+  if (channel === "email") {
+    return (
+      <svg {...props}>
+        <rect x="3" y="5" width="18" height="14" rx="2" />
+        <path d="m3 7 9 6 9-6" />
+      </svg>
+    );
+  }
+  if (channel === "sms") {
+    return (
+      <svg {...props}>
+        <rect x="7" y="2" width="10" height="20" rx="2" />
+        <path d="M11 18h2" />
+      </svg>
+    );
+  }
+  return (
+    <svg {...props}>
+      <path d="M21 12a8 8 0 0 1-8 8H7l-4 3V12a8 8 0 1 1 18 0Z" />
+    </svg>
+  );
+}
 
 function providerName(provider: string) {
   return providerLabels[provider] ?? provider;
@@ -1155,7 +1173,6 @@ function ChannelConfigCard({
   const [enabled, setEnabled] = useState(card.enabled);
   const [provider, setProvider] = useState(card.provider);
   const [saving, setSaving] = useState(false);
-  const Icon = channelIcons[card.channel];
   const badge = statusBadge({ ...card, provider }, connectionStatus);
   const dirty = enabled !== card.enabled || provider !== card.provider;
 
@@ -1190,7 +1207,7 @@ function ChannelConfigCard({
       <div className="flex items-start justify-between gap-3">
         <div className="flex min-w-0 items-center gap-2.5">
           <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-accent/10 text-accent">
-            <Icon className="h-4 w-4" aria-hidden="true" />
+            <ChannelMark channel={card.channel} className="h-4 w-4" />
           </span>
           <div>
             <h3 className="text-sm font-semibold text-charcoal">{labels[card.channel]}</h3>
@@ -1302,23 +1319,26 @@ function SettingsPanel({
       sms: wholeCents(amounts.sms),
       email: wholeCents(amounts.email),
     };
-    if (parsed.whatsapp == null || parsed.sms == null || parsed.email == null) {
+    const whatsapp = parsed.whatsapp;
+    const sms = parsed.sms;
+    const email = parsed.email;
+    if (whatsapp == null || sms == null || email == null) {
       setPriceError("Enter a whole number of cents, 0 or greater, for each channel.");
       setPriceSaved(false);
       return;
     }
     setPriceError(null);
     setSavingPrices(true);
-    const ok = await onPrices(parsed);
+    const ok = await onPrices({ whatsapp, sms, email });
     if (!ok) {
       setSavingPrices(false);
       setPriceSaved(false);
       return;
     }
     const next = {
-      whatsapp: String(parsed.whatsapp),
-      sms: String(parsed.sms),
-      email: String(parsed.email),
+      whatsapp: String(whatsapp),
+      sms: String(sms),
+      email: String(email),
     };
     setAmounts(next);
     setSavedAmounts(next);
@@ -1374,11 +1394,10 @@ function SettingsPanel({
         <form onSubmit={(event) => void savePrices(event)} className="grid gap-4">
           <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
             {(Object.keys(labels) as MessageChannel[]).map((channel) => {
-              const Icon = channelIcons[channel];
               return (
                 <label key={channel} className="rounded-card border border-line bg-white p-4 shadow-sm">
                   <span className="flex items-center gap-2 text-sm font-semibold text-charcoal">
-                    <Icon className="h-4 w-4 text-accent" aria-hidden="true" />
+                    <ChannelMark channel={channel} className="h-4 w-4 text-accent" />
                     {labels[channel]}
                   </span>
                   <span className="mt-3 flex items-center gap-2">

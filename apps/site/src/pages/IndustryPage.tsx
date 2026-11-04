@@ -1,9 +1,11 @@
 import { PROFILE_PRESETS, SIGNUP_BUSINESS_CARDS, capabilitySpec, type Capability } from "@ai-pos/shared-types";
+import { useEffect } from "react";
 import { GetStartedSection } from "../components/GetStartedSection";
 import { GET_STARTED_NOTE, GetStartedLink } from "../components/GetStartedLink";
 import type { PublicCatalog } from "../catalog";
 import { profileModules, publicModulePrices } from "../modules";
 import { SEO_PAGES, type SeoPage } from "../seo";
+import { track } from "../track";
 
 export function IndustryPage({ page, catalog }: { page: SeoPage; catalog: PublicCatalog }) {
   const others = SEO_PAGES.filter((item) => item.id !== "home" && item.id !== page.id);
@@ -14,6 +16,10 @@ export function IndustryPage({ page, catalog }: { page: SeoPage; catalog: Public
     page.profile === undefined
       ? []
       : [...profileModules(page.profile).included, ...profileModules(page.profile).optional].filter((id) => !started.has(id));
+
+  useEffect(() => {
+    track("view_industry_page", { page: page.path });
+  }, [page.path]);
 
   return (
     <>

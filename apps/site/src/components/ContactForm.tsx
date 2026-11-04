@@ -2,6 +2,7 @@ import { isValidE164, PhoneField } from "@ai-pos/ui";
 import { Mail, MessageSquare, Store, User } from "lucide-react";
 import { useEffect, useId, useState, type FormEvent, type ReactNode } from "react";
 import { signupUrl } from "../env";
+import { track } from "../track";
 import { publishedWhatsapp, whatsappChatUrl, type PublicWhatsApp } from "../whatsapp";
 
 const TYPES = ["Restaurant", "Café", "Quick Service", "Grocery", "Retail", "Wholesale", "Fashion", "Electronics"] as const;
@@ -81,6 +82,7 @@ export function ContactForm({
       .filter(Boolean)
       .join("\n");
     window.open(whatsappChatUrl(salesNumber, text), "_blank", "noopener,noreferrer");
+    track("contact_form_submit", { business_type: fields.type });
     setChannelError(null);
     setSent(true);
   }

@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { signupUrl } from "../env";
+import { track } from "../track";
 
 /** Primary conversion label. Every customer-facing CTA uses this exact text. */
 export const GET_STARTED_LABEL = "Get Started Free";
@@ -13,7 +14,7 @@ export const GET_STARTED_NOTE =
 
 export function GetStartedLink({ className, children }: { className: string; children?: ReactNode }) {
   return (
-    <a href={signupUrl} className={className}>
+    <a href={signupUrl} className={className} onClick={() => track("click_get_started")}>
       {children}
       {GET_STARTED_LABEL}
     </a>
