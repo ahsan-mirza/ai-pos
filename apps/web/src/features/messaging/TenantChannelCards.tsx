@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from "react";
 import { ErrorNote, SelectField, TextField } from "../../components/ui/Field";
 import { apiGet, apiPost, apiPut } from "../../lib/api";
 import { errorMessage } from "../users/api";
+import { WhatsAppPairing } from "./WhatsAppPairing";
 
 interface ChannelCard {
   channel: MessageChannel;
@@ -225,7 +226,7 @@ export function TenantChannelCards() {
               ) : null}
               {draft.provider === "evolution" ? (
                 <p className="mt-2 text-xs leading-5 text-charcoal/50">
-                  The marketing WhatsApp session is paired in AxizReach. This switch uses that same number.
+                  Pair the sending number in the section below. This switch uses that same number.
                 </p>
               ) : null}
               {draft.provider === "smtp" ? (
@@ -253,6 +254,9 @@ export function TenantChannelCards() {
           );
         })}
       </div>
+      {(drafts.whatsapp?.provider ?? cards.find((card) => card.channel === "whatsapp")?.provider) === "evolution" ? (
+        <WhatsAppPairing />
+      ) : null}
     </div>
   );
 }

@@ -13,16 +13,14 @@ from app.core.config import Settings
 from app.core.errors import ApiError
 from reach.models import ReachConnection, ReachWebhookEvent
 from reach.providers.evolution.client import client_for
-from reach.service import bind_evolution_channel, require_reach
+from reach.service import bind_evolution_channel
 
 
 def list_connections(db: Session) -> list[ReachConnection]:
-    require_reach(db)
     return list(db.scalars(select(ReachConnection).order_by(ReachConnection.created_at.desc())))
 
 
 def create_connection(db: Session, settings: Settings, name: str) -> ReachConnection:
-    require_reach(db)
     instance = f"reach-{uuid.uuid4().hex[:12]}"
     client = client_for(settings.evolution_api_url, settings.evolution_api_key)
     try:
@@ -96,7 +94,6 @@ def disconnect(db: Session, settings: Settings, connection_id: uuid.UUID) -> dic
 
 
 def _row(db: Session, connection_id: uuid.UUID) -> ReachConnection:
-    require_reach(db)
     row = db.get(ReachConnection, connection_id)
     if row is None:
         raise ApiError(404, "not_found", "Connection not found.")

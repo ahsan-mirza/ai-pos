@@ -282,6 +282,19 @@ def test_console_allocation_is_idempotent(platform) -> None:
     assert second.json()["balance"] == 4
 
 
+def test_whatsapp_number_can_be_paired_without_the_addon(client, session, _fake_evolution) -> None:
+    seed(client)
+    headers, _ = admin(client)
+    created = client.post("/api/v1/reach/connections", headers=headers, json={"name": "Counter"})
+    assert created.status_code == 201, created.text
+    connected = client.post(f"/api/v1/reach/connections/{created.json()['id']}/connect", headers=headers)
+    assert connected.status_code == 200, connected.text
+    assert connected.json()["qr_base64"] == "qr-bytes"
+    status = client.post(f"/api/v1/reach/connections/{created.json()['id']}/status", headers=headers)
+    assert status.status_code == 200, status.text
+    assert status.json()["phone_number"] == "971500000111"
+
+
 def test_open_session_selects_evolution_and_registers_the_webhook(client, session, _fake_evolution) -> None:
     seed(client)
     headers, _ = admin(client)
