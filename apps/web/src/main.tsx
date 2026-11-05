@@ -1,9 +1,11 @@
+import { applyDocumentLocale, readLocale } from "@ai-pos/ui";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { App } from "./App";
 import "./index.css";
 import { applyPrimaryColor, storedPrimaryColor } from "./lib/theme";
 
+applyDocumentLocale(readLocale());
 applyPrimaryColor(storedPrimaryColor());
 
 const root = document.getElementById("root");

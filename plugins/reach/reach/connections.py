@@ -116,6 +116,7 @@ def disconnect(db: Session, settings: Settings, connection_id: uuid.UUID) -> dic
     except Exception as exc:
         row.last_error = str(exc)[:300]
     row.status = "disconnected"
+    row.phone_number = None
     db.commit()
     db.refresh(row)
     return _public(row, _last_webhook(db, row.id))

@@ -9,6 +9,7 @@ import { useTenant } from "../../context/TenantContext";
 import { portalRouteAllowed } from "../../lib/industry";
 import { AiMark, isAiFeature } from "../ui/AiMark";
 import { useAssistant } from "../../features/assistant/AssistantProvider";
+import { LanguageSwitch, useLocale } from "@ai-pos/ui";
 import { AccountMenu } from "./AccountMenu";
 import { crumbsFor, settingsLabel } from "./navigation";
 import { StoreSwitcher } from "./StoreSwitcher";
@@ -40,6 +41,7 @@ const SEEN_KEY = "ai-pos.insights.seen";
 const signature = (item: InsightItem) => `${item.kind}:${item.title}:${item.body}`;
 
 function Notifications() {
+  const { t } = useLocale();
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState<InsightItem[]>([]);
   const [seen, setSeen] = useState<string[]>(() => {
@@ -79,7 +81,7 @@ function Notifications() {
     <div ref={ref} className="relative">
       <button
         type="button"
-        aria-label={unread ? `Notifications, ${unread} unread` : "Notifications"}
+        aria-label={unread ? `${t("Notifications")}, ${unread} ${t("unread")}` : t("Notifications")}
         aria-expanded={open}
         aria-haspopup="dialog"
         onClick={() => setOpen((value) => !value)}
@@ -87,7 +89,7 @@ function Notifications() {
       >
         <Bell size={18} strokeWidth={1.75} aria-hidden="true" />
         {unread ? (
-          <span className="absolute right-1 top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-accent px-1 text-[10px] font-bold tabular-nums leading-none text-white ring-2 ring-white">
+          <span className="absolute end-1 top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-accent px-1 text-[10px] font-bold tabular-nums leading-none text-white ring-2 ring-white">
             {unread}
           </span>
         ) : null}
@@ -95,22 +97,22 @@ function Notifications() {
       {open ? (
         <div
           role="dialog"
-          aria-label="Notifications"
-          className="popover-in absolute right-0 top-11 z-40 w-[min(360px,calc(100vw-1.5rem))] overflow-hidden rounded-xl border border-line bg-white shadow-xl"
+          aria-label={t("Notifications")}
+          className="popover-in absolute end-0 top-11 z-40 w-[min(360px,calc(100vw-1.5rem))] overflow-hidden rounded-xl border border-line bg-white shadow-xl"
         >
           <div className="flex items-center justify-between border-b border-line px-4 py-3">
-            <span className="text-sm font-semibold">Notifications</span>
+            <span className="text-sm font-semibold">{t("Notifications")}</span>
             <button
               type="button"
               disabled={unread === 0}
               onClick={markAllRead}
               className="text-xs font-semibold text-accent hover:underline disabled:text-charcoal/30 disabled:no-underline"
             >
-              Mark all read
+              {t("Mark all read")}
             </button>
           </div>
           {items.length === 0 ? (
-            <p className="px-4 py-6 text-center text-xs text-charcoal/55">Nothing needs your attention right now.</p>
+            <p className="px-4 py-6 text-center text-xs text-charcoal/55">{t("Nothing needs your attention right now.")}</p>
           ) : null}
           <ul className="divide-y divide-line">
             {items.map((note) => (
@@ -155,6 +157,7 @@ export function Header({
   const canManageSettings = useCanManageSettings();
   const capabilities = useCapabilities();
   const { storedProfile, ready } = useTenant();
+  const { t } = useLocale();
   const crumbs = portalRouteAllowed(pathname, ready ? storedProfile : null)
     ? crumbsFor(pathname, capabilities)
     : [{ label: settingsLabel(capabilities) }];
@@ -167,25 +170,25 @@ export function Header({
       <button
         type="button"
         onClick={onToggleCollapsed}
-        aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+        aria-label={t(collapsed ? "Expand sidebar" : "Collapse sidebar")}
         aria-keyshortcuts="["
-        title={collapsed ? "Expand sidebar  [" : "Collapse sidebar  ["}
-        className={`${iconButton} -ml-1.5 hidden lg:flex`}
+        title={t(collapsed ? "Expand sidebar" : "Collapse sidebar")}
+        className={`${iconButton} -ms-1.5 hidden lg:flex`}
       >
-        {collapsed ? <PanelLeftOpen size={18} strokeWidth={1.75} /> : <PanelLeftClose size={18} strokeWidth={1.75} />}
+        {collapsed ? <PanelLeftOpen size={18} strokeWidth={1.75} className="rtl:scale-x-[-1]" /> : <PanelLeftClose size={18} strokeWidth={1.75} className="rtl:scale-x-[-1]" />}
       </button>
       <button
         type="button"
         onClick={onOpenMobile}
-        aria-label="Open navigation"
-        className={`${iconButton} -ml-1 lg:hidden`}
+        aria-label={t("Open navigation")}
+        className={`${iconButton} -ms-1 lg:hidden`}
       >
-        <PanelLeftOpen size={18} strokeWidth={1.75} />
+        <PanelLeftOpen size={18} strokeWidth={1.75} className="rtl:scale-x-[-1]" />
       </button>
 
       <span aria-hidden="true" className="mx-1 hidden h-5 w-px bg-line lg:block" />
 
-      <nav aria-label="Breadcrumb" className="min-w-0 flex-1">
+      <nav aria-label={t("Breadcrumb")} className="min-w-0 flex-1">
         <ol className="flex min-w-0 items-center gap-1.5 text-[13px]">
           {crumbs.map((crumb, index) => {
             const last = index === crumbs.length - 1;
@@ -200,14 +203,14 @@ export function Header({
                   {last ? (
                     <span aria-current="page" className="flex min-w-0 items-center gap-1.5 truncate font-semibold text-charcoal">
                       {isAiFeature(crumb.label) ? <AiMark size={13} /> : null}
-                      <span className="truncate">{crumb.label}</span>
+                      <span className="truncate">{t(crumb.label)}</span>
                     </span>
                   ) : crumb.to ? (
                     <Link to={crumb.to} className="block truncate text-charcoal/50 transition-colors hover:text-charcoal">
-                      {crumb.label}
+                      {t(crumb.label)}
                     </Link>
                   ) : (
-                    <span className="block truncate text-charcoal/50">{crumb.label}</span>
+                    <span className="block truncate text-charcoal/50">{t(crumb.label)}</span>
                   )}
                 </li>
               </Fragment>
@@ -217,35 +220,36 @@ export function Header({
       </nav>
 
       <div className="flex shrink-0 items-center gap-1.5 md:gap-2">
+        <LanguageSwitch />
         <StoreSwitcher className="hidden !w-[230px] md:block" />
         {canManageSettings ? (
           <Link
             to="/settings"
-            title={`Business currency. Change it in ${settingsName}`}
-            aria-label={`Business currency ${currency}. Change in ${settingsName}`}
+            title={`${t("Business currency")}. ${t(settingsName)}`}
+            aria-label={`${t("Business currency")} ${currency}. ${t(settingsName)}`}
             className={`${badge} transition-colors hover:border-charcoal/30 hover:text-charcoal`}
           >
             {currency}
           </Link>
         ) : (
-          <span title="Business currency" aria-label={`Business currency ${currency}`} className={badge}>
+          <span title={t("Business currency")} aria-label={`${t("Business currency")} ${currency}`} className={badge}>
             {currency}
           </span>
         )}
         {assistant.allowed ? (
           <button
             type="button"
-            aria-label="AI Assistant"
+            aria-label={t("AI Assistant")}
             aria-expanded={assistant.open}
             aria-controls="ai-assistant-drawer"
-            title="Ask your business"
+            title={t("Ask your business")}
             onClick={assistant.toggle}
             className={`inline-flex h-9 items-center gap-1.5 rounded-full px-2.5 text-[13px] font-semibold outline-none transition-colors focus-visible:ring-2 focus-visible:ring-accent/40 sm:px-3 ${
               assistant.open ? "bg-accent/10 text-accent" : "bg-[#f8fafc] text-charcoal hover:bg-charcoal/[0.05]"
             }`}
           >
             <AiMark size={15} />
-            <span className="hidden sm:inline">AI Assistant</span>
+            <span className="hidden sm:inline">{t("AI Assistant")}</span>
           </button>
         ) : null}
         <Notifications />

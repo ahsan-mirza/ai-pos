@@ -1,4 +1,5 @@
 import { ChevronRight, CloudOff, FlaskConical, Moon, RefreshCw, Store as StoreIcon, Sun, Wifi } from "lucide-react";
+import { LanguageSwitch, useLocale } from "@ai-pos/ui";
 import type { ReactNode } from "react";
 import { store } from "../../features/checkout/catalog";
 import { useCapabilities } from "../../lib/capabilities";
@@ -23,21 +24,22 @@ const syncStyles: Record<SyncState["tone"], { className: string; icon: typeof Wi
  */
 export function HeaderBar({ title, sync, actions }: { title: string; sync: SyncState; actions?: ReactNode }) {
   const { theme, setTheme } = useRegisterLayout();
+  const { t } = useLocale();
   const { practice } = useCapabilities();
   const { className: syncClass, icon: SyncIcon } = syncStyles[sync.tone];
 
   return (
     <header className="flex min-h-16 shrink-0 flex-wrap items-center gap-x-4 gap-y-2 border-b border-zinc-200 bg-white px-5 py-3 dark:border-zinc-800 dark:bg-zinc-900">
       <div className="min-w-[12rem] flex-1">
-        <nav aria-label="Breadcrumb" className="flex items-center gap-1.5 text-xs font-medium text-zinc-500 dark:text-zinc-400">
+        <nav aria-label={t("Breadcrumb")} className="flex items-center gap-1.5 text-xs font-medium text-zinc-500 dark:text-zinc-400">
           <StoreIcon size={13} aria-hidden="true" />
-          <span className="truncate">{/^restur[ae]nt$/i.test(store.name.trim()) ? "Restaurant" : store.name}</span>
-          <ChevronRight size={13} aria-hidden="true" className="shrink-0 text-zinc-300 dark:text-zinc-600" />
+            <span className="truncate" dir="auto">{/^restur[ae]nt$/i.test(store.name.trim()) ? t("Restaurant") : store.name}</span>
+          <ChevronRight size={13} aria-hidden="true" className="shrink-0 text-zinc-300 rtl:scale-x-[-1] dark:text-zinc-600" />
           <span aria-current="page" className="truncate text-zinc-900 dark:text-zinc-100">
-            {title}
+            {t(title)}
           </span>
         </nav>
-        <h1 className="mt-0.5 truncate text-lg font-semibold tracking-tight">{title}</h1>
+        <h1 className="mt-0.5 truncate text-lg font-semibold tracking-tight">{t(title)}</h1>
       </div>
 
       {actions ? <div className="flex flex-wrap items-center gap-2">{actions}</div> : null}
@@ -49,7 +51,7 @@ export function HeaderBar({ title, sync, actions }: { title: string; sync: SyncS
             className="inline-flex h-8 items-center gap-1.5 rounded-full bg-amber-500/10 px-3 text-xs font-semibold text-amber-800 ring-1 ring-amber-500/25 dark:text-amber-300"
           >
             <FlaskConical size={13} aria-hidden="true" />
-            Practice mode
+            {t("Practice mode")}
           </span>
         ) : null}
         <span
@@ -57,9 +59,10 @@ export function HeaderBar({ title, sync, actions }: { title: string; sync: SyncS
           className={`inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-xs font-semibold tabular-nums ring-1 ${syncClass}`}
         >
           <SyncIcon size={13} aria-hidden="true" />
-          {sync.label}
+          {t(sync.label)}
         </span>
-        <div role="group" aria-label="Colour theme" className="flex h-12 items-center rounded-full bg-zinc-100 p-1 ring-1 ring-zinc-200 dark:bg-zinc-800/60 dark:ring-zinc-800">
+        <LanguageSwitch />
+        <div role="group" aria-label={t("Colour theme")} className="flex h-12 items-center rounded-full bg-zinc-100 p-1 ring-1 ring-zinc-200 dark:bg-zinc-800/60 dark:ring-zinc-800">
           {(
             [
               { id: "light", label: "Light", icon: Sun },
@@ -78,7 +81,7 @@ export function HeaderBar({ title, sync, actions }: { title: string; sync: SyncS
               }`}
             >
               <Icon size={13} aria-hidden="true" />
-              {label}
+              {t(label)}
             </button>
           ))}
         </div>

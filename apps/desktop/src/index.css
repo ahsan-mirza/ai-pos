@@ -1,11 +1,20 @@
-@import url("https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&display=swap");
+@import "@fontsource/inter/400.css";
+@import "@fontsource/inter/500.css";
+@import "@fontsource/inter/600.css";
+@import "@fontsource/inter/700.css";
+@import "@fontsource/ibm-plex-sans-arabic/400.css";
+@import "@fontsource/ibm-plex-sans-arabic/500.css";
+@import "@fontsource/ibm-plex-sans-arabic/600.css";
+@import "@fontsource/ibm-plex-sans-arabic/700.css";
 @import "@ai-pos/design-tokens/tokens.css";
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-/* Register default accent (#F26A21); src/lib/theme.ts overwrites these from POS Settings. */
+html[lang="ar"] {
+  line-height: 1.65;
+}
 :root {
   --primary: #f26a21;
   --primary-rgb: 242 106 33;

@@ -1,4 +1,3 @@
-@import url("https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&display=swap");
 @import "./scrollbars.css";
 
 :root {
@@ -21,8 +20,10 @@
   --color-charcoal: #222026;
   --color-card: #ffffff;
   --color-surface: #f3f4f6;
+  --font-en: "Inter", "Archivo", sans-serif;
+  --font-ar: "IBM Plex Sans Arabic", "Inter", "Archivo", sans-serif;
+  --font-sans: var(--font-en);
   --radius-card: 20px;
-  --font-sans: "Archivo", sans-serif;
   /* Dining floor. Light is the default; `.dark` and `[data-theme="dark"]` retint the same names. */
   --table-card-bg: #ffffff;
   --table-card-ink: #222026;
@@ -110,6 +111,10 @@ body {
   background: var(--color-canvas);
   color: var(--color-charcoal);
   font-variant-numeric: tabular-nums;
+}
+
+html[lang="ar"] {
+  --font-sans: var(--font-ar);
 }
 
 :focus-visible {

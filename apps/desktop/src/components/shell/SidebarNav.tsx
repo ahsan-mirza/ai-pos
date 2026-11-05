@@ -1,5 +1,5 @@
 import { Capability, profileSpec, type ProductUpsert } from "@ai-pos/shared-types";
-import { BrandLogo } from "@ai-pos/ui";
+import { BrandLogo, useLocale } from "@ai-pos/ui";
 import {
   Boxes,
   ChefHat,
@@ -73,7 +73,7 @@ function Tip({ show, children }: { show: boolean; children: ReactNode }) {
   return (
     <span
       role="tooltip"
-      className="pointer-events-none absolute left-full top-1/2 z-50 ml-3 -translate-y-1/2 whitespace-nowrap rounded-lg bg-zinc-900 px-2.5 py-1.5 text-xs font-medium text-white opacity-0 shadow-lg transition-opacity duration-150 group-hover:opacity-100 group-focus-visible:opacity-100 dark:bg-zinc-100 dark:text-zinc-900"
+      className="pointer-events-none absolute start-full top-1/2 z-50 ms-3 -translate-y-1/2 whitespace-nowrap rounded-lg bg-zinc-900 px-2.5 py-1.5 text-xs font-medium text-white opacity-0 shadow-lg transition-opacity duration-150 group-hover:opacity-100 group-focus-visible:opacity-100 dark:bg-zinc-100 dark:text-zinc-900"
     >
       {children}
     </span>
@@ -88,6 +88,7 @@ const itemActive = "bg-primary-500 text-white shadow-md shadow-primary-500/25";
 
 /** The register's one navigation sidebar: pages, register tools, cashier and lock. Shared by every page. */
 export function SidebarNav({ busy, onNavigate, onLock }: SidebarNavProps) {
+  const { t } = useLocale();
   const { session, view } = useShell();
   const { railCollapsed: collapsed, toggleRail } = useRegisterLayout();
   const [tool, setTool] = useState<Tool | null>(null);
@@ -146,7 +147,7 @@ export function SidebarNav({ busy, onNavigate, onLock }: SidebarNavProps) {
       {props.badge ? (
         <span
           className={`flex h-5 min-w-5 items-center justify-center rounded-full bg-primary-500 px-1 text-[10px] font-bold tabular-nums text-white ${
-            collapsed ? "absolute right-1 top-1" : "ml-auto"
+            collapsed ? "absolute end-1 top-1" : "ms-auto"
           }`}
         >
           {props.badge}
@@ -157,7 +158,7 @@ export function SidebarNav({ busy, onNavigate, onLock }: SidebarNavProps) {
   );
 
   const pageButtons = pages.map(({ id, label, icon }) =>
-    navItem(`${id}-${label}`, label, icon, { active: view === id && label !== "Void & waste", disabled: busy && view !== id, onClick: () => onNavigate(id) }),
+    navItem(`${id}-${label}`, t(label), icon, { active: view === id && label !== "Void & waste", disabled: busy && view !== id, onClick: () => onNavigate(id) }),
   );
   const openTool = (id: Tool) => {
     if (id === "display") void openDisplayWindow();
@@ -165,7 +166,7 @@ export function SidebarNav({ busy, onNavigate, onLock }: SidebarNavProps) {
     else setTool(id);
   };
   const toolButtons = tools.map((item) =>
-    navItem(item.id, item.label, item.icon, {
+    navItem(item.id, t(item.label), item.icon, {
       active: item.id === "settings" && view === "settings",
       disabled: !toolAvailable(item),
       onClick: () => openTool(item.id),
@@ -177,7 +178,7 @@ export function SidebarNav({ busy, onNavigate, onLock }: SidebarNavProps) {
   return (
     <>
       <header className="flex shrink-0 items-center gap-1 overflow-x-auto border-b border-zinc-200 bg-white px-3 py-2 md:hidden dark:border-zinc-800 dark:bg-zinc-900">
-        <BrandLogo variant="mark" alt="" className="mr-1 h-10 w-10 shrink-0" />
+        <BrandLogo variant="mark" alt="" className="me-1 h-10 w-10 shrink-0" />
         {pages.map(({ id, label, icon: Icon }) => (
           <button
             key={`${id}-${label}`}
@@ -208,10 +209,10 @@ export function SidebarNav({ busy, onNavigate, onLock }: SidebarNavProps) {
         ))}
         <button
           type="button"
-          aria-label="Lock register"
+          aria-label={t("Lock register")}
           onClick={onLock}
           disabled={busy}
-          className={`ml-auto flex h-12 w-12 shrink-0 items-center justify-center rounded-xl disabled:opacity-40 ${itemIdle}`}
+          className={`ms-auto flex h-12 w-12 shrink-0 items-center justify-center rounded-xl disabled:opacity-40 ${itemIdle}`}
         >
           <Lock size={18} aria-hidden="true" />
         </button>
@@ -219,7 +220,7 @@ export function SidebarNav({ busy, onNavigate, onLock }: SidebarNavProps) {
 
       <aside
         aria-label="Register navigation"
-        className={`hidden h-full shrink-0 flex-col border-r border-zinc-200 bg-white text-zinc-900 transition-[width] duration-200 ease-out motion-reduce:transition-none md:flex dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-100 ${
+        className={`hidden h-full shrink-0 flex-col border-e border-zinc-200 bg-white text-zinc-900 transition-[width] duration-200 ease-out motion-reduce:transition-none md:flex dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-100 ${
           collapsed ? "w-20" : "w-64"
         }`}
       >
@@ -229,27 +230,27 @@ export function SidebarNav({ busy, onNavigate, onLock }: SidebarNavProps) {
             type="button"
             onClick={toggleRail}
             aria-expanded={!collapsed}
-            aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-            title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+            aria-label={t(collapsed ? "Expand sidebar" : "Collapse sidebar")}
+            title={t(collapsed ? "Expand sidebar" : "Collapse sidebar")}
             className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/50 ${
               collapsed ? "bg-primary-500 text-white hover:bg-primary-600" : itemIdle
             }`}
           >
             {collapsed ? (
-              <PanelLeftOpen size={18} strokeWidth={1.75} aria-hidden="true" />
+              <PanelLeftOpen size={18} strokeWidth={1.75} aria-hidden="true" className="rtl:scale-x-[-1]" />
             ) : (
-              <PanelLeftClose size={18} strokeWidth={1.75} aria-hidden="true" />
+              <PanelLeftClose size={18} strokeWidth={1.75} aria-hidden="true" className="rtl:scale-x-[-1]" />
             )}
           </button>
         </div>
 
-        <nav aria-label="Register" className={`flex-1 px-3 py-4 ${collapsed ? "" : "custom-scrollbar overflow-y-auto"}`}>
-          {collapsed ? null : <p className="mb-2 px-3 text-[11px] font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-500">{foodAndBeverage ? "Service" : "Sell"}</p>}
+        <nav aria-label={t("Register")} className={`flex-1 px-3 py-4 ${collapsed ? "" : "custom-scrollbar overflow-y-auto"}`}>
+          {collapsed ? null : <p className="mb-2 px-3 text-[11px] font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-500">{t(foodAndBeverage ? "Service" : "Sell")}</p>}
           <div className="flex flex-col gap-1">{pageButtons}</div>
           {collapsed ? (
             <div className="mx-auto my-4 h-px w-8 bg-zinc-200 dark:bg-zinc-800" />
           ) : (
-            <p className="mb-2 mt-6 px-3 text-[11px] font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-500">Register</p>
+            <p className="mb-2 mt-6 px-3 text-[11px] font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-500">{t("Register")}</p>
           )}
           <div className="flex flex-col gap-1">{toolButtons}</div>
         </nav>
@@ -281,7 +282,7 @@ export function SidebarNav({ busy, onNavigate, onLock }: SidebarNavProps) {
             </span>
             {collapsed ? null : (
               <span className="min-w-0">
-                <span className="block truncate text-sm font-semibold">{session.user.full_name}</span>
+                <span className="block truncate text-sm font-semibold" dir="auto">{session.user.full_name}</span>
                 <span className="block truncate text-xs text-zinc-500 dark:text-zinc-400">{session.user.role_name}</span>
               </span>
             )}
@@ -293,7 +294,7 @@ export function SidebarNav({ busy, onNavigate, onLock }: SidebarNavProps) {
               </span>
             </Tip>
           </div>
-          {navItem("lock", "Lock Register", Lock, { disabled: busy, onClick: onLock, title: "Lock register / switch cashier" })}
+          {navItem("lock", t("Lock Register"), Lock, { disabled: busy, onClick: onLock, title: t("Lock register / switch cashier") })}
         </div>
       </aside>
 

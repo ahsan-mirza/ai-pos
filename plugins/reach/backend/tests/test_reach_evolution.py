@@ -293,6 +293,9 @@ def test_whatsapp_number_can_be_paired_without_the_addon(client, session, _fake_
     status = client.post(f"/api/v1/reach/connections/{created.json()['id']}/status", headers=headers)
     assert status.status_code == 200, status.text
     assert status.json()["phone_number"] == "971500000111"
+    disconnected = client.post(f"/api/v1/reach/connections/{created.json()['id']}/disconnect", headers=headers)
+    assert disconnected.status_code == 200, disconnected.text
+    assert disconnected.json()["phone_number"] is None
 
 
 def test_open_session_selects_evolution_and_registers_the_webhook(client, session, _fake_evolution) -> None:

@@ -1,8 +1,11 @@
+import { applyDocumentLocale, readLocale } from "@ai-pos/ui";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { RegisterLayoutProvider } from "./components/RegisterLayout";
 import { loadTerminal } from "./config/terminal";
 import "./index.css";
+
+applyDocumentLocale(readLocale());
 
 const root = document.getElementById("root");
 if (root === null) {

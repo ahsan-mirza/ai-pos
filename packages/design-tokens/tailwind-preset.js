@@ -29,7 +29,7 @@ const preset = {
         surface: "#F3F4F6",
       },
       fontFamily: {
-        sans: ["Archivo", "sans-serif"],
+        sans: ["var(--font-sans)", "sans-serif"],
       },
       borderRadius: {
         card: "20px",

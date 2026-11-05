@@ -1,4 +1,4 @@
-import { BrandLogo } from "@ai-pos/ui";
+import { BrandLogo, useLocale } from "@ai-pos/ui";
 import { ChevronDown, X } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState, type FocusEvent, type MouseEvent, type ReactNode } from "react";
 import { Link, useLocation } from "react-router-dom";
@@ -22,6 +22,7 @@ interface VisibleGroup {
 
 /** The groups this user may open for this business type, with names resolved for it. */
 function useVisibleGroups(): VisibleGroup[] {
+  const { t } = useLocale();
   const { can } = useAuth();
   const canManageSettings = useCanManageSettings();
   const superAdmin = useIsSuperAdmin();
@@ -31,20 +32,20 @@ function useVisibleGroups(): VisibleGroup[] {
   return navGroups
     .map((group) => ({
       id: group.id,
-      label: group.label,
+      label: t(group.label),
       items: group.items.flatMap((item) => {
         if (item.hub) {
           const open = settingsTabs.filter((tab) => settingsTabAllowed(tab, gate));
           const first = open[0];
           if (first === undefined) return [];
-          return [{ ...item, to: first.to, label: labelOf(item, capabilities) }];
+          return [{ ...item, to: first.to, label: t(labelOf(item, capabilities)) }];
         }
         const visible =
           tenant.allows(item.profiles) &&
           (item.capability === undefined || capabilities.has(item.capability)) &&
           (!item.superAdminOnly || superAdmin) &&
           (item.settingsOnly ? canManageSettings : can(item.permission));
-        return visible ? [{ ...item, label: labelOf(item, capabilities) }] : [];
+        return visible ? [{ ...item, label: t(labelOf(item, capabilities)) }] : [];
       }),
     }))
     .filter((group) => group.items.length > 0);
@@ -111,6 +112,7 @@ function SidebarNav({
   onTip?: (tip: Tip | null) => void;
   subscriptionLocked: boolean;
 }) {
+  const { t } = useLocale();
   const { pathname, hash } = useLocation();
 
   const showTip = (item: VisibleItem) => (event: MouseEvent<HTMLElement> | FocusEvent<HTMLElement>) => {
@@ -121,7 +123,7 @@ function SidebarNav({
   const hideTip = () => onTip?.(null);
 
   return (
-    <nav aria-label="Primary" className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-3 py-4" onScroll={hideTip}>
+    <nav aria-label={t("Primary")} className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-3 py-4" onScroll={hideTip}>
       {groups.map((group, index) => {
         const open = isOpen(group.id);
         const showItems = collapsed || open;
@@ -159,7 +161,7 @@ function SidebarNav({
                       <Link
                         to={subscriptionLocked ? "/subscription" : item.to}
                         onClick={onNavigate}
-                        title={subscriptionLocked ? "Locked until payment is verified" : undefined}
+                        title={subscriptionLocked ? t("Locked until payment is verified") : undefined}
                         aria-disabled={subscriptionLocked || undefined}
                         aria-current={active ? "page" : undefined}
                         aria-label={collapsed ? item.label : undefined}
@@ -174,7 +176,7 @@ function SidebarNav({
                         }`}
                       >
                         {active ? (
-                          <span aria-hidden="true" className="absolute inset-y-2 left-0 w-[3px] rounded-r-full bg-accent" />
+                          <span aria-hidden="true" className="absolute inset-y-2 start-0 w-[3px] rounded-e-full bg-accent" />
                         ) : null}
                         {item.ai ? <AiMark size={13} /> : null}
                         <item.icon
@@ -226,6 +228,7 @@ export function Sidebar({
   onCloseMobile: () => void;
   subscriptionLocked?: boolean;
 }) {
+  const { t } = useLocale();
   const [tip, setTip] = useState<Tip | null>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
   const sections = useSectionExpansion();
@@ -247,7 +250,7 @@ export function Sidebar({
   return (
     <>
       <aside
-        className={`relative z-20 hidden shrink-0 flex-col border-r border-line bg-white transition-[width] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none lg:flex ${
+        className={`relative z-20 hidden shrink-0 flex-col border-e border-line bg-white transition-[width] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none lg:flex ${
           collapsed ? "w-20" : "w-64"
         }`}
       >
@@ -259,25 +262,25 @@ export function Sidebar({
         <div
           role="tooltip"
           style={{ top: tip.top }}
-          className="sidebar-tip pointer-events-none fixed left-[88px] z-50 -translate-y-1/2 whitespace-nowrap rounded-md bg-charcoal px-2.5 py-1.5 text-xs font-medium text-white shadow-lg"
+          className="sidebar-tip pointer-events-none fixed start-[88px] z-50 -translate-y-1/2 whitespace-nowrap rounded-md bg-charcoal px-2.5 py-1.5 text-xs font-medium text-white shadow-lg"
         >
-          <span aria-hidden="true" className="absolute -left-1 top-1/2 h-2 w-2 -translate-y-1/2 rotate-45 bg-charcoal" />
+          <span aria-hidden="true" className="absolute top-1/2 h-2 w-2 -translate-y-1/2 rotate-45 bg-charcoal ltr:-start-1 rtl:-end-1" />
           {tip.label}
         </div>
       ) : null}
 
       {mobileOpen ? (
-        <div className="fixed inset-0 z-50 lg:hidden" role="dialog" aria-modal="true" aria-label="Navigation">
+        <div className="fixed inset-0 z-50 lg:hidden" role="dialog" aria-modal="true" aria-label={t("Open navigation")}>
           <div className="drawer-backdrop absolute inset-0 bg-charcoal/40 backdrop-blur-[2px]" onClick={onCloseMobile} />
-          <div className="sidebar-sheet absolute inset-y-0 left-0 flex w-[min(288px,86vw)] flex-col border-r border-line bg-white shadow-2xl">
+          <div className="sidebar-sheet absolute inset-y-0 start-0 flex w-[min(288px,86vw)] flex-col border-e border-line bg-white shadow-2xl">
             <div className="relative">
               <SidebarBrand collapsed={false} />
               <button
                 ref={closeRef}
                 type="button"
                 onClick={onCloseMobile}
-                aria-label="Close navigation"
-                className="absolute right-3 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-lg text-charcoal/60 hover:bg-charcoal/[0.05] hover:text-charcoal"
+                aria-label={t("Close navigation")}
+                className="absolute end-3 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-lg text-charcoal/60 hover:bg-charcoal/[0.05] hover:text-charcoal"
               >
                 <X size={18} aria-hidden="true" />
               </button>

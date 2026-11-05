@@ -102,3 +102,5 @@ export {
   type PageItem,
 } from "./pagination";
 export { usePagination, type PaginationState } from "./usePagination";
+export { LanguageSwitch, useLocale } from "./LocaleSwitch";
+export { applyDocumentLocale, localize, readLocale, setLocale, type Locale } from "./locale";
