@@ -37,6 +37,20 @@ class TemplateWrite(ApiModel):
     is_active: bool = True
 
 
+class OutboxCounts(ApiModel):
+    SENT: int = 0
+    FAILED: int = 0
+    QUEUED: int = 0
+    SKIPPED: int = 0
+
+
+class OutboxSummary(ApiModel):
+    """Transactional and marketing rows are counted apart. SENT means the provider accepted the message."""
+
+    transactional: OutboxCounts
+    marketing: OutboxCounts
+
+
 class OutboundOut(ApiModel):
     id: UUID
     channel: str

@@ -15,6 +15,7 @@ from app.models.cheque import Cheque, ChequeEvent
 from app.models.consignment import ConsignmentSettlement, ConsignmentSettlementLine
 from app.models.currency import AcceptedCurrency, ExchangeRate
 from app.models.customer import Customer, CustomerCoupon, CustomerLedgerEntry
+from app.models.delivery import DeliveryConnection
 from app.models.device import Device, DeviceActivation
 from app.models.document_sequence import DocumentSequence
 from app.models.einvoice import EInvoice, EInvoiceChain, TaxAuthorityCredential
@@ -112,6 +113,7 @@ __all__ = [
     "Category",
     "ChannelPayout",
     "DeliveryChannel",
+    "DeliveryConnection",
     "Cheque",
     "ChequeEvent",
     "CommissionRule",

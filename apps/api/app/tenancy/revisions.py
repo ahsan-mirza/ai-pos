@@ -17,8 +17,10 @@ def tenant_version_locations() -> list[str]:
     """Absolute version directories, joined later with os.pathsep for Alembic."""
     locations = [API_ROOT / "alembic" / "versions"]
     reach = REPO_ROOT / "plugins" / "reach" / "backend" / "migrations"
-    if reach.is_dir():
-        locations.append(reach)
+    delivery = REPO_ROOT / "plugins" / "delivery" / "backend" / "migrations"
+    for folder in (reach, delivery):
+        if folder.is_dir():
+            locations.append(folder)
     return [str(path) for path in locations]
 
 

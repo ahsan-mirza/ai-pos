@@ -1,12 +1,22 @@
 import { formatMoney, type MessageChannel } from "@ai-pos/shared-types";
 import { useCallback, useEffect, useState, type FormEvent } from "react";
-import { Link } from "react-router-dom";
+import { useSearchParams } from "react-router-dom";
 import { ErrorNote, PrimaryButton, TextField } from "../../../apps/web/src/components/ui/Field";
+import {
+  AutomationsPanel,
+  CountGrid,
+  OutboxPanel,
+  ServerFallback,
+  TransactionalTemplates,
+  emptyCounts,
+  useOutboxSummary,
+} from "../../../apps/web/src/features/messaging/ReachOperations";
+import { TenantChannelCards } from "../../../apps/web/src/features/messaging/TenantChannelCards";
 import { apiDelete, apiGet, apiPost, apiPut } from "../../../apps/web/src/lib/api";
 import { useCurrency } from "../../../apps/web/src/lib/currency";
 import { errorMessage } from "../../../apps/web/src/features/users/api";
 
-type Tab = "overview" | "connections" | "campaigns" | "templates" | "history" | "analytics" | "credits" | "settings";
+type Tab = "overview" | "connections" | "campaigns" | "templates" | "automations" | "history" | "analytics" | "credits" | "settings";
 
 interface ChannelCard {
   channel: MessageChannel;
@@ -135,11 +145,16 @@ const tabs: { id: Tab; label: string }[] = [
   { id: "connections", label: "Connections" },
   { id: "campaigns", label: "Campaigns" },
   { id: "templates", label: "Templates" },
-  { id: "history", label: "History" },
+  { id: "automations", label: "Automations" },
+  { id: "history", label: "History & Outbox" },
   { id: "analytics", label: "Analytics" },
-  { id: "credits", label: "Credits" },
+  { id: "credits", label: "Credits & Usage" },
   { id: "settings", label: "Settings" },
 ];
+
+function tabFromQuery(value: string | null): Tab {
+  return tabs.some((item) => item.id === value) ? (value as Tab) : "overview";
+}
 
 function channelReady(card: ChannelCard | undefined, connectionStatus: string | null): boolean {
   if (!card?.enabled) return false;
@@ -150,7 +165,15 @@ function channelReady(card: ChannelCard | undefined, connectionStatus: string | 
 
 export function ReachPage() {
   const { currency } = useCurrency();
-  const [tab, setTab] = useState<Tab>("overview");
+  const [params, setParams] = useSearchParams();
+  const tab = tabFromQuery(params.get("tab"));
+  const setTab = (next: Tab) => {
+    const following = new URLSearchParams(params);
+    if (next === "overview") following.delete("tab");
+    else following.set("tab", next);
+    setParams(following, { replace: true });
+  };
+  const summary = useOutboxSummary();
   const [channels, setChannels] = useState<ChannelCard[]>([]);
   const [overview, setOverview] = useState<Overview | null>(null);
   const [connections, setConnections] = useState<Connection[]>([]);
@@ -240,11 +263,9 @@ export function ReachPage() {
   return (
     <section className="grid gap-4">
       <header>
-        <h1 className="text-3xl font-semibold tracking-tight">
-          {tab === "settings" ? "AxizReach Settings" : "AxizReach"}
-        </h1>
+        <h1 className="text-3xl font-semibold tracking-tight">AxizReach</h1>
         <p className="mt-1 max-w-2xl text-sm text-charcoal/60">
-          Manage marketing channels, connections, campaign settings, and usage.
+          Receipts, reminders, and marketing campaigns share one connection, one outbox, and one set of provider accounts.
         </p>
       </header>
       <div className="flex flex-wrap gap-2" role="tablist" aria-label="AxizReach">
@@ -254,7 +275,7 @@ export function ReachPage() {
             type="button"
             role="tab"
             aria-selected={tab === item.id}
-            className={`rounded-full px-3 py-1.5 text-sm ${tab === item.id ? "bg-accent text-white" : "border border-line bg-white text-charcoal"}`}
+            className={`inline-flex h-8 items-center rounded-full px-3 text-sm ${tab === item.id ? "bg-accent text-white" : "border border-line bg-white text-charcoal"}`}
             onClick={() => {
               if (tab === "settings" && item.id !== "settings" && settingsDirty) {
                 const leave = window.confirm("You have unsaved settings. Leave without saving?");
@@ -272,9 +293,24 @@ export function ReachPage() {
       {notice ? <p className="text-sm text-charcoal/70">{notice}</p> : null}
 
       {tab === "overview" ? (
-        <OverviewPanel overview={overview} rate={rate} currency={currency} />
+        <div className="grid gap-4">
+          <div className="grid gap-3 lg:grid-cols-2">
+            <CountGrid
+              title="Transactional"
+              counts={summary?.transactional ?? emptyCounts}
+              note="Receipts, statements, and reminders. Accepted means the provider took the message."
+            />
+            <CountGrid
+              title="Marketing outbox"
+              counts={summary?.marketing ?? emptyCounts}
+              note="Campaign rows in the shared outbox. Delivery and read stay in the campaign totals below."
+            />
+          </div>
+          <OverviewPanel overview={overview} rate={rate} currency={currency} />
+        </div>
       ) : null}
       {tab === "connections" ? (
+        <div className="grid gap-6">
         <ConnectionsPanel
           connections={connections}
           busy={busy}
@@ -315,6 +351,9 @@ export function ReachPage() {
             apiPost("/api/v1/messaging/test", { channel: "whatsapp", to })
           }
         />
+        <TenantChannelCards hidePairing />
+        <ServerFallback />
+        </div>
       ) : null}
       {tab === "campaigns" ? (
         <CampaignsPanel
@@ -346,6 +385,8 @@ export function ReachPage() {
         />
       ) : null}
       {tab === "templates" ? (
+        <div className="grid gap-4">
+          <TransactionalTemplates />
         <TemplatesPanel
           templates={templates}
           busy={busy}
@@ -361,34 +402,36 @@ export function ReachPage() {
             }, "The template was not deleted.")
           }
         />
+        </div>
       ) : null}
-      {tab === "history" ? <HistoryPanel rows={history} /> : null}
-      {tab === "analytics" ? <OverviewPanel overview={overview} rate={rate} currency={currency} /> : null}
+      {tab === "automations" ? <AutomationsPanel /> : null}
+      {tab === "history" ? <OutboxPanel campaignRows={history} /> : null}
+      {tab === "analytics" ? (
+        <div className="grid gap-4">
+          <div className="grid gap-3 lg:grid-cols-2">
+            <CountGrid
+              title="Transactional"
+              counts={summary?.transactional ?? emptyCounts}
+              note="Provider acceptance. This page does not invent a delivered or read state."
+            />
+            <CountGrid
+              title="Marketing outbox"
+              counts={summary?.marketing ?? emptyCounts}
+              note="Separate from the campaign delivery rate, which comes from callbacks."
+            />
+          </div>
+          <OverviewPanel overview={overview} rate={rate} currency={currency} />
+        </div>
+      ) : null}
       {tab === "credits" ? <CreditsPanel credits={credits} ledger={ledger} /> : null}
       {tab === "settings" ? (
         <SettingsPanel
-          channels={channels}
           prices={overview?.prices}
-          connectionStatus={overview?.connection_status ?? null}
           providerStatus={overview?.provider_status ?? "unreachable"}
           providerDetail={overview?.provider_detail ?? null}
           connectedPhone={overview?.connected_phone ?? null}
           busy={busy}
           onDirty={setSettingsDirty}
-          onManageConnection={() => {
-            if (settingsDirty) {
-              const leave = window.confirm("You have unsaved settings. Leave without saving?");
-              if (!leave) return;
-              setSettingsDirty(false);
-            }
-            setTab("connections");
-          }}
-          onSave={(body) =>
-            run(async () => {
-              await apiPut("/api/v1/reach/channels", body);
-              setNotice("Channel saved.");
-            }, "The channel was not saved.")
-          }
           onPrices={(prices) =>
             run(async () => {
               await apiPut("/api/v1/reach/prices", prices);
@@ -404,6 +447,7 @@ function OverviewPanel({ overview, rate, currency }: { overview: Overview | null
   if (!overview) return <p className="text-sm text-charcoal/60">Overview has not loaded yet.</p>;
   return (
     <div className="grid gap-3">
+      <h2 className="text-sm font-semibold">Campaigns</h2>
       <dl className="grid grid-cols-2 gap-3 rounded-card border border-line bg-white p-4 text-sm sm:grid-cols-4">
         <Stat label="Campaigns" value={String(overview.campaigns)} />
         <Stat label="Active" value={String(overview.active)} />
@@ -565,7 +609,7 @@ function ConnectionsPanel({
           <div className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800">
             <p className="font-medium">WhatsApp connection service is unavailable.</p>
             <p className="mt-1">{providerDetail || "Evolution API could not be reached."} Existing store settings are unchanged.</p>
-            <button type="button" disabled={busy} onClick={onRetry} className="mt-3 rounded-full border border-rose-300 px-3 py-1.5 text-sm font-medium disabled:opacity-40">
+            <button type="button" disabled={busy} onClick={onRetry} className="mt-3 inline-flex h-[38px] items-center justify-center rounded-full border border-rose-300 px-4 text-sm font-medium disabled:opacity-40">
               Retry
             </button>
           </div>
@@ -595,17 +639,17 @@ function ConnectionsPanel({
             type="button"
             disabled={busy || serviceDown}
             onClick={() => (open && row ? void onStatus(row.id) : onConnect(row?.id ?? null))}
-            className="rounded-full bg-accent px-4 py-2 text-sm font-medium text-white disabled:opacity-40"
+            className="inline-flex h-[38px] items-center justify-center rounded-full bg-accent px-4 text-sm font-medium text-white disabled:opacity-40"
           >
             {busy ? "Working…" : open ? "Check connection" : qr ? "Refresh QR" : "Connect WhatsApp"}
           </button>
           {row ? (
-            <button type="button" disabled={busy} onClick={() => void onStatus(row.id)} className="rounded-full border border-line px-4 py-2 text-sm font-medium disabled:opacity-40">
+            <button type="button" disabled={busy} onClick={() => void onStatus(row.id)} className="inline-flex h-[38px] items-center justify-center rounded-full border border-line px-4 text-sm font-medium disabled:opacity-40">
               Refresh status
             </button>
           ) : null}
           {row && row.status !== "created" ? (
-            <button type="button" disabled={busy || serviceDown} onClick={() => onDisconnect(row.id)} className="rounded-full border border-line px-4 py-2 text-sm font-medium disabled:opacity-40">
+            <button type="button" disabled={busy || serviceDown} onClick={() => onDisconnect(row.id)} className="inline-flex h-[38px] items-center justify-center rounded-full border border-line px-4 text-sm font-medium disabled:opacity-40">
               Disconnect
             </button>
           ) : null}
@@ -634,13 +678,13 @@ function ConnectionsPanel({
             onChange={(event) => setTestTo(event.target.value)}
             placeholder="+971501234567"
             aria-label="Test destination"
-            className="h-11 flex-1 rounded-xl border border-line bg-surface px-3 text-sm"
+            className="h-10 w-full max-w-sm rounded-xl border border-line bg-surface px-3 text-sm"
           />
           <button
             type="button"
             disabled={testing || !open || testTo.trim().length < 8}
             onClick={() => void sendTest()}
-            className="inline-flex h-11 items-center justify-center rounded-full bg-accent px-4 text-sm font-medium text-white disabled:opacity-40"
+            className="inline-flex h-[38px] items-center justify-center rounded-full bg-accent px-4 text-sm font-medium text-white disabled:opacity-40"
           >
             {testing ? "Sending…" : "Send test message"}
           </button>
@@ -1036,6 +1080,10 @@ function TemplatesPanel({
   const [body, setBody] = useState("Hello {{customer_name}}");
   return (
     <div className="grid gap-3">
+      <div>
+        <h2 className="text-lg font-semibold">Marketing templates</h2>
+        <p className="mt-1 text-sm text-charcoal/60">Used by campaigns. They are stored separately from receipt and reminder text.</p>
+      </div>
       <form
         className="grid gap-3 rounded-card border border-line bg-white p-4"
         onSubmit={(event) => {
@@ -1077,23 +1125,6 @@ function TemplatesPanel({
   );
 }
 
-function HistoryPanel({ rows }: { rows: Recipient[] }) {
-  if (rows.length === 0) {
-    return <p className="rounded-card border border-line bg-white p-4 text-sm text-charcoal/60">No recipient history yet.</p>;
-  }
-  return (
-    <ul className="divide-y divide-line rounded-card border border-line bg-white">
-      {rows.map((row) => (
-        <li key={row.id} className="px-4 py-3 text-sm">
-          <span className="font-medium">{row.phone || "no address"}</span>
-          <span className="text-charcoal/50"> · {row.status}</span>
-          {row.failure_reason ? <span className="block text-charcoal/60">{row.failure_reason}</span> : null}
-        </li>
-      ))}
-    </ul>
-  );
-}
-
 function CreditsPanel({ credits, ledger }: { credits: Credits | null; ledger: CreditTx[] }) {
   return (
     <div className="grid gap-3">
@@ -1120,14 +1151,6 @@ function CreditsPanel({ credits, ledger }: { credits: Credits | null; ledger: Cr
   );
 }
 
-const providerLabels: Record<string, string> = {
-  log: "Log",
-  evolution: "Evolution API",
-  whatsapp_cloud: "WhatsApp Cloud",
-  http_sms: "HTTP SMS",
-  smtp: "SMTP",
-};
-
 function ChannelMark({ channel, className }: { channel: MessageChannel; className?: string }) {
   const props = { className, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 2, "aria-hidden": true as const };
   if (channel === "email") {
@@ -1153,186 +1176,28 @@ function ChannelMark({ channel, className }: { channel: MessageChannel; classNam
   );
 }
 
-function providerName(provider: string) {
-  return providerLabels[provider] ?? provider;
-}
-
 function wholeCents(value: string): number | null {
   const trimmed = value.trim();
   if (!/^\d+$/.test(trimmed)) return null;
   return Number(trimmed);
 }
 
-function statusBadge(card: ChannelCard, connectionStatus: string | null): { label: string; className: string } {
-  if (card.channel === "whatsapp" && card.provider === "evolution") {
-    if (connectionStatus === "open") return { label: "Session connected", className: "bg-emerald-50 text-emerald-700" };
-    if (connectionStatus === "connecting" || connectionStatus === "qr") {
-      return { label: "Connecting", className: "bg-sky-50 text-sky-700" };
-    }
-    if (connectionStatus === "close" || connectionStatus === "closed" || connectionStatus === "disconnected") {
-      return { label: "Disconnected", className: "bg-rose-50 text-rose-700" };
-    }
-    return { label: "Not configured", className: "bg-surface text-charcoal/60" };
-  }
-  if (!card.enabled || card.status === "disabled") return { label: "Disabled", className: "bg-surface text-charcoal/60" };
-  if (card.status === "connected") return { label: "Connected", className: "bg-emerald-50 text-emerald-700" };
-  if (card.status === "connecting") return { label: "Connecting", className: "bg-sky-50 text-sky-700" };
-  if (card.status === "error" || card.status === "disconnected") {
-    return { label: "Disconnected", className: "bg-rose-50 text-rose-700" };
-  }
-  return { label: "Not configured", className: "bg-surface text-charcoal/60" };
-}
-
-function providerNote(card: ChannelCard, provider: string, connectionStatus: string | null) {
-  if (card.channel === "whatsapp" && provider === "evolution") {
-    if (connectionStatus === "open") return "The paired WhatsApp session can send campaigns.";
-    if (connectionStatus === "connecting" || connectionStatus === "qr") return "Finish pairing from Connections.";
-    if (connectionStatus === "close" || connectionStatus === "closed" || connectionStatus === "disconnected") {
-      return "The WhatsApp session is disconnected.";
-    }
-    return "Pair a WhatsApp number from Connections.";
-  }
-  if (provider === "log") return "Messages are recorded in the outbox and are not delivered.";
-  if (provider === "whatsapp_cloud" || provider === "http_sms" || provider === "smtp") {
-    return "Provider credentials stay in Messaging.";
-  }
-  return card.last_error || "Choose a provider, then save.";
-}
-
-function ChannelConfigCard({
-  card,
-  connectionStatus,
-  busy,
-  onSave,
-  onManageConnection,
-  onDirty,
-}: {
-  card: ChannelCard;
-  connectionStatus: string | null;
-  busy: boolean;
-  onSave: (body: { channel: MessageChannel; enabled: boolean; provider: string; public_config: Record<string, string> }) => Promise<boolean>;
-  onManageConnection: () => void;
-  onDirty: (channel: MessageChannel, dirty: boolean) => void;
-}) {
-  const [enabled, setEnabled] = useState(card.enabled);
-  const [provider, setProvider] = useState(card.provider);
-  const [saving, setSaving] = useState(false);
-  const badge = statusBadge({ ...card, provider }, connectionStatus);
-  const dirty = enabled !== card.enabled || provider !== card.provider;
-
-  useEffect(() => {
-    setEnabled(card.enabled);
-    setProvider(card.provider);
-  }, [card.enabled, card.provider]);
-
-  useEffect(() => {
-    onDirty(card.channel, dirty);
-  }, [card.channel, dirty, onDirty]);
-
-  useEffect(() => {
-    if (!busy) setSaving(false);
-  }, [busy]);
-
-  const save = async (event: FormEvent) => {
-    event.preventDefault();
-    if (busy) return;
-    setSaving(true);
-    const ok = await onSave({
-      channel: card.channel,
-      enabled,
-      provider,
-      public_config: card.public_config ?? {},
-    });
-    if (!ok) setSaving(false);
-  };
-
-  return (
-    <form onSubmit={(event) => void save(event)} className="flex h-full flex-col rounded-card border border-line bg-white p-4 shadow-sm">
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex min-w-0 items-center gap-2.5">
-          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-accent/10 text-accent">
-            <ChannelMark channel={card.channel} className="h-4 w-4" />
-          </span>
-          <div>
-            <h3 className="text-sm font-semibold text-charcoal">{labels[card.channel]}</h3>
-            <p className="text-xs text-charcoal/50">{providerName(provider)}</p>
-          </div>
-        </div>
-        <span className="flex flex-col items-end gap-1">
-          <span className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-medium ${enabled ? "bg-accent/10 text-accent" : "bg-surface text-charcoal/60"}`}>
-            {enabled ? "Enabled" : "Disabled"}
-          </span>
-          <span className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-medium ${badge.className}`}>{badge.label}</span>
-        </span>
-      </div>
-      <div className="mt-4 flex items-center justify-between gap-3">
-        <span className="text-sm text-charcoal">Enabled</span>
-        <button
-          type="button"
-          role="switch"
-          aria-checked={enabled}
-          aria-label={`${labels[card.channel]} enabled`}
-          onClick={() => setEnabled((current) => !current)}
-          className={`relative h-6 w-11 rounded-full transition ${enabled ? "bg-accent" : "bg-charcoal/15"}`}
-        >
-          <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition ${enabled ? "left-5" : "left-0.5"}`} />
-        </button>
-      </div>
-      <label className="mt-4 block text-xs font-medium text-charcoal/70">
-        Provider
-        <select
-          className="mt-1.5 w-full rounded-xl border border-line bg-surface px-3 py-2 text-sm text-charcoal"
-          value={provider}
-          onChange={(event) => setProvider(event.target.value)}
-        >
-          {card.providers.map((item) => (
-            <option key={item} value={item}>
-              {providerName(item)}
-            </option>
-          ))}
-        </select>
-      </label>
-      <p className="mt-3 flex-1 text-sm leading-5 text-charcoal/60">{providerNote(card, provider, connectionStatus)}</p>
-      {card.last_error ? <p className="mt-2 text-xs text-rose-700">{card.last_error}</p> : null}
-      {card.channel === "whatsapp" && provider === "evolution" ? (
-        <button type="button" className="mt-3 self-start text-sm font-semibold text-accent" onClick={onManageConnection}>
-          Manage WhatsApp connection
-        </button>
-      ) : null}
-      <button
-        type="submit"
-        disabled={busy}
-        className="mt-4 inline-flex w-fit items-center justify-center rounded-full bg-accent px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-40"
-      >
-        {saving ? "Saving…" : "Save"}
-      </button>
-    </form>
-  );
-}
 
 function SettingsPanel({
-  channels,
   prices,
-  connectionStatus,
   providerStatus,
   providerDetail,
   connectedPhone,
   busy,
   onDirty,
-  onManageConnection,
-  onSave,
   onPrices,
 }: {
-  channels: ChannelCard[];
   prices: Partial<Record<MessageChannel, number>> | undefined;
-  connectionStatus: string | null;
   providerStatus: string;
   providerDetail: string | null;
   connectedPhone: string | null;
   busy: boolean;
   onDirty: (dirty: boolean) => void;
-  onManageConnection: () => void;
-  onSave: (body: { channel: MessageChannel; enabled: boolean; provider: string; public_config: Record<string, string> }) => Promise<boolean>;
   onPrices: (prices: { whatsapp: number; sms: number; email: number }) => Promise<boolean>;
 }) {
   const [amounts, setAmounts] = useState<Record<MessageChannel, string>>({ whatsapp: "0", sms: "0", email: "0" });
@@ -1340,7 +1205,6 @@ function SettingsPanel({
   const [priceError, setPriceError] = useState<string | null>(null);
   const [priceSaved, setPriceSaved] = useState(false);
   const [savingPrices, setSavingPrices] = useState(false);
-  const [channelDirty, setChannelDirty] = useState<Partial<Record<MessageChannel, boolean>>>({});
   const priceDirty = (Object.keys(labels) as MessageChannel[]).some((channel) => amounts[channel] !== savedAmounts[channel]);
 
   useEffect(() => {
@@ -1354,13 +1218,9 @@ function SettingsPanel({
     setSavedAmounts(next);
   }, [prices, priceDirty]);
 
-  const reportChannel = useCallback((channel: MessageChannel, dirty: boolean) => {
-    setChannelDirty((current) => (current[channel] === dirty ? current : { ...current, [channel]: dirty }));
-  }, []);
-
   useEffect(() => {
-    onDirty(priceDirty || Object.values(channelDirty).some(Boolean));
-  }, [priceDirty, channelDirty, onDirty]);
+    onDirty(priceDirty);
+  }, [priceDirty, onDirty]);
 
   useEffect(() => {
     if (!busy) setSavingPrices(false);
@@ -1410,38 +1270,12 @@ function SettingsPanel({
           </p>
         </div>
       ) : null}
-      <section className="grid gap-3">
-        <div>
-          <h2 className="text-lg font-semibold text-charcoal">Marketing channel</h2>
-          <p className="mt-1 max-w-2xl text-sm leading-6 text-charcoal/60">
-            WhatsApp campaigns use the Evolution session. SMS, email, and WhatsApp Cloud credentials stay in Messaging.
-            {connectedPhone ? ` Connected number: ${connectedPhone}.` : " Connect a number from Connections."}
-          </p>
-        </div>
-        <div className="grid grid-cols-1 items-stretch gap-4 lg:grid-cols-3">
-          {channels.filter((card) => card.channel === "whatsapp").map((card) => (
-            <ChannelConfigCard
-              key={card.channel}
-              card={card}
-              connectionStatus={connectionStatus}
-              busy={busy}
-              onSave={onSave}
-              onManageConnection={onManageConnection}
-              onDirty={reportChannel}
-            />
-          ))}
-          {channels.filter((card) => card.channel !== "whatsapp").map((card) => (
-            <article key={card.channel} className="rounded-card border border-line bg-white p-4 shadow-sm">
-              <h3 className="text-sm font-semibold">{labels[card.channel]}</h3>
-              <p className="mt-2 text-sm leading-6 text-charcoal/60">
-                {card.enabled ? "Enabled" : "Not enabled"} · {providerName(card.provider)}. Campaigns can use this channel. Credentials are edited in Messaging.
-              </p>
-              <Link to="/settings/messaging" className="mt-3 inline-block text-sm font-semibold text-accent">
-                Open Messaging
-              </Link>
-            </article>
-          ))}
-        </div>
+      <section className="rounded-card border border-line bg-white p-4 shadow-sm">
+        <h2 className="text-lg font-semibold text-charcoal">Connections</h2>
+        <p className="mt-1 max-w-2xl text-sm leading-6 text-charcoal/60">
+          Provider accounts, credentials, and the WhatsApp session are edited on Connections.
+          {connectedPhone ? ` Connected number: ${connectedPhone}.` : " No WhatsApp number is connected yet."}
+        </p>
       </section>
       <section className="grid gap-3">
         <div>

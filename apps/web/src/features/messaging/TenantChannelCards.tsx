@@ -55,7 +55,7 @@ const fields: Record<string, { key: string; label: string }[]> = {
   ],
 };
 
-export function TenantChannelCards() {
+export function TenantChannelCards({ hidePairing = false }: { hidePairing?: boolean }) {
   const [cards, setCards] = useState<ChannelCard[]>([]);
   const [drafts, setDrafts] = useState<Record<string, { provider: string; config: Record<string, string>; secret: string }>>({});
   const [error, setError] = useState<string | null>(null);
@@ -131,9 +131,9 @@ export function TenantChannelCards() {
     <div className="grid gap-3">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h2 className="text-lg font-semibold">Transactional channels</h2>
+          <h2 className="text-lg font-semibold">Provider accounts</h2>
           <p className="mt-1 max-w-2xl text-sm leading-6 text-charcoal/60">
-            Receipts, statements, and reminders use these accounts. Leave a credential blank to keep the one already saved.
+            One saved account per channel. Receipts and campaigns both use it. Leave a credential blank to keep the one already saved.
           </p>
         </div>
         <ul className="flex flex-wrap gap-2">
@@ -226,7 +226,7 @@ export function TenantChannelCards() {
               ) : null}
               {draft.provider === "evolution" ? (
                 <p className="mt-2 text-xs leading-5 text-charcoal/50">
-                  Pair the sending number in the section below. This switch uses that same number.
+                  Pair the sending number once in Store WhatsApp. This switch uses that same session.
                 </p>
               ) : null}
               {draft.provider === "smtp" ? (
@@ -239,12 +239,12 @@ export function TenantChannelCards() {
                   type="button"
                   disabled={busy}
                   onClick={() => void save(card, true)}
-                  className="inline-flex rounded-full bg-accent px-4 py-2 text-sm font-medium text-white disabled:opacity-40"
+                  className="inline-flex h-[38px] items-center justify-center rounded-full bg-accent px-4 text-sm font-medium text-white disabled:opacity-40"
                 >
                   Save
                 </button>
                 {card.enabled ? (
-                  <button type="button" className="text-sm font-semibold text-charcoal" disabled={busy} onClick={() => void test(card)}>
+                  <button type="button" className="inline-flex h-[38px] items-center justify-center rounded-full border border-line px-4 text-sm font-medium disabled:opacity-40" disabled={busy} onClick={() => void test(card)}>
                     Test connection
                   </button>
                 ) : null}
@@ -254,7 +254,7 @@ export function TenantChannelCards() {
           );
         })}
       </div>
-      {(drafts.whatsapp?.provider ?? cards.find((card) => card.channel === "whatsapp")?.provider) === "evolution" ? (
+      {!hidePairing && (drafts.whatsapp?.provider ?? cards.find((card) => card.channel === "whatsapp")?.provider) === "evolution" ? (
         <WhatsAppPairing />
       ) : null}
     </div>

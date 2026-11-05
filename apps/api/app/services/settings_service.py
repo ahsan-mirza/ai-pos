@@ -599,6 +599,22 @@ def note_register_entitlement(db: Session, device_id: uuid.UUID | None, revision
     )
 
 
+def _pause_delivery_connections(db: Session) -> None:
+    """Stop new delivery intake when the add-on is switched off. Rows and payouts stay."""
+    from app.models.channel import DeliveryChannel
+    from app.models.delivery import DeliveryConnection
+
+    if DeliveryConnection is None:
+        return
+    for row in db.scalars(select(DeliveryConnection).where(DeliveryConnection.status != "paused")):
+        row.status = "paused"
+        if row.channel_id is None:
+            continue
+        channel = db.get(DeliveryChannel, row.channel_id)
+        if channel is not None:
+            channel.is_active = False
+
+
 def change_profile(db: Session, actor: User, data: ProfileUpdate) -> BusinessSettingsOut:
     """Switches the business type and/or its modules. Roadmap modules are kept as planned, never enabled, and a
     disabled module only hides features: its data stays."""
@@ -646,6 +662,11 @@ def change_profile(db: Session, actor: User, data: ProfileUpdate) -> BusinessSet
     row.updated_by_id = actor.id
     after = capability_catalog.resolve(row.business_profile, row.capabilities, managed, purchased)
     _guard_reorder_module(db, after)
+    if (
+        capability_catalog.Capability.DELIVERY_INTEGRATIONS.value in before["capabilities"]
+        and capability_catalog.Capability.DELIVERY_INTEGRATIONS not in after.enabled
+    ):
+        _pause_delivery_connections(db)
     audit.record(
         db,
         action_type="UPDATE",

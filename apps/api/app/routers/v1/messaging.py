@@ -16,6 +16,7 @@ from app.schemas.messaging import (
     MessagingSettingsOut,
     MessagingSettingsWrite,
     OutboundOut,
+    OutboxSummary,
     TemplateOut,
     TemplateWrite,
     TestMessage,
@@ -48,6 +49,11 @@ def templates(db: Db, _: CanManage) -> list[TemplateOut]:
 @router.put("/templates/{key}", response_model=TemplateOut)
 def put_template(key: str, payload: TemplateWrite, db: Db, _: CanManage) -> TemplateOut:
     return messaging_service.update_template(db, key, payload)
+
+
+@router.get("/summary", response_model=OutboxSummary)
+def summary(db: Db, _: CanManage) -> dict:
+    return messaging_service.outbox_summary(db)
 
 
 @router.get("/outbox", response_model=list[OutboundOut])

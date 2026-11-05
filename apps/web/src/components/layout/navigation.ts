@@ -90,13 +90,6 @@ export const settingsTabs: SettingsTab[] = [
   { to: "/registers", label: "Registers", permission: Permission.DevicesManage },
   { to: "/downloads", label: "Downloads", permission: Permission.PortalAccess, superAdminOnly: true },
   { to: "/settings/currencies", label: "Currencies", permission: Permission.CurrenciesManage, capability: Capability.MultiCurrency },
-  { to: "/settings/messaging", label: "Messaging", permission: Permission.MessagingManage },
-  {
-    to: "/settings/reach",
-    label: "AxizReach",
-    permission: Permission.MessagingManage,
-    capability: Capability.AxizReach,
-  },
   {
     to: "/settings/channels",
     label: "Delivery channels",
@@ -362,6 +355,15 @@ export const navGroups: NavGroup[] = [
         capability: Capability.MenuModifiers,
         isActive: under("/inventory/modifiers"),
       },
+      {
+        to: "/delivery",
+        label: "Delivery Integrations",
+        icon: Truck,
+        permission: Permission.DeliveryView,
+        capability: Capability.DeliveryIntegrations,
+        profiles: ["restaurant", "cafe", "quick_service"],
+        isActive: under("/delivery"),
+      },
     ],
   },
   {
@@ -424,6 +426,14 @@ export const navGroups: NavGroup[] = [
     id: "administration",
     label: "Administration",
     items: [
+      {
+        to: "/reach",
+        label: "AxizReach",
+        icon: Smartphone,
+        permission: Permission.MessagingManage,
+        capability: Capability.AxizReach,
+        isActive: under("/reach"),
+      },
       { to: "/users", label: "Users", icon: UserCog, permission: Permission.UsersRead, isActive: under("/users") },
       { to: "/staff", label: "Staff & payroll", icon: Timer, permission: Permission.StaffManage, isActive: under("/staff") },
       {
@@ -471,6 +481,8 @@ const inventoryPages: Record<string, string> = {
 
 const singlePages: Record<string, Crumb[]> = {
   "/": [{ label: "Dashboard" }],
+  "/reach": [{ label: "AxizReach" }],
+  "/delivery": [{ label: "Food & Beverage" }, { label: "Delivery Integrations" }],
   "/dashboard": [{ label: "Dashboard" }],
   "/customers": [{ label: "Suppliers & CRM" }, { label: "Customers & B2B ledger" }],
   "/returns": [{ label: "Sales" }, { label: "Returns & fraud monitoring" }],

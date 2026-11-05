@@ -149,6 +149,10 @@ _MODULE_DESCRIPTIONS: dict[str, str] = {
     "split_bills": "Split a bill by item, seat or amount.",
     "tips_service_charge": "Add tips and an automatic service charge to bills.",
     "delivery_channels": "Orders from delivery apps alongside walk-in sales.",
+    "delivery_integrations": (
+        "Marketplace connection setup for restaurant and cafe delivery. "
+        "Live orders still use Delivery channels. Providers stay unavailable until partner access is approved."
+    ),
     "sales_orders": "Wholesale orders picked, delivered in parts with proof of delivery, and invoiced per delivery.",
     "card_terminals": (
         "Send the amount to the card machine and confirm the payment automatically; refunds go back to the card."

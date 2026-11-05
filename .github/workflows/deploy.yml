@@ -86,22 +86,25 @@ jobs:
 
       - name: Upload API and catalog
         run: |
-          ssh server "mkdir -p $APP_DIR/apps/api $APP_DIR/packages/catalog $APP_DIR/plugins/einvoicing $APP_DIR/plugins/reach $WEB_DIR $CONSOLE_DIR $SITE_DIR"
+          ssh server "mkdir -p $APP_DIR/apps/api $APP_DIR/packages/catalog $APP_DIR/plugins/einvoicing $APP_DIR/plugins/reach $APP_DIR/plugins/delivery $WEB_DIR $CONSOLE_DIR $SITE_DIR"
           rsync -az --delete \
             --exclude '.venv/' --exclude '.env*' --exclude 'storage/' \
             --exclude '__pycache__/' --exclude 'tests/' --exclude '*.db' \
             --exclude '.pytest_cache/' --exclude '.ruff_cache/' \
             apps/api/ server:$APP_DIR/apps/api/
           rsync -az --delete packages/catalog/ server:$APP_DIR/packages/catalog/
-          # The API adds /opt/ai-pos/plugins/einvoicing and /opt/ai-pos/plugins/reach to sys.path at startup.
-          # The portal build includes the Reach page. That does not deploy this backend package.
+          # The API adds plugin folders to sys.path at startup.
+          # The portal build includes the Reach and Delivery pages. That does not deploy these backend packages.
           rsync -az --delete \
             --exclude '__pycache__/' --exclude '.pytest_cache/' --exclude '.env*' --exclude 'tests/' \
             plugins/einvoicing/ server:$APP_DIR/plugins/einvoicing/
           rsync -az --delete \
             --exclude '__pycache__/' --exclude '.pytest_cache/' --exclude '.env*' --exclude 'backend/tests/' \
             plugins/reach/ server:$APP_DIR/plugins/reach/
-          ssh server "test -f $APP_DIR/plugins/reach/reach/__init__.py"
+          rsync -az --delete \
+            --exclude '__pycache__/' --exclude '.pytest_cache/' --exclude '.env*' --exclude 'backend/tests/' \
+            plugins/delivery/ server:$APP_DIR/plugins/delivery/
+          ssh server "test -f $APP_DIR/plugins/reach/reach/__init__.py && test -f $APP_DIR/plugins/delivery/delivery/__init__.py"
 
       - name: Ensure production env
         env:

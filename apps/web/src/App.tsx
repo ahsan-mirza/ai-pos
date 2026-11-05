@@ -54,6 +54,7 @@ import { ExportsPage } from "./features/reports/ExportsPage";
 import { TipsReportPage } from "./features/reports/TipsReportPage";
 import { CancellationsPage } from "./features/reports/CancellationsPage";
 import { ChannelsPage } from "./features/channels/ChannelsPage";
+import { DeliveryPage } from "./features/delivery/DeliveryPage";
 import { ShiftsPage } from "./features/shifts/ShiftsPage";
 import { ChequesPage } from "./features/cheques/ChequesPage";
 import { PaymentsPage } from "./features/payments/PaymentsPage";
@@ -71,7 +72,6 @@ import { BankPage } from "./features/bank/BankPage";
 import { ManagerMobilePage } from "./features/manager/ManagerMobilePage";
 import { AssistantPage } from "./features/assistant/AssistantPage";
 import { AccountingPage } from "./features/accounting/AccountingPage";
-import { MessagingPage } from "./features/messaging/MessagingPage";
 import { ReachPage } from "@reach/ReachPage";
 import { CurrenciesPage } from "./features/currencies/CurrenciesPage";
 import { MarginPage } from "./features/margin/MarginPage";
@@ -544,6 +544,18 @@ function Portal() {
             }
           />
           </Route>
+          <Route element={<PageFrame />}>
+            <Route
+              path="reach"
+              element={
+                <RequirePermission permission={Permission.MessagingManage}>
+                  <RequireCapability capability={Capability.AxizReach}>
+                    <ReachPage />
+                  </RequireCapability>
+                </RequirePermission>
+              }
+            />
+          </Route>
           <Route element={<SettingsLayout />}>
             <Route element={<PageFrame />}>
               <Route path="stores" element={<StoresPage />} />
@@ -612,23 +624,17 @@ function Portal() {
                 }
               />
               <Route
-                path="settings/messaging"
+                path="delivery"
                 element={
-                  <RequirePermission permission={Permission.MessagingManage}>
-                    <MessagingPage />
-                  </RequirePermission>
-                }
-              />
-              <Route
-                path="settings/reach"
-                element={
-                  <RequirePermission permission={Permission.MessagingManage}>
-                    <RequireCapability capability={Capability.AxizReach}>
-                      <ReachPage />
+                  <RequirePermission permission={Permission.DeliveryView} framed>
+                    <RequireCapability capability={Capability.DeliveryIntegrations}>
+                      <DeliveryPage />
                     </RequireCapability>
                   </RequirePermission>
                 }
               />
+              <Route path="settings/messaging" element={<Navigate to="/reach?tab=automations" replace />} />
+              <Route path="settings/reach" element={<Navigate to="/reach" replace />} />
               <Route
                 path="registers"
                 element={

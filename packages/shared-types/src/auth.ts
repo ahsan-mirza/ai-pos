@@ -28,6 +28,8 @@ export const Permission = {
   WarrantyManage: "warranty:manage",
   ReplenishmentManage: "replenishment:manage",
   MessagingManage: "messaging:manage",
+  DeliveryView: "delivery:view",
+  DeliveryManage: "delivery:manage",
   CurrenciesManage: "currencies:manage",
   PayablesManage: "payables:manage",
   ExpensesManage: "expenses:manage",

@@ -41,6 +41,9 @@ def test_messages_respect_consent_and_dispatch_through_the_log_provider(client, 
     outbox = client.get("/api/v1/messaging/outbox", headers=headers).json()
     by_status = {row["status"]: row for row in outbox}
     assert set(by_status) == {"SENT", "SKIPPED"}
+    summary = client.get("/api/v1/messaging/summary", headers=headers).json()
+    assert summary["transactional"]["SENT"] >= 1
+    assert summary["marketing"]["SENT"] == 0
     assert by_status["SENT"]["channel"] == "whatsapp"
     assert "Sara" in by_status["SENT"]["body"] and "AED 10.00" in by_status["SENT"]["body"]
 

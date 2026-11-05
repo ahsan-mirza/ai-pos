@@ -60,6 +60,8 @@ class Permission(StrEnum):
     RESERVATIONS_MANAGE_SETTINGS = "reservations:manage_settings"
     TABLE_HISTORY_VIEW = "table_history:view"
     TABLE_HISTORY_VIEW_ALL = "table_history:view_all_branches"
+    DELIVERY_VIEW = "delivery:view"
+    DELIVERY_MANAGE = "delivery:manage"
 
 
 # Granted to Store Managers by migration 20261019_0012.
@@ -100,6 +102,8 @@ RESTAURANT_MANAGER_PERMISSIONS = (
     "reservations:view_history",
     "reservations:manage_settings",
     "table_history:view",
+    "delivery:view",
+    "delivery:manage",
 )
 RESTAURANT_CASHIER_PERMISSIONS = (
     "pos:orders",
@@ -182,6 +186,10 @@ PERMISSION_GROUPS: dict[str, list[tuple[Permission, str]]] = {
     ],
     "Settings": [(Permission.SETTINGS_MANAGE, "Change business settings such as the currency")],
     "Security": [(Permission.AUDIT_READ, "View and export the audit trail")],
+    "Delivery": [
+        (Permission.DELIVERY_VIEW, "View delivery connections and marketplace orders"),
+        (Permission.DELIVERY_MANAGE, "Connect, pause, and configure delivery providers"),
+    ],
 }
 
 SUPER_ADMIN_ROLE_ID = "00000000-0000-4000-8000-0000000000a1"

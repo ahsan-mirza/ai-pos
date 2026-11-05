@@ -23,6 +23,7 @@ from app.routers.v1.consignment import router as consignment_router
 from app.routers.v1.currencies import router as currencies_router
 from app.routers.v1.customers import router as customers_router
 from app.routers.v1.deep_analytics import router as deep_analytics_router
+from app.routers.v1.delivery import router as delivery_router
 from app.routers.v1.devices import router as devices_router
 from app.routers.v1.dining import router as dining_router
 from app.routers.v1.downloads import router as downloads_router
@@ -210,6 +211,12 @@ api_router.include_router(live_ws_router, prefix="/ws", tags=["live"])
 api_router.include_router(kds_router, prefix="/kds", tags=["kds"], dependencies=module(Capability.KDS))
 api_router.include_router(
     channels_router, prefix="/channels", tags=["channels"], dependencies=module(Capability.DELIVERY_CHANNELS)
+)
+api_router.include_router(
+    delivery_router,
+    prefix="/delivery",
+    tags=["delivery"],
+    dependencies=module(Capability.DELIVERY_INTEGRATIONS),
 )
 api_router.include_router(recipes_router, prefix="/recipes", tags=["recipes"], dependencies=module(Capability.RECIPES))
 api_router.include_router(

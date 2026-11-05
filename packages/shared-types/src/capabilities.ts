@@ -39,6 +39,7 @@ export const Capability = {
   DeepAnalytics: "deep_analytics",
   AxizReach: "axiz_reach",
   UaeEinvoicing: "uae_einvoicing",
+  DeliveryIntegrations: "delivery_integrations",
 } as const;
 export type Capability = (typeof Capability)[keyof typeof Capability];
 
@@ -98,6 +99,7 @@ export const CAPABILITIES: readonly CapabilitySpec[] = [
   { id: "deep_analytics", label: "Deep analytics", description: "Sales, margin, inventory, and the reports for this business type.", group: "selling", available: true, requires: [] },
   { id: "axiz_reach", label: "AxizReach — Customer Engagement", description: "Marketing campaigns, segments, and campaign reports. Provider setup and receipts stay in the starter kit.", group: "customers", available: true, requires: [] },
   { id: "uae_einvoicing", label: "UAE e-Invoicing", description: "Optional UAE e-invoicing add-on for in-scope B2B and B2G sales. Ordinary consumer receipts stay on the register.", group: "customers", available: true, requires: [] },
+  { id: "delivery_integrations", label: "Delivery Integrations", description: "Marketplace and aggregator connections for restaurant and cafe delivery orders. Orders still arrive through Delivery channels.", group: "food_beverage", available: true, requires: [] },
 ];
 
 const SPECS = new Map(CAPABILITIES.map((spec) => [spec.id, spec]));
@@ -361,6 +363,7 @@ export const PROFILE_ELIGIBLE: Record<BusinessProfile, readonly Capability[]> = 
     "deep_analytics",
     "axiz_reach",
     "uae_einvoicing",
+    "delivery_integrations",
   ],
   cafe: [
     "loyalty",
@@ -379,6 +382,7 @@ export const PROFILE_ELIGIBLE: Record<BusinessProfile, readonly Capability[]> = 
     "deep_analytics",
     "axiz_reach",
     "uae_einvoicing",
+    "delivery_integrations",
   ],
   quick_service: [
     "loyalty",
@@ -397,6 +401,7 @@ export const PROFILE_ELIGIBLE: Record<BusinessProfile, readonly Capability[]> = 
     "deep_analytics",
     "axiz_reach",
     "uae_einvoicing",
+    "delivery_integrations",
   ],
 };
 

@@ -6,7 +6,7 @@ import time
 import uuid
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import and_, or_, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -329,6 +329,25 @@ def update_template(db: Session, key: str, data: TemplateWrite) -> TemplateOut:
     row.is_active = data.is_active
     db.commit()
     return TemplateOut.model_validate(row)
+
+
+def outbox_summary(db: Session) -> dict:
+    """Campaign rows stay in the marketing bucket so an overview does not count them twice."""
+    marketing = {"campaign", "coupon_issued"}
+    buckets = {
+        "transactional": {"SENT": 0, "FAILED": 0, "QUEUED": 0, "SKIPPED": 0},
+        "marketing": {"SENT": 0, "FAILED": 0, "QUEUED": 0, "SKIPPED": 0},
+    }
+    rows = db.execute(
+        select(OutboundMessage.template_key, OutboundMessage.status, func.count()).group_by(
+            OutboundMessage.template_key, OutboundMessage.status
+        )
+    ).all()
+    for key, status, count in rows:
+        bucket = "marketing" if key in marketing else "transactional"
+        if status in buckets[bucket]:
+            buckets[bucket][status] += int(count)
+    return buckets
 
 
 def outbox(db: Session, *, status: str | None, limit: int) -> list[OutboundOut]:
