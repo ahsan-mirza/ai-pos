@@ -1,12 +1,12 @@
 import { Permission, formatMoney } from "@ai-pos/shared-types";
 import { useEffect, useMemo, useState } from "react";
-import { useShell } from "../../components/shell/ShellContext";
+import { createPortal } from "react-dom";
 import { inTauri, recentShifts, shiftHistory, type LocalShift, type ShiftHistory, type ShiftSaleRow } from "../../lib/tauri";
 import type { CashierSession } from "../auth/session";
 import { printReceipt } from "../printing/print";
 import { shiftSaleReceipt } from "../printing/saleReceipt";
+import { ReturnsPage } from "../returns/ReturnsPage";
 import { paymentLabels } from "../returns/returnMath";
-import { queueReturnLookup } from "../returns/pendingLookup";
 
 const statusLabel: Record<string, string> = {
   completed: "Completed",
@@ -23,13 +23,10 @@ function when(value: string): string {
 export function ShiftSales({
   session,
   currency,
-  onClose,
 }: {
   session: CashierSession;
   currency: string;
-  onClose: () => void;
 }) {
-  const { navigate } = useShell();
   const canHistory = session.user.permissions.includes(Permission.PosShiftManage);
   const [shifts, setShifts] = useState<LocalShift[]>([]);
   const [shiftId, setShiftId] = useState<string | undefined>(undefined);
@@ -41,6 +38,8 @@ export function ShiftSales({
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<ShiftSaleRow | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [returnInvoice, setReturnInvoice] = useState<string | null>(null);
+  const [revision, setRevision] = useState(0);
   const money = (cents: number) => formatMoney(cents, currency);
 
   useEffect(() => {
@@ -67,7 +66,26 @@ export function ShiftSales({
     return () => {
       cancelled = true;
     };
-  }, [canHistory, shiftId]);
+  }, [canHistory, shiftId, revision]);
+
+  useEffect(() => {
+    const refresh = () => setRevision((value) => value + 1);
+    window.addEventListener("pos-return-processed", refresh);
+    return () => window.removeEventListener("pos-return-processed", refresh);
+  }, []);
+
+  useEffect(() => {
+    if (selected === null || history === null) return;
+    const next = history.sales.find((sale) => sale.id === selected.id);
+    if (next === undefined) return;
+    if (
+      next.status !== selected.status ||
+      next.refunded_cents !== selected.refunded_cents ||
+      next.returned_quantity !== selected.returned_quantity
+    ) {
+      setSelected(next);
+    }
+  }, [history, selected]);
 
   const sales = useMemo(() => {
     const needle = query.trim().toLowerCase();
@@ -87,9 +105,18 @@ export function ShiftSales({
       setNotice("This invoice has already been fully returned.");
       return;
     }
-    queueReturnLookup(sale.invoice_number);
-    onClose();
-    navigate("returns");
+    const invoice = sale.invoice_number.trim();
+    if (invoice.length < 8) {
+      setNotice("This invoice cannot be opened for a return. Scan the receipt from Returns.");
+      return;
+    }
+    setNotice(null);
+    setReturnInvoice(invoice);
+  };
+
+  const closeReturn = () => {
+    setReturnInvoice(null);
+    setRevision((value) => value + 1);
   };
 
   const reprint = (sale: ShiftSaleRow) => {
@@ -256,7 +283,7 @@ export function ShiftSales({
           ) : null}
           <div className="mt-3 flex flex-wrap gap-2">
             <button type="button" className="modal-save" disabled={selected.status === "returned"} onClick={() => startReturn(selected)}>
-              Return items
+              {selected.status === "partially_returned" ? "Return remaining items" : "Return items"}
             </button>
             <button type="button" className="rounded-full border border-line px-4 py-2 text-sm" onClick={() => reprint(selected)}>
               Reprint receipt
@@ -264,6 +291,22 @@ export function ShiftSales({
           </div>
         </article>
       ) : null}
+      {returnInvoice !== null
+        ? createPortal(
+            <div className="fixed inset-0 z-[80] flex min-h-0 flex-col bg-slate-50 dark:bg-zinc-950">
+              <div className="flex items-center justify-between gap-3 border-b border-zinc-200 px-4 py-3 dark:border-zinc-800">
+                <p className="min-w-0 truncate text-sm font-medium">Return {returnInvoice}</p>
+                <button type="button" className="modal-cancel" onClick={closeReturn}>
+                  Back to sale
+                </button>
+              </div>
+              <div className="flex min-h-0 flex-1 flex-col">
+                <ReturnsPage session={session} openingInvoice={returnInvoice} />
+              </div>
+            </div>,
+            document.body,
+          )
+        : null}
     </div>
   );
 }

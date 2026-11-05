@@ -1,5 +1,6 @@
-import { useCallback, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { TableAlertProvider } from "../../features/alerts/TableAlertContext";
+import { listenForSaleReturns } from "../../features/display/displayChannel";
 import type { CashierSession } from "../../features/auth/session";
 import { useRegisterLayout } from "../RegisterLayout";
 import { POSAlertBanner } from "../POSAlertBanner";
@@ -30,6 +31,14 @@ export function RegisterShell({ session, view, onNavigate, onLock, children }: R
   const value = useMemo(
     () => ({ session, view, setBusy, setNotifier, navigate: onNavigate }),
     [session, view, setNotifier, onNavigate],
+  );
+
+  useEffect(
+    () =>
+      listenForSaleReturns(() => {
+        window.dispatchEvent(new CustomEvent("pos-return-processed"));
+      }),
+    [],
   );
 
   return (

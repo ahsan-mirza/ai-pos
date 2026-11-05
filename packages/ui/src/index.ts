@@ -19,6 +19,7 @@ export {
 } from "./DiningTableShape";
 export { downloadCsv, toCsv } from "./csv";
 export { BrandLogo } from "./BrandLogo";
+export { AsyncButton, BusyButton, type BusyButtonProps } from "./BusyButton";
 export { DateInput, type DateInputProps } from "./DateInput";
 export {
   DATE_PLACEHOLDER,

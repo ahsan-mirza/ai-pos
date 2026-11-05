@@ -67,7 +67,40 @@ function liveUrl(role: "pos" | "customer-display", link: TerminalLink): string {
 let posSocket: WebSocket | null = null;
 let posStarting: Promise<void> | null = null;
 
-/** Register socket. It joins `terminal:{id}` and relays the cart only to `customer-display:{id}`. */
+export interface SaleReturnNotice {
+  eventId: string;
+  invoice: string;
+  returnId: string;
+}
+
+const returnListeners = new Set<(event: SaleReturnNotice) => void>();
+const seenReturns = new Set<string>();
+
+function noteReturn(raw: unknown): void {
+  if (raw === null || typeof raw !== "object") return;
+  const event = raw as Record<string, unknown>;
+  if (event.type !== "pos.sale_return.processed") return;
+  const eventId = typeof event.event_id === "string" ? event.event_id : "";
+  if (eventId === "" || seenReturns.has(eventId)) return;
+  seenReturns.add(eventId);
+  const notice = {
+    eventId,
+    invoice: typeof event.original_invoice_number === "string" ? event.original_invoice_number : "",
+    returnId: typeof event.return_id === "string" ? event.return_id : eventId,
+  };
+  for (const listener of returnListeners) listener(notice);
+}
+
+/** Store-room return events. The socket stays up while at least one screen is listening. */
+export function listenForSaleReturns(onEvent: (event: SaleReturnNotice) => void): () => void {
+  returnListeners.add(onEvent);
+  void ensurePosSocket();
+  return () => {
+    returnListeners.delete(onEvent);
+  };
+}
+
+/** Register socket. It joins `terminal:{id}` and the store room, and relays the cart to `customer-display:{id}`. */
 function ensurePosSocket(): Promise<void> {
   if (posSocket && posSocket.readyState !== WebSocket.CLOSED) return Promise.resolve();
   if (posStarting) return posStarting;
@@ -80,8 +113,16 @@ function ensurePosSocket(): Promise<void> {
     socket.onopen = () => {
       if (last) socket.send(JSON.stringify({ type: "customer-display:cart", state: last }));
     };
+    socket.onmessage = (message) => {
+      try {
+        noteReturn(JSON.parse(String(message.data)));
+      } catch {
+        // A bad frame does not close the socket.
+      }
+    };
     socket.onclose = () => {
       if (posSocket === socket) posSocket = null;
+      if (returnListeners.size > 0) window.setTimeout(() => void ensurePosSocket(), 2000);
     };
   })().finally(() => {
     posStarting = null;

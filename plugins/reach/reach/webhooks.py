@@ -82,7 +82,13 @@ def _apply(db: Session, connection: ReachConnection, payload: dict) -> dict:
 
 
 def _dispatch(db: Session, connection: ReachConnection, event_type: str, payload: dict) -> None:
-    data = payload.get("data") if isinstance(payload.get("data"), dict) else payload
+    raw = payload.get("data")
+    if isinstance(raw, list):
+        data: dict = {"messages": raw}
+    elif isinstance(raw, dict):
+        data = raw
+    else:
+        data = payload
     if "connection" in event_type:
         state = str(data.get("state") or data.get("status") or "").lower()
         if state in {"open", "connected"}:
@@ -105,17 +111,22 @@ def _dispatch(db: Session, connection: ReachConnection, event_type: str, payload
                 if campaign is not None and campaign.status in {"processing", "queued", "scheduled"}:
                     campaign.status = "paused"
         return
-    if _unsubscribe(db, data):
-        return
-    message_id = _message_id(data)
-    if not message_id:
-        return
-    recipient = db.scalar(select(ReachRecipient).where(ReachRecipient.provider_message_id == message_id))
-    if recipient is None:
-        from reach.ai_agent.inbound import capture
+    for item in _items(data):
+        if _unsubscribe(db, item):
+            continue
+        message_id = _message_id(item)
+        if not message_id:
+            continue
+        recipient = db.scalar(select(ReachRecipient).where(ReachRecipient.provider_message_id == message_id))
+        if recipient is None:
+            from reach.ai_agent.inbound import capture
 
-        capture(db, connection, data)
-        return
+            capture(db, connection, item)
+            continue
+        _apply_status(recipient, item)
+
+
+def _apply_status(recipient: ReachRecipient, data: dict) -> None:
     raw_status = str(data.get("status") or data.get("state") or "").upper()
     mapped = _STATUS.get(raw_status)
     if mapped is None:
@@ -193,9 +204,17 @@ def _message_id(data: dict) -> str:
     return str(data.get("keyId") or data.get("messageId") or key.get("id") or data.get("id") or "")
 
 
+def _items(data: dict) -> list[dict]:
+    nested = data.get("messages")
+    if isinstance(nested, list):
+        return [item for item in nested if isinstance(item, dict)]
+    return [data]
+
+
 def _text(data: dict) -> str:
-    message = data.get("message") if isinstance(data.get("message"), dict) else {}
-    return str(message.get("conversation") or data.get("text") or data.get("body") or "")
+    from reach.ai_agent.inbound import message_text
+
+    return message_text(data)
 
 
 def _remote_number(data: dict) -> str:

@@ -160,7 +160,9 @@ fn offline_lookup(
             .prepare(
                 "SELECT payload FROM sync_queue
                  WHERE entity_type = 'sale' AND status <> 'rejected'
-                   AND (json_extract(payload, '$.id') = ?1 OR json_extract(payload, '$.client_sale_id') LIKE ?2)
+                   AND (json_extract(payload, '$.id') = ?1
+                     OR upper(COALESCE(json_extract(payload, '$.invoice_number'), '')) = upper(?1)
+                     OR json_extract(payload, '$.client_sale_id') LIKE ?2)
                  LIMIT 2",
             )
             .map_err(|err| err.to_string())?;

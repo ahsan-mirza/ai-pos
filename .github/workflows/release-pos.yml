@@ -91,18 +91,15 @@ jobs:
           path: artifact
 
       - name: Stage installers and manifest
-        env:
-          GH_TOKEN: ${{ github.token }}
         run: |
           version="${GITHUB_REF_NAME#v}"
           mkdir -p "release/$version"
           find artifact -type f \( -name '*.exe' -o -name '*.msi' \) -exec cp {} "release/$version/" \;
-          gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --json body --jq .body > notes.md || true
-          python3 - "release/$version" "$version" notes.md <<'EOF'
+          python3 - "release/$version" "$version" <<'EOF'
           import hashlib, json, pathlib, sys
           from datetime import datetime, timezone
 
-          folder, version, notes_path = pathlib.Path(sys.argv[1]), sys.argv[2], pathlib.Path(sys.argv[3])
+          folder, version = pathlib.Path(sys.argv[1]), sys.argv[2]
           files = [
               {"name": path.name, "sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
               for path in sorted(folder.iterdir())
@@ -110,11 +107,10 @@ jobs:
           ]
           if not files:
               sys.exit("No installers in the build artifact.")
-          notes = notes_path.read_text(encoding="utf-8").strip() if notes_path.exists() else ""
           manifest = {
               "version": version,
               "published_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-              "notes": notes[:2000] or None,
+              "notes": None,
               "files": files,
           }
           (folder / "manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")

@@ -132,7 +132,8 @@ def latest_feed(settings: Settings) -> LatestInstaller:
     release, chosen, _path = latest_windows(settings)
     return LatestInstaller(
         version=release.version,
-        notes=release.notes,
+        # The register writes its own update sentence. Release notes stay off this feed.
+        notes=None,
         pub_date=release.published_at,
         sha256=chosen.sha256,
     )

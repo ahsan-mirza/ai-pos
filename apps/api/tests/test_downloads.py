@@ -85,12 +85,16 @@ def test_latest_installer_downloads_without_a_portal_login(client, downloads):
         downloads,
         "1.4.0",
         {"AI POS_1.4.0_x64-setup.exe": exe},
-        {"files": [{"name": "AI POS_1.4.0_x64-setup.exe", "sha256": hashlib.sha256(exe).hexdigest()}]},
+        {
+            "notes": "**Full Changelog**: https://github.com/example/ai-pos/compare/v0.9.0...v1.4.0",
+            "files": [{"name": "AI POS_1.4.0_x64-setup.exe", "sha256": hashlib.sha256(exe).hexdigest()}],
+        },
     )
     feed = client.get("/api/v1/downloads/latest.json")
     assert feed.status_code == 200
     body = feed.json()
     assert body["version"] == "1.4.0"
+    assert body["notes"] is None
     assert body["sha256"] == hashlib.sha256(exe).hexdigest()
     assert body["path"] == "/api/download/installer/win"
     downloaded = client.get(body["path"])

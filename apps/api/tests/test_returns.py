@@ -20,6 +20,38 @@ STORE_MANAGER_ROLE = "00000000-0000-4000-8000-0000000000a2"
 TAX_BPS = 500
 
 
+def test_return_event_waits_for_commit() -> None:
+    from datetime import datetime
+    from types import SimpleNamespace
+
+    from app.services.returns_service import announce_return
+    from app.websockets.rooms import QUEUE
+
+    sale = SimpleNamespace(
+        id=uuid.uuid4(),
+        invoice_number="MAIN-RE01-000002",
+        client_sale_id="abcdefgh",
+        status="refunded",
+    )
+    record = SimpleNamespace(
+        id=uuid.uuid4(),
+        store_id=uuid.UUID(STORE_ID),
+        credit_note_number="CN-1",
+        total_refund_cents=1500,
+        currency="PKR",
+        created_at=datetime(2026, 11, 5, tzinfo=UTC),
+    )
+    db = SimpleNamespace(info={})
+    announce_return(db, record, sale, quantity=2, provider_refund=True)
+    room, payload = db.info[QUEUE][0]
+    assert payload["type"] == "pos.sale_return.processed"
+    assert payload["original_invoice_number"] == "MAIN-RE01-000002"
+    assert payload["refund_status"] == "pending"
+    assert payload["returned_quantity"] == 2
+    assert payload["event_id"] == str(record.id)
+    assert str(record.store_id) in room
+
+
 def test_status_columns_fit_every_value() -> None:
     # SQLite ignores VARCHAR lengths, so Postgres-only truncation errors would otherwise slip through.
     columns = [

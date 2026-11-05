@@ -1,3 +1,4 @@
+import { BusyButton } from "@ai-pos/ui";
 import { useEffect, useState } from "react";
 import { apiDelete, apiGet, apiPost, apiPut } from "../../../apps/web/src/lib/api";
 import { errorMessage } from "../../../apps/web/src/features/users/api";
@@ -102,6 +103,10 @@ export function AgentPanel() {
   } | null>(null);
   const [error, setError] = useState("");
   const [stats, setStats] = useState<CareStats | null>(null);
+  const [agentJob, setAgentJob] = useState<null | "save" | "toggle">(null);
+  const [faqJob, setFaqJob] = useState(false);
+  const [askJob, setAskJob] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const load = () => {
     apiGet<Agent>("/api/v1/reach/ai/agent").then(setAgent).catch((err) => setError(errorMessage(err, "The agent could not be loaded.")));
@@ -113,23 +118,53 @@ export function AgentPanel() {
 
   if (!agent) return <p className="text-sm text-charcoal/60">{error || "Loading the agent."}</p>;
 
-  const save = () => {
+  const save = async () => {
+    if (agentJob !== null) return;
     setError("");
     const wait = Number(agent.human_wait_seconds || 60);
     if (!Number.isInteger(wait) || wait < 5 || wait > 600) {
       setError("Enter a wait from 5 seconds to 10 minutes.");
       return;
     }
-    apiPut<Agent>("/api/v1/reach/ai/agent", { ...agent, human_wait_seconds: wait, response_priority: agent.response_priority || "human_first" })
-      .then(setAgent)
-      .catch((err) => setError(errorMessage(err, "The agent could not be loaded.")));
+    setAgentJob("save");
+    try {
+      setAgent(
+        await apiPut<Agent>("/api/v1/reach/ai/agent", {
+          ...agent,
+          human_wait_seconds: wait,
+          response_priority: agent.response_priority || "human_first",
+        }),
+      );
+    } catch (err) {
+      setError(errorMessage(err, "The agent settings were not saved."));
+    } finally {
+      setAgentJob(null);
+    }
+  };
+
+  const toggleReplies = async () => {
+    if (agentJob !== null) return;
+    setError("");
+    setAgentJob("toggle");
+    try {
+      setAgent(await apiPost<Agent>(agent.enabled ? "/api/v1/reach/ai/agent/disable" : "/api/v1/reach/ai/agent/enable", {}));
+    } catch (err) {
+      setError(errorMessage(err, "The reply setting was not changed."));
+    } finally {
+      setAgentJob(null);
+    }
   };
 
   return (
     <div className="grid gap-4 lg:grid-cols-2">
       <section className="rounded-card border border-line bg-white p-4">
         <h2 className="text-lg font-semibold">Agent</h2>
-        <p className="mt-1 text-sm text-charcoal/60">Replies stay off until you enable them. Hybrid is the default. Product names and prices come from this store's catalogue. Stock is checked only when the question asks. Refunds are never posted from here.</p>
+        <p className="mt-1 text-sm text-charcoal/60">
+          {agent.enabled
+            ? "Replies are on. Hybrid sends catalogue prices and approved answers after the human wait. An empty FAQ list does not block product answers."
+            : "Replies are off. Enable replies before the assistant can answer WhatsApp messages."}
+          {" "}Product names and prices come from this store's catalogue. Stock is checked only when the question asks. Refunds are never posted from here.
+        </p>
         {stats ? (
           <dl className="mt-3 grid grid-cols-2 gap-2 text-sm">
             <div><dt className="text-charcoal/50">Conversations</dt><dd className="font-semibold">{stats.conversations}</dd></div>
@@ -201,8 +236,18 @@ export function AgentPanel() {
           </label>
         </div>
         <div className="mt-3 flex flex-wrap gap-2">
-          <button type="button" className={button} onClick={save}>Save</button>
-          <button type="button" className={ghost} onClick={() => apiPost<Agent>(agent.enabled ? "/api/v1/reach/ai/agent/disable" : "/api/v1/reach/ai/agent/enable", {}).then(setAgent)}>{agent.enabled ? "Disable replies" : "Enable replies"}</button>
+          <BusyButton tone={button} loading={agentJob === "save"} loadingText="Saving..." disabled={agentJob === "toggle"} onClick={() => void save()}>
+            Save
+          </BusyButton>
+          <BusyButton
+            tone={ghost}
+            loading={agentJob === "toggle"}
+            loadingText={agent.enabled ? "Updating..." : "Enabling..."}
+            disabled={agentJob === "save"}
+            onClick={() => void toggleReplies()}
+          >
+            {agent.enabled ? "Disable replies" : "Enable replies"}
+          </BusyButton>
         </div>
         {error ? <p className="mt-2 text-sm text-red-700">{error}</p> : null}
       </section>
@@ -213,23 +258,50 @@ export function AgentPanel() {
           className="mt-3 grid gap-2"
           onSubmit={(event) => {
             event.preventDefault();
-            apiPost("/api/v1/reach/ai/knowledge", { kind: "faq", title, body }).then(() => {
-              setTitle("");
-              setBody("");
-              load();
-            }).catch((err) => setError(errorMessage(err, "The agent could not be loaded.")));
+            if (faqJob) return;
+            if (title.trim() === "" || body.trim() === "") {
+              setError("Enter a title and an approved answer.");
+              return;
+            }
+            setError("");
+            setFaqJob(true);
+            void apiPost("/api/v1/reach/ai/knowledge", { kind: "faq", title: title.trim(), body: body.trim() })
+              .then(() => {
+                setTitle("");
+                setBody("");
+                load();
+              })
+              .catch((err) => setError(errorMessage(err, "The FAQ was not saved.")))
+              .finally(() => setFaqJob(false));
           }}
         >
           <input className={field} placeholder="Title, such as Opening hours" value={title} onChange={(event) => setTitle(event.target.value)} />
           <textarea className="min-h-24 w-full rounded-xl border border-line px-3 py-2 text-sm" placeholder="Approved text" value={body} onChange={(event) => setBody(event.target.value)} />
-          <button type="submit" className={button}>Add FAQ</button>
+          <BusyButton type="submit" tone={button} loading={faqJob} loadingText="Adding FAQ...">
+            Add FAQ
+          </BusyButton>
         </form>
         <ul className="mt-3 grid gap-2">
           {knowledge.map((item) => (
             <li key={item.id} className="rounded-xl border border-line px-3 py-2 text-sm">
               <div className="flex items-start justify-between gap-2">
                 <span className="font-medium">{item.title}</span>
-                <button type="button" className={ghost} onClick={() => apiDelete(`/api/v1/reach/ai/knowledge/${item.id}`).then(load)}>Delete</button>
+                <BusyButton
+                  tone={ghost}
+                  loading={deletingId === item.id}
+                  loadingText="Deleting..."
+                  disabled={deletingId !== null && deletingId !== item.id}
+                  onClick={() => {
+                    if (deletingId !== null) return;
+                    setDeletingId(item.id);
+                    void apiDelete(`/api/v1/reach/ai/knowledge/${item.id}`)
+                      .then(load)
+                      .catch((err) => setError(errorMessage(err, "The FAQ was not deleted.")))
+                      .finally(() => setDeletingId(null));
+                  }}
+                >
+                  Delete
+                </BusyButton>
               </div>
               <p className="mt-1 whitespace-pre-wrap text-charcoal/70">{item.body}</p>
             </li>
@@ -241,22 +313,31 @@ export function AgentPanel() {
         <p className="mt-1 text-sm text-charcoal/60">This does not send a WhatsApp message.</p>
         <div className="mt-3 flex flex-wrap items-center gap-2">
           <input className={`${field} max-w-lg`} value={trial} onChange={(event) => setTrial(event.target.value)} placeholder="Do you have USB-C Cable?" />
-          <button
-            type="button"
-            className={button}
-            onClick={() =>
-              apiPost<{ reply: string; matches?: { name: string }[]; spelling?: string[]; context?: { format: string; json_chars: number; toon_chars: number; json_tokens: number | null; toon_tokens: number | null; fallback: boolean; valid: boolean } }>("/api/v1/reach/ai/agent/test", { body: trial })
+          <BusyButton
+            tone={button}
+            loading={askJob}
+            loadingText="Thinking..."
+            onClick={() => {
+              if (askJob) return;
+              if (trial.trim() === "") {
+                setError("Enter a question to try.");
+                return;
+              }
+              setError("");
+              setAskJob(true);
+              void apiPost<{ reply: string; matches?: { name: string }[]; spelling?: string[]; context?: { format: string; json_chars: number; toon_chars: number; json_tokens: number | null; toon_tokens: number | null; fallback: boolean; valid: boolean } }>("/api/v1/reach/ai/agent/test", { body: trial })
                 .then((found) => {
                   setAnswer(found.reply);
                   setMatched((found.matches || []).map((item) => item.name));
                   setSpelling(found.spelling || []);
                   setContext(found.context || null);
                 })
-                .catch((err) => setError(errorMessage(err, "The agent could not be loaded.")))
-            }
+                .catch((err) => setError(errorMessage(err, "The question could not be answered.")))
+                .finally(() => setAskJob(false));
+            }}
           >
             Ask
-          </button>
+          </BusyButton>
         </div>
         {answer ? <p className="mt-3 whitespace-pre-wrap text-sm">{answer}</p> : null}
         {matched.length ? (
@@ -287,6 +368,7 @@ export function ConversationsPanel() {
   const [draft, setDraft] = useState("");
   const [note, setNote] = useState("");
   const [error, setError] = useState("");
+  const [job, setJob] = useState<null | "takeover" | "resume" | "resolve" | "reply" | "note">(null);
 
   const refresh = () => {
     apiGet<Conversation[]>("/api/v1/reach/ai/conversations").then(setRows).catch((err) => setError(errorMessage(err, "The agent could not be loaded.")));
@@ -320,9 +402,30 @@ export function ConversationsPanel() {
               <p className="mb-2 text-xs text-charcoal/50">{detail.events.map((item) => item.kind.split("_").join(" ")).join(" · ")}</p>
             ) : null}
             <div className="mb-3 flex flex-wrap gap-2">
-              <button type="button" className={ghost} onClick={() => apiPost(`/api/v1/reach/ai/conversations/${detail.conversation.id}/takeover`, {}).then(() => setSelected(detail.conversation.id))}>Take over</button>
-              <button type="button" className={ghost} onClick={() => apiPost(`/api/v1/reach/ai/conversations/${detail.conversation.id}/resume`, {}).then(refresh)}>Resume AI</button>
-              <button type="button" className={ghost} onClick={() => apiPost(`/api/v1/reach/ai/conversations/${detail.conversation.id}/resolve`, {}).then(refresh)}>Resolve</button>
+              <BusyButton tone={ghost} loading={job === "takeover"} loadingText="Updating..." disabled={job !== null && job !== "takeover"} onClick={() => {
+                if (job) return;
+                setJob("takeover");
+                void apiPost(`/api/v1/reach/ai/conversations/${detail.conversation.id}/takeover`, {})
+                  .then(() => apiGet<Detail>(`/api/v1/reach/ai/conversations/${detail.conversation.id}`).then(setDetail))
+                  .catch((err) => setError(errorMessage(err, "The conversation was not updated.")))
+                  .finally(() => setJob(null));
+              }}>Take over</BusyButton>
+              <BusyButton tone={ghost} loading={job === "resume"} loadingText="Updating..." disabled={job !== null && job !== "resume"} onClick={() => {
+                if (job) return;
+                setJob("resume");
+                void apiPost(`/api/v1/reach/ai/conversations/${detail.conversation.id}/resume`, {})
+                  .then(() => apiGet<Detail>(`/api/v1/reach/ai/conversations/${detail.conversation.id}`).then((next) => { setDetail(next); refresh(); }))
+                  .catch((err) => setError(errorMessage(err, "The conversation was not updated.")))
+                  .finally(() => setJob(null));
+              }}>Resume AI</BusyButton>
+              <BusyButton tone={ghost} loading={job === "resolve"} loadingText="Updating..." disabled={job !== null && job !== "resolve"} onClick={() => {
+                if (job) return;
+                setJob("resolve");
+                void apiPost(`/api/v1/reach/ai/conversations/${detail.conversation.id}/resolve`, {})
+                  .then(() => apiGet<Detail>(`/api/v1/reach/ai/conversations/${detail.conversation.id}`).then((next) => { setDetail(next); refresh(); }))
+                  .catch((err) => setError(errorMessage(err, "The conversation was not updated.")))
+                  .finally(() => setJob(null));
+              }}>Resolve</BusyButton>
             </div>
             <ol className="grid max-h-[24rem] gap-2 overflow-y-auto">
               {detail.messages.map((message) => (
@@ -334,13 +437,15 @@ export function ConversationsPanel() {
             </ol>
             <form className="mt-3 flex flex-wrap gap-2" onSubmit={(event) => {
               event.preventDefault();
-              apiPost(`/api/v1/reach/ai/conversations/${detail.conversation.id}/reply`, { body: draft }).then(() => {
+              if (job || draft.trim() === "") return;
+              setJob("reply");
+              void apiPost(`/api/v1/reach/ai/conversations/${detail.conversation.id}/reply`, { body: draft }).then(() => {
                 setDraft("");
-                apiGet<Detail>(`/api/v1/reach/ai/conversations/${detail.conversation.id}`).then(setDetail);
-              }).catch((err) => setError(errorMessage(err, "The agent could not be loaded.")));
+                return apiGet<Detail>(`/api/v1/reach/ai/conversations/${detail.conversation.id}`).then(setDetail);
+              }).catch((err) => setError(errorMessage(err, "The reply was not sent."))).finally(() => setJob(null));
             }}>
               <input className={`${field} max-w-lg`} value={draft} onChange={(event) => setDraft(event.target.value)} placeholder="Reply as staff" />
-              <button type="submit" className={button}>Send</button>
+              <BusyButton type="submit" tone={button} loading={job === "reply"} loadingText="Sending..." disabled={job !== null && job !== "reply"}>Send</BusyButton>
             </form>
           </>
         )}
@@ -357,13 +462,15 @@ export function ConversationsPanel() {
             <p>Priority: {detail.conversation.priority}</p>
             <form className="mt-3 grid gap-2" onSubmit={(event) => {
               event.preventDefault();
-              apiPost(`/api/v1/reach/ai/conversations/${detail.conversation.id}/notes`, { body: note }).then(() => {
+              if (job || note.trim() === "") return;
+              setJob("note");
+              void apiPost(`/api/v1/reach/ai/conversations/${detail.conversation.id}/notes`, { body: note }).then(() => {
                 setNote("");
-                apiGet<Detail>(`/api/v1/reach/ai/conversations/${detail.conversation.id}`).then(setDetail);
-              });
+                return apiGet<Detail>(`/api/v1/reach/ai/conversations/${detail.conversation.id}`).then(setDetail);
+              }).catch((err) => setError(errorMessage(err, "The note was not saved."))).finally(() => setJob(null));
             }}>
               <textarea className="min-h-20 w-full rounded-xl border border-line px-3 py-2 text-sm" value={note} onChange={(event) => setNote(event.target.value)} placeholder="Internal note" />
-              <button type="submit" className={ghost}>Add note</button>
+              <BusyButton type="submit" tone={ghost} loading={job === "note"} loadingText="Saving..." disabled={job !== null && job !== "note"}>Add note</BusyButton>
             </form>
           </>
         )}
@@ -375,6 +482,7 @@ export function ConversationsPanel() {
 export function ActionsPanel() {
   const [rows, setRows] = useState<CareAction[]>([]);
   const [error, setError] = useState("");
+  const [pending, setPending] = useState<string | null>(null);
   const load = () => apiGet<CareAction[]>("/api/v1/reach/ai/actions").then(setRows).catch((err) => setError(errorMessage(err, "The agent could not be loaded.")));
   useEffect(() => { load(); }, []);
   return (
@@ -392,9 +500,30 @@ export function ActionsPanel() {
             <p className="mt-1 whitespace-pre-wrap text-charcoal/70">{row.details}</p>
             {row.result ? <p className="mt-1">{row.result}</p> : null}
             <div className="mt-2 flex flex-wrap gap-2">
-              <button type="button" className={ghost} onClick={() => apiPost(`/api/v1/reach/ai/actions/${row.id}/approve`, {}).then(load)}>Approve</button>
-              <button type="button" className={ghost} onClick={() => apiPost(`/api/v1/reach/ai/actions/${row.id}/reject`, {}).then(load)}>Reject</button>
-              <button type="button" className={button} onClick={() => apiPost(`/api/v1/reach/ai/actions/${row.id}/execute`, {}).then(load).catch((err) => setError(errorMessage(err, "The agent could not be loaded.")))}>Complete</button>
+              {(["approve", "reject", "execute"] as const).map((verb) => {
+                const key = `${row.id}:${verb}`;
+                const label = verb === "approve" ? "Approve" : verb === "reject" ? "Reject" : "Complete";
+                const progress = verb === "execute" ? "Completing..." : verb === "approve" ? "Approving..." : "Rejecting...";
+                return (
+                  <BusyButton
+                    key={verb}
+                    tone={verb === "execute" ? button : ghost}
+                    loading={pending === key}
+                    loadingText={progress}
+                    disabled={pending !== null && pending !== key}
+                    onClick={() => {
+                      if (pending) return;
+                      setPending(key);
+                      void apiPost(`/api/v1/reach/ai/actions/${row.id}/${verb}`, {})
+                        .then(load)
+                        .catch((err) => setError(errorMessage(err, "The action was not updated.")))
+                        .finally(() => setPending(null));
+                    }}
+                  >
+                    {label}
+                  </BusyButton>
+                );
+              })}
             </div>
           </li>
         ))}

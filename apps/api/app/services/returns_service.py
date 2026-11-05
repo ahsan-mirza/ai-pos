@@ -572,6 +572,32 @@ def apply_return(db: Session, settings: Settings, payload: dict[str, object]) ->
     return data.id
 
 
+def announce_return(db: Session, record: SaleReturn, sale: Sale, *, quantity: int, provider_refund: bool) -> None:
+    """Queue the store-room event. It is sent only after this session commits."""
+    from app.websockets import rooms
+
+    processed = record.created_at
+    rooms.queue(
+        db,
+        rooms.pos_terminals_room(record.store_id),
+        {
+            "type": "pos.sale_return.processed",
+            "event_id": str(record.id),
+            "store_id": str(record.store_id),
+            "original_sale_id": str(sale.id),
+            "original_invoice_number": _invoice(sale),
+            "return_id": str(record.id),
+            "return_number": record.credit_note_number,
+            "refund_status": "pending" if provider_refund else "completed",
+            "sale_status": sale.status,
+            "returned_quantity": quantity,
+            "refund_amount_cents": record.total_refund_cents,
+            "currency": record.currency,
+            "processed_at": processed.isoformat() if processed is not None else None,
+        },
+    )
+
+
 # --- Reads ---------------------------------------------------------------------------------------
 
 

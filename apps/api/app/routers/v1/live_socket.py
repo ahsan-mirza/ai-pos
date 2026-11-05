@@ -21,7 +21,7 @@ from app.websockets import rooms
 
 router = APIRouter()
 
-_ROLES = {"kds", "pos", "customer-display"}
+_ROLES = {"kds", "pos", "customer-display", "portal"}
 _STATUS_ALIASES = {"START": "PREPARING", "PREPARING": "PREPARING", "READY": "READY", "BUMPED": "BUMPED"}
 _CART_LIMIT = 65_536
 
@@ -98,6 +98,20 @@ async def live_events(websocket: WebSocket) -> None:
             if station is not None:
                 notify_room = rooms.pos_terminals_room(station.store_id)
             room = rooms.kitchen_room(station_id)
+        elif role == "portal":
+            try:
+                store_id = uuid.UUID(websocket.query_params.get("store_id") or "")
+            except ValueError:
+                await websocket.close(code=1008)
+                return
+            if principal.kind != "user" or Permission.PORTAL_REPORTS_READ.value not in principal.permissions:
+                await websocket.close(code=1008)
+                return
+            if principal.store_id is not None and principal.store_id != store_id:
+                await websocket.close(code=1008)
+                return
+            room = rooms.pos_terminals_room(store_id)
+            notify_room = ""
         else:
             try:
                 terminal_id = uuid.UUID(websocket.query_params.get("terminal_id") or "")
@@ -119,6 +133,8 @@ async def live_events(websocket: WebSocket) -> None:
 
     await websocket.accept()
     await rooms.join(websocket, room)
+    if role == "pos" and notify_room:
+        await rooms.join(websocket, notify_room)
     if notify_room:
         rooms.publish(notify_room, {"type": "peripherals:changed"})
     if role == "customer-display" and terminal_id is not None:

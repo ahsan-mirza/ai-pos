@@ -1,5 +1,5 @@
 import { formatMoney, type MessageChannel } from "@ai-pos/shared-types";
-import { useLocale } from "@ai-pos/ui";
+import { BusyButton, useLocale } from "@ai-pos/ui";
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { useSearchParams } from "react-router-dom";
 import { ErrorNote, PrimaryButton, TextField } from "../../../apps/web/src/components/ui/Field";
@@ -646,14 +646,16 @@ function ConnectionsPanel({
         {row?.last_error ? <p className="text-sm text-rose-700">{t(row.last_error)}</p> : null}
         {timedOut && !open ? <p className="text-sm text-charcoal/70">{t("The connection check timed out. Refresh the QR and scan again.")}</p> : null}
         <div className="flex flex-wrap gap-2">
-          <button
+          <BusyButton
             type="button"
-            disabled={busy || serviceDown}
+            loading={busy}
+            loadingText={open ? t("Checking connection...") : t("Connecting...")}
+            disabled={serviceDown}
             onClick={() => (open && row ? void onStatus(row.id) : onConnect(row?.id ?? null))}
-            className="inline-flex h-[38px] items-center justify-center rounded-full bg-accent px-4 text-sm font-medium text-white disabled:opacity-40"
+            tone="h-[38px] rounded-full bg-accent px-4 text-sm font-medium text-white disabled:opacity-40"
           >
-            {busy ? t("Working…") : open ? t("Check connection") : qr ? t("Refresh QR") : t("Connect WhatsApp")}
-          </button>
+            {open ? t("Check connection") : qr ? t("Refresh QR") : t("Connect WhatsApp")}
+          </BusyButton>
           {row ? (
             <button type="button" disabled={busy} onClick={() => void onStatus(row.id)} className="inline-flex h-[38px] items-center justify-center rounded-full border border-line px-4 text-sm font-medium disabled:opacity-40">
               {t("Refresh status")}
@@ -1028,10 +1030,12 @@ function CampaignsPanel({
             </button>
           ) : null}
           <PrimaryButton
-            disabled={busy || (step === 1 && name.trim().length < 1) || (step >= 3 && picked.length === 0) || body.trim().length < 2}
+            loading={busy}
+            loadingText={step < 4 ? "Continuing..." : step === 4 ? "Preparing preview..." : "Sending..."}
+            disabled={!busy && ((step === 1 && name.trim().length < 1) || (step >= 3 && picked.length === 0) || body.trim().length < 2)}
             type="submit"
           >
-            {step < 4 ? "Continue" : step === 4 ? "Preview audience" : busy ? "Working…" : fromAi ? "Approve and send" : "Send campaign"}
+            {step < 4 ? "Continue" : step === 4 ? "Preview audience" : fromAi ? "Approve and send" : "Send campaign"}
           </PrimaryButton>
         </div>
       </form>
@@ -1129,7 +1133,7 @@ function TemplatesPanel({
           Body
           <textarea value={body} onChange={(event) => setBody(event.target.value)} rows={4} className="mt-1 w-full rounded-xl bg-surface px-3 py-2 font-normal" />
         </label>
-        <PrimaryButton disabled={busy || name.trim().length < 1 || body.trim().length < 2} type="submit">Save template</PrimaryButton>
+        <PrimaryButton loading={busy} loadingText="Saving..." disabled={!busy && (name.trim().length < 1 || body.trim().length < 2)} type="submit">Save template</PrimaryButton>
       </form>
       {templates.length === 0 ? (
         <p className="rounded-card border border-line bg-white p-4 text-sm text-charcoal/60">No templates saved for this store.</p>

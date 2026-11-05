@@ -46,7 +46,7 @@ export function UpdatePrompt() {
           Version {offer.version} is available
         </h2>
         <p className="mt-2 text-sm text-charcoal/70 dark:text-zinc-300">
-          {offer.notes ?? "Update now? The register installs the new version and restarts. Sales already on this till stay."}
+          Update now? The register installs this version and restarts. Sales already on this till stay.
         </p>
         {percent !== null ? (
           <p className="mt-4 text-sm font-medium tabular-nums">Downloading… {percent}%</p>

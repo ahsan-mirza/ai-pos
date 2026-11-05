@@ -23,6 +23,7 @@ from app.models.customer import Customer
 from app.models.device import Device
 from app.models.product import Product
 from app.models.repair_ticket import RepairEvent, RepairTicket
+from app.models.sale import Sale
 from app.models.sale_return import SaleReturn
 from app.models.store import Store
 from app.models.sync_event import SyncEvent
@@ -42,9 +43,10 @@ from app.services import audit, messaging_service, warranty_service
 from app.services.brand_service import link, resolve_brand
 from app.services.category_service import resolve_by_name
 from app.services.identifiers import identifier_hash, normalize_identifier
+from app.services.integrated_payment_service import CHANNEL_OF_REFUND
 from app.services.inventory import level_for, move_stock
 from app.services.numbering import accept_register_number, next_server_number
-from app.services.returns_service import apply_return
+from app.services.returns_service import announce_return, apply_return
 from app.services.sale_service import record_sale, write_serial
 from app.services.settings_service import business_currency
 from app.services.sync_validation import parse_payload, require_store
@@ -313,6 +315,15 @@ def apply_sale_return(db: Session, settings: Settings, payload: dict[str, object
         from app.services.einvoicing_bridge import note_return
 
         note_return(db, tenant_id=record.tenant_id, return_id=record.id)
+        sale = db.get(Sale, record.original_sale_id)
+        if sale is not None:
+            announce_return(
+                db,
+                record,
+                sale,
+                quantity=sum(line.quantity for line in data.items),
+                provider_refund=any(CHANNEL_OF_REFUND.get(line.method) for line in data.tenders),
+            )
     return return_id
 
 

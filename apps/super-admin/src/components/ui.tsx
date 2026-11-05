@@ -1,75 +1,9 @@
-import { DateInput, actionButtonClass, actionIntentFromNodes, inputLeadingIcon, type ActionIntent } from "@ai-pos/ui";
+import { BusyButton, DateInput, actionButtonClass, actionIntentFromNodes, inputLeadingIcon, type ActionIntent, type BusyButtonProps } from "@ai-pos/ui";
 import { Eye, EyeOff, X } from "lucide-react";
-import { useEffect, useId, useState, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type TextareaHTMLAttributes } from "react";
-
-type SpinnerPosition = "leading" | "trailing";
-
-interface BusyButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
-  loading?: boolean;
-  loadingText?: string;
-  spinnerPosition?: SpinnerPosition;
-}
+import { useEffect, useId, useState, type InputHTMLAttributes, type ReactNode, type TextareaHTMLAttributes } from "react";
 
 const primaryTone =
-  "inline-flex items-center justify-center gap-2 rounded-full bg-accent px-8 py-2.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-accent-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 disabled:hover:bg-accent";
-
-function ButtonSpinner({ active }: { active: boolean }) {
-  if (!active) return <span className="inline-block h-4 w-4 shrink-0" aria-hidden="true" />;
-  return (
-    <span
-      className="inline-block h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-current border-r-transparent motion-reduce:animate-none"
-      aria-hidden="true"
-    />
-  );
-}
-
-function BusyButton({
-  loading = false,
-  loadingText,
-  spinnerPosition = "leading",
-  className = "",
-  disabled,
-  children,
-  onClick,
-  tone,
-  ...props
-}: BusyButtonProps & { tone: string }) {
-  const reserve = loading || loadingText !== undefined;
-  return (
-    <button
-      type="button"
-      {...props}
-      aria-busy={loading || undefined}
-      disabled={Boolean(disabled) || loading}
-      onClick={(event) => {
-        if (loading || disabled) {
-          event.preventDefault();
-          return;
-        }
-        onClick?.(event);
-      }}
-      className={`${tone} ${loading ? "!opacity-100" : "disabled:opacity-40"} ${className}`}
-    >
-      {reserve ? (
-        <span className="inline-grid items-center justify-items-center whitespace-nowrap">
-          <span className={`col-start-1 row-start-1 ${loading ? "invisible" : ""}`} aria-hidden={loading || undefined}>
-            {children}
-          </span>
-          <span
-            className={`col-start-1 row-start-1 inline-flex items-center gap-2 ${loading ? "" : "invisible"}`}
-            aria-hidden={loading ? undefined : true}
-          >
-            {spinnerPosition === "leading" ? <ButtonSpinner active={loading} /> : null}
-            {loadingText ?? children}
-            {spinnerPosition === "trailing" ? <ButtonSpinner active={loading} /> : null}
-          </span>
-        </span>
-      ) : (
-        children
-      )}
-    </button>
-  );
-}
+  "rounded-full bg-accent px-8 py-2.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-accent-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 disabled:opacity-40 disabled:hover:bg-accent";
 
 export function PrimaryButton({ className = "", ...props }: BusyButtonProps) {
   return <BusyButton tone={primaryTone} className={className} {...props} />;
@@ -84,7 +18,7 @@ export function GhostButton({
   const named = typeof props["aria-label"] === "string" ? props["aria-label"] : undefined;
   const resolved = intent ?? actionIntentFromNodes(children, named);
   return (
-    <BusyButton tone={actionButtonClass(resolved)} className={className} {...props}>
+    <BusyButton tone={actionButtonClass(resolved)} className={`${className} disabled:opacity-40`} {...props}>
       {children}
     </BusyButton>
   );

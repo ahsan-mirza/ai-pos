@@ -410,3 +410,52 @@ def test_agent_api_requires_axizreach(client, session) -> None:
     assert denied.json()["error"]["code"] == "addon_required"
     assert run_job(session, get_settings(), "reach_ai_replies") == "ok"
     assert session.scalar(select(func.count()).select_from(ReachAiMessage)) in {None, 0}
+
+
+def test_extended_whatsapp_text_gets_a_catalogue_reply(client, session, monkeypatch) -> None:
+    set_handler(lambda method, path, body: {"instance": {"state": "open"}, "key": {"id": "OUT-EXT"}})
+    settings = get_settings()
+    headers = _ready(client, session, settings)
+    current = client.get("/api/v1/reach/ai/agent", headers=headers).json()
+    current["mode"] = "hybrid"
+    current["response_priority"] = "human_first"
+    current["human_wait_seconds"] = 15
+    saved = client.put("/api/v1/reach/ai/agent", headers=headers, json=current)
+    assert saved.status_code == 200, saved.text
+    assert saved.json()["enabled"] is True
+    session.add(_suit("Cotton Suit Beige Frost", "SUIT-EXT", 640000))
+    session.commit()
+    key = session.scalar(select(ReachConnection.webhook_key))
+    response = client.post(
+        f"/api/v1/reach/webhooks/evolution/{key}",
+        headers={"apikey": "hook-secret"},
+        json={
+            "event": "messages.upsert",
+            "data": {
+                "key": {"remoteJid": "971501110011@s.whatsapp.net", "fromMe": False, "id": "IN-EXT"},
+                "message": {
+                    "extendedTextMessage": {"text": "What is the price of cotton suite beige frost?"},
+                },
+                "messageType": "extendedTextMessage",
+            },
+        },
+    )
+    assert response.status_code == 200, response.text
+    session.expire_all()
+    stored = session.scalar(select(ReachAiMessage).where(ReachAiMessage.provider_message_id == "IN-EXT"))
+    assert stored is not None
+    assert stored.status == "received"
+    assert stored.body == "What is the price of cotton suite beige frost?"
+    assert run_job(session, settings, "reach_ai_replies") == "ok"
+    session.expire_all()
+    queued = select(func.count()).select_from(OutboundMessage).where(OutboundMessage.template_key == "ai_agent")
+    assert session.scalar(queued) == 0
+    _age_pending(session)
+    assert run_job(session, settings, "reach_ai_replies") == "ok"
+    session.expire_all()
+    reply = session.scalar(select(OutboundMessage).where(OutboundMessage.template_key == "ai_agent"))
+    assert reply is not None
+    assert "Cotton Suit Beige Frost" in reply.body
+    assert "6400.00" in reply.body
+    monkeypatch.setattr(settings, "assistant_provider", "builtin")
+    set_handler(None)

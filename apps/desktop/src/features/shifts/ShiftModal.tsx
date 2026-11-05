@@ -181,7 +181,7 @@ export function ShiftModal({ session, onClose }: { session: CashierSession; onCl
           </div>
         ) : null}
 
-        {tab === "sales" && closed === null ? <ShiftSales session={session} currency={currency} onClose={onClose} /> : null}
+        {tab === "sales" && closed === null ? <ShiftSales session={session} currency={currency} /> : null}
 
         {(tab === "x" || closed) && report ? (
           <dl className="mt-5 divide-y divide-line dark:divide-zinc-800 rounded-2xl bg-surface dark:bg-zinc-800/60 px-4 py-2">

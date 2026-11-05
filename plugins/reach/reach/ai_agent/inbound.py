@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import select
@@ -16,18 +17,21 @@ from reach.ai_agent.models import ReachAiConversation, ReachAiEvent, ReachAiMess
 from reach.models import ReachConnection
 
 _STATUS = {"SERVER_ACK", "DELIVERY_ACK", "READ", "PLAYED", "ERROR", "FAILED"}
+logger = logging.getLogger("ai_pos.reach.ai")
 
 
 def capture(db: Session, connection: ReachConnection, data: dict) -> None:
     key = data.get("key") if isinstance(data.get("key"), dict) else {}
+    provider_id = str(data.get("keyId") or data.get("messageId") or key.get("id") or data.get("id") or "")[:120]
     if key.get("fromMe") is True:
         _device_message(db, connection, data)
         return
-    text = _text(data).strip()
+    text = message_text(data).strip()
     raw_status = str(data.get("status") or "").upper()
     if raw_status in _STATUS and not text:
+        logger.info("[AXIZREACH_AI] skipped_status_only message_id=%s", provider_id)
         return
-    provider_id = str(data.get("keyId") or data.get("messageId") or key.get("id") or data.get("id") or "")[:120]
+    logger.info("[AXIZREACH_AI] inbound_received message_id=%s text_chars=%s", provider_id, len(text))
     if not provider_id:
         return
     if db.scalar(select(ReachAiMessage.id).where(ReachAiMessage.provider_message_id == provider_id)):
@@ -78,7 +82,7 @@ def capture(db: Session, connection: ReachConnection, data: dict) -> None:
 
 def _device_message(db: Session, connection: ReachConnection, data: dict) -> None:
     """A fromMe event is human only when it is not an echo of a message this server already queued."""
-    text = _text(data).strip()
+    text = message_text(data).strip()
     raw_status = str(data.get("status") or "").upper()
     if raw_status in _STATUS and not text:
         return
@@ -171,9 +175,45 @@ def _customer(db: Session, phone: str) -> Customer | None:
     return None
 
 
-def _text(data: dict) -> str:
-    message = data.get("message") if isinstance(data.get("message"), dict) else {}
-    return str(message.get("conversation") or data.get("text") or data.get("body") or "")
+def message_text(data: dict) -> str:
+    """Reads the customer text from the shapes Evolution and WhatsApp actually send."""
+    message = _unwrap(data.get("message") if isinstance(data.get("message"), dict) else {})
+    extended = message.get("extendedTextMessage")
+    if isinstance(extended, dict) and extended.get("text"):
+        return str(extended["text"])
+    if message.get("conversation"):
+        return str(message["conversation"])
+    for key in ("imageMessage", "videoMessage", "documentMessage"):
+        media = message.get(key)
+        if isinstance(media, dict) and media.get("caption"):
+            return str(media["caption"])
+    buttons = message.get("buttonsResponseMessage")
+    if isinstance(buttons, dict):
+        chosen = buttons.get("selectedDisplayText") or buttons.get("selectedButtonId")
+        if chosen:
+            return str(chosen)
+    listed = message.get("listResponseMessage")
+    if isinstance(listed, dict):
+        reply = listed.get("singleSelectReply") if isinstance(listed.get("singleSelectReply"), dict) else {}
+        chosen = listed.get("title") or reply.get("selectedRowId")
+        if chosen:
+            return str(chosen)
+    return str(data.get("text") or data.get("body") or "")
+
+
+def _unwrap(message: dict) -> dict:
+    wrappers = (
+        "ephemeralMessage",
+        "viewOnceMessage",
+        "viewOnceMessageV2",
+        "documentWithCaptionMessage",
+        "editedMessage",
+    )
+    for key in wrappers:
+        wrapped = message.get(key)
+        if isinstance(wrapped, dict) and isinstance(wrapped.get("message"), dict):
+            return _unwrap(wrapped["message"])
+    return message
 
 
 def _phone(raw: object) -> str:

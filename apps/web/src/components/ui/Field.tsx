@@ -1,4 +1,4 @@
-import { DateInput, actionButtonClass, actionIntentFromNodes, inputLeadingIcon, type ActionIntent } from "@ai-pos/ui";
+import { BusyButton, DateInput, actionButtonClass, actionIntentFromNodes, inputLeadingIcon, type ActionIntent } from "@ai-pos/ui";
 import { Eye, EyeOff, Search } from "lucide-react";
 import { useId, useState, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type TextareaHTMLAttributes } from "react";
 import { Select, type SelectProps } from "./Select";
@@ -220,15 +220,20 @@ export function FilterSelect<T extends string>({ label, hint, className = "", ..
   );
 }
 
-export function PrimaryButton({ children, ...props }: ButtonHTMLAttributes<HTMLButtonElement>) {
+const primaryTone =
+  "rounded-full bg-accent px-8 py-2.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-accent";
+
+export function PrimaryButton({
+  children,
+  className,
+  loading,
+  loadingText,
+  ...props
+}: ButtonHTMLAttributes<HTMLButtonElement> & { loading?: boolean; loadingText?: string }) {
   return (
-    <button
-      type="button"
-      {...props}
-      className="inline-flex items-center justify-center rounded-full bg-accent px-8 py-2.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-accent"
-    >
+    <BusyButton tone={primaryTone} className={className} loading={loading} loadingText={loadingText} {...props}>
       {children}
-    </button>
+    </BusyButton>
   );
 }
 
@@ -236,14 +241,16 @@ export function GhostButton({
   children,
   className = "",
   intent,
+  loading,
+  loadingText,
   ...props
-}: ButtonHTMLAttributes<HTMLButtonElement> & { intent?: ActionIntent }) {
+}: ButtonHTMLAttributes<HTMLButtonElement> & { intent?: ActionIntent; loading?: boolean; loadingText?: string }) {
   const named = typeof props["aria-label"] === "string" ? props["aria-label"] : undefined;
   const resolved = intent ?? actionIntentFromNodes(children, named);
   return (
-    <button type="button" {...props} className={`${actionButtonClass(resolved)} ${className}`}>
+    <BusyButton tone={actionButtonClass(resolved)} className={className} loading={loading} loadingText={loadingText} {...props}>
       {children}
-    </button>
+    </BusyButton>
   );
 }
 

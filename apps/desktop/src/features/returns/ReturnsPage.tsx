@@ -118,9 +118,11 @@ const toAmount = (cents: number) => (cents / 100).toFixed(2);
 
 interface ReturnsPageProps {
   session: CashierSession;
+  /** Invoice handed over by Shift sales. The page looks this sale up itself. */
+  openingInvoice?: string | null;
 }
 
-export function ReturnsPage({ session }: ReturnsPageProps) {
+export function ReturnsPage({ session, openingInvoice = null }: ReturnsPageProps) {
   const [step, setStep] = useState<Step>("lookup");
   const [code, setCode] = useState("");
   const [notice, setNotice] = useState<string | null>(null);
@@ -231,10 +233,19 @@ export function ReturnsPage({ session }: ReturnsPageProps) {
     [busy],
   );
 
+  const lookupRef = useRef(lookup);
+  lookupRef.current = lookup;
   useEffect(() => {
-    const pending = takeReturnLookup();
-    if (pending) void lookup(pending);
-  }, [lookup]);
+    const pending = (openingInvoice ?? takeReturnLookup() ?? "").trim();
+    if (pending === "") return;
+    void lookupRef.current(pending);
+  }, [openingInvoice]);
+
+  useEffect(() => {
+    const refresh = () => setPulse((value) => value + 1);
+    window.addEventListener("pos-return-processed", refresh);
+    return () => window.removeEventListener("pos-return-processed", refresh);
+  }, []);
 
   const toggleLine = (item: ReceiptItem) => {
     const current = drafts[item.sale_item_id];
@@ -385,6 +396,7 @@ export function ReturnsPage({ session }: ReturnsPageProps) {
         }
         setApproval(null);
         setStep("done");
+        window.dispatchEvent(new CustomEvent("pos-return-processed"));
       } else if (outcome.kind === "rejected") {
         batchRef.current = null;
         setNotice(`Return not recorded: ${outcome.message}`);
