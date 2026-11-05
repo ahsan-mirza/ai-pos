@@ -47,6 +47,8 @@ interface Conversation {
   intent: string;
   last_preview: string;
   fallback_at?: string | null;
+  response_priority?: string | null;
+  human_wait_seconds?: number | null;
 }
 
 interface CareMessage {
@@ -174,6 +176,8 @@ export function AgentPanel() {
           <p className="mt-2 text-xs text-charcoal/60">
             WhatsApp {Object.keys((health.whatsapp as Record<string, number>) || {}).length === 0 ? "not connected" : Object.entries((health.whatsapp as Record<string, number>) || {}).map(([status, count]) => `${status} ${count}`).join(", ")}
             {" · "}LLM {String(health.llm_provider || "unset")}
+            {" · "}priority {String(health.response_priority || "human_first")}
+            {" · "}wait {String(health.human_wait_seconds ?? 60)}s
             {" · "}worker {String((health.worker as { last_status?: string } | undefined)?.last_status || "not run")}
             {" · "}pending {String(health.pending ?? 0)}
             {" · "}queued {String(health.outbound_queued ?? 0)}
@@ -190,7 +194,10 @@ export function AgentPanel() {
           </dl>
         ) : null}
         <div className="mt-3 grid gap-3">
-          <label className="grid gap-1 text-sm">Name<input className={field} value={agent.name} onChange={(event) => setAgent({ ...agent, name: event.target.value })} /></label>
+          <label className="grid gap-1 text-sm">Assistant name
+            <input className={field} value={agent.name} onChange={(event) => setAgent({ ...agent, name: event.target.value })} />
+            <span className="text-xs text-charcoal/60">Used exactly as written. Store assistant means no personal name, so the assistant will not invent one.</span>
+          </label>
           <label className="grid gap-1 text-sm">Greeting<input className={field} value={agent.greeting} onChange={(event) => setAgent({ ...agent, greeting: event.target.value })} /></label>
           <label className="grid gap-1 text-sm">Mode
             <select className={field} value={agent.mode} onChange={(event) => setAgent({ ...agent, mode: event.target.value })}>
@@ -412,15 +419,21 @@ export function ConversationsPanel() {
           <button key={row.id} type="button" className={`block w-full border-b border-line px-3 py-2 text-left text-sm ${selected === row.id ? "bg-accent/10" : ""}`} onClick={() => setSelected(row.id)}>
             <span className="block font-medium">{row.customer_name || row.phone}</span>
             <span className="block truncate text-charcoal/60">{row.last_preview}</span>
-            <span className="text-xs text-charcoal/50">{row.status === "resolved" ? "Resolved" : row.handler === "human" ? "Human handling" : row.status === "waiting_staff" ? "Waiting for staff" : row.status === "waiting_customer" ? "Reply sent" : "AI"}{row.fallback_at ? ` · AI after ${row.fallback_at.slice(11, 16)} UTC` : ""}</span>
+            <span className="text-xs text-charcoal/50">{row.status === "resolved" ? "Resolved" : row.status === "waiting_staff" ? "Waiting for staff" : row.handler === "human" ? "Human handling" : row.status === "waiting_customer" ? "Reply sent" : "AI"}{row.status === "waiting_staff" && row.human_wait_seconds ? ` · AI if no staff reply in ${row.human_wait_seconds}s` : ""}{row.fallback_at ? ` · AI after ${row.fallback_at.slice(11, 16)} UTC` : ""}</span>
           </button>
         ))}
       </aside>
       <section className="rounded-card border border-line bg-white p-3">
         {!detail ? <p className="text-sm text-charcoal/60">Select a conversation.</p> : (
           <>
-            {detail.conversation.handler === "human" ? (
+            {detail.conversation.handler === "human" && detail.conversation.status !== "waiting_staff" ? (
               <p className="mb-2 text-sm text-charcoal/70">AI replies are paused because a staff member is handling this conversation.</p>
+            ) : null}
+            {detail.conversation.status === "waiting_staff" ? (
+              <p className="mb-2 text-sm text-charcoal/70">
+                Staff have {detail.conversation.human_wait_seconds || 60} seconds. If nobody replies, the AI answers
+                {detail.conversation.fallback_at ? ` after ${detail.conversation.fallback_at.slice(11, 16)} UTC` : ""}.
+              </p>
             ) : null}
             {detail.events && detail.events.length ? (
               <p className="mb-2 text-xs text-charcoal/50">{detail.events.map((item) => item.kind.split("_").join(" ")).join(" · ")}</p>
@@ -484,6 +497,8 @@ export function ConversationsPanel() {
             {detail.customer.matched ? <p className="mt-2">Ledger balance: {detail.customer.balance_cents ?? 0} cents</p> : null}
             <p className="mt-2">Intent: {detail.conversation.intent || "—"}</p>
             <p>Priority: {detail.conversation.priority}</p>
+            <p>Response: {(detail.conversation.response_priority || "human_first").split("_").join(" ")}</p>
+            {detail.conversation.status === "waiting_staff" ? <p>AI fallback: {detail.conversation.human_wait_seconds || 60}s</p> : null}
             <form className="mt-3 grid gap-2" onSubmit={(event) => {
               event.preventDefault();
               if (job || note.trim() === "") return;

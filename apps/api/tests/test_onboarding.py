@@ -118,6 +118,26 @@ def test_checklist_tracks_first_wins(client, session) -> None:
     assert next(item for item in after["items"] if item["key"] == "practice")["done"] is True
 
 
+def test_a_finished_verified_checklist_leaves_practice_mode(client, session, monkeypatch) -> None:
+    seed(client)
+    _practice(session)
+    monkeypatch.setattr("app.services.onboarding_service.subscription_gate", lambda _settings: ("active", None))
+    headers, _ = admin(client)
+    row = load_settings(session)
+    row.legal_name = "Downtown"
+    session.commit()
+    assert client.post("/api/v1/onboarding/explore", headers=headers).status_code == 200
+    assert client.post("/api/v1/onboarding/skip", headers=headers, json={"key": "practice"}).status_code == 200
+    finished = client.post("/api/v1/onboarding/skip", headers=headers, json={"key": "team"})
+    assert finished.status_code == 200, finished.text
+    body = finished.json()
+    assert body["next_key"] is None
+    assert body["practice_mode"] is False
+    assert body["live_at"] is not None
+    assert client.get("/api/v1/settings", headers=headers).json()["practice_mode"] is False
+    assert _count(session, Product, Product.is_sample.is_(True)) == 6
+
+
 def test_go_live_wipes_practice_and_restores_stock(client, session) -> None:
     units = seed(client, phone_units=2)
     _practice(session)

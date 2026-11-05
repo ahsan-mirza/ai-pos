@@ -335,6 +335,8 @@ def checklist(db: Session, settings: Settings) -> Checklist:
         ),
     ]
     pending = next((item.key for item in items if not item.done), None)
+    if pending is None and invoice_verified and row.live_at is None:
+        _leave_practice(db, settings, row)
     return Checklist(
         version=ONBOARDING_VERSION,
         practice_mode=row.live_at is None,
@@ -345,6 +347,26 @@ def checklist(db: Session, settings: Settings) -> Checklist:
         next_key=pending,
         items=items,
     )
+
+
+def _leave_practice(db: Session, settings: Settings, row: BusinessSettings) -> None:
+    """A finished, paid checklist ends practice mode. Practice sales and sample items stay until Go live."""
+    row.live_at = datetime.now(UTC)
+    db.commit()
+    if not settings.tenancy_enabled:
+        return
+    from app.tenancy import registry
+    from app.tenancy.context import current_tenant
+    from app.tenancy.models import Tenant
+
+    ref = current_tenant()
+    if ref is None:
+        return
+    with registry.control_session(settings) as control:
+        tenant = control.get(Tenant, uuid.UUID(ref.id))
+        if tenant is not None and tenant.practice_mode:
+            tenant.practice_mode = False
+            control.commit()
 
 
 def mark_explored(db: Session, settings: Settings) -> Checklist:

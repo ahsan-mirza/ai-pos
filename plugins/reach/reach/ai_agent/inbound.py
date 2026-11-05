@@ -14,9 +14,12 @@ from app.models.customer import Customer
 from app.models.messaging import OutboundMessage
 from reach.ai_agent.hold import note_customer_waiting, response_policy, suppress_pending
 from reach.ai_agent.models import ReachAiConversation, ReachAiEvent, ReachAiMessage
+from reach.ai_agent.trace import trace
 from reach.models import ReachConnection
 
 _STATUS = {"SERVER_ACK", "DELIVERY_ACK", "READ", "PLAYED", "ERROR", "FAILED"}
+_RECEIPTS = {"DELIVERY_ACK", "READ", "PLAYED", "ERROR", "FAILED"}
+_RECEIPT_CODES = {3: "DELIVERY_ACK", 4: "READ", 5: "PLAYED"}
 logger = logging.getLogger("ai_pos.reach.ai")
 
 
@@ -27,11 +30,15 @@ def capture(db: Session, connection: ReachConnection, data: dict) -> None:
         _device_message(db, connection, data)
         return
     text = message_text(data).strip()
-    raw_status = str(data.get("status") or "").upper()
+    raw_status = _provider_status(data)
     if raw_status in _STATUS and not text:
         logger.info("[AXIZREACH_AI] skipped_status_only message_id=%s", provider_id)
         return
-    logger.info("[AXIZREACH_AI] inbound_received message_id=%s text_chars=%s", provider_id, len(text))
+    trace(
+        "incoming_message_received",
+        provider_message_id=provider_id,
+        connection_id=connection.id,
+    )
     if not provider_id:
         return
     if db.scalar(select(ReachAiMessage.id).where(ReachAiMessage.provider_message_id == provider_id)):
@@ -47,21 +54,26 @@ def capture(db: Session, connection: ReachConnection, data: dict) -> None:
         name = str(data.get("pushName"))[:120]
     conversation = _conversation(db, connection, phone, customer, name)
     body = text or "A media message arrived. It was not read."
+    message = ReachAiMessage(
+        conversation_id=conversation.id,
+        direction="in",
+        author="customer",
+        body=body[:4000],
+        provider_message_id=provider_id,
+        status="received" if text else "stored",
+    )
     try:
         with db.begin_nested():
-            db.add(
-                ReachAiMessage(
-                    conversation_id=conversation.id,
-                    direction="in",
-                    author="customer",
-                    body=body[:4000],
-                    provider_message_id=provider_id,
-                    status="received" if text else "stored",
-                )
-            )
+            db.add(message)
             db.flush()
     except IntegrityError:
         return
+    trace(
+        "incoming_message_persisted",
+        conversation_id=conversation.id,
+        message_id=message.id,
+        provider_message_id=provider_id,
+    )
     conversation.last_preview = body[:180]
     conversation.last_message_at = utcnow()
     conversation.unread_count += 1
@@ -69,7 +81,14 @@ def capture(db: Session, connection: ReachConnection, data: dict) -> None:
         conversation.status = "open"
         conversation.handler = "ai"
     if text:
-        note_customer_waiting(db, conversation, body, response_policy(db))
+        note_customer_waiting(
+            db,
+            conversation,
+            body,
+            response_policy(db),
+            message_id=message.id,
+            provider_message_id=provider_id,
+        )
     if not text:
         db.add(
             ReachAiEvent(
@@ -83,11 +102,14 @@ def capture(db: Session, connection: ReachConnection, data: dict) -> None:
 def _device_message(db: Session, connection: ReachConnection, data: dict) -> None:
     """A fromMe event is human only when it is not an echo of a message this server already queued."""
     text = message_text(data).strip()
-    raw_status = str(data.get("status") or "").upper()
-    if raw_status in _STATUS and not text:
-        return
+    raw_status = _provider_status(data)
     key = data.get("key") if isinstance(data.get("key"), dict) else {}
     provider_id = str(data.get("keyId") or data.get("messageId") or key.get("id") or data.get("id") or "")[:120]
+    if raw_status in _RECEIPTS:
+        _record_receipt(db, provider_id, raw_status)
+        return
+    if raw_status in _STATUS and not text:
+        return
     if not provider_id:
         return
     if db.scalar(select(ReachAiMessage.id).where(ReachAiMessage.provider_message_id == provider_id)):
@@ -119,8 +141,43 @@ def _device_message(db: Session, connection: ReachConnection, data: dict) -> Non
     conversation.status = "waiting_customer"
     conversation.last_preview = text[:180]
     conversation.last_message_at = utcnow()
-    suppress_pending(db, conversation, conversation.last_message_at)
+    suppress_pending(db, conversation, conversation.last_message_at, reason="staff_device")
     db.add(ReachAiEvent(conversation_id=conversation.id, kind="device_reply", detail=provider_id))
+
+
+def _provider_status(data: dict) -> str:
+    raw_status = str(data.get("status") or "").upper()
+    if raw_status:
+        return raw_status
+    update = data.get("update") if isinstance(data.get("update"), dict) else {}
+    code = update.get("status")
+    try:
+        return _RECEIPT_CODES.get(int(code), "")
+    except (TypeError, ValueError):
+        return ""
+
+
+def _record_receipt(db: Session, provider_id: str, raw_status: str) -> None:
+    """A delivery or read receipt is not a person at the counter. Already-sent messages are not recalled."""
+    if not provider_id:
+        return
+    outbound = db.scalar(select(OutboundMessage).where(OutboundMessage.provider_message_id == provider_id))
+    if outbound is None or outbound.template_key != "ai_agent":
+        return
+    ai_message = db.scalar(select(ReachAiMessage).where(ReachAiMessage.outbound_message_id == outbound.id))
+    if ai_message is not None:
+        evidence = dict(ai_message.evidence or {})
+        evidence["delivery"] = raw_status.lower()
+        ai_message.evidence = evidence
+    delivered = raw_status in {"DELIVERY_ACK", "READ", "PLAYED"}
+    trace(
+        "message_delivered" if delivered else "evolution_send_failed",
+        conversation_id=None if ai_message is None else ai_message.conversation_id,
+        message_id=None if ai_message is None else ai_message.id,
+        provider_message_id=provider_id,
+        outbound_message_id=outbound.id,
+        retry_count=outbound.attempts,
+    )
 
 
 def _mirrors_customer(db: Session, phone: str, text: str) -> bool:

@@ -228,8 +228,21 @@ def dispatch_due(db: Session, settings: Settings, limit: int = 50, template_key:
             continue
         if provider == "evolution" and evolution_sent and settings.reach_send_interval_seconds:
             time.sleep(settings.reach_send_interval_seconds)
+        if message.template_key == "ai_agent":
+            try:
+                from reach.ai_agent.hold import release_if_stale
+            except Exception:  # noqa: BLE001 - a missing plugin must not stop other outbox mail
+                release_if_stale = None
+            if release_if_stale is not None and release_if_stale(db, message):
+                continue
         message.provider = provider
         message.attempts += 1
+        if message.template_key == "ai_agent":
+            logger.info(
+                "[AXIZREACH_AI] stage=outbound_dispatch_started message_id=%s retry_count=%s",
+                message.id,
+                message.attempts,
+            )
         try:
             html_body = None
             if message.channel == "email" and message.body:
@@ -251,6 +264,13 @@ def dispatch_due(db: Session, settings: Settings, limit: int = 50, template_key:
             message.status = "SENT"
             message.sent_at = datetime.now(UTC)
             message.last_error = None
+            if message.template_key == "ai_agent" and provider == "evolution":
+                logger.info(
+                    "[AXIZREACH_AI] stage=evolution_send_accepted message_id=%s provider_message_id=%s retry_count=%s",
+                    message.id,
+                    message.provider_message_id,
+                    message.attempts,
+                )
             record_usage(db, message)
             after_sent(db, message)
             counts["sent"] += 1
@@ -258,6 +278,12 @@ def dispatch_due(db: Session, settings: Settings, limit: int = 50, template_key:
                 evolution_sent += 1
         except ProviderError as exc:
             message.last_error = str(exc)[:500]
+            if message.template_key == "ai_agent":
+                logger.info(
+                    "[AXIZREACH_AI] stage=evolution_send_failed message_id=%s retry_count=%s",
+                    message.id,
+                    message.attempts,
+                )
             if exc.permanent or message.attempts >= MAX_ATTEMPTS:
                 message.status = "FAILED"
                 from app.services.reach_bridge import after_failed

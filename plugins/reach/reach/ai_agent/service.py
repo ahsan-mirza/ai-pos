@@ -6,7 +6,7 @@ import logging
 import time
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import func, select, update
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -28,6 +28,7 @@ from reach.ai_agent.hold import (
     close_wait,
     due,
     latest_staff_at,
+    recover_stuck,
     release_mirrored_takeover,
     reopen_unanswered,
     response_policy,
@@ -58,7 +59,9 @@ from reach.ai_agent.reply import (
     language_of,
     named_product,
     priority_for,
+    resolve_identity,
 )
+from reach.ai_agent.trace import trace
 
 logger = logging.getLogger("axizreach.ai")
 _CATALOGUE = frozenset({"product", "price", "stock", "list"})
@@ -379,9 +382,12 @@ def health(db: Session, settings: Settings) -> dict:
         or 0
     )
     finished = None if job is None or job.last_finished_at is None else job.last_finished_at.isoformat()
+    policy = response_policy(db)
     return {
         "enabled": agent.enabled,
         "mode": agent.mode,
+        "response_priority": policy["response_priority"],
+        "human_wait_seconds": policy["human_wait_seconds"],
         "whatsapp": connections,
         "llm_provider": settings.assistant_provider,
         "worker": {
@@ -424,18 +430,8 @@ def analytics(db: Session) -> dict:
     return {"conversations": conversations, "human_handling": waiting, "actions_waiting": actions, "replies": replies}
 
 
-def _recover_stuck(db: Session) -> None:
-    """A reply that was claimed and never finished is waited on again. The customer message stays."""
-    cutoff = datetime.now(UTC) - timedelta(minutes=2)
-    db.execute(
-        update(ReachAiMessage)
-        .where(ReachAiMessage.status == "preparing", ReachAiMessage.created_at < cutoff)
-        .values(status="received")
-    )
-
-
 def process_pending(db: Session, settings: Settings, limit: int = 20) -> str:
-    _recover_stuck(db)
+    recover_stuck(db)
     _sync_delivery(db)
     agent = agent_row(db)
     if not agent.enabled:
@@ -472,6 +468,14 @@ def process_pending(db: Session, settings: Settings, limit: int = 20) -> str:
                     sent += 1
         except Exception:
             failed += 1
+            newest = batch[-1]
+            trace(
+                "ai_generation_failed",
+                conversation_id=newest.conversation_id,
+                message_id=newest.id,
+                provider_message_id=newest.provider_message_id,
+                suppression_reason="conversation_failed",
+            )
             logger.exception("[AXIZREACH_AI] reply_failed")
     if failed:
         return f"{sent} replies prepared; {failed} conversations failed"
@@ -481,8 +485,10 @@ def process_pending(db: Session, settings: Settings, limit: int = 20) -> str:
 def gather_facts(db: Session, text: str, intent: str, conversation: ReachAiConversation | None = None) -> dict:
     settings_row = db.scalar(select(BusinessSettings).limit(1))
     currency = settings_row.currency if settings_row is not None else ""
+    business_name = (settings_row.legal_name or "").strip() if settings_row is not None else ""
     facts: dict = {
         "currency": currency,
+        "business_name": business_name,
         "products": [],
         "branches": [],
         "hours": None,
@@ -651,6 +657,24 @@ def _reply_to_batch(db: Session, settings: Settings, agent: ReachAiAgent, policy
         for item in batch:
             if staff_has_answered(staff_at, item.created_at):
                 item.status = "stored"
+        trace(
+            "human_response_detected",
+            conversation_id=conversation.id,
+            message_id=newest.id,
+            provider_message_id=newest.provider_message_id,
+            suppression_reason="staff_replied",
+            elapsed_seconds=_elapsed_since(newest.created_at),
+            wait_seconds=wait_seconds(policy),
+        )
+        trace(
+            "ai_reply_suppressed",
+            conversation_id=conversation.id,
+            message_id=newest.id,
+            provider_message_id=newest.provider_message_id,
+            suppression_reason="staff_replied",
+            elapsed_seconds=_elapsed_since(newest.created_at),
+            wait_seconds=wait_seconds(policy),
+        )
         return False
     if conversation.handler != "ai":
         # A person at the phone still has the chat. Leave the customer line received so the
@@ -669,7 +693,34 @@ def _reply_to_batch(db: Session, settings: Settings, agent: ReachAiAgent, policy
         logger.info("[AXIZREACH_AI] idle_fallback")
     if not due(newest.created_at, policy):
         return False
+    elapsed = _elapsed_since(newest.created_at)
+    configured = wait_seconds(policy)
+    trace(
+        "human_wait_expired",
+        conversation_id=conversation.id,
+        message_id=newest.id,
+        provider_message_id=newest.provider_message_id,
+        elapsed_seconds=elapsed,
+        wait_seconds=configured,
+    )
+    trace(
+        "ai_reply_eligible",
+        conversation_id=conversation.id,
+        message_id=newest.id,
+        provider_message_id=newest.provider_message_id,
+        elapsed_seconds=elapsed,
+        wait_seconds=configured,
+    )
     if not claim(db, batch):
+        trace(
+            "ai_reply_suppressed",
+            conversation_id=conversation.id,
+            message_id=newest.id,
+            provider_message_id=newest.provider_message_id,
+            suppression_reason="already_claimed",
+            elapsed_seconds=elapsed,
+            wait_seconds=configured,
+        )
         return False
     for item in batch:
         db.refresh(item)
@@ -706,6 +757,14 @@ def _reply_to_incoming(
         suppress_pending(db, conversation)
         return False
     started = time.monotonic()
+    trace(
+        "ai_generation_started",
+        conversation_id=conversation.id,
+        message_id=incoming.id,
+        provider_message_id=incoming.provider_message_id,
+        elapsed_seconds=_elapsed_since(incoming.created_at),
+        wait_seconds=wait_seconds(response_policy(db)),
+    )
     prior_intent = conversation.intent
     intent, score = intent_of(body)
     if intent == "unknown" and prior_intent == "hours":
@@ -743,6 +802,13 @@ def _reply_to_incoming(
         document,
         customer_text=body,
         history=_recent_history(db, conversation.id, incoming.id),
+    )
+    trace(
+        "ai_generation_completed",
+        conversation_id=conversation.id,
+        message_id=incoming.id,
+        provider_message_id=incoming.provider_message_id,
+        provider=provider,
     )
     category = action_for(intent) if agent.action_detection else None
     if category and not (intent in {"order", "warranty", "repair"} and not agent.order_help):
@@ -833,19 +899,28 @@ def _draft(
     customer_text: str = "",
     history: list[dict] | None = None,
 ) -> tuple[str, str]:
-    template = compose(intent, language, agent.greeting, facts)
+    identity = resolve_identity(agent.name, str((facts or {}).get("business_name") or ""))
+    template = compose(intent, language, agent.greeting, facts, identity)
     # Built-in mode has no model. Ollama is the configured customer-care model.
     if settings.assistant_provider != "ollama":
         return template, "template"
-    turns = care_turns(customer_text or template, language, template, history or [], agent.instructions)
+    turns = care_turns(
+        customer_text or template,
+        language,
+        template,
+        history or [],
+        agent.instructions,
+        identity,
+    )
     try:
         from app.services.assistant_llm import complete
 
         result = complete(settings, turns, [], mode="chat")
     except Exception:
         logger.info("[AXIZREACH_AI] model_unavailable")
+        trace("ai_generation_failed", suppression_reason="model_unavailable", provider=settings.assistant_provider)
         return template, "fallback"
-    accepted = accept_care_reply(str(result.get("content") or ""), template, intent)
+    accepted = accept_care_reply(str(result.get("content") or ""), template, intent, identity)
     if accepted is None:
         logger.info("[AXIZREACH_AI] model_reply_rejected")
         return template, "fallback"
@@ -927,6 +1002,15 @@ def _queue_reply(
     db.add(message)
     conversation.last_preview = text[:180]
     conversation.last_message_at = datetime.now(UTC)
+    if author == "ai":
+        trace(
+            "outbound_message_queued",
+            conversation_id=conversation.id,
+            message_id=message.id,
+            outbound_message_id=outbound.id,
+            retry_count=0,
+            wait_seconds=wait_seconds(response_policy(db)),
+        )
     return message
 
 
@@ -975,10 +1059,17 @@ def _usage(db: Session, conversation_id, kind: str, provider: str, started: floa
     )
 
 
+def _elapsed_since(moment: datetime | None) -> int:
+    if moment is None:
+        return 0
+    return max(int((datetime.now(UTC) - aware(moment)).total_seconds()), 0)
+
+
 def _conversation(row: ReachAiConversation, policy: dict | None = None) -> dict:
     fallback_at = None
-    if policy and row.handler == "ai" and row.status == "waiting_staff" and row.last_message_at is not None:
-        fallback_at = (aware(row.last_message_at) + timedelta(seconds=wait_seconds(policy))).isoformat()
+    seconds = None if policy is None else wait_seconds(policy)
+    if policy and seconds and row.status == "waiting_staff" and row.last_message_at is not None:
+        fallback_at = (aware(row.last_message_at) + timedelta(seconds=seconds)).isoformat()
     return {
         "id": str(row.id),
         "phone": row.phone,
@@ -994,6 +1085,8 @@ def _conversation(row: ReachAiConversation, policy: dict | None = None) -> dict:
         "last_message_at": None if row.last_message_at is None else row.last_message_at.isoformat(),
         "assigned_user_id": None if row.assigned_user_id is None else str(row.assigned_user_id),
         "fallback_at": fallback_at,
+        "response_priority": None if policy is None else policy["response_priority"],
+        "human_wait_seconds": seconds,
     }
 
 

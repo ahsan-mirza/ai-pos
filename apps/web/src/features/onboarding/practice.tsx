@@ -39,13 +39,19 @@ export function PracticeProvider({ children }: { children: ReactNode }) {
     let cancelled = false;
     apiGet<OnboardingChecklist>("/api/v1/onboarding/checklist")
       .then((next) => {
-        if (!cancelled) setChecklist(next);
+        if (cancelled) return;
+        setChecklist(next);
+        if (!next.practice_mode) {
+          apiGet<BusinessSettings>("/api/v1/settings")
+            .then(applySettings)
+            .catch(() => undefined);
+        }
       })
       .catch(() => undefined);
     return () => {
       cancelled = true;
     };
-  }, [practice, canManage, pathname, tick]);
+  }, [practice, canManage, pathname, tick, applySettings]);
 
   useEffect(() => {
     if (!practice) return;

@@ -313,10 +313,12 @@ register(
 
 def _reach_ai(db: Session, settings: Settings) -> str:
     from reach.ai_agent.service import process_pending
+    from reach.ai_agent.trace import trace
 
     prepared = process_pending(db, settings)
     if prepared == "agent is off":
         return prepared
+    trace("outbound_dispatch_started", prepared=prepared)
     counts = messaging_service.dispatch_due(db, settings, template_key="ai_agent")
     logging.getLogger("ai_pos.reach.ai").info(
         "[AXIZREACH_AI] outbox_claimed prepared=%s sent=%s failed=%s",
