@@ -1,6 +1,8 @@
+import logging
+import time
 import uuid
 
-from sqlalchemy import and_, func, or_, select
+from sqlalchemy import and_, event, func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.config import Settings
@@ -15,6 +17,8 @@ from app.models.store import Store
 from app.schemas.payloads import ProductOut, RepairOut, SaleItemOut, SaleOut, SaleTenderOut, StoreOut
 from app.services import fashion_attributes
 from app.services.inventory import products_out
+
+log = logging.getLogger("ai_pos.perf")
 
 
 def _visible(row_store_id: uuid.UUID, scope: uuid.UUID | None) -> bool:
@@ -53,6 +57,53 @@ def list_products(
 ) -> list[ProductOut]:
     """Global catalog with stock at `store_id`, or consolidated across active branches when it is None. Pages in
     (name, id) order: pass the last product's id as `after` for the next page, until a page comes back short."""
+    queries = 0
+
+    def _count_query(*_args: object, **_kwargs: object) -> None:
+        nonlocal queries
+        queries += 1
+
+    connection = db.connection()
+    event.listen(connection, "before_cursor_execute", _count_query)
+    started = time.perf_counter()
+    try:
+        return _list_products(
+            db,
+            limit=limit,
+            store_id=store_id,
+            category_id=category_id,
+            sub_category_id=sub_category_id,
+            brand_id=brand_id,
+            product_model_id=product_model_id,
+            season=season,
+            collection=collection,
+            gender=gender,
+            after=after,
+        )
+    finally:
+        event.remove(connection, "before_cursor_execute", _count_query)
+        log.info(
+            "[POS_API_PERF] endpoint=GET /api/v1/products total_ms=%.1f query_count=%s store_id=%s",
+            (time.perf_counter() - started) * 1000,
+            queries,
+            store_id,
+        )
+
+
+def _list_products(
+    db: Session,
+    *,
+    limit: int,
+    store_id: uuid.UUID | None = None,
+    category_id: uuid.UUID | None = None,
+    sub_category_id: uuid.UUID | None = None,
+    brand_id: uuid.UUID | None = None,
+    product_model_id: uuid.UUID | None = None,
+    season: str | None = None,
+    collection: str | None = None,
+    gender: str | None = None,
+    after: uuid.UUID | None = None,
+) -> list[ProductOut]:
     statement = select(Product).order_by(Product.name, Product.id).limit(limit)
     if after is not None:
         cursor = db.get(Product, after)

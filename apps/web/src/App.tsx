@@ -4,6 +4,7 @@ import { BrowserRouter, Link, Navigate, Route, Routes } from "react-router-dom";
 import { AppShell, PageFrame } from "./components/layout/AppShell";
 import { ConfirmProvider } from "./components/ui/ConfirmDialog";
 import { DashboardPage } from "./features/analytics/DashboardPage";
+import { SalesInsightsPage } from "./features/analytics/SalesInsightsPage";
 import { RentalsPage } from "./features/rentals/RentalsPage";
 import { DeepAnalyticsPage } from "./features/analytics/DeepAnalyticsPage";
 import { EInvoicingPage } from "./features/einvoicing/EInvoicingPage";
@@ -424,6 +425,14 @@ function Portal() {
             element={
               <RequirePermission permission={Permission.PortalReportsRead}>
                 <InsightsPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="sales-insights"
+            element={
+              <RequirePermission permission={Permission.PortalReportsRead}>
+                <SalesInsightsPage />
               </RequirePermission>
             }
           />

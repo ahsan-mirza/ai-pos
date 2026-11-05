@@ -21,3 +21,5 @@ redis>=5,<6
 fakeredis>=2,<3
 langchain-core>=0.3,<2
 langchain-ollama>=0.3,<1
+toon-format>=1.2,<2
+tiktoken>=0.8,<1

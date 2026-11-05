@@ -84,7 +84,7 @@ def list_returns(
 def returns_analytics(
     db: Annotated[Session, Depends(get_db)],
     principal: CanReport,
-    timeframe: Annotated[Literal["all_time", "weekly", "monthly"], Query()] = "all_time",
+    timeframe: Annotated[Literal["all_time", "daily", "weekly", "monthly"], Query()] = "all_time",
     currency: Annotated[str | None, Query(min_length=3, max_length=3)] = None,
 ) -> ReturnsAnalytics:
     code = report_currency(db, currency)

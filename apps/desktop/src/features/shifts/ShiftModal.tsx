@@ -10,9 +10,10 @@ import {
 } from "../../lib/tauri";
 import type { CashierSession } from "../auth/session";
 import { useBusinessCurrency } from "../checkout/currency";
+import { ShiftSales } from "./ShiftSales";
 import { parseAmount, setShift } from "./shift";
 
-type Tab = "x" | "cash" | "close";
+type Tab = "sales" | "x" | "cash" | "close";
 
 const methodLabels: Record<string, string> = {
   cash: "Cash",
@@ -42,7 +43,7 @@ export function ShiftModal({ session, onClose }: { session: CashierSession; onCl
   const currency = useBusinessCurrency();
   const money = (cents: number) => formatMoney(cents, currency);
   const canSeeExpected = session.user.permissions.includes(Permission.PosShiftManage);
-  const [tab, setTab] = useState<Tab>("x");
+  const [tab, setTab] = useState<Tab>("sales");
   const [summary, setSummary] = useState<ShiftSummary | null>(null);
   const [kind, setKind] = useState<"PAY_IN" | "PAY_OUT">("PAY_OUT");
   const [amount, setAmount] = useState("");
@@ -128,7 +129,7 @@ export function ShiftModal({ session, onClose }: { session: CashierSession; onCl
 
   return (
     <div className="modal-backdrop" role="presentation">
-      <div role="dialog" aria-modal="true" aria-labelledby={titleId} className="modal-card max-w-xl">
+      <div role="dialog" aria-modal="true" aria-labelledby={titleId} className={`modal-card ${tab === "sales" ? "max-w-3xl" : "max-w-xl"}`}>
         <div className="flex items-start gap-3">
           <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-charcoal text-white dark:bg-zinc-100 dark:text-zinc-900">
             <Clock size={20} aria-hidden="true" />
@@ -151,12 +152,13 @@ export function ShiftModal({ session, onClose }: { session: CashierSession; onCl
         </div>
 
         {closed === null ? (
-          <div className="mt-5 grid grid-cols-3 gap-1 rounded-full bg-charcoal p-1" role="tablist" aria-label="Shift actions">
+          <div className="mt-5 grid grid-cols-2 gap-1 rounded-full bg-charcoal p-1 sm:grid-cols-4" role="tablist" aria-label="Shift actions">
             {(
               [
+                ["sales", "Sales"],
                 ["x", "X report"],
-                ["cash", "Pay in / out"],
-                ["close", "Close shift"],
+                ["cash", "Cash"],
+                ["close", "Close"],
               ] as const
             ).map(([value, label]) => (
               <button
@@ -178,6 +180,8 @@ export function ShiftModal({ session, onClose }: { session: CashierSession; onCl
             ))}
           </div>
         ) : null}
+
+        {tab === "sales" && closed === null ? <ShiftSales session={session} currency={currency} onClose={onClose} /> : null}
 
         {(tab === "x" || closed) && report ? (
           <dl className="mt-5 divide-y divide-line dark:divide-zinc-800 rounded-2xl bg-surface dark:bg-zinc-800/60 px-4 py-2">

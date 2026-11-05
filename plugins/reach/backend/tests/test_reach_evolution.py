@@ -12,18 +12,26 @@ from app.models.reach import ReachCampaign, ReachConnection, ReachCreditAccount,
 from app.services.messaging_providers import ProviderError
 from app.tenancy.scoping import DEFAULT_TENANT_ID
 from reach import credits as credit_book
-from reach.providers.evolution.client import EvolutionClient, EvolutionError, set_handler
+from reach.providers.evolution.client import EvolutionClient, EvolutionError, evolution_failure_message, set_handler
 from sqlalchemy import select
 from tests.governance_support import platform  # noqa: F401
 from wholesale_support import admin, seed
 
 
+class _Calls(list):
+    def __init__(self) -> None:
+        super().__init__()
+        self.numbers: list[object] = []
+
+
 @pytest.fixture(autouse=True)
 def _fake_evolution():
-    calls: list[tuple[str, str]] = []
+    calls = _Calls()
 
     def handler(method: str, path: str, body: dict | None) -> dict:
         calls.append((method, path))
+        if path.startswith("/message/sendText/") and isinstance(body, dict):
+            calls.numbers.append(body.get("number"))
         if path.startswith("/message/sendText/") and body and body.get("text") == "fail":
             raise ProviderError("Evolution rejected the message.", permanent=True)
         if path.startswith("/message/sendText/") or path.startswith("/message/sendMedia/"):
@@ -71,6 +79,32 @@ def _ready(client, headers: dict[str, str]) -> str:
     )
     assert saved.status_code == 200, saved.text
     return created.json()["id"]
+
+
+def test_whatsapp_failures_are_explained_without_the_http_status() -> None:
+    missing = {"response": {"message": [{"exists": False, "number": "03104433311"}]}}
+    assert evolution_failure_message(400, missing) == (
+        "That number is not on WhatsApp. Check the country code and try again."
+    )
+    closed = {"response": {"message": "Connection Closed"}}
+    assert "Scan the QR code" in evolution_failure_message(400, closed)
+    assert "HTTP" not in evolution_failure_message(400, {})
+    assert "400" not in evolution_failure_message(400, {})
+
+
+def test_a_local_test_number_is_sent_with_the_connected_country_code(client, _fake_evolution) -> None:
+    seed(client)
+    headers, _ = admin(client)
+    _enable(client, headers)
+    _ready(client, headers)
+    sent = client.post(
+        "/api/v1/messaging/test",
+        headers=headers,
+        json={"channel": "whatsapp", "to": "0501234567"},
+    )
+    assert sent.status_code == 200, sent.text
+    assert sent.json()["status"] == "SENT"
+    assert _fake_evolution.numbers == ["971501234567"]
 
 
 def test_cross_tenant_campaign_and_credits_stay_hidden(client, session) -> None:

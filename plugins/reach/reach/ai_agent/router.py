@@ -32,6 +32,9 @@ class AgentWrite(BaseModel):
     order_help: bool | None = None
     action_detection: bool | None = None
     handoff: bool | None = None
+    response_priority: str | None = None
+    human_wait_seconds: int | None = None
+    notify_staff: bool | None = None
 
 
 class KnowledgeWrite(BaseModel):
@@ -51,7 +54,7 @@ class AssignWrite(BaseModel):
 @router.get("/agent")
 def read_agent(db: Db, _: CanManage) -> dict:
     service.require_reach(db)
-    return service.present_agent(service.agent_row(db))
+    return service.present_agent(db, service.agent_row(db))
 
 
 @router.put("/agent")

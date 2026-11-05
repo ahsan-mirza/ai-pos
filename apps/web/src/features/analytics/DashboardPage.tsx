@@ -17,6 +17,7 @@ export function DashboardPage() {
   const { t } = useLocale();
   const options = [
     { value: AnalyticsTimeframe.AllTime, label: t("All time") },
+    { value: AnalyticsTimeframe.Daily, label: t("Daily") },
     { value: AnalyticsTimeframe.Weekly, label: t("Weekly") },
     { value: AnalyticsTimeframe.Monthly, label: t("Monthly") },
   ] as const;

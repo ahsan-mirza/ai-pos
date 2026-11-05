@@ -1,7 +1,7 @@
 import pytest
 
 from app.core.errors import field_error_map
-from app.services.phone_numbers import normalize_phone, search_terms
+from app.services.phone_numbers import normalize_phone, search_terms, whatsapp_destination
 
 
 def test_uae_national_leading_zero_becomes_e164() -> None:
@@ -36,6 +36,16 @@ def test_legacy_spaced_number_normalizes_and_search_still_matches() -> None:
     assert stored == "+971501234567"
     assert "+971501234567" in search_terms("0501234567")
     assert "501234567" in search_terms("0501234567")
+
+
+def test_a_local_number_uses_the_connected_whatsapp_country() -> None:
+    assert whatsapp_destination("03104433311", "923244444026") == "923104433311"
+    assert whatsapp_destination("923104433311", "923244444026") == "923104433311"
+    assert whatsapp_destination("+971501234567", "923244444026") == "971501234567"
+    assert whatsapp_destination("971501234567", "923244444026") == "971501234567"
+    assert whatsapp_destination("0501234567", "971500000111") == "971501234567"
+    with pytest.raises(ValueError, match="country code"):
+        whatsapp_destination("03104433311", None)
 
 
 def test_validation_errors_keep_a_field_map() -> None:

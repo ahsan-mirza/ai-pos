@@ -61,7 +61,7 @@ RepairStatus = Literal[
     "intake", "diagnosing", "awaiting_approval", "in_repair", "waiting_parts", "ready", "closed", "cancelled"
 ]
 RepairPriority = Literal["LOW", "NORMAL", "HIGH", "URGENT"]
-AnalyticsTimeframe = Literal["all_time", "weekly", "monthly"]
+AnalyticsTimeframe = Literal["all_time", "daily", "weekly", "monthly"]
 
 
 def _currency(value: str) -> str:

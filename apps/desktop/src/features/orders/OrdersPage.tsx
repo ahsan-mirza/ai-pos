@@ -29,7 +29,7 @@ import { useShell } from "../../components/shell/ShellContext";
 import { ui } from "../../components/shell/tokens";
 import { useCapabilities } from "../../lib/capabilities";
 import type { CashierSession } from "../auth/session";
-import { loadCatalog, seedProducts, useCatalogUpdates } from "../checkout/catalog";
+import { loadCatalog, mergeCatalog, openingCatalog, useCatalogUpdates } from "../checkout/catalog";
 import { activeStore, useBusinessCurrency } from "../checkout/currency";
 import { combosFor, groupsFor, refreshMenu, useMenu } from "../checkout/menu";
 import { ComboBuilderModal } from "../checkout/ComboBuilderModal";
@@ -256,7 +256,7 @@ export function OrdersPage({ session }: { session: CashierSession }) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [offline, setOffline] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
-  const [products, setProducts] = useState<ProductUpsert[]>(seedProducts);
+  const [products, setProducts] = useState<ProductUpsert[]>(() => openingCatalog().products);
   const [query, setQuery] = useState("");
   const [draft, setDraft] = useState<DraftLine[]>([]);
   const [seat, setSeat] = useState<number | null>(null);
@@ -338,7 +338,7 @@ export function OrdersPage({ session }: { session: CashierSession }) {
   }, [refresh, storeId]);
 
   const refreshCatalog = useCallback(() => {
-    void loadCatalog().then((catalog) => setProducts(catalog.products));
+    void loadCatalog().then((catalog) => setProducts((current) => mergeCatalog(current, catalog).products));
   }, []);
   useCatalogUpdates(refreshCatalog);
 

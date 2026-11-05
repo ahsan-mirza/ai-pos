@@ -286,6 +286,11 @@ export function refreshProducts(): Promise<CatalogSnapshot> {
   return invoke<CatalogSnapshot>("refresh_products");
 }
 
+/** Products already stored on this till. Does not call the API. */
+export function cachedProducts(): Promise<ProductUpsert[]> {
+  return invoke<ProductUpsert[]>("cached_products");
+}
+
 /** `updated_at:count` from the API. The register downloads products only when this string changes. */
 export function catalogRevision(): Promise<string> {
   return invoke<string>("catalog_revision");
@@ -423,6 +428,67 @@ export interface ShiftSummary {
   expected_cash_cents: number;
   /** Foreign cash received per currency, in that currency's minor units. */
   foreign_cash?: Record<string, number>;
+}
+
+export interface ShiftSaleLine {
+  id: string;
+  name: string;
+  sku: string;
+  quantity: number;
+  returned_quantity: number;
+  unit_price_cents: number;
+  discount_cents: number;
+  tax_cents: number;
+  line_total_cents: number;
+}
+
+export interface ShiftTender {
+  method: string;
+  amount_cents: number;
+}
+
+export interface ShiftSaleRow {
+  id: string;
+  invoice_number: string;
+  sold_at: string;
+  customer_name: string;
+  item_count: number;
+  quantity: number;
+  returned_quantity: number;
+  gross_cents: number;
+  discount_cents: number;
+  tax_cents: number;
+  total_cents: number;
+  refunded_cents: number;
+  payment: string;
+  status: string;
+  sync_status: string;
+  lines: ShiftSaleLine[];
+  tenders: ShiftTender[];
+}
+
+export interface ShiftReturnRow {
+  id: string;
+  credit_note_number: string;
+  original_sale_id: string;
+  original_invoice: string;
+  processed_at: string;
+  total_refund_cents: number;
+  sync_status: string;
+  item_count: number;
+}
+
+export interface ShiftHistory {
+  sales: ShiftSaleRow[];
+  returns: ShiftReturnRow[];
+}
+
+export function shiftHistory(shiftId?: string): Promise<ShiftHistory> {
+  return invoke<ShiftHistory>("shift_history", { shiftId: shiftId ?? null });
+}
+
+export function recentShifts(limit = 12): Promise<LocalShift[]> {
+  return invoke<LocalShift[]>("recent_shifts", { limit });
 }
 
 export type CashMovementKind = "PAY_IN" | "PAY_OUT" | "CASH_DROP" | "NO_SALE";

@@ -160,7 +160,7 @@ export const navGroups: NavGroup[] = [
     items: [
       { to: portalHomePath(), label: "Dashboard", icon: LayoutDashboard, permission: Permission.PortalReportsRead, isActive: (path) => path === "/" || path === "/dashboard" },
       { to: "/insights", label: "AI insights", icon: Radar, ai: true, permission: Permission.PortalReportsRead, isActive: under("/insights") },
-      { to: "/m", label: "Manager app", icon: Smartphone, permission: Permission.PortalReportsRead, isActive: under("/m") },
+      { to: "/sales-insights", label: "Sales Insights", icon: ChartColumn, permission: Permission.PortalReportsRead, isActive: under("/sales-insights") },
       {
         to: "/inventory",
         label: (ctx) => (profileSpec(ctx.profile).group === "food_beverage" ? "Inventory" : "Inventory & Batches"),
@@ -513,6 +513,7 @@ const singlePages: Record<string, Crumb[]> = {
   "/reports/tips": [{ label: "Finance" }, { label: "Tips & service charge" }],
   "/rentals": [{ label: "Workspace" }, { label: "Rentals" }],
   "/insights": [{ label: "Workspace" }, { label: "AI insights" }],
+  "/sales-insights": [{ label: "Workspace" }, { label: "Sales Insights" }],
   "/assistant": [{ label: "Workspace" }, { label: "AI assistant" }],
   "/account": [{ label: "Your account" }],
   "/users": [{ label: "Administration" }, { label: "Users" }],

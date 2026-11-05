@@ -57,6 +57,48 @@ def normalize_phone(value: str | None, *, required: bool = False) -> str | None:
     raise ValueError("Enter a valid phone number.")
 
 
+def _calling_region(sender: str | None) -> str | None:
+    digits = re.sub(r"\D", "", sender or "")
+    if len(digits) < 8:
+        return None
+    try:
+        parsed = phonenumbers.parse(f"+{digits}", None)
+    except NumberParseException:
+        return None
+    if not phonenumbers.is_possible_number(parsed):
+        return None
+    return phonenumbers.region_code_for_number(parsed)
+
+
+def whatsapp_destination(value: str, sender: str | None = None) -> str:
+    """Digits Evolution will accept. A national number uses the connected line's country.
+
+    `03104433311` on a Pakistan line (`923…`) becomes `923104433311`. A number that already
+    carries a country code is left in that country, even when it was typed without a plus.
+    """
+    compact = re.sub(r"[\s().-]", "", (value or "").strip())
+    if compact.startswith("00"):
+        compact = f"+{compact[2:]}"
+    if compact == "" or compact == "+":
+        raise ValueError("Enter a WhatsApp number.")
+    attempts: list[tuple[str, str | None]] = []
+    if compact.startswith("+"):
+        attempts.append((compact, None))
+    else:
+        region = _calling_region(sender)
+        if region is not None:
+            attempts.append((compact, region))
+        attempts.append((f"+{re.sub(r'\D', '', compact)}", None))
+    for number, region in attempts:
+        try:
+            parsed = phonenumbers.parse(number, region)
+        except NumberParseException:
+            continue
+        if phonenumbers.is_valid_number(parsed):
+            return phonenumbers.format_number(parsed, PhoneNumberFormat.E164).removeprefix("+")
+    raise ValueError("Enter the WhatsApp number with its country code, for example +923104433311.")
+
+
 def optional_email(value: str | None) -> str | None:
     if value is None:
         return None

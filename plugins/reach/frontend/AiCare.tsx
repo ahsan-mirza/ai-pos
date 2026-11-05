@@ -18,6 +18,10 @@ interface Agent {
   order_help: boolean;
   action_detection: boolean;
   handoff: boolean;
+  response_priority?: string;
+  human_wait_seconds?: number;
+  notify_staff?: boolean;
+  fallback_at?: string | null;
 }
 
 interface Knowledge {
@@ -38,6 +42,7 @@ interface Conversation {
   language: string;
   intent: string;
   last_preview: string;
+  fallback_at?: string | null;
 }
 
 interface CareMessage {
@@ -74,6 +79,7 @@ interface Detail {
   customer: { matched: boolean; name?: string; phone?: string; balance_cents?: number; purchase_total_cents?: number };
   messages: CareMessage[];
   actions: CareAction[];
+  events?: { kind: string; detail: string; created_at: string }[];
 }
 
 export function AgentPanel() {
@@ -83,6 +89,17 @@ export function AgentPanel() {
   const [body, setBody] = useState("");
   const [trial, setTrial] = useState("");
   const [answer, setAnswer] = useState("");
+  const [matched, setMatched] = useState<string[]>([]);
+  const [spelling, setSpelling] = useState<string[]>([]);
+  const [context, setContext] = useState<{
+    format: string;
+    json_chars: number;
+    toon_chars: number;
+    json_tokens: number | null;
+    toon_tokens: number | null;
+    fallback: boolean;
+    valid: boolean;
+  } | null>(null);
   const [error, setError] = useState("");
   const [stats, setStats] = useState<CareStats | null>(null);
 
@@ -98,7 +115,12 @@ export function AgentPanel() {
 
   const save = () => {
     setError("");
-    apiPut<Agent>("/api/v1/reach/ai/agent", agent)
+    const wait = Number(agent.human_wait_seconds || 60);
+    if (!Number.isInteger(wait) || wait < 5 || wait > 600) {
+      setError("Enter a wait from 5 seconds to 10 minutes.");
+      return;
+    }
+    apiPut<Agent>("/api/v1/reach/ai/agent", { ...agent, human_wait_seconds: wait, response_priority: agent.response_priority || "human_first" })
       .then(setAgent)
       .catch((err) => setError(errorMessage(err, "The agent could not be loaded.")));
   };
@@ -107,7 +129,7 @@ export function AgentPanel() {
     <div className="grid gap-4 lg:grid-cols-2">
       <section className="rounded-card border border-line bg-white p-4">
         <h2 className="text-lg font-semibold">Agent</h2>
-        <p className="mt-1 text-sm text-charcoal/60">Replies stay off until you enable them. Hybrid is the default. Refunds are never posted from here.</p>
+        <p className="mt-1 text-sm text-charcoal/60">Replies stay off until you enable them. Hybrid is the default. Product names and prices come from this store's catalogue. Stock is checked only when the question asks. Refunds are never posted from here.</p>
         {stats ? (
           <dl className="mt-3 grid grid-cols-2 gap-2 text-sm">
             <div><dt className="text-charcoal/50">Conversations</dt><dd className="font-semibold">{stats.conversations}</dd></div>
@@ -132,6 +154,50 @@ export function AgentPanel() {
               <option value="en">English</option>
               <option value="ar">Arabic</option>
             </select>
+          </label>
+          <label className="grid gap-1 text-sm">Response priority
+            <select className={field} value={agent.response_priority || "human_first"} onChange={(event) => setAgent({ ...agent, response_priority: event.target.value })}>
+              <option value="human_first">Human first, AI fallback</option>
+              <option value="ai_first">AI first, staff can take over</option>
+              <option value="human_only">Human only</option>
+              <option value="ai_only">AI only</option>
+            </select>
+            <span className="text-xs text-charcoal/60">
+              {agent.response_priority === "human_only"
+                ? "Only staff replies are sent. The AI will not answer."
+                : agent.response_priority === "ai_only"
+                  ? "The AI answers on the next check. Staff can still take over a conversation."
+                  : agent.response_priority === "ai_first"
+                    ? "The AI answers first. Staff can take over and pause it."
+                    : `Customers wait ${agent.human_wait_seconds || 60} seconds for a staff reply. If nobody responds, the AI answers from the store catalogue.`}
+            </span>
+          </label>
+          <label className="grid gap-1 text-sm">Wait for a human
+            <select
+              className={field}
+              value={[15, 30, 60, 120, 300, 600].includes(agent.human_wait_seconds || 60) ? String(agent.human_wait_seconds || 60) : "custom"}
+              onChange={(event) => {
+                if (event.target.value !== "custom") setAgent({ ...agent, human_wait_seconds: Number(event.target.value) });
+                else setAgent({ ...agent, human_wait_seconds: 45 });
+              }}
+            >
+              <option value="15">15 seconds</option>
+              <option value="30">30 seconds</option>
+              <option value="60">60 seconds</option>
+              <option value="120">2 minutes</option>
+              <option value="300">5 minutes</option>
+              <option value="600">10 minutes</option>
+              <option value="custom">Custom</option>
+            </select>
+            {![15, 30, 60, 120, 300, 600].includes(agent.human_wait_seconds || 60) ? (
+              <input
+                className={field}
+                inputMode="numeric"
+                value={agent.human_wait_seconds ?? ""}
+                onChange={(event) => setAgent({ ...agent, human_wait_seconds: Number(event.target.value) })}
+              />
+            ) : null}
+            <span className="text-xs text-charcoal/60">From 5 seconds to 10 minutes. The checker runs about every 15 seconds.</span>
           </label>
         </div>
         <div className="mt-3 flex flex-wrap gap-2">
@@ -175,9 +241,40 @@ export function AgentPanel() {
         <p className="mt-1 text-sm text-charcoal/60">This does not send a WhatsApp message.</p>
         <div className="mt-3 flex flex-wrap items-center gap-2">
           <input className={`${field} max-w-lg`} value={trial} onChange={(event) => setTrial(event.target.value)} placeholder="Do you have USB-C Cable?" />
-          <button type="button" className={button} onClick={() => apiPost<{ reply: string }>("/api/v1/reach/ai/agent/test", { body: trial }).then((found) => setAnswer(found.reply)).catch((err) => setError(errorMessage(err, "The agent could not be loaded.")))}>Ask</button>
+          <button
+            type="button"
+            className={button}
+            onClick={() =>
+              apiPost<{ reply: string; matches?: { name: string }[]; spelling?: string[]; context?: { format: string; json_chars: number; toon_chars: number; json_tokens: number | null; toon_tokens: number | null; fallback: boolean; valid: boolean } }>("/api/v1/reach/ai/agent/test", { body: trial })
+                .then((found) => {
+                  setAnswer(found.reply);
+                  setMatched((found.matches || []).map((item) => item.name));
+                  setSpelling(found.spelling || []);
+                  setContext(found.context || null);
+                })
+                .catch((err) => setError(errorMessage(err, "The agent could not be loaded.")))
+            }
+          >
+            Ask
+          </button>
         </div>
         {answer ? <p className="mt-3 whitespace-pre-wrap text-sm">{answer}</p> : null}
+        {matched.length ? (
+          <p className="mt-2 text-sm text-charcoal/70">Matched catalogue product: {matched.join(", ")}</p>
+        ) : null}
+        {spelling.length ? (
+          <p className="mt-1 text-sm text-charcoal/70">Spelling adjusted: {spelling.join(", ")}</p>
+        ) : null}
+        {context ? (
+          <p className="mt-1 text-xs text-charcoal/50">
+            Context {context.format}
+            {context.fallback ? ", JSON kept" : ""}
+            {context.valid ? ", valid" : ", invalid"}
+            {context.json_tokens != null && context.toon_tokens != null
+              ? `, ${context.json_tokens} JSON tokens, ${context.toon_tokens} TOON tokens`
+              : `, ${context.json_chars} JSON characters, ${context.toon_chars} TOON characters`}
+          </p>
+        ) : null}
       </section>
     </div>
   );
@@ -209,13 +306,19 @@ export function ConversationsPanel() {
           <button key={row.id} type="button" className={`block w-full border-b border-line px-3 py-2 text-left text-sm ${selected === row.id ? "bg-accent/10" : ""}`} onClick={() => setSelected(row.id)}>
             <span className="block font-medium">{row.customer_name || row.phone}</span>
             <span className="block truncate text-charcoal/60">{row.last_preview}</span>
-            <span className="text-xs text-charcoal/50">{row.handler === "human" ? "Staff" : "AI"} · {row.status}</span>
+            <span className="text-xs text-charcoal/50">{row.status === "resolved" ? "Resolved" : row.handler === "human" ? "Human handling" : row.status === "waiting_staff" ? "Waiting for staff" : row.status === "waiting_customer" ? "Reply sent" : "AI"}{row.fallback_at ? ` · AI after ${row.fallback_at.slice(11, 16)} UTC` : ""}</span>
           </button>
         ))}
       </aside>
       <section className="rounded-card border border-line bg-white p-3">
         {!detail ? <p className="text-sm text-charcoal/60">Select a conversation.</p> : (
           <>
+            {detail.conversation.handler === "human" ? (
+              <p className="mb-2 text-sm text-charcoal/70">AI replies are paused because a staff member is handling this conversation.</p>
+            ) : null}
+            {detail.events && detail.events.length ? (
+              <p className="mb-2 text-xs text-charcoal/50">{detail.events.map((item) => item.kind.split("_").join(" ")).join(" · ")}</p>
+            ) : null}
             <div className="mb-3 flex flex-wrap gap-2">
               <button type="button" className={ghost} onClick={() => apiPost(`/api/v1/reach/ai/conversations/${detail.conversation.id}/takeover`, {}).then(() => setSelected(detail.conversation.id))}>Take over</button>
               <button type="button" className={ghost} onClick={() => apiPost(`/api/v1/reach/ai/conversations/${detail.conversation.id}/resume`, {}).then(refresh)}>Resume AI</button>

@@ -1,61 +1,140 @@
 import seed from "@ai-pos/catalog/seed.json";
-import type { ProductPrice, ProductUpsert, StoreUpsert, UnitType } from "@ai-pos/shared-types";
+import type { ProductUpsert, StoreUpsert } from "@ai-pos/shared-types";
 import { useEffect } from "react";
 import { catalogRevision as fetchCatalogRevision, listProducts } from "../../lib/api";
-import { catalogRevision as readDesktopRevision, inTauri, refreshProducts } from "../../lib/tauri";
+import { cachedProducts, catalogRevision as readDesktopRevision, inTauri, refreshProducts } from "../../lib/tauri";
 import { registerCapabilities } from "../../lib/capabilities";
 import { productFitsRegister } from "../../lib/industry";
 import { GIFT_CARD_SKU } from "./cart";
-import { activeStore, syncBusinessCurrency } from "./currency";
+import { activeStore, businessCurrency, syncBusinessCurrency } from "./currency";
 
 /** Store identity only; its currency comes from `activeStore()` / `useBusinessCurrency()`. */
 export const store: StoreUpsert = activeStore();
 export const taxRateBps: number = seed.tax_rate_bps;
 
-const seedPricing = new Map(seed.wholesale.pricing.map((spec) => [spec.sku, spec]));
+/**
+ * Rows bundled in seed.json. An empty database used to insert them, and checkout painted them
+ * while the store catalogue was still downloading. They are not a catalogue for any tenant.
+ */
+export const BUNDLED_DEMO_IDS = new Set([
+  "00000000-0000-4000-8000-000000000010",
+  "00000000-0000-4000-8000-000000000011",
+  "00000000-0000-4000-8000-000000000012",
+  "00000000-0000-4000-8000-000000000013",
+  "00000000-0000-4000-8000-000000000014",
+]);
 
-/** Offline fallback: seed opening stock only belongs to the seed products' home branch. */
-export const seedProducts: ProductUpsert[] = seed.products.map((product) => {
-  const pricing = seedPricing.get(product.sku);
-  return {
-    ...product,
-    store_id: store.id,
-    stock_quantity: product.store_id === store.id ? product.stock_quantity : 0,
-    min_order_quantity: pricing?.min_order_quantity ?? 1,
-    sellable_units: (pricing?.sellable_units ?? ["PIECE"]) as UnitType[],
-    prices: (pricing?.tiers ?? []) as ProductPrice[],
-    origin: "seed" as const,
-  };
-});
+const CACHE_PREFIX = "ai-pos.pos.catalog.";
+const OFFLINE_NOTICE = "Unable to refresh the catalogue. Showing the last synchronized products.";
+const UNAVAILABLE_NOTICE = "Products could not be loaded. Check your connection and retry.";
+
+export function withoutBundledDemo<T extends { id: string }>(products: readonly T[]): T[] {
+  return products.filter((product) => !BUNDLED_DEMO_IDS.has(product.id));
+}
 
 export interface Catalog {
   products: ProductUpsert[];
-  source: "api" | "cache" | "seed";
+  source: "api" | "cache";
   message: string | null;
 }
 
-async function fetchCatalog(): Promise<Catalog> {
-  if (inTauri()) {
-    const snapshot = await refreshProducts();
-    return { products: snapshot.products, source: snapshot.source, message: snapshot.message };
+/** A failed refresh keeps the products already on screen. A successful empty catalogue is a real empty catalogue. */
+export function mergeCatalog(current: readonly ProductUpsert[], next: Catalog): Catalog {
+  if (next.products.length === 0 && next.message && current.length > 0) {
+    return { products: [...current], source: "cache", message: next.message };
   }
+  return next;
+}
+
+function cacheKey(): string {
+  return `${CACHE_PREFIX}${store.id}`;
+}
+
+function readRemembered(): ProductUpsert[] | null {
   try {
-    return { products: await listProducts(), source: "api", message: null };
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "API unavailable.";
-    return { products: seedProducts, source: "seed", message };
+    const raw = localStorage.getItem(cacheKey());
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { products?: ProductUpsert[] };
+    const products = withoutBundledDemo(parsed.products ?? []).filter((product) => product?.id && product.name);
+    return products.length > 0 ? products : null;
+  } catch {
+    return null;
   }
 }
 
-export async function loadCatalog(): Promise<Catalog> {
-  const [catalog, currency] = await Promise.all([fetchCatalog(), syncBusinessCurrency()]);
-  // Ingredients are stocked for recipes only; the register never sells them. Gift cards are sold from their own
-  // button, which loads the card product with the business's amount rules.
+function remember(products: readonly ProductUpsert[]): void {
+  try {
+    localStorage.setItem(cacheKey(), JSON.stringify({ products: withoutBundledDemo(products) }));
+  } catch {
+    // A full disk keeps the in-memory catalogue. The next successful sync tries again.
+  }
+}
+
+function present(products: readonly ProductUpsert[]): ProductUpsert[] {
   const profile = registerCapabilities().profile;
-  const sellable = catalog.products.filter(
-    (product) => !product.is_ingredient && product.sku !== GIFT_CARD_SKU && productFitsRegister(product, profile),
+  const currency = businessCurrency();
+  return withoutBundledDemo(products)
+    .filter((product) => !product.is_ingredient && product.sku !== GIFT_CARD_SKU && productFitsRegister(product, profile))
+    .map((product) => ({ ...product, currency }));
+}
+
+/** Last catalogue this device stored. Empty until a store catalogue has synced. */
+export function openingCatalog(): Catalog {
+  return { products: present(readRemembered() ?? []), source: "cache", message: null };
+}
+
+/** SQLite on the desktop app, otherwise the same device cache checkout paints on the first frame. */
+export async function localCatalog(): Promise<Catalog | null> {
+  try {
+    const rows = inTauri() ? await cachedProducts() : (readRemembered() ?? []);
+    const products = present(rows);
+    if (products.length === 0) return null;
+    return { products, source: "cache", message: null };
+  } catch {
+    return null;
+  }
+}
+
+let inflight: Promise<Catalog> | null = null;
+
+async function fetchCatalog(): Promise<Catalog> {
+  const started = performance.now();
+  void syncBusinessCurrency();
+  let catalog: Catalog;
+  if (inTauri()) {
+    const snapshot = await refreshProducts();
+    const products = withoutBundledDemo(snapshot.products);
+    if (snapshot.source === "api") remember(products);
+    catalog = {
+      products,
+      source: snapshot.source === "api" ? "api" : "cache",
+      message: snapshot.source === "api" ? null : products.length > 0 ? OFFLINE_NOTICE : UNAVAILABLE_NOTICE,
+    };
+  } else {
+    try {
+      const products = withoutBundledDemo(await listProducts());
+      remember(products);
+      catalog = { products, source: "api", message: null };
+    } catch {
+      const cached = readRemembered();
+      catalog = cached
+        ? { products: cached, source: "cache", message: OFFLINE_NOTICE }
+        : { products: [], source: "cache", message: UNAVAILABLE_NOTICE };
+    }
+  }
+  const ready = { ...catalog, products: present(catalog.products) };
+  console.info(
+    `[POS_API_PERF] endpoint=catalog source=${ready.source} count=${ready.products.length} total_ms=${Math.round(performance.now() - started)}`,
   );
-  return { ...catalog, products: sellable.map((product) => ({ ...product, currency })) };
+  return ready;
+}
+
+export function loadCatalog(): Promise<Catalog> {
+  if (inflight) return inflight;
+  inflight = fetchCatalog().finally(() => {
+    inflight = null;
+  });
+  return inflight;
 }
 
 /** Cheap cursor. Null when the register cannot reach the API; the local catalog stays as it is. */
@@ -81,7 +160,12 @@ export function useCatalogUpdates(reload: () => void): void {
     let cancelled = false;
     const poll = async () => {
       const revision = await readCatalogRevision();
-      if (cancelled || revision === null || revision === seen) return;
+      if (cancelled || revision === null) return;
+      if (seen === null) {
+        seen = revision;
+        return;
+      }
+      if (revision === seen) return;
       seen = revision;
       reload();
     };

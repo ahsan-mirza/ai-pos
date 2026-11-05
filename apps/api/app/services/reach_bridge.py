@@ -62,7 +62,12 @@ def submit(settings: Settings, provider: str, outgoing: object, creds: dict) -> 
         return deliver(settings, provider, outgoing, creds)
     from reach.providers.evolution.client import client_for
 
-    number = "".join(ch for ch in outgoing.to if ch.isdigit())
+    from app.services.phone_numbers import whatsapp_destination
+
+    try:
+        number = whatsapp_destination(outgoing.to, str(creds.get("sender_number") or "") or None)
+    except ValueError as exc:
+        raise ProviderError(str(exc), permanent=True) from exc
     instance = creds.get("instance_name") or ""
     if not instance:
         raise ProviderError("No Evolution instance is selected for this message.", permanent=True)
@@ -94,14 +99,15 @@ def submit_message(
         from sqlalchemy import select
 
         recipient = db.scalar(select(ReachRecipient).where(ReachRecipient.outbound_message_id == message.id))
-        instance = ""
+        connection = None
         if recipient is not None and recipient.connection_id is not None:
             connection = db.get(ReachConnection, recipient.connection_id)
-            instance = connection.instance_name if connection is not None else ""
-        if not instance:
-            connection = db.scalar(select(ReachConnection).where(ReachConnection.status == "open").limit(1))
-            instance = connection.instance_name if connection is not None else ""
-        creds = {**creds, "instance_name": instance}
+        if connection is None or not connection.instance_name:
+            open_connection = db.scalar(select(ReachConnection).where(ReachConnection.status == "open").limit(1))
+            connection = open_connection or connection
+        instance = connection.instance_name if connection is not None else ""
+        sender_number = connection.phone_number if connection is not None else ""
+        creds = {**creds, "instance_name": instance, "sender_number": sender_number or ""}
         if getattr(message, "attachment_ref", None):
             from reach.media_store import payload_for
 

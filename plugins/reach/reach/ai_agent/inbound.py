@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
+
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.models.base import utcnow
 from app.models.customer import Customer
+from app.models.messaging import OutboundMessage
+from reach.ai_agent.hold import note_customer_waiting, response_policy, suppress_pending
 from reach.ai_agent.models import ReachAiConversation, ReachAiEvent, ReachAiMessage
 from reach.models import ReachConnection
 
@@ -17,6 +21,7 @@ _STATUS = {"SERVER_ACK", "DELIVERY_ACK", "READ", "PLAYED", "ERROR", "FAILED"}
 def capture(db: Session, connection: ReachConnection, data: dict) -> None:
     key = data.get("key") if isinstance(data.get("key"), dict) else {}
     if key.get("fromMe") is True:
+        _device_message(db, connection, data)
         return
     text = _text(data).strip()
     raw_status = str(data.get("status") or "").upper()
@@ -58,6 +63,9 @@ def capture(db: Session, connection: ReachConnection, data: dict) -> None:
     conversation.unread_count += 1
     if conversation.status == "resolved":
         conversation.status = "open"
+        conversation.handler = "ai"
+    if text:
+        note_customer_waiting(db, conversation, body, response_policy(db))
     if not text:
         db.add(
             ReachAiEvent(
@@ -66,6 +74,62 @@ def capture(db: Session, connection: ReachConnection, data: dict) -> None:
                 detail="The attachment was stored without being interpreted.",
             )
         )
+
+
+def _device_message(db: Session, connection: ReachConnection, data: dict) -> None:
+    """A fromMe event is human only when it is not an echo of a message this server already queued."""
+    text = _text(data).strip()
+    raw_status = str(data.get("status") or "").upper()
+    if raw_status in _STATUS and not text:
+        return
+    key = data.get("key") if isinstance(data.get("key"), dict) else {}
+    provider_id = str(data.get("keyId") or data.get("messageId") or key.get("id") or data.get("id") or "")[:120]
+    if not provider_id:
+        return
+    if db.scalar(select(ReachAiMessage.id).where(ReachAiMessage.provider_message_id == provider_id)):
+        return
+    phone = _phone(key.get("remoteJid") or data.get("from") or "")
+    if not phone or not text:
+        return
+    if _echo_of_ours(db, phone, text, provider_id):
+        return
+    conversation = _conversation(db, connection, phone, _customer(db, phone), "")
+    try:
+        with db.begin_nested():
+            db.add(
+                ReachAiMessage(
+                    conversation_id=conversation.id,
+                    direction="out",
+                    author="staff",
+                    body=text[:4000],
+                    provider_message_id=provider_id,
+                    status="stored",
+                    evidence={"origin": "human_device"},
+                )
+            )
+            db.flush()
+    except IntegrityError:
+        return
+    conversation.handler = "human"
+    conversation.status = "waiting_customer"
+    conversation.last_preview = text[:180]
+    conversation.last_message_at = utcnow()
+    suppress_pending(db, conversation)
+    db.add(ReachAiEvent(conversation_id=conversation.id, kind="device_reply", detail=provider_id))
+
+
+def _echo_of_ours(db: Session, phone: str, text: str, provider_id: str) -> bool:
+    outbound = db.scalar(select(OutboundMessage).where(OutboundMessage.provider_message_id == provider_id))
+    if outbound is not None:
+        return True
+    since = datetime.now(UTC) - timedelta(minutes=10)
+    recent = db.scalars(select(OutboundMessage).where(OutboundMessage.created_at >= since)).all()
+    folded = text.strip()
+    for item in recent:
+        digits = "".join(ch for ch in item.to_address if ch.isdigit())
+        if item.body.strip() == folded and (phone == digits or phone.endswith(digits) or digits.endswith(phone)):
+            return True
+    return False
 
 
 def _conversation(

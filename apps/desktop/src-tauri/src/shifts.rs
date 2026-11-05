@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 
 use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
-use serde_json::json;
+use serde_json::{json, Value};
 
 use crate::auth::Session;
 use crate::db::{insert_events, Db, QueuedEvent};
@@ -413,6 +413,283 @@ fn summarize(conn: &Connection, shift: LocalShift) -> Result<ShiftSummary, Strin
 }
 
 /// The X report: a mid-shift snapshot. Blind close means the UI hides expected cash until the count is in.
+#[derive(Serialize)]
+pub struct ShiftSaleLine {
+    pub id: String,
+    pub name: String,
+    pub sku: String,
+    pub quantity: i64,
+    pub returned_quantity: i64,
+    pub unit_price_cents: i64,
+    pub discount_cents: i64,
+    pub tax_cents: i64,
+    pub line_total_cents: i64,
+}
+
+#[derive(Serialize)]
+pub struct ShiftTender {
+    pub method: String,
+    pub amount_cents: i64,
+}
+
+#[derive(Serialize)]
+pub struct ShiftSale {
+    pub id: String,
+    pub invoice_number: String,
+    pub sold_at: String,
+    pub customer_name: String,
+    pub item_count: i64,
+    pub quantity: i64,
+    pub returned_quantity: i64,
+    pub gross_cents: i64,
+    pub discount_cents: i64,
+    pub tax_cents: i64,
+    pub total_cents: i64,
+    pub refunded_cents: i64,
+    pub payment: String,
+    pub status: String,
+    pub sync_status: String,
+    pub lines: Vec<ShiftSaleLine>,
+    pub tenders: Vec<ShiftTender>,
+}
+
+#[derive(Serialize)]
+pub struct ShiftReturn {
+    pub id: String,
+    pub credit_note_number: String,
+    pub original_sale_id: String,
+    pub original_invoice: String,
+    pub processed_at: String,
+    pub total_refund_cents: i64,
+    pub sync_status: String,
+    pub item_count: i64,
+}
+
+#[derive(Serialize)]
+pub struct ShiftHistory {
+    pub sales: Vec<ShiftSale>,
+    pub returns: Vec<ShiftReturn>,
+}
+
+fn text_of(value: &Value, key: &str) -> String {
+    value.get(key).and_then(|item| item.as_str()).unwrap_or("").trim().to_string()
+}
+
+fn cents_of(value: &Value, key: &str) -> i64 {
+    value.get(key).and_then(|item| item.as_i64()).unwrap_or(0)
+}
+
+/// Sales and returns stored on this register for one shift. Names fall back to the local catalogue when the
+/// queued sale did not keep a product-name snapshot. Return quantities come from queued return events.
+pub fn history(db: &Db, shift_id: &str) -> Result<ShiftHistory, String> {
+    db.read(|conn| read_history(conn, shift_id))
+}
+
+fn read_history(conn: &Connection, shift_id: &str) -> Result<ShiftHistory, String> {
+    let mut returns_by_item: BTreeMap<String, i64> = BTreeMap::new();
+    let mut refunds_by_sale: BTreeMap<String, i64> = BTreeMap::new();
+    let mut return_rows: Vec<(String, String, String, String, i64, String, i64)> = Vec::new();
+    let mut statement = conn
+        .prepare(
+            "SELECT payload, status, occurred_at FROM sync_queue
+             WHERE entity_type = 'sale_return' AND status != 'rejected'",
+        )
+        .map_err(|err| err.to_string())?;
+    let queued_returns = statement
+        .query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, String>(2)?)))
+        .map_err(|err| err.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|err| err.to_string())?;
+    drop(statement);
+    for (payload, status, occurred_at) in queued_returns {
+        let value: Value = serde_json::from_str(&payload).map_err(|err| err.to_string())?;
+        let sale_id = text_of(&value, "original_sale_id");
+        if sale_id.is_empty() {
+            continue;
+        }
+        let refund = cents_of(&value, "total_refund_cents");
+        *refunds_by_sale.entry(sale_id.clone()).or_insert(0) += refund;
+        let mut count = 0;
+        if let Some(items) = value.get("items").and_then(|item| item.as_array()) {
+            for item in items {
+                count += 1;
+                let line_id = text_of(item, "sale_item_id");
+                if !line_id.is_empty() {
+                    *returns_by_item.entry(line_id).or_insert(0) += cents_of(item, "quantity");
+                }
+            }
+        }
+        if text_of(&value, "shift_id") == shift_id {
+            return_rows.push((
+                text_of(&value, "id"),
+                text_of(&value, "credit_note_number"),
+                sale_id,
+                if text_of(&value, "processed_at").is_empty() { occurred_at } else { text_of(&value, "processed_at") },
+                refund,
+                status,
+                count,
+            ));
+        }
+    }
+
+    let mut statement = conn
+        .prepare(
+            "SELECT payload, occurred_at, status FROM sync_queue
+             WHERE entity_type = 'sale' AND status != 'rejected'
+               AND json_extract(payload, '$.shift_id') = ?1
+             ORDER BY occurred_at DESC",
+        )
+        .map_err(|err| err.to_string())?;
+    let queued_sales = statement
+        .query_map(params![shift_id], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, String>(2)?))
+        })
+        .map_err(|err| err.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|err| err.to_string())?;
+    drop(statement);
+
+    let mut invoices: BTreeMap<String, String> = BTreeMap::new();
+    let mut sales = Vec::new();
+    for (payload, occurred_at, sync_status) in queued_sales {
+        let value: Value = serde_json::from_str(&payload).map_err(|err| err.to_string())?;
+        let id = text_of(&value, "id");
+        let invoice = {
+            let number = text_of(&value, "invoice_number");
+            if number.is_empty() { id.clone() } else { number }
+        };
+        invoices.insert(id.clone(), invoice.clone());
+        let mut lines = Vec::new();
+        let mut quantity = 0;
+        let mut returned_quantity = 0;
+        let mut discount = 0;
+        if let Some(items) = value.get("items").and_then(|item| item.as_array()) {
+            for item in items {
+                let line_id = text_of(item, "id");
+                let sold = cents_of(item, "quantity");
+                let returned = returns_by_item.get(&line_id).copied().unwrap_or(0).min(sold.max(0));
+                quantity += sold;
+                returned_quantity += returned;
+                let line_discount = cents_of(item, "discount_cents") + cents_of(item, "manual_discount_cents");
+                discount += line_discount;
+                let (name, sku) = line_label(conn, item);
+                lines.push(ShiftSaleLine {
+                    id: line_id,
+                    name,
+                    sku,
+                    quantity: sold,
+                    returned_quantity: returned,
+                    unit_price_cents: cents_of(item, "unit_price_cents"),
+                    discount_cents: line_discount,
+                    tax_cents: cents_of(item, "tax_cents"),
+                    line_total_cents: cents_of(item, "line_total_cents"),
+                });
+            }
+        }
+        let mut tenders = Vec::new();
+        if let Some(rows) = value.get("tenders").and_then(|item| item.as_array()) {
+            for tender in rows {
+                tenders.push(ShiftTender {
+                    method: text_of(tender, "method"),
+                    amount_cents: cents_of(tender, "amount_cents"),
+                });
+            }
+        }
+        let payment = if tenders.is_empty() {
+            text_of(&value, "payment_method")
+        } else {
+            tenders.iter().map(|tender| tender.method.clone()).collect::<Vec<_>>().join(" + ")
+        };
+        let status = if quantity > 0 && returned_quantity >= quantity {
+            "returned"
+        } else if returned_quantity > 0 {
+            "partially_returned"
+        } else {
+            "completed"
+        };
+        let sold_at = {
+            let stamp = text_of(&value, "sold_at");
+            if stamp.is_empty() { occurred_at } else { stamp }
+        };
+        sales.push(ShiftSale {
+            id: id.clone(),
+            invoice_number: invoice,
+            sold_at,
+            customer_name: customer_label(conn, &text_of(&value, "customer_id")),
+            item_count: lines.len() as i64,
+            quantity,
+            returned_quantity,
+            gross_cents: cents_of(&value, "subtotal_cents"),
+            discount_cents: discount,
+            tax_cents: cents_of(&value, "tax_cents"),
+            total_cents: cents_of(&value, "total_cents"),
+            refunded_cents: refunds_by_sale.get(&id).copied().unwrap_or(0),
+            payment,
+            status: status.into(),
+            sync_status,
+            lines,
+            tenders,
+        });
+    }
+    let returns = return_rows
+        .into_iter()
+        .map(|(id, number, sale_id, processed_at, refund, sync_status, item_count)| ShiftReturn {
+            id,
+            credit_note_number: if number.is_empty() { "Pending number".into() } else { number },
+            original_invoice: invoices.get(&sale_id).cloned().unwrap_or_else(|| sale_id.clone()),
+            original_sale_id: sale_id,
+            processed_at,
+            total_refund_cents: refund,
+            sync_status,
+            item_count,
+        })
+        .collect();
+    Ok(ShiftHistory { sales, returns })
+}
+
+fn customer_label(conn: &Connection, id: &str) -> String {
+    if id.is_empty() {
+        return "Walk-in".into();
+    }
+    let payload: Option<String> = conn
+        .query_row("SELECT payload FROM customers WHERE id = ?1", params![id], |row| row.get(0))
+        .optional()
+        .ok()
+        .flatten();
+    let Some(payload) = payload else {
+        return "Customer".into();
+    };
+    let Ok(value) = serde_json::from_str::<Value>(&payload) else {
+        return "Customer".into();
+    };
+    let company = text_of(&value, "company_name");
+    if !company.is_empty() {
+        return company;
+    }
+    let name = text_of(&value, "name");
+    if name.is_empty() { "Customer".into() } else { name }
+}
+
+fn line_label(conn: &Connection, item: &Value) -> (String, String) {
+    let description = text_of(item, "description");
+    let product_id = text_of(item, "product_id");
+    let found: Option<(String, String)> = conn
+        .query_row(
+            "SELECT name, sku FROM products WHERE id = ?1",
+            params![product_id],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .optional()
+        .ok()
+        .flatten();
+    match found {
+        Some((name, sku)) if description.is_empty() => (name, sku),
+        Some((_, sku)) => (description, sku),
+        None if description.is_empty() => ("Item".into(), String::new()),
+        None => (description, String::new()),
+    }
+}
+
 pub fn summary(db: &Db, shift_id: Option<&str>) -> Result<Option<ShiftSummary>, String> {
     db.read(|conn| {
         let shift = match shift_id {
@@ -636,6 +913,82 @@ mod tests {
             .unwrap();
         assert!(db.relabel_shift_currency(&batch, "AED").unwrap());
         assert!(!db.relabel_shift_currency(&batch, "AED").unwrap());
+        let _ = std::fs::remove_dir_all(&directory);
+    }
+
+    #[test]
+    fn shift_history_links_a_partial_return_to_the_original_invoice() {
+        let directory = std::env::temp_dir().join(format!("aipos-shift-history-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&directory);
+        std::fs::create_dir_all(&directory).unwrap();
+        let db = Db::open(&directory.join("shift.db")).unwrap();
+        let shift_id = "11111111-1111-4111-8111-111111111111";
+        let sale_id = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+        db.enqueue(
+            "batch-sale",
+            &[QueuedEvent {
+                id: "sale-1".into(),
+                idempotency_key: "sale-key".into(),
+                entity_type: "sale".into(),
+                operation: "upsert".into(),
+                payload: json!({
+                    "id": sale_id,
+                    "shift_id": shift_id,
+                    "invoice_number": "DT-01-S-000125",
+                    "sold_at": "2026-10-19T09:00:00Z",
+                    "payment_method": "cash",
+                    "subtotal_cents": 3000,
+                    "tax_cents": 150,
+                    "total_cents": 3150,
+                    "items": [{
+                        "id": "line-1",
+                        "product_id": "cable",
+                        "description": "Cotton Suit",
+                        "quantity": 3,
+                        "unit_price_cents": 1000,
+                        "discount_cents": 0,
+                        "manual_discount_cents": 0,
+                        "tax_cents": 150,
+                        "line_total_cents": 3150
+                    }],
+                    "tenders": [{"method": "cash", "amount_cents": 3150}]
+                }),
+                occurred_at: "2026-10-19T09:00:00Z".into(),
+            }],
+        )
+        .unwrap();
+        db.enqueue(
+            "batch-return",
+            &[QueuedEvent {
+                id: "return-1".into(),
+                idempotency_key: "return-key".into(),
+                entity_type: "sale_return".into(),
+                operation: "upsert".into(),
+                payload: json!({
+                    "id": "return-1",
+                    "original_sale_id": sale_id,
+                    "shift_id": shift_id,
+                    "credit_note_number": "RET-000018",
+                    "processed_at": "2026-10-19T11:00:00Z",
+                    "total_refund_cents": 1050,
+                    "items": [{"sale_item_id": "line-1", "quantity": 1}]
+                }),
+                occurred_at: "2026-10-19T11:00:00Z".into(),
+            }],
+        )
+        .unwrap();
+        let history = history(&db, shift_id).unwrap();
+        assert_eq!(history.sales.len(), 1);
+        let sale = &history.sales[0];
+        assert_eq!(sale.invoice_number, "DT-01-S-000125");
+        assert_eq!(sale.lines[0].name, "Cotton Suit");
+        assert_eq!(sale.lines[0].quantity, 3);
+        assert_eq!(sale.lines[0].returned_quantity, 1);
+        assert_eq!(sale.status, "partially_returned");
+        assert_eq!(sale.refunded_cents, 1050);
+        assert_eq!(sale.total_cents, 3150);
+        assert_eq!(history.returns[0].credit_note_number, "RET-000018");
+        assert_eq!(history.returns[0].original_invoice, "DT-01-S-000125");
         let _ = std::fs::remove_dir_all(&directory);
     }
 }

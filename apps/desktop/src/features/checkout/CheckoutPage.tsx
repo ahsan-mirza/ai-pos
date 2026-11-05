@@ -72,7 +72,7 @@ import { GiftCardSellModal } from "./GiftCardSellModal";
 import { CartList } from "./CartList";
 import { GrocerySuggestions } from "./GrocerySuggestions";
 import { CheckoutSidebar } from "./CheckoutSidebar";
-import { loadCatalog, seedProducts, store, useCatalogUpdates, type Catalog } from "./catalog";
+import { loadCatalog, localCatalog, mergeCatalog, openingCatalog, store, useCatalogUpdates, type Catalog } from "./catalog";
 import { CancelOrderDialog } from "./fnb/CancelOrderDialog";
 import { needsCancelApproval, sessionCancelStage } from "./fnb/cancelOrder";
 import { OrderModeBar } from "./fnb/OrderModeBar";
@@ -116,6 +116,7 @@ import { OrderRequestError, ordersApi, queueOfflineOrder, queueOrderVoid } from 
 import { serviceCharge, takeSettlement, type SettlementIntent } from "../orders/settlement";
 import { TipRow } from "../orders/TipRow";
 import { PriceOverrideModal } from "./PriceOverrideModal";
+import { CatalogSkeleton } from "./CatalogSkeleton";
 import { ProductCard, type TierPreview } from "./ProductCard";
 import { ProductDetailsModal } from "./ProductDetailsModal";
 import { CouponRow } from "./CouponRow";
@@ -233,8 +234,9 @@ function withPending(state: CartState, items: SessionItem[], products: ProductUp
 export function CheckoutPage({ session }: CheckoutPageProps) {
   const currency = useBusinessCurrency();
   const { density } = useRegisterLayout();
-  const [catalog, setCatalog] = useState<Catalog>({ products: seedProducts, source: "seed", message: null });
-  const [catalogLoaded, setCatalogLoaded] = useState(false);
+  const [catalog, setCatalog] = useState<Catalog>(() => openingCatalog());
+  const [catalogLoaded, setCatalogLoaded] = useState(() => openingCatalog().products.length > 0);
+  const [syncingCatalog, setSyncingCatalog] = useState(false);
   const [cart, setCart] = useState<CartState>(emptyCart);
   const cartRef = useRef<CartState>(emptyCart);
   const [payment, setPayment] = useState<PaymentDraft>(emptyPayment);
@@ -436,14 +438,22 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
   }, []);
 
   const reloadCatalog = useCallback(async () => {
+    setSyncingCatalog(true);
     try {
-      setCatalog(await loadCatalog());
+      const local = await localCatalog();
+      if (local && local.products.length > 0) {
+        setCatalog((current) => (current.source === "api" ? current : local));
+        setCatalogLoaded(true);
+      }
+      const next = await loadCatalog();
+      setCatalog((current) => mergeCatalog(current.products, next));
     } catch (error) {
       setCatalog((current) => ({
         ...current,
         message: error instanceof Error ? error.message : "Could not load products.",
       }));
     } finally {
+      setSyncingCatalog(false);
       setCatalogLoaded(true);
     }
   }, []);
@@ -1033,7 +1043,9 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
     ? report.message
     : catalog.source === "api"
       ? "Sales post directly to the API."
-      : `Catalog from the bundled sample. ${catalog.message ?? ""}`.trim();
+      : catalog.products.length > 0
+        ? "Showing the last synchronized catalogue."
+        : (catalog.message ?? "Loading the catalogue.");
 
   const itemCount = totals.pieces;
   const itemLabel = `${itemCount} item${itemCount === 1 ? "" : "s"}`;
@@ -1693,18 +1705,42 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
           <p className={ui.label}>
             {searching
               ? "Searching…"
+              : syncingCatalog && catalog.products.length > 0
+                ? "Syncing catalogue…"
               : `${visibleHits.length} ${visibleHits.length === 1 ? "product" : "products"}${
                   debouncedQuery.trim() !== "" ? ` matching "${debouncedQuery.trim()}"` : ""
                 }${category ? ` in ${category}` : ""}`}
           </p>
-          {visibleHits.length === 0 && !searching ? (
-            <p className="rounded-2xl border border-dashed border-zinc-300 p-8 text-center text-sm text-zinc-500 dark:border-zinc-700 dark:text-zinc-400">
-              {debouncedQuery.trim() !== ""
-                ? noMatchesMessage(debouncedQuery.trim())
-                : category
-                  ? `No products in ${category} at this register.`
-                  : "No products in this register's catalog yet."}
+          {catalog.message && catalog.products.length > 0 ? (
+            <p className="rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-200" role="status">
+              {catalog.message}{" "}
+              <button type="button" className="font-semibold underline" onClick={() => void reloadCatalog()}>
+                Retry
+              </button>
             </p>
+          ) : null}
+          {!catalogLoaded && catalog.products.length === 0 ? <CatalogSkeleton density={density} /> : null}
+          {catalogLoaded && visibleHits.length === 0 && !searching ? (
+            <div className="rounded-2xl border border-dashed border-zinc-300 p-8 text-center text-sm text-zinc-500 dark:border-zinc-700 dark:text-zinc-400">
+              <p>
+                {catalog.message
+                  ? catalog.message
+                  : debouncedQuery.trim() !== ""
+                    ? noMatchesMessage(debouncedQuery.trim())
+                    : category
+                      ? `No products in ${category} at this register.`
+                      : "No products available for this store."}
+              </p>
+              {catalog.message ? (
+                <button
+                  type="button"
+                  className="mt-4 inline-flex h-10 items-center rounded-full bg-primary-500 px-4 text-sm font-semibold text-white"
+                  onClick={() => void reloadCatalog()}
+                >
+                  Retry
+                </button>
+              ) : null}
+            </div>
           ) : null}
           <ul className={catalogGridClass(density)}>
             {gridEntries.slice(0, GRID_LIMIT).map((entry) =>

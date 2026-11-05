@@ -74,6 +74,7 @@ import {
   type ReturnTotals,
 } from "./returnMath";
 import { findReceipt, submitReturn, verifyApprover, type LoadedReceipt, type ReturnBatch } from "./returnsClient";
+import { takeReturnLookup } from "./pendingLookup";
 
 type Step = "lookup" | "items" | "refund" | "done";
 
@@ -229,6 +230,11 @@ export function ReturnsPage({ session }: ReturnsPageProps) {
     },
     [busy],
   );
+
+  useEffect(() => {
+    const pending = takeReturnLookup();
+    if (pending) void lookup(pending);
+  }, [lookup]);
 
   const toggleLine = (item: ReceiptItem) => {
     const current = drafts[item.sale_item_id];

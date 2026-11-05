@@ -121,6 +121,53 @@ interface CreditNoteInput {
   currency: string;
 }
 
+/** Reprint of a shift sale using the amounts stored with that sale. */
+export function shiftSaleReceipt(input: {
+  number: string;
+  issuedAt: string;
+  cashier: string;
+  customer: string | null;
+  lines: { name: string; quantity: number; unitCents: number; lineCents: number }[];
+  subtotalCents: number;
+  taxCents: number;
+  totalCents: number;
+  tenders: { label: string; amountCents: number }[];
+  currency: string;
+}): ReceiptDoc {
+  const identity = registerIdentity();
+  const language = printedLanguage();
+  const issuedAt = new Date(input.issuedAt);
+  const title = receiptTitle(identity.trn, null, input.totalCents, identity.taxAuthority);
+  return {
+    ...identity,
+    ...title,
+    number: input.number,
+    issuedAt: Number.isNaN(issuedAt.getTime()) ? new Date() : issuedAt,
+    cashier: input.cashier,
+    servedBy: null,
+    customer: input.customer,
+    reference: null,
+    lines: input.lines.map((line) => ({
+      name: line.name,
+      quantity: line.quantity,
+      unitCents: line.unitCents,
+      totalCents: line.lineCents,
+      detail: null,
+    })),
+    subtotalCents: input.subtotalCents,
+    taxCents: input.taxCents,
+    vatIncluded: false,
+    totalCents: input.totalCents,
+    youSavedCents: 0,
+    tenders: input.tenders,
+    changeCents: null,
+    currency: input.currency,
+    language,
+    footer: slipDefault("thankYou", language),
+    qr: receiptQr(identity, Number.isNaN(issuedAt.getTime()) ? new Date() : issuedAt, input.totalCents, input.taxCents),
+  };
+}
+
 export function creditNoteReceipt(input: CreditNoteInput): ReceiptDoc {
   const identity = registerIdentity();
   const language = printedLanguage();

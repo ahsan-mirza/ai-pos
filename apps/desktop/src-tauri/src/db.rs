@@ -187,30 +187,6 @@ fn cached_user_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<CachedUser> {
     })
 }
 
-#[derive(Deserialize)]
-struct SeedFile {
-    products: Vec<ProductRow>,
-    #[serde(default)]
-    wholesale: Option<SeedWholesale>,
-}
-
-#[derive(Deserialize)]
-struct SeedWholesale {
-    #[serde(default)]
-    pricing: Vec<SeedPricing>,
-}
-
-#[derive(Deserialize)]
-struct SeedPricing {
-    sku: String,
-    #[serde(default = "piece_only")]
-    sellable_units: Vec<String>,
-    #[serde(default = "one")]
-    min_order_quantity: i64,
-    #[serde(default = "empty_list")]
-    tiers: serde_json::Value,
-}
-
 const PRODUCT_COLUMNS: &str = "id, store_id, sku, barcode, name, category, price_cents, currency, is_serialized, \
      stock_quantity, model_number, brand, min_order_quantity, sellable_units, prices_json, tax_category, \
      is_open_price, origin, is_service, product_model_id, model_name, variant_json, sold_by_weight, plu_code, \
@@ -245,7 +221,7 @@ impl Db {
         crate::margin::migrate(&conn)?;
         crate::timeclock::migrate(&conn)?;
         crate::menu::migrate(&conn)?;
-        seed(&conn)?;
+        drop_bundled_demo(&conn)?;
         Ok(Self {
             conn: Mutex::new(conn),
         })
@@ -975,29 +951,21 @@ fn compact(value: &str) -> String {
         .collect()
 }
 
-fn seed(conn: &Connection) -> Result<(), String> {
-    let count: i64 = conn
-        .query_row("SELECT COUNT(*) FROM products", [], |row| row.get(0))
-        .map_err(|err| err.to_string())?;
-    if count > 0 {
-        return Ok(());
-    }
-    let seed: SeedFile =
-        serde_json::from_str(include_str!("../../../../packages/catalog/seed.json"))
-            .map_err(|err| err.to_string())?;
-    let pricing = seed
-        .wholesale
-        .map(|wholesale| wholesale.pricing)
-        .unwrap_or_default();
-    for product in seed.products {
-        let mut product = product;
-        if let Some(spec) = pricing.iter().find(|spec| spec.sku == product.sku) {
-            product.sellable_units = spec.sellable_units.clone();
-            product.min_order_quantity = spec.min_order_quantity;
-            product.prices = spec.tiers.clone();
-        }
-        insert_product(conn, &product)?;
-    }
+/// Removes the five bundled sample rows (USB-C Cable, Slim Silicone Case, Pixel 9, Misc accessory,
+/// Repair labour). An empty till used to insert them, and a refresh then sold that sample catalogue
+/// until the store download finished. Other locally created rows are left alone.
+fn drop_bundled_demo(conn: &Connection) -> Result<(), String> {
+    conn.execute(
+        "DELETE FROM products WHERE id IN (
+            '00000000-0000-4000-8000-000000000010',
+            '00000000-0000-4000-8000-000000000011',
+            '00000000-0000-4000-8000-000000000012',
+            '00000000-0000-4000-8000-000000000013',
+            '00000000-0000-4000-8000-000000000014'
+        )",
+        [],
+    )
+    .map_err(|err| err.to_string())?;
     Ok(())
 }
 

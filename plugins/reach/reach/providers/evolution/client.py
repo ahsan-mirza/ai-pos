@@ -118,13 +118,65 @@ class EvolutionClient:
         if response.status_code in {401, 403}:
             raise EvolutionError("Evolution API rejected the server key.", permanent=True, code="authentication_error")
         if response.status_code >= 400:
+            try:
+                payload = response.json()
+            except ValueError:
+                payload = {}
             raise EvolutionError(
-                f"Evolution API returned HTTP {response.status_code}.",
+                evolution_failure_message(response.status_code, payload),
                 permanent=response.status_code < 500,
                 code="unreachable",
             )
         data = response.json() if response.content else {}
         return data if isinstance(data, dict) else {"data": data}
+
+
+def evolution_failure_message(status: int, payload: object) -> str:
+    """A store-facing reason. The HTTP status and the server key stay out of this text."""
+    text = _message_text(payload).lower()
+    if _number_missing(payload) or any(
+        phrase in text
+        for phrase in ("not registered", "not on whatsapp", "number does not exist", "number not exist", "not exists")
+    ):
+        return "That number is not on WhatsApp. Check the country code and try again."
+    if any(phrase in text for phrase in ("connection closed", "not connected", "session is closed")):
+        return "WhatsApp is not connected. Scan the QR code, then try again."
+    if status == 404 or "instance not found" in text:
+        return "This store's WhatsApp connection was not found. Connect the number again."
+    if "invalid" in text and "number" in text:
+        return "Enter the full WhatsApp number with its country code, for example +923104433311."
+    if status == 429:
+        return "WhatsApp is busy. Wait a moment and try again."
+    if status >= 500:
+        return "WhatsApp could not send the message. Try again in a moment."
+    return "WhatsApp could not send to that number. Check the number and try again."
+
+
+def _number_missing(payload: object) -> bool:
+    if isinstance(payload, dict):
+        if payload.get("exists") is False:
+            return True
+        return any(_number_missing(value) for value in payload.values())
+    if isinstance(payload, list):
+        return any(_number_missing(item) for item in payload)
+    return False
+
+
+def _message_text(payload: object) -> str:
+    if isinstance(payload, dict):
+        source = payload.get("response") if isinstance(payload.get("response"), dict) else payload
+        raw = source.get("message") if isinstance(source, dict) else None
+        if isinstance(raw, list):
+            parts: list[str] = []
+            for item in raw[:3]:
+                if isinstance(item, dict):
+                    parts.append(str(item.get("message") or ""))
+                else:
+                    parts.append(str(item))
+            return " ".join(parts)
+        if raw is not None:
+            return str(raw)
+    return ""
 
 
 _handler: Handler | None = None

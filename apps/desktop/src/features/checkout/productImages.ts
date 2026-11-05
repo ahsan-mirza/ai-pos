@@ -38,26 +38,30 @@ function watch(): void {
  * The on-disk photo when this till has already downloaded it, otherwise the remote URL.
  * A missing file still uses the remote URL; the card's placeholder shows if that cannot load.
  */
-export async function displayPhoto(src: string): Promise<string> {
+const lookups = new Map<string, Promise<string>>();
+
+export function displayPhoto(src: string): Promise<string> {
   const remote = mediaSrc(src);
-  if (!inTauri()) return remote;
+  if (!inTauri()) return Promise.resolve(remote);
   watch();
   const known = resolved.get(remote);
   if (known) {
-    const { convertFileSrc } = await import("@tauri-apps/api/core");
-    return convertFileSrc(known);
+    return import("@tauri-apps/api/core").then(({ convertFileSrc }) => convertFileSrc(known));
   }
-  if (known === null) return remote;
-  try {
-    const { invoke } = await import("@tauri-apps/api/core");
-    const path = await invoke<string | null>("local_product_image", { url: remote });
-    resolved.set(remote, path);
-    if (!path) return remote;
-    const { convertFileSrc } = await import("@tauri-apps/api/core");
-    return convertFileSrc(path);
-  } catch {
-    return remote;
-  }
+  if (known === null) return Promise.resolve(remote);
+  const pending = lookups.get(remote);
+  if (pending) return pending;
+  const lookup = import("@tauri-apps/api/core")
+    .then(({ invoke, convertFileSrc }) =>
+      invoke<string | null>("local_product_image", { url: remote }).then((path) => {
+        resolved.set(remote, path);
+        return path ? convertFileSrc(path) : remote;
+      }),
+    )
+    .catch(() => remote)
+    .finally(() => lookups.delete(remote));
+  lookups.set(remote, lookup);
+  return lookup;
 }
 
 export function subscribePhotos(onChange: () => void): () => void {

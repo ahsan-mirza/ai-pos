@@ -1,28 +1,47 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { displayPhoto, subscribePhotos } from "./productImages";
+import { displayPhoto, mediaSrc, subscribePhotos } from "./productImages";
 
-/** A product photo. Uses the copy saved on this till when one exists, and the category icon when it cannot load. */
+/** A product photo. The card is already showing the name and price; the picture fills in when it arrives. */
 export function ProductPhoto({ src, className = "" }: { src: string | null | undefined; className?: string }) {
-  const [shown, setShown] = useState<string | null>(null);
+  const [shown, setShown] = useState<string | null>(src ? mediaSrc(src) : null);
   const [failed, setFailed] = useState(false);
+  const [ready, setReady] = useState(false);
   const [revision, setRevision] = useState(0);
   useEffect(() => subscribePhotos(() => setRevision((current) => current + 1)), []);
   useEffect(() => {
-    let cancelled = false;
     setFailed(false);
+    setReady(false);
     if (!src) {
       setShown(null);
       return;
     }
+    setShown(mediaSrc(src));
+  }, [src]);
+  useEffect(() => {
+    if (!src) return;
+    let cancelled = false;
     void displayPhoto(src).then((url) => {
-      if (!cancelled) setShown(url);
+      if (!cancelled) setShown((current) => (current === url ? current : url));
     });
     return () => {
       cancelled = true;
     };
   }, [src, revision]);
   if (!shown || failed) return null;
-  return <img src={shown} alt="" loading="lazy" decoding="async" onError={() => setFailed(true)} className={className} />;
+  return (
+    <>
+      {ready ? null : <span className="absolute inset-0 bg-zinc-200 dark:bg-zinc-800" aria-hidden="true" />}
+      <img
+        src={shown}
+        alt=""
+        loading="lazy"
+        decoding="async"
+        onLoad={() => setReady(true)}
+        onError={() => setFailed(true)}
+        className={className}
+      />
+    </>
+  );
 }
 
 /** Top of a till card: every photo sits in the same frame. A category icon shows when there is no picture. */

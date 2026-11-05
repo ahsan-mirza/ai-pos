@@ -176,6 +176,7 @@ export type SyncOperation = (typeof SyncOperation)[keyof typeof SyncOperation];
 
 export const AnalyticsTimeframe = {
   AllTime: "all_time",
+  Daily: "daily",
   Weekly: "weekly",
   Monthly: "monthly",
 } as const;

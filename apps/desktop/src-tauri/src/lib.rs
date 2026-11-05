@@ -590,6 +590,11 @@ async fn flush_sync(state: tauri::State<'_, AppState>) -> Result<sync::SyncRepor
 }
 
 #[tauri::command]
+fn cached_products(state: tauri::State<AppState>) -> Result<Vec<db::ProductRow>, String> {
+    state.db.list_products()
+}
+
+#[tauri::command]
 async fn refresh_products(
     app: tauri::AppHandle,
     state: tauri::State<'_, AppState>,
@@ -779,6 +784,7 @@ pub fn run() {
             pending_count,
             batch_status,
             flush_sync,
+            cached_products,
             refresh_products,
             catalog_revision,
             local_product_image,
@@ -807,6 +813,7 @@ pub fn run() {
             erp::current_shift,
             erp::open_shift,
             erp::record_cash_movement,
+            erp::shift_history,
             erp::shift_summary,
             erp::close_shift,
             erp::recent_shifts,

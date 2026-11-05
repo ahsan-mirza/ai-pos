@@ -468,7 +468,22 @@ pub fn record_cash_movement(
     shifts::record_movement(&state.db, &session, &state.config.store_id, &input)
 }
 
-/// X report. Expected cash is withheld from cashiers without shift management until the shift is closed.
+/// Sales and returns recorded on this register for one shift.
+#[tauri::command]
+pub fn shift_history(
+    state: tauri::State<AppState>,
+    shift_id: Option<String>,
+) -> Result<shifts::ShiftHistory, String> {
+    require_session(&state)?;
+    let id = match shift_id {
+        Some(id) => id,
+        None => shifts::summary(&state.db, None)?
+            .map(|found| found.shift.id)
+            .ok_or_else(|| "Open a shift before reviewing its sales.".to_string())?,
+    };
+    shifts::history(&state.db, &id)
+}
+
 #[tauri::command]
 pub fn shift_summary(
     state: tauri::State<AppState>,

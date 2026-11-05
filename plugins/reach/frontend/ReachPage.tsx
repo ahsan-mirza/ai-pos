@@ -512,7 +512,7 @@ function sessionBadge(status: string): { label: string; className: string } {
 function testStatusLabel(status: string) {
   if (status === "QUEUED") return "Queued. It is in the outbox and has not been accepted yet.";
   if (status === "SENT") return "Accepted by the provider. Delivered and read are shown only after a webhook.";
-  if (status === "FAILED") return "Failed.";
+  if (status === "FAILED") return "The message was not sent.";
   if (status === "SKIPPED") return "Skipped.";
   return status;
 }
@@ -643,7 +643,7 @@ function ConnectionsPanel({
             <dd>{t(providerStatus === "healthy" ? "Available" : providerStatus === "authentication_error" ? "Authentication error" : "Unavailable")}</dd>
           </div>
         </dl>
-        {row?.last_error ? <p className="text-sm text-rose-700">{row.last_error}</p> : null}
+        {row?.last_error ? <p className="text-sm text-rose-700">{t(row.last_error)}</p> : null}
         {timedOut && !open ? <p className="text-sm text-charcoal/70">{t("The connection check timed out. Refresh the QR and scan again.")}</p> : null}
         <div className="flex flex-wrap gap-2">
           <button
@@ -723,7 +723,7 @@ function ConnectionsPanel({
             <div><dt className="text-xs text-charcoal/50">{t("Submitted")}</dt><dd>{new Date(testResult.created_at).toLocaleString(locale === "ar" ? "ar-AE-u-nu-latn" : undefined)}</dd></div>
             <div><dt className="text-xs text-charcoal/50">{t("Outbox")}</dt><dd>{testResult.status} — {t(testStatusLabel(testResult.status))}</dd></div>
             {testResult.provider ? <div><dt className="text-xs text-charcoal/50">{t("Provider")}</dt><dd>{testResult.provider}</dd></div> : null}
-            {testResult.last_error ? <div><dt className="text-xs text-charcoal/50">{t("Error")}</dt><dd className="text-rose-700">{testResult.last_error}</dd></div> : null}
+            {testResult.last_error ? <div><dt className="text-xs text-charcoal/50">{t("Error")}</dt><dd className="text-rose-700">{t(testResult.last_error)}</dd></div> : null}
           </dl>
         ) : null}
       </section>

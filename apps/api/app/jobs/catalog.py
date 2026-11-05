@@ -322,7 +322,7 @@ register(
         "reach_ai_replies",
         "Prepare customer-care replies for WhatsApp messages already saved",
         _reach_ai,
-        {"trigger": "interval", "minutes": 1},
-        120,
+        {"trigger": "interval", "seconds": 15},
+        30,
     )
 )

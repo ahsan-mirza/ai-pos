@@ -24,6 +24,24 @@ export const sampleAnalytics: Record<AnalyticsTimeframe, AnalyticsSummary> = {
     categories,
     payment_split: paymentSplit,
   },
+  [AnalyticsTimeframe.Daily]: {
+    timeframe: AnalyticsTimeframe.Daily,
+    currency: "USD",
+    net_revenue_cents: 64_200,
+    units_sold: 14,
+    average_ticket_cents: 4_586,
+    units_growth_bps: 1200,
+    revenue_series: [8_400, 6_200, 11_800, 9_600, 14_100, 14_100],
+    categories: categories.map((item) => ({
+      ...item,
+      units: Math.max(1, Math.round(item.units / 90)),
+      revenue_cents: Math.round(item.revenue_cents / 280),
+    })),
+    payment_split: [
+      { method: PaymentMethod.Card, revenue_cents: 45_000 },
+      { method: PaymentMethod.Cash, revenue_cents: 19_200 },
+    ],
+  },
   [AnalyticsTimeframe.Weekly]: {
     timeframe: AnalyticsTimeframe.Weekly,
     currency: "USD",

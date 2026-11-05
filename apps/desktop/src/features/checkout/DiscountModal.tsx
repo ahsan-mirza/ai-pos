@@ -162,14 +162,22 @@ export function DiscountModal({ session, lines, title, currency, onClose, onAppl
           </div>
           <label className="block text-sm font-medium">
             {mode === "percent" ? "Discount (%)" : `Discount (${currency})`}
-            <input
-              autoFocus
-              inputMode="decimal"
-              value={value}
-              onChange={(event) => setValue(event.target.value.replace(/[^\d.]/g, ""))}
-              placeholder={mode === "percent" ? "10" : "5.00"}
-              className="modal-input mt-1.5 text-lg font-semibold tabular-nums"
-            />
+            <span className="relative mt-1.5 block">
+              <span
+                aria-hidden="true"
+                className="pointer-events-none absolute left-3 top-1/2 max-w-12 -translate-y-1/2 truncate text-xs font-semibold tracking-wide text-zinc-400"
+              >
+                {currency}
+              </span>
+              <input
+                autoFocus
+                inputMode="decimal"
+                value={value}
+                onChange={(event) => setValue(event.target.value.replace(/[^\d.]/g, ""))}
+                placeholder={mode === "percent" ? "10" : "5.00"}
+                className="modal-input pl-14 text-lg font-semibold tabular-nums"
+              />
+            </span>
           </label>
           {mode === "percent" ? (
             <div className="flex gap-2">

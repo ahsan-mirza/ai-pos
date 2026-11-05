@@ -18,6 +18,7 @@ const arabic: Record<string, string> = {
   Workspace: "مساحة العمل",
   Dashboard: "لوحة المعلومات",
   "AI insights": "تحليلات ذكية",
+  "Sales Insights": "تحليلات المبيعات",
   "Manager app": "تطبيق المدير",
   Rentals: "الإيجارات",
   Sales: "المبيعات",
@@ -175,8 +176,23 @@ const arabic: Record<string, string> = {
   "Accepted by the provider. Delivered and read are shown only after a webhook.":
     "قبلها المزوّد. يظهر التسليم والقراءة بعد وصول إشعار الويب هوك فقط.",
   "Failed.": "فشلت.",
+  "The message was not sent.": "لم تُرسل الرسالة.",
+  "That number is not on WhatsApp. Check the country code and try again.":
+    "هذا الرقم غير مسجّل في واتساب. تحقق من رمز الدولة ثم أعد المحاولة.",
+  "WhatsApp is not connected. Scan the QR code, then try again.":
+    "واتساب غير متصل. امسح رمز QR ثم أعد المحاولة.",
+  "This store's WhatsApp connection was not found. Connect the number again.":
+    "تعذر العثور على اتصال واتساب لهذا المتجر. أعد ربط الرقم.",
+  "Enter the full WhatsApp number with its country code, for example +923104433311.":
+    "أدخل رقم واتساب كاملاً مع رمز الدولة، مثل +923104433311.",
+  "WhatsApp is busy. Wait a moment and try again.": "واتساب مشغول. انتظر قليلاً ثم أعد المحاولة.",
+  "WhatsApp could not send the message. Try again in a moment.":
+    "تعذر إرسال رسالة واتساب. أعد المحاولة بعد قليل.",
+  "WhatsApp could not send to that number. Check the number and try again.":
+    "تعذر الإرسال إلى هذا الرقم. تحقق من الرقم ثم أعد المحاولة.",
   "Skipped.": "تم التخطي.",
   "All time": "كل الفترات",
+  Daily: "يومي",
   Weekly: "أسبوعي",
   Monthly: "شهري",
   Timeframe: "الفترة",

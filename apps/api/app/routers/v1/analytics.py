@@ -11,7 +11,7 @@ from app.services.analytics_service import build_summary
 from app.services.settings_service import report_currency
 
 router = APIRouter()
-Timeframe = Literal["all_time", "weekly", "monthly"]
+Timeframe = Literal["all_time", "daily", "weekly", "monthly"]
 
 
 @router.get("/summary", response_model=AnalyticsSummary)

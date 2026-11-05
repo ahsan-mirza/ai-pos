@@ -21,7 +21,11 @@ def language_of(text: str, preferred: str) -> str:
 
 def intent_of(text: str) -> tuple[str, int]:
     """A keyword reading of the message. The number is a rule score, not a model probability."""
+    from reach.ai_agent.catalogue import is_restricted, query_tokens
+
     raw = text.casefold()
+    if is_restricted(text):
+        return "restricted", 95
     checks = (
         ("human", ("speak to", "real person", "manager", "human", "مدير", "شخص"), 90),
         ("refund", ("refund", "money back", "استرجاع", "فلوس"), 85),
@@ -36,13 +40,17 @@ def intent_of(text: str) -> tuple[str, int]:
         ("promotion", ("discount", "offer", "promotion", "عرض"), 70),
         ("hours", ("opening", "what time", "hours", "open today", "ساعات"), 70),
         ("branch", ("address", "location", "where are", "branch", "عنوان", "فرع"), 70),
-        ("product", ("do you have", "in stock", "how much", "price", "متوفر", "سعر"), 65),
+        ("price", ("how much", "price", "سعر", "كم"), 65),
+        ("stock", ("do you have", "in stock", "how many", "available", "متوفر"), 65),
+        ("list", ("show me", "list ", "what do you sell", "what products", "which products"), 65),
         ("feedback", ("thank", "helpful", "شكرا"), 60),
         ("greeting", ("hello", "hi", "hey", "مرحبا", "السلام"), 60),
     )
     for name, needles, score in checks:
         if any(needle in raw for needle in needles):
             return name, score
+    if len(query_tokens(text)) >= 2:
+        return "product", 50
     return "unknown", 30
 
 
@@ -106,8 +114,14 @@ def compose(intent: str, language: str, greeting: str, facts: dict) -> str:
             missing = "العنوان غير مسجل" if arabic else "address not recorded"
             lines.append(f"{branch['name']}: {branch['address'] or missing}")
         return "\n".join(lines)
-    if intent == "product":
-        return _products(facts.get("products") or [], arabic)
+    if intent in {"product", "price", "stock", "list"}:
+        return _products(facts.get("products") or [], arabic, intent, bool(facts.get("truncated")))
+    if intent == "restricted":
+        return _say(
+            arabic,
+            "I can help with products and prices, but I can't share confidential business information.",
+            "أقدر أساعد بمعلومات المنتجات والأسعار، ولا أقدر أشارك معلومات العمل السرية.",
+        )
     if intent == "promotion":
         return _say(arabic, "I can't confirm a current promotion.", "لا أستطيع تأكيد عرض حالي.")
     if intent in {"order", "warranty", "repair"}:
@@ -143,25 +157,39 @@ def compose(intent: str, language: str, greeting: str, facts: dict) -> str:
     return _say(arabic, "I can't confirm that from the shop's records.", "لا أستطيع تأكيد ذلك من سجلات المتجر.")
 
 
-def _products(rows: list[dict], arabic: bool) -> str:
+def _products(rows: list[dict], arabic: bool, facet: str, truncated: bool) -> str:
     if not rows:
         return _say(
             arabic,
-            "I can't confirm that product or whether it is in stock.",
-            "لا أستطيع تأكيد هذا المنتج أو توفره.",
+            "I can't find that product in this store's catalogue.",
+            "لا أجد هذا المنتج في كتالوج المتجر.",
         )
-    lines = []
-    for row in rows:
-        price = row["price"]
-        stock = row.get("stock")
-        if stock is None:
-            stock_text = "التوفر غير مؤكد" if arabic else "availability is not confirmed"
+    if facet == "list" or len(rows) > 1:
+        intro = _say(
+            arabic,
+            "I found these products in this store's catalogue:",
+            "وجدت هذه المنتجات في كتالوج المتجر:",
+        )
+        lines = [f"{index}. {row['name']}" for index, row in enumerate(rows, start=1)]
+        if facet == "list":
+            question = _say(arabic, "Would you like the price of one of these?", "هل تريد سعر أحدها؟")
         else:
-            stock_text = f"المتوفر المسجل {stock}" if arabic else f"recorded available quantity {stock}"
-        when = row.get("checked_at") or ""
-        suffix = f" ({when})" if when else ""
-        lines.append(f"{row['name']}: {price}. {stock_text}{suffix}.")
-    return "\n".join(lines)
+            question = _say(arabic, "Which one did you mean?", "أي منتج تقصد؟")
+        more = _say(arabic, "Ask to see more.", "اطلب المزيد.") if truncated else ""
+        return "\n".join([intro, *lines, question, more]).strip()
+    row = rows[0]
+    if facet != "stock":
+        return f"{row['name']}: {row['price']}."
+    stock = row.get("stock")
+    when = row.get("checked_at") or ""
+    suffix = f" ({when})" if when else ""
+    if stock is None:
+        stock_text = _say(arabic, "I can't confirm the current stock quantity", "لا أستطيع تأكيد الكمية المتوفرة")
+    elif stock == 0:
+        stock_text = _say(arabic, "It is currently out of stock", "المنتج غير متوفر حالياً")
+    else:
+        stock_text = f"المتوفر المسجل {stock}" if arabic else f"recorded available quantity {stock}"
+    return f"{row['name']}: {row['price']}. {stock_text}{suffix}."
 
 
 def accept_model_text(candidate: str, facts_text: str) -> str | None:

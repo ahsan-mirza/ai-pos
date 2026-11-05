@@ -79,6 +79,8 @@ def _series(sales: list[Sale], refunds: list[SaleReturn], edges: list[datetime])
 
 
 def period_start(timeframe: str, now: datetime) -> datetime | None:
+    if timeframe == "daily":
+        return now - timedelta(days=1)
     if timeframe == "weekly":
         return now - timedelta(days=7)
     if timeframe == "monthly":
@@ -87,6 +89,9 @@ def period_start(timeframe: str, now: datetime) -> datetime | None:
 
 
 def period_edges(timeframe: str, now: datetime) -> list[datetime]:
+    # Six 4-hour buckets, matching the bar count of the longer windows.
+    if timeframe == "daily":
+        return [now - timedelta(hours=24 - offset * 4) for offset in range(7)]
     if timeframe == "weekly":
         return [now - timedelta(days=7 - offset) for offset in range(8)]
     if timeframe == "monthly":

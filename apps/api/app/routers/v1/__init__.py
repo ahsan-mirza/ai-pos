@@ -73,6 +73,7 @@ from app.routers.v1.reservations import router as reservations_router
 from app.routers.v1.returns import router as returns_router
 from app.routers.v1.roles import router as roles_router
 from app.routers.v1.sales import router as sales_router
+from app.routers.v1.sales_insights import router as sales_insights_router
 from app.routers.v1.sales_orders import router as sales_orders_router
 from app.routers.v1.serials import router as serials_router
 from app.routers.v1.settings import router as settings_router
@@ -141,6 +142,7 @@ api_router.include_router(
     quotes_router, prefix="/quotes", tags=["quotes"], dependencies=module(Capability.QUOTES_LAYAWAY)
 )
 api_router.include_router(sales_router, prefix="/sales", tags=["sales"])
+api_router.include_router(sales_insights_router, prefix="/sales-insights", tags=["sales insights"])
 api_router.include_router(
     sales_orders_router,
     prefix="/sales-orders",
