@@ -65,7 +65,7 @@ export function watchAppUpdates(registration: ServiceWorkerRegistration): () => 
 export function registerAppWorker(): () => void {
   if (!import.meta.env.PROD || !("serviceWorker" in navigator)) return () => undefined;
   if (isPublicNavigation({ hostname: window.location.hostname, pathname: window.location.pathname })) return () => undefined;
-  let stopWatch = () => undefined;
+  let stopWatch: () => void = () => undefined;
   let cancelled = false;
   const register = () => {
     void navigator.serviceWorker
