@@ -1,4 +1,4 @@
-"""TOON is used for model context only when a round trip is smaller than compact JSON."""
+"""Model context is compact JSON. TOON helpers stay available and are not sent to the model."""
 
 import json
 
@@ -67,7 +67,7 @@ def test_malformed_and_truncated_documents_are_rejected() -> None:
     assert validate_toon_document("") is False
 
 
-def test_uniform_catalogue_uses_toon_and_a_tiny_object_keeps_json() -> None:
+def test_catalogue_context_sent_to_the_model_is_json() -> None:
     rows = [
         {
             "product_id": f"p{index}",
@@ -80,31 +80,24 @@ def test_uniform_catalogue_uses_toon_and_a_tiny_object_keeps_json() -> None:
         for index in range(1, 6)
     ]
     document = prepare_llm_context({"matched_products": rows})
-    assert document.format == "toon"
+    assert document.format == "json"
     assert document.fallback is False
     assert document.valid is True
-    assert document.toon_tokens is not None and document.json_tokens is not None
-    assert document.toon_tokens < document.json_tokens
-    assert "matched_products[5]{product_id,name,sku,category,brand,confidence}:" in (document.toon_text or "")
+    assert document.text == document.json_text
+    assert document.text.startswith('{"matched_products":')
+    assert "product_id" in document.text
+    assert document.toon_text is None
 
     tiny = prepare_llm_context({"a": 1, "b": 2})
     assert tiny.format == "json"
-    assert tiny.fallback is True
     assert tiny.text == json.dumps({"a": 1, "b": 2}, separators=(",", ":"))
 
 
-def test_token_counts_for_larger_catalogues() -> None:
-    def tokens(size: int) -> tuple[int, int]:
+def test_larger_catalogues_stay_json() -> None:
+    for size in (5, 50, 100):
         rows = [{"product_id": f"p{index}", "name": f"Item {index}", "sku": f"S-{index}"} for index in range(size)]
         document = prepare_llm_context({"matched_products": rows})
-        assert document.json_tokens is not None and document.toon_tokens is not None
-        assert document.format == "toon"
-        return document.json_tokens, document.toon_tokens
-
-    five = tokens(5)
-    fifty = tokens(50)
-    hundred = tokens(100)
-    assert five[1] < five[0]
-    assert fifty[1] < fifty[0]
-    assert hundred[1] < hundred[0]
+        assert document.format == "json"
+        assert document.text == document.json_text
+        assert json.loads(document.text)["matched_products"][0]["name"] == "Item 0"
     assert estimate_context_tokens("Cotton Suit") > 0

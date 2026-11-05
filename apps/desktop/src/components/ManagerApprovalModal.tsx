@@ -97,7 +97,7 @@ export function ManagerApprovalModal({
     return () => window.removeEventListener("keydown", onKey);
   });
 
-  const canSubmit = ready && !busy && username.trim() !== "" && /^\d{4,6}$/.test(pin) && note.trim().length >= 3;
+  const canSubmit = ready && !busy && username.trim() !== "" && /^\d{4}$/.test(pin) && note.trim().length >= 3;
 
   return (
     <div className="modal-backdrop" role="presentation">
@@ -159,9 +159,9 @@ export function ManagerApprovalModal({
                 type="password"
                 inputMode="numeric"
                 autoComplete="off"
-                maxLength={6}
+                maxLength={4}
                 value={pin}
-                onChange={(event) => setPin(event.target.value.replace(/\D/g, ""))}
+                onChange={(event) => setPin(event.target.value.replace(/\D/g, "").slice(0, 4))}
                 className="modal-input mt-1.5 font-normal tabular-nums tracking-[0.3em]"
               />
             </label>

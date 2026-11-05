@@ -1,8 +1,8 @@
 import { PASSWORD_MIN_LENGTH, normalizeStoreCode, storeCodeError } from "@ai-pos/shared-types";
 import { BrandLogo } from "@ai-pos/ui";
 import { PwaChrome } from "../../pwa/PwaChrome";
-import { Eye, EyeOff, Lock, Mail, ShieldCheck, Store, User, type LucideIcon } from "lucide-react";
-import { useState, type FormEvent, type InputHTMLAttributes, type ReactNode } from "react";
+import { Eye, EyeOff, Lock, Mail, Store, User, type LucideIcon } from "lucide-react";
+import { useEffect, useRef, useState, type FormEvent, type InputHTMLAttributes, type ReactNode } from "react";
 import { env, saveStoreCode } from "../../config/env";
 import { ApiRequestError, apiPublicPost } from "../../lib/api";
 import { useAuth } from "../../lib/auth";
@@ -16,6 +16,103 @@ const secondaryButtonClass =
 
 const noticeClass = "rounded-2xl bg-emerald-500/10 px-4 py-3 text-sm text-emerald-800 dark:text-emerald-200";
 const alertClass = "rounded-2xl bg-danger/10 px-4 py-3 text-sm text-danger";
+const CODE_LENGTH = 6;
+
+function CodeBoxes({
+  value,
+  disabled,
+  invalid,
+  onChange,
+  onComplete,
+}: {
+  value: string;
+  disabled?: boolean;
+  invalid?: boolean;
+  onChange: (value: string) => void;
+  onComplete: (value: string) => void;
+}) {
+  const refs = useRef<Array<HTMLInputElement | null>>([]);
+  const digits = value.replace(/\D/g, "").slice(0, CODE_LENGTH);
+
+  useEffect(() => {
+    if (!disabled && digits.length === 0) refs.current[0]?.focus();
+  }, [digits.length, disabled]);
+
+  const commit = (index: number, raw: string) => {
+    const incoming = raw.replace(/\D/g, "");
+    if (!incoming || disabled) return;
+    const chars = Array.from({ length: CODE_LENGTH }, (_, slot) => digits[slot] ?? "");
+    for (let offset = 0; offset < incoming.length && index + offset < CODE_LENGTH; offset += 1) {
+      chars[index + offset] = incoming[offset]!;
+    }
+    const next = chars.join("");
+    onChange(next);
+    const focusAt = Math.min(index + incoming.length, CODE_LENGTH - 1);
+    if (next.length < CODE_LENGTH) refs.current[focusAt]?.focus();
+    if (next.length === CODE_LENGTH) onComplete(next);
+  };
+
+  return (
+    <div>
+      <span className="text-sm font-medium text-charcoal dark:text-white" id="reset-code-label">
+        Code
+      </span>
+      <div className="mt-1.5 grid grid-cols-6 gap-2" role="group" aria-labelledby="reset-code-label">
+        {Array.from({ length: CODE_LENGTH }, (_, index) => (
+          <input
+            key={index}
+            ref={(node) => {
+              refs.current[index] = node;
+            }}
+            aria-label={`Digit ${index + 1} of ${CODE_LENGTH}`}
+            inputMode="numeric"
+            autoComplete={index === 0 ? "one-time-code" : "off"}
+            disabled={disabled}
+            value={digits[index] ?? ""}
+            onFocus={(event) => {
+              if (index > digits.length) {
+                refs.current[digits.length]?.focus();
+                return;
+              }
+              event.target.select();
+            }}
+            onPaste={(event) => {
+              event.preventDefault();
+              commit(index, event.clipboardData.getData("text"));
+            }}
+            onChange={(event) => {
+              const raw = event.target.value.replace(/\D/g, "");
+              if (!raw) return;
+              commit(index, raw.length > 1 && digits[index] ? raw.slice(-1) : raw);
+            }}
+            onKeyDown={(event) => {
+              if (event.key === "Backspace") {
+                event.preventDefault();
+                if (digits[index]) {
+                  onChange(digits.slice(0, index) + digits.slice(index + 1));
+                  return;
+                }
+                if (index > 0) {
+                  onChange(digits.slice(0, index - 1) + digits.slice(index));
+                  refs.current[index - 1]?.focus();
+                }
+              } else if (event.key === "ArrowLeft" && index > 0) {
+                refs.current[index - 1]?.focus();
+              } else if (event.key === "ArrowRight" && index < CODE_LENGTH - 1 && index < digits.length) {
+                refs.current[index + 1]?.focus();
+              }
+            }}
+            className={`h-12 w-full rounded-xl border bg-surface text-center text-lg font-semibold tabular-nums text-charcoal outline-none transition focus:bg-card focus:ring-2 disabled:opacity-40 dark:bg-[#2D2A32] dark:text-white dark:focus:bg-[#2D2A32] ${
+              invalid
+                ? "border-danger focus:border-danger focus:ring-danger/40"
+                : "border-line focus:border-accent focus:ring-accent/35 dark:border-white/10"
+            }`}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
 
 function LoginField({
   id,
@@ -122,6 +219,7 @@ export function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [fieldError, setFieldError] = useState<{ store?: string; identity?: string; password?: string; email?: string; confirm?: string }>({});
   const [busy, setBusy] = useState(false);
+  const verifying = useRef(false);
   const store = normalizeStoreCode(storeCode);
   const storeProblem = env.needsStoreCode ? storeCodeError(store) : undefined;
   const storeReady = storeProblem === undefined;
@@ -177,7 +275,10 @@ export function LoginPage() {
     }
   };
 
-  const verifyCode = async () => {
+  const verifyCode = async (entered = code) => {
+    const pin = entered.replace(/\D/g, "");
+    if (pin.length !== CODE_LENGTH || verifying.current) return;
+    verifying.current = true;
     setBusy(true);
     setError(null);
     try {
@@ -185,7 +286,7 @@ export function LoginPage() {
       if (recovery === "store") {
         const result = await apiPublicPost<{ message: string; stores: RecoveredStore[] }>(
           "/api/v1/auth/recover-store-code/verify",
-          { email: email.trim(), code: code.trim() },
+          { email: email.trim(), code: pin },
         );
         setStores(result.stores);
         setNotice(result.message);
@@ -193,7 +294,7 @@ export function LoginPage() {
         if (result.stores.length === 1 && only) setStoreCode(only.code);
         setStep("stores");
       } else {
-        await apiPublicPost("/api/v1/auth/verify-reset-code", { email: email.trim(), code: code.trim() });
+        await apiPublicPost("/api/v1/auth/verify-reset-code", { email: email.trim(), code: pin });
         setPassword("");
         setConfirm("");
         setNotice(null);
@@ -201,7 +302,9 @@ export function LoginPage() {
       }
     } catch (caught) {
       setError(caught instanceof ApiRequestError ? caught.message : "That code is wrong or has expired.");
+      setCode("");
     } finally {
+      verifying.current = false;
       setBusy(false);
     }
   };
@@ -407,17 +510,18 @@ export function LoginPage() {
             />
           ) : null}
           {step === "code" ? (
-            <LoginField
-              id="reset-code"
-              label="Code"
-              icon={ShieldCheck}
-              inputMode="numeric"
-              autoComplete="one-time-code"
+            <CodeBoxes
               value={code}
-              onChange={(event) => setCode(event.target.value.replace(/\D/g, "").slice(0, 6))}
-              placeholder="000000"
-              maxLength={6}
-              required
+              disabled={busy}
+              invalid={error !== null}
+              onChange={(next) => {
+                setError(null);
+                setCode(next);
+              }}
+              onComplete={(next) => {
+                setCode(next);
+                void verifyCode(next);
+              }}
             />
           ) : null}
           {step === "stores" ? (
@@ -489,7 +593,7 @@ export function LoginPage() {
                 busy ||
                 (recovery === "password" && !storeReady) ||
                 (step === "email" && email.trim() === "") ||
-                (step === "code" && code.length !== 6) ||
+                (step === "code" && code.replace(/\D/g, "").length !== CODE_LENGTH) ||
                 (step === "password" && (password.length < PASSWORD_MIN_LENGTH || confirm.length < PASSWORD_MIN_LENGTH))
               }
               className={primaryButtonClass}

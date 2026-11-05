@@ -348,12 +348,11 @@ export function AgentPanel() {
         ) : null}
         {context ? (
           <p className="mt-1 text-xs text-charcoal/50">
-            Context {context.format}
-            {context.fallback ? ", JSON kept" : ""}
+            Context JSON
             {context.valid ? ", valid" : ", invalid"}
-            {context.json_tokens != null && context.toon_tokens != null
-              ? `, ${context.json_tokens} JSON tokens, ${context.toon_tokens} TOON tokens`
-              : `, ${context.json_chars} JSON characters, ${context.toon_chars} TOON characters`}
+            {context.json_tokens != null
+              ? `, ${context.json_tokens} JSON tokens`
+              : `, ${context.json_chars} JSON characters`}
           </p>
         ) : null}
       </section>

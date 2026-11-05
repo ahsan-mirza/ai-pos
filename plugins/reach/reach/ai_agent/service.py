@@ -620,7 +620,7 @@ def _draft(
     template = compose(intent, language, agent.greeting, facts)
     if settings.assistant_provider != "ollama":
         return template, "template"
-    data = "" if document is None else document.text
+    data = "" if document is None else document.json_text
     try:
         from app.services.assistant_llm import complete
 

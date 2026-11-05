@@ -8,7 +8,7 @@ from typing import Literal
 from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-PIN_PATTERN = re.compile(r"\d{4,6}")
+PIN_PATTERN = re.compile(r"\d{4}")
 API_ROOT = Path(__file__).resolve().parents[2]
 # apps/api -> repository root. On the server this is /opt/ai-pos, next to apps/.
 REPO_ROOT = API_ROOT.parent.parent
@@ -233,7 +233,7 @@ class Settings(BaseSettings):
     @classmethod
     def admin_pin_digits(cls, value: str | None) -> str | None:
         if value is not None and PIN_PATTERN.fullmatch(value) is None:
-            raise ValueError("ADMIN_PIN must be 4 to 6 digits.")
+            raise ValueError("ADMIN_PIN must be 4 digits.")
         return value
 
     @field_validator("cors_origins")

@@ -1,4 +1,4 @@
-"""TOON for text a model reads. API bodies, webhooks, and stored JSON stay on the json module.
+"""Compact JSON for text a model reads. API bodies, webhooks, and stored JSON stay on the json module.
 
 Counts use the o200k_base tokenizer. The store's Ollama model is not loaded here, so these counts
 are a measurement of the prompt text, not that model's own tokenizer.
@@ -80,25 +80,11 @@ def get_context_serialization_format(data: Any) -> str:
 
 
 def prepare_llm_context(data: Any) -> ContextDocument:
-    """Use TOON when it is valid and smaller. Otherwise keep compact JSON."""
+    """The model reads compact JSON. Restricted fields are omitted before encoding."""
     plain = _plain(customer_safe(data))
     json_text = json.dumps(plain, ensure_ascii=False, separators=(",", ":"), default=str)
     json_tokens = estimate_context_tokens(json_text)
-    try:
-        toon_text = toon_format.dumps(plain, default=str)
-    except (TypeError, ValueError):
-        return ContextDocument(json_text, "json", json_text, None, False, True, json_tokens, None)
-    valid = validate_toon_document(toon_text)
-    try:
-        decoded = decode_toon_context(toon_text) if valid else None
-    except (toon_format.ToonDecodeError, TypeError, ValueError):
-        return ContextDocument(json_text, "json", json_text, toon_text, False, True, json_tokens, None)
-    if not valid or decoded != plain:
-        return ContextDocument(json_text, "json", json_text, toon_text, valid, True, json_tokens, None)
-    toon_tokens = estimate_context_tokens(toon_text)
-    if toon_tokens >= json_tokens:
-        return ContextDocument(json_text, "json", json_text, toon_text, True, True, json_tokens, toon_tokens)
-    return ContextDocument(toon_text, "toon", json_text, toon_text, True, False, json_tokens, toon_tokens)
+    return ContextDocument(json_text, "json", json_text, None, True, False, json_tokens, None)
 
 
 def customer_safe(value: Any) -> Any:

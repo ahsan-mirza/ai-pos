@@ -128,7 +128,9 @@ export function ActivationScreen({ onCancel }: { onCancel?: () => void }) {
               <div>
                 <h2 className="text-xl font-semibold">Store connection</h2>
                 <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
-                  Ask your manager for the store code and key.
+                  {onCancel
+                    ? "A new key connects this app to that register. Other tills at the same store stay connected."
+                    : "Ask your manager for the store code and key."}
                 </p>
               </div>
               <label className="block">

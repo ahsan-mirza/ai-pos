@@ -9,7 +9,7 @@ from app.core.permissions import ALL_PERMISSIONS
 
 USERNAME = re.compile(r"[a-z0-9][a-z0-9._-]{2,31}")
 EMAIL = re.compile(r"[^@\s]{1,64}@[^@\s]+\.[^@\s]{2,}")
-PIN = re.compile(r"\d{4,6}")
+PIN = re.compile(r"\d{4}")
 
 
 class ApiModel(BaseModel):
@@ -32,7 +32,7 @@ def _email(value: str) -> str:
 
 def _pin(value: str) -> str:
     if PIN.fullmatch(value) is None:
-        raise ValueError("PIN must be 4 to 6 digits.")
+        raise ValueError("PIN must be 4 digits.")
     return value
 
 
@@ -99,14 +99,19 @@ class PasswordLoginRequest(ApiModel):
 
 class PinLoginRequest(ApiModel):
     username: str = Field(min_length=1, max_length=64)
-    pin: str = Field(min_length=4, max_length=6)
+    pin: str = Field(min_length=4, max_length=4)
+
+    @field_validator("pin")
+    @classmethod
+    def pin_digits(cls, value: str) -> str:
+        return _pin(value)
 
 
 class UnlockRequest(ApiModel):
     """PIN for a cashier the register already listed. The terminal, not this body, chooses the branch."""
 
     user_id: UUID
-    pin: str = Field(min_length=4, max_length=6)
+    pin: str = Field(min_length=4, max_length=4)
 
     @field_validator("pin")
     @classmethod

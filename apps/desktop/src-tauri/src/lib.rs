@@ -423,8 +423,8 @@ async fn activate_terminal(
     subdomain: String,
     activation_key: String,
 ) -> Result<terminal::TerminalStatus, String> {
-    if state.terminal.source == "activation" {
-        return Err("This register is already activated. Deactivate it first.".into());
+    if let Some(blocked) = terminal::replacement_block(&state.terminal.source, state.db.pending_count()?) {
+        return Err(blocked);
     }
     let path = state.terminal_path.clone();
     let activated = tauri::async_runtime::spawn_blocking(move || {

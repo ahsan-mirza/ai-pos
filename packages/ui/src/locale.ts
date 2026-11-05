@@ -222,6 +222,8 @@ const arabic: Record<string, string> = {
   "New activation": "تفعيل جديد",
   "Username login": "الدخول باسم المستخدم",
   "Select a cashier": "اختر أمين صندوق",
+  "Select a cashier first.": "اختر أمين الصندوق أولاً.",
+  "Enter the username first.": "أدخل اسم المستخدم أولاً.",
   "Delete digit": "حذف رقم",
   "Clear PIN": "مسح الرقم السري",
   Clear: "مسح",

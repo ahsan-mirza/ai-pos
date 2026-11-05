@@ -72,7 +72,7 @@ export function UserFormModal({ user, roles, stores, onClose, onSaved, onUpdated
     if (!editing && password !== "" && password.length < PASSWORD_MIN_LENGTH) {
       next.password = `Passwords need at least ${PASSWORD_MIN_LENGTH} characters.`;
     }
-    if (!editing && pin !== "" && !PIN_PATTERN.test(pin)) next.pin = "PINs are 4 to 6 digits.";
+    if (!editing && pin !== "" && !PIN_PATTERN.test(pin)) next.pin = "PINs are 4 digits.";
     if (portalAccess && !canEnablePortal) next.password = "Set a password before enabling web portal access.";
     if (posAccess && !canEnablePos) next.pin = PIN_REQUIRED;
     return next;
@@ -214,12 +214,12 @@ export function UserFormModal({ user, roles, stores, onClose, onSaved, onUpdated
               type="password"
               inputMode="numeric"
               autoComplete="off"
-              maxLength={6}
+              maxLength={4}
               value={pin}
               error={errors.pin === PIN_REQUIRED ? undefined : errors.pin}
-              hint="Register unlock. 4 to 6 digits."
+              hint="Register unlock. 4 digits."
               onChange={(event) => {
-                setPin(event.target.value.replace(/\D/g, ""));
+                setPin(event.target.value.replace(/\D/g, "").slice(0, 4));
                 setErrors((current) => ({ ...current, pin: "" }));
               }}
             />

@@ -192,9 +192,9 @@ def test_misspelled_catalogue_price_ignores_missing_stock(client, session) -> No
     assert body["matches"] == [{"name": "Cotton Suit Beige Frost"}]
     assert any("suite" in item for item in body["spelling"])
     assert body["context"]["valid"] is True
-    assert body["context"]["json_tokens"] < body["context"]["toon_tokens"]
     assert body["context"]["format"] == "json"
-    assert body["context"]["fallback"] is True
+    assert body["context"]["fallback"] is False
+    assert body["context"]["toon_tokens"] is None
 
     listed = client.post(
         "/api/v1/reach/ai/agent/test",

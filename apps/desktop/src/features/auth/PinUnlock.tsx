@@ -1,6 +1,6 @@
 import { BrandLogo, useLocale } from "@ai-pos/ui";
 import { Delete } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { version as packagedVersion } from "../../../package.json";
 import { useRegisterLayout } from "../../components/RegisterLayout";
 import { terminal } from "../../config/terminal";
@@ -9,7 +9,7 @@ import { loadCashiers, type CashierCard } from "./cashiers";
 import { DemoCashiers, demoCashiersEnabled } from "./DemoCashiers";
 import { unlock, unlockSelected, type CashierSession } from "./session";
 
-const MAX_PIN = 6;
+const MAX_PIN = 4;
 const keys = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "clear", "0", "back"] as const;
 
 export function PinUnlock({
@@ -35,6 +35,7 @@ export function PinUnlock({
   const [busy, setBusy] = useState(false);
   const [version, setVersion] = useState(packagedVersion);
   const selected = cashiers.find((card) => card.id === selectedId) ?? null;
+  const lock = useRef(false);
 
   useEffect(() => {
     void import("@tauri-apps/api/app")
@@ -58,6 +59,7 @@ export function PinUnlock({
   }, []);
 
   const press = useCallback((key: (typeof keys)[number]) => {
+    if (lock.current) return;
     setError(null);
     if (key === "clear") setPin("");
     else if (key === "back") setPin((value) => value.slice(0, -1));
@@ -67,7 +69,8 @@ export function PinUnlock({
   const ready = manual ? username.trim() !== "" : selected !== null;
 
   const submit = useCallback(async () => {
-    if (busy || !ready || pin.length < 4) return;
+    if (lock.current || busy || !ready || pin.length !== MAX_PIN) return;
+    lock.current = true;
     setBusy(true);
     setError(null);
     try {
@@ -77,9 +80,20 @@ export function PinUnlock({
       setError(caught instanceof Error ? caught.message : String(caught));
       setPin("");
     } finally {
+      lock.current = false;
       setBusy(false);
     }
   }, [busy, manual, onUnlocked, pin, ready, selected, username]);
+
+  useEffect(() => {
+    if (pin.length !== MAX_PIN || busy) return;
+    if (!ready) {
+      setError(manual ? t("Enter the username first.") : t("Select a cashier first."));
+      setPin("");
+      return;
+    }
+    void submit();
+  }, [busy, manual, pin.length, ready, submit, t]);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -227,7 +241,7 @@ export function PinUnlock({
           </div>
           <button
             type="button"
-            disabled={busy || !ready || pin.length < 4}
+            disabled={busy || !ready || pin.length !== MAX_PIN}
             onClick={() => void submit()}
             className="mt-5 h-14 w-full rounded-2xl bg-primary text-base font-semibold text-white disabled:opacity-40"
           >

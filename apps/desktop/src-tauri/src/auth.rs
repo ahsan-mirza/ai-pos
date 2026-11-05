@@ -113,6 +113,13 @@ pub fn now_secs() -> i64 {
         .unwrap_or_default()
 }
 
+fn require_pin(pin: &str) -> Result<(), String> {
+    if pin.len() != 4 || !pin.chars().all(|c| c.is_ascii_digit()) {
+        return Err("PINs are 4 digits.".into());
+    }
+    Ok(())
+}
+
 /// Online first: the API is the source of truth for credentials. When it cannot be reached, the PIN is
 /// checked against the Argon2 verifier cached on this register after the cashier's last online unlock.
 pub fn pin_login(
@@ -122,9 +129,7 @@ pub fn pin_login(
     pin: &str,
 ) -> Result<PinUnlock, String> {
     let username = username.trim().to_lowercase();
-    if !(4..=6).contains(&pin.len()) || !pin.chars().all(|c| c.is_ascii_digit()) {
-        return Err("PINs are 4 to 6 digits.".into());
-    }
+    require_pin(pin)?;
     match remote_login(config, &username, pin) {
         Remote::Accepted(response) => accept_remote(db, response, pin),
         Remote::Refused { status, message } => {
@@ -139,9 +144,7 @@ pub fn pin_login(
 
 /// A selected profile. The PIN still goes through the same online check, then the local Argon2 cache.
 pub fn unlock_by_id(db: &Db, config: &DesktopConfig, user_id: &str, pin: &str) -> Result<PinUnlock, String> {
-    if !(4..=6).contains(&pin.len()) || !pin.chars().all(|c| c.is_ascii_digit()) {
-        return Err("PINs are 4 to 6 digits.".into());
-    }
+    require_pin(pin)?;
     match remote_unlock(config, user_id, pin) {
         Remote::Accepted(response) => accept_remote(db, response, pin),
         Remote::Refused { message, .. } => Err(message),

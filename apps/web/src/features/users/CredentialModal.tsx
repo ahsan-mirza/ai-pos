@@ -21,7 +21,7 @@ export function CredentialModal({ user, kind, onClose, onSaved, elevated = false
   const isPin = kind === "pin";
 
   const save = async () => {
-    if (isPin && !PIN_PATTERN.test(value)) return setError("PINs are 4 to 6 digits.");
+    if (isPin && !PIN_PATTERN.test(value)) return setError("PINs are 4 digits.");
     if (!isPin && value.length < PASSWORD_MIN_LENGTH) {
       return setError(`Passwords need at least ${PASSWORD_MIN_LENGTH} characters.`);
     }
@@ -37,7 +37,7 @@ export function CredentialModal({ user, kind, onClose, onSaved, elevated = false
     }
   };
 
-  const sanitize = (raw: string) => (isPin ? raw.replace(/\D/g, "").slice(0, 6) : raw);
+  const sanitize = (raw: string) => (isPin ? raw.replace(/\D/g, "").slice(0, 4) : raw);
 
   return (
     <Modal

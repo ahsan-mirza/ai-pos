@@ -180,7 +180,7 @@ export interface RoleUpdate {
   max_discount_bps?: number | null;
 }
 
-export const PIN_PATTERN = /^\d{4,6}$/;
+export const PIN_PATTERN = /^\d{4}$/;
 export const PASSWORD_MIN_LENGTH = 10;
 
 export function hasPermission(user: Pick<User, "permissions"> | null, permission: Permission): boolean {

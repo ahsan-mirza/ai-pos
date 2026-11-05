@@ -176,7 +176,7 @@ def test_sales_associate_is_recorded_and_earns_the_commission(client, session: S
             "full_name": "Sara Stylist",
             "role_id": roles["Cashier"],
             "password": "stylist-pass-123",
-            "pin": "246810",
+            "pin": "9753",
             "has_portal_access": False,
             "has_pos_access": True,
             "store_id": STORE,

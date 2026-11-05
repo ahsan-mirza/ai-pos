@@ -217,6 +217,18 @@ fn machine_name() -> String {
         .collect()
 }
 
+/// A second till at the same store uses its own key. This installation can take that key when its
+/// queue is empty. Unsynced sales still belong to the register already stored here.
+pub fn replacement_block(source: &str, pending: i64) -> Option<String> {
+    if source != "activation" || pending <= 0 {
+        return None;
+    }
+    let sales = if pending == 1 { "sale is" } else { "sales are" };
+    Some(format!(
+        "{pending} {sales} still waiting to sync on this till. Sync them, then enter the new register's key."
+    ))
+}
+
 pub fn activate(subdomain: &str, activation_key: &str) -> Result<TerminalConfig, String> {
     let (slug, domain) = normalize_subdomain(subdomain)?;
     let key: String = activation_key
@@ -382,6 +394,11 @@ mod tests {
             ("client1".into(), "client1".into())
         );
         assert!(dev("client1.axizpos.com").is_err());
+        assert!(replacement_block("activation", 0).is_none());
+        assert!(replacement_block("none", 3).is_none());
+        assert!(replacement_block("activation", 2)
+            .unwrap()
+            .contains("2 sales are still waiting"));
         let ip = |input: &str| normalize_subdomain_for(input, "130.210.53.214");
         assert_eq!(ip("Client1").unwrap(), ("client1".into(), "client1".into()));
         assert_eq!(

@@ -98,6 +98,14 @@ def test_password_login_accepts_email(client) -> None:
     assert unknown.status_code == 401
 
 
+def test_pin_must_be_four_digits(client) -> None:
+    headers = {"X-Api-Key": API_KEY}
+    longer = client.post("/api/v1/auth/login-pin", json={"username": "cashier", "pin": "13579"}, headers=headers)
+    shorter = client.post("/api/v1/auth/login-pin", json={"username": "cashier", "pin": "135"}, headers=headers)
+    assert longer.status_code == 422
+    assert shorter.status_code == 422
+
+
 def test_pin_login_requires_device_key(client) -> None:
     body = {"username": "cashier", "pin": CASHIER_PIN}
     assert client.post("/api/v1/auth/login-pin", json=body).status_code == 401
