@@ -124,6 +124,8 @@ const arabic: Record<string, string> = {
   "QR waiting for scan": "بانتظار مسح رمز QR",
   Connected: "متصل",
   Connecting: "جارٍ الاتصال",
+  "Connecting...": "جارٍ الاتصال...",
+  "Checking connection...": "جارٍ فحص الاتصال...",
   Disconnected: "غير متصل",
   "Connection error": "خطأ في الاتصال",
   "Not connected": "غير متصل",
