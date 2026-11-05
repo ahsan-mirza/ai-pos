@@ -150,6 +150,14 @@ const arabic: Record<string, string> = {
   "WhatsApp QR code for this store": "رمز QR لواتساب هذا المتجر",
   "This QR may have expired. Refresh it, then scan again.": "قد يكون رمز QR منتهي الصلاحية. حدّثه ثم امسحه مرة أخرى.",
   "Scan within {seconds} seconds, then keep this page open.": "امسح خلال {seconds} ثانية، ثم أبقِ هذه الصفحة مفتوحة.",
+  "How to connect": "طريقة الربط",
+  "On the phone that uses this store's WhatsApp number, open WhatsApp.":
+    "على الهاتف الذي يستخدم رقم واتساب هذا المتجر، افتح واتساب.",
+  "Open Linked devices. On Android, tap the menu, then Linked devices. On iPhone, open Settings, then Linked devices.":
+    "افتح الأجهزة المرتبطة. في أندرويد اضغط القائمة ثم الأجهزة المرتبطة. في آيفون افتح الإعدادات ثم الأجهزة المرتبطة.",
+  "Tap Link a device.": "اضغط ربط جهاز.",
+  "Point the phone camera at this QR code.": "وجّه كاميرا الهاتف إلى رمز QR هذا.",
+  "Stay on this page until the status changes to Connected.": "ابقَ في هذه الصفحة حتى تتغير الحالة إلى متصل.",
   "Send a test message": "إرسال رسالة تجريبية",
   "Uses the same outbox as other WhatsApp messages. The session must be open, and the channel must use Evolution.":
     "تستخدم صندوق الإرسال نفسه لرسائل واتساب الأخرى. يجب أن تكون الجلسة متصلة، وأن تستخدم القناة Evolution.",

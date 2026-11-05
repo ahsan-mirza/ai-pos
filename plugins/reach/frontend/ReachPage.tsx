@@ -666,17 +666,29 @@ function ConnectionsPanel({
           ) : null}
         </div>
         {qr && !open ? (
-          <div className="grid justify-items-center gap-2 rounded-xl border border-line bg-surface p-4">
-            <img
-              alt={t("WhatsApp QR code for this store")}
-              className={`h-52 w-52 rounded-xl bg-white p-2 ${qrStale ? "opacity-40" : ""}`}
-              src={qr.startsWith("data:") ? qr : `data:image/png;base64,${qr}`}
-            />
-            <p className="text-center text-sm text-charcoal/70">
-              {qrStale
-                ? t("This QR may have expired. Refresh it, then scan again.")
-                : t("Scan within {seconds} seconds, then keep this page open.", { seconds: Math.max(0, 40 - qrAge) })}
-            </p>
+          <div className="grid items-center gap-5 rounded-xl border border-line bg-surface p-4 sm:grid-cols-[13rem_minmax(0,1fr)] sm:p-5">
+            <div className="grid justify-items-center gap-2">
+              <img
+                alt={t("WhatsApp QR code for this store")}
+                className={`h-52 w-52 rounded-xl bg-white p-2 ${qrStale ? "opacity-40" : ""}`}
+                src={qr.startsWith("data:") ? qr : `data:image/png;base64,${qr}`}
+              />
+              <p className="text-center text-sm text-charcoal/70">
+                {qrStale
+                  ? t("This QR may have expired. Refresh it, then scan again.")
+                  : t("Scan within {seconds} seconds, then keep this page open.", { seconds: Math.max(0, 40 - qrAge) })}
+              </p>
+            </div>
+            <div>
+              <p className="text-sm font-semibold">{t("How to connect")}</p>
+              <ol className="mt-3 list-decimal space-y-2 ps-5 text-sm leading-6 text-charcoal/80">
+                <li>{t("On the phone that uses this store's WhatsApp number, open WhatsApp.")}</li>
+                <li>{t("Open Linked devices. On Android, tap the menu, then Linked devices. On iPhone, open Settings, then Linked devices.")}</li>
+                <li>{t("Tap Link a device.")}</li>
+                <li>{t("Point the phone camera at this QR code.")}</li>
+                <li>{t("Stay on this page until the status changes to Connected.")}</li>
+              </ol>
+            </div>
           </div>
         ) : null}
       </section>
