@@ -232,7 +232,7 @@ export function AgentPanel() {
                 onChange={(event) => setAgent({ ...agent, human_wait_seconds: Number(event.target.value) })}
               />
             ) : null}
-            <span className="text-xs text-charcoal/60">From 5 seconds to 10 minutes. The checker runs about every 15 seconds.</span>
+            <span className="text-xs text-charcoal/60">From 5 seconds to 10 minutes. The checker runs about every 5 seconds.</span>
           </label>
         </div>
         <div className="mt-3 flex flex-wrap gap-2">

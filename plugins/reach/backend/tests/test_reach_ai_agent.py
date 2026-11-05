@@ -65,6 +65,69 @@ def _incoming(client, session, text: str, message_id: str) -> None:
     assert response.json()["duplicate"] is False
 
 
+def test_the_model_answers_in_the_customers_words(client, session, monkeypatch) -> None:
+    set_handler(lambda method, path, body: {"instance": {"state": "open"}, "key": {"id": "OUT-HUMAN"}})
+    settings = get_settings()
+    headers = _ready(client, session, settings)
+    settings.assistant_provider = "ollama"
+    seen: dict = {}
+
+    def complete(_settings, turns, _schemas, mode="tools"):
+        seen["turns"] = turns
+        seen["mode"] = mode
+        return {"content": "I'm doing well, thanks. What can I help you find?"}
+
+    monkeypatch.setattr("app.services.assistant_llm.complete", complete)
+    asked = client.post("/api/v1/reach/ai/agent/test", headers=headers, json={"body": "how r u"})
+    assert asked.status_code == 200, asked.text
+    assert asked.json()["reply"] == "I'm doing well, thanks. What can I help you find?"
+    assert asked.json()["provider"].startswith("ollama:")
+    assert seen["turns"][-1]["content"] == "how r u"
+    assert seen["mode"] == "chat"
+    monkeypatch.setattr(settings, "assistant_provider", "builtin")
+    set_handler(None)
+
+
+def test_a_follow_up_keeps_the_earlier_question():
+    from reach.ai_agent.reply import accept_care_reply, care_turns
+
+    turns = care_turns(
+        "256",
+        "en",
+        "Ask which version they want. Do not invent stock.",
+        [
+            {"author": "customer", "body": "Do you have iPhone 16?"},
+            {"author": "ai", "body": "Which storage do you need?"},
+        ],
+    )
+    assert turns[-1] == {"role": "user", "content": "256"}
+    assert any("iPhone 16" in turn["content"] for turn in turns)
+    assert "Reply in English" in turns[0]["content"]
+    arabic = care_turns("كم السعر؟", "ar", "السعر غير مسجل.", [])
+    assert "Reply in Arabic" in arabic[0]["content"]
+    assert accept_care_reply("I cannot confirm that from the shop's records.", "I'm well, thank you.", "wellbeing") is None
+    kept = accept_care_reply("I'm doing well, thanks. What are you looking for?", "I'm well, thank you.", "wellbeing")
+    assert kept == "I'm doing well, thanks. What are you looking for?"
+
+
+def test_how_are_you_is_answered_directly(client, session, monkeypatch) -> None:
+    set_handler(lambda method, path, body: {"instance": {"state": "open"}, "key": {"id": "OUT-HELLO"}})
+    settings = get_settings()
+    headers = _ready(client, session, settings)
+    settings.assistant_provider = "ollama"
+    monkeypatch.setattr(
+        "app.services.assistant_llm.complete",
+        lambda *_args, **_kwargs: {"content": "I cannot confirm that from the shop's records."},
+    )
+    asked = client.post("/api/v1/reach/ai/agent/test", headers=headers, json={"body": "how r u"})
+    assert asked.status_code == 200, asked.text
+    reply = asked.json()["reply"]
+    assert reply == "I'm well, thank you. How can we help?"
+    assert "confirm" not in reply.casefold()
+    monkeypatch.setattr(settings, "assistant_provider", "builtin")
+    set_handler(None)
+
+
 def test_product_reply_uses_catalog_and_refund_is_not_posted(client, session, monkeypatch) -> None:
     set_handler(lambda method, path, body: {"instance": {"state": "open"}, "key": {"id": "OUT-1"}})
     settings = get_settings()
@@ -410,6 +473,10 @@ def test_idle_staff_does_not_block_the_next_customer_message(client, session, mo
     pending = session.scalar(select(ReachAiMessage).where(ReachAiMessage.provider_message_id == "IN-IDLE-2"))
     assert pending.status == "received"
     pending.created_at = datetime.now(UTC) - timedelta(minutes=2)
+    staff = session.scalar(select(ReachAiMessage).where(ReachAiMessage.author == "staff"))
+    staff.created_at = datetime.now(UTC) - timedelta(minutes=3)
+    earlier = session.scalar(select(ReachAiMessage).where(ReachAiMessage.provider_message_id == "IN-IDLE-1"))
+    earlier.created_at = datetime.now(UTC) - timedelta(minutes=4)
     session.commit()
     assert run_job(session, settings, "reach_ai_replies") == "ok"
     session.expire_all()
@@ -418,6 +485,51 @@ def test_idle_staff_does_not_block_the_next_customer_message(client, session, mo
     assert reply.status == "SENT"
     listed = client.get("/api/v1/reach/ai/conversations", headers=headers)
     assert listed.json()[0]["handler"] == "ai"
+    monkeypatch.setattr(settings, "assistant_provider", "builtin")
+    set_handler(None)
+
+
+def test_a_stored_question_after_staff_goes_idle_is_answered(client, session, monkeypatch) -> None:
+    set_handler(lambda method, path, body: {"instance": {"state": "open"}, "key": {"id": "OUT-AFTER"}})
+    settings = get_settings()
+    headers = _ready(client, session, settings)
+    current = client.get("/api/v1/reach/ai/agent", headers=headers).json()
+    current["response_priority"] = "human_first"
+    current["human_wait_seconds"] = 15
+    assert client.put("/api/v1/reach/ai/agent", headers=headers, json=current).status_code == 200
+    session.add(_suit("Cotton Suit Beige Frost", "SUIT-AFTER", 640000))
+    session.commit()
+    _incoming(client, session, "Hello there", "IN-AFTER-1")
+    key = session.scalar(select(ReachConnection.webhook_key))
+    device = client.post(
+        f"/api/v1/reach/webhooks/evolution/{key}",
+        headers={"apikey": "hook-secret"},
+        json={
+            "eventId": "AFTER-DEVICE",
+            "event": "messages.upsert",
+            "data": {
+                "key": {"remoteJid": "971501110011@s.whatsapp.net", "fromMe": True, "id": "AFTER-DEVICE"},
+                "message": {"conversation": "I am at the counter."},
+            },
+        },
+    )
+    assert device.status_code == 200, device.text
+    _incoming(client, session, "what is the price of cotton suite beige frost", "IN-AFTER-2")
+    session.expire_all()
+    staff = session.scalar(select(ReachAiMessage).where(ReachAiMessage.author == "staff"))
+    question = session.scalar(select(ReachAiMessage).where(ReachAiMessage.provider_message_id == "IN-AFTER-2"))
+    staff.created_at = datetime.now(UTC) - timedelta(minutes=10)
+    question.created_at = datetime.now(UTC) - timedelta(minutes=5)
+    question.status = "stored"
+    earlier = session.scalar(select(ReachAiMessage).where(ReachAiMessage.provider_message_id == "IN-AFTER-1"))
+    earlier.created_at = datetime.now(UTC) - timedelta(minutes=11)
+    session.commit()
+    assert run_job(session, settings, "reach_ai_replies") == "ok"
+    session.expire_all()
+    reply = session.scalar(select(OutboundMessage).where(OutboundMessage.template_key == "ai_agent"))
+    assert reply is not None
+    assert reply.status == "SENT"
+    assert "6400.00" in reply.body
     monkeypatch.setattr(settings, "assistant_provider", "builtin")
     set_handler(None)
 

@@ -118,7 +118,7 @@ def _device_message(db: Session, connection: ReachConnection, data: dict) -> Non
     conversation.status = "waiting_customer"
     conversation.last_preview = text[:180]
     conversation.last_message_at = utcnow()
-    suppress_pending(db, conversation)
+    suppress_pending(db, conversation, conversation.last_message_at)
     db.add(ReachAiEvent(conversation_id=conversation.id, kind="device_reply", detail=provider_id))
 
 

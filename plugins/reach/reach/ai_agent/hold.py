@@ -119,11 +119,37 @@ def close_wait(db: Session, conversation_id) -> None:
     _close_wait(db, conversation_id)
 
 
-def reopen_unanswered(db: Session) -> None:
-    """A customer line that nobody answered has to stay visible to the reply job.
+def latest_staff_at(db: Session, conversation_id) -> datetime | None:
+    """The latest real staff reply. A phone echo of the customer's own text does not count."""
+    rows = db.scalars(
+        select(ReachAiMessage)
+        .where(ReachAiMessage.conversation_id == conversation_id, ReachAiMessage.author == "staff")
+        .order_by(ReachAiMessage.created_at.desc())
+    ).all()
+    for row in rows:
+        echo = isinstance(row.evidence, dict) and row.evidence.get("origin") == "human_device"
+        if echo and db.scalar(
+            select(ReachAiMessage.id).where(
+                ReachAiMessage.conversation_id == conversation_id,
+                ReachAiMessage.author == "customer",
+                ReachAiMessage.body == row.body,
+            )
+        ):
+            continue
+        return aware(row.created_at)
+    return None
 
-    A staff reply used to mark every later customer message stored. The job only reads
-    status "received", so those lines never reached the idle fallback.
+
+def staff_has_answered(staff_at: datetime | None, message_at: datetime) -> bool:
+    """A person answered this line when their message is at least as new as the customer's."""
+    return staff_at is not None and staff_at >= aware(message_at)
+
+
+def reopen_unanswered(db: Session) -> None:
+    """Put an unanswered customer line back where the idle checker can see it.
+
+    The checker only reads status "received". A staff event used to mark every later
+    customer line stored, so the fallback skipped it even after the person went idle.
     """
     waiting = db.scalars(
         select(ReachAiMessage).where(ReachAiMessage.author == "customer", ReachAiMessage.status == "stored")
@@ -139,29 +165,32 @@ def reopen_unanswered(db: Session) -> None:
         conversation = db.get(ReachAiConversation, message.conversation_id)
         if conversation is None or conversation.status == "resolved":
             continue
-        later = db.scalar(
+        if staff_has_answered(latest_staff_at(db, conversation.id), message.created_at):
+            continue
+        soon = aware(message.created_at) + timedelta(minutes=2)
+        bundled = db.scalar(
             select(ReachAiMessage.id).where(
                 ReachAiMessage.conversation_id == message.conversation_id,
+                ReachAiMessage.author == "ai",
                 ReachAiMessage.direction == "out",
-                ReachAiMessage.author.in_(("staff", "ai")),
-                ReachAiMessage.created_at > message.created_at,
+                ReachAiMessage.created_at >= message.created_at,
+                ReachAiMessage.created_at <= soon,
             )
         )
-        if later is not None:
+        if bundled is not None:
             continue
         message.status = "received"
 
 
-def suppress_pending(db: Session, conversation: ReachAiConversation) -> None:
-    """A staff reply wins. Pending customer messages are closed and unsent AI outbox rows are skipped."""
-    db.execute(
-        update(ReachAiMessage)
-        .where(
-            ReachAiMessage.conversation_id == conversation.id,
-            ReachAiMessage.status.in_(("received", "preparing")),
-        )
-        .values(status="stored")
+def suppress_pending(db: Session, conversation: ReachAiConversation, answered_through: datetime | None = None) -> None:
+    """A staff reply wins the lines already waiting. Later customer lines stay open for the idle fallback."""
+    waiting = (
+        ReachAiMessage.conversation_id == conversation.id,
+        ReachAiMessage.status.in_(("received", "preparing")),
     )
+    if answered_through is not None:
+        waiting = (*waiting, ReachAiMessage.created_at <= answered_through)
+    db.execute(update(ReachAiMessage).where(*waiting).values(status="stored"))
     queued = db.scalars(
         select(ReachAiMessage).where(
             ReachAiMessage.conversation_id == conversation.id,
@@ -238,7 +267,15 @@ def claim(db: Session, messages: list[ReachAiMessage]) -> bool:
         .values(status="preparing")
     )
     db.flush()
-    return result.rowcount == len(ids)
+    if result.rowcount == len(ids):
+        return True
+    db.execute(
+        update(ReachAiMessage)
+        .where(ReachAiMessage.id.in_(ids), ReachAiMessage.status == "preparing")
+        .values(status="received")
+    )
+    db.flush()
+    return False
 
 
 def aware(value: datetime) -> datetime:
