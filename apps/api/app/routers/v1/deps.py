@@ -17,6 +17,15 @@ def require_device_id(x_device_id: Annotated[str, Header(alias="X-Device-Id")]) 
     return x_device_id
 
 
+def optional_device_id(x_device_id: Annotated[str | None, Header(alias="X-Device-Id")] = None) -> str | None:
+    """A register sends its device id. A portal return has no till, so the header may be absent."""
+    if x_device_id is None:
+        return None
+    if _DEVICE.fullmatch(x_device_id) is None:
+        raise ApiError(422, "invalid_request", "X-Device-Id is invalid.")
+    return x_device_id
+
+
 def assert_store_access(principal: Principal, store_id: uuid.UUID) -> None:
     if principal.store_id is not None and principal.store_id != store_id:
         raise ApiError(403, "store_scope", "You can only change records in your own store.")

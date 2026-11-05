@@ -312,8 +312,6 @@ register(
 
 
 def _reach_ai(db: Session, settings: Settings) -> str:
-    if not has_capability(db, Capability.AXIZ_REACH):
-        return "AxizReach is off"
     from reach.ai_agent.service import process_pending
 
     prepared = process_pending(db, settings)

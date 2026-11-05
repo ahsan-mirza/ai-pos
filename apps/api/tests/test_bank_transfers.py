@@ -9,7 +9,14 @@ from tests.governance_support import platform  # noqa: F401
 from app.console.billing import add_calendar_months, ensure_catalog
 from app.console.transfers import require_operations
 from app.core.errors import ApiError
-from app.tenancy.models import BillingInvoice, BillingInvoiceLine, BillingPayment, Subscription
+from app.tenancy.models import (
+    BillingCycle,
+    BillingInvoice,
+    BillingInvoiceLine,
+    BillingPayment,
+    BillingPlan,
+    Subscription,
+)
 
 PNG = b"\x89PNG\r\n\x1a\n" + b"\x00" * 16
 
@@ -136,6 +143,37 @@ def test_pending_review_blocks_paid_apis_until_an_admin_activates(platform) -> N
     with platform.control() as db:
         tenant = uuid.UUID(platform.tenant_id("alpha"))
         assert db.query(Subscription).filter(Subscription.tenant_id == tenant).count() == 1
+
+
+def test_a_submitted_receipt_locks_even_if_the_subscription_row_says_active(platform) -> None:  # noqa: F811
+    invoice_id = _pending_invoice(platform)
+    _submit(platform, invoice_id, "active-row-transfer")
+    with platform.control() as db:
+        tenant_id = uuid.UUID(platform.tenant_id("alpha"))
+        plan = db.query(BillingPlan).filter(BillingPlan.code == "LITE").one()
+        cycle = db.query(BillingCycle).filter(BillingCycle.code == "MONTHLY").one()
+        db.add(
+            Subscription(
+                tenant_id=tenant_id,
+                plan_id=plan.id,
+                cycle_id=cycle.id,
+                status="active",
+                current_period_end=datetime(2026, 12, 31, tzinfo=UTC),
+            )
+        )
+        db.commit()
+    store = platform.headers("alpha")
+    blocked = platform.client.get("/api/v1/products", headers=store, params={"limit": 1})
+    assert blocked.status_code == 403, blocked.text
+    assert blocked.json()["error"]["code"] == "subscription_payment_pending"
+    access = platform.client.get("/api/v1/billing/access", headers=store).json()
+    assert access["operational"] is False
+    assert access["state"] == "active"
+    checklist = platform.client.get("/api/v1/onboarding/checklist", headers=store)
+    assert checklist.status_code == 200, checklist.text
+    activate = next(item for item in checklist.json()["items"] if item["key"] == "activate")
+    assert activate["href"] == "/subscription"
+    assert activate["action"] == "View submission status"
 
 
 def test_calendar_months_clamp_month_end() -> None:

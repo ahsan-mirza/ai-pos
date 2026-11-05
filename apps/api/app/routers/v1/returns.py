@@ -9,7 +9,7 @@ from app.core.database import get_db
 from app.core.deps import Principal, authorize, verify_user_token
 from app.core.errors import ApiError
 from app.core.permissions import Permission
-from app.routers.v1.deps import assert_store_access, require_device_id, require_idempotency_key
+from app.routers.v1.deps import assert_store_access, optional_device_id, require_idempotency_key
 from app.schemas.payloads import ReceiptOut, ReturnOut, ReturnPayload, ReturnsAnalytics
 from app.services import invoice_pdf, returns_service
 from app.services.settings_service import report_currency
@@ -41,8 +41,8 @@ def create_return(
     db: Annotated[Session, Depends(get_db)],
     settings: Annotated[Settings, Depends(get_settings)],
     principal: AtRegister,
-    device_id: Annotated[str, Depends(require_device_id)],
     idempotency_key: Annotated[str, Depends(require_idempotency_key)],
+    device_id: Annotated[str | None, Depends(optional_device_id)],
     x_approver_token: Annotated[str | None, Header(alias="X-Approver-Token")] = None,
 ) -> ReturnOut:
     """Processes one return in one transaction. Offline registers replay the same payload through /sync/push."""
@@ -56,6 +56,10 @@ def create_return(
             if approver.id != payload.override.approved_by_id:
                 raise ApiError(403, "approval_mismatch", "The approval token belongs to a different user.")
     assert_store_access(principal, payload.store_id)
+    if device_id is None:
+        if principal.device is not None:
+            raise ApiError(422, "invalid_request", "X-Device-Id is required.")
+        device_id = "portal"
     result = ingest_one(
         db,
         settings,

@@ -88,10 +88,17 @@ export function TableAlertProvider({ children }: { children: ReactNode }) {
   return <TableAlertContext.Provider value={value}>{children}</TableAlertContext.Provider>;
 }
 
+const NO_ALERTS: TableAlertApi = {
+  alerts: [],
+  banner: [],
+  forTable: () => null,
+  acknowledge: () => undefined,
+  acknowledgeTable: () => undefined,
+  clear: () => undefined,
+};
+
 export function useTableAlerts(): TableAlertApi {
-  const value = useContext(TableAlertContext);
-  if (value === null) throw new Error("TableAlertProvider is missing.");
-  return value;
+  return useContext(TableAlertContext) ?? NO_ALERTS;
 }
 
 /** Floor cards render inside the register. Outside it they simply show no alert. */

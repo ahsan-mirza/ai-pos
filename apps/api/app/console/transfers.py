@@ -93,13 +93,10 @@ def operational_block(db: Session, tenant_id: uuid.UUID) -> dict[str, str] | Non
     pending, or sitting on a trial does not open them.
     """
     state = access_state(db, tenant_id)
-    if state in {"active", "grace"}:
-        return None
     notice = attention(db, tenant_id)
     kind = None if notice is None else str(notice.get("kind") or "")
-    # A practice trial with no invoice can still open its sample catalog. The first invoice closes paid APIs.
-    if not kind and state in {"unbilled", "trial"}:
-        return None
+    # A submitted, rejected, or revoked payment closes paid work even when the row still says active.
+    # Uploading a receipt is not verification. An already-paid period stays open until a new proof is submitted.
     if kind == "pending_review":
         code, status, message = (
             "subscription_payment_pending",
@@ -118,6 +115,11 @@ def operational_block(db: Session, tenant_id: uuid.UUID) -> dict[str, str] | Non
             "revoked",
             "The previous activation was revoked. Paid features stay locked until a payment is verified again.",
         )
+    elif state in {"active", "grace"}:
+        return None
+    elif not kind and state in {"unbilled", "trial"}:
+        # A practice trial with no invoice can still open its sample catalog. The first invoice closes paid APIs.
+        return None
     elif state == "restricted":
         row = db.scalar(select(Subscription).where(Subscription.tenant_id == tenant_id))
         if row is not None and row.status == "canceled":

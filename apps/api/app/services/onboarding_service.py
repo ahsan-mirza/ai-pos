@@ -201,25 +201,26 @@ def subscription_gate(settings: Settings) -> tuple[str, str | None]:
     ref = current_tenant()
     if ref is None:
         return "unbilled", None
-    from app.console.transfers import access_state
+    from app.console.transfers import access_state, attention
     from app.tenancy import registry
-    from app.tenancy.models import BillingTransfer
 
     tenant_id = uuid.UUID(ref.id)
     with registry.control_session(settings) as control:
         state = access_state(control, tenant_id)
-        if state == "trial" and _exists(
-            control,
-            select(BillingTransfer.id).where(
-                BillingTransfer.tenant_id == tenant_id,
-                BillingTransfer.status == "pending_review",
-            ),
-        ):
-            state = "pending_review"
+        notice = attention(control, tenant_id)
+    kind = "" if notice is None else str(notice.get("kind") or "")
+    if kind == "pending_review":
+        return "pending_review", "A receipt is waiting for review. Uploading it did not activate the subscription."
+    if kind == "rejected":
+        reason = notice.get("reason") if notice is not None else None
+        fallback = "The payment proof was not accepted. Go live stays closed until a corrected proof is verified."
+        return "rejected", str(reason) if reason else fallback
+    if kind == "awaiting_proof":
+        return "awaiting_proof", "An invoice is open. Go live stays closed until the payment is verified."
+    if kind == "revoked":
+        return "revoked", "The previous activation was revoked. Go live stays closed until a payment is verified again."
     if state in {"unbilled", "active", "grace"}:
         return state, None
-    if state == "pending_review":
-        return state, "A receipt is waiting for review. Uploading it did not activate the subscription."
     if state == "trial":
         return (
             state,
@@ -241,6 +242,7 @@ def checklist(db: Session, settings: Settings) -> Checklist:
         team_hint = "Create a register when you are ready. Staff invites can be finished later."
     elif invited:
         team_hint = "A teammate already has a login. Create a register and enter its key in the Windows Register."
+    payment_waiting = state in {"pending_review", "rejected", "awaiting_proof", "revoked"}
     items = [
         ChecklistItem(
             key="explore",
@@ -297,8 +299,18 @@ def checklist(db: Session, settings: Settings) -> Checklist:
                 "Uploading a receipt does not activate the store."
             ),
             done=row.live_at is not None,
-            href="#go-live",
-            action="Review plans" if blocked else "Go live",
+            href="/subscription" if payment_waiting else "#go-live",
+            action=(
+                "View submission status"
+                if state == "pending_review"
+                else "Resubmit payment proof"
+                if state == "rejected"
+                else "View invoice"
+                if state in {"awaiting_proof", "revoked"}
+                else "Review plans"
+                if blocked
+                else "Go live"
+            ),
             blocked=None if row.live_at is not None else blocked,
         ),
     ]

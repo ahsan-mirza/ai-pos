@@ -53,7 +53,6 @@ class AssignWrite(BaseModel):
 
 @router.get("/agent")
 def read_agent(db: Db, _: CanManage) -> dict:
-    service.require_reach(db)
     return service.present_agent(db, service.agent_row(db))
 
 

@@ -1,9 +1,11 @@
-import { formatMoney } from "@ai-pos/shared-types";
+import { Permission, formatMoney } from "@ai-pos/shared-types";
 import { useLocale } from "@ai-pos/ui";
 import { useEffect, useMemo, useState } from "react";
 import { BarSeries } from "../../components/charts/Charts";
 import { env } from "../../config/env";
 import { apiGet, getAccessToken } from "../../lib/api";
+import { useAuth } from "../../lib/auth";
+import { PortalSaleReturn } from "../returns/PortalSaleReturn";
 
 type Preset = "Today" | "Yesterday" | "Last 7 days" | "Last 30 days" | "This month" | "Last month" | "Custom";
 type Tab = "overview" | "products" | "staff" | "categories" | "payments" | "trends" | "transactions";
@@ -158,6 +160,10 @@ export function SalesInsightsPage() {
   const [exporting, setExporting] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<ProductRow | null>(null);
   const [selectedStaff, setSelectedStaff] = useState<StaffRow | null>(null);
+  const [returning, setReturning] = useState<string | null>(null);
+  const [revision, setRevision] = useState(0);
+  const { user, can } = useAuth();
+  const canReturn = can(Permission.PosRefund);
 
   const bounds = useMemo(() => period(preset, from, to), [preset, from, to, applied]);
   const rangeError = typeof bounds === "string" ? bounds : null;
@@ -206,7 +212,7 @@ export function SalesInsightsPage() {
         if (!controller.signal.aborted) setLoading(false);
       });
     return () => controller.abort();
-  }, [search, tab, receipt, applied]);
+  }, [search, tab, receipt, applied, revision]);
 
   const currency = summary?.window.currency ?? "USD";
   const money = (cents: number) => formatMoney(cents, currency);
@@ -422,7 +428,7 @@ export function SalesInsightsPage() {
           </label>
           <Table
             empty={t("No receipts in this period.")}
-            headers={[t("Receipt"), t("When"), t("Cashier"), t("Items"), t("Gross"), t("Discount"), t("Net"), t("Payment"), t("Status")]}
+            headers={[t("Receipt"), t("When"), t("Cashier"), t("Items"), t("Gross"), t("Discount"), t("Net"), t("Payment"), t("Status"), ""]}
             rows={receipts.map((row) => [
               row.invoice_number ?? row.id.slice(0, 8),
               row.created_at.slice(0, 16).replace("T", " "),
@@ -433,7 +439,10 @@ export function SalesInsightsPage() {
               money(row.net_cents),
               row.payment_method,
               row.status,
+              canReturn && row.invoice_number && (row.status === "completed" || row.status === "partially_refunded") ? row.invoice_number : "",
             ])}
+            actionLabel="Return"
+            onAction={(invoice) => setReturning(invoice)}
           />
         </div>
       ) : null}
@@ -450,6 +459,14 @@ export function SalesInsightsPage() {
           <p className="mt-3 text-sm">{t("Sold")} {selectedProduct.quantity} · {money(selectedProduct.net_cents)} · {selectedProduct.transactions} {t("receipts")}</p>
           {selectedProduct.cost_cents != null ? <p className="mt-1 text-sm">{t("Recorded cost")} {money(selectedProduct.cost_cents)}</p> : null}
         </aside>
+      ) : null}
+      {returning && user ? (
+        <PortalSaleReturn
+          user={user}
+          invoice={returning}
+          onClose={() => setReturning(null)}
+          onReturned={() => setRevision((value) => value + 1)}
+        />
       ) : null}
       {selectedStaff ? (
         <aside className="rounded-2xl border border-line bg-white p-4">
@@ -473,18 +490,48 @@ function Kpi({ label, value, hint, loading }: { label: string; value: string; hi
   );
 }
 
-function Table({ headers, rows, empty, onRow }: { headers: string[]; rows: string[][]; empty: string; onRow?: (index: number) => void }) {
+function Table({
+  headers,
+  rows,
+  empty,
+  onRow,
+  actionLabel,
+  onAction,
+}: {
+  headers: string[];
+  rows: string[][];
+  empty: string;
+  onRow?: (index: number) => void;
+  actionLabel?: string;
+  onAction?: (value: string) => void;
+}) {
   if (rows.length === 0) return <p className="text-sm text-charcoal/50">{empty}</p>;
+  const actionIndex = onAction ? headers.length - 1 : -1;
   return (
     <div className="overflow-x-auto rounded-2xl border border-line bg-white">
       <table className="min-w-full text-left text-sm">
         <thead className="text-xs text-charcoal/60">
-          <tr>{headers.map((header) => <th key={header} className="px-3 py-2 font-medium">{header}</th>)}</tr>
+          <tr>{headers.map((header) => <th key={header || "action"} className="px-3 py-2 font-medium">{header}</th>)}</tr>
         </thead>
         <tbody>
           {rows.map((row, index) => (
             <tr key={`${row[0]}-${index}`} className={onRow ? "cursor-pointer hover:bg-charcoal/5" : undefined} onClick={() => onRow?.(index)}>
-              {row.map((cell, cellIndex) => <td key={cellIndex} className="whitespace-nowrap px-3 py-2 tabular-nums">{cell}</td>)}
+              {row.map((cell, cellIndex) => (
+                <td key={cellIndex} className="whitespace-nowrap px-3 py-2 tabular-nums">
+                  {cellIndex === actionIndex && cell !== "" && onAction && actionLabel ? (
+                    <button
+                      type="button"
+                      className="rounded-full border border-line px-3 py-1 text-xs font-semibold"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        onAction(cell);
+                      }}
+                    >
+                      {actionLabel}
+                    </button>
+                  ) : cellIndex === actionIndex ? null : cell}
+                </td>
+              ))}
             </tr>
           ))}
         </tbody>

@@ -529,7 +529,7 @@ def test_a_model_reply_that_drops_the_price_keeps_the_catalogue(client, session,
     set_handler(None)
 
 
-def test_agent_api_requires_axizreach(client, session) -> None:
+def test_customer_care_does_not_need_the_campaign_addon(client, session) -> None:
     seed(client)
     headers, _ = admin(client)
     current = client.get("/api/v1/settings", headers=headers).json()
@@ -541,9 +541,9 @@ def test_agent_api_requires_axizreach(client, session) -> None:
             "capabilities": [item for item in current["capabilities"] if item != "axiz_reach"],
         },
     )
-    denied = client.get("/api/v1/reach/ai/agent", headers=headers)
-    assert denied.status_code == 403
-    assert denied.json()["error"]["code"] == "addon_required"
+    opened = client.get("/api/v1/reach/ai/agent", headers=headers)
+    assert opened.status_code == 200, opened.text
+    assert opened.json()["enabled"] is False
     assert run_job(session, get_settings(), "reach_ai_replies") == "ok"
     assert session.scalar(select(func.count()).select_from(ReachAiMessage)) in {None, 0}
 

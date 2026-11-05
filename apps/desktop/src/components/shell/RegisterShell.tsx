@@ -49,10 +49,12 @@ export function RegisterShell({ session, view, onNavigate, onLock, children }: R
         data-theme={theme}
         className="flex h-screen w-screen flex-col overflow-hidden bg-slate-50 font-sans text-zinc-900 antialiased dark:bg-zinc-950 dark:text-zinc-100 dark:[color-scheme:dark]"
       >
-        <div className="flex min-h-0 flex-1 flex-col md:flex-row">
-          <SidebarNav busy={busy} onNavigate={onNavigate} onLock={onLock} />
-          <TableAlertProvider>{children}</TableAlertProvider>
-        </div>
+        <TableAlertProvider>
+          <div className="flex min-h-0 flex-1 flex-col md:flex-row">
+            <SidebarNav busy={busy} onNavigate={onNavigate} onLock={onLock} />
+            {children}
+          </div>
+        </TableAlertProvider>
         <KeyboardStatusBar />
       </div>
     </ShellContext.Provider>

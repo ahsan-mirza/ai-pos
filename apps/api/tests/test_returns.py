@@ -454,6 +454,21 @@ def test_direct_endpoint_requires_approver_token(client) -> None:
     assert replay.status_code == 200
 
 
+def test_portal_return_does_not_need_a_register(client) -> None:
+    seed_catalog(client)
+    sale = record_sale(client, product_id=CABLE_ID, price=1500, quantity=1)
+    body = receipt(client, sale["id"])
+    token = admin_token(client)
+    payload = return_payload(body, cashier_id=admin_id(client))
+    created = client.post(
+        "/api/v1/returns",
+        headers={**bearer(token), "Idempotency-Key": "portal-return-0001"},
+        json=payload,
+    )
+    assert created.status_code == 201, created.text
+    assert created.json()["credit_note_number"]
+
+
 def test_returns_analytics_and_net_revenue(client) -> None:
     seed_catalog(client)
     sale = record_sale(client, product_id=CABLE_ID, price=1500, quantity=2)

@@ -6,11 +6,10 @@ import logging
 import time
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.core.capabilities import Capability, has_capability
 from app.core.config import Settings
 from app.core.errors import ApiError
 from app.models.business_settings import BusinessSettings
@@ -52,7 +51,6 @@ from reach.ai_agent.reply import (
     language_of,
     priority_for,
 )
-from reach.service import require_reach
 
 logger = logging.getLogger("axizreach.ai")
 _CATALOGUE = frozenset({"product", "price", "stock", "list"})
@@ -90,7 +88,6 @@ def present_agent(db: Session, row: ReachAiAgent) -> dict:
 
 
 def save_agent(db: Session, payload: dict) -> dict:
-    require_reach(db)
     row = agent_row(db)
     for key in ("name", "greeting", "language", "tone", "instructions", "mode"):
         if key in payload and payload[key] is not None:
@@ -108,7 +105,6 @@ def save_agent(db: Session, payload: dict) -> dict:
 
 
 def set_enabled(db: Session, enabled: bool) -> dict:
-    require_reach(db)
     row = agent_row(db)
     row.enabled = enabled
     db.add(ReachAiEvent(kind="agent_enabled" if enabled else "agent_disabled", detail=""))
@@ -117,7 +113,6 @@ def set_enabled(db: Session, enabled: bool) -> dict:
 
 
 def add_knowledge(db: Session, kind: str, title: str, body: str) -> dict:
-    require_reach(db)
     if kind not in {"faq", "instruction"}:
         raise ApiError(422, "invalid_knowledge", "Knowledge must be an FAQ or an instruction.")
     row = ReachAiKnowledge(kind=kind, title=title.strip()[:160], body=body.strip()[:8000], status="ready")
@@ -129,7 +124,6 @@ def add_knowledge(db: Session, kind: str, title: str, body: str) -> dict:
 
 
 def list_knowledge(db: Session) -> list[dict]:
-    require_reach(db)
     rows = db.scalars(
         select(ReachAiKnowledge)
         .where(ReachAiKnowledge.kind != "policy")
@@ -139,7 +133,6 @@ def list_knowledge(db: Session) -> list[dict]:
 
 
 def delete_knowledge(db: Session, knowledge_id) -> None:
-    require_reach(db)
     row = db.get(ReachAiKnowledge, knowledge_id)
     if row is None:
         raise ApiError(404, "not_found", "Knowledge item not found.")
@@ -152,7 +145,6 @@ def _knowledge(row: ReachAiKnowledge) -> dict:
 
 
 def list_conversations(db: Session, status: str | None, handler: str | None) -> list[dict]:
-    require_reach(db)
     policy = response_policy(db)
     query = select(ReachAiConversation).order_by(ReachAiConversation.last_message_at.desc())
     if status:
@@ -163,7 +155,6 @@ def list_conversations(db: Session, status: str | None, handler: str | None) -> 
 
 
 def conversation_detail(db: Session, conversation_id) -> dict:
-    require_reach(db)
     row = _owned(db, conversation_id)
     _sync_delivery(db)
     messages = db.scalars(
@@ -180,7 +171,6 @@ def conversation_detail(db: Session, conversation_id) -> dict:
 
 
 def staff_reply(db: Session, conversation_id, body: str, user_id) -> dict:
-    require_reach(db)
     row = _owned(db, conversation_id)
     text = body.strip()
     if not text:
@@ -205,7 +195,6 @@ def resume(db: Session, conversation_id, user_id) -> dict:
 
 
 def assign(db: Session, conversation_id, user_id) -> dict:
-    require_reach(db)
     row = _owned(db, conversation_id)
     row.assigned_user_id = user_id
     db.add(ReachAiEvent(conversation_id=row.id, kind="assigned", detail=str(user_id)))
@@ -214,7 +203,6 @@ def assign(db: Session, conversation_id, user_id) -> dict:
 
 
 def resolve(db: Session, conversation_id, user_id) -> dict:
-    require_reach(db)
     row = _owned(db, conversation_id)
     row.status = "resolved"
     row.handler = "human"
@@ -224,7 +212,6 @@ def resolve(db: Session, conversation_id, user_id) -> dict:
 
 
 def add_note(db: Session, conversation_id, body: str, user_id) -> dict:
-    require_reach(db)
     row = _owned(db, conversation_id)
     text = body.strip()
     if not text:
@@ -239,7 +226,6 @@ def add_note(db: Session, conversation_id, body: str, user_id) -> dict:
 
 
 def list_actions(db: Session, status: str | None) -> list[dict]:
-    require_reach(db)
     query = select(ReachAiAction).order_by(ReachAiAction.created_at.desc())
     if status:
         query = query.where(ReachAiAction.status == status)
@@ -247,7 +233,6 @@ def list_actions(db: Session, status: str | None) -> list[dict]:
 
 
 def set_action_status(db: Session, action_id, status: str, user_id) -> dict:
-    require_reach(db)
     row = db.get(ReachAiAction, action_id)
     if row is None:
         raise ApiError(404, "not_found", "Action not found.")
@@ -261,7 +246,6 @@ def set_action_status(db: Session, action_id, status: str, user_id) -> dict:
 
 def execute_action(db: Session, action_id, user_id) -> dict:
     """Marks a reviewed follow-up complete. Refunds, cancellations, and reservations stay unposted."""
-    require_reach(db)
     row = db.get(ReachAiAction, action_id)
     if row is None:
         raise ApiError(404, "not_found", "Action not found.")
@@ -289,7 +273,6 @@ def execute_action(db: Session, action_id, user_id) -> dict:
 
 def preview(db: Session, settings: Settings, text: str) -> dict:
     """Answers from current records without sending a WhatsApp message or opening a conversation."""
-    require_reach(db)
     agent = agent_row(db)
     intent, score = intent_of(text)
     language = language_of(text, agent.language)
@@ -314,7 +297,6 @@ def preview(db: Session, settings: Settings, text: str) -> dict:
 
 
 def analytics(db: Session) -> dict:
-    require_reach(db)
     conversations = db.scalar(select(func.count()).select_from(ReachAiConversation)) or 0
     waiting = db.scalar(
         select(func.count())
@@ -328,9 +310,18 @@ def analytics(db: Session) -> dict:
     return {"conversations": conversations, "human_handling": waiting, "actions_waiting": actions, "replies": replies}
 
 
+def _recover_stuck(db: Session) -> None:
+    """A reply that was claimed and never finished is waited on again. The customer message stays."""
+    cutoff = datetime.now(UTC) - timedelta(minutes=2)
+    db.execute(
+        update(ReachAiMessage)
+        .where(ReachAiMessage.status == "preparing", ReachAiMessage.created_at < cutoff)
+        .values(status="received")
+    )
+
+
 def process_pending(db: Session, settings: Settings, limit: int = 20) -> str:
-    if not has_capability(db, Capability.AXIZ_REACH):
-        return "AxizReach is off"
+    _recover_stuck(db)
     _sync_delivery(db)
     agent = agent_row(db)
     if not agent.enabled:
@@ -732,7 +723,6 @@ def _queue_reply(
 
 
 def _handler(db: Session, conversation_id, handler: str, status: str, kind: str, user_id) -> dict:
-    require_reach(db)
     row = _owned(db, conversation_id)
     row.handler = handler
     row.status = status

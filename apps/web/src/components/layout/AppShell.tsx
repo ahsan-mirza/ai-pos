@@ -106,7 +106,9 @@ function SubscriptionNotice({
       .then((found) => {
         if (!cancelled) {
           onLoaded(found);
-          onAccess(found.operational === false);
+          const kind = found.attention?.kind;
+          const proofBlocks = kind === "pending_review" || kind === "rejected" || kind === "revoked";
+          onAccess(found.operational === false || proofBlocks);
         }
       })
       .catch(() => undefined);

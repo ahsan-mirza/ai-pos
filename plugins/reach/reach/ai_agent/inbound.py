@@ -132,12 +132,27 @@ def _mirrors_customer(db: Session, phone: str, text: str) -> bool:
         select(ReachAiMessage).where(ReachAiMessage.author == "customer", ReachAiMessage.created_at >= since).limit(40)
     ).all()
     for message in recent:
-        if message.body.strip() != folded:
+        if _fold(message.body) != _fold(folded):
             continue
         conversation = db.get(ReachAiConversation, message.conversation_id)
-        if conversation is not None and _same_phone(conversation.phone, phone):
+        if conversation is None:
+            continue
+        if _same_phone(conversation.phone, phone):
+            return True
+        # A privacy id and the real number are different strings. The same text a moment later is the echo.
+        if datetime.now(UTC) - aware_created(message.created_at) <= timedelta(minutes=2):
             return True
     return False
+
+
+def _fold(text: str) -> str:
+    return "".join(ch for ch in text if ch not in "\u200b\u200c\u200d\ufeff").strip()
+
+
+def aware_created(value: datetime) -> datetime:
+    if value.tzinfo is None:
+        return value.replace(tzinfo=UTC)
+    return value.astimezone(UTC)
 
 
 def _same_phone(left: str, right: str) -> bool:

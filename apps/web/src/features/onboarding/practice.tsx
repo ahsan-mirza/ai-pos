@@ -118,8 +118,11 @@ export function TaxPortalBanner() {
 }
 
 export function PracticeBanner() {
-  const { practice, openGoLive } = usePractice();
+  const { practice, checklist, openGoLive } = usePractice();
   const canManage = useCanManageSettings();
+  const paymentSubmitted = ["pending_review", "rejected", "awaiting_proof", "revoked"].includes(
+    checklist?.subscription_state ?? "",
+  );
   if (!practice) return null;
   return (
     <div
@@ -131,7 +134,7 @@ export function PracticeBanner() {
         <strong className="font-semibold">Practice mode.</strong> Sample items and test sales are cleared when you go
         live.
       </p>
-      {canManage ? (
+      {canManage && !paymentSubmitted ? (
         <button
           type="button"
           onClick={openGoLive}
