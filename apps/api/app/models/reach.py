@@ -15,6 +15,15 @@ if _ROOT.is_dir() and str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
 try:
+    from reach.ai_agent.models import (  # noqa: E402
+        ReachAiAction,
+        ReachAiAgent,
+        ReachAiConversation,
+        ReachAiEvent,
+        ReachAiKnowledge,
+        ReachAiMessage,
+        ReachAiUsage,
+    )
     from reach.models import (  # noqa: E402
         MessagingChannel,
         ReachCampaign,
@@ -41,6 +50,13 @@ except ModuleNotFoundError:
     ReachWebhookEvent = None  # type: ignore[misc, assignment]
     ReachMediaAsset = None  # type: ignore[misc, assignment]
     ReachCampaignSuggestion = None  # type: ignore[misc, assignment]
+    ReachAiAction = None  # type: ignore[misc, assignment]
+    ReachAiAgent = None  # type: ignore[misc, assignment]
+    ReachAiConversation = None  # type: ignore[misc, assignment]
+    ReachAiEvent = None  # type: ignore[misc, assignment]
+    ReachAiKnowledge = None  # type: ignore[misc, assignment]
+    ReachAiMessage = None  # type: ignore[misc, assignment]
+    ReachAiUsage = None  # type: ignore[misc, assignment]
 
 __all__ = [
     "MessagingChannel",
@@ -54,4 +70,11 @@ __all__ = [
     "ReachTemplate",
     "ReachUsage",
     "ReachWebhookEvent",
+    "ReachAiAction",
+    "ReachAiAgent",
+    "ReachAiConversation",
+    "ReachAiEvent",
+    "ReachAiKnowledge",
+    "ReachAiMessage",
+    "ReachAiUsage",
 ]

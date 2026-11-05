@@ -307,3 +307,22 @@ register(
         {"trigger": "interval", "minutes": 1},
     )
 )
+
+
+def _reach_ai(db: Session, settings: Settings) -> str:
+    if not has_capability(db, Capability.AXIZ_REACH):
+        return "AxizReach is off"
+    from reach.ai_agent.service import process_pending
+
+    return process_pending(db, settings)
+
+
+register(
+    Job(
+        "reach_ai_replies",
+        "Prepare customer-care replies for WhatsApp messages already saved",
+        _reach_ai,
+        {"trigger": "interval", "minutes": 1},
+        120,
+    )
+)

@@ -14,6 +14,8 @@ from app.core.database import get_db
 from app.core.deps import Principal, authorize
 from app.core.permissions import Permission
 from reach import connections, webhooks
+from reach import credits as credit_book
+from reach.ai_agent.router import router as ai_router
 from reach.schemas import (
     CampaignOut,
     CampaignWrite,
@@ -51,21 +53,21 @@ from reach.service import (
     present_campaigns,
     preview,
     recipients,
+    reject_campaign,
     require_reach,
     resume,
     retry_failed,
-    reject_campaign,
     revise_campaign,
-    submit_for_approval,
     save_channel,
     save_prices,
     save_template,
     search_customers,
+    submit_for_approval,
     test_channel,
 )
-from reach import credits as credit_book
 
 router = APIRouter()
+router.include_router(ai_router, prefix="/ai")
 Db = Annotated[Session, Depends(get_db)]
 Config = Annotated[Settings, Depends(get_settings)]
 CanManage = Annotated[Principal, Depends(authorize(Permission.MESSAGING_MANAGE))]

@@ -112,6 +112,9 @@ def _dispatch(db: Session, connection: ReachConnection, event_type: str, payload
         return
     recipient = db.scalar(select(ReachRecipient).where(ReachRecipient.provider_message_id == message_id))
     if recipient is None:
+        from reach.ai_agent.inbound import capture
+
+        capture(db, connection, data)
         return
     raw_status = str(data.get("status") or data.get("state") or "").upper()
     mapped = _STATUS.get(raw_status)

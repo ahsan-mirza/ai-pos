@@ -198,3 +198,24 @@ class ReachWebhookEvent(TenantScoped, Base):
     event_key: Mapped[str] = mapped_column(String(120))
     event_type: Mapped[str] = mapped_column(String(48), default="")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+from reach.ai_agent.models import (  # noqa: E402
+    ReachAiAction,
+    ReachAiAgent,
+    ReachAiConversation,
+    ReachAiEvent,
+    ReachAiKnowledge,
+    ReachAiMessage,
+    ReachAiUsage,
+)
+
+AI_MODELS = (
+    ReachAiAction,
+    ReachAiAgent,
+    ReachAiConversation,
+    ReachAiEvent,
+    ReachAiKnowledge,
+    ReachAiMessage,
+    ReachAiUsage,
+)

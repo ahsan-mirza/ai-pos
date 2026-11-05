@@ -177,7 +177,7 @@ def dispatch_due(db: Session, settings: Settings, limit: int = 50) -> dict[str, 
         ready = or_(
             ready,
             and_(
-                OutboundMessage.template_key == "campaign",
+                OutboundMessage.template_key.in_(("campaign", "ai_agent")),
                 OutboundMessage.last_error.like("AxizReach is off%"),
             ),
         )
@@ -195,6 +195,11 @@ def dispatch_due(db: Session, settings: Settings, limit: int = 50) -> dict[str, 
         if message.template_key == "campaign" and not reach_on:
             message.next_attempt_at = now + timedelta(hours=6)
             message.last_error = "AxizReach is off. This campaign stays queued until the add-on is on."
+            counts["retry"] += 1
+            continue
+        if message.template_key == "ai_agent" and not reach_on:
+            message.next_attempt_at = now + timedelta(hours=6)
+            message.last_error = "AxizReach is off. This customer-care reply stays queued until the add-on is on."
             counts["retry"] += 1
             continue
         from app.services.reach_bridge import hold_reason

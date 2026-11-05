@@ -14,9 +14,10 @@ import {
 import { TenantChannelCards } from "../../../apps/web/src/features/messaging/TenantChannelCards";
 import { apiDelete, apiGet, apiPost, apiPut } from "../../../apps/web/src/lib/api";
 import { useCurrency } from "../../../apps/web/src/lib/currency";
+import { AgentPanel, ActionsPanel, ConversationsPanel } from "./AiCare";
 import { errorMessage } from "../../../apps/web/src/features/users/api";
 
-type Tab = "overview" | "connections" | "campaigns" | "templates" | "automations" | "history" | "analytics" | "credits" | "settings";
+type Tab = "overview" | "connections" | "campaigns" | "agent" | "conversations" | "templates" | "automations" | "actions" | "history" | "analytics" | "credits" | "settings";
 
 interface ChannelCard {
   channel: MessageChannel;
@@ -144,8 +145,11 @@ const tabs: { id: Tab; label: string }[] = [
   { id: "overview", label: "Overview" },
   { id: "connections", label: "Connections" },
   { id: "campaigns", label: "Campaigns" },
+  { id: "agent", label: "AI Agent" },
+  { id: "conversations", label: "Conversations" },
   { id: "templates", label: "Templates" },
   { id: "automations", label: "Automations" },
+  { id: "actions", label: "Action Center" },
   { id: "history", label: "History & Outbox" },
   { id: "analytics", label: "Analytics" },
   { id: "credits", label: "Credits & Usage" },
@@ -384,6 +388,8 @@ export function ReachPage() {
           }
         />
       ) : null}
+      {tab === "agent" ? <AgentPanel /> : null}
+      {tab === "conversations" ? <ConversationsPanel /> : null}
       {tab === "templates" ? (
         <div className="grid gap-4">
           <TransactionalTemplates />
@@ -405,6 +411,7 @@ export function ReachPage() {
         </div>
       ) : null}
       {tab === "automations" ? <AutomationsPanel /> : null}
+      {tab === "actions" ? <ActionsPanel /> : null}
       {tab === "history" ? <OutboxPanel campaignRows={history} /> : null}
       {tab === "analytics" ? (
         <div className="grid gap-4">
