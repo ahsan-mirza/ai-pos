@@ -32,6 +32,7 @@ export default defineConfig({
     alias: [
       { find: "@reach", replacement: path.resolve(root, "../../plugins/reach/frontend") },
       { find: "@ai-pos/shared-types", replacement: path.resolve(root, "../../packages/shared-types/src/index.ts") },
+      { find: "@ai-pos/ui", replacement: path.resolve(root, "../../packages/ui/src/index.ts") },
       { find: "react/jsx-runtime", replacement: path.resolve(root, "node_modules/react/jsx-runtime.js") },
       { find: "react", replacement: path.resolve(root, "node_modules/react") },
       { find: "react-dom", replacement: path.resolve(root, "node_modules/react-dom") },
