@@ -264,7 +264,8 @@ def checklist(db: Session, settings: Settings) -> Checklist:
             key="configure",
             label="Configure your store",
             hint="Add your business details and prepare currency, tax, and receipt settings.",
-            done=(bool(row.legal_name and row.legal_name.strip()) and len(row.currency or "") == 3) or "configure" in skipped,
+            done=(bool(row.legal_name and row.legal_name.strip()) and len(row.currency or "") == 3)
+            or "configure" in skipped,
             href="/settings",
             action="Open store settings",
             skipped="configure" in skipped,
