@@ -32,6 +32,16 @@ def _runner(name: str, settings: Settings):
     return run
 
 
+def _grace_seconds(trigger: dict[str, object]) -> int:
+    """A tick that starts late still runs. The default one-second grace was skipping the reply check."""
+    if trigger.get("trigger") != "interval":
+        return 3600
+    seconds = int(trigger.get("seconds") or 0)
+    minutes = int(trigger.get("minutes") or 0)
+    hours = int(trigger.get("hours") or 0)
+    return max(seconds + minutes * 60 + hours * 3600, 30)
+
+
 def start(settings: Settings) -> None:
     global _scheduler
     if _scheduler is not None or not settings.scheduler_enabled:
@@ -40,7 +50,13 @@ def start(settings: Settings) -> None:
     for job in JOBS.values():
         trigger = dict(job.trigger)
         kind = trigger.pop("trigger")
-        scheduler.add_job(_runner(job.name, settings), kind, id=job.name, **trigger)
+        scheduler.add_job(
+            _runner(job.name, settings),
+            kind,
+            id=job.name,
+            misfire_grace_time=_grace_seconds(job.trigger),
+            **trigger,
+        )
     scheduler.start()
     _scheduler = scheduler
     logger.info("scheduler started with %d jobs", len(JOBS))

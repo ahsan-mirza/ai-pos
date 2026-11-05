@@ -166,7 +166,7 @@ def _delivery(db: Session, settings: Settings, channel: str) -> tuple[str, dict]
     return channel_credentials(db, settings, channel)
 
 
-def dispatch_due(db: Session, settings: Settings, limit: int = 50) -> dict[str, int]:
+def dispatch_due(db: Session, settings: Settings, limit: int = 50, template_key: str | None = None) -> dict[str, int]:
     """Sends queued messages whose time has come. Transient failures back off exponentially."""
     from app.core.capabilities import Capability, has_capability
 
@@ -181,14 +181,10 @@ def dispatch_due(db: Session, settings: Settings, limit: int = 50) -> dict[str, 
                 OutboundMessage.last_error.like("AxizReach is off%"),
             ),
         )
-    due = list(
-        db.scalars(
-            select(OutboundMessage)
-            .where(OutboundMessage.status == "QUEUED", ready)
-            .order_by(OutboundMessage.next_attempt_at)
-            .limit(limit)
-        )
-    )
+    waiting = select(OutboundMessage).where(OutboundMessage.status == "QUEUED", ready)
+    if template_key is not None:
+        waiting = waiting.where(OutboundMessage.template_key == template_key)
+    due = list(db.scalars(waiting.order_by(OutboundMessage.next_attempt_at).limit(limit)))
     counts = {"sent": 0, "failed": 0, "retry": 0}
     evolution_sent = 0
     for message in due:

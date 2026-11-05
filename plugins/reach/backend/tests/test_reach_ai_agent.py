@@ -314,10 +314,11 @@ def test_ai_waits_then_answers_from_the_catalogue(client, session, monkeypatch) 
     _age_pending(session)
     assert run_job(session, settings, "reach_ai_replies") == "ok"
     session.expire_all()
-    later = session.scalars(select(OutboundMessage.body).where(OutboundMessage.template_key == "ai_agent")).all()
+    later = session.scalars(select(OutboundMessage).where(OutboundMessage.template_key == "ai_agent")).all()
     assert len(later) == 1
-    assert "Cotton Suit Beige Frost" in later[0]
-    assert "6400.00" in later[0]
+    assert later[0].status == "SENT"
+    assert "Cotton Suit Beige Frost" in later[0].body
+    assert "6400.00" in later[0].body
     monkeypatch.setattr(settings, "assistant_provider", "builtin")
     set_handler(None)
 
@@ -432,7 +433,12 @@ def test_extended_whatsapp_text_gets_a_catalogue_reply(client, session, monkeypa
         json={
             "event": "messages.upsert",
             "data": {
-                "key": {"remoteJid": "971501110011@s.whatsapp.net", "fromMe": False, "id": "IN-EXT"},
+                "key": {
+                    "remoteJid": "154812345678901@lid",
+                    "remoteJidAlt": "971501110099@s.whatsapp.net",
+                    "fromMe": False,
+                    "id": "IN-EXT",
+                },
                 "message": {
                     "extendedTextMessage": {"text": "What is the price of cotton suite beige frost?"},
                 },
@@ -455,6 +461,8 @@ def test_extended_whatsapp_text_gets_a_catalogue_reply(client, session, monkeypa
     session.expire_all()
     reply = session.scalar(select(OutboundMessage).where(OutboundMessage.template_key == "ai_agent"))
     assert reply is not None
+    assert reply.status == "SENT"
+    assert reply.to_address == "971501110099"
     assert "Cotton Suit Beige Frost" in reply.body
     assert "6400.00" in reply.body
     monkeypatch.setattr(settings, "assistant_provider", "builtin")

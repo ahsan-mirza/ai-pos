@@ -36,7 +36,7 @@ def capture(db: Session, connection: ReachConnection, data: dict) -> None:
         return
     if db.scalar(select(ReachAiMessage.id).where(ReachAiMessage.provider_message_id == provider_id)):
         return
-    phone = _phone(key.get("remoteJid") or data.get("from") or "")
+    phone = customer_phone(data)
     if not phone:
         return
     customer = _customer(db, phone)
@@ -92,7 +92,7 @@ def _device_message(db: Session, connection: ReachConnection, data: dict) -> Non
         return
     if db.scalar(select(ReachAiMessage.id).where(ReachAiMessage.provider_message_id == provider_id)):
         return
-    phone = _phone(key.get("remoteJid") or data.get("from") or "")
+    phone = customer_phone(data)
     if not phone or not text:
         return
     if _echo_of_ours(db, phone, text, provider_id):
@@ -214,6 +214,29 @@ def _unwrap(message: dict) -> dict:
         if isinstance(wrapped, dict) and isinstance(wrapped.get("message"), dict):
             return _unwrap(wrapped["message"])
     return message
+
+
+def customer_phone(data: dict) -> str:
+    """Uses the real WhatsApp number. A privacy id (@lid) is only a fallback."""
+    key = data.get("key") if isinstance(data.get("key"), dict) else {}
+    ranked: list[tuple[int, str]] = []
+    for raw in (
+        key.get("remoteJidAlt"),
+        key.get("senderPn"),
+        data.get("senderPn"),
+        key.get("remoteJid"),
+        data.get("from"),
+    ):
+        if not raw:
+            continue
+        text = str(raw)
+        number = _phone(text)
+        if number:
+            ranked.append((1 if text.endswith("@lid") else 0, number))
+    if not ranked:
+        return ""
+    ranked.sort()
+    return ranked[0][1]
 
 
 def _phone(raw: object) -> str:

@@ -1,5 +1,7 @@
 """The job list. Feature modules add their jobs here so the scheduler and the Jobs page see the same set."""
 
+import logging
+
 from sqlalchemy.orm import Session
 
 from app.core.capabilities import Capability, has_capability
@@ -314,7 +316,17 @@ def _reach_ai(db: Session, settings: Settings) -> str:
         return "AxizReach is off"
     from reach.ai_agent.service import process_pending
 
-    return process_pending(db, settings)
+    prepared = process_pending(db, settings)
+    if prepared == "agent is off":
+        return prepared
+    counts = messaging_service.dispatch_due(db, settings, template_key="ai_agent")
+    logging.getLogger("ai_pos.reach.ai").info(
+        "[AXIZREACH_AI] outbox_claimed prepared=%s sent=%s failed=%s",
+        prepared,
+        counts["sent"],
+        counts["failed"],
+    )
+    return f"{prepared}; whatsapp sent {counts['sent']}"
 
 
 register(
