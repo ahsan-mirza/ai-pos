@@ -575,10 +575,10 @@ def set_password(db: Session, actor: Principal, user_id: uuid.UUID, password: st
 
 
 def set_pin(db: Session, settings: Settings, actor: Principal, user_id: uuid.UUID, pin: str) -> UserOut:
+    """Stores a register PIN. The business portal login is the password, so this does not sign anyone out."""
     user = get_user(db, actor, user_id)
     _assert_can_manage(actor, user)
     user.hashed_pin = hash_pin(pin, settings)
-    user.token_version += 1
     user.failed_login_attempts = 0
     user.locked_until = None
     db.commit()

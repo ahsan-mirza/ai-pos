@@ -85,7 +85,7 @@ from app.services.settings_service import load_settings
 ONBOARDING_VERSION = 1
 # "invite" skips the staff invite inside the team step and leaves that step open.
 # "catalogue" skips adding a product and counts that step done.
-SKIPPABLE = frozenset({"invite", "catalogue"})
+SKIPPABLE = frozenset({"explore", "configure", "catalogue", "practice", "team", "activate", "invite"})
 
 # Stock moved by practice sales and returns, including the ingredients practice dishes drew.
 PRACTICE_REFERENCES = ("sale", "sale_return", "sale_recipe")
@@ -237,14 +237,15 @@ def checklist(db: Session, settings: Settings) -> Checklist:
     label, hint, action = catalogue_copy(row.business_profile)
     register = _exists(db, select(Device.id).where(Device.revoked_at.is_(None)))
     invited = int(db.scalar(select(func.count()).select_from(User)) or 0) > 1
-    invite_skipped = "invite" in progress["skipped"]
+    invite_skipped = "invite" in progress["skipped"] or "team" in progress["skipped"]
     team_hint = "Create a register, then enter its one-time key in the Windows Register. Inviting staff is optional."
     if invite_skipped:
         team_hint = "Create a register when you are ready. Staff invites can be finished later."
     elif invited:
         team_hint = "A teammate already has a login. Create a register and enter its key in the Windows Register."
+    skipped = set(progress["skipped"])
     catalogue_done = _exists(db, select(Product.id).where(Product.is_sample.is_(False)))
-    catalogue_skipped = "catalogue" in progress["skipped"]
+    catalogue_skipped = "catalogue" in skipped
     payment_waiting = state in {"pending_review", "rejected", "awaiting_proof", "revoked"}
     # active and grace mean the invoice was verified. Go live is no longer offered.
     invoice_verified = state in {"active", "grace"}
@@ -253,17 +254,22 @@ def checklist(db: Session, settings: Settings) -> Checklist:
             key="explore",
             label="Explore your Business Portal",
             hint="Discover your dashboard, business tools, and the features available for your store.",
-            done=progress["explored_at"] is not None,
+            done=progress["explored_at"] is not None or "explore" in skipped,
             href="/dashboard",
             action="Open dashboard",
+            skipped="explore" in skipped,
+            skippable=progress["explored_at"] is None and "explore" not in skipped,
         ),
         ChecklistItem(
             key="configure",
             label="Configure your store",
             hint="Add your business details and prepare currency, tax, and receipt settings.",
-            done=bool(row.legal_name and row.legal_name.strip()) and len(row.currency or "") == 3,
+            done=(bool(row.legal_name and row.legal_name.strip()) and len(row.currency or "") == 3) or "configure" in skipped,
             href="/settings",
             action="Open store settings",
+            skipped="configure" in skipped,
+            skippable="configure" not in skipped
+            and not (bool(row.legal_name and row.legal_name.strip()) and len(row.currency or "") == 3),
         ),
         ChecklistItem(
             key="catalogue",
@@ -282,20 +288,22 @@ def checklist(db: Session, settings: Settings) -> Checklist:
                 "Ring up a sample item on the register. Practice sales are cleared at Go live, so they do not stay "
                 "in live reports, stock, or invoice numbers."
             ),
-            done=_exists(db, select(Sale.id)),
+            done=_exists(db, select(Sale.id)) or "practice" in skipped,
             href="/registers",
             action="Open registers",
+            skipped="practice" in skipped,
+            skippable="practice" not in skipped and not _exists(db, select(Sale.id)),
         ),
         ChecklistItem(
             key="team",
             label="Set up your team",
             hint=team_hint,
-            done=register,
+            done=register or invite_skipped,
             href="/registers",
             action="Set up a register",
             secondary_href="/users",
             secondary_label="Invite staff",
-            skippable=not invite_skipped and not invited,
+            skippable=not register and not invite_skipped,
             skipped=invite_skipped,
         ),
         ChecklistItem(
@@ -307,7 +315,7 @@ def checklist(db: Session, settings: Settings) -> Checklist:
                 else "Choose a plan and activate live operations after payment is verified. "
                 "Uploading a receipt does not activate the store."
             ),
-            done=row.live_at is not None or invoice_verified,
+            done=row.live_at is not None or invoice_verified or "activate" in skipped,
             href="/subscription" if payment_waiting else "#go-live",
             action=(
                 "View submission status"
@@ -320,7 +328,9 @@ def checklist(db: Session, settings: Settings) -> Checklist:
                 if blocked
                 else "Go live"
             ),
-            blocked=None if row.live_at is not None else blocked,
+            blocked=None if row.live_at is not None or "activate" in skipped else blocked,
+            skipped="activate" in skipped,
+            skippable=row.live_at is None and not invoice_verified and "activate" not in skipped,
         ),
     ]
     pending = next((item.key for item in items if not item.done), None)
@@ -347,6 +357,8 @@ def mark_explored(db: Session, settings: Settings) -> Checklist:
 
 
 def skip_optional(db: Session, key: str, settings: Settings) -> Checklist:
+    if key == "invite":
+        key = "team"
     if key not in SKIPPABLE:
         raise ApiError(422, "invalid_step", "That step cannot be skipped.")
     row = load_settings(db)

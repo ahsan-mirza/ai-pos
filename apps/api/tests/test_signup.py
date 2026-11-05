@@ -188,11 +188,19 @@ def test_signup_provisions_a_practice_store_and_hands_the_owner_over(signup: Tes
     assert next(item for item in explored["items"] if item["key"] == "explore")["done"] is True
     again = signup.post("/api/v1/onboarding/explore", headers=headers).json()
     assert next(item for item in again["items"] if item["key"] == "explore")["done"] is True
-    refused_skip = signup.post("/api/v1/onboarding/skip", headers=headers, json={"key": "activate"})
+    refused_skip = signup.post("/api/v1/onboarding/skip", headers=headers, json={"key": "not-a-step"})
     assert (refused_skip.status_code, refused_skip.json()["error"]["code"]) == (422, "invalid_step")
+    practice = signup.post("/api/v1/onboarding/skip", headers=headers, json={"key": "practice"}).json()
+    sale = next(item for item in practice["items"] if item["key"] == "practice")
+    assert sale["skipped"] is True and sale["done"] is True and sale["skippable"] is False
+    assert practice["practice_mode"] is True
+    activated = signup.post("/api/v1/onboarding/skip", headers=headers, json={"key": "activate"}).json()
+    go_live = next(item for item in activated["items"] if item["key"] == "activate")
+    assert go_live["skipped"] is True and go_live["done"] is True
+    assert activated["practice_mode"] is True and activated["live_at"] is None
     skipped = signup.post("/api/v1/onboarding/skip", headers=headers, json={"key": "invite"}).json()
     team = next(item for item in skipped["items"] if item["key"] == "team")
-    assert team["skipped"] is True and team["done"] is False
+    assert team["skipped"] is True and team["done"] is True
     catalogue = signup.post("/api/v1/onboarding/skip", headers=headers, json={"key": "catalogue"}).json()
     products = next(item for item in catalogue["items"] if item["key"] == "catalogue")
     assert products["skipped"] is True and products["done"] is True and products["skippable"] is False

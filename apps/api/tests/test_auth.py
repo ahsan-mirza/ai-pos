@@ -98,6 +98,18 @@ def test_password_login_accepts_email(client) -> None:
     assert unknown.status_code == 401
 
 
+def test_setting_a_pin_keeps_the_portal_session(client) -> None:
+    token = admin_token(client)
+    headers = bearer(token)
+    me = client.get("/api/v1/auth/me", headers=headers)
+    assert me.status_code == 200, me.text
+    updated = client.post(f"/api/v1/users/{me.json()['id']}/pin", headers=headers, json={"pin": "2468"})
+    assert updated.status_code == 200, updated.text
+    still = client.get("/api/v1/auth/me", headers=headers)
+    assert still.status_code == 200, still.text
+    assert still.json()["username"] == "admin"
+
+
 def test_pin_must_be_four_digits(client) -> None:
     headers = {"X-Api-Key": API_KEY}
     longer = client.post("/api/v1/auth/login-pin", json={"username": "cashier", "pin": "13579"}, headers=headers)

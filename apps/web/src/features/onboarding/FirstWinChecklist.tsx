@@ -79,13 +79,13 @@ function StepRow({
               {item.skippable ? (
                 <button
                   type="button"
-                  onClick={() => onSkip(item.key === "team" ? "invite" : item.key)}
+                  onClick={() => onSkip(item.key)}
                   className="text-xs text-charcoal/50 hover:text-charcoal hover:underline"
                 >
-                  {item.key === "team" ? "Skip inviting staff" : "Skip"}
+                  Skip
                 </button>
               ) : null}
-              {item.skipped ? <span className="text-xs text-charcoal/50">Invite skipped</span> : null}
+              {item.skipped && !item.done ? <span className="text-xs text-charcoal/50">Skipped</span> : null}
             </div>
           )}
         </div>
@@ -152,7 +152,7 @@ export function FirstWinChecklist() {
         {next?.skippable ? (
           <button
             type="button"
-            onClick={() => skipStep(next.key === "team" ? "invite" : next.key)}
+            onClick={() => skipStep(next.key)}
             className="mt-1 shrink-0 text-xs font-semibold text-white/70 hover:text-white"
           >
             Skip
