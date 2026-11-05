@@ -1,4 +1,4 @@
-import { Download, RefreshCw, WifiOff, X } from "lucide-react";
+import { Download, WifiOff, X } from "lucide-react";
 import { useState } from "react";
 import { useAuth } from "../lib/auth";
 import { usePwa } from "./PwaContext";
@@ -10,14 +10,6 @@ export function PwaChrome() {
   const showInstall = status === "signed-in" && pwa.showBanner;
   return (
     <>
-      {pwa.updateReady ? (
-        <div className="flex w-full flex-wrap items-center justify-between gap-2 bg-charcoal px-4 py-2 text-sm text-white">
-          <p>A new version of Business Pro is ready. Finish what you are doing, then update.</p>
-          <button type="button" className="inline-flex items-center gap-1 rounded-full bg-accent px-3 py-1.5 font-semibold" onClick={pwa.updateNow}>
-            <RefreshCw size={14} aria-hidden="true" /> Update now
-          </button>
-        </div>
-      ) : null}
       {pwa.online ? null : (
         <div className="flex w-full items-start gap-2 bg-amber-100 px-4 py-2 text-sm text-amber-950" role="status">
           <WifiOff size={16} className="mt-0.5 shrink-0" aria-hidden="true" />

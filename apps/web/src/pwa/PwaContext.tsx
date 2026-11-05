@@ -8,7 +8,7 @@ import {
   menuAction,
   type InstallSurface,
 } from "./install";
-import { applyAppUpdate, listenForAppUpdate, registerAppWorker } from "./register";
+import { registerAppWorker } from "./register";
 
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>;
@@ -20,13 +20,11 @@ interface PwaState {
   showBanner: boolean;
   menu: "install" | "ios" | null;
   online: boolean;
-  updateReady: boolean;
   iosOpen: boolean;
   install: () => Promise<void>;
   openIosHelp: () => void;
   closeIosHelp: () => void;
   dismissBanner: () => void;
-  updateNow: () => void;
 }
 
 const PwaContext = createContext<PwaState | null>(null);
@@ -47,17 +45,9 @@ export function PwaProvider({ children }: { children: ReactNode }) {
   );
   const [dismissed, setDismissed] = useState(readDismissed);
   const [online, setOnline] = useState(() => navigator.onLine);
-  const [updateReady, setUpdateReady] = useState(false);
-  const [registration, setRegistration] = useState<ServiceWorkerRegistration | null>(null);
   const [iosOpen, setIosOpen] = useState(false);
 
-  useEffect(() => {
-    registerAppWorker();
-    return listenForAppUpdate((next) => {
-      setRegistration(next);
-      setUpdateReady(true);
-    });
-  }, []);
+  useEffect(() => registerAppWorker(), []);
 
   useEffect(() => {
     const onPrompt = (event: Event) => {
@@ -100,7 +90,6 @@ export function PwaProvider({ children }: { children: ReactNode }) {
     showBanner: bannerVisible(surface, dismissed),
     menu: menuAction(surface),
     online,
-    updateReady,
     iosOpen,
     install: async () => {
       if (promptEvent === null) return;
@@ -119,10 +108,7 @@ export function PwaProvider({ children }: { children: ReactNode }) {
       localStorage.setItem(INSTALL_DISMISS_KEY, "1");
       setDismissed(true);
     },
-    updateNow: () => {
-      if (registration) applyAppUpdate(registration);
-    },
-  }), [dismissed, iosOpen, online, promptEvent, registration, surface, updateReady]);
+  }), [dismissed, iosOpen, online, promptEvent, surface]);
 
   return <PwaContext.Provider value={value}>{children}</PwaContext.Provider>;
 }
@@ -135,13 +121,11 @@ export function usePwa(): PwaState {
       showBanner: false,
       menu: null,
       online: true,
-      updateReady: false,
       iosOpen: false,
       install: async () => undefined,
       openIosHelp: () => undefined,
       closeIosHelp: () => undefined,
       dismissBanner: () => undefined,
-      updateNow: () => undefined,
     };
   }
   return value;

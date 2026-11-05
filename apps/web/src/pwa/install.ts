@@ -40,7 +40,7 @@ export function menuAction(surface: InstallSurface): "install" | "ios" | null {
   return null;
 }
 
-/** A new version reloads only after the person chooses Update now. */
-export function shouldApplyUpdate(userConfirmed: boolean): boolean {
-  return userConfirmed;
+/** A published build replaces the open portal and the installed app. No confirmation step. */
+export function shouldApplyUpdate(): boolean {
+  return true;
 }

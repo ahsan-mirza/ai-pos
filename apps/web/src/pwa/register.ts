@@ -1,4 +1,8 @@
 import { isPublicNavigation, isUserScopedCache } from "./cachePolicy";
+import { shouldApplyUpdate } from "./install";
+
+/** How often an open portal asks the browser for a new service worker. */
+export const APP_UPDATE_CHECK_MS = 60_000;
 
 /** Drops caches that could hold a person's session. The precached shell stays. */
 export async function clearUserCaches(): Promise<void> {
@@ -27,29 +31,54 @@ export function listenForAppUpdate(onReady: (registration: ServiceWorkerRegistra
   };
 }
 
-let reloading = false;
-
-/** Activates the waiting worker, then reloads once. Never called on its own. */
+/** Tells a waiting worker to take over. Activation reloads every open portal window. */
 export function applyAppUpdate(registration: ServiceWorkerRegistration): void {
-  if (reloading) return;
-  const waiting = registration.waiting;
-  if (waiting === null) {
-    window.location.reload();
-    return;
-  }
-  reloading = true;
-  navigator.serviceWorker.addEventListener("controllerchange", () => {
-    window.location.reload();
-  });
-  waiting.postMessage({ type: "SKIP_WAITING" });
+  if (!shouldApplyUpdate()) return;
+  registration.waiting?.postMessage({ type: "SKIP_WAITING" });
 }
 
-export function registerAppWorker(): void {
-  if (!import.meta.env.PROD || !("serviceWorker" in navigator)) return;
-  if (isPublicNavigation({ hostname: window.location.hostname, pathname: window.location.pathname })) return;
+/** Checks for a new build on a timer, when the tab is shown again, and when the network returns. */
+export function watchAppUpdates(registration: ServiceWorkerRegistration): () => void {
+  let stop = false;
+  const stopListen = listenForAppUpdate((next) => applyAppUpdate(next));
+  const check = () => {
+    if (stop || document.visibilityState === "hidden") return;
+    void registration.update().then(() => {
+      if (registration.waiting && navigator.serviceWorker.controller) applyAppUpdate(registration);
+    }).catch(() => undefined);
+  };
+  check();
+  document.addEventListener("visibilitychange", check);
+  window.addEventListener("focus", check);
+  window.addEventListener("online", check);
+  const timer = window.setInterval(check, APP_UPDATE_CHECK_MS);
+  return () => {
+    stop = true;
+    stopListen();
+    document.removeEventListener("visibilitychange", check);
+    window.removeEventListener("focus", check);
+    window.removeEventListener("online", check);
+    window.clearInterval(timer);
+  };
+}
+
+export function registerAppWorker(): () => void {
+  if (!import.meta.env.PROD || !("serviceWorker" in navigator)) return () => undefined;
+  if (isPublicNavigation({ hostname: window.location.hostname, pathname: window.location.pathname })) return () => undefined;
+  let stopWatch = () => undefined;
+  let cancelled = false;
   const register = () => {
-    void navigator.serviceWorker.register("/sw.js", { scope: "/" });
+    void navigator.serviceWorker
+      .register("/sw.js", { scope: "/", updateViaCache: "none" })
+      .then((registration) => {
+        if (!cancelled) stopWatch = watchAppUpdates(registration);
+      })
+      .catch(() => undefined);
   };
   if (document.readyState === "complete") register();
-  else window.addEventListener("load", register);
+  else window.addEventListener("load", register, { once: true });
+  return () => {
+    cancelled = true;
+    stopWatch();
+  };
 }

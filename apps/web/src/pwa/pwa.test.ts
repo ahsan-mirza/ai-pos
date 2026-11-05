@@ -121,7 +121,9 @@ describe("Business Pro PWA", () => {
     expect(store).toContain("JSON.stringify({ token: session.token, expiresAt: session.expiresAt })");
     expect(store).not.toContain("password:");
     const registration = readFileSync(join(process.cwd(), "src", "pwa", "register.ts"), "utf8");
-    expect(registration).toContain('register("/sw.js", { scope: "/" })');
+    expect(registration).toContain('register("/sw.js", { scope: "/", updateViaCache: "none" })');
+    expect(registration).toContain("registration.update()");
+    expect(registration).toContain("APP_UPDATE_CHECK_MS");
     expect(registration).toContain("isPublicNavigation");
     expect(registration).toContain("import.meta.env.PROD");
     expect(registration).not.toContain("localStorage");
@@ -144,9 +146,8 @@ describe("Business Pro PWA", () => {
     expect(site).toContain('location.replace("/#" + sections[path])');
   });
 
-  it("updates only when the person confirms, and does not ask for push", () => {
-    expect(shouldApplyUpdate(false)).toBe(false);
-    expect(shouldApplyUpdate(true)).toBe(true);
+  it("applies a new version without asking, and does not ask for push", () => {
+    expect(shouldApplyUpdate()).toBe(true);
     expect(pushConfigured()).toBe(false);
   });
 });
