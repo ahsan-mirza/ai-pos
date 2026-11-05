@@ -71,7 +71,7 @@ interface PageFrameProps {
 /** Centre column (header + scrolling canvas) and the right drawer, flush against each other. */
 export function PageFrame({ title, sync, actions, drawer, footer, children }: PageFrameProps) {
   return (
-    <div className="flex min-h-0 min-w-0 flex-1 flex-col lg:flex-row">
+    <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col lg:flex-row">
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         <HeaderBar title={title} sync={sync} actions={actions} />
         <POSAlertBanner />

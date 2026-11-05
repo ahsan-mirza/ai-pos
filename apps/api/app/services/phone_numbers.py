@@ -76,7 +76,13 @@ def whatsapp_destination(value: str, sender: str | None = None) -> str:
     `03104433311` on a Pakistan line (`923…`) becomes `923104433311`. A number that already
     carries a country code is left in that country, even when it was typed without a plus.
     """
-    compact = re.sub(r"[\s().-]", "", (value or "").strip())
+    raw = (value or "").strip()
+    if raw.lower().endswith("@lid"):
+        digits = re.sub(r"\D", "", raw.split("@", 1)[0])
+        if len(digits) < 6:
+            raise ValueError("Enter a WhatsApp number.")
+        return f"{digits}@lid"
+    compact = re.sub(r"[\s().-]", "", raw)
     if compact.startswith("00"):
         compact = f"+{compact[2:]}"
     if compact == "" or compact == "+":

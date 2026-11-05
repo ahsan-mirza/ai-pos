@@ -88,6 +88,7 @@ const arabic: Record<string, string> = {
   "Reorder alerts": "تنبيهات إعادة الطلب",
   "Time clock": "الحضور",
   Shift: "الوردية",
+  "Sale Shift": "وردية المبيعات",
   "Sync Center": "مركز المزامنة",
   "Customer display": "شاشة العميل",
   Settings: "الإعدادات",

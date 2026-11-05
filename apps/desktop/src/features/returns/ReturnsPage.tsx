@@ -225,7 +225,9 @@ export function ReturnsPage({ session, openingInvoice = null }: ReturnsPageProps
                 : null,
         );
       } catch (error) {
-        setNotice(error instanceof Error ? error.message : String(error));
+        const message = error instanceof Error ? error.message : String(error);
+        console.error("[POS_RETURN] load_failed", message);
+        setNotice(message);
       } finally {
         setBusy(false);
       }
@@ -603,6 +605,12 @@ export function ReturnsPage({ session, openingInvoice = null }: ReturnsPageProps
               </ol>
             ) : null}
 
+            {openingInvoice && busy && loaded === null ? (
+              <p role="status" className="rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm font-medium dark:border-zinc-800 dark:bg-zinc-900">
+                Opening return...
+              </p>
+            ) : null}
+
             {notice ? (
               <p
                 role="status"
@@ -688,20 +696,26 @@ export function ReturnsPage({ session, openingInvoice = null }: ReturnsPageProps
                     <Gift size={16} aria-hidden="true" /> Gift receipt
                   </button>
                 </div>
-                {isOutsideWindow(receipt, now) ? (
+                {!receipt.policy ? (
+                  <p className="mt-3 rounded-2xl border border-red-200 bg-white px-4 py-3 text-sm text-red-700">
+                    This sale cannot be returned because its return rules did not load.
+                  </p>
+                ) : null}
+                {receipt.policy && isOutsideWindow(receipt, now) ? (
                   <p className="mt-3 flex items-center gap-2 rounded-2xl bg-primary-500/10 px-4 py-3 text-sm font-medium text-primary-700 dark:text-primary-300">
                     <Clock3 size={16} aria-hidden="true" />
                     Outside the {receipt.policy.window_days + (receipt.policy.exchange_window_days ?? 0)}-day return
                     window. A manager must approve this return.
                   </p>
-                ) : exchangeOnly ? (
+                ) : receipt.policy && exchangeOnly ? (
                   <p className="mt-3 flex items-center gap-2 rounded-2xl bg-amber-500/10 px-4 py-3 text-sm font-medium text-amber-800 dark:text-amber-200">
                     <Clock3 size={16} aria-hidden="true" />
                     Past the {receipt.policy.window_days}-day refund window: exchange or store credit only.
                   </p>
                 ) : null}
                 <ul className="mt-4 space-y-3">
-                  {receipt.items.map((item) => (
+                  {receipt.policy
+                    ? receipt.items.map((item) => (
                     <ReturnLineCard
                       key={item.sale_item_id}
                       item={item}
@@ -713,7 +727,8 @@ export function ReturnsPage({ session, openingInvoice = null }: ReturnsPageProps
                       onChange={(patch) => patchLine(item.sale_item_id, patch)}
                       onVerifySerial={() => setSerialFor(item)}
                     />
-                  ))}
+                  ))
+                    : null}
                 </ul>
               </div>
             ) : null}
@@ -996,7 +1011,7 @@ const refundKinds: Record<RefundKind, { label: string; className: string }> = {
 
 /** Card refunds are reversals; refunds paid entirely as a credit code are store credit; anything else was paid out. */
 function refundKind(entry: LocalReturn): RefundKind {
-  const methods = entry.payload.tenders.map((tender) => tender.method);
+  const methods = entry.payload?.tenders?.map((tender) => tender.method) ?? [];
   if (methods.includes(RefundMethod.OriginalCard)) return "reversed";
   if (methods.length > 0 && methods.every((method) => method === RefundMethod.StoreCredit)) return "store_credit";
   return "completed";
@@ -1024,10 +1039,10 @@ function RecentReturnsTable({
       cell: (entry) => (
         <>
           <span className="block font-mono text-sm font-semibold">
-            {entry.payload.credit_note_number ?? `CN-${entry.id.slice(0, 8).toUpperCase()}`}
+            {entry.payload?.credit_note_number ?? `CN-${entry.id.slice(0, 8).toUpperCase()}`}
           </span>
           <span className="block font-mono text-xs text-zinc-500 dark:text-zinc-400">
-            Sale {invoiceNumber(entry.payload.original_sale_id)}
+            Sale {invoiceNumber(entry.payload?.original_sale_id ?? "")}
           </span>
         </>
       ),
@@ -1039,7 +1054,7 @@ function RecentReturnsTable({
       cell: (entry) =>
         new Date(entry.created_at * 1000).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }),
     },
-    { id: "items", header: "Items", align: "right", cell: (entry) => entry.payload.items.length },
+    { id: "items", header: "Items", align: "right", cell: (entry) => entry.payload?.items?.length ?? 0 },
     {
       id: "status",
       header: "Status",
@@ -1063,7 +1078,16 @@ function RecentReturnsTable({
       header: "Amount",
       align: "right",
       className: "font-semibold",
-      cell: (entry) => formatMoney(entry.payload.total_refund_cents, entry.payload.currency),
+      cell: (entry) => {
+        const currency = entry.payload?.currency;
+        if (!currency) return "—";
+        try {
+          return formatMoney(entry.payload.total_refund_cents ?? 0, currency);
+        } catch (error) {
+          console.error("[POS_RETURN] amount_failed", error);
+          return "—";
+        }
+      },
     },
     {
       id: "open",

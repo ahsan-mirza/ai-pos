@@ -59,7 +59,7 @@ export function receiptFromQueuedSale(sale: SaleUpsert, products: ProductUpsert[
   const byId = new Map(products.map((product) => [product.id, product]));
   return {
     sale_id: sale.id,
-    invoice: invoiceNumber(sale.client_sale_id),
+    invoice: sale.invoice_number?.trim() || invoiceNumber(sale.client_sale_id),
     store_id: sale.store_id,
     cashier_id: sale.cashier_id,
     status: "completed",
@@ -100,17 +100,18 @@ export function receiptFromQueuedSale(sale: SaleUpsert, products: ProductUpsert[
 
 /** Subtracts returns made on this register that the receipt does not reflect yet. */
 export function applyLocalReturns(receipt: Receipt, local: LocalReturn[]): Receipt {
+  if (!Array.isArray(receipt.items)) return { ...receipt, items: [] };
   if (local.length === 0) return receipt;
   const items = receipt.items.map((item) => ({ ...item }));
   const byId = new Map(items.map((item) => [item.sale_item_id, item]));
   let refunded = receipt.refunded_cents;
   let cardRefundable = receipt.card_refundable_cents;
   for (const entry of local) {
-    refunded += entry.payload.total_refund_cents;
-    for (const tender of entry.payload.tenders) {
+    refunded += entry.payload?.total_refund_cents ?? 0;
+    for (const tender of entry.payload?.tenders ?? []) {
       if (tender.method === RefundMethod.OriginalCard) cardRefundable -= tender.amount_cents;
     }
-    for (const line of entry.payload.items) {
+    for (const line of entry.payload?.items ?? []) {
       const item = byId.get(line.sale_item_id);
       if (item === undefined) continue;
       item.returned_quantity += line.quantity;
@@ -141,12 +142,14 @@ function ageMs(receipt: Receipt, now: Date): number {
 
 /** Past the refund window and the exchange window: only a manager can accept it. Mirrors the API. */
 export function isOutsideWindow(receipt: Receipt, now: Date): boolean {
+  if (!receipt.policy) return false;
   const { window_days, exchange_window_days = 0 } = receipt.policy;
   return ageMs(receipt, now) > (window_days + exchange_window_days) * DAY_MS;
 }
 
 /** Past the refund window but inside the exchange window: the refund goes to an exchange voucher only. */
 export function isExchangeOnly(receipt: Receipt, now: Date): boolean {
+  if (!receipt.policy) return false;
   const { window_days, exchange_window_days = 0 } = receipt.policy;
   const age = ageMs(receipt, now);
   return age > window_days * DAY_MS && age <= (window_days + exchange_window_days) * DAY_MS;
@@ -171,6 +174,7 @@ export interface PricedLine {
 }
 
 export function priceLines(receipt: Receipt, drafts: Record<string, LineDraft>, waiveFee: boolean): PricedLine[] {
+  if (!receipt.policy || !Array.isArray(receipt.items)) return [];
   return receipt.items.flatMap((item) => {
     const draft = drafts[item.sale_item_id];
     if (draft === undefined) return [];

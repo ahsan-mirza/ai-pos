@@ -46,6 +46,7 @@ def test_a_local_number_uses_the_connected_whatsapp_country() -> None:
     assert whatsapp_destination("0501234567", "971500000111") == "971501234567"
     with pytest.raises(ValueError, match="country code"):
         whatsapp_destination("03104433311", None)
+    assert whatsapp_destination("154812345678901@lid", "923244444026") == "154812345678901@lid"
 
 
 def test_validation_errors_keep_a_field_map() -> None:

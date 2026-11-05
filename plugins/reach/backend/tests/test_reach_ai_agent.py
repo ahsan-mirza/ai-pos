@@ -3,7 +3,7 @@
 import uuid
 from datetime import UTC, datetime, timedelta
 
-from reach.ai_agent.models import ReachAiAction, ReachAiMessage
+from reach.ai_agent.models import ReachAiAction, ReachAiConversation, ReachAiMessage
 from reach.providers.evolution.client import set_handler
 from sqlalchemy import func, select
 from tests.governance_support import platform  # noqa: F401
@@ -390,6 +390,141 @@ def test_one_waiting_window_gets_one_ai_reply(client, session, monkeypatch) -> N
     bodies = session.scalars(select(OutboundMessage.body).where(OutboundMessage.template_key == "ai_agent")).all()
     assert len(bodies) == 1
     assert "Cotton Suit Beige Frost" in bodies[0]
+    monkeypatch.setattr(settings, "assistant_provider", "builtin")
+    set_handler(None)
+
+
+def test_a_mirrored_phone_message_does_not_silence_the_agent(client, session, monkeypatch) -> None:
+    set_handler(lambda method, path, body: {"instance": {"state": "open"}, "key": {"id": "OUT-MIRROR"}})
+    settings = get_settings()
+    headers = _ready(client, session, settings)
+    session.add(_suit("Cotton Suit Beige Frost", "SUIT-MIRROR", 640000))
+    session.commit()
+    text = "what is the price of cotton suite beige frost"
+    _incoming(client, session, text, "IN-MIRROR")
+    key = session.scalar(select(ReachConnection.webhook_key))
+    mirrored = client.post(
+        f"/api/v1/reach/webhooks/evolution/{key}",
+        headers={"apikey": "hook-secret"},
+        json={
+            "eventId": "MIRROR-1",
+            "event": "messages.upsert",
+            "data": {
+                "key": {"remoteJid": "971501110011@s.whatsapp.net", "fromMe": True, "id": "MIRROR-1"},
+                "message": {"conversation": text},
+            },
+        },
+    )
+    assert mirrored.status_code == 200, mirrored.text
+    _age_pending(session)
+    assert run_job(session, settings, "reach_ai_replies") == "ok"
+    session.expire_all()
+    reply = session.scalar(select(OutboundMessage).where(OutboundMessage.template_key == "ai_agent"))
+    assert reply is not None
+    assert reply.status == "SENT"
+    assert "6400.00" in reply.body
+    listed = client.get("/api/v1/reach/ai/conversations", headers=headers)
+    assert listed.json()[0]["handler"] == "ai"
+    monkeypatch.setattr(settings, "assistant_provider", "builtin")
+    set_handler(None)
+
+
+def test_a_stuck_mirror_still_receives_the_catalogue_price(client, session, monkeypatch) -> None:
+    set_handler(lambda method, path, body: {"instance": {"state": "open"}, "key": {"id": "OUT-STUCK"}})
+    settings = get_settings()
+    _ready(client, session, settings)
+    session.add(_suit("Cotton Suit Beige Frost", "SUIT-STUCK", 640000))
+    session.commit()
+    text = "what is the price of cotton suite beige frost"
+    _incoming(client, session, text, "IN-STUCK")
+    session.expire_all()
+    incoming = session.scalar(select(ReachAiMessage).where(ReachAiMessage.provider_message_id == "IN-STUCK"))
+    conversation = session.get(ReachAiConversation, incoming.conversation_id)
+    conversation.handler = "human"
+    incoming.status = "stored"
+    incoming.created_at = datetime.now(UTC) - timedelta(minutes=2)
+    session.add(
+        ReachAiMessage(
+            conversation_id=conversation.id,
+            direction="out",
+            author="staff",
+            body=text,
+            status="stored",
+            evidence={"origin": "human_device"},
+        )
+    )
+    session.commit()
+    assert run_job(session, settings, "reach_ai_replies") == "ok"
+    session.expire_all()
+    reply = session.scalar(select(OutboundMessage).where(OutboundMessage.template_key == "ai_agent"))
+    assert reply is not None
+    assert reply.status == "SENT"
+    assert "Cotton Suit Beige Frost" in reply.body
+    assert "6400.00" in reply.body
+    monkeypatch.setattr(settings, "assistant_provider", "builtin")
+    set_handler(None)
+
+
+def test_privacy_id_is_sent_as_a_lid(client, session, monkeypatch) -> None:
+    sent: dict = {}
+
+    def handler(method, path, body):
+        sent["body"] = body
+        return {"instance": {"state": "open"}, "key": {"id": "OUT-LID"}}
+
+    set_handler(handler)
+    settings = get_settings()
+    _ready(client, session, settings)
+    session.add(_suit("Cotton Suit Beige Frost", "SUIT-LID", 640000))
+    session.commit()
+    key = session.scalar(select(ReachConnection.webhook_key))
+    response = client.post(
+        f"/api/v1/reach/webhooks/evolution/{key}",
+        headers={"apikey": "hook-secret"},
+        json={
+            "event": "messages.upsert",
+            "data": {
+                "key": {"remoteJid": "154812345678901@lid", "fromMe": False, "id": "IN-LID"},
+                "status": "DELIVERY_ACK",
+                "message": {"conversation": "what is the price of cotton suite beige frost"},
+            },
+        },
+    )
+    assert response.status_code == 200, response.text
+    _age_pending(session)
+    assert run_job(session, settings, "reach_ai_replies") == "ok"
+    session.expire_all()
+    reply = session.scalar(select(OutboundMessage).where(OutboundMessage.template_key == "ai_agent"))
+    assert reply is not None
+    assert reply.status == "SENT"
+    assert reply.to_address == "154812345678901@lid"
+    assert sent["body"]["number"] == "154812345678901@lid"
+    assert "6400.00" in reply.body
+    monkeypatch.setattr(settings, "assistant_provider", "builtin")
+    set_handler(None)
+
+
+def test_a_model_reply_that_drops_the_price_keeps_the_catalogue(client, session, monkeypatch) -> None:
+    set_handler(lambda method, path, body: {"instance": {"state": "open"}, "key": {"id": "OUT-MODEL"}})
+    settings = get_settings()
+    _ready(client, session, settings)
+    settings.assistant_provider = "ollama"
+    monkeypatch.setattr(
+        "app.services.assistant_llm.complete",
+        lambda *_args, **_kwargs: {"content": "I can't confirm that product or whether it is in stock."},
+    )
+    session.add(_suit("Cotton Suit Beige Frost", "SUIT-MODEL", 640000))
+    session.commit()
+    _incoming(client, session, "what is the price of cotton suite beige frost", "IN-MODEL")
+    _age_pending(session)
+    assert run_job(session, settings, "reach_ai_replies") == "ok"
+    session.expire_all()
+    reply = session.scalar(select(OutboundMessage).where(OutboundMessage.template_key == "ai_agent"))
+    assert reply is not None
+    assert reply.status == "SENT"
+    assert "Cotton Suit Beige Frost" in reply.body
+    assert "6400.00" in reply.body
+    assert "can't confirm" not in reply.body
     monkeypatch.setattr(settings, "assistant_provider", "builtin")
     set_handler(None)
 

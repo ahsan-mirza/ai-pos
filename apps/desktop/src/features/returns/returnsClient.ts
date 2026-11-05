@@ -81,13 +81,19 @@ export async function submitReturn(batch: ReturnBatch): Promise<ChargeOutcome> {
       await enqueueReturn(batch.batchId, batch.events);
       batch.enqueued = true;
     }
-    const report = await flushSync();
-    const status = await batchStatus(batch.batchId);
+    let message = "Saved on this register. Synchronization is pending.";
+    try {
+      message = (await flushSync()).message || message;
+    } catch (error) {
+      console.error("[POS_RETURN] sync_failed", error);
+      message = error instanceof Error ? error.message : message;
+    }
+    const status = await batchStatus(batch.batchId).catch(() => null);
     if (status?.status === "synced") return { kind: "recorded" };
     if (status?.status === "rejected") {
-      return { kind: "rejected", message: status.error ?? "The API rejected the return." };
+      return { kind: "rejected", message: status.error ?? "The API rejected the return. The local copy is kept." };
     }
-    return { kind: "queued", message: report.message };
+    return { kind: "queued", message };
   }
 
   try {

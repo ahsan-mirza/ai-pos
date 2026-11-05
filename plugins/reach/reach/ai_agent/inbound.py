@@ -95,7 +95,7 @@ def _device_message(db: Session, connection: ReachConnection, data: dict) -> Non
     phone = customer_phone(data)
     if not phone or not text:
         return
-    if _echo_of_ours(db, phone, text, provider_id):
+    if _echo_of_ours(db, phone, text, provider_id) or _mirrors_customer(db, phone, text):
         return
     conversation = _conversation(db, connection, phone, _customer(db, phone), "")
     try:
@@ -120,6 +120,30 @@ def _device_message(db: Session, connection: ReachConnection, data: dict) -> Non
     conversation.last_message_at = utcnow()
     suppress_pending(db, conversation)
     db.add(ReachAiEvent(conversation_id=conversation.id, kind="device_reply", detail=provider_id))
+
+
+def _mirrors_customer(db: Session, phone: str, text: str) -> bool:
+    """WhatsApp sometimes echoes the inbound text with fromMe. That is not a person at the counter."""
+    folded = text.strip()
+    if not folded:
+        return False
+    since = datetime.now(UTC) - timedelta(minutes=10)
+    recent = db.scalars(
+        select(ReachAiMessage).where(ReachAiMessage.author == "customer", ReachAiMessage.created_at >= since).limit(40)
+    ).all()
+    for message in recent:
+        if message.body.strip() != folded:
+            continue
+        conversation = db.get(ReachAiConversation, message.conversation_id)
+        if conversation is not None and _same_phone(conversation.phone, phone):
+            return True
+    return False
+
+
+def _same_phone(left: str, right: str) -> bool:
+    first = "".join(ch for ch in left if ch.isdigit())
+    second = "".join(ch for ch in right if ch.isdigit())
+    return bool(first) and (first == second or first.endswith(second) or second.endswith(first))
 
 
 def _echo_of_ours(db: Session, phone: str, text: str, provider_id: str) -> bool:
@@ -167,10 +191,11 @@ def _conversation(
 
 
 def _customer(db: Session, phone: str) -> Customer | None:
+    wanted = "".join(ch for ch in phone if ch.isdigit())
     rows = list(db.scalars(select(Customer).where(Customer.phone.is_not(None))))
     for customer in rows:
         digits = "".join(ch for ch in (customer.phone or "") if ch.isdigit())
-        if digits and (digits.endswith(phone) or phone.endswith(digits)):
+        if digits and wanted and (digits.endswith(wanted) or wanted.endswith(digits)):
             return customer
     return None
 
@@ -236,7 +261,13 @@ def customer_phone(data: dict) -> str:
     if not ranked:
         return ""
     ranked.sort()
-    return ranked[0][1]
+    _rank, number = ranked[0]
+    lid_only = all(item[0] == 1 for item in ranked)
+    if lid_only:
+        jid = f"{number}@lid"
+        if len(jid) <= 32:
+            return jid
+    return number
 
 
 def _phone(raw: object) -> str:

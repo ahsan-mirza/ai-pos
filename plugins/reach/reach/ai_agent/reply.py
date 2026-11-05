@@ -193,7 +193,7 @@ def _products(rows: list[dict], arabic: bool, facet: str, truncated: bool) -> st
 
 
 def accept_model_text(candidate: str, facts_text: str) -> str | None:
-    """Reject a model reply that adds a price or claims a completed refund."""
+    """Keep a model reply only when it preserves the catalogue prices and adds none."""
     cleaned = " ".join(candidate.split())
     if not cleaned or len(cleaned) > 800:
         return None
@@ -202,6 +202,9 @@ def accept_model_text(candidate: str, facts_text: str) -> str | None:
         return None
     if any(phrase in lowered for phrase in ("refund has been issued", "payment confirmed", "stock adjusted")):
         return None
+    for number in re.findall(r"\d+\.\d{2}", facts_text):
+        if number not in cleaned:
+            return None
     for number in re.findall(r"\d+\.\d{2}", cleaned):
         if number not in facts_text:
             return None

@@ -1,5 +1,5 @@
 import { Permission, formatMoney } from "@ai-pos/shared-types";
-import { useEffect, useMemo, useState } from "react";
+import { Component, useEffect, useMemo, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { inTauri, recentShifts, shiftHistory, type LocalShift, type ShiftHistory, type ShiftSaleRow } from "../../lib/tauri";
 import type { CashierSession } from "../auth/session";
@@ -13,6 +13,37 @@ const statusLabel: Record<string, string> = {
   partially_returned: "Partially returned",
   returned: "Returned",
 };
+
+class ReturnBoundary extends Component<{ onClose: () => void; children: ReactNode }, { message: string | null }> {
+  override state = { message: null as string | null };
+
+  static getDerivedStateFromError(error: unknown) {
+    const message = error instanceof Error ? error.message : "The return screen stopped while it was opening.";
+    return { message };
+  }
+
+  override componentDidCatch(error: unknown) {
+    console.error("[POS_RETURN] render_failed", error);
+  }
+
+  override render() {
+    if (this.state.message === null) return this.props.children;
+    return (
+      <div className="m-4 rounded-2xl border border-red-200 bg-white p-4 text-sm text-zinc-900">
+        <p className="font-semibold">The return could not be opened.</p>
+        <p className="mt-1 text-red-700">{this.state.message}</p>
+        <div className="mt-3 flex gap-2">
+          <button type="button" className="modal-save" onClick={() => this.setState({ message: null })}>
+            Retry
+          </button>
+          <button type="button" className="modal-cancel" onClick={this.props.onClose}>
+            Close
+          </button>
+        </div>
+      </div>
+    );
+  }
+}
 
 function when(value: string): string {
   const date = new Date(value);
@@ -282,8 +313,12 @@ export function ShiftSales({
             </div>
           ) : null}
           <div className="mt-3 flex flex-wrap gap-2">
-            <button type="button" className="modal-save" disabled={selected.status === "returned"} onClick={() => startReturn(selected)}>
-              {selected.status === "partially_returned" ? "Return remaining items" : "Return items"}
+            <button type="button" className="modal-save" disabled={selected.status === "returned" || returnInvoice !== null} onClick={() => startReturn(selected)}>
+              {returnInvoice !== null
+                ? "Opening return..."
+                : selected.status === "partially_returned"
+                  ? "Return remaining items"
+                  : "Return items"}
             </button>
             <button type="button" className="rounded-full border border-line px-4 py-2 text-sm" onClick={() => reprint(selected)}>
               Reprint receipt
@@ -293,15 +328,17 @@ export function ShiftSales({
       ) : null}
       {returnInvoice !== null
         ? createPortal(
-            <div className="fixed inset-0 z-[80] flex min-h-0 flex-col bg-slate-50 dark:bg-zinc-950">
-              <div className="flex items-center justify-between gap-3 border-b border-zinc-200 px-4 py-3 dark:border-zinc-800">
+            <div className="fixed inset-0 z-[100] flex h-dvh w-dvw flex-col overflow-hidden bg-slate-50 text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100">
+              <div className="flex shrink-0 items-center justify-between gap-3 border-b border-zinc-200 bg-white px-4 py-3 dark:border-zinc-800 dark:bg-zinc-900">
                 <p className="min-w-0 truncate text-sm font-medium">Return {returnInvoice}</p>
                 <button type="button" className="modal-cancel" onClick={closeReturn}>
                   Back to sale
                 </button>
               </div>
-              <div className="flex min-h-0 flex-1 flex-col">
-                <ReturnsPage session={session} openingInvoice={returnInvoice} />
+              <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
+                <ReturnBoundary key={returnInvoice} onClose={closeReturn}>
+                  <ReturnsPage session={session} openingInvoice={returnInvoice} />
+                </ReturnBoundary>
               </div>
             </div>,
             document.body,

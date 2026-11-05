@@ -67,7 +67,12 @@ def submit(settings: Settings, provider: str, outgoing: object, creds: dict) -> 
     try:
         number = whatsapp_destination(outgoing.to, str(creds.get("sender_number") or "") or None)
     except ValueError as exc:
-        raise ProviderError(str(exc), permanent=True) from exc
+        digits = "".join(ch for ch in str(getattr(outgoing, "to", "") or "") if ch.isdigit())
+        # A WhatsApp privacy id is not a phone number. Evolution delivers it only as a @lid JID.
+        if 13 <= len(digits) <= 20 and "@" not in str(getattr(outgoing, "to", "") or ""):
+            number = f"{digits}@lid"
+        else:
+            raise ProviderError(str(exc), permanent=True) from exc
     instance = creds.get("instance_name") or ""
     if not instance:
         raise ProviderError("No Evolution instance is selected for this message.", permanent=True)

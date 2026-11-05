@@ -148,6 +148,53 @@ def suppress_pending(db: Session, conversation: ReachAiConversation) -> None:
     _close_wait(db, conversation.id)
 
 
+def release_mirrored_takeover(db: Session, conversation: ReachAiConversation) -> bool:
+    """A phone echo of the customer's own text is not a staff reply. Hand the chat back to the agent."""
+    if conversation.handler != "human":
+        return False
+    staff = db.scalar(
+        select(ReachAiMessage)
+        .where(ReachAiMessage.conversation_id == conversation.id, ReachAiMessage.author == "staff")
+        .order_by(ReachAiMessage.created_at.desc())
+        .limit(1)
+    )
+    if staff is None or not isinstance(staff.evidence, dict) or staff.evidence.get("origin") != "human_device":
+        return False
+    same = db.scalar(
+        select(ReachAiMessage.id).where(
+            ReachAiMessage.conversation_id == conversation.id,
+            ReachAiMessage.author == "customer",
+            ReachAiMessage.body == staff.body,
+        )
+    )
+    if same is None:
+        return False
+    conversation.handler = "ai"
+    if conversation.status != "resolved":
+        conversation.status = "waiting_staff"
+    replied = set(
+        db.scalars(
+            select(ReachAiMessage.reply_to_id).where(
+                ReachAiMessage.conversation_id == conversation.id,
+                ReachAiMessage.reply_to_id.is_not(None),
+            )
+        ).all()
+    )
+    window_start = aware(staff.created_at) - timedelta(minutes=10)
+    waiting = db.scalars(
+        select(ReachAiMessage).where(
+            ReachAiMessage.conversation_id == conversation.id,
+            ReachAiMessage.author == "customer",
+            ReachAiMessage.status == "stored",
+            ReachAiMessage.created_at >= window_start,
+        )
+    ).all()
+    for item in waiting:
+        if item.id not in replied:
+            item.status = "received"
+    return True
+
+
 def claim(db: Session, messages: list[ReachAiMessage]) -> bool:
     ids = [message.id for message in messages]
     if not ids:

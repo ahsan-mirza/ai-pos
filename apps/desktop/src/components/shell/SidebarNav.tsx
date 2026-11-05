@@ -52,7 +52,7 @@ const allTools: { id: Tool; label: string; hint: string; icon: LucideIcon; deskt
   { id: "inventory", label: "Inventory", hint: "Stock at every branch and the warehouse", icon: Boxes, desktopOnly: false, audience: "retail" as const },
   { id: "kitchen", label: "Kitchen display", hint: "Open orders and tickets sent to the kitchen", icon: ChefHat, desktopOnly: false, capability: Capability.Kds, audience: "fnb" as const },
   { id: "clock", label: "Time clock", hint: "Clock in and out with your PIN", icon: Timer, desktopOnly: true },
-  { id: "shift", label: "Shift", hint: "X report, pay in / out, close", icon: Clock, desktopOnly: true },
+  { id: "shift", label: "Sale Shift", hint: "X report, pay in / out, close", icon: Clock, desktopOnly: true },
   { id: "sync", label: "Sync Center", hint: "Queued and rejected register events", icon: RefreshCw, desktopOnly: true },
   { id: "display", label: "Customer display", hint: "Open the second screen facing the customer", icon: MonitorUp, desktopOnly: false },
   { id: "settings", label: "Settings", hint: "Accent color, receipt printer and cash drawer", icon: Settings, desktopOnly: false },

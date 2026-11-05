@@ -89,7 +89,11 @@ def prepare_llm_context(data: Any) -> ContextDocument:
     except (TypeError, ValueError):
         return ContextDocument(json_text, "json", json_text, None, False, True, json_tokens, None)
     valid = validate_toon_document(toon_text)
-    if not valid or decode_toon_context(toon_text) != plain:
+    try:
+        decoded = decode_toon_context(toon_text) if valid else None
+    except (toon_format.ToonDecodeError, TypeError, ValueError):
+        return ContextDocument(json_text, "json", json_text, toon_text, False, True, json_tokens, None)
+    if not valid or decoded != plain:
         return ContextDocument(json_text, "json", json_text, toon_text, valid, True, json_tokens, None)
     toon_tokens = estimate_context_tokens(toon_text)
     if toon_tokens >= json_tokens:
