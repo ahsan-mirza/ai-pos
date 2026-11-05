@@ -55,6 +55,9 @@ def read_settings(
     )
     db.commit()
     out = settings_service.settings_out(settings)
+    from app.console.transfers import operations_open
+
+    out = out.model_copy(update={"subscription_operational": operations_open()})
     if principal.store_id is None:
         return out
     from app.services.branch_tax import overlay_settings

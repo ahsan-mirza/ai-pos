@@ -141,6 +141,49 @@ def operational_block(db: Session, tenant_id: uuid.UUID) -> dict[str, str] | Non
     return {"code": code, "subscription_status": status, "message": message, "redirect": "/subscription"}
 
 
+def subscription_block() -> dict[str, str] | None:
+    """The lock for the tenant bound to this call. None means paid work may run."""
+    from app.core.config import get_settings
+    from app.tenancy import registry
+    from app.tenancy.context import current_tenant
+
+    settings = get_settings()
+    if not settings.tenancy_enabled:
+        return None
+    tenant = current_tenant()
+    if tenant is None:
+        return None
+    try:
+        with registry.control_session(settings) as db:
+            return operational_block(db, uuid.UUID(str(tenant.id)))
+    except Exception:  # noqa: BLE001 - a control-plane miss locks paid work
+        logger.warning("subscription check failed")
+        return {
+            "code": "subscription_unavailable",
+            "subscription_status": "unknown",
+            "message": "Subscription access could not be confirmed. Try again.",
+            "redirect": "/subscription",
+        }
+
+
+def operations_open() -> bool:
+    """Whether the tenant bound to this call may run paid work. No tenant binding stays open."""
+    return subscription_block() is None
+
+
+def require_operations() -> None:
+    """Reject paid work with the same 403 the HTTP middleware returns."""
+    blocked = subscription_block()
+    if blocked is None:
+        return
+    raise ApiError(
+        403,
+        blocked["code"],
+        blocked["message"],
+        details={"subscription_status": blocked["subscription_status"], "redirect": blocked["redirect"]},
+    )
+
+
 def ai_allowed(db: Session, tenant_id: uuid.UUID) -> bool:
     """AI stays closed during grace. A pending receipt closes it too."""
     if operational_block(db, tenant_id) is not None:

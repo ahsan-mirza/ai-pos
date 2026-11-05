@@ -119,6 +119,22 @@ const arabic: Record<string, string> = {
   Breadcrumb: "مسار التنقل",
   Primary: "القائمة الرئيسية",
   "Locked until payment is verified": "مغلق حتى يتم التحقق من الدفع",
+  "Subscription activation required": "يلزم تفعيل الاشتراك",
+  "Your subscription payment is awaiting verification. Paid business features will become available once the Company Console administrator verifies your payment.":
+    "دفعة الاشتراك بانتظار التحقق. تتاح ميزات النشاط المدفوعة بعد أن يتحقق مسؤول وحدة الشركة من الدفعة.",
+  "The payment proof was not accepted. Submit a corrected receipt. Paid features stay locked until it is verified.":
+    "لم يُقبل إثبات الدفع. أرسل إيصالاً مصححاً. تبقى الميزات المدفوعة مغلقة حتى يتم التحقق.",
+  "This subscription is past its grace period. Paid features stay locked until it is renewed.":
+    "تجاوز الاشتراك فترة السماح. تبقى الميزات المدفوعة مغلقة حتى يتم التجديد.",
+  "This subscription is not active. Paid features stay locked until it is restored.":
+    "هذا الاشتراك غير نشط. تبقى الميزات المدفوعة مغلقة حتى تتم استعادته.",
+  "Paid features stay locked until a payment is submitted, verified, and the subscription is activated.":
+    "تبقى الميزات المدفوعة مغلقة حتى تُرسل الدفعة ويُتحقق منها ويُفعَّل الاشتراك.",
+  "View Invoice": "عرض الفاتورة",
+  "Submit Payment Receipt": "إرسال إيصال الدفع",
+  "Contact Support": "الاتصال بالدعم",
+  "New sales and returns stay closed until the subscription is verified.":
+    "تبقى المبيعات والمرتجعات الجديدة مغلقة حتى يتم التحقق من الاشتراك.",
   "Store WhatsApp": "واتساب المتجر",
   "Connect the number this store uses for marketing. Scan the QR from WhatsApp, then Linked devices.":
     "اربط الرقم الذي يستخدمه هذا المتجر للتسويق. امسح رمز QR من واتساب، ثم الأجهزة المرتبطة.",

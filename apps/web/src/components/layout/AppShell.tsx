@@ -1,4 +1,5 @@
 import { profileSpec } from "@ai-pos/shared-types";
+import { useLocale } from "@ai-pos/ui";
 import { useCallback, useEffect, useState } from "react";
 import { Link, Outlet, useLocation } from "react-router-dom";
 import { apiGet } from "../../lib/api";
@@ -28,6 +29,7 @@ export function AppShell() {
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem(COLLAPSED_KEY) === "1");
   const [mobileOpen, setMobileOpen] = useState(false);
   const [subscriptionLocked, setSubscriptionLocked] = useState(false);
+  const [access, setAccess] = useState<BillingAccess | null>(null);
 
   const toggleCollapsed = useCallback(() => {
     setCollapsed((value) => {
@@ -65,11 +67,11 @@ export function AppShell() {
               <PwaChrome />
               <PracticeBanner />
               <TaxPortalBanner />
-              <SubscriptionNotice onAccess={setSubscriptionLocked} />
+              <SubscriptionNotice access={access} onAccess={setSubscriptionLocked} onLoaded={setAccess} />
               <Header collapsed={collapsed} onToggleCollapsed={toggleCollapsed} onOpenMobile={() => setMobileOpen(true)} />
               <div className="relative min-h-0 flex-1">
                 <main className="h-full overflow-y-auto overflow-x-hidden">
-                  <IndustryGate subscriptionLocked={subscriptionLocked} />
+                  <IndustryGate subscriptionLocked={subscriptionLocked} access={access} />
                 </main>
                 <AssistantDrawer />
               </div>
@@ -89,18 +91,21 @@ interface BillingAccess {
 }
 
 function SubscriptionNotice({
+  access,
   onAccess,
+  onLoaded,
 }: {
+  access: BillingAccess | null;
   onAccess: (locked: boolean) => void;
+  onLoaded: (access: BillingAccess | null) => void;
 }) {
   const { pathname } = useLocation();
-  const [access, setAccess] = useState<BillingAccess | null>(null);
   useEffect(() => {
     let cancelled = false;
     apiGet<BillingAccess>("/api/v1/billing/access")
       .then((found) => {
         if (!cancelled) {
-          setAccess(found);
+          onLoaded(found);
           onAccess(found.operational === false);
         }
       })
@@ -108,7 +113,7 @@ function SubscriptionNotice({
     return () => {
       cancelled = true;
     };
-  }, [onAccess, pathname]);
+  }, [onAccess, onLoaded, pathname]);
   const attention = access?.attention;
   if (attention) {
     const title =
@@ -164,20 +169,72 @@ function SubscriptionNotice({
 }
 
 /** Blocks a deep link when this business type does not use the page. */
-function IndustryGate({ subscriptionLocked }: { subscriptionLocked: boolean }) {
+function lockCopy(access: BillingAccess | null, t: (text: string) => string): { title: string; body: string } {
+  const kind = access?.attention?.kind;
+  if (kind === "pending_review") {
+    return {
+      title: t("Subscription activation required"),
+      body: t(
+        "Your subscription payment is awaiting verification. Paid business features will become available once the Company Console administrator verifies your payment.",
+      ),
+    };
+  }
+  if (kind === "rejected") {
+    return {
+      title: t("Subscription activation required"),
+      body: access?.attention?.reason
+        ? access.attention.reason
+        : t("The payment proof was not accepted. Submit a corrected receipt. Paid features stay locked until it is verified."),
+    };
+  }
+  if (kind === "revoked") {
+    return {
+      title: t("Subscription activation required"),
+      body: t("This subscription is not active. Paid features stay locked until it is restored."),
+    };
+  }
+  if (access?.state === "restricted") {
+    return {
+      title: t("Subscription activation required"),
+      body: t("This subscription is past its grace period. Paid features stay locked until it is renewed."),
+    };
+  }
+  return {
+    title: t("Subscription activation required"),
+    body: t("Paid features stay locked until a payment is submitted, verified, and the subscription is activated."),
+  };
+}
+
+function IndustryGate({
+  subscriptionLocked,
+  access,
+}: {
+  subscriptionLocked: boolean;
+  access: BillingAccess | null;
+}) {
   const { pathname } = useLocation();
+  const { t } = useLocale();
   const { storedProfile, ready, recognized, businessType } = useTenant();
   if (subscriptionLocked && pathname !== "/subscription") {
+    const copy = lockCopy(access, t);
+    const rejected = access?.attention?.kind === "rejected";
     return (
       <section className="m-4 max-w-lg rounded-card border border-line bg-white p-6 md:m-6">
-        <h1 className="text-xl font-semibold">Paid features are locked</h1>
-        <p className="mt-2 text-sm text-charcoal/70">
-          This page stays closed until a Company Console administrator verifies the payment and activates the
-          subscription.
+        <h1 className="text-xl font-semibold">{copy.title}</h1>
+        <p className="mt-2 text-sm text-charcoal/70">{copy.body}</p>
+        <p className="mt-4 flex flex-wrap gap-4 text-sm font-semibold">
+          <Link to="/subscription" className="text-accent">
+            {t("View Invoice")}
+          </Link>
+          {rejected || access?.attention?.kind === "awaiting_proof" ? (
+            <Link to="/subscription" className="text-accent">
+              {t("Submit Payment Receipt")}
+            </Link>
+          ) : null}
+          <a href="mailto:info@axizpos.com" className="text-accent">
+            {t("Contact Support")}
+          </a>
         </p>
-        <Link to="/subscription" className="mt-4 inline-block text-sm font-semibold text-accent">
-          View subscription
-        </Link>
       </section>
     );
   }

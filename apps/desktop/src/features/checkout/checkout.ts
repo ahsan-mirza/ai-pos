@@ -15,6 +15,7 @@ import {
   nextDocumentNumber,
   openQuotePdfViaShell,
 } from "../../lib/tauri";
+import { subscriptionIsLocked } from "../../lib/capabilities";
 import { buildChargeEvents, type ChargeRequest } from "./queue";
 
 /** One Charge attempt. Retries of an unchanged cart reuse these idempotency keys. */
@@ -81,6 +82,12 @@ export function invoiceOf(batch: ChargeBatch): string | null {
 }
 
 export async function submitCharge(batch: ChargeBatch): Promise<ChargeOutcome> {
+  if (subscriptionIsLocked()) {
+    return {
+      kind: "rejected",
+      message: "New sales stay closed until the subscription is verified.",
+    };
+  }
   if (inTauri()) {
     if (!batch.enqueued) {
       await enqueueBatch(batch.batchId, batch.events);

@@ -54,6 +54,10 @@ def _apply_status(
     sessions = _socket_session(websocket)
     try:
         db = next(sessions)
+        from app.console.transfers import operations_open
+
+        if not operations_open():
+            return "Paid features stay locked until the subscription is verified."
         principal = _socket_principal(db, token)
         if principal is None or not _kds_allowed(db, principal, station_id):
             return "This kitchen screen is not allowed to update tickets."

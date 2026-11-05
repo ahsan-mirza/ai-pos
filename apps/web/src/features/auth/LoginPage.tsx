@@ -33,6 +33,8 @@ function CodeBoxes({
 }) {
   const refs = useRef<Array<HTMLInputElement | null>>([]);
   const digits = value.replace(/\D/g, "").slice(0, CODE_LENGTH);
+  const digitsRef = useRef(digits);
+  digitsRef.current = digits;
 
   useEffect(() => {
     if (!disabled && digits.length === 0) refs.current[0]?.focus();
@@ -41,15 +43,19 @@ function CodeBoxes({
   const commit = (index: number, raw: string) => {
     const incoming = raw.replace(/\D/g, "");
     if (!incoming || disabled) return;
-    const chars = Array.from({ length: CODE_LENGTH }, (_, slot) => digits[slot] ?? "");
+    const current = digitsRef.current;
+    const chars = Array.from({ length: CODE_LENGTH }, (_, slot) => current[slot] ?? "");
     for (let offset = 0; offset < incoming.length && index + offset < CODE_LENGTH; offset += 1) {
       chars[index + offset] = incoming[offset]!;
     }
     const next = chars.join("");
+    digitsRef.current = next;
     onChange(next);
-    const focusAt = Math.min(index + incoming.length, CODE_LENGTH - 1);
-    if (next.length < CODE_LENGTH) refs.current[focusAt]?.focus();
-    if (next.length === CODE_LENGTH) onComplete(next);
+    if (next.length === CODE_LENGTH) {
+      onComplete(next);
+      return;
+    }
+    refs.current[Math.min(index + incoming.length, CODE_LENGTH - 1)]?.focus();
   };
 
   return (
@@ -69,12 +75,9 @@ function CodeBoxes({
             autoComplete={index === 0 ? "one-time-code" : "off"}
             disabled={disabled}
             value={digits[index] ?? ""}
-            onFocus={(event) => {
-              if (index > digits.length) {
-                refs.current[digits.length]?.focus();
-                return;
-              }
-              event.target.select();
+            onFocus={() => {
+              const current = digitsRef.current;
+              if (index > current.length) refs.current[current.length]?.focus();
             }}
             onPaste={(event) => {
               event.preventDefault();
@@ -82,18 +85,28 @@ function CodeBoxes({
             }}
             onChange={(event) => {
               const raw = event.target.value.replace(/\D/g, "");
-              if (!raw) return;
-              commit(index, raw.length > 1 && digits[index] ? raw.slice(-1) : raw);
+              if (!raw || raw === digitsRef.current[index]) return;
+              commit(index, raw.length > 1 ? raw : raw.slice(-1));
             }}
             onKeyDown={(event) => {
+              if (/^\d$/.test(event.key)) {
+                event.preventDefault();
+                commit(index, event.key);
+                return;
+              }
               if (event.key === "Backspace") {
                 event.preventDefault();
-                if (digits[index]) {
-                  onChange(digits.slice(0, index) + digits.slice(index + 1));
+                const current = digitsRef.current;
+                if (current[index]) {
+                  const next = current.slice(0, index) + current.slice(index + 1);
+                  digitsRef.current = next;
+                  onChange(next);
                   return;
                 }
                 if (index > 0) {
-                  onChange(digits.slice(0, index - 1) + digits.slice(index));
+                  const next = current.slice(0, index - 1) + current.slice(index);
+                  digitsRef.current = next;
+                  onChange(next);
                   refs.current[index - 1]?.focus();
                 }
               } else if (event.key === "ArrowLeft" && index > 0) {

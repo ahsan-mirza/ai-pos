@@ -1,4 +1,5 @@
 import ipaddress
+import logging
 import os
 import re
 from functools import lru_cache
@@ -9,6 +10,7 @@ from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 PIN_PATTERN = re.compile(r"\d{4}")
+logger = logging.getLogger(__name__)
 API_ROOT = Path(__file__).resolve().parents[2]
 # apps/api -> repository root. On the server this is /opt/ai-pos, next to apps/.
 REPO_ROOT = API_ROOT.parent.parent
@@ -229,12 +231,26 @@ class Settings(BaseSettings):
             raise ValueError("Database URLs must start with postgresql or sqlite.")
         return value
 
-    @field_validator("admin_pin")
+    @field_validator("admin_pin", mode="before")
     @classmethod
-    def admin_pin_digits(cls, value: str | None) -> str | None:
-        if value is not None and PIN_PATTERN.fullmatch(value) is None:
-            raise ValueError("ADMIN_PIN must be 4 digits.")
-        return value
+    def admin_pin_digits(cls, value: object) -> str | None:
+        """Optional seed PIN. Blank, quoted, or non-4-digit values must not stop migrations or the API.
+
+        Older `generate-secrets` builds wrote a 6-digit pin. Register unlock only accepts 4 digits,
+        so those values are ignored instead of rejecting the whole settings file.
+        """
+        if value is None:
+            return None
+        text = str(value).strip().strip("\"'").strip()
+        if text == "":
+            return None
+        if PIN_PATTERN.fullmatch(text) is None:
+            logger.warning(
+                "ADMIN_PIN is not 4 digits, so it was ignored. "
+                "The seeded Super Admin will not get a register PIN until ADMIN_PIN is 4 digits."
+            )
+            return None
+        return text
 
     @field_validator("cors_origins")
     @classmethod

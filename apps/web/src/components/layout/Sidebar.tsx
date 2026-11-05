@@ -1,5 +1,5 @@
 import { BrandLogo, useLocale } from "@ai-pos/ui";
-import { ChevronDown, X } from "lucide-react";
+import { ChevronDown, Lock, X } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState, type FocusEvent, type MouseEvent, type ReactNode } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { useTenant } from "../../context/TenantContext";
@@ -158,11 +158,19 @@ function SidebarNav({
                   const active = item.isActive(pathname, hash);
                   return (
                     <li key={item.to}>
+                      {subscriptionLocked ? (
+                        <span
+                          title={t("Locked until payment is verified")}
+                          aria-disabled="true"
+                          className="flex h-10 cursor-not-allowed items-center gap-3 rounded-lg px-[18px] text-[13px] font-medium text-charcoal/35"
+                        >
+                          <Lock aria-hidden="true" size={16} className="shrink-0" />
+                          <span className={`whitespace-nowrap ${collapsed ? "sr-only" : ""}`}>{item.label}</span>
+                        </span>
+                      ) : (
                       <Link
-                        to={subscriptionLocked ? "/subscription" : item.to}
+                        to={item.to}
                         onClick={onNavigate}
-                        title={subscriptionLocked ? t("Locked until payment is verified") : undefined}
-                        aria-disabled={subscriptionLocked || undefined}
                         aria-current={active ? "page" : undefined}
                         aria-label={collapsed ? item.label : undefined}
                         onMouseEnter={showTip(item)}
@@ -193,6 +201,7 @@ function SidebarNav({
                           {item.label}
                         </span>
                       </Link>
+                      )}
                     </li>
                   );
                 })}

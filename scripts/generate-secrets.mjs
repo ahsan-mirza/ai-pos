@@ -30,7 +30,7 @@ const apiEnv =
 const example = appEnv === "development" ? join(root, ".env.example") : join(root, `.env.${appEnv}.example`);
 
 const token = (bytes) => randomBytes(bytes).toString("base64url");
-const pin = () => Array.from({ length: 6 }, () => randomInt(10)).join("");
+const pin = () => Array.from({ length: 4 }, () => randomInt(10)).join("");
 
 function read(path) {
   return readFileSync(path, "utf8");

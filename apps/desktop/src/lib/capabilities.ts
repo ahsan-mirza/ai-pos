@@ -35,6 +35,8 @@ export interface ProfileSnapshot {
   entitlement_revision?: number | null;
   purchased_capabilities?: readonly string[] | null;
   entitlement_until?: string | null;
+  subscription_operational?: boolean;
+  subscription_seen_at?: number;
 }
 
 const CACHE_KEY = "ai-pos.register-capabilities";
@@ -81,11 +83,20 @@ function readCached(): ProfileSnapshot | null {
 /** A register with no entitlement snapshot shows no paid or profile modules. A cached snapshot keeps the
  * last list, and paid add-ons still follow the signed-in user. */
 const OFFLINE_ADDON_SECONDS = 24 * 60 * 60;
+const SUBSCRIPTION_LEASE_MS = 24 * 60 * 60 * 1000;
 let storeCurrent: RegisterCapabilities = build(readCached());
 let purchased = new Set(readCached()?.purchased_capabilities ?? []);
 let signedInAddons: ReadonlySet<string> | null = null;
 let current: RegisterCapabilities = storeCurrent;
 let revision = readCached()?.entitlement_revision ?? 0;
+let subscriptionLocked = lockedFrom(readCached());
+
+function lockedFrom(raw: ProfileSnapshot | null): boolean {
+  if (!raw || raw.subscription_operational == null) return false;
+  if (raw.subscription_operational === false) return true;
+  const seen = raw.subscription_seen_at ?? 0;
+  return seen > 0 && Date.now() - seen > SUBSCRIPTION_LEASE_MS;
+}
 const listeners = new Set<() => void>();
 
 function publish(): void {
@@ -142,7 +153,9 @@ export function applyProfile(raw: ProfileSnapshot | null | undefined): void {
       entitlement_revision,
       purchased_capabilities,
       entitlement_until,
+      subscription_operational,
     } = raw;
+    const seenAt = subscription_operational == null ? undefined : Date.now();
     localStorage.setItem(
       CACHE_KEY,
       JSON.stringify({
@@ -155,8 +168,11 @@ export function applyProfile(raw: ProfileSnapshot | null | undefined): void {
         entitlement_revision,
         purchased_capabilities,
         entitlement_until,
+        subscription_operational,
+        subscription_seen_at: seenAt,
       }),
     );
+    if (subscription_operational != null) subscriptionLocked = subscription_operational === false;
   } catch {
     // Storage disabled: the in-memory copy still serves this session.
   }
@@ -164,10 +180,20 @@ export function applyProfile(raw: ProfileSnapshot | null | undefined): void {
   storeCurrent = build(raw);
   purchased = new Set(raw.purchased_capabilities ?? []);
   publish();
+  for (const listener of listeners) listener();
 }
 
 export function registerCapabilities(): RegisterCapabilities {
   return current;
+}
+
+/** New paid work stays closed when the server reported a block, or the last open snapshot is older than a day. */
+export function subscriptionIsLocked(): boolean {
+  const cached = readCached();
+  if (cached?.subscription_operational === true && cached.subscription_seen_at) {
+    if (Date.now() - cached.subscription_seen_at > SUBSCRIPTION_LEASE_MS) return true;
+  }
+  return subscriptionLocked;
 }
 
 export function hasCapability(capability: Capability): boolean {
@@ -189,6 +215,10 @@ function subscribe(listener: () => void): () => void {
 
 export function useCapabilities(): RegisterCapabilities {
   return useSyncExternalStore(subscribe, registerCapabilities);
+}
+
+export function useSubscriptionLocked(): boolean {
+  return useSyncExternalStore(subscribe, subscriptionIsLocked);
 }
 
 export function useCapability(capability: Capability): boolean {

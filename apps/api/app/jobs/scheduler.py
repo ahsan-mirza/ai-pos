@@ -15,6 +15,18 @@ logger = logging.getLogger("ai_pos.jobs")
 _scheduler: BackgroundScheduler | None = None
 
 
+# Billing, security, and cache work keep running while paid features are locked.
+_OPEN_WHEN_LOCKED = frozenset({"cache_invalidation", "anomaly_scan"})
+
+
+def _paid_job_blocked(settings: Settings, name: str) -> bool:
+    if name in _OPEN_WHEN_LOCKED or not settings.tenancy_enabled:
+        return False
+    from app.console.transfers import operations_open
+
+    return not operations_open()
+
+
 def _runner(name: str, settings: Settings):
     def run() -> None:
         if not settings.tenancy_enabled:
@@ -25,6 +37,11 @@ def _runner(name: str, settings: Settings):
         for tenant in active_tenants(settings):
             try:
                 with use_tenant(tenant), get_session_factory()() as db:
+                    if _paid_job_blocked(settings, name):
+                        from app.jobs.runner import note_skip
+
+                        note_skip(db, name, "subscription locked")
+                        continue
                     run_job(db, settings, name)
             except Exception:  # noqa: BLE001 - one tenant's failure must not stop the others
                 logger.exception("job %s failed for tenant %s", name, tenant.slug)

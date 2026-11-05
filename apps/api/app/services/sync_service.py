@@ -441,6 +441,11 @@ def push_batch(
 ) -> SyncPushResponse:
     if len(request.events) > settings.sync_max_batch_size:
         raise ApiError(413, "batch_too_large", "Sync batch exceeds the configured limit.")
+    # A locked register's sale stays queued: the desktop treats HTTP 403 as unavailable and retries.
+    if request.events:
+        from app.console.transfers import require_operations
+
+        require_operations()
     keys = [event.idempotency_key for event in request.events]
     if len(set(keys)) != len(keys):
         raise ApiError(422, "duplicate_idempotency_key", "Batch contains repeated idempotency keys.")

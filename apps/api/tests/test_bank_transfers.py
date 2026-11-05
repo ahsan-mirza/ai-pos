@@ -3,9 +3,12 @@
 import uuid
 from datetime import UTC, datetime
 
+import pytest
 from tests.governance_support import platform  # noqa: F401
 
 from app.console.billing import add_calendar_months, ensure_catalog
+from app.console.transfers import require_operations
+from app.core.errors import ApiError
 from app.tenancy.models import BillingInvoice, BillingInvoiceLine, BillingPayment, Subscription
 
 PNG = b"\x89PNG\r\n\x1a\n" + b"\x00" * 16
@@ -85,6 +88,9 @@ def test_pending_review_blocks_paid_apis_until_an_admin_activates(platform) -> N
     assert blocked.status_code == 403
     assert blocked.json()["error"]["code"] == "subscription_payment_pending"
     assert blocked.json()["error"]["details"]["redirect"] == "/subscription"
+    register = platform.client.get("/api/v1/settings", headers=store)
+    assert register.status_code == 200, register.text
+    assert register.json()["subscription_operational"] is False
     own = platform.client.get(f"/api/v1/billing/transfers/{submitted['id']}/receipt", headers=store)
     assert own.status_code == 200
     other = platform.client.get(
@@ -93,6 +99,10 @@ def test_pending_review_blocks_paid_apis_until_an_admin_activates(platform) -> N
     assert other.status_code == 404
     queued = platform.client.post("/api/v1/sync/push", headers=store, json={"events": []})
     assert queued.json().get("error", {}).get("code") != "subscription_payment_pending"
+    with platform.session("alpha"), pytest.raises(ApiError) as blocked_sync:
+        require_operations()
+    assert blocked_sync.value.status_code == 403
+    assert blocked_sync.value.code == "subscription_payment_pending"
     denied = platform.client.post(
         f"/api/v1/super-admin/billing/transfers/{submitted['id']}/approve", headers=support
     )
@@ -115,6 +125,10 @@ def test_pending_review_blocks_paid_apis_until_an_admin_activates(platform) -> N
     assert approved.status_code == 200, approved.text
     opened = platform.client.get("/api/v1/products", headers=store, params={"limit": 1})
     assert opened.status_code == 200, opened.text
+    live = platform.client.get("/api/v1/settings", headers=store)
+    assert live.json()["subscription_operational"] is True
+    with platform.session("alpha"):
+        require_operations()
     again = platform.client.post(
         f"/api/v1/super-admin/billing/transfers/{corrected['id']}/approve", headers=admin
     )

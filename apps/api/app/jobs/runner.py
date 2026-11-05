@@ -67,6 +67,20 @@ def _acquire(db: Session, name: str, lease_seconds: int) -> bool:
     return result.rowcount == 1
 
 
+def note_skip(db: Session, name: str, reason: str) -> None:
+    """Records why a paid job did not run. The row stays, and the next open tick runs it once."""
+    if _job_row(db, name) is None:
+        db.add(ScheduledJob(name=name, run_count=0))
+        db.commit()
+    row = _job_row(db, name)
+    if row is None:
+        return
+    row.last_finished_at = datetime.now(UTC)
+    row.last_status = "skipped"
+    row.last_result = reason[:2000]
+    db.commit()
+
+
 def run_job(db: Session, settings: Settings, name: str) -> str:
     """Runs a job now if no other process holds its lease. Returns the job's status."""
     job = JOBS[name]

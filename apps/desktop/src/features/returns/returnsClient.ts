@@ -12,6 +12,7 @@ import {
 import type { CashierSession } from "../auth/session";
 import { loadCatalog } from "../checkout/catalog";
 import type { ChargeOutcome } from "../checkout/checkout";
+import { subscriptionIsLocked } from "../../lib/capabilities";
 import { applyLocalReturns, receiptFromQueuedSale } from "./returnMath";
 
 export interface LoadedReceipt {
@@ -76,6 +77,12 @@ export interface ReturnBatch {
 }
 
 export async function submitReturn(batch: ReturnBatch): Promise<ChargeOutcome> {
+  if (subscriptionIsLocked()) {
+    return {
+      kind: "rejected",
+      message: "New returns stay closed until the subscription is verified. Saved sales stay on this register.",
+    };
+  }
   if (inTauri()) {
     if (!batch.enqueued) {
       await enqueueReturn(batch.batchId, batch.events);
