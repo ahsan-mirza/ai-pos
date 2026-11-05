@@ -27,10 +27,15 @@ export const CURRENCY_REGIONS: Record<CurrencyCode, string> = {
   CNY: "China",
 };
 
+/** Printed slip language. "store" follows the business country, not the cashier's screen. */
+export type ReceiptLanguage = "store" | "en" | "ar";
+
 /** Receipt branding (PUT /api/v1/settings/receipt). Names, TRN, address and phone come from elsewhere. */
 export interface ReceiptSettings {
   /** Black-and-white PNG data URL, at most 64 KB and 576 x 320 pixels. */
   logo_png: string | null;
+  /** Missing on slips saved before this field existed: treat those as "store". */
+  language?: ReceiptLanguage;
   header_text: string | null;
   header_text_ar: string | null;
   footer_text: string | null;
@@ -50,6 +55,8 @@ export interface ReceiptStore {
 export interface ReceiptProfile {
   settings: ReceiptSettings;
   store: ReceiptStore | null;
+  /** ISO country of the business. "Follow store preference" uses it; a missing value prints English. */
+  country?: string | null;
 }
 
 export interface BusinessSettings {

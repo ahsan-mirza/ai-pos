@@ -22,6 +22,7 @@ function commandEnv(step) {
 
 const steps = [
   { name: "API lint (ruff)", cmd: "pnpm", args: ["--filter", "@ai-pos/api", "lint"] },
+  { name: "Arabic catalog", cmd: "node", args: ["scripts/i18n-check.mjs"] },
   // Test cases are paused so a failing suite does not block deploy.
   // { name: "API tests (pytest)", cmd: "pnpm", args: ["--filter", "@ai-pos/api", "test"] },
   { name: "Packages typecheck", cmd: "pnpm", args: ["--filter", "./packages/*", "typecheck"] },

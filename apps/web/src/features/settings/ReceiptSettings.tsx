@@ -4,10 +4,14 @@ import {
   prepareLogo,
   receiptTitle,
   renderReceipt,
+  slipDefault,
+  slipLanguage,
   type LogoMode,
   type ReceiptDoc,
+  type SlipLanguage,
 } from "@ai-pos/receipt";
-import { lineTax, zatcaQr, type ReceiptProfile, type ReceiptSettings } from "@ai-pos/shared-types";
+import { lineTax, zatcaQr, type ReceiptLanguage, type ReceiptProfile, type ReceiptSettings } from "@ai-pos/shared-types";
+import { useLocale } from "@ai-pos/ui";
 import { ImagePlus, Receipt, Trash2 } from "lucide-react";
 import { useEffect, useId, useRef, useState, type TextareaHTMLAttributes } from "react";
 import { ErrorNote, GhostButton, PrimaryButton, SelectField, TextField } from "../../components/ui/Field";
@@ -26,6 +30,7 @@ const PAPER_OPTIONS = [
 const SAMPLE_LINES = [
   { name: "iPhone 16 Pro 256GB", detail: "IMEI 356789012345678", quantity: 1, unitCents: 449_900 },
   { name: "USB-C cable 1m", detail: null, quantity: 2, unitCents: 3_500 },
+  { name: "كابل يو إس بي طويل للطباعة على الورق الحراري", detail: null, quantity: 1, unitCents: 1_500 },
 ];
 
 function TextArea({
@@ -48,8 +53,10 @@ function TextArea({
 
 function tidy(form: ReceiptSettings): ReceiptSettings {
   const clean = (value: string | null) => (value?.trim() ? value.trim() : null);
+  const language: ReceiptLanguage = form.language === "en" || form.language === "ar" ? form.language : "store";
   return {
     logo_png: form.logo_png,
+    language,
     header_text: clean(form.header_text),
     header_text_ar: clean(form.header_text_ar),
     footer_text: clean(form.footer_text),
@@ -64,6 +71,7 @@ function logoBytes(dataUrl: string): number {
 }
 
 export function ReceiptSettingsCard() {
+  const { t } = useLocale();
   const { currency, settings } = useCurrency();
   const canManage = useCanManageSettings();
   const { stores, storeId } = useStoreScope();
@@ -77,6 +85,7 @@ export function ReceiptSettingsCard() {
   const [logoMode, setLogoMode] = useState<LogoMode>("dither");
   const [logoBusy, setLogoBusy] = useState(false);
   const [paper, setPaper] = useState<Paper>("80mm");
+  const [country, setCountry] = useState<string | null>(null);
   const [previewStoreId, setPreviewStoreId] = useState<string>("");
   const fileInput = useRef<HTMLInputElement>(null);
   const fileId = useId();
@@ -88,6 +97,7 @@ export function ReceiptSettingsCard() {
         if (!live) return;
         setForm(profile.settings);
         setSaved(profile.settings);
+        setCountry(profile.country ?? null);
       })
       .catch((caught) => live && setLoadError(errorMessage(caught, "Could not load the receipt settings.")));
     return () => {
@@ -137,6 +147,7 @@ export function ReceiptSettingsCard() {
       const profile = await apiPut<ReceiptProfile>("/api/v1/settings/receipt", tidy(form));
       setSaved(profile.settings);
       setForm(profile.settings);
+      setCountry(profile.country ?? null);
       setLogoFile(null);
       setNotice("Receipt layout saved. Registers print it after their next sync.");
     } catch (caught) {
@@ -259,6 +270,18 @@ export function ReceiptSettingsCard() {
             </div>
           </div>
 
+          <SelectField
+            label={t("Receipt language")}
+            hint={t("Printed receipts use this language. It does not follow the language of this screen.")}
+            value={form.language ?? "store"}
+            options={[
+              { value: "store", label: t("Follow store preference") },
+              { value: "en", label: t("English") },
+              { value: "ar", label: t("العربية") },
+            ]}
+            onChange={(language) => set({ language })}
+          />
+
           <div className="grid gap-4 md:grid-cols-2">
             <TextArea
               label="Header note"
@@ -317,6 +340,7 @@ export function ReceiptSettingsCard() {
 
         <ReceiptPreview
           branding={form}
+          country={country}
           paper={paper}
           onPaper={setPaper}
           storeOptions={sellingStores.map((store) => ({ value: store.id, label: store.name }))}
@@ -376,7 +400,8 @@ function sampleDoc(identity: PreviewIdentity, branding: ReceiptSettings): Receip
           vatCents: tax,
         })
       : null;
-  const hasFooter = Boolean(branding.footer_text || branding.footer_text_ar);
+  const language: SlipLanguage = branding.language === "ar" ? "ar" : "en";
+  const customFooter = (language === "ar" ? branding.footer_text_ar : branding.footer_text)?.trim();
   return {
     ...receiptTitle(identity.trn, null, total, identity.taxAuthority),
     storeName: identity.storeName,
@@ -389,7 +414,8 @@ function sampleDoc(identity: PreviewIdentity, branding: ReceiptSettings): Receip
     number: "DT-01-R1-000123",
     issuedAt,
     cashier: "Sara",
-    customer: null,
+    customer: "محمد أحمد",
+    language,
     reference: null,
     lines: lines.map(({ name, detail, quantity, unitCents, totalCents }) => ({ name, detail, quantity, unitCents, totalCents })),
     subtotalCents: subtotal,
@@ -398,7 +424,7 @@ function sampleDoc(identity: PreviewIdentity, branding: ReceiptSettings): Receip
     tenders: [{ label: "Cash", amountCents: total + (10_000 - (total % 10_000)) }],
     changeCents: 10_000 - (total % 10_000),
     currency: identity.currency,
-    footer: hasFooter ? "" : "Thank you. Keep this receipt for returns and warranty.",
+    footer: customFooter ? "" : slipDefault("thankYou", language),
     qr,
   };
 }
@@ -406,6 +432,7 @@ function sampleDoc(identity: PreviewIdentity, branding: ReceiptSettings): Receip
 /** Renders with the register's own drawing code, then thresholds to the 1-bit dots the printer receives. */
 function ReceiptPreview({
   branding,
+  country,
   doc,
   paper,
   onPaper,
@@ -415,6 +442,7 @@ function ReceiptPreview({
   dirty,
 }: {
   branding: ReceiptSettings;
+  country: string | null;
   doc: PreviewIdentity;
   paper: Paper;
   onPaper: (paper: Paper) => void;
@@ -423,14 +451,22 @@ function ReceiptPreview({
   onStore: (storeId: string) => void;
   dirty: boolean;
 }) {
+  const { t } = useLocale();
+  const resolved = slipLanguage(branding, country);
+  const [preview, setPreview] = useState<SlipLanguage>(resolved);
   const [image, setImage] = useState<string | null>(null);
   const [failed, setFailed] = useState<string | null>(null);
-  const key = JSON.stringify([branding, doc, paper]);
+  const shown = { ...EMPTY_BRANDING, ...branding, language: preview };
+  const key = JSON.stringify([shown, doc, paper]);
+
+  useEffect(() => {
+    setPreview(resolved);
+  }, [resolved]);
 
   useEffect(() => {
     let live = true;
     const timer = window.setTimeout(() => {
-      renderReceipt(sampleDoc(doc, { ...EMPTY_BRANDING, ...branding }), PAPER_DOTS[paper])
+      renderReceipt(sampleDoc(doc, shown), PAPER_DOTS[paper])
         .then((rendered) => {
           const ctx = rendered.canvas.getContext("2d")!;
           const pixels = ctx.getImageData(0, 0, rendered.width, rendered.height);
@@ -475,6 +511,17 @@ function ReceiptPreview({
         {storeOptions.length > 0 ? (
           <SelectField label="Branch" value={storeId} options={storeOptions} onChange={onStore} />
         ) : null}
+        <SelectField
+          className="col-span-2"
+          label={t("Preview language")}
+          hint={t("Preview only. Saving uses the receipt language above.")}
+          value={preview}
+          options={[
+            { value: "en", label: t("English preview") },
+            { value: "ar", label: t("Arabic preview") },
+          ]}
+          onChange={setPreview}
+        />
       </div>
       <div className="mt-4 flex justify-center">
         {image ? (

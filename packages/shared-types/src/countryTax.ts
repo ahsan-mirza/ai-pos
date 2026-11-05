@@ -69,6 +69,11 @@ const KNOWN: Record<string, CountryTax> = {
   US: row("US", "Sales tax", "Sales tax registration", null, null, null, "State", false, null, false, "fta"),
 };
 
+/** Printed slip language. A store with Arabic as its legal local language prints Arabic; every other country prints English. */
+export function storeReceiptLanguage(country: string | null | undefined): "en" | "ar" {
+  return countryTax(country ?? "").legal_local_language === "ar" ? "ar" : "en";
+}
+
 export function countryTax(iso: string): CountryTax {
   const code = iso.toUpperCase();
   return (

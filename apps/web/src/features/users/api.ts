@@ -1,4 +1,5 @@
 import type { PermissionGroup, Role, RoleCreate, RoleUpdate, Store, User, UserCreate, UserUpdate } from "@ai-pos/shared-types";
+import { localize } from "@ai-pos/ui";
 import { apiDelete, apiGet, apiPatch, apiPost } from "../../lib/api";
 
 export const usersApi = {
@@ -23,5 +24,5 @@ export const storesApi = {
 };
 
 export function errorMessage(error: unknown, fallback: string): string {
-  return error instanceof Error ? error.message : fallback;
+  return localize(error instanceof Error ? error.message : fallback);
 }

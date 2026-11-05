@@ -1,5 +1,6 @@
+import { renderReceipt, slipDefault, slipLanguage, type ReceiptDoc } from "@ai-pos/receipt";
+import { receiptProfile } from "../checkout/currency";
 import { inTauri, openCashDrawer, printRaster, printerSettings, type PrinterSettings } from "../../lib/tauri";
-import { renderReceipt, type ReceiptDoc } from "@ai-pos/receipt";
 
 export const BROWSER_PRINTER: PrinterSettings = {
   transport: "none",
@@ -46,12 +47,29 @@ export interface PrintOutcome {
   message: string | null;
 }
 
+/** Reprints and refunds read the saved receipt language, not the language of the register screen. */
+function withSavedLanguage(doc: ReceiptDoc): ReceiptDoc {
+  const profile = receiptProfile();
+  const language = slipLanguage(profile?.settings ?? doc.branding, profile?.country);
+  const footer = doc.footer?.trim() ?? "";
+  const kind = (["thankYou", "refund", "gift", "test"] as const).find(
+    (name) => footer === slipDefault(name, "en") || footer === slipDefault(name, "ar"),
+  );
+  return {
+    ...doc,
+    branding: profile?.settings ?? doc.branding,
+    language,
+    footer: kind ? slipDefault(kind, language) : doc.footer,
+  };
+}
+
 /** Prints a receipt on the configured printer; the drawer kicks only for cash taken in. */
 export async function printReceipt(doc: ReceiptDoc, options: { kickDrawer: boolean; manual?: boolean }): Promise<PrintOutcome> {
+  const slip = withSavedLanguage(doc);
   const settings = await loadPrinter();
   if (settings.transport === "none") {
     if (!options.manual) return { printed: false, message: null };
-    const rendered = await renderReceipt(doc, settings.paper_dots);
+    const rendered = await renderReceipt(slip, settings.paper_dots);
     printInBrowser(rendered.canvas);
     return { printed: true, message: null };
   }
@@ -60,7 +78,7 @@ export async function printReceipt(doc: ReceiptDoc, options: { kickDrawer: boole
     return { printed: false, message: null };
   }
   try {
-    const rendered = await renderReceipt(doc, settings.paper_dots);
+    const rendered = await renderReceipt(slip, settings.paper_dots);
     await printRaster({
       width: rendered.width,
       height: rendered.height,

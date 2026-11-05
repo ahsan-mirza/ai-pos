@@ -35,6 +35,7 @@ def test_receipt_defaults_are_empty(client) -> None:
     body = client.get("/api/v1/settings/receipt", headers=device()).json()
     assert body["settings"] == {
         "logo_png": None,
+        "language": "store",
         "header_text": None,
         "header_text_ar": None,
         "footer_text": None,
@@ -58,6 +59,7 @@ def test_receipt_round_trips_and_includes_the_branch(client, session: Session) -
         client,
         token,
         logo_png=logo,
+        language="ar",
         header_text="  Welcome!  ",
         footer_text="Exchanges within 7 days with receipt.",
         footer_text_ar="الاستبدال خلال 7 أيام",
@@ -66,10 +68,12 @@ def test_receipt_round_trips_and_includes_the_branch(client, session: Session) -
     )
     assert saved.status_code == 200, saved.text
     assert saved.json()["settings"]["header_text"] == "Welcome!"
+    assert saved.json()["settings"]["language"] == "ar"
     assert saved.json()["settings"]["website"] is None
 
     body = client.get(f"/api/v1/settings/receipt?store_id={STORE_ID}", headers=device()).json()
     assert body["settings"]["logo_png"] == logo
+    assert body["settings"]["language"] == "ar"
     assert body["settings"]["footer_text_ar"] == "الاستبدال خلال 7 أيام"
     assert body["store"] == {
         "id": STORE_ID,

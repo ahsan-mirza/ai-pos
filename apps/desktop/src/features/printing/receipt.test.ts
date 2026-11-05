@@ -4,6 +4,7 @@ import {
   packBits,
   receiptOps,
   receiptTitle,
+  slipLanguage,
   toMonochrome,
   type ReceiptDoc,
 } from "@ai-pos/receipt";
@@ -94,7 +95,7 @@ describe("receipt", () => {
     expect(atob(arabic).charCodeAt(1)).toBe(8);
   });
 
-  it("prints the TRN and the bilingual title", () => {
+  it("prints the TRN and the English title unless the receipt language is Arabic", () => {
     const doc: ReceiptDoc = {
       title: "Simplified Tax Invoice",
       titleAr: "فاتورة ضريبية مبسطة",
@@ -120,8 +121,16 @@ describe("receipt", () => {
     };
     const texts = receiptOps(doc).flatMap((op) => ("text" in op ? [op.text] : "right" in op ? [op.right] : []));
     expect(texts).toContain("TRN 100000000000003");
-    expect(texts).toContain("فاتورة ضريبية مبسطة");
+    expect(texts).toContain("Simplified Tax Invoice");
+    expect(texts).not.toContain("فاتورة ضريبية مبسطة");
     expect(texts).toContain("2026-10-19 09:05");
+    const arabic = receiptOps({ ...doc, language: "ar" }).flatMap((op) =>
+      "text" in op ? [op.text] : "left" in op ? [op.left] : [],
+    );
+    expect(arabic).toContain("فاتورة ضريبية مبسطة");
+    expect(arabic.join(" ")).toContain("الرقم الضريبي 100000000000003");
+    expect(arabic).not.toContain("Simplified Tax Invoice");
+    expect(arabic).toContain("الرقم");
   });
 
   it("prints a gift receipt with items and the return code but no prices", () => {
@@ -226,8 +235,22 @@ describe("receipt", () => {
     expect(texts).toEqual(
       expect.arrayContaining(["Sheikh Zayed Road\nDubai", "+971 4 123 4567", "hello@shop.ae", "Welcome!", "Exchanges within 7 days."]),
     );
-    expect(ops.find((op) => op.kind === "text" && op.text === "الاستبدال خلال 7 أيام")).toMatchObject({ rtl: true });
+    expect(texts).not.toContain("الاستبدال خلال 7 أيام");
     expect(texts.indexOf("Welcome!")).toBeLessThan(texts.indexOf("Exchanges within 7 days."));
+    const arabic = receiptOps({ ...doc, language: "ar" });
+    const arabicText = arabic.flatMap((op) => (op.kind === "text" ? [op.text] : []));
+    expect(arabicText).toContain("الاستبدال خلال 7 أيام");
+    expect(arabicText).not.toContain("Welcome!");
+    expect(arabicText).not.toContain("Exchanges within 7 days.");
+    expect(arabic.find((op) => op.kind === "text" && op.text === "الاستبدال خلال 7 أيام")).toMatchObject({ rtl: true });
+  });
+
+  it("follows the store country only when the receipt language is left on store", () => {
+    expect(slipLanguage({ ...EMPTY_BRANDING, language: "store" }, "AE")).toBe("ar");
+    expect(slipLanguage({ ...EMPTY_BRANDING, language: "store" }, "GB")).toBe("en");
+    expect(slipLanguage({ ...EMPTY_BRANDING, language: "en" }, "AE")).toBe("en");
+    expect(slipLanguage({ ...EMPTY_BRANDING, language: "ar" }, "GB")).toBe("ar");
+    expect(slipLanguage(null, null)).toBe("en");
   });
 
   it("dithers mid-grey to about half ink and thresholds line art", () => {

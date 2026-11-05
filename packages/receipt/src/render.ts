@@ -1,14 +1,19 @@
 import QRCode from "qrcode";
 import { packBits, receiptOps, type ReceiptDoc, type ReceiptOp } from "./doc";
 
-const FONT = "Archivo, 'Segoe UI', 'Noto Naskh Arabic', Tahoma, sans-serif";
+const FONT = "Archivo, 'Segoe UI', Tahoma, sans-serif";
+const ARABIC_FONT = "'Noto Naskh Arabic', Tahoma, sans-serif";
 const PADDING = 12;
 
 /** Printable dots across the paper: 576 for 80 mm, 384 for 58 mm. */
 export const PAPER_DOTS = { "80mm": 576, "58mm": 384 } as const;
 
-function font(size: number, bold?: boolean): string {
-  return `${bold ? 700 : 400} ${size}px ${FONT}`;
+function arabicScript(text: string): boolean {
+  return /[\u0600-\u06FF]/.test(text);
+}
+
+function font(size: number, bold?: boolean, arabic = false): string {
+  return `${bold ? 700 : 400} ${size}px ${arabic ? ARABIC_FONT : FONT}`;
 }
 
 /** Word-wraps each paragraph; explicit line breaks in the text are kept. */
@@ -17,7 +22,25 @@ function wrap(ctx: CanvasRenderingContext2D, text: string, width: number): strin
   for (const paragraph of text.split(/\r?\n/)) {
     const words = paragraph.split(/\s+/).filter(Boolean);
     let current = "";
+    const pushWide = (word: string) => {
+      let chunk = "";
+      for (const char of word) {
+        const nextChunk = chunk + char;
+        if (chunk && ctx.measureText(nextChunk).width > width) {
+          lines.push(chunk);
+          chunk = char;
+        } else {
+          chunk = nextChunk;
+        }
+      }
+      current = chunk;
+    };
     for (const word of words) {
+      if (ctx.measureText(word).width > width) {
+        if (current) lines.push(current);
+        pushWide(word);
+        continue;
+      }
       const next = current ? `${current} ${word}` : word;
       if (ctx.measureText(next).width <= width || current === "") {
         current = next;
@@ -81,7 +104,9 @@ function layout(
       y += 10;
     } else if (op.kind === "band") {
       const height = op.size + 16;
-      ctx.font = font(op.size, true);
+      const rtl = Boolean(op.rtl) || arabicScript(op.text);
+      ctx.font = font(op.size, true, rtl);
+      ctx.direction = rtl ? "rtl" : "ltr";
       if (paint) {
         ctx.fillStyle = "#000";
         ctx.fillRect(PADDING, y, inner, height);
@@ -90,6 +115,7 @@ function layout(
         ctx.fillText(op.text, width / 2, y + 8);
         ctx.fillStyle = "#000";
       }
+      ctx.direction = "ltr";
       y += height + 6;
     } else if (op.kind === "qr") {
       const matrix = QRCode.create(op.data, { errorCorrectionLevel: "M" }).modules;
@@ -104,19 +130,37 @@ function layout(
       }
       y += cell * matrix.size;
     } else if (op.kind === "row") {
-      ctx.font = font(op.size, op.bold);
-      const rightWidth = ctx.measureText(op.right).width;
-      const lines = wrap(ctx, op.left, Math.max(inner - rightWidth - 16, inner / 3));
+      const valueRtl = arabicScript(op.right);
+      ctx.font = font(op.size, op.bold, valueRtl);
+      ctx.direction = "ltr";
+      const valueWidth = ctx.measureText(op.right).width;
+      const labelRtl = Boolean(op.rtl) || arabicScript(op.left);
+      ctx.font = font(op.size, op.bold, labelRtl);
+      ctx.direction = labelRtl ? "rtl" : "ltr";
+      const lines = wrap(ctx, op.left, Math.max(inner - valueWidth - 16, inner / 3));
       if (paint) {
-        ctx.textAlign = "left";
-        lines.forEach((line, index) => ctx.fillText(line, PADDING, y + index * (op.size + 6)));
-        ctx.textAlign = "right";
-        ctx.fillText(op.right, width - PADDING, y);
+        if (op.rtl) {
+          ctx.textAlign = "right";
+          lines.forEach((line, index) => ctx.fillText(line, width - PADDING, y + index * (op.size + 6)));
+          ctx.font = font(op.size, op.bold, valueRtl);
+          ctx.direction = valueRtl ? "rtl" : "ltr";
+          ctx.textAlign = "left";
+          ctx.fillText(op.right, PADDING, y);
+        } else {
+          ctx.textAlign = "left";
+          lines.forEach((line, index) => ctx.fillText(line, PADDING, y + index * (op.size + 6)));
+          ctx.font = font(op.size, op.bold, valueRtl);
+          ctx.direction = valueRtl ? "rtl" : "ltr";
+          ctx.textAlign = "right";
+          ctx.fillText(op.right, width - PADDING, y);
+        }
       }
+      ctx.direction = "ltr";
       y += lines.length * (op.size + 6);
     } else {
-      ctx.font = font(op.size, op.bold);
-      ctx.direction = op.rtl ? "rtl" : "ltr";
+      const rtl = Boolean(op.rtl) || arabicScript(op.text);
+      ctx.font = font(op.size, op.bold, rtl);
+      ctx.direction = rtl ? "rtl" : "ltr";
       const align = op.align ?? "left";
       const lines = wrap(ctx, op.text, inner);
       if (paint) {
@@ -145,7 +189,10 @@ export async function renderReceipt(doc: ReceiptDoc, width: number): Promise<Ren
 
 /** Draws any slip built from receipt ops (kitchen tickets use this without the money lines). */
 export async function renderOps(ops: ReceiptOp[], width: number): Promise<RenderedReceipt> {
-  await document.fonts?.load(font(22, true)).catch(() => undefined);
+  await Promise.all([
+    document.fonts?.load(font(22, true))?.catch(() => undefined),
+    document.fonts?.load(font(22, true, true))?.catch(() => undefined),
+  ]);
   const images = new Map<string, HTMLImageElement>();
   for (const op of ops) {
     if (op.kind !== "image" || images.has(op.src)) continue;

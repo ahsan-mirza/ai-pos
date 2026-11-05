@@ -1,4 +1,4 @@
-import { BrandLogo } from "@ai-pos/ui";
+import { BrandLogo, useLocale } from "@ai-pos/ui";
 import { Delete } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { version as packagedVersion } from "../../../package.json";
@@ -20,6 +20,7 @@ export function PinUnlock({
   onActivate?: () => void;
 }) {
   const { theme } = useRegisterLayout();
+  const { t } = useLocale();
   const dark = theme === "dark";
   const activated = terminal();
   const business = activated?.tenant_name || store.name;
@@ -108,14 +109,14 @@ export function PinUnlock({
           <BrandLogo tone={dark ? "dark" : "light"} className="h-10 w-auto" />
           <p className={`mt-8 text-xs font-medium uppercase tracking-[0.18em] ${muted}`}>
             {business}
-            {branch ? ` · ${branch}` : ""} · POS register
+            {branch ? ` · ${branch}` : ""} · {t("POS register")}
           </p>
-          <h1 className="mt-2 text-3xl font-semibold leading-tight sm:text-4xl">Unlock register</h1>
-          <p className={`mt-3 max-w-md text-sm ${muted}`}>Select your cashier and enter your POS PIN to continue.</p>
+          <h1 className="mt-2 text-3xl font-semibold leading-tight sm:text-4xl">{t("Unlock register")}</h1>
+          <p className={`mt-3 max-w-md text-sm ${muted}`}>{t("Select your cashier and enter your POS PIN to continue.")}</p>
 
           {manual ? (
             <label className={`mt-8 block text-sm font-medium ${dark ? "text-white/80" : "text-zinc-700"}`} htmlFor="cashier">
-              Username
+              {t("Username")}
               <input
                 id="cashier"
                 autoFocus
@@ -130,10 +131,10 @@ export function PinUnlock({
             </label>
           ) : (
             <div className="mt-8">
-              <p className={`text-sm font-medium ${dark ? "text-white/80" : "text-zinc-700"}`}>Cashiers</p>
+              <p className={`text-sm font-medium ${dark ? "text-white/80" : "text-zinc-700"}`}>{t("Cashiers")}</p>
               {directoryError ? <p className="mt-2 text-sm text-red-500">{directoryError}</p> : null}
               {cashiers.length === 0 ? (
-                <p className={`mt-3 text-sm ${muted}`}>No cashier profiles are on this register yet.</p>
+                <p className={`mt-3 text-sm ${muted}`}>{t("No cashier profiles are on this register yet.")}</p>
               ) : (
                 <ul className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
                   {cashiers.map((card) => {
@@ -183,7 +184,7 @@ export function PinUnlock({
             }}
             className={`mt-4 text-sm font-semibold text-primary`}
           >
-            {manual ? "Choose a cashier" : "Use username instead"}
+            {manual ? t("Choose a cashier") : t("Use username instead")}
           </button>
           {onActivate ? (
             <button
@@ -193,14 +194,14 @@ export function PinUnlock({
                 dark ? "border-white/15 text-white/80 hover:bg-white/10" : "border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-100"
               }`}
             >
-              New activation
+              {t("New activation")}
             </button>
           ) : null}
         </section>
 
         <section className={`rounded-[28px] border p-5 sm:p-6 ${panel}`}>
-          <p className="min-h-6 text-center text-sm font-medium">{manual ? "Username login" : (selected?.display_name ?? "Select a cashier")}</p>
-          <div className="mt-4 flex justify-center gap-3" aria-label={`${pin.length} digits entered`}>
+          <p className="min-h-6 text-center text-sm font-medium">{manual ? t("Username login") : (selected?.display_name ?? t("Select a cashier"))}</p>
+          <div className="mt-4 flex justify-center gap-3" aria-label={t("{count} digits entered", { count: pin.length })}>
             {Array.from({ length: MAX_PIN }, (_, index) => (
               <span
                 key={index}
@@ -217,10 +218,10 @@ export function PinUnlock({
                 key={key}
                 type="button"
                 onClick={() => press(key)}
-                aria-label={key === "back" ? "Delete digit" : key === "clear" ? "Clear PIN" : key}
+                aria-label={key === "back" ? t("Delete digit") : key === "clear" ? t("Clear PIN") : key}
                 className={keyClass}
               >
-                {key === "back" ? <Delete size={22} aria-hidden="true" /> : key === "clear" ? <span className="text-sm">Clear</span> : key}
+                {key === "back" ? <Delete size={22} aria-hidden="true" /> : key === "clear" ? <span className="text-sm">{t("Clear")}</span> : key}
               </button>
             ))}
           </div>
@@ -230,7 +231,7 @@ export function PinUnlock({
             onClick={() => void submit()}
             className="mt-5 h-14 w-full rounded-2xl bg-primary text-base font-semibold text-white disabled:opacity-40"
           >
-            {busy ? "Checking…" : "Unlock"}
+            {busy ? t("Checking…") : t("Unlock")}
           </button>
         </section>
       </div>

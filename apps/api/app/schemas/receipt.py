@@ -3,6 +3,7 @@
 import base64
 import binascii
 import uuid
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -26,6 +27,7 @@ class ReceiptSettings(BaseModel):
 
     # Black-and-white PNG as a data URL, small enough to cache on every register for offline printing.
     logo_png: str | None = Field(default=None, max_length=len(LOGO_PREFIX) + (LOGO_MAX_BYTES * 4) // 3 + 4)
+    language: Literal["store", "en", "ar"] = "store"
     header_text: str | None = Field(default=None, max_length=200)
     header_text_ar: str | None = Field(default=None, max_length=200)
     footer_text: str | None = Field(default=None, max_length=500)
@@ -76,6 +78,7 @@ class ReceiptProfileOut(BaseModel):
 
     settings: ReceiptSettings
     store: ReceiptStore | None = None
+    country: str | None = None
 
 
 def resolve_receipt_settings(raw: dict | None) -> ReceiptSettings:

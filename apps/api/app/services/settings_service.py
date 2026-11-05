@@ -789,11 +789,13 @@ def change_module_settings(db: Session, actor: User, data: ModuleSettings) -> Bu
 def receipt_profile(db: Session, store_id: uuid.UUID | None) -> ReceiptProfileOut:
     """Receipt branding plus the branch's own contact lines; an unknown branch prints without them."""
     store = db.get(Store, store_id) if store_id is not None else None
+    settings = cached_settings(db)
     return ReceiptProfileOut(
-        settings=cached_settings(db).receipt.model_copy(),
+        settings=settings.receipt.model_copy(),
         store=ReceiptStore(id=store.id, name=store.name, address=store.address, phone=store.phone)
         if store is not None
         else None,
+        country=settings.country,
     )
 
 
@@ -822,7 +824,7 @@ def change_receipt(db: Session, actor: User, data: ReceiptSettings) -> ReceiptPr
             details={"logo_changed": logo_changed},
         )
         db.commit()
-    return ReceiptProfileOut(settings=resolve_receipt_settings(row.receipt))
+    return ReceiptProfileOut(settings=resolve_receipt_settings(row.receipt), country=row.country)
 
 
 def _offline_key() -> str:

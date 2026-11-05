@@ -29,6 +29,7 @@
     "typecheck": "turbo run typecheck",
     "test": "pnpm --filter @ai-pos/api --filter @ai-pos/desktop --filter @ai-pos/ui test",
     "verify": "node scripts/verify.mjs",
+    "i18n:check": "node scripts/i18n-check.mjs",
     "demo:businesses": "pnpm --filter @ai-pos/api demo:businesses",
     "bootstrap": "powershell -ExecutionPolicy Bypass -File ./scripts/bootstrap.ps1"
   },

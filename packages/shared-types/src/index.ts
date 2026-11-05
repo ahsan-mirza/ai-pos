@@ -246,6 +246,7 @@ export type {
   EmbeddedBarcodeSettings,
   ExpiringStockRow,
   ModuleSettings,
+  ReceiptLanguage,
   ReceiptProfile,
   ReceiptSettings,
   ReceiptStore,
@@ -254,7 +255,7 @@ export type {
   TaxSettingsUpdate,
 } from "./settings.js";
 export { TAX_AUTHORITY_LABELS, isSaudiVatNumber, taxForCountry, zatcaQr } from "./taxAuthority.js";
-export { countryTax } from "./countryTax.js";
+export { countryTax, storeReceiptLanguage } from "./countryTax.js";
 export type { CountryTax } from "./countryTax.js";
 export { LABEL_LAYOUT_LABELS, compareVariantValues } from "./fashion.js";
 export type {

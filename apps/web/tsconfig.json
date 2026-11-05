@@ -11,7 +11,8 @@
       "react": ["./node_modules/@types/react/index.d.ts"],
       "react/jsx-runtime": ["./node_modules/@types/react/jsx-runtime.d.ts"],
       "react-router-dom": ["./node_modules/react-router-dom/dist/index.d.ts"],
-      "@ai-pos/shared-types": ["../../packages/shared-types/src/index.ts"]
+      "@ai-pos/shared-types": ["../../packages/shared-types/src/index.ts"],
+      "@ai-pos/ui": ["../../packages/ui/src/index.ts"]
     }
   },
   "include": ["src"],
