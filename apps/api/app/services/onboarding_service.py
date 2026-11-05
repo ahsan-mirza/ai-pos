@@ -83,8 +83,9 @@ from app.services.settings_service import load_settings
 
 # Bump when a new required step is added. Completed explore timestamps and known skips are kept.
 ONBOARDING_VERSION = 1
-# Optional actions inside a step. Skipping one does not mark the step complete.
-SKIPPABLE = frozenset({"invite"})
+# "invite" skips the staff invite inside the team step and leaves that step open.
+# "catalogue" skips adding a product and counts that step done.
+SKIPPABLE = frozenset({"invite", "catalogue"})
 
 # Stock moved by practice sales and returns, including the ingredients practice dishes drew.
 PRACTICE_REFERENCES = ("sale", "sale_return", "sale_recipe")
@@ -242,6 +243,8 @@ def checklist(db: Session, settings: Settings) -> Checklist:
         team_hint = "Create a register when you are ready. Staff invites can be finished later."
     elif invited:
         team_hint = "A teammate already has a login. Create a register and enter its key in the Windows Register."
+    catalogue_done = _exists(db, select(Product.id).where(Product.is_sample.is_(False)))
+    catalogue_skipped = "catalogue" in progress["skipped"]
     payment_waiting = state in {"pending_review", "rejected", "awaiting_proof", "revoked"}
     # active and grace mean the invoice was verified. Go live is no longer offered.
     invoice_verified = state in {"active", "grace"}
@@ -266,9 +269,11 @@ def checklist(db: Session, settings: Settings) -> Checklist:
             key="catalogue",
             label=label,
             hint=hint,
-            done=_exists(db, select(Product.id).where(Product.is_sample.is_(False))),
+            done=catalogue_done or catalogue_skipped,
             href="/inventory/products",
             action=action,
+            skipped=catalogue_skipped,
+            skippable=not catalogue_done and not catalogue_skipped,
         ),
         ChecklistItem(
             key="practice",

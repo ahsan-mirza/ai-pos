@@ -56,6 +56,11 @@ def read_agent(db: Db, _: CanManage) -> dict:
     return service.present_agent(db, service.agent_row(db))
 
 
+@router.get("/agent/health")
+def agent_health(db: Db, settings: Config, _: CanManage) -> dict:
+    return service.health(db, settings)
+
+
 @router.put("/agent")
 def write_agent(payload: AgentWrite, db: Db, _: CanManage) -> dict:
     return service.save_agent(db, payload.model_dump())

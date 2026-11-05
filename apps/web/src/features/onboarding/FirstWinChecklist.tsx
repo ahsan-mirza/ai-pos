@@ -22,7 +22,7 @@ function StepRow({
   index: number;
   next: boolean;
   onGoLive: () => void;
-  onSkip: () => void;
+  onSkip: (key: string) => void;
 }) {
   const marker = (
     <span
@@ -77,8 +77,12 @@ function StepRow({
                 </Link>
               ) : null}
               {item.skippable ? (
-                <button type="button" onClick={onSkip} className="text-xs text-charcoal/50 hover:text-charcoal hover:underline">
-                  Skip inviting staff
+                <button
+                  type="button"
+                  onClick={() => onSkip(item.key === "team" ? "invite" : item.key)}
+                  className="text-xs text-charcoal/50 hover:text-charcoal hover:underline"
+                >
+                  {item.key === "team" ? "Skip inviting staff" : "Skip"}
                 </button>
               ) : null}
               {item.skipped ? <span className="text-xs text-charcoal/50">Invite skipped</span> : null}
@@ -106,8 +110,8 @@ export function FirstWinChecklist() {
     sessionStorage.setItem(CHECKLIST_OPEN_KEY, open ? "0" : "1");
     setOpen(!open);
   };
-  const skipInvite = () => {
-    void apiPost("/api/v1/onboarding/skip", { key: "invite" }).then(() => refresh());
+  const skipStep = (key: string) => {
+    void apiPost("/api/v1/onboarding/skip", { key }).then(() => refresh());
   };
 
   return (
@@ -145,6 +149,15 @@ export function FirstWinChecklist() {
             </Link>
           )
         ) : null}
+        {next?.skippable ? (
+          <button
+            type="button"
+            onClick={() => skipStep(next.key === "team" ? "invite" : next.key)}
+            className="mt-1 shrink-0 text-xs font-semibold text-white/70 hover:text-white"
+          >
+            Skip
+          </button>
+        ) : null}
         <button
           type="button"
           onClick={toggle}
@@ -173,7 +186,7 @@ export function FirstWinChecklist() {
               index={index}
               next={item.key === checklist.next_key}
               onGoLive={openGoLive}
-              onSkip={skipInvite}
+              onSkip={skipStep}
             />
           ))}
         </ol>

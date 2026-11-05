@@ -105,7 +105,16 @@ def test_a_follow_up_keeps_the_earlier_question():
     assert "Reply in English" in turns[0]["content"]
     arabic = care_turns("كم السعر؟", "ar", "السعر غير مسجل.", [])
     assert "Reply in Arabic" in arabic[0]["content"]
-    assert accept_care_reply("I cannot confirm that from the shop's records.", "I'm well, thank you.", "wellbeing") is None
+    refused = accept_care_reply("I cannot confirm that from the shop's records.", "I'm well, thank you.", "wellbeing")
+    assert refused is None
+    greeting = accept_care_reply("Hello. How can we help?", "Which product would you like the price of?", "price")
+    assert greeting is None
+    invented = accept_care_reply(
+        "Our store is open from 10:00 AM to 8:00 PM, seven days a week.",
+        "Monday to Saturday\n9AM to 11PM",
+        "hours",
+    )
+    assert invented is None
     kept = accept_care_reply("I'm doing well, thanks. What are you looking for?", "I'm well, thank you.", "wellbeing")
     assert kept == "I'm doing well, thanks. What are you looking for?"
 
@@ -784,5 +793,168 @@ def test_extended_whatsapp_text_gets_a_catalogue_reply(client, session, monkeypa
     assert reply.to_address == "971501110099"
     assert "Cotton Suit Beige Frost" in reply.body
     assert "6400.00" in reply.body
+    monkeypatch.setattr(settings, "assistant_provider", "builtin")
+    set_handler(None)
+
+
+def test_a_price_question_without_a_product_is_not_a_greeting(client, session, monkeypatch) -> None:
+    set_handler(lambda method, path, body: {"instance": {"state": "open"}, "key": {"id": "OUT-ASK"}})
+    settings = get_settings()
+    headers = _ready(client, session, settings)
+    _ai_only(client, headers)
+    settings.assistant_provider = "ollama"
+    monkeypatch.setattr(
+        "app.services.assistant_llm.complete",
+        lambda *_args, **_kwargs: {"content": "Hello. How can we help?"},
+    )
+    _incoming(client, session, "I want to ask a product price", "IN-ASK")
+    key = session.scalar(select(ReachConnection.webhook_key))
+    again = client.post(
+        f"/api/v1/reach/webhooks/evolution/{key}",
+        headers={"apikey": "hook-secret"},
+        json={"eventId": "IN-ASK", "event": "messages.upsert", "data": {}},
+    )
+    assert again.json()["duplicate"] is True
+    assert run_job(session, settings, "reach_ai_replies") == "ok"
+    session.expire_all()
+    bodies = session.scalars(select(OutboundMessage.body).where(OutboundMessage.template_key == "ai_agent")).all()
+    assert bodies == ["Which product would you like the price of?"]
+    monkeypatch.setattr(settings, "assistant_provider", "builtin")
+    set_handler(None)
+
+
+def test_an_echo_of_our_reply_does_not_stop_the_next_answer(client, session, monkeypatch) -> None:
+    sent_ids = {"n": 0}
+
+    def handler(method, path, body):
+        sent_ids["n"] += 1
+        return {"instance": {"state": "open"}, "key": {"id": f"OUT-ECHO-{sent_ids['n']}"}}
+
+    set_handler(handler)
+    settings = get_settings()
+    headers = _ready(client, session, settings)
+    _ai_only(client, headers)
+    session.add(_suit("Cotton Suit Beige Frost", "SUIT-ECHO", 640000))
+    session.commit()
+    _incoming(client, session, "what is the price of cotton suite beige frost", "IN-ECHO")
+    assert run_job(session, settings, "reach_ai_replies") == "ok"
+    session.expire_all()
+    first = session.scalar(select(OutboundMessage).where(OutboundMessage.template_key == "ai_agent"))
+    assert first is not None and first.status == "SENT"
+    key = session.scalar(select(ReachConnection.webhook_key))
+    echo = client.post(
+        f"/api/v1/reach/webhooks/evolution/{key}",
+        headers={"apikey": "hook-secret"},
+        json={
+            "eventId": "ECHO-OURS",
+            "event": "messages.upsert",
+            "data": {
+                "key": {"remoteJid": "154812345678901@lid", "fromMe": True, "id": "ECHO-OURS"},
+                "message": {"conversation": first.body},
+            },
+        },
+    )
+    assert echo.status_code == 200, echo.text
+    _incoming(client, session, "how much", "IN-FOLLOW")
+    assert run_job(session, settings, "reach_ai_replies") == "ok"
+    session.expire_all()
+    bodies = session.scalars(select(OutboundMessage.body).where(OutboundMessage.template_key == "ai_agent")).all()
+    assert len(bodies) == 2
+    assert all("6400.00" in body for body in bodies)
+    assert all(not body.startswith("Hello") for body in bodies)
+    listed = client.get("/api/v1/reach/ai/conversations", headers=headers)
+    assert listed.json()[0]["handler"] == "ai"
+    health = client.get("/api/v1/reach/ai/agent/health", headers=headers)
+    assert health.status_code == 200, health.text
+    assert health.json()["enabled"] is True
+    assert "phone" not in health.json()
+    monkeypatch.setattr(settings, "assistant_provider", "builtin")
+    set_handler(None)
+
+
+def _wrong_hours(*_args, **_kwargs):
+    return {"content": "Our store is open from 10:00 AM to 8:00 PM, seven days a week."}
+
+
+def test_store_timings_quote_the_approved_hours(client, session, monkeypatch) -> None:
+    sent = {"n": 0}
+
+    def handler(method, path, body):
+        sent["n"] += 1
+        return {"instance": {"state": "open"}, "key": {"id": f"OUT-HOURS-{sent['n']}"}}
+
+    set_handler(handler)
+    settings = get_settings()
+    headers = _ready(client, session, settings)
+    _ai_only(client, headers)
+    settings.assistant_provider = "ollama"
+    monkeypatch.setattr("app.services.assistant_llm.complete", _wrong_hours)
+    saved = client.post(
+        "/api/v1/reach/ai/knowledge",
+        headers=headers,
+        json={"kind": "faq", "title": "Opening Hours", "body": "Monday to Saturday\n9AM to 11PM"},
+    )
+    assert saved.status_code == 201, saved.text
+    _incoming(client, session, "What are the store timings?", "IN-HOURS")
+    assert run_job(session, settings, "reach_ai_replies") == "ok"
+    _incoming(client, session, "When can I visit the store?", "IN-VISIT")
+    assert run_job(session, settings, "reach_ai_replies") == "ok"
+    session.expire_all()
+    bodies = session.scalars(select(OutboundMessage.body).where(OutboundMessage.template_key == "ai_agent")).all()
+    assert len(bodies) == 2
+    assert all("9AM" in body and "11PM" in body for body in bodies)
+    assert all("10:00" not in body and "8:00" not in body for body in bodies)
+    assert "You can visit us during these hours:" in bodies[-1]
+    arabic = client.post("/api/v1/reach/ai/agent/test", headers=headers, json={"body": "ما هي ساعات العمل؟"})
+    assert arabic.status_code == 200, arabic.text
+    assert "ساعات العمل المسجلة" in arabic.json()["reply"]
+    assert "9AM" in arabic.json()["reply"]
+    assert "10:00" not in arabic.json()["reply"]
+    from reach.ai_agent.models import ReachAiKnowledge
+
+    row = session.scalar(select(ReachAiKnowledge).where(ReachAiKnowledge.title == "Opening Hours"))
+    row.body = "Sunday closed\nMonday to Saturday\n9AM to 11PM"
+    session.commit()
+    _incoming(client, session, "are you open on Sunday?", "IN-SUNDAY")
+    assert run_job(session, settings, "reach_ai_replies") == "ok"
+    session.expire_all()
+    latest = session.scalars(
+        select(OutboundMessage.body)
+        .where(OutboundMessage.template_key == "ai_agent")
+        .order_by(OutboundMessage.created_at)
+    ).all()
+    assert "Sunday closed" in latest[-1]
+    assert "10:00" not in latest[-1]
+    monkeypatch.setattr(settings, "assistant_provider", "builtin")
+    set_handler(None)
+
+
+def test_disagreeing_opening_hours_are_not_stated(client, session, monkeypatch) -> None:
+    set_handler(lambda method, path, body: {"instance": {"state": "open"}, "key": {"id": "OUT-CONFLICT"}})
+    settings = get_settings()
+    headers = _ready(client, session, settings)
+    _ai_only(client, headers)
+    settings.assistant_provider = "ollama"
+    monkeypatch.setattr("app.services.assistant_llm.complete", _wrong_hours)
+    for title, body in (
+        ("Opening Hours", "Monday to Saturday\n9AM to 11PM"),
+        ("Store timings", "Every day\n10:00 AM to 8:00 PM"),
+    ):
+        saved = client.post(
+            "/api/v1/reach/ai/knowledge",
+            headers=headers,
+            json={"kind": "faq", "title": title, "body": body},
+        )
+        assert saved.status_code == 201, saved.text
+    listed = client.get("/api/v1/reach/ai/knowledge", headers=headers)
+    assert any(item["conflict"] for item in listed.json())
+    _incoming(client, session, "What are the store timings?", "IN-CONFLICT")
+    assert run_job(session, settings, "reach_ai_replies") == "ok"
+    session.expire_all()
+    reply = session.scalar(select(OutboundMessage.body).where(OutboundMessage.template_key == "ai_agent"))
+    assert reply is not None
+    assert "disagree" in reply
+    assert "9AM" not in reply
+    assert "10:00" not in reply
     monkeypatch.setattr(settings, "assistant_provider", "builtin")
     set_handler(None)

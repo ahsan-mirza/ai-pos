@@ -21,7 +21,7 @@ from app.models.sale import Sale
 from app.models.store import Store
 from app.services.llm_context import ContextDocument, prepare_llm_context
 from app.services.pricing import resolve_price
-from reach.ai_agent.catalogue import pieces_requested, search_catalogue
+from reach.ai_agent.catalogue import pieces_requested, query_tokens, search_catalogue
 from reach.ai_agent.hold import (
     aware,
     claim,
@@ -50,9 +50,13 @@ from reach.ai_agent.reply import (
     accept_care_reply,
     action_for,
     care_turns,
+    clock_tokens,
     compose,
+    day_tokens,
     intent_of,
+    is_hours_title,
     language_of,
+    named_product,
     priority_for,
 )
 
@@ -133,7 +137,8 @@ def list_knowledge(db: Session) -> list[dict]:
         .where(ReachAiKnowledge.kind != "policy")
         .order_by(ReachAiKnowledge.created_at.desc())
     ).all()
-    return [_knowledge(row) for row in rows]
+    conflicting = _conflicting_hours(rows)
+    return [_knowledge(row, row.id in conflicting) for row in rows]
 
 
 def delete_knowledge(db: Session, knowledge_id) -> None:
@@ -144,8 +149,35 @@ def delete_knowledge(db: Session, knowledge_id) -> None:
     db.commit()
 
 
-def _knowledge(row: ReachAiKnowledge) -> dict:
-    return {"id": str(row.id), "kind": row.kind, "title": row.title, "body": row.body, "status": row.status}
+def _knowledge(row: ReachAiKnowledge, conflict: bool = False) -> dict:
+    updated = row.updated_at.isoformat() if row.updated_at is not None else None
+    return {
+        "id": str(row.id),
+        "kind": row.kind,
+        "title": row.title,
+        "body": row.body,
+        "status": row.status,
+        "source": "approved_answer",
+        "conflict": conflict,
+        "updated_at": updated,
+    }
+
+
+def _hour_signature(body: str) -> tuple:
+    clocks = frozenset(clock_tokens(body))
+    days = frozenset(day_tokens(body))
+    if clocks or days:
+        return (clocks, days)
+    return (body.strip().casefold(),)
+
+
+def _conflicting_hours(rows: list[ReachAiKnowledge]) -> set:
+    """Approved hour answers that do not state the same days and times."""
+    hours = [row for row in rows if row.kind == "faq" and row.status == "ready" and is_hours_title(row.title)]
+    signatures = {_hour_signature(row.body) for row in hours}
+    if len(hours) < 2 or len(signatures) < 2:
+        return set()
+    return {row.id for row in hours}
 
 
 def list_conversations(db: Session, status: str | None, handler: str | None) -> list[dict]:
@@ -301,6 +333,83 @@ def preview(db: Session, settings: Settings, text: str) -> dict:
     }
 
 
+def health(db: Session, settings: Settings) -> dict:
+    """Counts and timestamps only. Message text, phone numbers, and credentials stay out."""
+    from app.models.scheduled_job import ScheduledJob
+    from reach.models import ReachConnection
+
+    agent = agent_row(db)
+    job = db.scalar(select(ScheduledJob).where(ScheduledJob.name == "reach_ai_replies"))
+    connection_rows = db.scalars(select(ReachConnection.status)).all()
+    connections: dict[str, int] = {}
+    for status in connection_rows:
+        connections[status] = connections.get(status, 0) + 1
+
+    def messages(status: str | None = None, author: str | None = None) -> int:
+        query = select(func.count()).select_from(ReachAiMessage)
+        if status is not None:
+            query = query.where(ReachAiMessage.status == status)
+        if author is not None:
+            query = query.where(ReachAiMessage.author == author)
+        return int(db.scalar(query) or 0)
+
+    oldest = db.scalar(
+        select(func.min(ReachAiMessage.created_at)).where(
+            ReachAiMessage.author == "customer",
+            ReachAiMessage.status == "received",
+        )
+    )
+    oldest_seconds = None
+    if oldest is not None:
+        oldest_seconds = max(int((datetime.now(UTC) - aware(oldest)).total_seconds()), 0)
+    outbound_queued = int(
+        db.scalar(
+            select(func.count())
+            .select_from(OutboundMessage)
+            .where(OutboundMessage.template_key == "ai_agent", OutboundMessage.status == "QUEUED")
+        )
+        or 0
+    )
+    outbound_failed = int(
+        db.scalar(
+            select(func.count())
+            .select_from(OutboundMessage)
+            .where(OutboundMessage.template_key == "ai_agent", OutboundMessage.status == "FAILED")
+        )
+        or 0
+    )
+    finished = None if job is None or job.last_finished_at is None else job.last_finished_at.isoformat()
+    return {
+        "enabled": agent.enabled,
+        "mode": agent.mode,
+        "whatsapp": connections,
+        "llm_provider": settings.assistant_provider,
+        "worker": {
+            "last_status": None if job is None else job.last_status,
+            "last_finished_at": finished,
+            "run_count": 0 if job is None else job.run_count,
+        },
+        "incoming": messages(author="customer"),
+        "pending": messages("received", "customer"),
+        "processing": messages("preparing"),
+        "ai_replies": messages(author="ai"),
+        "queued": messages("queued"),
+        "sent": messages("sent"),
+        "failed": messages("failed"),
+        "outbound_queued": outbound_queued,
+        "outbound_failed": outbound_failed,
+        "human_takeover": int(
+            db.scalar(
+                select(func.count())
+                .select_from(ReachAiConversation)
+                .where(ReachAiConversation.handler == "human", ReachAiConversation.status != "resolved")
+            )
+            or 0
+        ),
+        "oldest_unanswered_seconds": oldest_seconds,
+    }
+
+
 def analytics(db: Session) -> dict:
     conversations = db.scalar(select(func.count()).select_from(ReachAiConversation)) or 0
     waiting = db.scalar(
@@ -355,9 +464,17 @@ def process_pending(db: Session, settings: Settings, limit: int = 20) -> str:
     for incoming in pending:
         batches.setdefault(incoming.conversation_id, []).append(incoming)
     sent = 0
+    failed = 0
     for batch in batches.values():
-        if _reply_to_batch(db, settings, agent, policy, batch):
-            sent += 1
+        try:
+            with db.begin_nested():
+                if _reply_to_batch(db, settings, agent, policy, batch):
+                    sent += 1
+        except Exception:
+            failed += 1
+            logger.exception("[AXIZREACH_AI] reply_failed")
+    if failed:
+        return f"{sent} replies prepared; {failed} conversations failed"
     return f"{sent} replies prepared"
 
 
@@ -373,15 +490,18 @@ def gather_facts(db: Session, text: str, intent: str, conversation: ReachAiConve
         "truncated": False,
         "all_ids": [],
         "offset": 0,
+        "named_query": named_product(text),
     }
     if intent == "hours":
-        row = db.scalar(
-            select(ReachAiKnowledge)
-            .where(ReachAiKnowledge.kind == "faq", ReachAiKnowledge.title.ilike("%hour%"))
-            .limit(1)
-        )
-        if row is not None:
-            facts["hours"] = row.body.strip()[:500]
+        rows = db.scalars(
+            select(ReachAiKnowledge).where(ReachAiKnowledge.kind == "faq", ReachAiKnowledge.status == "ready")
+        ).all()
+        hours = [row for row in rows if is_hours_title(row.title)]
+        if len(_conflicting_hours(hours)) > 1:
+            facts["hours_conflict"] = True
+        elif hours:
+            preferred = next((row for row in hours if row.title.casefold().strip() == "opening hours"), hours[0])
+            facts["hours"] = preferred.body.strip()[:500]
     if intent == "branch":
         stores = db.scalars(
             select(Store).where(Store.is_active.is_(True), Store.is_warehouse.is_(False)).limit(8)
@@ -390,7 +510,7 @@ def gather_facts(db: Session, text: str, intent: str, conversation: ReachAiConve
     if intent in _CATALOGUE:
         prior_ids, prior_offset = _prior_products(db, conversation)
         started = time.perf_counter()
-        found = search_catalogue(db, text, prior_ids, prior_offset)
+        found = search_catalogue(db, _catalogue_text(db, conversation, text), prior_ids, prior_offset)
         catalogue_ms = int((time.perf_counter() - started) * 1000)
         pieces = pieces_requested(text)
         include_stock = intent == "stock"
@@ -459,6 +579,27 @@ def _evidence(intent: str, provider: str, facts: dict) -> dict:
     }
 
 
+def _catalogue_text(db: Session, conversation: ReachAiConversation | None, text: str) -> str:
+    """A short follow-up such as "256 GB" is searched with the earlier product the customer named."""
+    if conversation is None or len(query_tokens(text)) >= 3:
+        return text
+    earlier = db.scalars(
+        select(ReachAiMessage)
+        .where(
+            ReachAiMessage.conversation_id == conversation.id,
+            ReachAiMessage.author == "customer",
+        )
+        .order_by(ReachAiMessage.created_at.desc())
+        .limit(6)
+    ).all()
+    for row in earlier:
+        if row.body.strip() == text.strip():
+            continue
+        if len(query_tokens(row.body)) >= 2:
+            return f"{row.body}\n{text}"
+    return text
+
+
 def _prior_products(db: Session, conversation: ReachAiConversation | None) -> tuple[list[str], int]:
     if conversation is None:
         return [], 0
@@ -496,7 +637,9 @@ def _product_fact(db: Session, product: Product, currency: str, *, include_stock
 
 def _reply_to_batch(db: Session, settings: Settings, agent: ReachAiAgent, policy: dict, batch: list) -> bool:
     newest = max(batch, key=lambda item: aware(item.created_at))
-    conversation = db.get(ReachAiConversation, newest.conversation_id)
+    conversation = db.scalar(
+        select(ReachAiConversation).where(ReachAiConversation.id == newest.conversation_id).with_for_update()
+    )
     if conversation is not None and release_mirrored_takeover(db, conversation):
         logger.info("[AXIZREACH_AI] mirrored_takeover_released")
     if conversation is None or conversation.status == "resolved":
@@ -563,12 +706,27 @@ def _reply_to_incoming(
         suppress_pending(db, conversation)
         return False
     started = time.monotonic()
+    prior_intent = conversation.intent
     intent, score = intent_of(body)
+    if intent == "unknown" and prior_intent == "hours":
+        intent = "hours"
     language = language_of(body, agent.language)
     conversation.language = language
     conversation.intent = intent
     lookup = "unknown" if intent in _CATALOGUE and not agent.product_help else intent
     facts = gather_facts(db, body, lookup, conversation)
+    if intent == "hours" and (prior_intent == "hours" or "visit" in body.casefold()):
+        facts["hours_followup"] = True
+    if facts.get("hours_conflict"):
+        _open_action(
+            db,
+            conversation,
+            incoming,
+            "hours_conflict",
+            "hours",
+            "Approved opening hours disagree.",
+            90,
+        )
     if intent in _CATALOGUE and not agent.product_help:
         facts = {**facts, "products": []}
     try:
@@ -594,6 +752,19 @@ def _reply_to_incoming(
     db.refresh(incoming)
     if conversation.handler != "ai" or incoming.status not in {"preparing", "received"}:
         incoming.status = "stored"
+        return False
+    newer = db.scalar(
+        select(ReachAiMessage.id).where(
+            ReachAiMessage.conversation_id == conversation.id,
+            ReachAiMessage.author == "customer",
+            ReachAiMessage.id != incoming.id,
+            ReachAiMessage.created_at > incoming.created_at,
+            ReachAiMessage.status.in_(("received", "preparing")),
+        )
+    )
+    if newer is not None:
+        logger.info("[AXIZREACH_AI] stale_context_discarded")
+        incoming.status = "received"
         return False
     if agent.mode == "assist":
         db.add(

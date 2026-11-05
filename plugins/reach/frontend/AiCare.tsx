@@ -31,6 +31,9 @@ interface Knowledge {
   title: string;
   body: string;
   status: string;
+  source?: string;
+  conflict?: boolean;
+  updated_at?: string | null;
 }
 
 interface Conversation {
@@ -103,6 +106,7 @@ export function AgentPanel() {
   } | null>(null);
   const [error, setError] = useState("");
   const [stats, setStats] = useState<CareStats | null>(null);
+  const [health, setHealth] = useState<Record<string, unknown> | null>(null);
   const [agentJob, setAgentJob] = useState<null | "save" | "toggle">(null);
   const [faqJob, setFaqJob] = useState(false);
   const [askJob, setAskJob] = useState(false);
@@ -112,6 +116,7 @@ export function AgentPanel() {
     apiGet<Agent>("/api/v1/reach/ai/agent").then(setAgent).catch((err) => setError(errorMessage(err, "The agent could not be loaded.")));
     apiGet<Knowledge[]>("/api/v1/reach/ai/knowledge").then(setKnowledge).catch(() => undefined);
     apiGet<CareStats>("/api/v1/reach/ai/analytics").then(setStats).catch(() => undefined);
+    apiGet<Record<string, unknown>>("/api/v1/reach/ai/agent/health").then(setHealth).catch(() => undefined);
   };
 
   useEffect(load, []);
@@ -165,6 +170,17 @@ export function AgentPanel() {
             : "Replies are off. Enable replies before the assistant can answer WhatsApp messages."}
           {" "}Product names and prices come from this store's catalogue. Stock is checked only when the question asks. Refunds are never posted from here.
         </p>
+        {health ? (
+          <p className="mt-2 text-xs text-charcoal/60">
+            WhatsApp {Object.keys((health.whatsapp as Record<string, number>) || {}).length === 0 ? "not connected" : Object.entries((health.whatsapp as Record<string, number>) || {}).map(([status, count]) => `${status} ${count}`).join(", ")}
+            {" · "}LLM {String(health.llm_provider || "unset")}
+            {" · "}worker {String((health.worker as { last_status?: string } | undefined)?.last_status || "not run")}
+            {" · "}pending {String(health.pending ?? 0)}
+            {" · "}queued {String(health.outbound_queued ?? 0)}
+            {" · "}failed {String(health.failed ?? 0)}
+            {health.oldest_unanswered_seconds != null ? ` · oldest unanswered ${String(health.oldest_unanswered_seconds)}s` : ""}
+          </p>
+        ) : null}
         {stats ? (
           <dl className="mt-3 grid grid-cols-2 gap-2 text-sm">
             <div><dt className="text-charcoal/50">Conversations</dt><dd className="font-semibold">{stats.conversations}</dd></div>
@@ -253,7 +269,12 @@ export function AgentPanel() {
       </section>
       <section className="rounded-card border border-line bg-white p-4">
         <h2 className="text-lg font-semibold">Approved answers</h2>
-        <p className="mt-1 text-sm text-charcoal/60">FAQs are quoted as written. Prices and stock still come from the catalog, not from this text. PDF files are not indexed.</p>
+        <p className="mt-1 text-sm text-charcoal/60">FAQs are quoted as written. Opening hours come from an approved answer such as Opening Hours. Store settings do not keep a separate schedule. Prices and stock still come from the catalog.</p>
+        {knowledge.some((item) => item.conflict) ? (
+          <p className="mt-2 rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-900">
+            Approved opening hours disagree. The assistant will not state either schedule until one answer remains.
+          </p>
+        ) : null}
         <form
           className="mt-3 grid gap-2"
           onSubmit={(event) => {
@@ -304,6 +325,10 @@ export function AgentPanel() {
                 </BusyButton>
               </div>
               <p className="mt-1 whitespace-pre-wrap text-charcoal/70">{item.body}</p>
+              <p className="mt-1 text-xs text-charcoal/50">
+                {item.conflict ? "Conflicts with another approved answer. " : ""}
+                Approved answer{item.updated_at ? ` · updated ${item.updated_at.slice(0, 16).replace("T", " ")}` : ""}
+              </p>
             </li>
           ))}
         </ul>

@@ -96,6 +96,7 @@ def _device_message(db: Session, connection: ReachConnection, data: dict) -> Non
     if not phone or not text:
         return
     if _echo_of_ours(db, phone, text, provider_id) or _mirrors_customer(db, phone, text):
+        logger.info("[AXIZREACH_AI] ignored_outbound_echo")
         return
     conversation = _conversation(db, connection, phone, _customer(db, phone), "")
     try:
@@ -167,10 +168,16 @@ def _echo_of_ours(db: Session, phone: str, text: str, provider_id: str) -> bool:
         return True
     since = datetime.now(UTC) - timedelta(minutes=10)
     recent = db.scalars(select(OutboundMessage).where(OutboundMessage.created_at >= since)).all()
-    folded = text.strip()
+    folded = _fold(text)
     for item in recent:
+        if _fold(item.body) != folded:
+            continue
         digits = "".join(ch for ch in item.to_address if ch.isdigit())
-        if item.body.strip() == folded and (phone == digits or phone.endswith(digits) or digits.endswith(phone)):
+        if not digits or phone == digits or phone.endswith(digits) or digits.endswith(phone):
+            return True
+        # WhatsApp echoes our own text from a privacy id that does not match the number we sent to.
+        created = item.created_at
+        if created is not None and datetime.now(UTC) - aware_created(created) <= timedelta(minutes=10):
             return True
     return False
 

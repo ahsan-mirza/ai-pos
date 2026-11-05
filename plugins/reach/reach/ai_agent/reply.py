@@ -40,7 +40,24 @@ def intent_of(text: str) -> tuple[str, int]:
         ("complaint", ("damaged", "complaint", "worst", "angry", "شكوى"), 75),
         ("purchase", ("buy", "purchase", "units", "أشتري", "اشتري"), 70),
         ("promotion", ("discount", "offer", "promotion", "عرض"), 70),
-        ("hours", ("opening", "what time", "hours", "open today", "ساعات"), 70),
+        (
+            "hours",
+            (
+                "opening",
+                "what time",
+                "hours",
+                "open today",
+                "timing",
+                "timings",
+                "when can i",
+                "are you open",
+                "visit",
+                "ساعات",
+                "مواعيد",
+                "متى",
+            ),
+            70,
+        ),
         ("branch", ("address", "location", "where are", "branch", "عنوان", "فرع"), 70),
         ("price", ("how much", "price", "سعر", "كم"), 65),
         ("stock", ("do you have", "in stock", "how many", "available", "متوفر"), 65),
@@ -56,9 +73,20 @@ def intent_of(text: str) -> tuple[str, int]:
     return "unknown", 30
 
 
+_GENERIC = frozenset(
+    {"ask", "something", "item", "items", "one", "info", "information", "details", "cost", "costs", "much"}
+)
+
+
 def product_query(text: str) -> str:
     words = [word for word in re.findall(r"[\w+-]+", text) if word.casefold() not in _STOP]
     return " ".join(words)[:80]
+
+
+def named_product(text: str) -> str:
+    """Words that name a product. A bare 'what is the price' question has none."""
+    words = [word for word in product_query(text).split() if word.casefold() not in _GENERIC]
+    return " ".join(words)
 
 
 def action_for(intent: str) -> str | None:
@@ -158,9 +186,20 @@ def compose(intent: str, language: str, greeting: str, facts: dict) -> str:
             follow = _say(arabic, "How can we help?", "كيف نقدر نساعدك؟")
         return f"{thanks} {follow}"
     if intent == "hours":
+        if facts.get("hours_conflict"):
+            return _say(
+                arabic,
+                "I can't confirm the opening hours because the saved answers disagree.",
+                "لا أستطيع تأكيد ساعات العمل لأن الإجابات المعتمدة متعارضة.",
+            )
         text = facts.get("hours")
         if text:
-            return text
+            if facts.get("hours_followup"):
+                lead = _say(arabic, "You can visit us during these hours:", "يمكنكم الزيارة خلال هذه الساعات:")
+                return f"{lead}\n{text}"
+            if arabic and not ARABIC.search(str(text)):
+                return f"ساعات العمل المسجلة:\n{text}"
+            return str(text)
         return _say(arabic, "Opening hours are not recorded, so I can't confirm them.", "ساعات العمل غير مسجلة.")
     if intent == "branch":
         branches = facts.get("branches") or []
@@ -172,7 +211,14 @@ def compose(intent: str, language: str, greeting: str, facts: dict) -> str:
             lines.append(f"{branch['name']}: {branch['address'] or missing}")
         return "\n".join(lines)
     if intent in {"product", "price", "stock", "list"}:
-        return _products(facts.get("products") or [], arabic, intent, bool(facts.get("truncated")))
+        rows = facts.get("products") or []
+        if not rows and not str(facts.get("named_query") or "").strip():
+            return _say(
+                arabic,
+                "Which product would you like the price of?",
+                "أي منتج تريد معرفة سعره؟",
+            )
+        return _products(rows, arabic, intent, bool(facts.get("truncated")))
     if intent == "restricted":
         return _say(
             arabic,
@@ -290,7 +336,8 @@ def accept_model_text(candidate: str, facts_text: str) -> str | None:
     if not cleaned or len(cleaned) > 800:
         return None
     lowered = cleaned.casefold()
-    if any(phrase in lowered for phrase in ("system prompt", "internal instruction", "ignore previous", "as an ai", "language model")):
+    blocked = ("system prompt", "internal instruction", "ignore previous", "as an ai", "language model")
+    if any(phrase in lowered for phrase in blocked):
         return None
     if any(phrase in lowered for phrase in ("refund has been issued", "payment confirmed", "stock adjusted")):
         return None
@@ -315,4 +362,73 @@ def accept_care_reply(candidate: str, verified: str, intent: str) -> str | None:
         return None
     if intent in {"greeting", "wellbeing"} and generic:
         return None
+    # A greeting does not answer a product, price, or follow-up question.
+    if intent not in {"greeting", "wellbeing"} and _mostly_greeting(accepted):
+        return None
+    if intent == "wellbeing" and _mostly_greeting(accepted):
+        return None
+    if intent == "hours" and not hours_match(accepted, verified):
+        return None
     return accepted
+
+
+_DAYS = (
+    "monday",
+    "tuesday",
+    "wednesday",
+    "thursday",
+    "friday",
+    "saturday",
+    "sunday",
+    "الاثنين",
+    "الثلاثاء",
+    "الأربعاء",
+    "الخميس",
+    "الجمعة",
+    "السبت",
+    "الأحد",
+)
+
+
+def clock_tokens(text: str) -> set[str]:
+    """Clock mentions such as 9AM or 8:00 PM. Bare numbers are not times."""
+    found: set[str] = set()
+    for match in re.finditer(r"\b(\d{1,2})(?::(\d{2}))?\s*(am|pm)\b", text.casefold()):
+        hour = int(match.group(1))
+        if hour > 12 and match.group(3):
+            continue
+        minute = match.group(2) or "00"
+        found.add(f"{hour}:{minute}{match.group(3)}")
+    return found
+
+
+def day_tokens(text: str) -> set[str]:
+    folded = text.casefold()
+    return {day for day in _DAYS if day in folded}
+
+
+def hours_match(candidate: str, verified: str) -> bool:
+    """A reply may rephrase the approved hours. It may not change the times or the days."""
+    expected_clocks = clock_tokens(verified)
+    got_clocks = clock_tokens(candidate)
+    if expected_clocks != got_clocks:
+        return False
+    expected_days = day_tokens(verified)
+    if expected_days and expected_days != day_tokens(candidate):
+        return False
+    return True
+
+
+def is_hours_title(title: str) -> bool:
+    folded = title.casefold()
+    return any(word in folded for word in ("hour", "timing", "ساعات", "مواعيد"))
+
+
+def _mostly_greeting(text: str) -> bool:
+    folded = _plain(text)
+    if re.search(r"\d", text):
+        return False
+    if len(folded.split()) > 18:
+        return False
+    openings = ("hello", "hi", "hey", "welcome", "how can we help", "how can i help", "how may i help")
+    return folded in {"hello", "hi", "hey"} or any(folded.startswith(opening) for opening in openings)

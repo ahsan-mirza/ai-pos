@@ -128,16 +128,27 @@ def latest_staff_at(db: Session, conversation_id) -> datetime | None:
     ).all()
     for row in rows:
         echo = isinstance(row.evidence, dict) and row.evidence.get("origin") == "human_device"
-        if echo and db.scalar(
-            select(ReachAiMessage.id).where(
-                ReachAiMessage.conversation_id == conversation_id,
-                ReachAiMessage.author == "customer",
-                ReachAiMessage.body == row.body,
-            )
-        ):
+        if echo and _copied_existing_text(db, conversation_id, row.body):
             continue
         return aware(row.created_at)
     return None
+
+
+def _copied_existing_text(db: Session, conversation_id, body: str) -> bool:
+    """True when this text is already a customer line or an AI reply. A phone echo is not a person."""
+    folded = body.strip()
+    if not folded:
+        return False
+    return (
+        db.scalar(
+            select(ReachAiMessage.id).where(
+                ReachAiMessage.conversation_id == conversation_id,
+                ReachAiMessage.author.in_(("customer", "ai")),
+                ReachAiMessage.body == folded,
+            )
+        )
+        is not None
+    )
 
 
 def staff_has_answered(staff_at: datetime | None, message_at: datetime) -> bool:
@@ -222,14 +233,7 @@ def release_mirrored_takeover(db: Session, conversation: ReachAiConversation) ->
     )
     if staff is None or not isinstance(staff.evidence, dict) or staff.evidence.get("origin") != "human_device":
         return False
-    same = db.scalar(
-        select(ReachAiMessage.id).where(
-            ReachAiMessage.conversation_id == conversation.id,
-            ReachAiMessage.author == "customer",
-            ReachAiMessage.body == staff.body,
-        )
-    )
-    if same is None:
+    if not _copied_existing_text(db, conversation.id, staff.body):
         return False
     conversation.handler = "ai"
     if conversation.status != "resolved":

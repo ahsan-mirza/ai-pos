@@ -173,6 +173,7 @@ def test_signup_provisions_a_practice_store_and_hands_the_owner_over(signup: Tes
     assert checklist["store_name"] == "Al Noor Mobiles"
     by_key = {item["key"]: item for item in checklist["items"]}
     assert by_key["catalogue"]["done"] is False
+    assert by_key["catalogue"]["skippable"] is True
     assert by_key["explore"]["done"] is False
     assert by_key["configure"]["done"] is True
     assert checklist["subscription_state"] == "trial"
@@ -192,6 +193,10 @@ def test_signup_provisions_a_practice_store_and_hands_the_owner_over(signup: Tes
     skipped = signup.post("/api/v1/onboarding/skip", headers=headers, json={"key": "invite"}).json()
     team = next(item for item in skipped["items"] if item["key"] == "team")
     assert team["skipped"] is True and team["done"] is False
+    catalogue = signup.post("/api/v1/onboarding/skip", headers=headers, json={"key": "catalogue"}).json()
+    products = next(item for item in catalogue["items"] if item["key"] == "catalogue")
+    assert products["skipped"] is True and products["done"] is True and products["skippable"] is False
+    assert catalogue["next_key"] != "catalogue"
     kept = signup.get("/api/v1/onboarding/checklist", headers=headers).json()
     assert next(item for item in kept["items"] if item["key"] == "team")["skipped"] is True
     _allow_go_live("alnoor")
