@@ -602,6 +602,12 @@ export function approveReturn(username: string, pin: string): Promise<CashierPro
   return invoke<CashierProfile>("approve_return", { username, pin });
 }
 
+/** A return confirmed on the server. Saved locally as already synced so the sale list updates without a push. */
+export function recordRemoteReturn(notice: Record<string, unknown>): Promise<void> {
+  if (!inTauri()) return Promise.resolve();
+  return invoke("note_remote_return", { notice });
+}
+
 export function enqueueReturn(batchId: string, events: SyncEvent[]): Promise<void> {
   const queued = events.map((event) => ({ id: crypto.randomUUID(), ...event }));
   return invoke("enqueue_return", { batchId, events: queued });

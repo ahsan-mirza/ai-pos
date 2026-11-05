@@ -315,6 +315,7 @@ def apply_sale_return(db: Session, settings: Settings, payload: dict[str, object
         from app.services.einvoicing_bridge import note_return
 
         note_return(db, tenant_id=record.tenant_id, return_id=record.id)
+    if record is not None:
         sale = db.get(Sale, record.original_sale_id)
         if sale is not None:
             announce_return(
@@ -323,6 +324,9 @@ def apply_sale_return(db: Session, settings: Settings, payload: dict[str, object
                 sale,
                 quantity=sum(line.quantity for line in data.items),
                 provider_refund=any(CHANNEL_OF_REFUND.get(line.method) for line in data.tenders),
+                items=[
+                    {"sale_item_id": str(line.sale_item_id), "quantity": line.quantity} for line in data.items
+                ],
             )
     return return_id
 

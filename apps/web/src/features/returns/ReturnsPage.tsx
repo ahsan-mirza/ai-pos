@@ -9,11 +9,8 @@ import { AlertTriangle } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Sparkline, SplitBar } from "../../components/charts/Charts";
 import { SegmentedControl } from "../../components/ui/SegmentedControl";
-import { env } from "../../config/env";
-import { apiGet, getAccessToken } from "../../lib/api";
-import { useAuth } from "../../lib/auth";
+import { apiGet } from "../../lib/api";
 import { useCurrency } from "../../lib/currency";
-import { useStoreScope } from "../../lib/storeScope";
 
 const options = [
   { value: AnalyticsTimeframe.AllTime, label: "All time" },
@@ -56,9 +53,6 @@ const dateTime = (value: string) =>
 
 export function ReturnsPage() {
   const { currency } = useCurrency();
-  const { user } = useAuth();
-  const { storeId: scopedStore } = useStoreScope();
-  const storeId = scopedStore ?? user?.store_id ?? null;
   const [timeframe, setTimeframe] = useState<AnalyticsTimeframe>(AnalyticsTimeframe.AllTime);
   const [data, setData] = useState<ReturnsAnalytics | null>(null);
   const [failed, setFailed] = useState(false);
@@ -80,48 +74,21 @@ export function ReturnsPage() {
   }, [timeframe, currency, reloadKey]);
 
   useEffect(() => {
-    let socket: WebSocket | null = null;
-    let timer = 0;
-    let stopped = false;
     const refresh = () => setReloadKey((value) => value + 1);
     const onVisible = () => {
       if (document.visibilityState === "visible") refresh();
     };
     const poll = window.setInterval(onVisible, 15_000);
     window.addEventListener("focus", refresh);
+    window.addEventListener("portal-sale-return", refresh);
     document.addEventListener("visibilitychange", onVisible);
-    const token = getAccessToken();
-    if (token && storeId) {
-      const open = () => {
-        if (stopped) return;
-        const base = env.apiBaseUrl.replace(/^http/, "ws");
-        const tenant = env.tenantDomain ? `&tenant=${encodeURIComponent(env.tenantDomain)}` : "";
-        socket = new WebSocket(
-          `${base}/api/v1/ws/live?token=${encodeURIComponent(token)}&role=portal&store_id=${encodeURIComponent(storeId)}${tenant}`,
-        );
-        socket.onmessage = (message) => {
-          try {
-            const event = JSON.parse(String(message.data)) as { type?: string };
-            if (event.type === "pos.sale_return.processed") refresh();
-          } catch {
-            // A bad frame does not close the socket.
-          }
-        };
-        socket.onclose = () => {
-          if (!stopped) timer = window.setTimeout(open, 2000);
-        };
-      };
-      open();
-    }
     return () => {
-      stopped = true;
       window.clearInterval(poll);
-      window.clearTimeout(timer);
       window.removeEventListener("focus", refresh);
+      window.removeEventListener("portal-sale-return", refresh);
       document.removeEventListener("visibilitychange", onVisible);
-      socket?.close();
     };
-  }, [storeId]);
+  }, []);
 
   if (data === null) {
     return (

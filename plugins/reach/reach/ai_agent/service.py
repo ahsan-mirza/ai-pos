@@ -28,6 +28,7 @@ from reach.ai_agent.hold import (
     close_wait,
     due,
     release_mirrored_takeover,
+    reopen_unanswered,
     response_policy,
     suppress_pending,
     wait_seconds,
@@ -338,6 +339,7 @@ def process_pending(db: Session, settings: Settings, limit: int = 20) -> str:
     for conversation in held:
         if release_mirrored_takeover(db, conversation):
             logger.info("[AXIZREACH_AI] mirrored_takeover_released")
+    reopen_unanswered(db)
     db.flush()
     pending = db.scalars(
         select(ReachAiMessage)
@@ -493,10 +495,25 @@ def _reply_to_batch(db: Session, settings: Settings, agent: ReachAiAgent, policy
     conversation = db.get(ReachAiConversation, newest.conversation_id)
     if conversation is not None and release_mirrored_takeover(db, conversation):
         logger.info("[AXIZREACH_AI] mirrored_takeover_released")
-    if conversation is None or conversation.handler != "ai" or conversation.status == "resolved":
+    if conversation is None or conversation.status == "resolved":
         for item in batch:
             item.status = "stored"
         return False
+    if conversation.handler != "ai":
+        # A person at the phone still has the chat. Leave the customer line received so the
+        # idle wait can answer it. Marking it stored here made the fallback skip it forever.
+        if policy["response_priority"] != "human_first" or not due(newest.created_at, policy):
+            return False
+        conversation.handler = "ai"
+        conversation.status = "waiting_staff"
+        db.add(
+            ReachAiEvent(
+                conversation_id=conversation.id,
+                kind="idle_fallback",
+                detail="Staff were idle, so the assistant answered.",
+            )
+        )
+        logger.info("[AXIZREACH_AI] idle_fallback")
     if not due(newest.created_at, policy):
         return False
     if not claim(db, batch):

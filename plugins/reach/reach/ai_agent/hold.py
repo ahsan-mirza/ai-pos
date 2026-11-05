@@ -119,6 +119,39 @@ def close_wait(db: Session, conversation_id) -> None:
     _close_wait(db, conversation_id)
 
 
+def reopen_unanswered(db: Session) -> None:
+    """A customer line that nobody answered has to stay visible to the reply job.
+
+    A staff reply used to mark every later customer message stored. The job only reads
+    status "received", so those lines never reached the idle fallback.
+    """
+    waiting = db.scalars(
+        select(ReachAiMessage).where(ReachAiMessage.author == "customer", ReachAiMessage.status == "stored")
+    ).all()
+    if not waiting:
+        return
+    answered = set(
+        db.scalars(select(ReachAiMessage.reply_to_id).where(ReachAiMessage.reply_to_id.is_not(None))).all()
+    )
+    for message in waiting:
+        if message.id in answered or message.body.startswith("A media message arrived."):
+            continue
+        conversation = db.get(ReachAiConversation, message.conversation_id)
+        if conversation is None or conversation.status == "resolved":
+            continue
+        later = db.scalar(
+            select(ReachAiMessage.id).where(
+                ReachAiMessage.conversation_id == message.conversation_id,
+                ReachAiMessage.direction == "out",
+                ReachAiMessage.author.in_(("staff", "ai")),
+                ReachAiMessage.created_at > message.created_at,
+            )
+        )
+        if later is not None:
+            continue
+        message.status = "received"
+
+
 def suppress_pending(db: Session, conversation: ReachAiConversation) -> None:
     """A staff reply wins. Pending customer messages are closed and unsent AI outbox rows are skipped."""
     db.execute(

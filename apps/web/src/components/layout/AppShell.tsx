@@ -8,6 +8,7 @@ import { FirstWinChecklist } from "../../features/onboarding/FirstWinChecklist";
 import { PracticeBanner, PracticeProvider, TaxPortalBanner } from "../../features/onboarding/practice";
 import { portalRouteAllowed } from "../../lib/industry";
 import { portalHomePath } from "../../lib/portal-home";
+import { SaleReturnLive } from "../../features/returns/saleReturnLive";
 import { StoreScopeProvider } from "../../lib/storeScope";
 import { AssistantDrawer } from "../../features/assistant/AssistantDrawer";
 import { AssistantProvider } from "../../features/assistant/AssistantProvider";
@@ -54,6 +55,7 @@ export function AppShell() {
 
   return (
     <StoreScopeProvider>
+      <SaleReturnLive />
       <PracticeProvider>
         <AssistantProvider>
           <div className="flex h-dvh w-screen overflow-hidden bg-[#f8fafc] font-sans text-charcoal">

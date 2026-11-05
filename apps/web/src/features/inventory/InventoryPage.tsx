@@ -91,6 +91,12 @@ export function InventoryPage() {
   }, [reload]);
 
   useEffect(() => {
+    const bump = () => reload();
+    window.addEventListener("portal-sale-return", bump);
+    return () => window.removeEventListener("portal-sale-return", bump);
+  }, [reload]);
+
+  useEffect(() => {
     if (!requestedProduct || requestedProduct === openedProduct.current || live === null) return;
     const found = live.find((product) => product.id === requestedProduct);
     if (found) {

@@ -310,6 +310,62 @@ pub fn approve(
     Ok(approver)
 }
 
+/// A return already committed on the server. Stored as synced so this register shows it and does not push it again.
+pub fn note_remote(db: &Db, notice: &Value) -> Result<(), String> {
+    let return_id = text_str(notice, "return_id");
+    let sale_id = text_str(notice, "original_sale_id");
+    if return_id.is_empty() || sale_id.is_empty() {
+        return Ok(());
+    }
+    let processed = text_str(notice, "processed_at");
+    let occurred = if processed.is_empty() {
+        format!("{}", auth::now_secs())
+    } else {
+        processed
+    };
+    let payload = serde_json::json!({
+        "id": return_id,
+        "original_sale_id": sale_id,
+        "credit_note_number": text_str(notice, "return_number"),
+        "processed_at": occurred,
+        "total_refund_cents": notice.get("refund_amount_cents").and_then(Value::as_i64).unwrap_or(0),
+        "shift_id": text_str(notice, "shift_id"),
+        "items": notice.get("items").cloned().unwrap_or(Value::Array(Vec::new())),
+    });
+    let serialized = serde_json::to_string(&payload).map_err(|err| err.to_string())?;
+    db.transaction(|tx| {
+        let queued: i64 = tx
+            .query_row(
+                "SELECT COUNT(*) FROM sync_queue
+                 WHERE entity_type = 'sale_return' AND json_extract(payload, '$.id') = ?1",
+                params![return_id],
+                |row| row.get(0),
+            )
+            .map_err(|err| err.to_string())?;
+        if queued > 0 {
+            return Ok(());
+        }
+        tx.execute(
+            "INSERT INTO sync_queue
+                (id, batch_id, idempotency_key, entity_type, operation, payload, occurred_at, status, attempts, created_at)
+             VALUES (?1, ?1, ?2, 'sale_return', 'upsert', ?3, ?4, 'synced', 0, ?4)",
+            params![return_id, format!("remote:{return_id}"), serialized, occurred],
+        )
+        .map_err(|err| err.to_string())?;
+        tx.execute(
+            "INSERT OR IGNORE INTO local_returns (id, sale_id, batch_id, payload, created_at)
+             VALUES (?1, ?2, ?1, ?3, ?4)",
+            params![return_id, sale_id, serialized, auth::now_secs()],
+        )
+        .map_err(|err| err.to_string())?;
+        Ok(())
+    })
+}
+
+fn text_str(value: &Value, key: &str) -> String {
+    value.get(key).and_then(Value::as_str).unwrap_or("").trim().to_string()
+}
+
 /// Queues one return and mirrors it in `local_returns` in the same transaction.
 pub fn enqueue(
     db: &Db,

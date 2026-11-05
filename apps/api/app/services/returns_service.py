@@ -572,30 +572,78 @@ def apply_return(db: Session, settings: Settings, payload: dict[str, object]) ->
     return data.id
 
 
-def announce_return(db: Session, record: SaleReturn, sale: Sale, *, quantity: int, provider_refund: bool) -> None:
+def return_event(
+    record: SaleReturn,
+    sale: Sale,
+    *,
+    quantity: int,
+    provider_refund: bool,
+    items: list[dict[str, object]] | None = None,
+) -> dict[str, object]:
+    processed = record.created_at
+    shift_id = getattr(record, "shift_id", None)
+    return {
+        "type": "pos.sale_return.processed",
+        "event_id": str(record.id),
+        "store_id": str(record.store_id),
+        "original_sale_id": str(sale.id),
+        "original_invoice_number": _invoice(sale),
+        "return_id": str(record.id),
+        "return_number": record.credit_note_number,
+        "refund_status": "pending" if provider_refund else "completed",
+        "sale_status": sale.status,
+        "returned_quantity": quantity,
+        "refund_amount_cents": record.total_refund_cents,
+        "currency": record.currency,
+        "shift_id": str(shift_id) if shift_id is not None else None,
+        "items": items or [],
+        "processed_at": processed.isoformat() if processed is not None else None,
+    }
+
+
+def announce_return(
+    db: Session,
+    record: SaleReturn,
+    sale: Sale,
+    *,
+    quantity: int,
+    provider_refund: bool,
+    items: list[dict[str, object]] | None = None,
+) -> None:
     """Queue the store-room event. It is sent only after this session commits."""
     from app.websockets import rooms
 
-    processed = record.created_at
     rooms.queue(
         db,
         rooms.pos_terminals_room(record.store_id),
-        {
-            "type": "pos.sale_return.processed",
-            "event_id": str(record.id),
-            "store_id": str(record.store_id),
-            "original_sale_id": str(sale.id),
-            "original_invoice_number": _invoice(sale),
-            "return_id": str(record.id),
-            "return_number": record.credit_note_number,
-            "refund_status": "pending" if provider_refund else "completed",
-            "sale_status": sale.status,
-            "returned_quantity": quantity,
-            "refund_amount_cents": record.total_refund_cents,
-            "currency": record.currency,
-            "processed_at": processed.isoformat() if processed is not None else None,
-        },
+        return_event(record, sale, quantity=quantity, provider_refund=provider_refund, items=items),
     )
+
+
+def recent_return_events(db: Session, store_id: uuid.UUID, limit: int = 40) -> list[dict[str, object]]:
+    """Returns already on file, so a register or portal that opens late still shows them."""
+    rows = db.scalars(
+        select(SaleReturn)
+        .where(SaleReturn.store_id == store_id)
+        .options(selectinload(SaleReturn.items))
+        .order_by(SaleReturn.created_at.desc())
+        .limit(limit)
+    ).all()
+    events: list[dict[str, object]] = []
+    for record in rows:
+        sale = db.get(Sale, record.original_sale_id)
+        if sale is None:
+            continue
+        events.append(
+            return_event(
+                record,
+                sale,
+                quantity=sum(line.quantity for line in record.items),
+                provider_refund=False,
+                items=[{"sale_item_id": str(line.sale_item_id), "quantity": line.quantity} for line in record.items],
+            )
+        )
+    return events
 
 
 # --- Reads ---------------------------------------------------------------------------------------

@@ -243,6 +243,8 @@ def checklist(db: Session, settings: Settings) -> Checklist:
     elif invited:
         team_hint = "A teammate already has a login. Create a register and enter its key in the Windows Register."
     payment_waiting = state in {"pending_review", "rejected", "awaiting_proof", "revoked"}
+    # active and grace mean the invoice was verified. Go live is no longer offered.
+    invoice_verified = state in {"active", "grace"}
     items = [
         ChecklistItem(
             key="explore",
@@ -295,10 +297,12 @@ def checklist(db: Session, settings: Settings) -> Checklist:
             key="activate",
             label="Activate your store",
             hint=(
-                "Choose a plan and activate live operations after payment is verified. "
+                "The invoice is verified."
+                if invoice_verified
+                else "Choose a plan and activate live operations after payment is verified. "
                 "Uploading a receipt does not activate the store."
             ),
-            done=row.live_at is not None,
+            done=row.live_at is not None or invoice_verified,
             href="/subscription" if payment_waiting else "#go-live",
             action=(
                 "View submission status"

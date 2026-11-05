@@ -1,6 +1,7 @@
 import { DataTable, Select, type DataTableColumn } from "@ai-pos/ui";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
+import { useConfirm } from "../components/ConfirmDialog";
 import { FilterSearch, FilterSlot, PageHeader } from "../components/PageHeader";
 import { ErrorNote, GhostButton, PrimaryButton } from "../components/ui";
 import { api, consoleBlob, errorText } from "../lib/api";
@@ -60,6 +61,7 @@ function mask(value: string): string {
 
 export function PaymentsPage() {
   const { operator } = useSession();
+  const confirm = useConfirm();
   const { revision } = usePaymentReviews();
   const [params] = useSearchParams();
   const focusId = params.get("transfer");
@@ -137,8 +139,13 @@ export function PaymentsPage() {
   };
 
   const approve = async (row: TransferRow) => {
-    const summary = `Verify ${row.tenant_name} (${row.tenant_slug || "store"}), invoice ${row.invoice_id.slice(0, 8)}, ${money(row.invoice_total_fils, row.currency)}, plan ${row.plan_code || "package"} ${row.cycle_code}? This activates the subscription.`;
-    if (!window.confirm(summary)) return;
+    const accepted = await confirm({
+      title: "Verify and activate",
+      message: `Verify ${row.tenant_name} (${row.tenant_slug || "store"}), invoice ${row.invoice_id.slice(0, 8)}, ${money(row.invoice_total_fils, row.currency)}, plan ${row.plan_code || "package"} ${row.cycle_code}. This activates the subscription.`,
+      confirmLabel: "Verify and activate",
+      cancelLabel: "Cancel",
+    });
+    if (!accepted) return;
     try {
       await api.post(`/billing/transfers/${row.id}/approve`, {});
       load();

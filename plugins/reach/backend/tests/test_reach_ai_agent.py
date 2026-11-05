@@ -376,6 +376,78 @@ def test_device_reply_is_human_and_an_ai_echo_is_not(client, session, monkeypatc
     set_handler(None)
 
 
+def test_idle_staff_does_not_block_the_next_customer_message(client, session, monkeypatch) -> None:
+    set_handler(lambda method, path, body: {"instance": {"state": "open"}, "key": {"id": "OUT-IDLE"}})
+    settings = get_settings()
+    headers = _ready(client, session, settings)
+    current = client.get("/api/v1/reach/ai/agent", headers=headers).json()
+    current["response_priority"] = "human_first"
+    current["human_wait_seconds"] = 30
+    saved = client.put("/api/v1/reach/ai/agent", headers=headers, json=current)
+    assert saved.status_code == 200, saved.text
+    _incoming(client, session, "Hello there", "IN-IDLE-1")
+    key = session.scalar(select(ReachConnection.webhook_key))
+    device = client.post(
+        f"/api/v1/reach/webhooks/evolution/{key}",
+        headers={"apikey": "hook-secret"},
+        json={
+            "eventId": "IDLE-DEVICE",
+            "event": "messages.upsert",
+            "data": {
+                "key": {"remoteJid": "971501110011@s.whatsapp.net", "fromMe": True, "id": "IDLE-DEVICE"},
+                "message": {"conversation": "I am at the counter."},
+            },
+        },
+    )
+    assert device.status_code == 200, device.text
+    _incoming(client, session, "Are you still there?", "IN-IDLE-2")
+    assert run_job(session, settings, "reach_ai_replies") == "ok"
+    session.expire_all()
+    early = session.scalar(
+        select(func.count()).select_from(OutboundMessage).where(OutboundMessage.template_key == "ai_agent")
+    )
+    assert early == 0
+    pending = session.scalar(select(ReachAiMessage).where(ReachAiMessage.provider_message_id == "IN-IDLE-2"))
+    assert pending.status == "received"
+    pending.created_at = datetime.now(UTC) - timedelta(minutes=2)
+    session.commit()
+    assert run_job(session, settings, "reach_ai_replies") == "ok"
+    session.expire_all()
+    reply = session.scalar(select(OutboundMessage).where(OutboundMessage.template_key == "ai_agent"))
+    assert reply is not None
+    assert reply.status == "SENT"
+    listed = client.get("/api/v1/reach/ai/conversations", headers=headers)
+    assert listed.json()[0]["handler"] == "ai"
+    monkeypatch.setattr(settings, "assistant_provider", "builtin")
+    set_handler(None)
+
+
+def test_a_stored_unanswered_line_is_picked_up_after_the_wait(client, session, monkeypatch) -> None:
+    set_handler(lambda method, path, body: {"instance": {"state": "open"}, "key": {"id": "OUT-STORED"}})
+    settings = get_settings()
+    headers = _ready(client, session, settings)
+    current = client.get("/api/v1/reach/ai/agent", headers=headers).json()
+    current["response_priority"] = "human_first"
+    current["human_wait_seconds"] = 30
+    assert client.put("/api/v1/reach/ai/agent", headers=headers, json=current).status_code == 200
+    _incoming(client, session, "Hello there", "IN-STORED")
+    session.expire_all()
+    incoming = session.scalar(select(ReachAiMessage).where(ReachAiMessage.provider_message_id == "IN-STORED"))
+    incoming.status = "stored"
+    incoming.created_at = datetime.now(UTC) - timedelta(minutes=2)
+    conversation = session.get(ReachAiConversation, incoming.conversation_id)
+    conversation.handler = "ai"
+    conversation.status = "open"
+    session.commit()
+    assert run_job(session, settings, "reach_ai_replies") == "ok"
+    session.expire_all()
+    reply = session.scalar(select(OutboundMessage).where(OutboundMessage.template_key == "ai_agent"))
+    assert reply is not None
+    assert reply.status == "SENT"
+    monkeypatch.setattr(settings, "assistant_provider", "builtin")
+    set_handler(None)
+
+
 def test_one_waiting_window_gets_one_ai_reply(client, session, monkeypatch) -> None:
     set_handler(lambda method, path, body: {"instance": {"state": "open"}, "key": {"id": "OUT-G"}})
     settings = get_settings()

@@ -172,13 +172,16 @@ export function useCatalogUpdates(reload: () => void): void {
     void poll();
     const timer = window.setInterval(() => void poll(), CATALOG_POLL_MS);
     const again = () => void poll();
+    const onReturn = () => reload();
     window.addEventListener("online", again);
     window.addEventListener("focus", again);
+    window.addEventListener("pos-return-processed", onReturn);
     return () => {
       cancelled = true;
       window.clearInterval(timer);
       window.removeEventListener("online", again);
       window.removeEventListener("focus", again);
+      window.removeEventListener("pos-return-processed", onReturn);
     };
   }, [reload]);
 }

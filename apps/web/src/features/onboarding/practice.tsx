@@ -123,6 +123,8 @@ export function PracticeBanner() {
   const paymentSubmitted = ["pending_review", "rejected", "awaiting_proof", "revoked"].includes(
     checklist?.subscription_state ?? "",
   );
+  // A verified invoice already activated the subscription. Go live is the unpaid checkout path.
+  const invoiceVerified = checklist?.subscription_state === "active" || checklist?.subscription_state === "grace";
   if (!practice) return null;
   return (
     <div
@@ -131,10 +133,12 @@ export function PracticeBanner() {
     >
       <FlaskConical size={16} aria-hidden="true" className="shrink-0" />
       <p className="min-w-0 flex-1">
-        <strong className="font-semibold">Practice mode.</strong> Sample items and test sales are cleared when you go
-        live.
+        <strong className="font-semibold">Practice mode.</strong>{" "}
+        {invoiceVerified
+          ? "The invoice is verified."
+          : "Sample items and test sales are cleared when you go live."}
       </p>
-      {canManage && !paymentSubmitted ? (
+      {canManage && !paymentSubmitted && !invoiceVerified ? (
         <button
           type="button"
           onClick={openGoLive}

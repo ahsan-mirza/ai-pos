@@ -24,6 +24,13 @@ export function DashboardPage() {
   const [timeframe, setTimeframe] = useState<AnalyticsTimeframe>(AnalyticsTimeframe.AllTime);
   const [summary, setSummary] = useState<AnalyticsSummary | null>(null);
   const [failed, setFailed] = useState(false);
+  const [revision, setRevision] = useState(0);
+
+  useEffect(() => {
+    const bump = () => setRevision((value) => value + 1);
+    window.addEventListener("portal-sale-return", bump);
+    return () => window.removeEventListener("portal-sale-return", bump);
+  }, []);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -39,7 +46,7 @@ export function DashboardPage() {
         if (!controller.signal.aborted) setFailed(true);
       });
     return () => controller.abort();
-  }, [timeframe, currency]);
+  }, [timeframe, currency, revision]);
 
   if (summary === null) {
     return (

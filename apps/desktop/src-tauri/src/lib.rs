@@ -541,6 +541,11 @@ async fn approve_return(
 }
 
 #[tauri::command]
+fn note_remote_return(state: tauri::State<AppState>, notice: serde_json::Value) -> Result<(), String> {
+    returns::note_remote(&state.db, &notice)
+}
+
+#[tauri::command]
 fn enqueue_return(
     state: tauri::State<AppState>,
     batch_id: String,
@@ -779,6 +784,7 @@ pub fn run() {
             enqueue_events,
             lookup_receipt,
             approve_return,
+            note_remote_return,
             enqueue_return,
             recent_returns,
             pending_count,

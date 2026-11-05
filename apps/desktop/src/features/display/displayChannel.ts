@@ -71,6 +71,7 @@ export interface SaleReturnNotice {
   eventId: string;
   invoice: string;
   returnId: string;
+  raw: Record<string, unknown>;
 }
 
 const returnListeners = new Set<(event: SaleReturnNotice) => void>();
@@ -87,6 +88,7 @@ function noteReturn(raw: unknown): void {
     eventId,
     invoice: typeof event.original_invoice_number === "string" ? event.original_invoice_number : "",
     returnId: typeof event.return_id === "string" ? event.return_id : eventId,
+    raw: event,
   };
   for (const listener of returnListeners) listener(notice);
 }

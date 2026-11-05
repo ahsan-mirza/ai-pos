@@ -162,6 +162,12 @@ export function SalesInsightsPage() {
   const [selectedStaff, setSelectedStaff] = useState<StaffRow | null>(null);
   const [returning, setReturning] = useState<string | null>(null);
   const [revision, setRevision] = useState(0);
+
+  useEffect(() => {
+    const bump = () => setRevision((value) => value + 1);
+    window.addEventListener("portal-sale-return", bump);
+    return () => window.removeEventListener("portal-sale-return", bump);
+  }, []);
   const { user, can } = useAuth();
   const canReturn = can(Permission.PosRefund);
 

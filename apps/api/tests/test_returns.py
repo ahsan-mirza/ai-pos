@@ -42,12 +42,20 @@ def test_return_event_waits_for_commit() -> None:
         created_at=datetime(2026, 11, 5, tzinfo=UTC),
     )
     db = SimpleNamespace(info={})
-    announce_return(db, record, sale, quantity=2, provider_refund=True)
+    announce_return(
+        db,
+        record,
+        sale,
+        quantity=2,
+        provider_refund=True,
+        items=[{"sale_item_id": "line-1", "quantity": 2}],
+    )
     room, payload = db.info[QUEUE][0]
     assert payload["type"] == "pos.sale_return.processed"
     assert payload["original_invoice_number"] == "MAIN-RE01-000002"
     assert payload["refund_status"] == "pending"
     assert payload["returned_quantity"] == 2
+    assert payload["items"] == [{"sale_item_id": "line-1", "quantity": 2}]
     assert payload["event_id"] == str(record.id)
     assert str(record.store_id) in room
 

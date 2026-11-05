@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { TableAlertProvider } from "../../features/alerts/TableAlertContext";
 import { listenForSaleReturns } from "../../features/display/displayChannel";
+import { recordRemoteReturn } from "../../lib/tauri";
 import type { CashierSession } from "../../features/auth/session";
 import { useLocale } from "@ai-pos/ui";
 import { useSubscriptionLocked } from "../../lib/capabilities";
@@ -35,13 +36,24 @@ export function RegisterShell({ session, view, onNavigate, onLock, children }: R
     [session, view, setNotifier, onNavigate],
   );
 
-  useEffect(
-    () =>
-      listenForSaleReturns(() => {
-        window.dispatchEvent(new CustomEvent("pos-return-processed"));
-      }),
-    [],
-  );
+  useEffect(() => {
+    const pending: Record<string, unknown>[] = [];
+    let timer = 0;
+    const stop = listenForSaleReturns((notice) => {
+      pending.push(notice.raw);
+      window.clearTimeout(timer);
+      timer = window.setTimeout(() => {
+        const batch = pending.splice(0);
+        void Promise.all(batch.map((raw) => recordRemoteReturn(raw).catch(() => undefined))).then(() => {
+          window.dispatchEvent(new CustomEvent("pos-return-processed"));
+        });
+      }, 50);
+    });
+    return () => {
+      window.clearTimeout(timer);
+      stop();
+    };
+  }, []);
 
   return (
     <ShellContext.Provider value={value}>

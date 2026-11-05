@@ -1,4 +1,5 @@
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
+import { ConfirmProvider } from "./components/ConfirmDialog";
 import { Shell } from "./components/Shell";
 import { SessionProvider, useSession } from "./lib/session";
 import { AddonsPage, BillingPage, PackagesPage, SubscriptionsPage } from "./pages/CommercialPage";
@@ -63,7 +64,9 @@ function Console() {
 export function App() {
   return (
     <SessionProvider>
-      <Console />
+      <ConfirmProvider>
+        <Console />
+      </ConfirmProvider>
     </SessionProvider>
   );
 }

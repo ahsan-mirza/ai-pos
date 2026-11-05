@@ -16,7 +16,7 @@ from app.core.permissions import Permission
 from app.models.device import Device
 from app.models.kitchen import KitchenStation, KitchenTicket
 from app.routers.v1.fnb_table_orders import _socket_principal, _socket_session
-from app.services import kitchen_service
+from app.services import kitchen_service, returns_service
 from app.websockets import rooms
 
 router = APIRouter()
@@ -82,6 +82,7 @@ async def live_events(websocket: WebSocket) -> None:
     station_id: uuid.UUID | None = None
     terminal_id: uuid.UUID | None = None
     notify_room = ""
+    catch_up: list[dict[str, object]] = []
     sessions = _socket_session(websocket)
     try:
         db = next(sessions)
@@ -116,6 +117,7 @@ async def live_events(websocket: WebSocket) -> None:
                 return
             room = rooms.pos_terminals_room(store_id)
             notify_room = ""
+            catch_up = returns_service.recent_return_events(db, store_id)
         else:
             try:
                 terminal_id = uuid.UUID(websocket.query_params.get("terminal_id") or "")
@@ -128,6 +130,8 @@ async def live_events(websocket: WebSocket) -> None:
             register = db.get(Device, terminal_id)
             if register is not None:
                 notify_room = rooms.pos_terminals_room(register.store_id)
+                if role == "pos":
+                    catch_up = returns_service.recent_return_events(db, register.store_id)
             room = rooms.terminal_room(terminal_id) if role == "pos" else rooms.customer_display_room(terminal_id)
     except ApiError:
         await websocket.close(code=1008)
@@ -141,6 +145,8 @@ async def live_events(websocket: WebSocket) -> None:
         await rooms.join(websocket, notify_room)
     if notify_room:
         rooms.publish(notify_room, {"type": "peripherals:changed"})
+    for event in catch_up:
+        await websocket.send_json(event)
     if role == "customer-display" and terminal_id is not None:
         current = rooms.latest_cart(str(terminal_id))
         if current is not None:
