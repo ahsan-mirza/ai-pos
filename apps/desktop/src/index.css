@@ -2,10 +2,10 @@
 @import "@fontsource/inter/500.css";
 @import "@fontsource/inter/600.css";
 @import "@fontsource/inter/700.css";
-@import "@fontsource/ibm-plex-sans-arabic/400.css";
-@import "@fontsource/ibm-plex-sans-arabic/500.css";
-@import "@fontsource/ibm-plex-sans-arabic/600.css";
-@import "@fontsource/ibm-plex-sans-arabic/700.css";
+@import "@fontsource/noto-naskh-arabic/arabic-400.css";
+@import "@fontsource/noto-naskh-arabic/arabic-500.css";
+@import "@fontsource/noto-naskh-arabic/arabic-600.css";
+@import "@fontsource/noto-naskh-arabic/arabic-700.css";
 @import "@ai-pos/design-tokens/tokens.css";
 
 @tailwind base;
@@ -13,7 +13,15 @@
 @tailwind utilities;
 
 html[lang="ar"] {
-  line-height: 1.65;
+  line-height: 1.8;
+}
+
+html[lang="ar"] :is(h1, h2, h3, h4) {
+  line-height: 1.45;
+}
+
+html[lang="ar"] :is(button, input, select, textarea) {
+  line-height: 1.5;
 }
 :root {
   --primary: #f26a21;

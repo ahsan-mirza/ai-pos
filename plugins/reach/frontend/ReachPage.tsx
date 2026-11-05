@@ -1,4 +1,5 @@
 import { formatMoney, type MessageChannel } from "@ai-pos/shared-types";
+import { useLocale } from "@ai-pos/ui";
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { useSearchParams } from "react-router-dom";
 import { ErrorNote, PrimaryButton, TextField } from "../../../apps/web/src/components/ui/Field";
@@ -545,6 +546,7 @@ function ConnectionsPanel({
     sent_at: string | null;
   }>;
 }) {
+  const { locale, t } = useLocale();
   const [testTo, setTestTo] = useState("");
   const [testing, setTesting] = useState(false);
   const [testError, setTestError] = useState<string | null>(null);
@@ -604,43 +606,45 @@ function ConnectionsPanel({
               <ChannelMark channel="whatsapp" className="h-5 w-5" />
             </span>
             <div>
-              <h2 className="text-lg font-semibold">Store WhatsApp</h2>
+              <h2 className="text-lg font-semibold">{t("Store WhatsApp")}</h2>
               <p className="mt-1 max-w-xl text-sm leading-6 text-charcoal/60">
-                Connect the number this store uses for marketing. Scan the QR from WhatsApp, then Linked devices.
+                {t("Connect the number this store uses for marketing. Scan the QR from WhatsApp, then Linked devices.")}
               </p>
             </div>
           </div>
-          <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${badge.className}`}>{badge.label}</span>
+          <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${badge.className}`}>{t(badge.label)}</span>
         </div>
         {serviceDown ? (
           <div className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800">
-            <p className="font-medium">WhatsApp connection service is unavailable.</p>
-            <p className="mt-1">{providerDetail || "Evolution API could not be reached."} Existing store settings are unchanged.</p>
+            <p className="font-medium">{t("WhatsApp connection service is unavailable.")}</p>
+            <p className="mt-1">
+              {t(providerDetail || "Evolution API could not be reached.")} {t("Existing store settings are unchanged.")}
+            </p>
             <button type="button" disabled={busy} onClick={onRetry} className="mt-3 inline-flex h-[38px] items-center justify-center rounded-full border border-rose-300 px-4 text-sm font-medium disabled:opacity-40">
-              Retry
+              {t("Retry")}
             </button>
           </div>
         ) : null}
         <dl className="grid grid-cols-1 gap-3 text-sm sm:grid-cols-2">
           <div>
-            <dt className="text-xs text-charcoal/50">WhatsApp number</dt>
-            <dd>{row?.phone_number || "Not connected"}</dd>
+            <dt className="text-xs text-charcoal/50">{t("WhatsApp number")}</dt>
+            <dd dir="ltr" className="text-start">{row?.phone_number || t("Not connected")}</dd>
           </div>
           <div>
-            <dt className="text-xs text-charcoal/50">Last update</dt>
-            <dd>{row?.updated_at ? new Date(row.updated_at).toLocaleString() : "Not connected yet"}</dd>
+            <dt className="text-xs text-charcoal/50">{t("Last update")}</dt>
+            <dd>{row?.updated_at ? new Date(row.updated_at).toLocaleString(locale === "ar" ? "ar-AE-u-nu-latn" : undefined) : t("Not connected yet")}</dd>
           </div>
           <div>
-            <dt className="text-xs text-charcoal/50">Webhook</dt>
-            <dd>{row?.webhook_status || "Not registered"}</dd>
+            <dt className="text-xs text-charcoal/50">{t("Webhook")}</dt>
+            <dd>{row?.webhook_status ? t(row.webhook_status) : t("Not registered")}</dd>
           </div>
           <div>
-            <dt className="text-xs text-charcoal/50">Service</dt>
-            <dd>{providerStatus === "healthy" ? "Available" : providerStatus === "authentication_error" ? "Authentication error" : "Unavailable"}</dd>
+            <dt className="text-xs text-charcoal/50">{t("Connection service")}</dt>
+            <dd>{t(providerStatus === "healthy" ? "Available" : providerStatus === "authentication_error" ? "Authentication error" : "Unavailable")}</dd>
           </div>
         </dl>
         {row?.last_error ? <p className="text-sm text-rose-700">{row.last_error}</p> : null}
-        {timedOut && !open ? <p className="text-sm text-charcoal/70">The connection check timed out. Refresh the QR and scan again.</p> : null}
+        {timedOut && !open ? <p className="text-sm text-charcoal/70">{t("The connection check timed out. Refresh the QR and scan again.")}</p> : null}
         <div className="flex flex-wrap gap-2">
           <button
             type="button"
@@ -648,43 +652,45 @@ function ConnectionsPanel({
             onClick={() => (open && row ? void onStatus(row.id) : onConnect(row?.id ?? null))}
             className="inline-flex h-[38px] items-center justify-center rounded-full bg-accent px-4 text-sm font-medium text-white disabled:opacity-40"
           >
-            {busy ? "Working…" : open ? "Check connection" : qr ? "Refresh QR" : "Connect WhatsApp"}
+            {busy ? t("Working…") : open ? t("Check connection") : qr ? t("Refresh QR") : t("Connect WhatsApp")}
           </button>
           {row ? (
             <button type="button" disabled={busy} onClick={() => void onStatus(row.id)} className="inline-flex h-[38px] items-center justify-center rounded-full border border-line px-4 text-sm font-medium disabled:opacity-40">
-              Refresh status
+              {t("Refresh status")}
             </button>
           ) : null}
           {row && row.status !== "created" ? (
             <button type="button" disabled={busy || serviceDown} onClick={() => onDisconnect(row.id)} className="inline-flex h-[38px] items-center justify-center rounded-full border border-line px-4 text-sm font-medium disabled:opacity-40">
-              Disconnect
+              {t("Disconnect")}
             </button>
           ) : null}
         </div>
         {qr && !open ? (
           <div className="grid justify-items-center gap-2 rounded-xl border border-line bg-surface p-4">
             <img
-              alt="WhatsApp QR code for this store"
+              alt={t("WhatsApp QR code for this store")}
               className={`h-52 w-52 rounded-xl bg-white p-2 ${qrStale ? "opacity-40" : ""}`}
               src={qr.startsWith("data:") ? qr : `data:image/png;base64,${qr}`}
             />
             <p className="text-center text-sm text-charcoal/70">
-              {qrStale ? "This QR may have expired. Refresh it, then scan again." : `Scan within ${Math.max(0, 40 - qrAge)} seconds, then keep this page open.`}
+              {qrStale
+                ? t("This QR may have expired. Refresh it, then scan again.")
+                : t("Scan within {seconds} seconds, then keep this page open.", { seconds: Math.max(0, 40 - qrAge) })}
             </p>
           </div>
         ) : null}
       </section>
       <section className="rounded-card border border-line bg-white p-4 shadow-sm">
-        <h2 className="text-lg font-semibold">Send a test message</h2>
+        <h2 className="text-lg font-semibold">{t("Send a test message")}</h2>
         <p className="mt-1 max-w-2xl text-sm leading-6 text-charcoal/60">
-          Uses the same outbox as other WhatsApp messages. The session must be open, and the channel must use Evolution.
+          {t("Uses the same outbox as other WhatsApp messages. The session must be open, and the channel must use Evolution.")}
         </p>
         <div className="mt-4 flex flex-col gap-2 sm:flex-row">
           <input
             value={testTo}
             onChange={(event) => setTestTo(event.target.value)}
             placeholder="+971501234567"
-            aria-label="Test destination"
+            aria-label={t("Test destination")}
             className="h-10 w-full max-w-sm rounded-xl border border-line bg-surface px-3 text-sm"
           />
           <button
@@ -693,19 +699,19 @@ function ConnectionsPanel({
             onClick={() => void sendTest()}
             className="inline-flex h-[38px] items-center justify-center rounded-full bg-accent px-4 text-sm font-medium text-white disabled:opacity-40"
           >
-            {testing ? "Sending…" : "Send test message"}
+            {testing ? t("Sending…") : t("Send a test message")}
           </button>
         </div>
-        {!open ? <p className="mt-2 text-sm text-charcoal/60">Refresh until the session is open before sending.</p> : null}
+        {!open ? <p className="mt-2 text-sm text-charcoal/60">{t("Refresh until the session is open before sending.")}</p> : null}
         {testError ? <p className="mt-2 text-sm text-rose-700">{testError}</p> : null}
         {testResult ? (
           <dl className="mt-4 grid gap-2 text-sm">
-            <div><dt className="text-xs text-charcoal/50">Recipient</dt><dd>{testResult.to_address}</dd></div>
-            <div><dt className="text-xs text-charcoal/50">Message</dt><dd>{testResult.body}</dd></div>
-            <div><dt className="text-xs text-charcoal/50">Submitted</dt><dd>{new Date(testResult.created_at).toLocaleString()}</dd></div>
-            <div><dt className="text-xs text-charcoal/50">Outbox</dt><dd>{testResult.status} — {testStatusLabel(testResult.status)}</dd></div>
-            {testResult.provider ? <div><dt className="text-xs text-charcoal/50">Provider</dt><dd>{testResult.provider}</dd></div> : null}
-            {testResult.last_error ? <div><dt className="text-xs text-charcoal/50">Error</dt><dd className="text-rose-700">{testResult.last_error}</dd></div> : null}
+            <div><dt className="text-xs text-charcoal/50">{t("Recipient")}</dt><dd dir="ltr" className="text-start">{testResult.to_address}</dd></div>
+            <div><dt className="text-xs text-charcoal/50">{t("Message")}</dt><dd>{testResult.body}</dd></div>
+            <div><dt className="text-xs text-charcoal/50">{t("Submitted")}</dt><dd>{new Date(testResult.created_at).toLocaleString(locale === "ar" ? "ar-AE-u-nu-latn" : undefined)}</dd></div>
+            <div><dt className="text-xs text-charcoal/50">{t("Outbox")}</dt><dd>{testResult.status} — {t(testStatusLabel(testResult.status))}</dd></div>
+            {testResult.provider ? <div><dt className="text-xs text-charcoal/50">{t("Provider")}</dt><dd>{testResult.provider}</dd></div> : null}
+            {testResult.last_error ? <div><dt className="text-xs text-charcoal/50">{t("Error")}</dt><dd className="text-rose-700">{testResult.last_error}</dd></div> : null}
           </dl>
         ) : null}
       </section>

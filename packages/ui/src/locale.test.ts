@@ -14,6 +14,9 @@ describe("locale", () => {
     expect(document.documentElement.lang).toBe("ar");
     expect(document.documentElement.dir).toBe("rtl");
     expect(localize("Dashboard")).toBe("لوحة المعلومات");
+    expect(localize("Scan within {seconds} seconds, then keep this page open.", "ar", { seconds: 12 })).toBe(
+      "امسح خلال 12 ثانية، ثم أبقِ هذه الصفحة مفتوحة.",
+    );
     setLocale("en");
     expect(document.documentElement.lang).toBe("en");
     expect(document.documentElement.dir).toBe("ltr");

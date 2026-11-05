@@ -117,6 +117,57 @@ const arabic: Record<string, string> = {
   Breadcrumb: "مسار التنقل",
   Primary: "القائمة الرئيسية",
   "Locked until payment is verified": "مغلق حتى يتم التحقق من الدفع",
+  "Store WhatsApp": "واتساب المتجر",
+  "Connect the number this store uses for marketing. Scan the QR from WhatsApp, then Linked devices.":
+    "اربط الرقم الذي يستخدمه هذا المتجر للتسويق. امسح رمز QR من واتساب، ثم الأجهزة المرتبطة.",
+  "QR waiting for scan": "بانتظار مسح رمز QR",
+  Connected: "متصل",
+  Connecting: "جارٍ الاتصال",
+  Disconnected: "غير متصل",
+  "Connection error": "خطأ في الاتصال",
+  "Not connected": "غير متصل",
+  "WhatsApp connection service is unavailable.": "خدمة اتصال واتساب غير متاحة.",
+  "Evolution API could not be reached.": "تعذر الوصول إلى واجهة Evolution.",
+  "Existing store settings are unchanged.": "إعدادات المتجر الحالية لم تتغير.",
+  Retry: "إعادة المحاولة",
+  "WhatsApp number": "رقم واتساب",
+  "Last update": "آخر تحديث",
+  "Not connected yet": "لم يتم الاتصال بعد",
+  Webhook: "ويب هوك",
+  "Not registered": "غير مسجّل",
+  registered: "مسجّل",
+  "Connection service": "الخدمة",
+  Available: "متاحة",
+  "Authentication error": "خطأ في المصادقة",
+  Unavailable: "غير متاحة",
+  "The connection check timed out. Refresh the QR and scan again.": "انتهت مهلة فحص الاتصال. حدّث رمز QR ثم امسحه مرة أخرى.",
+  "Working…": "جارٍ العمل…",
+  "Check connection": "فحص الاتصال",
+  "Refresh QR": "تحديث رمز QR",
+  "Connect WhatsApp": "ربط واتساب",
+  "Refresh status": "تحديث الحالة",
+  Disconnect: "قطع الاتصال",
+  "WhatsApp QR code for this store": "رمز QR لواتساب هذا المتجر",
+  "This QR may have expired. Refresh it, then scan again.": "قد يكون رمز QR منتهي الصلاحية. حدّثه ثم امسحه مرة أخرى.",
+  "Scan within {seconds} seconds, then keep this page open.": "امسح خلال {seconds} ثانية، ثم أبقِ هذه الصفحة مفتوحة.",
+  "Send a test message": "إرسال رسالة تجريبية",
+  "Uses the same outbox as other WhatsApp messages. The session must be open, and the channel must use Evolution.":
+    "تستخدم صندوق الإرسال نفسه لرسائل واتساب الأخرى. يجب أن تكون الجلسة متصلة، وأن تستخدم القناة Evolution.",
+  "Test destination": "وجهة الرسالة التجريبية",
+  "Sending…": "جارٍ الإرسال…",
+  "Refresh until the session is open before sending.": "حدّث الحالة حتى تصبح الجلسة متصلة قبل الإرسال.",
+  "The test message was not sent.": "لم تُرسل الرسالة التجريبية.",
+  Recipient: "المستلم",
+  Message: "الرسالة",
+  Submitted: "وقت الإرسال",
+  Outbox: "صندوق الإرسال",
+  Provider: "المزوّد",
+  Error: "خطأ",
+  "Queued. It is in the outbox and has not been accepted yet.": "في الانتظار. الرسالة في صندوق الإرسال ولم تُقبل بعد.",
+  "Accepted by the provider. Delivered and read are shown only after a webhook.":
+    "قبلها المزوّد. يظهر التسليم والقراءة بعد وصول إشعار الويب هوك فقط.",
+  "Failed.": "فشلت.",
+  "Skipped.": "تم التخطي.",
 };
 
 const listeners = new Set<() => void>();
@@ -139,9 +190,16 @@ export function readLocale(): Locale {
   return memory;
 }
 
-export function localize(text: string, locale: Locale = readLocale()): string {
-  if (locale !== "ar") return text;
-  return arabic[text] ?? text;
+export function localize(
+  text: string,
+  locale: Locale = readLocale(),
+  vars?: Record<string, string | number>,
+): string {
+  let value = locale === "ar" ? (arabic[text] ?? text) : text;
+  if (vars) {
+    for (const [key, raw] of Object.entries(vars)) value = value.replaceAll(`{${key}}`, String(raw));
+  }
+  return value;
 }
 
 export function missingArabic(labels: readonly string[]): string[] {

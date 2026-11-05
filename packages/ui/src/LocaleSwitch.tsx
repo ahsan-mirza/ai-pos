@@ -6,7 +6,7 @@ export function useLocale() {
   return {
     locale,
     setLocale,
-    t: (text: string) => localize(text, locale),
+    t: (text: string, vars?: Record<string, string | number>) => localize(text, locale, vars),
   };
 }
 
