@@ -150,9 +150,20 @@ export interface AppTheme {
   breakpoint: typeof breakpoint;
 }
 
-export function createTheme(primary: string = palette.primary): AppTheme {
+export const darkPalette: AppTheme["colors"] = {
+  ...palette,
+  canvas: "#161418",
+  surface: "#221F26",
+  surfaceMuted: "#2C2930",
+  text: "#F4F5F7",
+  textSecondary: "#A8A3AD",
+  border: "#3A3640",
+};
+
+export function createTheme(primary: string = palette.primary, mode: "light" | "dark" = "light"): AppTheme {
+  const base = mode === "dark" ? darkPalette : palette;
   return {
-    colors: { ...palette, primary, primaryPressed: primary },
+    colors: { ...base, primary, primaryPressed: primary },
     fontSize,
     lineHeight,
     fontWeight,

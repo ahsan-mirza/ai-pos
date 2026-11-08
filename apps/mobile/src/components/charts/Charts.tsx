@@ -20,6 +20,24 @@ function ChartFrame(props: { title?: string; empty: boolean; children: (width: n
   );
 }
 
+export function MiniSpark(props: { values: number[] }) {
+  const theme = useTheme();
+  const values = props.values.filter((value) => Number.isFinite(value));
+  if (values.length < 2) return null;
+  const width = 72;
+  const height = 28;
+  const max = Math.max(...values);
+  const min = Math.min(...values);
+  const span = max - min || 1;
+  const step = width / (values.length - 1);
+  const points = values.map((value, index) => `${index * step},${height - ((value - min) / span) * (height - 4) - 2}`);
+  return (
+    <Svg width={width} height={height} accessibilityElementsHidden>
+      <Path d={`M ${points.join(" L ")}`} stroke={theme.colors.primary} strokeWidth={2} fill="none" />
+    </Svg>
+  );
+}
+
 export function LineChart(props: { title?: string; values: number[]; label?: string }) {
   const theme = useTheme();
   const values = props.values.filter((value) => Number.isFinite(value));

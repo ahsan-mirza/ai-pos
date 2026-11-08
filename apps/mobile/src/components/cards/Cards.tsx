@@ -1,5 +1,6 @@
 import { useState, type ReactNode } from "react";
 import { Pressable, View } from "react-native";
+import { MiniSpark } from "@/components/charts/Charts";
 import { AppText } from "@/components/primitives/Text";
 import { useTheme } from "@/theme/ThemeProvider";
 
@@ -36,6 +37,7 @@ export function KPICard(props: {
   comparison?: string;
   status?: string;
   loading?: boolean;
+  series?: number[];
 }) {
   const theme = useTheme();
   const trendColor = props.trend === "down" ? theme.colors.danger : props.trend === "up" ? theme.colors.success : theme.colors.textSecondary;
@@ -45,7 +47,10 @@ export function KPICard(props: {
         <AppText variant="caption" tone="secondary">{props.title}</AppText>
         {props.icon}
       </View>
-      {props.loading ? <View style={{ height: 28, width: "60%", borderRadius: 8, backgroundColor: theme.colors.surfaceMuted }} /> : <AppText variant="title" numberOfLines={1}>{props.value}</AppText>}
+      <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: theme.space.sm }}>
+        {props.loading ? <View style={{ height: 28, width: "60%", borderRadius: 8, backgroundColor: theme.colors.surfaceMuted }} /> : <AppText variant="title" numberOfLines={1} style={{ flex: 1 }}>{props.value}</AppText>}
+        {props.series ? <MiniSpark values={props.series} /> : null}
+      </View>
       <AppText variant="caption" numberOfLines={1} style={{ color: props.percentage ? trendColor : theme.colors.textSecondary }}>
         {[props.percentage, props.comparison, props.status].filter(Boolean).join(" · ") || " "}
       </AppText>

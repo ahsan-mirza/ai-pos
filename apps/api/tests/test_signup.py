@@ -10,8 +10,8 @@ from sqlalchemy import select
 from app.core.config import get_settings
 from app.core.database import build_engine
 from app.main import create_app
-from app.schemas.signup import SignupStart
 from app.models import Base
+from app.schemas.signup import SignupStart
 from app.tenancy import provisioning, registry, signup_service
 from app.tenancy.models import ControlBase, SignupRequest, Subscription, Tenant
 

@@ -12,6 +12,7 @@ import { env, assertProductionApi } from "@/config/env";
 import { ToastProvider } from "@/components/overlays/Overlays";
 import { I18nProvider } from "@/i18n/I18nProvider";
 import { TenantProvider } from "@/tenant/TenantProvider";
+import { useTheme } from "@/theme/ThemeProvider";
 
 if (env.sentryDsn !== "") {
   Sentry.init({
@@ -19,6 +20,11 @@ if (env.sentryDsn !== "") {
     tracesSampleRate: 0.1,
     sendDefaultPii: false,
   });
+}
+
+function ThemedStatusBar() {
+  const theme = useTheme();
+  return <StatusBar style={theme.mode === "dark" ? "light" : "dark"} />;
 }
 
 export default function RootLayout() {
@@ -34,7 +40,7 @@ export default function RootLayout() {
               <AuthProvider>
                 <TenantProvider>
                   <ToastProvider>
-                    <StatusBar style="dark" />
+                    <ThemedStatusBar />
                     <Slot />
                   </ToastProvider>
                 </TenantProvider>

@@ -742,7 +742,7 @@ const arabic: Record<string, string> = {
   "Below the margin floor of {amount}. Manager approval needed.": "أقل من حد الهامش {amount}. يلزم موافقة المدير.",
   "Add {count} more pcs for the {tier} price.": "أضف {count} قطع أخرى لسعر {tier}.",
   "Add {count} more for {price} each.": "أضف {count} أخرى بسعر {price} للقطعة.",
-  "PLU {code}": "PLU {code}",
+  "PLU {code}": "رمز الميزان {code}",
   "Exp {date}": "صلاحية {date}",
 };
 

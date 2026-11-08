@@ -47,6 +47,13 @@ export default function AccountRoute() {
         </View>
       </View>
       <View style={{ gap: theme.space.sm }}>
+        <AppText variant="label" tone="secondary">{t("appearance")}</AppText>
+        <View style={{ flexDirection: "row", gap: theme.space.sm }}>
+          <Button variant={theme.mode === "light" ? "primary" : "outline"} label={t("light")} accessibilityLabel={t("light")} onPress={() => theme.setMode("light")} />
+          <Button variant={theme.mode === "dark" ? "primary" : "outline"} label={t("dark")} accessibilityLabel={t("dark")} onPress={() => theme.setMode("dark")} />
+        </View>
+      </View>
+      <View style={{ gap: theme.space.sm }}>
         <AppText variant="label" tone="secondary">{t("account")}</AppText>
         <SwitchField
           label={t("biometric")}
