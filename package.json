@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "packageManager": "pnpm@10.18.2",
   "engines": {
-    "node": ">=20"
+    "node": ">=22.20"
   },
   "scripts": {
     "dev": "turbo run dev",
