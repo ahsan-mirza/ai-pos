@@ -84,24 +84,26 @@ interface PageFrameProps {
   children: ReactNode;
 }
 
-/** Centre column (header + scrolling canvas) and the right drawer, flush against each other. */
+/** Header spans the workspace; the scrolling canvas and the right drawer sit on the row beneath it. */
 export function PageFrame({ title, sync, actions, drawer, footer, children }: PageFrameProps) {
   const locked = useSubscriptionLocked();
   const { t } = useLocale();
   return (
-    <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col lg:flex-row">
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-        <HeaderBar title={title} sync={sync} actions={actions} />
-        {locked ? (
-          <p className="bg-amber-100 px-4 py-2 text-sm font-medium text-amber-950">
-            {t("New sales and returns stay closed until the subscription is verified.")}
-          </p>
-        ) : null}
-        <POSAlertBanner />
-        <main className="custom-scrollbar min-h-0 min-w-0 flex-1 overflow-y-auto">{children}</main>
-        {footer}
+    <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col">
+      <HeaderBar title={title} sync={sync} actions={actions} />
+      {locked ? (
+        <p className="bg-amber-100 px-4 py-2 text-sm font-medium text-amber-950">
+          {t("New sales and returns stay closed until the subscription is verified.")}
+        </p>
+      ) : null}
+      <POSAlertBanner />
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col lg:flex-row">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+          <main className="custom-scrollbar min-h-0 min-w-0 flex-1 overflow-y-auto">{children}</main>
+          {footer}
+        </div>
+        {drawer}
       </div>
-      {drawer}
     </div>
   );
 }

@@ -228,6 +228,8 @@ function sameMembers(left: readonly string[] | undefined, right: readonly string
  * settings poll that started before a save cannot put the previous modules back.
  */
 export function acceptBusinessSettings(current: BusinessSettings, next: BusinessSettings): boolean {
+  // The portal cache is one slot. A different sign-in code is a different business, not an older poll.
+  if (current.store_code && next.store_code && current.store_code !== next.store_code) return true;
   const nextRevision = next.entitlement_revision;
   const currentRevision = current.entitlement_revision;
   if (typeof nextRevision === "number" && typeof currentRevision === "number" && nextRevision !== currentRevision) {

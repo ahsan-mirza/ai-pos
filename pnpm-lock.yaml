@@ -43,6 +43,9 @@ importers:
       '@tauri-apps/api':
         specifier: ^2.5.0
         version: 2.12.4
+      framer-motion:
+        specifier: ^12.23.12
+        version: 12.43.0(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
       lucide-react:
         specifier: ^0.511.0
         version: 0.511.0(react@19.3.1)

@@ -38,7 +38,7 @@ export function ModelCard({
         </span>
       }
       badge={
-        <span title={stockLabel} className={`inline-flex h-7 max-w-full items-center truncate rounded-full px-2.5 text-[11px] font-semibold tabular-nums ${stockPill[out ? "out" : "in"]}`}>
+        <span title={stockLabel} className={`inline-flex h-7 max-w-full shrink-0 items-center whitespace-nowrap rounded-full px-2 text-[11px] font-semibold tabular-nums ${stockPill[out ? "out" : "in"]}`}>
           {stockLabel}
         </span>
       }

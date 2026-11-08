@@ -1,3 +1,4 @@
+import { AnimatePresence } from "framer-motion";
 import { ShoppingCart } from "lucide-react";
 import type { CartRow } from "./cart";
 import { CartItemCard, type CartItemCardProps } from "./CartItemCard";
@@ -13,7 +14,7 @@ interface CartListProps extends SharedCardProps {
 /** The scrolling item list: it takes every pixel the payment sheet leaves free. */
 export function CartList({ rows, floorFor, ...card }: CartListProps) {
   return (
-    <ul aria-label="Cart items" className="custom-scrollbar flex flex-col gap-1.5 px-4 py-2.5 xl:min-h-[180px] xl:flex-1 xl:overflow-y-auto">
+    <ul aria-label="Cart items" className="custom-scrollbar flex flex-col gap-1 px-3 py-1.5 xl:min-h-[180px] xl:flex-1 xl:overflow-y-auto">
       {rows.length === 0 ? (
         <li className="flex flex-1 flex-col items-center justify-center px-6 py-8 text-center">
           <ShoppingCart size={28} aria-hidden="true" className="text-zinc-300 dark:text-zinc-600" />
@@ -21,7 +22,11 @@ export function CartList({ rows, floorFor, ...card }: CartListProps) {
           <p className="mt-1 max-w-[16rem] text-xs text-zinc-500 dark:text-zinc-400">Scan a barcode or tap a product to start a sale.</p>
         </li>
       ) : (
-        rows.map((row) => <CartItemCard key={row.key} row={row} floorCents={floorFor(row.product.id)} {...card} />)
+        <AnimatePresence initial={false}>
+          {rows.map((row) => (
+            <CartItemCard key={row.key} row={row} floorCents={floorFor(row.product.id)} {...card} />
+          ))}
+        </AnimatePresence>
       )}
     </ul>
   );

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Image, View } from "react-native";
-import { normalizeStoreCode, storeCodeError } from "@ai-pos/shared-types";
+import { businessCodeLabel, businessCodePhrase, normalizeStoreCode, storeCodeError } from "@ai-pos/shared-types";
 import { ApiRequestError } from "@/api/errors";
 import { useAuth } from "@/auth/AuthProvider";
 import { Button } from "@/components/buttons/Button";
@@ -13,7 +13,8 @@ import { useTheme } from "@/theme/ThemeProvider";
 
 export function LoginScreen() {
   const { login, storeCode } = useAuth();
-  const { t } = useI18n();
+  const { t, locale } = useI18n();
+  const codeLabel = businessCodeLabel(null, locale);
   const theme = useTheme();
   const usernameRef = useRef<{ focus: () => void } | null>(null);
   const passwordRef = useRef<{ focus: () => void } | null>(null);
@@ -54,20 +55,20 @@ export function LoginScreen() {
         <AppText tone="secondary" style={{ textAlign: "center" }}>{t("signInSubtitle")}</AppText>
       </View>
       <Input
-        label={t("storeCode")}
-        placeholder={t("storeCodePlaceholder")}
+        label={codeLabel}
+        placeholder={locale === "ar" ? "أدخل رمز المتجر" : businessCodePhrase(null, "placeholder")}
         value={code}
         onChangeText={(value) => {
           codeEdited.current = true;
           setCode(normalizeStoreCode(value));
         }}
-        helperText={t("storeCodeHint")}
+        helperText={locale === "ar" ? "نفس الرمز الذي تدخله عند تفعيل الصندوق." : businessCodePhrase(null, "hintRegister")}
         autoCapitalize="none"
         autoCorrect={false}
         returnKeyType="next"
         onSubmitEditing={() => usernameRef.current?.focus()}
         leading={icon}
-        accessibilityLabel={t("storeCode")}
+        accessibilityLabel={codeLabel}
       />
       <Input
         ref={usernameRef}

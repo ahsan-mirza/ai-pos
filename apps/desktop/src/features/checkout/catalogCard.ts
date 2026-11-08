@@ -9,7 +9,7 @@ const UNIT_NAMES: Record<string, string> = {
 /** Shared catalogue-tile measurements. Every card reserves these slots so a row stays aligned. */
 export const catalogCardClass = {
   name: "line-clamp-2 min-h-10 min-w-0 flex-1 text-left text-sm font-semibold leading-5",
-  footer: "mt-2 flex min-h-10 min-w-0 flex-nowrap items-center justify-between gap-2",
+  footer: "mt-auto flex min-h-10 w-full min-w-0 flex-col items-start gap-1",
 } as const;
 
 export function productCode(sku?: string | null, modelNumber?: string | null): string {

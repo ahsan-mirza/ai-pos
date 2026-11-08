@@ -17,7 +17,8 @@ describe("catalogue card slots", () => {
     expect(catalogCardClass).not.toHaveProperty("code");
     expect(catalogCardClass).not.toHaveProperty("detail");
     expect(catalogCardClass.footer).toContain("min-h-10");
-    expect(catalogCardClass.footer).toContain("flex-nowrap");
+    expect(catalogCardClass.footer).toContain("flex-col");
+    expect(catalogCardClass.footer).toContain("mt-auto");
   });
 
   it("follows the tenant business type and the branch reorder point", () => {

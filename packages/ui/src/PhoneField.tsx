@@ -2,7 +2,8 @@ import { getCountryCallingCode, parsePhoneNumberFromString, type CountryCode } f
 import { ChevronDown, Phone, Search } from "lucide-react";
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { CountryFlag, countryOption, filterCountries } from "./countryOptions";
+import { CountryFlag, countryOption, filterCountries, localizedCountryName } from "./countryOptions";
+import { useLocale } from "./LocaleSwitch";
 import { formatLocal, isValidE164, nationalDigits, placeholderFor, readPhone, toE164 } from "./phone";
 
 function caretAfterDigits(formatted: string, digitCount: number): number {
@@ -67,14 +68,15 @@ export function PhoneField({
   const [touched, setTouched] = useState(false);
   const [menuBox, setMenuBox] = useState<{ top: number; left: number; width: number } | null>(null);
 
+  const { locale, t } = useLocale();
   const selected = countryOption(country) ?? countryOption("AE");
-  const groups = useMemo(() => filterCountries(query), [query]);
+  const groups = useMemo(() => filterCountries(query, locale), [query, locale]);
   const options = useMemo(() => [...groups.pinned, ...groups.rest], [groups]);
   const ownError =
     touched && required && value === ""
-      ? "Enter a phone number."
+      ? t("Enter a phone number.")
       : touched && value !== "" && !isValidE164(value)
-        ? "Enter a valid phone number."
+        ? t("Enter a valid phone number.")
         : undefined;
   const message = error || ownError;
   const invalid = Boolean(message);
@@ -222,7 +224,7 @@ export function PhoneField({
         <button
           type="button"
           disabled={disabled}
-          aria-label={`Country code +${selected.dial}`}
+          aria-label={t("Country code +{dial}", { dial: selected.dial })}
           aria-haspopup="listbox"
           aria-expanded={open}
           aria-controls={listId}
@@ -278,8 +280,8 @@ export function PhoneField({
                 ref={searchRef}
                 value={query}
                 type="search"
-                aria-label="Search countries"
-                placeholder="Search country or code"
+                aria-label={t("Search countries")}
+                placeholder={t("Search country or code")}
                 onChange={(event) => {
                   setQuery(event.target.value);
                   setHighlight(0);
@@ -304,9 +306,9 @@ export function PhoneField({
                 }`}
               />
             </div>
-            <ul id={listId} role="listbox" aria-label="Countries" className="max-h-60 overflow-y-auto py-1">
+            <ul id={listId} role="listbox" aria-label={t("Countries")} className="max-h-60 overflow-y-auto py-1">
               {options.length === 0 ? (
-                <li className={`px-3 py-2 text-sm font-normal ${marketing ? "text-slate-500" : "text-charcoal/50"}`}>No countries match.</li>
+                <li className={`px-3 py-2 text-sm font-normal ${marketing ? "text-slate-500" : "text-charcoal/50"}`}>{t("No countries match.")}</li>
               ) : null}
               {options.map((option, index) => {
                 const firstRest = groups.pinned.length > 0 && index === groups.pinned.length;
@@ -324,7 +326,7 @@ export function PhoneField({
                       }`}
                     >
                       <CountryFlag iso={option.iso} />
-                      <span className="min-w-0 flex-1 truncate">{option.name}</span>
+                      <span className="min-w-0 flex-1 truncate">{localizedCountryName(option.iso, locale)}</span>
                       <span className={marketing ? "text-slate-500" : "text-charcoal/50"}>(+{option.dial})</span>
                     </button>
                   </li>

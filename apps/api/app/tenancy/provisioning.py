@@ -183,19 +183,27 @@ def step_settings(job: Job) -> None:
         row.onboarded_at = datetime.now(UTC)
         row.live_at = None
         store = db.scalar(select(Store).limit(1))
+        # The code typed at signup is the sign-in store code. MAIN was only a placeholder.
+        branch_code = job.slug.strip() or "MAIN"
         if store is None:
             db.add(
                 Store(
-                    code="MAIN",
+                    code=branch_code,
                     name=job.store_name,
                     currency=job.currency,
                     address=job.address,
+                    country=job.country,
                     is_warehouse=False,
                     is_active=True,
                 )
             )
-        elif job.address:
-            store.address = job.address
+        else:
+            if store.code == "MAIN" and branch_code != "MAIN":
+                store.code = branch_code
+            if job.country and not store.country:
+                store.country = job.country
+            if job.address and not store.address:
+                store.address = job.address
         ensure_taxonomy(db, job.profile)
         db.commit()
 

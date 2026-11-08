@@ -1,5 +1,36 @@
+import Constants from "expo-constants";
+import { Platform } from "react-native";
 import { env } from "@/config/env";
 import { ApiRequestError, parseErrorBody } from "./errors";
+
+function androidEmulator(): boolean {
+  if (Platform.OS !== "android") return false;
+  const constants = Platform.constants as { Fingerprint?: string; Model?: string; Brand?: string };
+  const hint = `${constants.Fingerprint ?? ""} ${constants.Model ?? ""} ${constants.Brand ?? ""}`.toLowerCase();
+  return hint.includes("generic") || hint.includes("emulator") || hint.includes("sdk_gphone") || hint.includes("google_sdk");
+}
+
+/** A phone cannot call 127.0.0.1. In dev, use the Metro host, which is this computer. */
+export function reachableApiBaseUrl(): string {
+  const configured = env.apiBaseUrl;
+  if (!__DEV__) return configured;
+  let url: URL;
+  try {
+    url = new URL(configured);
+  } catch {
+    return configured;
+  }
+  if (url.hostname !== "127.0.0.1" && url.hostname !== "localhost") return configured;
+  const packagerHost = Constants.expoConfig?.hostUri?.split(":")[0];
+  if (packagerHost && packagerHost !== "localhost" && packagerHost !== "127.0.0.1") {
+    url.hostname = packagerHost;
+  } else if (Platform.OS === "android" && androidEmulator()) {
+    url.hostname = "10.0.2.2";
+  } else {
+    return configured;
+  }
+  return url.toString().replace(/\/$/, "");
+}
 
 export interface ApiPage<T> {
   rows: T[];
@@ -66,7 +97,7 @@ async function exchange(
 ): Promise<{ data: unknown; headers: Headers; status: number }> {
   let response: Response;
   try {
-    response = await fetch(`${env.apiBaseUrl}${path}`, {
+    response = await fetch(`${reachableApiBaseUrl()}${path}`, {
       method,
       headers: headers(body),
       body: body === undefined ? undefined : body instanceof FormData ? body : JSON.stringify(body),
@@ -74,7 +105,7 @@ async function exchange(
     });
   } catch {
     throw new ApiRequestError(
-      `Cannot reach the API at ${env.apiBaseUrl}.`,
+      `Cannot reach the API at ${reachableApiBaseUrl()}.`,
       0,
       "api_unreachable",
     );

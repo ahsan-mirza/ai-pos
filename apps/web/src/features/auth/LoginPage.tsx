@@ -1,5 +1,5 @@
-import { PASSWORD_MIN_LENGTH, normalizeStoreCode, storeCodeError } from "@ai-pos/shared-types";
-import { BrandLogo } from "@ai-pos/ui";
+import { PASSWORD_MIN_LENGTH, businessCodeLabel, businessCodeLabelPlural, businessCodePhrase, normalizeStoreCode, storeCodeError } from "@ai-pos/shared-types";
+import { BrandLogo, useLocale } from "@ai-pos/ui";
 import { PwaChrome } from "../../pwa/PwaChrome";
 import { Eye, EyeOff, Lock, Mail, Store, User, type LucideIcon } from "lucide-react";
 import { useEffect, useRef, useState, type FormEvent, type InputHTMLAttributes, type ReactNode } from "react";
@@ -217,6 +217,9 @@ const STORE_STEPS: { id: "email" | "code" | "stores"; label: string }[] = [
 
 export function LoginPage() {
   const { login } = useAuth();
+  const { t } = useLocale();
+  const codeLabel = t(businessCodeLabel(null));
+  const codesLabel = t(businessCodeLabelPlural(null));
   const [step, setStep] = useState<Step>("sign-in");
   const [recovery, setRecovery] = useState<Recovery>("password");
   const [stores, setStores] = useState<RecoveredStore[]>([]);
@@ -244,7 +247,7 @@ export function LoginPage() {
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     const next: { store?: string; identity?: string; password?: string } = {};
-    if (storeProblem) next.store = storeProblem;
+    if (storeProblem) next.store = t(storeProblem);
     if (identity.trim() === "") next.identity = "Enter your email or username.";
     if (password === "") next.password = "Enter your password.";
     setFieldError(next);
@@ -264,7 +267,7 @@ export function LoginPage() {
 
   const requestCode = async () => {
     if (recovery === "password" && !storeReady) {
-      setFieldError({ store: "Enter the store code." });
+      setFieldError({ store: t(storeCodeError("", null) ?? businessCodePhrase(null, "enter")) });
       return;
     }
     if (!email.trim().includes("@")) {
@@ -368,7 +371,7 @@ export function LoginPage() {
           {env.needsStoreCode ? (
             <LoginField
               id="store-code"
-              label="Store code"
+              label={codeLabel}
               icon={Store}
               autoComplete="off"
               spellCheck={false}
@@ -468,7 +471,7 @@ export function LoginPage() {
                     className={active ? "text-accent" : done ? "text-charcoal dark:text-white" : "text-charcoal/40 dark:text-white/40"}
                     aria-current={active ? "step" : undefined}
                   >
-                    {index + 1}. {item.label}
+                    {index + 1}. {item.id === "stores" ? codesLabel : item.label}
                   </li>
                 );
               })}
@@ -476,30 +479,30 @@ export function LoginPage() {
             <h1 className="text-xl font-semibold text-charcoal dark:text-white">
               {step === "email"
                 ? recovery === "store"
-                  ? "Find your store code"
+                  ? t(businessCodePhrase(null, "find"))
                   : "Reset password"
                 : step === "code"
                   ? "Enter the code"
                   : step === "stores"
-                    ? "Your store codes"
+                    ? t(businessCodePhrase(null, "yours"))
                     : "Choose a new password"}
             </h1>
             <p className="mt-1 text-sm text-charcoal/60 dark:text-white/60">
               {step === "email"
                 ? recovery === "store"
-                  ? "We email a 6-digit code. Store codes are shown only after that code is accepted."
+                  ? t(businessCodePhrase(null, "afterCode"))
                   : "We email a 6-digit code to the address on your portal account."
                 : step === "code"
                   ? `Enter the 6-digit code sent to ${email.trim()}.`
                   : step === "stores"
-                    ? "Use a store code with your email and password. This does not sign you in."
+                    ? t(businessCodePhrase(null, "useWithPassword"))
                     : `At least ${PASSWORD_MIN_LENGTH} characters.`}
             </p>
           </div>
           {step === "email" && recovery === "password" && env.needsStoreCode ? (
             <LoginField
               id="reset-store-code"
-              label="Store code"
+              label={codeLabel}
               icon={Store}
               autoComplete="off"
               spellCheck={false}
@@ -539,7 +542,7 @@ export function LoginPage() {
           ) : null}
           {step === "stores" ? (
             stores.length > 0 ? (
-              <ul className="space-y-2" aria-label="Store codes">
+              <ul className="space-y-2" aria-label={codesLabel}>
                 {stores.map((item) => (
                   <li key={`${item.code}-${item.branch ?? ""}`} className="rounded-2xl border border-line px-4 py-3 dark:border-white/10">
                     <p className="font-mono text-base font-semibold">{item.code}</p>
@@ -551,7 +554,7 @@ export function LoginPage() {
                 ))}
               </ul>
             ) : (
-              <p className="text-sm text-charcoal/70 dark:text-white/70">No store code is linked to this email.</p>
+              <p className="text-sm text-charcoal/70 dark:text-white/70">{t(businessCodePhrase(null, "noneLinked"))}</p>
             )
           ) : null}
           {step === "password" ? (

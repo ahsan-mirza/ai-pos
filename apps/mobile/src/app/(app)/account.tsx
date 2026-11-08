@@ -3,6 +3,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { router } from "expo-router";
 import { useEffect, useState } from "react";
 import { View } from "react-native";
+import { businessCodeLabel } from "@ai-pos/shared-types";
 import { Button } from "@/components/buttons/Button";
 import { InformationCard } from "@/components/cards/Cards";
 import { SwitchField } from "@/components/inputs/Fields";
@@ -33,7 +34,7 @@ export default function AccountRoute() {
           { label: t("username"), value: user?.username ?? "—" },
           { label: "Role", value: user?.role.name ?? "—" },
           { label: t("business"), value: tenant.businessName ?? "—" },
-          { label: t("storeCode"), value: tenant.storeCode || storeCode || "—" },
+          { label: businessCodeLabel(tenant.profile, locale), value: tenant.storeCode || storeCode || "—" },
           { label: "Store", value: tenant.storeId === null ? t("allBranches") : t("assignedBranch") },
           { label: "Currency", value: tenant.currency },
         ]}

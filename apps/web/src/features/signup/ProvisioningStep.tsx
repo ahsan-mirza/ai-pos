@@ -1,10 +1,12 @@
-import type { ProvisionStep, SignupState } from "@ai-pos/shared-types";
+import { businessCodePhrase, type ProvisionStep, type SignupState } from "@ai-pos/shared-types";
+import { useLocale } from "@ai-pos/ui";
 import { Check, Circle, Loader2, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { ErrorNote } from "../../components/ui/Field";
 import { saveStoreCode } from "../../config/env";
 import { ApiRequestError } from "../../lib/api";
 import { signupApi, type SignupSession } from "./signupApi";
+import { WizardFooter } from "./WizardFooter";
 
 const POLL_MS = 1000;
 
@@ -47,6 +49,7 @@ export function ProvisioningStep({
   initial: SignupState;
   onFinished: () => void;
 }) {
+  const { t } = useLocale();
   const [state, setState] = useState(initial);
   const [error, setError] = useState<string | null>(null);
   const [retrying, setRetrying] = useState(false);
@@ -90,7 +93,7 @@ export function ProvisioningStep({
     try {
       setState(await signupApi.retry(session));
     } catch (caught) {
-      setError(caught instanceof ApiRequestError ? caught.message : "Could not retry.");
+      setError(t(caught instanceof ApiRequestError ? caught.message : "Could not retry."));
     } finally {
       setRetrying(false);
     }
@@ -99,21 +102,26 @@ export function ProvisioningStep({
   const done = state.steps.filter((step) => step.state === "done").length;
   const percent = state.steps.length ? Math.round((done / state.steps.length) * 100) : 0;
 
+  const ready = state.status === "READY";
+  const failed = state.status === "FAILED";
+  const manualOpen = ready && state.slug !== null && state.handoff_token === null;
+
   return (
-    <div className="mx-auto max-w-md">
-      <h2 className="text-2xl font-semibold">
+    <div className="flex min-h-0 flex-auto flex-col overflow-hidden">
+      <div className="min-h-0 flex-auto overflow-y-auto overscroll-contain">
+      <h2 className="text-xl font-semibold">
         {state.status === "READY"
-          ? "Your store is ready"
+          ? t("Your store is ready")
           : state.status === "FAILED"
-            ? "Setup stopped"
-            : `Setting up ${state.store_name ?? "your store"}`}
+            ? t("Setup stopped")
+            : t("Setting up {name}", { name: state.store_name ?? t("your store") })}
       </h2>
       <p className="mt-1 text-sm text-charcoal/60">
         {state.status === "READY"
-          ? "Opening your dashboard…"
+          ? t("Opening your dashboard…")
           : state.status === "FAILED"
-            ? "Nothing is lost. Try again; finished steps are skipped."
-            : "This takes under a minute."}
+            ? t("Nothing is lost. Try again; finished steps are skipped.")
+            : t("This takes under a minute.")}
       </p>
       <div className="mt-6 h-1.5 overflow-hidden rounded-full bg-surface" aria-hidden="true">
         <div className="h-full rounded-full bg-accent transition-all duration-500" style={{ width: `${percent}%` }} />
@@ -127,41 +135,34 @@ export function ProvisioningStep({
                 step.state === "pending" ? "text-charcoal/40" : step.state === "failed" ? "text-accent" : "text-charcoal"
               }
             >
-              {step.label}
+              {t(step.label)}
             </span>
           </li>
         ))}
       </ol>
-      {state.status === "FAILED" ? (
+      {failed ? (
         <>
-          <ErrorNote message={state.error ?? "Setup failed."} />
-          <ErrorNote message={error} />
-          <button
-            type="button"
-            onClick={() => void retry()}
-            disabled={retrying}
-            className="mt-6 h-12 w-full rounded-2xl bg-accent font-semibold text-white disabled:opacity-40"
-          >
-            {retrying ? "Retrying…" : "Try again"}
-          </button>
+          <ErrorNote message={t(state.error ?? "Setup failed.")} />
+          <ErrorNote message={error ? t(error) : null} />
         </>
       ) : null}
-      {state.status === "READY" && state.slug ? (
-        <div className="mt-8 rounded-2xl bg-surface p-4 text-sm">
+      {ready && state.slug ? (
+        <div className="mt-4 rounded-2xl bg-surface p-4 text-sm">
           <p>
-            Your dashboard is on <strong>{window.location.host}</strong>. Sign in there with store code{" "}
-            <strong>{state.slug}</strong> as <strong>{state.owner_username}</strong> and the password you chose.
+            {t("Your dashboard is on {host}.", { host: window.location.host })} {t(businessCodePhrase(state.profile, "signInWith"))}{" "}
+            <strong>{state.slug}</strong> {t("as {user} and the password you chose.", { user: state.owner_username ?? "" })}
           </p>
-          {state.handoff_token === null ? (
-            <a
-              href={window.location.origin}
-              className="mt-4 inline-flex h-11 items-center rounded-2xl bg-accent px-6 font-semibold text-white"
-            >
-              Open my dashboard
-            </a>
-          ) : null}
         </div>
       ) : null}
+      </div>
+      <WizardFooter
+        continueLabel={failed ? "Try again" : manualOpen ? "Open my dashboard" : "Setting up…"}
+        busyLabel="Retrying…"
+        busy={retrying}
+        disabled={!failed && !manualOpen}
+        href={manualOpen ? window.location.origin : undefined}
+        onContinue={failed ? () => void retry() : undefined}
+      />
     </div>
   );
 }

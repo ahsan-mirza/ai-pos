@@ -1,3 +1,4 @@
+import { useLocale } from "@ai-pos/ui";
 import { useEffect, useState } from "react";
 import { ApiRequestError } from "../../lib/api";
 import { useAuth } from "../../lib/auth";
@@ -15,6 +16,7 @@ export function isWelcomeHandoff(): boolean {
 
 export function WelcomeHandoff({ onDone }: { onDone: () => void }) {
   const { handoff } = useAuth();
+  const { t } = useLocale();
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -40,18 +42,18 @@ export function WelcomeHandoff({ onDone }: { onDone: () => void }) {
       <div className="w-full max-w-sm rounded-[28px] border border-line bg-white p-8 text-center">
         {error === null ? (
           <>
-            <h1 className="text-xl font-semibold">Welcome to your store</h1>
-            <p className="mt-2 text-sm text-charcoal/60">Signing you in…</p>
+            <h1 className="text-xl font-semibold">{t("Welcome to your store")}</h1>
+            <p className="mt-2 text-sm text-charcoal/60">{t("Signing you in…")}</p>
           </>
         ) : (
           <>
-            <h1 className="text-xl font-semibold">Sign in to continue</h1>
-            <p className="mt-2 text-sm text-charcoal/60">{error}</p>
+            <h1 className="text-xl font-semibold">{t("Sign in to continue")}</h1>
+            <p className="mt-2 text-sm text-charcoal/60">{t(error)}</p>
             <a
               href={portalSignInPath()}
               className="mt-6 inline-flex h-11 items-center rounded-2xl bg-accent px-6 font-semibold text-white"
             >
-              Go to sign-in
+              {t("Go to sign-in")}
             </a>
           </>
         )}

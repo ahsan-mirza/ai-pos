@@ -1,5 +1,7 @@
 import {
   addressError,
+  businessCodeLabel,
+  businessCodePhrase,
   currencyForCountry,
   normalizeAddress,
   normalizeStoreCode,
@@ -7,7 +9,7 @@ import {
   taxIdField,
   type SignupState,
 } from "@ai-pos/shared-types";
-import { CountryField, availabilityBlocksSubmit, normalizeStoreName, storeNameError } from "@ai-pos/ui";
+import { CountryField, availabilityBlocksSubmit, normalizeStoreName, storeNameError, useLocale } from "@ai-pos/ui";
 import { Check, Loader2, X } from "lucide-react";
 import { useState, type FormEvent } from "react";
 import { ErrorNote, TextField } from "../../components/ui/Field";
@@ -15,6 +17,7 @@ import { env } from "../../config/env";
 import { ApiRequestError } from "../../lib/api";
 import { StoreNameAvailabilityField, useSlugAvailability, useStoreNameAvailability } from "./availabilityFields";
 import { signupApi, slugFromName, type SignupSession } from "./signupApi";
+import { WizardFooter } from "./WizardFooter";
 
 const STORE_EXAMPLES: Record<string, string> = {
   electronics_wholesale: "Al Noor Electronics",
@@ -58,6 +61,8 @@ export function StoreStep({
   onBack: () => void;
   onSubmitted: (state: SignupState) => void;
 }) {
+  const { t } = useLocale();
+  const codeLabel = t(businessCodeLabel(profile));
   const [storeName, setStoreName] = useState("");
   const [slug, setSlug] = useState("");
   const [address, setAddress] = useState("");
@@ -99,17 +104,18 @@ export function StoreStep({
         }),
       );
     } catch (caught) {
-      setError(caught instanceof ApiRequestError ? caught.message : "Could not create the store.");
+      setError(t(caught instanceof ApiRequestError ? caught.message : "Could not create the store."));
     } finally {
       setBusy(false);
     }
   };
 
   return (
-    <form className="w-full" onSubmit={(event) => void submit(event)}>
-      <h2 className="text-2xl font-semibold">Name your store</h2>
-      <p className="mt-1 text-sm text-charcoal/60">This is what customers see on receipts and invoices.</p>
-      <div className="mt-6 space-y-4">
+    <form className="flex min-h-0 w-full flex-auto flex-col overflow-hidden" onSubmit={(event) => void submit(event)}>
+      <div className="signup-fields min-h-0 flex-auto overflow-y-auto overscroll-contain">
+      <h2 className="text-xl font-semibold">{t("Name your store")}</h2>
+      <p className="mt-1 text-sm text-charcoal/60">{t("This is what customers see on receipts and invoices.")}</p>
+      <div className="mt-4 space-y-3">
         <StoreNameAvailabilityField
           value={storeName}
           status={nameCheck.status}
@@ -122,7 +128,7 @@ export function StoreStep({
         />
         <div>
           <label className="block text-sm font-medium" htmlFor="signup-slug">
-            Store code
+            {codeLabel}
           </label>
           <div className="mt-1.5 flex items-center rounded-xl border border-transparent bg-surface pr-3 focus-within:border-accent focus-within:bg-white">
             <input
@@ -151,23 +157,23 @@ export function StoreStep({
           </div>
           <p id="signup-slug-status" className="mt-1.5 min-h-5 text-xs" aria-live="polite">
             {slugCheck.status === "checking" ? (
-              <span className="text-charcoal/50">Checking…</span>
+              <span className="text-charcoal/50">{t("Checking…")}</span>
             ) : slugCheck.status === "error" ? (
               <span className="text-accent">
-                We couldn&apos;t check this code.{" "}
+                {t("We couldn't check this code.")}{" "}
                 <button type="button" className="font-semibold underline" onClick={slugCheck.retry}>
-                  Retry
+                  {t("Retry")}
                 </button>
               </span>
             ) : slugCheck.result === null ? (
               <span className="text-charcoal/50">
-                Your staff sign in with this code.
+                {t(businessCodePhrase(profile, "staff"))}
               </span>
             ) : slugCheck.result.available ? (
-              <span className="text-emerald-700">Available</span>
+              <span className="text-emerald-700">{t("Available")}</span>
             ) : (
               <span className="text-accent">
-                {slugCheck.result.reason}
+                {slugCheck.result.reason ? t(slugCheck.result.reason) : null}
                 {slugCheck.result.suggestion ? (
                   <>
                     {" "}
@@ -179,7 +185,7 @@ export function StoreStep({
                         setSlug(slugCheck.result?.suggestion ?? "");
                       }}
                     >
-                      Use {slugCheck.result.suggestion}
+                      {t("Use {code}", { code: slugCheck.result.suggestion })}
                     </button>
                   </>
                 ) : null}
@@ -188,43 +194,33 @@ export function StoreStep({
           </p>
         </div>
         <TextField
-          label="Store address"
+          label={t("Store address")}
           required
           value={address}
           autoComplete="street-address"
           dir="auto"
           placeholder="Shop 12, Building A, Main Street"
-          error={address !== "" ? addressProblem : undefined}
+          error={address !== "" && addressProblem ? t(addressProblem) : undefined}
           onChange={(event) => setAddress(event.target.value)}
         />
-        <div className="grid gap-4 sm:grid-cols-2">
-          <CountryField label="Country" value={country} onChange={setCountry} detail={currencyForCountry} required />
-          <TextField label="Currency" value={currency} readOnly disabled hint="Set by the country." />
+        <div className="signup-pair">
+          <CountryField label={t("Country")} value={country} onChange={setCountry} detail={currencyForCountry} required />
+          <TextField label={t("Currency")} value={currency} readOnly disabled hint={t("Set by the country.")} />
         </div>
         <TextField
-          label={taxField.label}
+          label={t(taxField.label)}
           value={trn}
           maxLength={32}
           autoComplete="off"
           onChange={(event) => setTrn(event.target.value.slice(0, 32))}
-          hint={taxError === null ? taxField.hint : undefined}
-          error={taxError ?? undefined}
+          hint={taxError === null ? t(taxField.hint) : undefined}
+          error={taxError ? t(taxError) : undefined}
           placeholder={taxField.placeholder || undefined}
         />
       </div>
-      <ErrorNote message={error} />
-      <div className="mt-6 flex items-center justify-between gap-3">
-        <button type="button" onClick={onBack} className="text-sm text-charcoal/60 hover:text-charcoal">
-          Back
-        </button>
-        <button
-          type="submit"
-          disabled={!ready}
-          className="h-12 rounded-2xl bg-accent px-8 font-semibold text-white transition-colors hover:bg-accent-hover disabled:opacity-40"
-        >
-          {busy ? "Creating…" : "Create my store"}
-        </button>
+      <ErrorNote message={error ? t(error) : null} />
       </div>
+      <WizardFooter type="submit" continueLabel="Create my store" busyLabel="Creating…" busy={busy} disabled={!ready} onBack={onBack} />
     </form>
   );
 }

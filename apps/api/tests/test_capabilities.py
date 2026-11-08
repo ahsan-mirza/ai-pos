@@ -249,7 +249,7 @@ def test_food_sub_types_keep_their_modules_working(profile: str, sub_type: str) 
     assert Capability.MENU_MODIFIERS in resolved.enabled
     assert Capability.KDS in resolved.enabled
     seats_guests = Capability.TABLES in resolved.enabled
-    assert seats_guests == (sub_type in {"full_service", "restaurant_delivery", "sit_down_cafe"})
+    assert seats_guests == (Capability.TABLES in chosen)
 
 
 def test_optional_modules_are_the_compatible_ones_outside_the_preset() -> None:

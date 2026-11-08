@@ -1,9 +1,11 @@
-import { PASSWORD_MIN_LENGTH, type TokenResponse, type User } from "@ai-pos/shared-types";
+import { businessCodeLabel, businessCodePhrase, PASSWORD_MIN_LENGTH, type TokenResponse, type User } from "@ai-pos/shared-types";
+import { useLocale } from "@ai-pos/ui";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { ErrorNote, PrimaryButton, TextField } from "../../components/ui/Field";
 import { ProfileAvatar } from "../../components/ui/ProfileAvatar";
 import { apiDelete, apiPatch, apiPost, apiUpload } from "../../lib/api";
 import { useAuth } from "../../lib/auth";
+import { useCapabilities } from "../../lib/capabilities";
 import { useCurrency } from "../../lib/currency";
 import { errorMessage } from "../users/api";
 import { DeviceAlertsCard, InstallBusinessProCard } from "../../pwa/PwaChrome";
@@ -26,7 +28,10 @@ function when(value: string | null | undefined): string {
 
 export function AccountPage() {
   const { user, refreshUser, replaceSession } = useAuth();
+  const { t } = useLocale();
+  const { profile } = useCapabilities();
   const { settings } = useCurrency();
+  const businessCode = settings?.store_code?.trim() || "";
   const [name, setName] = useState(user?.full_name ?? "");
   const [currentPassword, setCurrentPassword] = useState("");
   const [password, setPassword] = useState("");
@@ -241,8 +246,8 @@ export function AccountPage() {
             <dd className="font-medium">{settings?.legal_name || "—"}</dd>
           </div>
           <div>
-            <dt className="text-charcoal/50">Store code</dt>
-            <dd className="font-mono font-medium">{settings?.store_code || "—"}</dd>
+            <dt className="text-charcoal/50">{t(businessCodeLabel(profile))}</dt>
+            <dd className="font-mono font-medium">{businessCode || t(businessCodePhrase(profile, "missing"))}</dd>
           </div>
           <div>
             <dt className="text-charcoal/50">Country</dt>

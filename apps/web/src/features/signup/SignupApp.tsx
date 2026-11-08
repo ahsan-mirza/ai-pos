@@ -1,7 +1,8 @@
 import { SIGNUP_EMBED_MESSAGE, isSignupEmbedSearch, type SignupState } from "@ai-pos/shared-types";
-import { BrandLogo } from "@ai-pos/ui";
+import { BrandLogo, useLocale } from "@ai-pos/ui";
+import { motion, useReducedMotion } from "framer-motion";
 import { Check } from "lucide-react";
-import { useCallback, useEffect, useLayoutEffect, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useState, type ReactNode } from "react";
 import { env } from "../../config/env";
 import { ApiRequestError } from "../../lib/api";
 import { portalSignInPath } from "../../lib/portal-home";
@@ -26,6 +27,20 @@ const PROGRESS: { key: string; label: string; steps: Step[] }[] = [
   { key: "setup", label: "Setting up", steps: ["provisioning"] },
 ];
 
+function WizardPane({ active, children }: { active: boolean; children: ReactNode }) {
+  const reduced = useReducedMotion() === true;
+  return (
+    <motion.div
+      className={active ? "flex min-h-0 flex-auto flex-col overflow-hidden" : "hidden"}
+      initial={false}
+      animate={{ opacity: active ? 1 : 0, y: active ? 0 : 8 }}
+      transition={{ duration: reduced ? 0 : 0.22, ease: [0.4, 0, 0.2, 1] }}
+    >
+      {children}
+    </motion.div>
+  );
+}
+
 function stepFor(state: SignupState): Step {
   switch (state.status) {
     case "PENDING_OTP":
@@ -42,6 +57,7 @@ function stepFor(state: SignupState): Step {
 /** Public signup on the bare domain: account and code, business type, store, then live provisioning. */
 export function SignupApp() {
   const embed = isSignupEmbedSearch(window.location.search);
+  const { t } = useLocale();
   const [session, setSession] = useState<SignupSession | null>(() => readSignupSession());
   const [country, setCountry] = useState("AE");
   const [state, setState] = useState<SignupState | null>(null);
@@ -81,6 +97,12 @@ export function SignupApp() {
   const activeIndex = PROGRESS.findIndex((item) => item.steps.includes(step));
 
   useLayoutEffect(() => {
+    if (embed) return undefined;
+    document.documentElement.classList.add("signup-open");
+    return () => document.documentElement.classList.remove("signup-open");
+  }, [embed]);
+
+  useLayoutEffect(() => {
     if (!embed) return undefined;
     document.documentElement.classList.add("signup-embed");
     const post = () => {
@@ -98,8 +120,8 @@ export function SignupApp() {
 
   const wizard = (
     <>
-      {step === "loading" ? <p className="text-sm text-charcoal/60">Loading…</p> : null}
-      <div hidden={step !== "account"}>
+      {step === "loading" ? <p className="text-sm text-charcoal/60">{t("Loading…")}</p> : null}
+      <WizardPane active={step === "account"}>
         <AccountStep
           embedded={embed}
           country={country}
@@ -117,9 +139,9 @@ export function SignupApp() {
             setStep(stepFor(current));
           }}
         />
-      </div>
+      </WizardPane>
       {session ? (
-        <div hidden={step !== "verify"}>
+        <WizardPane active={step === "verify"}>
           <VerifyStep
             session={session}
             onResent={(next) => {
@@ -129,23 +151,25 @@ export function SignupApp() {
             onVerified={advance}
             onRestart={restart}
           />
-        </div>
+        </WizardPane>
       ) : null}
       {session ? (
-        <div hidden={step !== "business"}>
+        <WizardPane active={step === "business"}>
           <BusinessStep
             session={session}
             initialProfile={state?.profile ?? null}
             initialSubType={state?.sub_type ?? null}
             onChosen={advance}
           />
-        </div>
+        </WizardPane>
       ) : null}
       {step === "waitlist" && session && state ? (
-        <WaitlistStep state={state} onBack={() => setStep("business")} />
+        <WizardPane active>
+          <WaitlistStep state={state} onBack={() => setStep("business")} />
+        </WizardPane>
       ) : null}
       {session ? (
-        <div hidden={step !== "store"}>
+        <WizardPane active={step === "store"}>
           <StoreStep
             session={session}
             profile={state?.profile ?? null}
@@ -154,10 +178,12 @@ export function SignupApp() {
             onBack={() => setStep("business")}
             onSubmitted={advance}
           />
-        </div>
+        </WizardPane>
       ) : null}
       {step === "provisioning" && session && state ? (
-        <ProvisioningStep session={session} initial={state} onFinished={forget} />
+        <WizardPane active>
+          <ProvisioningStep session={session} initial={state} onFinished={forget} />
+        </WizardPane>
       ) : null}
     </>
   );
@@ -165,7 +191,7 @@ export function SignupApp() {
   if (embed) {
     return (
       <div className="bg-white p-1 font-sans text-charcoal">
-        <ol className="mb-6 flex flex-wrap gap-x-4 gap-y-2" aria-label="Signup progress">
+        <ol className="mb-6 flex flex-wrap gap-x-4 gap-y-2" aria-label={t("Signup progress")}>
           {PROGRESS.map((item, index) => {
             const done = activeIndex > index;
             const active = activeIndex === index;
@@ -178,7 +204,7 @@ export function SignupApp() {
                 >
                   {done ? <Check size={12} aria-hidden="true" /> : index + 1}
                 </span>
-                <span className={active ? "font-semibold text-charcoal" : "text-charcoal/60"}>{item.label}</span>
+                <span className={active ? "font-semibold text-charcoal" : "text-charcoal/60"}>{t(item.label)}</span>
               </li>
             );
           })}
@@ -189,17 +215,17 @@ export function SignupApp() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-canvas p-4 font-sans text-charcoal">
-      <div className="grid w-full max-w-5xl overflow-hidden rounded-[28px] border border-line bg-white md:grid-cols-[300px_1fr]">
-        <aside className="flex flex-col justify-between bg-charcoal p-8 text-white">
+    <div className="signup-screen flex items-center justify-center bg-canvas font-sans text-charcoal">
+      <div className="signup-modal flex flex-col rounded-3xl border border-line bg-white md:flex-row">
+        <aside className="signup-side hidden shrink-0 flex-col justify-between bg-charcoal px-5 py-5 text-white min-[900px]:flex">
           <div>
-            <BrandLogo tone="dark" className="h-9 w-auto" />
-            <h1 className="mt-10 text-2xl font-semibold leading-tight">Open your store</h1>
-            <p className="mt-2 text-sm text-white/60">
-              About two minutes. Practise with sample items before you go live. New stores start on the Standard trial. Going live follows that subscription. It is not an unlimited free plan.
+            <BrandLogo tone="dark" className="h-8 w-auto" />
+            <h1 className="mt-5 text-xl font-semibold leading-tight">{t("Open your store")}</h1>
+            <p className="signup-intro mt-2 text-sm leading-5 text-white/60">
+              {t("About two minutes. Practise with sample items before you go live. New stores start on the Standard trial.")}
             </p>
           </div>
-          <ol className="mt-10 space-y-4" aria-label="Signup progress">
+          <ol className="mt-6 space-y-3" aria-label={t("Signup progress")}>
             {PROGRESS.map((item, index) => {
               const done = activeIndex > index;
               const active = activeIndex === index;
@@ -213,25 +239,48 @@ export function SignupApp() {
                     {done ? <Check size={14} aria-hidden="true" /> : index + 1}
                   </span>
                   <span className={active ? "font-semibold text-white" : done ? "text-white/80" : "text-white/50"}>
-                    {item.label}
+                    {t(item.label)}
                   </span>
                 </li>
               );
             })}
           </ol>
-          <p className="mt-10 text-xs text-white/50">
-            Already have an account?{" "}
+          <p className="mt-6 text-xs text-white/50">
+            {t("Already have an account?")}{" "}
             <a href={portalSignInPath()} className="font-semibold text-white hover:underline">
-              Log in
+              {t("Log in")}
             </a>
             {env.storesShareThisHost ? null : (
-              <span className="mt-1 block text-white/70">
-                Or open your store, for example yourstore.{env.tenantBaseDomain()}.
+              <span className="signup-host mt-1 block text-white/70">
+                {t("Or open your store, for example yourstore.{domain}.", { domain: env.tenantBaseDomain() })}
               </span>
             )}
           </p>
         </aside>
-        <main className="min-h-[560px] p-6 sm:p-10">{wizard}</main>
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+          <ol
+            className="flex gap-3 overflow-x-auto border-b border-line px-4 py-3 pt-[max(0.75rem,env(safe-area-inset-top))] min-[900px]:hidden"
+            aria-label={t("Signup progress")}
+          >
+            {PROGRESS.map((item, index) => {
+              const done = activeIndex > index;
+              const active = activeIndex === index;
+              return (
+                <li key={item.key} className="flex shrink-0 items-center gap-2 text-xs" aria-current={active ? "step" : undefined}>
+                  <span
+                    className={`flex h-6 w-6 items-center justify-center rounded-full text-[11px] font-semibold ${
+                      done ? "bg-accent text-white" : active ? "bg-charcoal text-white" : "bg-surface text-charcoal/50"
+                    }`}
+                  >
+                    {done ? <Check size={12} aria-hidden="true" /> : index + 1}
+                  </span>
+                  <span className={active ? "font-semibold text-charcoal" : "text-charcoal/60"}>{t(item.label)}</span>
+                </li>
+              );
+            })}
+          </ol>
+          <main className="signup-main flex min-h-0 flex-auto flex-col overflow-hidden px-4 py-3 sm:px-5 sm:py-4">{wizard}</main>
+        </div>
       </div>
     </div>
   );

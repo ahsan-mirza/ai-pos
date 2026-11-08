@@ -1,4 +1,4 @@
-import { BusyButton, DateInput, actionButtonClass, actionIntentFromNodes, inputLeadingIcon, type ActionIntent } from "@ai-pos/ui";
+import { BusyButton, DateInput, actionButtonClass, actionIntentFromNodes, inputLeadingIcon, useLocale, type ActionIntent } from "@ai-pos/ui";
 import { Eye, EyeOff, Search } from "lucide-react";
 import { useId, useState, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type TextareaHTMLAttributes } from "react";
 import { Select, type SelectProps } from "./Select";
@@ -22,6 +22,7 @@ export function TextField({
   type,
   autoComplete,
   endAdornment,
+  toggleLabel = "password",
   ...props
 }: InputHTMLAttributes<HTMLInputElement> & {
   label: string;
@@ -30,7 +31,10 @@ export function TextField({
   required?: boolean;
   /** Sits inside the right edge. The input keeps room for it so the text does not move when it appears. */
   endAdornment?: ReactNode;
+  /** Names the show/hide control, for example "confirm password". */
+  toggleLabel?: string;
 }) {
+  const { t } = useLocale();
   const id = useId();
   const fieldId = props.id ?? id;
   const describedBy =
@@ -111,7 +115,7 @@ export function TextField({
           <button
             type="button"
             tabIndex={-1}
-            aria-label={showPassword ? "Hide password" : "Show password"}
+            aria-label={t(showPassword ? `Hide ${toggleLabel}` : `Show ${toggleLabel}`)}
             aria-pressed={showPassword}
             onMouseDown={(event) => event.preventDefault()}
             onClick={() => setShowPassword((value) => !value)}

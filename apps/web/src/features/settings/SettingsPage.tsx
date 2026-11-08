@@ -1,5 +1,5 @@
-import { profileSpec, type Store } from "@ai-pos/shared-types";
-import { countryOption } from "@ai-pos/ui";
+import { businessCodeLabel, businessCodePhrase, profileSpec, type Store } from "@ai-pos/shared-types";
+import { countryOption, useLocale } from "@ai-pos/ui";
 import { useEffect, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { apiGet } from "../../lib/api";
@@ -18,10 +18,13 @@ import { BranchTaxSettings } from "./BranchTaxSettings";
 import { VatSettings } from "./VatSettings";
 
 export function SettingsPage() {
+  const { t } = useLocale();
   const { settings } = useCurrency();
   const { storeId } = useStoreScope();
   const [branches, setBranches] = useState<Store[]>([]);
   const { profile, enabled } = useCapabilities();
+  const codeLabel = t(businessCodeLabel(profile));
+  const businessCode = settings?.store_code?.trim() || "";
   const spec = profileSpec(profile);
   const { hash } = useLocation();
   const requested = hash.replace("#", "");
@@ -58,9 +61,9 @@ export function SettingsPage() {
           <p className="mt-1 text-sm text-charcoal/60">Business-wide settings shared by every branch and register.</p>
         </div>
         <div className="flex shrink-0 items-center gap-2">
-          {settings?.store_code ? (
-            <p className="font-mono text-sm font-semibold tracking-tight text-charcoal" title="Store code">
-              {settings.store_code}
+          {businessCode ? (
+            <p className="font-mono text-sm font-semibold tracking-tight text-charcoal" title={codeLabel}>
+              {businessCode}
             </p>
           ) : null}
           <Link
@@ -92,8 +95,8 @@ export function SettingsPage() {
             <dd className="font-medium">{settings.currency}</dd>
           </div>
           <div>
-            <dt className="text-charcoal/50">Store code</dt>
-            <dd className="font-mono font-medium">{settings.store_code || "—"}</dd>
+            <dt className="text-charcoal/50">{codeLabel}</dt>
+            <dd className="font-mono font-medium">{businessCode || t(businessCodePhrase(profile, "missing"))}</dd>
           </div>
           <div>
             <dt className="text-charcoal/50">Tax registration number</dt>

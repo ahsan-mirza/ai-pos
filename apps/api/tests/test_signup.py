@@ -4,16 +4,29 @@ import os
 
 import pytest
 from fastapi.testclient import TestClient
+from pydantic import ValidationError
 from sqlalchemy import select
 
 from app.core.config import get_settings
 from app.core.database import build_engine
 from app.main import create_app
+from app.schemas.signup import SignupStart
 from app.models import Base
 from app.tenancy import provisioning, registry, signup_service
 from app.tenancy.models import ControlBase, SignupRequest, Subscription, Tenant
 
 PASSWORD = "Owner-password-1"
+
+
+def test_signup_password_follows_the_account_policy() -> None:
+    base = {"email": "owner@example.com", "phone": "+971501234567", "full_name": "Owner Name"}
+    accepted = SignupStart(**base, password=PASSWORD)
+    assert accepted.password == PASSWORD
+    for password in ("", "Short1!", "lowercase-1", "No-Number-Here", "NoSpecial11A"):
+        with pytest.raises(ValidationError):
+            SignupStart(**base, password=password)
+    with pytest.raises(ValidationError):
+        SignupStart(**base, password=PASSWORD, confirm_password=PASSWORD)
 
 
 def _create_all(url: str) -> None:

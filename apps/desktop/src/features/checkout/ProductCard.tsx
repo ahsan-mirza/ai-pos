@@ -1,5 +1,7 @@
 import { daysUntil, formatMoney, formatWeight, type ProductUpsert } from "@ai-pos/shared-types";
-import { Building2, Info, Package, Scale, ScanLine, UtensilsCrossed } from "lucide-react";
+import { useLocale } from "@ai-pos/ui";
+import { motion, useReducedMotion } from "framer-motion";
+import { Building2, Info, Package, Scale, ScanLine, SlidersHorizontal, UtensilsCrossed } from "lucide-react";
 import type { ReactNode } from "react";
 import { useRegisterLayout } from "../../components/RegisterLayout";
 import { stockPill } from "../../components/shell/tokens";
@@ -27,7 +29,7 @@ interface ProductCardProps {
   onInfo: (product: ProductUpsert) => void;
 }
 
-const badgeClass = "inline-flex h-7 max-w-full items-center truncate rounded-full px-2.5 text-[11px] font-semibold";
+const badgeClass = "inline-flex h-7 max-w-full shrink-0 items-center gap-1 whitespace-nowrap rounded-full px-2 text-[11px] font-semibold";
 
 /** Soonest batch expiry at this branch, shown inside two weeks. */
 function ExpiryChip({ date }: { date: string }) {
@@ -84,6 +86,8 @@ export function CatalogTile({
   onInfo?: () => void;
 }) {
   const { density, showImages } = useRegisterLayout();
+  const { t } = useLocale();
+  const reduced = useReducedMotion() === true;
   const frame = selected
     ? "border-primary bg-primary/5 shadow-lg shadow-primary/10"
     : "border-zinc-200 bg-white hover:border-zinc-300 dark:border-zinc-800 dark:bg-zinc-800/40 dark:hover:border-zinc-700";
@@ -105,35 +109,45 @@ export function CatalogTile({
           </span>
           {marker ? <span className="flex h-5 shrink-0 items-center">{marker}</span> : <span className="h-5 w-4 shrink-0" aria-hidden="true" />}
         </button>
-        <span className="mt-1 flex min-h-11 items-start gap-1">
+        <span className="mt-1 flex items-start gap-1.5">
           <button type="button" disabled={disabled} title={title} onClick={onSelect} className={`${selectClass} ${catalogCardClass.name} ${titleClass}`}>
             {title}
           </button>
           <button
             type="button"
             aria-label={`Details for ${title}`}
+            title={t("Product details")}
             onClick={(event) => {
               event.stopPropagation();
               onInfo?.();
             }}
-            className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-zinc-200 text-zinc-500 transition-colors hover:border-primary hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 dark:border-zinc-700 dark:text-zinc-300"
+            className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-zinc-200 bg-zinc-50 text-zinc-500 transition-colors hover:border-primary hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-300"
           >
-            <Info size={16} aria-hidden="true" />
+            <Info size={15} aria-hidden="true" />
           </button>
         </span>
-        <button type="button" disabled={disabled} onClick={onSelect} className={`${selectClass} flex min-h-0 min-w-0 flex-1 flex-col`}>
+        <button type="button" disabled={disabled} onClick={onSelect} className={`${selectClass} mt-auto flex min-w-0 flex-col pt-2`}>
+          {priceNote ? (
+            <span className="block whitespace-nowrap text-xs tabular-nums leading-4 text-zinc-500 line-through dark:text-white/40">{priceNote}</span>
+          ) : null}
           <span className={catalogCardClass.footer}>
-            <span className="min-w-0 flex-1">
-              {priceNote ? (
-                <span className="block truncate text-xs tabular-nums leading-4 text-zinc-500 line-through dark:text-white/40">{priceNote}</span>
-              ) : null}
-              <span className="block min-w-0 truncate text-base font-bold leading-5 tabular-nums">{price}</span>
-              {footnote ? (
-                <span className="block truncate text-[11px] leading-4 text-zinc-500 dark:text-white/50">{footnote}</span>
+            <span className="whitespace-nowrap text-base font-bold leading-5 tabular-nums">{price}</span>
+            <span className="flex h-7 w-full min-w-0 items-center">
+              {badge ? (
+                <motion.span
+                  className="inline-flex max-w-full"
+                  initial={reduced ? false : { opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  transition={{ duration: reduced ? 0 : 0.16 }}
+                >
+                  {badge}
+                </motion.span>
               ) : null}
             </span>
-            {badge ? <span className="flex h-7 max-w-[50%] min-w-0 items-center justify-end overflow-hidden">{badge}</span> : null}
           </span>
+          {footnote ? (
+            <span className="block min-w-0 truncate text-[11px] leading-4 text-zinc-500 dark:text-white/50">{footnote}</span>
+          ) : null}
         </button>
       </span>
       {action}
@@ -142,6 +156,7 @@ export function CatalogTile({
 }
 
 export function ProductCard({ hit, preview, currency, disabled, hasModifiers = false, onSelect, onCheckBranches, onInfo }: ProductCardProps) {
+  const { t } = useLocale();
   const menu = cardKind(useCapabilities().profile) === "menu";
   const { product, match, serial_status: serialStatus } = hit;
   const out = product.stock_quantity <= 0 && !product.has_recipe;
@@ -178,7 +193,10 @@ export function ProductCard({ hit, preview, currency, disabled, hasModifiers = f
   const stockPillTone = tone === "out" ? "out" : tone === "low" ? "low" : "in";
   const badge = menu ? (
     hasModifiers ? (
-      <span title="Modifiers available" className={`${badgeClass} ${stockPill.in}`}>Modifiers available</span>
+      <span title={t("Modifiers available")} aria-label={t("Modifiers available")} className={`${badgeClass} bg-primary/10 text-primary ring-1 ring-primary/20`}>
+        <SlidersHorizontal size={12} aria-hidden="true" />
+        {t("+ Modifiers")}
+      </span>
     ) : null
   ) : (
     <span title={stockText} className={`${badgeClass} tabular-nums ${stockPill[stockPillTone]}`}>{stockText}</span>

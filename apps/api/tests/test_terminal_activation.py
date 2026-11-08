@@ -1,9 +1,14 @@
+import uuid
 from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
 
+import pytest
 from sqlalchemy import update
 from tests.test_inventory import DT, admin, seed
 
+from app.core.errors import ApiError
 from app.models.device import DeviceActivation
+from app.services.device_service import _scoped
 
 
 def _register(client, headers) -> str:
@@ -34,6 +39,12 @@ def test_activation_key_is_exchanged_once_for_a_terminal_token(client) -> None:
     assert body["register_id"] == device_id
     assert body["store_id"] == DT
     assert body["register_code"] == "R9"
+    assert body["tenant_slug"] == "default"
+    assert body["store_code"] == "DT-01"
+    assert body["tenant_slug"] != body["store_code"]
+    settings = client.get("/api/v1/settings", headers=headers)
+    assert settings.status_code == 200, settings.text
+    assert settings.json()["store_code"] != body["store_code"]
     token = body["device_token"]
 
     me = client.get("/api/v1/devices/me", headers={"X-Terminal-Token": token})
@@ -72,3 +83,14 @@ def test_activation_rotates_the_previous_device_key(client) -> None:
     ]
     assert client.get("/api/v1/devices/me", headers={"X-Api-Key": old_key}).status_code == 401
     assert client.get("/api/v1/devices/me", headers={"X-Terminal-Token": token}).status_code == 200
+
+
+def test_activation_stays_inside_the_selected_branch() -> None:
+    own = uuid.UUID(DT)
+    other = uuid.uuid4()
+    _scoped(SimpleNamespace(store_id=None), other)
+    _scoped(SimpleNamespace(store_id=own), own)
+    with pytest.raises(ApiError) as caught:
+        _scoped(SimpleNamespace(store_id=own), other)
+    assert caught.value.status_code == 403
+    assert caught.value.code == "store_scope"

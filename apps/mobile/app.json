@@ -20,6 +20,7 @@
     },
     "android": {
       "package": "com.axizpos.business",
+      "usesCleartextTraffic": true,
       "adaptiveIcon": {
         "backgroundColor": "#FFFFFF",
         "foregroundImage": "./assets/android-icon-foreground.png",

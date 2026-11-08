@@ -49,6 +49,12 @@ describe("acceptBusinessSettings", () => {
     expect(acceptBusinessSettings(current, next)).toBe(true);
   });
 
+  it("replaces the cache when the sign-in store code changes", () => {
+    const current = settings({ store_code: "baristo", currency: "PKR", country: null, updated_at: "2026-11-08T12:00:00Z" });
+    const next = settings({ store_code: "bayrut", currency: "AED", country: "AE", updated_at: "2026-11-08T10:00:00Z" });
+    expect(acceptBusinessSettings(current, next)).toBe(true);
+  });
+
   it("ignores an identical snapshot", () => {
     const current = settings();
     expect(acceptBusinessSettings(current, settings())).toBe(false);

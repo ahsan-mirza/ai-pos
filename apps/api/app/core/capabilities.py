@@ -274,49 +274,97 @@ _GROCERY_COUNTER: tuple[Capability, ...] = (
     C.FEFO,
     C.CARD_TERMINALS,
 )
+_GROCERY_SUPER: tuple[Capability, ...] = (*_GROCERY_COUNTER, C.GIFT_CARDS, C.MULTI_CURRENCY)
+_ELECTRONICS_SHOP: tuple[Capability, ...] = (
+    C.PROMOTIONS,
+    C.MULTI_CURRENCY,
+    C.SERIAL_TRACKING,
+    C.LOYALTY,
+    C.REPAIRS,
+    C.WARRANTY,
+    C.TRADE_IN,
+    C.CARD_TERMINALS,
+    C.BNPL,
+)
+_FASHION_SHOP: tuple[Capability, ...] = (
+    C.QUOTES_LAYAWAY,
+    C.LOYALTY,
+    C.PROMOTIONS,
+    C.MULTI_CURRENCY,
+    C.VARIANTS_MATRIX,
+    C.GIFT_CARDS,
+    C.ALTERATIONS,
+)
+_CAFE_COUNTER: tuple[Capability, ...] = (*PROFILES["cafe"], C.CARD_TERMINALS)
+_CAFE_TABLE: tuple[Capability, ...] = (
+    *_CAFE_COUNTER,
+    C.TABLES,
+    C.SPLIT_BILLS,
+    C.TIPS_SERVICE_CHARGE,
+)
+_RESTAURANT_DINE: tuple[Capability, ...] = (*PROFILES["restaurant"], C.CARD_TERMINALS)
+_RESTAURANT_DELIVERY: tuple[Capability, ...] = (*_RESTAURANT_DINE, C.DELIVERY_CHANNELS)
+_QSR_COUNTER: tuple[Capability, ...] = (
+    *(capability for capability in PROFILES["quick_service"] if capability != C.DELIVERY_CHANNELS),
+    C.CARD_TERMINALS,
+)
+_QSR_DELIVERY: tuple[Capability, ...] = (*PROFILES["quick_service"], C.CARD_TERMINALS)
+_RETAIL_SHOP: tuple[Capability, ...] = (
+    C.PROMOTIONS,
+    C.LOYALTY,
+    C.QUOTES_LAYAWAY,
+    C.CARD_TERMINALS,
+    C.CUSTOMER_REORDERS,
+    C.MULTI_CURRENCY,
+)
+# Operating models are stored on the existing signup sub_type. Paid add-ons are not in these kits.
 SUB_TYPES: dict[str, dict[str, tuple[Capability, ...]]] = {
     "electronics_wholesale": {
-        "electronics_retail": (
-            C.PROMOTIONS,
-            C.MULTI_CURRENCY,
-            C.SERIAL_TRACKING,
-            C.LOYALTY,
-            C.REPAIRS,
-            C.WARRANTY,
-            C.TRADE_IN,
-            C.CARD_TERMINALS,
-            C.BNPL,
-        ),
+        "electronics_retail": _ELECTRONICS_SHOP,
+        "electronics_mobile": _ELECTRONICS_SHOP,
+        "electronics_computer": _ELECTRONICS_SHOP,
         "electronics_b2b": ELECTRONICS_WHOLESALE,
-        # Retail modules are already inside the wholesale preset, so both is that full set.
         "electronics_both": ELECTRONICS_WHOLESALE,
     },
     "wholesale_retail": {
-        "wholesale_distributor": WHOLESALE_RETAIL,
-        "retail_shop": (
+        "wholesale_trade": (
+            C.WHOLESALE_PRICING,
+            C.B2B_CREDIT,
+            C.QUOTES_LAYAWAY,
+            C.SALES_ORDERS,
             C.PROMOTIONS,
             C.LOYALTY,
-            C.QUOTES_LAYAWAY,
+            C.CHEQUES,
             C.CARD_TERMINALS,
-            C.CUSTOMER_REORDERS,
-            C.MULTI_CURRENCY,
         ),
+        "retail_shop": _RETAIL_SHOP,
+        "wholesale_both": WHOLESALE_RETAIL,
+        "wholesale_distribution": (
+            C.WHOLESALE_PRICING,
+            C.SALES_ORDERS,
+            C.CUSTOMER_REORDERS,
+            C.B2B_CREDIT,
+            C.PROMOTIONS,
+            C.LOYALTY,
+            C.CARD_TERMINALS,
+        ),
+        "wholesale_distributor": WHOLESALE_RETAIL,
+        "wholesale_all": WHOLESALE_RETAIL,
     },
     "retail_fashion": {
-        "fashion_boutique": (
-            C.QUOTES_LAYAWAY,
-            C.LOYALTY,
-            C.PROMOTIONS,
-            C.MULTI_CURRENCY,
-            C.VARIANTS_MATRIX,
-            C.GIFT_CARDS,
-            C.ALTERATIONS,
-        ),
+        "fashion_clothing": _FASHION_SHOP,
+        "fashion_footwear": _FASHION_SHOP,
+        "fashion_boutique": _FASHION_SHOP,
+        "fashion_multi": PROFILES["retail_fashion"],
         "fashion_chain": PROFILES["retail_fashion"],
+        "fashion_all": (*_FASHION_SHOP, C.CONSIGNMENT),
     },
     "grocery": {
         "grocery_shop": _GROCERY_COUNTER,
-        "grocery_supermarket": (*_GROCERY_COUNTER, C.GIFT_CARDS, C.MULTI_CURRENCY),
+        "grocery_supermarket": _GROCERY_SUPER,
+        "grocery_mini": (C.LOYALTY, C.PROMOTIONS, C.FEFO, C.CARD_TERMINALS),
+        "grocery_fresh": _GROCERY_COUNTER,
+        "grocery_all": _GROCERY_SUPER,
         "grocery_cash_carry": (
             C.LOYALTY,
             C.PROMOTIONS,
@@ -332,19 +380,59 @@ SUB_TYPES: dict[str, dict[str, tuple[Capability, ...]]] = {
     },
     # Food & beverage: the starter kit seats guests (floor plan) only where TABLES is on.
     "restaurant": {
-        "full_service": (*PROFILES["restaurant"], C.CARD_TERMINALS),
-        "restaurant_delivery": (*PROFILES["restaurant"], C.DELIVERY_CHANNELS, C.CARD_TERMINALS),
-    },
-    "cafe": {
-        "counter_cafe": (*PROFILES["cafe"], C.CARD_TERMINALS),
-        "sit_down_cafe": (*PROFILES["cafe"], C.TABLES, C.SPLIT_BILLS, C.TIPS_SERVICE_CHARGE, C.CARD_TERMINALS),
-    },
-    "quick_service": {
-        "qsr_counter": (
-            *(capability for capability in PROFILES["quick_service"] if capability != C.DELIVERY_CHANNELS),
+        "full_service": _RESTAURANT_DINE,
+        "restaurant_counter": (
+            C.LOYALTY,
+            C.PROMOTIONS,
+            C.MULTI_CURRENCY,
+            C.MENU_MODIFIERS,
+            C.KDS,
+            C.RECIPES,
             C.CARD_TERMINALS,
         ),
-        "qsr_delivery": (*PROFILES["quick_service"], C.CARD_TERMINALS),
+        "fine_dining": _RESTAURANT_DINE,
+        "cloud_kitchen": (
+            C.LOYALTY,
+            C.PROMOTIONS,
+            C.MULTI_CURRENCY,
+            C.OPEN_ORDERS,
+            C.MENU_MODIFIERS,
+            C.KDS,
+            C.RECIPES,
+            C.DELIVERY_CHANNELS,
+            C.CARD_TERMINALS,
+        ),
+        "restaurant_delivery": _RESTAURANT_DELIVERY,
+        "restaurant_all": _RESTAURANT_DELIVERY,
+    },
+    "cafe": {
+        "counter_cafe": _CAFE_COUNTER,
+        "sit_down_cafe": _CAFE_TABLE,
+        "bakery_cafe": _CAFE_COUNTER,
+        "cafe_quick": (
+            C.LOYALTY,
+            C.PROMOTIONS,
+            C.MENU_MODIFIERS,
+            C.KDS,
+            C.RECIPES,
+            C.CARD_TERMINALS,
+        ),
+        "cafe_delivery": (*_CAFE_COUNTER, C.DELIVERY_CHANNELS),
+        "cafe_all": (*_CAFE_TABLE, C.DELIVERY_CHANNELS),
+    },
+    "quick_service": {
+        "qsr_counter": _QSR_COUNTER,
+        "qsr_burger": _QSR_COUNTER,
+        "qsr_truck": (
+            C.PROMOTIONS,
+            C.MENU_MODIFIERS,
+            C.OPEN_ORDERS,
+            C.KDS,
+            C.RECIPES,
+            C.CARD_TERMINALS,
+        ),
+        "qsr_delivery": _QSR_DELIVERY,
+        "qsr_all": _QSR_DELIVERY,
     },
 }
 

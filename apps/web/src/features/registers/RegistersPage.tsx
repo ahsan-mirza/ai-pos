@@ -1,7 +1,16 @@
-import { actionHoverClass } from "@ai-pos/ui";
-import type { Device, DeviceActivationKey, DeviceKey } from "@ai-pos/shared-types";
-import { Copy, Download, KeyRound, MonitorSmartphone, Plus, RotateCw, ShieldOff } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { actionHoverClass, useLocale } from "@ai-pos/ui";
+import {
+  activationBusinessCode,
+  businessCodeLabel,
+  businessCodePhrase,
+  type BusinessSettings,
+  type Device,
+  type DeviceActivationKey,
+  type DeviceKey,
+} from "@ai-pos/shared-types";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import { Check, Copy, Download, KeyRound, MonitorSmartphone, Plus, RotateCw, ShieldOff, X } from "lucide-react";
+import { useCallback, useEffect, useId, useState } from "react";
 import { ErrorNote, GhostButton, PrimaryButton, SelectField, TextField } from "../../components/ui/Field";
 import { useConfirm } from "../../components/ui/ConfirmDialog";
 import { Modal } from "../../components/ui/Modal";
@@ -9,7 +18,7 @@ import { Toast } from "../../components/ui/Toast";
 import { env } from "../../config/env";
 import { apiGet, apiPost } from "../../lib/api";
 import { useAuth } from "../../lib/auth";
-import { useCurrency } from "../../lib/currency";
+import { useCapabilities } from "../../lib/capabilities";
 import { formatDate, storeOptions, useStores } from "../inventory/shared";
 import { errorMessage } from "../users/api";
 
@@ -225,7 +234,12 @@ export function RegistersPage() {
       ) : null}
       {issued ? <KeyModal issued={issued} onClose={() => setIssued(null)} /> : null}
       {activation ? (
-        <ActivationModal device={activation.device} activation={activation.key} onClose={() => setActivation(null)} />
+        <ActivationModal
+          device={activation.device}
+          activation={activation.key}
+          stores={stores}
+          onClose={() => setActivation(null)}
+        />
       ) : null}
       {toast ? <Toast message={toast} onDismiss={dismissToast} /> : null}
     </section>
@@ -243,6 +257,8 @@ function CreateRegisterModal({
   onClose: () => void;
   onCreated: (result: DeviceKey) => void;
 }) {
+  const { t } = useLocale();
+  const { profile } = useCapabilities();
   const [storeId, setStoreId] = useState(defaultStore);
   const [code, setCode] = useState("R01");
   const [name, setName] = useState("Front counter");
@@ -264,7 +280,7 @@ function CreateRegisterModal({
   return (
     <Modal
       title="Register a till"
-      subtitle="Next you get a one-time activation key to enter on the new register."
+      subtitle={t(businessCodePhrase(profile, "activateHint"))}
       onClose={onClose}
       footer={
         <>
@@ -322,63 +338,212 @@ async function copyVisible(value: string): Promise<boolean> {
 function ActivationModal({
   device,
   activation,
+  stores,
   onClose,
 }: {
   device: Device;
   activation: DeviceActivationKey;
+  stores: ReturnType<typeof useStores>["stores"];
   onClose: () => void;
 }) {
-  const { settings } = useCurrency();
-  const storeCode = settings?.store_code || activation.tenant_domain.split(".")[0] || activation.tenant_domain;
+  const { t } = useLocale();
+  const { profile } = useCapabilities();
+  const reduced = useReducedMotion() === true;
+  const titleId = useId();
+  const label = businessCodeLabel(profile);
+  const [visible, setVisible] = useState(true);
+  const [businessCode, setBusinessCode] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [copied, setCopied] = useState<"code" | "key" | null>(null);
   const [copyError, setCopyError] = useState<string | null>(null);
+  const expired = new Date(activation.expires_at).getTime() <= Date.now();
+  const mismatched = activation.device_id !== device.id;
+  const foreignBranch = stores.length > 0 && !stores.some((store) => store.id === device.store_id);
+  const keyBlocked = mismatched || foreignBranch || expired;
+  const close = () => {
+    if (reduced) onClose();
+    else setVisible(false);
+  };
+
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      if (reduced) onClose();
+      else setVisible(false);
+    };
+    window.addEventListener("keydown", onKey);
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      document.body.style.overflow = previous;
+    };
+  }, [onClose, reduced]);
+
+  useEffect(() => {
+    let live = true;
+    apiGet<BusinessSettings>("/api/v1/settings")
+      .then((row) => {
+        if (!live) return;
+        const saved = activationBusinessCode(row.store_code);
+        if (saved === null) setLoadError(businessCodePhrase(profile, "missing"));
+        else setBusinessCode(saved);
+      })
+      .catch(() => {
+        if (live) setLoadError(businessCodePhrase(profile, "missing"));
+      });
+    return () => {
+      live = false;
+    };
+  }, [profile]);
+
   const copy = (kind: "code" | "key", value: string) => {
     setCopied(null);
     setCopyError(null);
     void copyVisible(value).then((ok) => {
       if (ok) setCopied(kind);
-      else setCopyError(kind === "code" ? "Could not copy the store code. Select it and copy it manually." : "Could not copy the activation key. Select it and copy it manually.");
+      else setCopyError(kind === "code" ? businessCodePhrase(profile, "copyFailed") : businessCodePhrase(profile, "keyCopyFailed"));
     });
   };
+
+  const ease: [number, number, number, number] = [0.22, 1, 0.36, 1];
   return (
-    <Modal
-      title={`Activate ${device.code}`}
-      subtitle="On the new register, enter this store code, then paste the key. The key works once."
-      onClose={onClose}
-      footer={<PrimaryButton onClick={onClose}>Done</PrimaryButton>}
-    >
-      <dl className="space-y-3">
-        <div className="rounded-2xl bg-surface p-4">
-          <dt className="text-[11px] font-semibold uppercase tracking-[0.18em] text-charcoal/50">Store code</dt>
-          <dd className="mt-1 font-mono text-lg font-semibold tracking-tight">{storeCode}</dd>
-          <button
-            type="button"
-            onClick={() => copy("code", storeCode)}
-            className={`mt-3 inline-flex items-center gap-2 rounded-full border border-line px-4 py-2 text-sm font-semibold ${actionHoverClass("neutral")}`}
+    <AnimatePresence onExitComplete={onClose}>
+      {visible ? (
+        <motion.div
+          key="activation"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-charcoal/40 p-3 backdrop-blur-[8px] sm:p-4"
+          role="presentation"
+          initial={reduced ? false : { opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={reduced ? undefined : { opacity: 0 }}
+          transition={{ duration: reduced ? 0 : 0.18 }}
+        >
+          <motion.div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby={titleId}
+            className="flex max-h-[min(90dvh,34rem)] w-full max-w-md flex-col overflow-hidden rounded-3xl border border-gray-100 bg-white shadow-2xl dark:border-gray-800 dark:bg-[#222026]"
+            initial={reduced ? false : { opacity: 0, y: 10, scale: 0.98 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={reduced ? undefined : { opacity: 0, y: 8, scale: 0.98 }}
+            transition={{ duration: reduced ? 0 : 0.22, ease }}
           >
-            <Copy size={14} aria-hidden="true" /> {copied === "code" ? "Copied" : "Copy store code"}
-          </button>
-        </div>
-        <div className="rounded-2xl bg-charcoal p-4 text-white">
-          <dt className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-white/50">
-            <KeyRound size={14} aria-hidden="true" /> Activation key
-          </dt>
-          <dd className="mt-1 font-mono text-2xl font-semibold tracking-[0.2em]">{activation.activation_key}</dd>
-        </div>
-      </dl>
-      <button
-        type="button"
-        onClick={() => copy("key", activation.activation_key)}
-        className={`mt-3 inline-flex items-center gap-2 rounded-full border border-line px-4 py-2 text-sm font-semibold ${actionHoverClass("neutral")}`}
-      >
-        <Copy size={14} aria-hidden="true" /> {copied === "key" ? "Copied" : "Copy activation key"}
-      </button>
-      {copyError ? <p className="mt-2 text-sm text-danger">{copyError}</p> : null}
-      <p className="mt-4 text-sm text-charcoal/60">
-        Valid until {formatDate(activation.expires_at)}. Generating a new key cancels this one; activating replaces the
-        register's previous key.
-      </p>
-    </Modal>
+            <header className="flex items-start justify-between gap-3 border-b border-line px-4 py-3 sm:px-5">
+              <div className="min-w-0">
+                <h2 id={titleId} className="text-lg font-semibold">
+                  {t("Activate {code}", { code: device.code })}
+                </h2>
+                <p className="mt-0.5 text-xs leading-5 text-charcoal/60">{t(businessCodePhrase(profile, "activateHint"))}</p>
+              </div>
+              <button
+                type="button"
+                aria-label="Close"
+                onClick={close}
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-charcoal/70 hover:bg-gray-100"
+              >
+                <X size={18} aria-hidden="true" />
+              </button>
+            </header>
+            <div className="min-h-0 overflow-y-auto px-4 py-3 sm:px-5">
+              <dl className="space-y-3">
+                <div className="rounded-2xl bg-surface px-3 py-2.5 sm:px-4">
+                  <dt className="text-[11px] font-semibold uppercase tracking-[0.16em] text-charcoal/50">{t(label)}</dt>
+                  <dd className="mt-1 flex items-center justify-between gap-3">
+                    <span className="min-w-0 break-all font-mono text-base font-semibold tracking-tight sm:text-lg">
+                      {loadError ? t(loadError) : businessCode ?? t("Loading…")}
+                    </span>
+                    <CopyChip
+                      copied={copied === "code"}
+                      label={copied === "code" ? t(businessCodePhrase(profile, "copied")) : t(businessCodePhrase(profile, "copy"))}
+                      disabled={businessCode === null || loadError !== null}
+                      onClick={() => businessCode && copy("code", businessCode)}
+                    />
+                  </dd>
+                </div>
+                <div className="rounded-2xl bg-charcoal px-3 py-2.5 text-white sm:px-4">
+                  <dt className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-white/50">
+                    <KeyRound size={14} aria-hidden="true" /> {t("Activation key")}
+                  </dt>
+                  <dd className="mt-1 flex items-center justify-between gap-3">
+                    <span className="min-w-0 break-all font-mono text-lg font-semibold tracking-[0.08em] sm:text-xl sm:tracking-[0.12em]">
+                      {mismatched || foreignBranch ? "—" : activation.activation_key}
+                    </span>
+                    <CopyChip
+                      tone="dark"
+                      copied={copied === "key"}
+                      label={copied === "key" ? t(businessCodePhrase(profile, "copied")) : t(businessCodePhrase(profile, "copy"))}
+                      disabled={keyBlocked}
+                      onClick={() => {
+                        if (!keyBlocked) copy("key", activation.activation_key);
+                      }}
+                    />
+                  </dd>
+                </div>
+              </dl>
+              {mismatched ? <p className="mt-2 text-sm text-danger">{t("This key does not belong to this register.")}</p> : null}
+              {foreignBranch ? <p className="mt-2 text-sm text-danger">{t("This register is not in the selected branch.")}</p> : null}
+              {expired ? <p className="mt-2 text-sm text-danger">{t(businessCodePhrase(profile, "expired"))}</p> : null}
+              {copyError ? <p className="mt-2 text-sm text-danger" role="alert">{t(copyError)}</p> : null}
+              <p className="mt-3 text-xs leading-5 text-charcoal/60 sm:text-sm">
+                {t("Valid until {when}. The key works once. Generating a new key cancels this one.", {
+                  when: formatDate(activation.expires_at),
+                })}
+              </p>
+            </div>
+            <footer className="flex items-center justify-end border-t border-line px-4 py-3 sm:px-5">
+              <PrimaryButton onClick={close} className="h-11 min-w-[7.5rem]">
+                {t("Done")}
+              </PrimaryButton>
+            </footer>
+          </motion.div>
+        </motion.div>
+      ) : null}
+    </AnimatePresence>
+  );
+}
+
+function CopyChip({
+  label,
+  copied,
+  disabled,
+  onClick,
+  tone = "light",
+}: {
+  label: string;
+  copied: boolean;
+  disabled?: boolean;
+  onClick: () => void;
+  tone?: "light" | "dark";
+}) {
+  const reduced = useReducedMotion() === true;
+  return (
+    <motion.button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      aria-label={label}
+      whileTap={reduced || disabled ? undefined : { scale: 0.98 }}
+      className={`inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full px-3 text-xs font-semibold disabled:opacity-40 ${
+        tone === "dark"
+          ? "bg-white/10 text-white hover:bg-white/15"
+          : `border border-line bg-white ${actionHoverClass("neutral")}`
+      }`}
+    >
+      <AnimatePresence mode="wait" initial={false}>
+        <motion.span
+          key={copied ? "copied" : "copy"}
+          className="inline-flex items-center gap-1.5"
+          initial={reduced ? false : { opacity: 0, y: 4 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={reduced ? undefined : { opacity: 0, y: -4 }}
+          transition={{ duration: reduced ? 0 : 0.18 }}
+        >
+          {copied ? <Check size={14} aria-hidden="true" /> : <Copy size={14} aria-hidden="true" />}
+          {label}
+        </motion.span>
+      </AnimatePresence>
+    </motion.button>
   );
 }
 
@@ -396,22 +561,26 @@ function KeyModal({ issued, onClose }: { issued: DeviceKey; onClose: () => void 
         <p className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-white/50">
           <KeyRound size={14} aria-hidden="true" /> DEVICE_KEY
         </p>
-        <p className="mt-2 break-all font-mono text-sm">{issued.key}</p>
+        <p className="mt-2 flex items-center justify-between gap-3">
+          <span className="min-w-0 break-all font-mono text-sm">{issued.key}</span>
+          <button
+            type="button"
+            onClick={() => {
+              setCopied(false);
+              setCopyError(null);
+              void copyVisible(issued.key).then((ok) => {
+                if (ok) setCopied(true);
+                else setCopyError("Could not copy the key. Select it and copy it manually.");
+              });
+            }}
+            aria-label={copied ? "Copied" : "Copy key"}
+            title={copied ? "Copied" : "Copy key"}
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-white/80 hover:bg-white/10"
+          >
+            {copied ? <Check size={16} aria-hidden="true" /> : <Copy size={16} aria-hidden="true" />}
+          </button>
+        </p>
       </div>
-      <button
-        type="button"
-        onClick={() => {
-          setCopied(false);
-          setCopyError(null);
-          void copyVisible(issued.key).then((ok) => {
-            if (ok) setCopied(true);
-            else setCopyError("Could not copy the key. Select it and copy it manually.");
-          });
-        }}
-        className={`mt-3 inline-flex items-center gap-2 rounded-full border border-line px-4 py-2 text-sm font-semibold ${actionHoverClass("neutral")}`}
-      >
-        <Copy size={14} aria-hidden="true" /> {copied ? "Copied" : "Copy key"}
-      </button>
       {copyError ? <p className="mt-2 text-sm text-danger">{copyError}</p> : null}
       <p className="mt-4 text-sm text-charcoal/60">
         Invoices from this till are numbered <span className="font-mono">{issued.device.invoice_prefix}-000001</span> onward.

@@ -1,6 +1,14 @@
 export { formatMoney, isValidImei, lineTaxCents } from "./money.js";
 export { ADDRESS_MAX_LENGTH, addressError, normalizeAddress } from "./address.js";
 export { isStoreCode, normalizeStoreCode, storeCodeError } from "./storeCode.js";
+export {
+  activationBusinessCode,
+  businessCodeKind,
+  businessCodeLabel,
+  businessCodeLabelPlural,
+  businessCodePhrase,
+} from "./businessCode.js";
+export type { BusinessCodeLocale, BusinessCodePhrase } from "./businessCode.js";
 export { DEFAULT_TAX_POLICY, TAX_TREATMENT_LABELS, divHalfUp, enteredIncludesTax, forCustomer, lineTax, rateFor, treatmentOf } from "./tax.js";
 export type { Device, DeviceActivationKey, DeviceCreate, DeviceKey } from "./devices.js";
 export type { LineTax, TaxCategory, TaxPolicy, TaxTreatment } from "./tax.js";
@@ -592,8 +600,10 @@ export {
   SIGNUP_EMBED_PARAM,
   SIGNUP_PASSWORD_MIN_LENGTH,
   isSignupEmbedSearch,
+  signupPasswordConfirmation,
   signupPasswordReady,
   signupPasswordRules,
+  signupPasswordsAccepted,
 } from "./signup.js";
 export { COUNTRY_CURRENCIES, currencyForCountry } from "./countries.js";
 export { taxIdError, taxIdField } from "./taxId.js";

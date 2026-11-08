@@ -8,6 +8,7 @@ import {
   storeNameError,
   toE164,
   useAvailabilityCheck,
+  useLocale,
   type AvailabilityState,
 } from "@ai-pos/ui";
 import type { CountryCode } from "libphonenumber-js";
@@ -63,26 +64,27 @@ export function EmailAvailabilityField({
   status: AvailabilityState;
   onRetry: () => void;
 }) {
+  const { t } = useLocale();
   const syntax = value.includes("@") ? emailError(value, false) : undefined;
-  const taken = status === "unavailable" ? "This email is already registered." : undefined;
+  const taken = status === "unavailable" ? t("This email is already registered.") : undefined;
   const shown = syntax || taken ? "idle" : status;
   return (
     <div>
       <TextField
-        label="Email"
+        label={t("Email")}
         type="email"
         autoComplete="email"
         value={value}
-        error={syntax || taken}
+        error={syntax ? t(syntax) : taken}
         onChange={(event) => onChange(event.target.value)}
         endAdornment={<AnimatedAvailabilityCheck show={shown === "available"} />}
         required
       />
       <AvailabilityStatus
         status={shown}
-        availableText="This email is available."
-        unavailableText="This email is already registered."
-        errorText="We couldn't check this email."
+        availableText={t("This email is available.")}
+        unavailableText={t("This email is already registered.")}
+        errorText={t("We couldn't check this email.")}
         onRetry={onRetry}
       />
     </div>
@@ -104,26 +106,27 @@ export function PhoneAvailabilityField({
   status: AvailabilityState;
   onRetry: () => void;
 }) {
-  const taken = status === "unavailable" ? "This mobile number is already registered." : undefined;
+  const { t } = useLocale();
+  const taken = status === "unavailable" ? t("This mobile number is already registered.") : undefined;
   const shown = taken ? "idle" : status;
   return (
     <div>
       <PhoneField
-        label="Mobile number"
+        label={t("Mobile number")}
         value={value}
         onChange={onChange}
         selectedCountry={country as CountryCode}
         onCountryChange={onCountryChange}
         error={taken}
-        hint="Saved on your account. The code is sent by email."
+        hint={t("Saved on your account. The code is sent by email.")}
         endAdornment={<AnimatedAvailabilityCheck show={shown === "available"} />}
         required
       />
       <AvailabilityStatus
         status={shown}
-        availableText="This number is available. It is not verified yet."
-        unavailableText="This mobile number is already registered."
-        errorText="We couldn't check this number."
+        availableText={t("This number is available. It is not verified yet.")}
+        unavailableText={t("This mobile number is already registered.")}
+        errorText={t("We couldn't check this number.")}
         onRetry={onRetry}
       />
     </div>
@@ -143,23 +146,24 @@ export function StoreNameAvailabilityField({
   onRetry: () => void;
   placeholder?: string;
 }) {
+  const { t } = useLocale();
   const syntax = storeNameError(value, false);
   return (
     <div>
       <TextField
-        label="Store name"
+        label={t("Store name")}
         value={value}
-        error={syntax}
+        error={syntax ? t(syntax) : undefined}
         onChange={(event) => onChange(event.target.value)}
         placeholder={placeholder}
-        hint={syntax ? undefined : "Shown on receipts. Other stores can use the same name."}
+        hint={syntax ? undefined : t("Shown on receipts. Other stores can use the same name.")}
         required
       />
       <AvailabilityStatus
         status={syntax ? "idle" : status}
-        availableText="You can use this name."
-        unavailableText="This name cannot be used."
-        errorText="We couldn't check this name."
+        availableText={t("You can use this name.")}
+        unavailableText={t("This name cannot be used.")}
+        errorText={t("We couldn't check this name.")}
         onRetry={onRetry}
       />
     </div>

@@ -1,8 +1,9 @@
-import { isStoreCode, normalizeStoreCode } from "@ai-pos/shared-types";
-import { BrandLogo } from "@ai-pos/ui";
+import { businessCodeLabel, businessCodePhrase, isStoreCode, normalizeStoreCode } from "@ai-pos/shared-types";
+import { BrandLogo, useLocale } from "@ai-pos/ui";
 import { CheckCircle2, KeyRound, Loader2, ShieldCheck, Store } from "lucide-react";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useRegisterLayout } from "../../components/RegisterLayout";
+import { useCapabilities } from "../../lib/capabilities";
 import { activateTerminal, inTauri, type TerminalStatus } from "../../lib/tauri";
 
 /** Store host for this build: a public IP until DNS exists, otherwise a domain suffix. */
@@ -28,6 +29,9 @@ const input =
 /** First run: binds this register to a store code with a one-time key from the admin portal. */
 export function ActivationScreen({ onCancel }: { onCancel?: () => void }) {
   const { theme } = useRegisterLayout();
+  const { t } = useLocale();
+  const { profile } = useCapabilities();
+  const codeLabel = t(businessCodeLabel(profile));
   const [subdomain, setSubdomain] = useState("");
   const [key, setKey] = useState("");
   const [busy, setBusy] = useState(false);
@@ -48,7 +52,7 @@ export function ActivationScreen({ onCancel }: { onCancel?: () => void }) {
     event.preventDefault();
     if (!keyReady || busy) return;
     if (!storeReady) {
-      setError("Enter the store code. The grey text in that box is only an example.");
+      setError(t(businessCodePhrase(profile, "enterExample")));
       storeCode.current?.focus();
       return;
     }
@@ -84,11 +88,11 @@ export function ActivationScreen({ onCancel }: { onCancel?: () => void }) {
               {
                 icon: Store,
                 text: DIRECT_IP
-                  ? `Open the admin portal at http://${BASE_DOMAIN} and sign in with the store code.`
-                  : "Open the admin portal and sign in with the store code.",
+                  ? t(businessCodePhrase(profile, "portalHost"), { host: BASE_DOMAIN })
+                  : t(businessCodePhrase(profile, "portal")),
               },
               { icon: KeyRound, text: "Registers › choose this till › Generate activation key." },
-              { icon: ShieldCheck, text: "Enter the store code and key here. The key works once, for 24 hours." },
+              { icon: ShieldCheck, text: t(businessCodePhrase(profile, "enterKey")) },
             ].map(({ icon: Icon, text }) => (
               <li key={text} className="flex gap-3">
                 <Icon size={18} aria-hidden="true" className="mt-0.5 shrink-0 text-orange-400" />
@@ -108,7 +112,7 @@ export function ActivationScreen({ onCancel }: { onCancel?: () => void }) {
               <dl className="mt-5 divide-y divide-zinc-200 rounded-2xl border border-zinc-200 text-sm dark:divide-zinc-800 dark:border-zinc-800">
                 {[
                   ["Business", done.tenant_name],
-                  ["Store code", done.tenant_domain],
+                  [codeLabel, done.tenant_slug],
                   ["Branch", `${done.store_code} · ${done.store_name}`],
                   ["Register", `${done.register_code} · ${done.register_name}`],
                 ].map(([label, value]) => (
@@ -130,11 +134,11 @@ export function ActivationScreen({ onCancel }: { onCancel?: () => void }) {
                 <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
                   {onCancel
                     ? "A new key connects this app to that register. Other tills at the same store stay connected."
-                    : "Ask your manager for the store code and key."}
+                    : t(businessCodePhrase(profile, "ask"))}
                 </p>
               </div>
               <label className="block">
-                <span className="mb-1.5 block text-sm font-semibold">Store code</span>
+                <span className="mb-1.5 block text-sm font-semibold">{codeLabel}</span>
                 <input
                   ref={storeCode}
                   autoFocus
@@ -145,16 +149,16 @@ export function ActivationScreen({ onCancel }: { onCancel?: () => void }) {
                     setError(null);
                     setSubdomain(normalizeStoreCode(event.target.value));
                   }}
-                  placeholder="client1"
+                  placeholder={t(businessCodePhrase(profile, "placeholder"))}
                   className={input}
                 />
                 {slug ? (
                   <span className="mt-1.5 block text-xs text-zinc-500 dark:text-zinc-400">
-                    Connects as store code <span className="font-mono">{slug}</span>
+                    {t(businessCodePhrase(profile, "connects"))} <span className="font-mono">{slug}</span>
                   </span>
                 ) : keyReady ? (
                   <span className="mt-1.5 block text-xs text-zinc-500 dark:text-zinc-400">
-                    Type the store code. The grey text is only an example.
+                    {t(businessCodePhrase(profile, "typeExample"))}
                   </span>
                 ) : null}
               </label>

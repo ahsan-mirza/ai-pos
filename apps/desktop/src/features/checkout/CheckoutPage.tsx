@@ -15,6 +15,7 @@ import {
   type ProductUpsert,
   type Promotion,
 } from "@ai-pos/shared-types";
+import { useLocale } from "@ai-pos/ui";
 import {
   AlertTriangle,
   ChevronUp,
@@ -76,7 +77,6 @@ import { loadCatalog, localCatalog, mergeCatalog, openingCatalog, store, useCata
 import { CancelOrderDialog } from "./fnb/CancelOrderDialog";
 import { needsCancelApproval, sessionCancelStage } from "./fnb/cancelOrder";
 import { OrderModeBar } from "./fnb/OrderModeBar";
-import { ReservationDesk } from "./fnb/ReservationDesk";
 import {
   attachForPayment,
   closeSession,
@@ -231,9 +231,15 @@ function withPending(state: CartState, items: SessionItem[], products: ProductUp
   }, state);
 }
 
+const headerChip =
+  "inline-flex h-10 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border border-zinc-200 bg-white px-2.5 text-xs font-semibold text-zinc-700 transition-colors hover:bg-zinc-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/40 disabled:opacity-40 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:hover:bg-zinc-800";
+const headerIcon =
+  "inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-zinc-200 bg-white text-zinc-600 transition-colors hover:border-primary-500 hover:text-primary-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/40 disabled:opacity-40 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200";
+
 export function CheckoutPage({ session }: CheckoutPageProps) {
   const currency = useBusinessCurrency();
   const { density } = useRegisterLayout();
+  const { t } = useLocale();
   const [catalog, setCatalog] = useState<Catalog>(() => openingCatalog());
   const [catalogLoaded, setCatalogLoaded] = useState(() => openingCatalog().products.length > 0);
   const [syncingCatalog, setSyncingCatalog] = useState(false);
@@ -1049,7 +1055,7 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
 
   const itemCount = totals.pieces;
   const itemLabel = `${itemCount} item${itemCount === 1 ? "" : "s"}`;
-  const syncLabel = desktop ? `${report.pending} unsynced` : online ? "Live" : "Offline";
+  const syncLabel = desktop ? `${report.pending} unsynced` : online ? t("Live") : t("Offline");
   const sync: SyncState = desktop
     ? {
         tone: report.pending > 0 ? "pending" : "synced",
@@ -1072,10 +1078,10 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
                 disabled={charging}
                 onClick={() => navigate("orders")}
                 title="Tables and open tabs shared by every register"
-                className="hidden h-9 items-center gap-1.5 rounded-full bg-primary/10 px-3 text-xs font-semibold text-primary sm:inline-flex"
+                className={headerChip}
               >
-                <UtensilsCrossed size={14} aria-hidden="true" />
-                {settlement ? `Paying ${settlement.label}` : "Orders & tables"}
+                <UtensilsCrossed size={15} aria-hidden="true" />
+                {settlement ? `Paying ${settlement.label}` : t("Orders & Tables")}
               </button>
             ) : null}
             {wholesaleOn ? (
@@ -1087,7 +1093,7 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
                 disabled={charging}
                 onClick={() => setGiftCardOpen(true)}
                 title="Sell a gift card"
-                className="hidden h-9 items-center gap-1.5 rounded-full bg-primary/10 px-3 text-xs font-semibold text-primary sm:inline-flex"
+                className={headerChip}
               >
                 <Gift size={14} aria-hidden="true" />
                 Gift card
@@ -1099,19 +1105,19 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
                 disabled={charging}
                 onClick={() => setDiscountFor({ lines: discountable, title: "the whole sale" })}
                 title="Discount the whole sale"
-                className="hidden h-9 items-center gap-1.5 rounded-full bg-primary/10 px-3 text-xs font-semibold text-primary sm:inline-flex"
+                className={headerChip}
               >
-                <Percent size={14} aria-hidden="true" />
-                Discount sale
+                <Percent size={15} aria-hidden="true" />
+                {t("Discount Sale")}
               </button>
             ) : null}
             <button
               type="button"
               onClick={() => setDrawerOpen(true)}
               disabled={charging}
-              aria-label="Cash drawer"
-              title="Cash drawer"
-              className={ui.iconButton}
+              aria-label={t("Cash drawer")}
+              title={t("Cash drawer")}
+              className={headerIcon}
             >
               <Inbox size={18} aria-hidden="true" />
             </button>
@@ -1126,7 +1132,7 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
                     setNotice(outcome.message ?? `Receipt ${lastReceipt.doc.number} sent to the printer.`),
                   )
                 }
-                className={ui.iconButton}
+                className={headerIcon}
               >
                 <ReceiptText size={18} aria-hidden="true" />
               </button>
@@ -1143,7 +1149,7 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
                     manual: true,
                   }).then((outcome) => setNotice(outcome.message ?? `Gift receipt for ${lastReceipt.doc.number} printed.`))
                 }
-                className={ui.iconButton}
+                className={headerIcon}
               >
                 <Gift size={18} aria-hidden="true" />
               </button>
@@ -1159,7 +1165,7 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
                     setNotice(error instanceof Error ? error.message : String(error)),
                   )
                 }
-                className={ui.iconButton}
+                className={headerIcon}
               >
                 <FileText size={18} aria-hidden="true" />
               </button>
@@ -1441,18 +1447,24 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
                     disabled={charging || cart.lines.length === 0}
                     title={cart.lines.length === 0 ? "Add dishes before sending a round" : "Send this round to the kitchen"}
                     onClick={() => void sendRound()}
-                    className={`${ui.secondaryAction} h-14 flex-1 rounded-full`}
+                    className={`${ui.secondaryAction} h-14 min-w-0 flex-1 flex-col gap-0 rounded-full px-2 text-xs leading-tight`}
                   >
-                    Send round to kitchen
+                    <span className="whitespace-nowrap">Send round</span>
+                    <span className="whitespace-nowrap">to kitchen</span>
                   </button>
                 ) : null}
                 <button
                   type="button"
                   disabled={chargeBlocked}
                   onClick={() => void (food ? payTable() : charge())}
-                  className={`${ui.primaryAction} flex-1 rounded-full`}
+                  className={`${ui.primaryAction} min-w-[11rem] flex-[1.15] flex-col gap-0 rounded-full px-3 leading-none`}
                 >
-                  {charging ? "Recording sale…" : food ? `Pay & checkout ${formatMoney(dueCents, currency)}` : `Charge ${formatMoney(dueCents, currency)}`}
+                  <span className="whitespace-nowrap text-sm">
+                    {charging ? "Recording sale…" : food ? "Pay & checkout" : "Charge"}
+                  </span>
+                  {charging ? null : (
+                    <span className="whitespace-nowrap text-sm tabular-nums">{formatMoney(dueCents, currency)}</span>
+                  )}
                 </button>
               </div>
             }
@@ -1461,14 +1473,6 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
       >
         <div className="flex h-full min-h-0 min-w-0 flex-col">
           <div className="shrink-0 space-y-3 px-5 pt-5">
-          <p className="flex items-center gap-2 text-xs text-zinc-500 dark:text-zinc-400">
-            <span
-              aria-hidden="true"
-              className={`h-2 w-2 shrink-0 rounded-full ${online ? "bg-emerald-500" : "bg-amber-500"}`}
-            />
-            {statusText}
-          </p>
-
           {cart.mode === "WHOLESALE" ? (
             <p className="rounded-xl border border-primary-500/20 bg-primary-500/10 px-4 py-3 text-sm text-zinc-700 dark:text-zinc-200">
               Wholesale pricing at <span className="font-semibold text-zinc-950 dark:text-white">{PRICE_TIER_LABELS[tier]}</span>
@@ -1477,7 +1481,6 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
             </p>
           ) : null}
 
-          {food ? <ReservationDesk storeId={store.id} /> : null}
           {food ? (
             <OrderModeBar
               mode={orderMode}

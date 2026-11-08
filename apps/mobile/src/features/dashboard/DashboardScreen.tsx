@@ -1,4 +1,4 @@
-import { AnalyticsTimeframe, Capability, formatMoney, Permission, profileSpec } from "@ai-pos/shared-types";
+import { AnalyticsTimeframe, Capability, businessCodeLabel, formatMoney, Permission, profileSpec } from "@ai-pos/shared-types";
 import { useQuery } from "@tanstack/react-query";
 import { router } from "expo-router";
 import { useState } from "react";
@@ -66,7 +66,7 @@ export function DashboardScreen() {
         <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
           <AppText variant="title" numberOfLines={1}>{tenant.businessName ?? t("appName")}</AppText>
           <AppText variant="caption" tone="secondary" numberOfLines={2}>
-            {(tenant.storeCode || auth.storeCode) ? `${t("storeCode")} ${tenant.storeCode || auth.storeCode}` : t("storeCode")}
+            {(tenant.storeCode || auth.storeCode) ? `${businessCodeLabel(tenant.profile, locale)} ${tenant.storeCode || auth.storeCode}` : businessCodeLabel(tenant.profile, locale)}
             {" · "}
             {tenant.storeId === null ? t("allBranches") : t("assignedBranch")}
           </AppText>

@@ -25,6 +25,18 @@ export interface CountryOption {
 }
 
 const regionNames = new Intl.DisplayNames(["en"], { type: "region" });
+const regionNamesByLocale = new Map<string, Intl.DisplayNames>([["en", regionNames]]);
+
+/** Country name in the active interface language. English stays the stored search name. */
+export function localizedCountryName(iso: string, locale: string): string {
+  const language = locale === "ar" ? "ar" : "en";
+  let names = regionNamesByLocale.get(language);
+  if (!names) {
+    names = new Intl.DisplayNames([language], { type: "region" });
+    regionNamesByLocale.set(language, names);
+  }
+  return names.of(iso) ?? iso;
+}
 
 function flagEmoji(iso: string): string {
   return [...iso.toUpperCase()].map((char) => String.fromCodePoint(127397 + char.charCodeAt(0))).join("");
@@ -57,21 +69,22 @@ export function countryOption(iso: string): CountryOption | undefined {
   return BY_ISO.get(iso as CountryCode);
 }
 
-function matches(country: CountryOption, query: string): boolean {
+function matches(country: CountryOption, query: string, locale: string): boolean {
   if (!query) return true;
   const text = query.toLowerCase();
   const digits = text.replace(/\D/g, "");
   if (country.name.toLowerCase().includes(text)) return true;
+  if (localizedCountryName(country.iso, locale).toLowerCase().includes(text)) return true;
   if (country.iso.toLowerCase().includes(text)) return true;
   if (digits && country.dial.includes(digits)) return true;
   return (ALIASES[country.iso] ?? []).some((alias) => alias.includes(text));
 }
 
-export function filterCountries(query: string): { pinned: CountryOption[]; rest: CountryOption[] } {
+export function filterCountries(query: string, locale = "en"): { pinned: CountryOption[]; rest: CountryOption[] } {
   const pinned = PINNED_COUNTRIES.map((iso) => BY_ISO.get(iso)).filter((country): country is CountryOption => country !== undefined);
   if (!query.trim()) {
     const pinnedSet = new Set<CountryCode>(PINNED_COUNTRIES);
     return { pinned, rest: COUNTRY_OPTIONS.filter((country) => !pinnedSet.has(country.iso)) };
   }
-  return { pinned: [], rest: COUNTRY_OPTIONS.filter((country) => matches(country, query)) };
+  return { pinned: [], rest: COUNTRY_OPTIONS.filter((country) => matches(country, query, locale)) };
 }

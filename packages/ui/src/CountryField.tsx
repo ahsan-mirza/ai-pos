@@ -1,7 +1,8 @@
 import { ChevronDown, Search } from "lucide-react";
 import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { CountryFlag, countryOption, filterCountries } from "./countryOptions";
+import { CountryFlag, countryOption, filterCountries, localizedCountryName } from "./countryOptions";
+import { useLocale } from "./LocaleSwitch";
 
 /** A searchable country list. The closed control shows the flag, the name, and an optional detail such as the currency. */
 export function CountryField({
@@ -29,8 +30,9 @@ export function CountryField({
   const [query, setQuery] = useState("");
   const [highlight, setHighlight] = useState(0);
   const [menuBox, setMenuBox] = useState<{ top: number; left: number; width: number } | null>(null);
+  const { locale, t } = useLocale();
   const selected = countryOption(value);
-  const groups = useMemo(() => filterCountries(query), [query]);
+  const groups = useMemo(() => filterCountries(query, locale), [query, locale]);
   const options = useMemo(() => [...groups.pinned, ...groups.rest], [groups]);
 
   useLayoutEffect(() => {
@@ -114,7 +116,7 @@ export function CountryField({
         className="mt-1.5 flex w-full items-center gap-2 rounded-xl border border-transparent bg-surface px-3 py-3 text-left text-sm font-normal disabled:cursor-not-allowed"
       >
         {selected ? <CountryFlag iso={selected.iso} /> : null}
-        <span className="min-w-0 flex-1 truncate">{selected?.name ?? "Choose a country"}</span>
+        <span className="min-w-0 flex-1 truncate">{selected ? localizedCountryName(selected.iso, locale) : t("Choose a country")}</span>
         {selected && detail ? <span className="shrink-0 text-charcoal/50">{detail(selected.iso)}</span> : null}
         <ChevronDown className="h-4 w-4 shrink-0 text-gray-400" aria-hidden="true" />
       </button>
@@ -131,8 +133,8 @@ export function CountryField({
                   ref={searchRef}
                   value={query}
                   type="search"
-                  aria-label="Search countries"
-                  placeholder="Search country"
+                  aria-label={t("Search countries")}
+                  placeholder={t("Search country")}
                   onChange={(event) => {
                     setQuery(event.target.value);
                     setHighlight(0);
@@ -153,8 +155,8 @@ export function CountryField({
                   className="w-full rounded-lg bg-surface py-2 pl-9 pr-3 text-sm font-normal text-charcoal outline-none placeholder:text-charcoal/40 focus:bg-card [&::-webkit-search-cancel-button]:hidden"
                 />
               </div>
-              <ul id={listId} role="listbox" aria-label="Countries" className="max-h-60 overflow-y-auto py-1">
-                {options.length === 0 ? <li className="px-3 py-2 text-sm font-normal text-charcoal/50">No countries match.</li> : null}
+              <ul id={listId} role="listbox" aria-label={t("Countries")} className="max-h-60 overflow-y-auto py-1">
+                {options.length === 0 ? <li className="px-3 py-2 text-sm font-normal text-charcoal/50">{t("No countries match.")}</li> : null}
                 {options.map((option, index) => {
                   const firstRest = groups.pinned.length > 0 && index === groups.pinned.length;
                   return (
@@ -169,7 +171,7 @@ export function CountryField({
                         className={`flex w-full items-center gap-2 px-3 py-2 text-left text-sm font-normal ${index === highlight ? "bg-surface" : ""}`}
                       >
                         <CountryFlag iso={option.iso} />
-                        <span className="min-w-0 flex-1 truncate">{option.name}</span>
+                        <span className="min-w-0 flex-1 truncate">{localizedCountryName(option.iso, locale)}</span>
                         {detail ? <span className="text-charcoal/50">{detail(option.iso)}</span> : null}
                       </button>
                     </li>

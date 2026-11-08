@@ -1,9 +1,35 @@
-import { SIGNUP_BUSINESS_CARDS, type SignupBusinessCard, type SignupState } from "@ai-pos/shared-types";
-import { Check, Coffee, MailCheck, Sandwich, Shirt, ShoppingCart, Smartphone, Store, UtensilsCrossed, type LucideIcon } from "lucide-react";
+import { SIGNUP_BUSINESS_CARDS, type SignupBusinessCard, type SignupState, type SignupSubType } from "@ai-pos/shared-types";
+import { useLocale } from "@ai-pos/ui";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import {
+  Check,
+  Coffee,
+  Croissant,
+  Laptop,
+  MailCheck,
+  Sandwich,
+  Shirt,
+  ShoppingBag,
+  ShoppingCart,
+  Smartphone,
+  Store,
+  Truck,
+  UtensilsCrossed,
+  type LucideIcon,
+} from "lucide-react";
 import { useEffect, useState } from "react";
 import { ErrorNote } from "../../components/ui/Field";
 import { ApiRequestError } from "../../lib/api";
+import {
+  businessMotion,
+  operatingModels,
+  orderedCategories,
+  selectionReady,
+  setupPreview,
+  subTypeAfterCategoryChange,
+} from "./businessSelection";
 import { signupApi, type SignupSession } from "./signupApi";
+import { WizardFooter } from "./WizardFooter";
 
 const ICONS: Record<string, LucideIcon> = {
   electronics_wholesale: Smartphone,
@@ -14,6 +40,24 @@ const ICONS: Record<string, LucideIcon> = {
   cafe: Coffee,
   quick_service: Sandwich,
 };
+
+const MODEL_ICONS: Record<string, LucideIcon> = {
+  electronics_mobile: Smartphone,
+  electronics_computer: Laptop,
+  electronics_b2b: Store,
+  bakery_cafe: Croissant,
+  cafe_delivery: Truck,
+  cloud_kitchen: Truck,
+  qsr_truck: Truck,
+  wholesale_distribution: Truck,
+  fashion_clothing: Shirt,
+  fashion_footwear: ShoppingBag,
+  grocery_shop: ShoppingCart,
+};
+
+function modelIcon(id: string, fallback: LucideIcon): LucideIcon {
+  return MODEL_ICONS[id] ?? fallback;
+}
 
 export function BusinessStep({
   session,
@@ -26,12 +70,20 @@ export function BusinessStep({
   initialSubType: string | null;
   onChosen: (state: SignupState) => void;
 }) {
+  const reduced = useReducedMotion() === true;
+  const motionProps = businessMotion(reduced);
   const [card, setCard] = useState<SignupBusinessCard | null>(
     () => SIGNUP_BUSINESS_CARDS.find((option) => option.profile === initialProfile) ?? null,
   );
   const [subType, setSubType] = useState<string | null>(initialSubType);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { t } = useLocale();
+  const compact = card !== null;
+  const models = card ? operatingModels(card.profile) : [];
+  const selectedModel = models.find((model) => model.id === subType) ?? null;
+  const comingSoon = card !== null && models.length === 0;
+  const ready = selectionReady(card?.profile ?? null, subType) && !busy;
 
   const choose = async (profile: string, sub: string | null) => {
     setBusy(true);
@@ -39,7 +91,7 @@ export function BusinessStep({
     try {
       onChosen(await signupApi.business(session, { profile, sub_type: sub }));
     } catch (caught) {
-      setError(caught instanceof ApiRequestError ? caught.message : "Could not save your choice.");
+      setError(t(caught instanceof ApiRequestError ? caught.message : "Could not save your choice."));
     } finally {
       setBusy(false);
     }
@@ -47,7 +99,7 @@ export function BusinessStep({
 
   const pick = (next: SignupBusinessCard) => {
     setCard(next);
-    setSubType(next.subTypes[0]?.id ?? null);
+    setSubType((current) => subTypeAfterCategoryChange(next.profile, current));
     setError(null);
   };
 
@@ -57,123 +109,185 @@ export function BusinessStep({
     setSubType(initialSubType);
   }, [initialProfile, initialSubType]);
 
-  const comingSoon = card !== null && card.subTypes.length === 0;
-
   return (
-    <div>
-      <h2 className="text-2xl font-semibold">What do you sell?</h2>
-      <p className="mt-1 text-sm text-charcoal/60">We switch on the right modules. You can change them later in Settings.</p>
-      <div className="mt-6 grid gap-3 sm:grid-cols-2" role="radiogroup" aria-label="Business type">
-        {SIGNUP_BUSINESS_CARDS.map((option) => {
-          const Icon = ICONS[option.profile] ?? Smartphone;
-          const selected = card?.profile === option.profile;
-          const soon = option.subTypes.length === 0;
-          return (
-            <button
-              key={option.profile}
-              type="button"
-              role="radio"
-              aria-checked={selected}
-              onClick={() => pick(option)}
-              className={`relative flex min-h-[132px] flex-col items-start rounded-3xl border-2 p-5 text-left transition-colors ${
-                selected ? "border-accent bg-accent/5" : "border-line bg-white hover:border-charcoal/20"
-              }`}
+    <div className="flex min-h-0 flex-auto flex-col overflow-hidden">
+      <div className="min-h-0 flex-auto overflow-y-auto overscroll-contain pr-0.5">
+        <h2 className="text-lg font-semibold text-charcoal">{t("Choose your business type")}</h2>
+        <p className="signup-step-help mt-0.5 text-xs leading-4 text-charcoal/60">
+          {t("Pick the category closest to what you sell. You can change modules later in Settings.")}
+        </p>
+        <div className="mt-3 grid grid-cols-1 gap-2 min-[480px]:grid-cols-2" role="radiogroup" aria-label={t("Business type")}>
+          {orderedCategories(card?.profile ?? null).map((option) => {
+            const Icon = ICONS[option.profile] ?? Smartphone;
+            const selected = card?.profile === option.profile;
+            return (
+              <motion.button
+                key={option.profile}
+                type="button"
+                role="radio"
+                aria-checked={selected}
+                layout
+                transition={motionProps}
+                onClick={() => pick(option)}
+                className={`relative flex items-center gap-2.5 rounded-xl border-2 text-left ${
+                  compact ? "px-2.5 py-1.5" : "min-h-[68px] p-2.5"
+                } ${selected ? "border-accent bg-accent/5" : "border-line bg-white hover:border-charcoal/20"}`}
+              >
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-accent/10 text-accent">
+                  <Icon size={18} aria-hidden="true" />
+                </span>
+                <span className="min-w-0 pr-5">
+                  <span className="block text-sm font-semibold leading-4 text-charcoal">{t(option.label)}</span>
+                  {compact ? null : (
+                    <span className="mt-0.5 line-clamp-2 text-xs leading-4 text-charcoal/60">{t(option.description)}</span>
+                  )}
+                </span>
+                {selected ? (
+                  <span className="absolute right-2 top-2 flex h-5 w-5 items-center justify-center rounded-full bg-accent text-white">
+                    <Check size={12} aria-hidden="true" />
+                  </span>
+                ) : null}
+              </motion.button>
+            );
+          })}
+        </div>
+
+        <AnimatePresence initial={false}>
+          {card !== null && !comingSoon ? (
+            <motion.section
+              key={card.profile}
+              initial={reduced ? false : { opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={reduced ? undefined : { opacity: 0, y: 4 }}
+              transition={motionProps}
+              className="mt-3"
+              aria-label={t("Operating model")}
             >
-              <span
-                className={`flex h-11 w-11 items-center justify-center rounded-2xl ${
-                  soon ? "bg-surface text-charcoal/40" : "bg-accent/10 text-accent"
-                }`}
-              >
-                <Icon size={22} aria-hidden="true" />
-              </span>
-              <span className="mt-3 font-semibold">{option.label}</span>
-              <span className="mt-0.5 text-sm text-charcoal/60">{option.description}</span>
-              {soon ? (
-                <span className="absolute right-4 top-4 rounded-full bg-surface px-2.5 py-1 text-[11px] font-semibold text-charcoal/60">
-                  Coming soon
-                </span>
-              ) : null}
-              {selected && !soon ? (
-                <span className="absolute right-4 top-4 flex h-6 w-6 items-center justify-center rounded-full bg-accent text-white">
-                  <Check size={14} aria-hidden="true" />
-                </span>
-              ) : null}
-            </button>
-          );
-        })}
+              <h3 className="text-sm font-semibold text-charcoal">{t("Which best describes how your business operates?")}</h3>
+              <p className="signup-model-help mt-0.5 text-xs leading-4 text-charcoal/60">
+                {t("Choose the setup that most closely matches your day-to-day operations.")}
+              </p>
+              <div className="mt-2 grid grid-cols-1 gap-2 min-[480px]:grid-cols-2" role="radiogroup" aria-label={t("Operating model")}>
+                {models.map((option, index) => (
+                  <ModelCard
+                    key={option.id}
+                    option={option}
+                    selected={subType === option.id}
+                    reduced={reduced}
+                    delay={reduced ? 0 : Math.min(index, 4) * 0.03}
+                    fallback={ICONS[card.profile] ?? Smartphone}
+                    onSelect={() => setSubType(option.id)}
+                  />
+                ))}
+              </div>
+              {selectedModel ? <SetupPreview model={selectedModel} /> : null}
+            </motion.section>
+          ) : null}
+        </AnimatePresence>
+
+        {comingSoon && card ? (
+          <section className="mt-3 rounded-xl border border-line bg-surface/60 p-3">
+            <p className="text-sm font-semibold">{t("{label} is on its way", { label: t(card.label) })}</p>
+            <p className="mt-1 text-xs text-charcoal/60">{t("Join the waitlist and we will email you the day it opens. Nothing is charged.")}</p>
+          </section>
+        ) : null}
+        <ErrorNote message={error} />
       </div>
+      <WizardFooter
+        continueLabel={comingSoon ? "Join the waitlist" : "Continue"}
+        busyLabel="Saving…"
+        busy={busy}
+        disabled={!ready}
+        onContinue={() => card && void choose(card.profile, comingSoon ? null : subType)}
+      />
+    </div>
+  );
+}
 
-      {card !== null && !comingSoon ? (
-        <section className="mt-5 rounded-3xl border border-line bg-surface/60 p-5" aria-label="Kind of business">
-          <p className="text-sm font-semibold">Which fits best?</p>
-          <div className="mt-3 grid gap-2 sm:grid-cols-2">
-            {card.subTypes.map((option, index) => (
-              <label
-                key={option.id}
-                className={`flex cursor-pointer gap-3 rounded-2xl border-2 bg-white p-4 ${
-                  card.subTypes.length % 2 === 1 && index === card.subTypes.length - 1 ? "sm:col-span-2" : ""
-                } ${subType === option.id ? "border-accent" : "border-transparent"}`}
-              >
-                <input
-                  type="radio"
-                  name="sub-type"
-                  value={option.id}
-                  checked={subType === option.id}
-                  onChange={() => setSubType(option.id)}
-                  className="mt-1 accent-accent"
-                />
-                <span>
-                  <span className="block text-sm font-semibold">{option.label}</span>
-                  <span className="block text-xs text-charcoal/60">{option.description}</span>
-                </span>
-              </label>
-            ))}
-          </div>
-        </section>
-      ) : null}
+function ModelCard({
+  option,
+  selected,
+  reduced,
+  delay,
+  fallback,
+  onSelect,
+}: {
+  option: SignupSubType;
+  selected: boolean;
+  reduced: boolean;
+  delay: number;
+  fallback: LucideIcon;
+  onSelect: () => void;
+}) {
+  const { t } = useLocale();
+  const Icon = modelIcon(option.id, fallback);
+  return (
+    <motion.label
+      layout
+      initial={reduced ? false : { opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: reduced ? 0 : 0.28, delay, ease: [0.4, 0, 0.2, 1] }}
+      className={`flex cursor-pointer items-start gap-2 rounded-xl border-2 bg-white p-2 ${selected ? "border-accent" : "border-line"}`}
+    >
+      <input
+        type="radio"
+        name="sub-type"
+        value={option.id}
+        checked={selected}
+        onChange={onSelect}
+        className="mt-1 accent-accent"
+      />
+      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-accent/10 text-accent">
+        <Icon size={16} aria-hidden="true" />
+      </span>
+      <span className="min-w-0">
+        <span className="block text-sm font-semibold text-charcoal">
+          {t(option.label)}
+          {selected ? <span className="sr-only">{t(", selected")}</span> : null}
+        </span>
+        <span className="signup-model-copy mt-0.5 block text-xs leading-4 text-charcoal/60">{t(option.description)}</span>
+      </span>
+    </motion.label>
+  );
+}
 
-      {comingSoon && card ? (
-        <section className="mt-5 rounded-3xl border border-line bg-surface/60 p-5">
-          <p className="text-sm font-semibold">{card.label} is on its way</p>
-          <p className="mt-1 text-sm text-charcoal/60">
-            Join the waitlist and we will email you the day it opens. Nothing is charged.
-          </p>
-        </section>
-      ) : null}
-
-      <ErrorNote message={error} />
-      <div className="mt-6 flex justify-end">
-        <button
-          type="button"
-          disabled={card === null || busy || (!comingSoon && subType === null)}
-          onClick={() => card && void choose(card.profile, comingSoon ? null : subType)}
-          className="h-12 rounded-2xl bg-accent px-8 font-semibold text-white transition-colors hover:bg-accent-hover disabled:opacity-40"
-        >
-          {busy ? "Saving…" : comingSoon ? "Join the waitlist" : "Continue"}
-        </button>
-      </div>
+function SetupPreview({ model }: { model: SignupSubType }) {
+  const { t } = useLocale();
+  const preview = setupPreview(model);
+  const paid = t("Paid add-ons stay off until they are on your plan.");
+  return (
+    <div className="mt-2 rounded-xl border border-line bg-surface/70 p-2.5">
+      <p className="text-sm font-semibold text-charcoal">{t("Your AxizPOS setup will include")}</p>
+      <ul className="mt-2 flex flex-wrap gap-1.5">
+        {preview.included.map((chip) => (
+          <li key={chip} className="rounded-full bg-white px-2.5 py-1 text-xs font-medium text-charcoal ring-1 ring-line">
+            {t(chip)}
+          </li>
+        ))}
+      </ul>
+      <p className="mt-2 text-xs leading-4 text-charcoal/60">{model.note ? `${t(model.note)} ${paid}` : paid}</p>
     </div>
   );
 }
 
 export function WaitlistStep({ state, onBack }: { state: SignupState; onBack: () => void }) {
+  const { t } = useLocale();
   const card = SIGNUP_BUSINESS_CARDS.find((option) => option.profile === state.profile);
   return (
-    <div className="mx-auto flex max-w-md flex-col items-center py-10 text-center">
-      <span className="flex h-14 w-14 items-center justify-center rounded-full bg-accent/10 text-accent">
-        <MailCheck size={26} aria-hidden="true" />
-      </span>
-      <h2 className="mt-5 text-2xl font-semibold">You are on the list</h2>
-      <p className="mt-2 text-sm text-charcoal/60">
-        We will email <strong>{state.email}</strong> as soon as {card?.label ?? "your business type"} is ready.
-      </p>
-      <button
-        type="button"
-        onClick={onBack}
-        className="mt-8 rounded-full border border-gray-200 px-6 py-2.5 text-sm font-medium hover:bg-gray-50"
-      >
-        Choose another business type
-      </button>
+    <div className="flex min-h-0 flex-auto flex-col overflow-hidden">
+      <div className="flex min-h-0 flex-auto flex-col items-center justify-center px-4 text-center">
+        <span className="flex h-14 w-14 items-center justify-center rounded-full bg-accent/10 text-accent">
+          <MailCheck size={26} aria-hidden="true" />
+        </span>
+        <h2 className="mt-5 text-xl font-semibold">{t("You are on the list")}</h2>
+        <p className="mt-2 max-w-md text-sm text-charcoal/60">
+          {t("We will email {email} as soon as {type} is ready.", {
+            email: state.email,
+            type: t(card?.label ?? "your business type"),
+          })}
+        </p>
+      </div>
+      <WizardFooter onBack={onBack} backLabel="Choose another type" />
     </div>
   );
 }

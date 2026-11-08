@@ -33,6 +33,17 @@ export function signupPasswordReady(password: string): boolean {
   return signupPasswordRules(password).every((rule) => rule.met);
 }
 
+/** Exact comparison. Empty stays neutral so a blank box is not treated as a mismatch. */
+export function signupPasswordConfirmation(password: string, confirmation: string): "empty" | "match" | "mismatch" {
+  if (confirmation === "") return "empty";
+  return confirmation === password ? "match" : "mismatch";
+}
+
+/** Both the policy and an exact confirmation are required before signup can start. */
+export function signupPasswordsAccepted(password: string, confirmation: string): boolean {
+  return signupPasswordReady(password) && signupPasswordConfirmation(password, confirmation) === "match";
+}
+
 /** Query flag for the landing-page card. It carries no account data. */
 export const SIGNUP_EMBED_PARAM = "embed";
 
@@ -126,6 +137,10 @@ export interface SignupSubType {
   description: string;
   /** Starter modules for this signup choice. The ids match SUB_TYPES in app/core/capabilities.py. */
   modules: readonly Capability[];
+  /** Combined operating model for this category. Still a real sub_type, not a label. */
+  allInOne?: boolean;
+  /** Hardware or a paid add-on that this choice does not switch on. */
+  note?: string;
 }
 
 export interface SignupBusinessCard {
@@ -136,49 +151,87 @@ export interface SignupBusinessCard {
   subTypes: readonly SignupSubType[];
 }
 
-/** The cards on the business step; sub-type ids match SUB_TYPES in app/core/capabilities.py (a test checks). */
+/** The cards on the business step; sub-type ids and modules match SUB_TYPES in app/core/capabilities.py. */
 export const SIGNUP_BUSINESS_CARDS: readonly SignupBusinessCard[] = [
   {
     profile: "electronics_wholesale",
     label: "Electronics",
-    description: "Electronics products, IMEI and serial tracking, warranties and accessories.",
+    description: "Devices, accessories, serial numbers and warranties.",
     subTypes: [
       {
         id: "electronics_retail",
-        label: "Retail shop",
-        description: "Walk-in customers: IMEIs, repairs, warranty and trade-ins.",
+        label: "Electronics retail store",
+        description: "Sell individual products with serial numbers, warranties and repairs.",
+        modules: ["promotions", "multi_currency", "serial_tracking", "loyalty", "repairs", "warranty", "trade_in", "card_terminals", "bnpl"],
+      },
+      {
+        id: "electronics_mobile",
+        label: "Mobile and accessories",
+        description: "Phones, IMEI tracking, accessories and warranty records.",
+        modules: ["promotions", "multi_currency", "serial_tracking", "loyalty", "repairs", "warranty", "trade_in", "card_terminals", "bnpl"],
+      },
+      {
+        id: "electronics_computer",
+        label: "Computer and IT store",
+        description: "Computers and accessories with serial numbers and warranties.",
         modules: ["promotions", "multi_currency", "serial_tracking", "loyalty", "repairs", "warranty", "trade_in", "card_terminals", "bnpl"],
       },
       {
         id: "electronics_b2b",
-        label: "Wholesale & B2B",
-        description: "Adds tier prices, customer credit, quotations and cheques.",
+        label: "Electronics wholesale",
+        description: "Bulk orders, customer-specific prices and a credit ledger.",
         modules: ["wholesale_pricing", "quotes_layaway", "promotions", "multi_currency", "serial_tracking", "variants_matrix", "consignment", "b2b_credit", "cheques", "loyalty", "repairs", "warranty", "trade_in", "card_terminals", "bnpl"],
       },
       {
         id: "electronics_both",
-        label: "Both",
-        description: "A walk-in shop and wholesale: IMEIs, repairs, tier prices, credit and quotations.",
+        label: "All-in-one electronics",
+        description: "Retail, wholesale, accessories and device tracking in one setup.",
         modules: ["wholesale_pricing", "quotes_layaway", "promotions", "multi_currency", "serial_tracking", "variants_matrix", "consignment", "b2b_credit", "cheques", "loyalty", "repairs", "warranty", "trade_in", "card_terminals", "bnpl"],
+        allInOne: true,
       },
     ],
   },
   {
     profile: "wholesale_retail",
     label: "Wholesale & Retail",
-    description: "Manage bulk orders, individual sales, customer pricing, inventory, and recurring customer deliveries.",
+    description: "Bulk orders, counter sales, customer prices and deliveries.",
     subTypes: [
       {
-        id: "wholesale_distributor",
-        label: "Wholesale & distribution",
-        description: "Account customers, bulk pricing, and recurring deliveries.",
-        modules: ["wholesale_pricing", "sales_orders", "b2b_credit", "quotes_layaway", "promotions", "loyalty", "multi_currency", "card_terminals", "customer_reorders"],
+        id: "wholesale_trade",
+        label: "Wholesale business",
+        description: "Bulk quantities, customer-specific prices and a credit ledger.",
+        modules: ["wholesale_pricing", "b2b_credit", "quotes_layaway", "sales_orders", "promotions", "loyalty", "cheques", "card_terminals"],
       },
       {
         id: "retail_shop",
-        label: "Retail shop",
-        description: "Counter sales with customer-specific repeat orders.",
+        label: "Retail store",
+        description: "Individual sales, product stock and customer accounts.",
         modules: ["promotions", "loyalty", "quotes_layaway", "card_terminals", "customer_reorders", "multi_currency"],
+      },
+      {
+        id: "wholesale_both",
+        label: "Wholesale and retail",
+        description: "Bulk and individual sales, with different price levels and one stock record.",
+        modules: ["wholesale_pricing", "sales_orders", "b2b_credit", "quotes_layaway", "promotions", "loyalty", "multi_currency", "card_terminals", "customer_reorders"],
+      },
+      {
+        id: "wholesale_distribution",
+        label: "Distribution business",
+        description: "Customer deliveries, bulk orders and stock on account.",
+        modules: ["wholesale_pricing", "sales_orders", "customer_reorders", "b2b_credit", "promotions", "loyalty", "card_terminals"],
+      },
+      {
+        id: "wholesale_distributor",
+        label: "Account wholesale",
+        description: "The full wholesale kit, including repeat customer deliveries.",
+        modules: ["wholesale_pricing", "sales_orders", "b2b_credit", "quotes_layaway", "promotions", "loyalty", "multi_currency", "card_terminals", "customer_reorders"],
+      },
+      {
+        id: "wholesale_all",
+        label: "All-in-one wholesale and retail",
+        description: "Wholesale, retail, deliveries and customer accounts together.",
+        modules: ["wholesale_pricing", "sales_orders", "b2b_credit", "quotes_layaway", "promotions", "loyalty", "multi_currency", "card_terminals", "customer_reorders"],
+        allInOne: true,
       },
     ],
   },
@@ -188,98 +241,223 @@ export const SIGNUP_BUSINESS_CARDS: readonly SignupBusinessCard[] = [
     description: "Clothing and footwear with size and colour grids.",
     subTypes: [
       {
-        id: "fashion_boutique",
-        label: "Boutique",
-        description: "One shop: loyalty, promotions and size grids.",
+        id: "fashion_clothing",
+        label: "Clothing store",
+        description: "Size and colour variants, with stock kept per variant.",
         modules: ["quotes_layaway", "loyalty", "promotions", "multi_currency", "variants_matrix", "gift_cards", "alterations"],
       },
       {
-        id: "fashion_chain",
-        label: "Chain",
-        description: "Several branches; adds consignment stock.",
+        id: "fashion_footwear",
+        label: "Footwear store",
+        description: "Shoe sizes and colours, with stock kept per variant.",
+        modules: ["quotes_layaway", "loyalty", "promotions", "multi_currency", "variants_matrix", "gift_cards", "alterations"],
+      },
+      {
+        id: "fashion_boutique",
+        label: "Fashion boutique",
+        description: "Collections, variant pricing and customer purchase history.",
+        modules: ["quotes_layaway", "loyalty", "promotions", "multi_currency", "variants_matrix", "gift_cards", "alterations"],
+      },
+      {
+        id: "fashion_multi",
+        label: "Multi-category retail",
+        description: "Several product categories in one inventory and sales setup.",
         modules: ["quotes_layaway", "loyalty", "promotions", "multi_currency", "variants_matrix", "consignment", "gift_cards"],
+      },
+      {
+        id: "fashion_chain",
+        label: "Several branches",
+        description: "The same variant catalogue, plus consignment stock.",
+        modules: ["quotes_layaway", "loyalty", "promotions", "multi_currency", "variants_matrix", "consignment", "gift_cards"],
+      },
+      {
+        id: "fashion_all",
+        label: "All-in-one retail",
+        description: "Variants, alterations and consignment in one retail setup.",
+        modules: ["quotes_layaway", "loyalty", "promotions", "multi_currency", "variants_matrix", "gift_cards", "alterations", "consignment"],
+        allInOne: true,
       },
     ],
   },
   {
     profile: "grocery",
     label: "Supermarket",
-    description: "Weighed items, expiry dates and fast scanning.",
+    description: "Barcode checkout, weighed items and expiry dates.",
     subTypes: [
       {
         id: "grocery_shop",
         label: "Neighborhood grocery",
-        description: "One shop. Scan, weigh produce, and sell the batch that expires first.",
+        description: "Barcode scanning, fast checkout and daily grocery stock.",
         modules: ["loyalty", "promotions", "weighed_items", "fefo", "card_terminals"],
+        note: "Selling by weight needs a scale.",
       },
       {
         id: "grocery_supermarket",
         label: "Supermarket",
-        description: "Several lanes and a large catalogue. Adds gift cards and foreign cash.",
+        description: "Many categories, barcode checkout and stock replenishment.",
         modules: ["loyalty", "promotions", "weighed_items", "fefo", "card_terminals", "gift_cards", "multi_currency"],
+        note: "Selling by weight needs a scale.",
+      },
+      {
+        id: "grocery_mini",
+        label: "Mini mart",
+        description: "Fast checkout for everyday products in a compact shop.",
+        modules: ["loyalty", "promotions", "fefo", "card_terminals"],
+      },
+      {
+        id: "grocery_fresh",
+        label: "Fresh food and weighed items",
+        description: "Produce and other items sold by weight, with expiry-first stock.",
+        modules: ["loyalty", "promotions", "weighed_items", "fefo", "card_terminals"],
+        note: "Selling by weight needs a scale.",
+      },
+      {
+        id: "grocery_all",
+        label: "All-in-one supermarket",
+        description: "Grocery, fresh food, weighed items and general merchandise.",
+        modules: ["loyalty", "promotions", "weighed_items", "fefo", "card_terminals", "gift_cards", "multi_currency"],
+        allInOne: true,
+        note: "Selling by weight needs a scale.",
       },
       {
         id: "grocery_cash_carry",
-        label: "Cash & carry",
+        label: "Cash and carry",
         description: "Trade customers with tier prices, credit, cheques and deliveries.",
         modules: ["loyalty", "promotions", "weighed_items", "fefo", "wholesale_pricing", "quotes_layaway", "b2b_credit", "cheques", "sales_orders", "card_terminals"],
+        note: "Selling by weight needs a scale.",
       },
     ],
   },
   {
     profile: "restaurant",
     label: "Restaurant",
-    description: "Table service: floor plan, kitchen screens, split bills and tips.",
+    description: "Tables, kitchen tickets, split bills and tips.",
     subTypes: [
       {
         id: "full_service",
-        label: "Dine-in restaurant",
-        description: "Tables and covers, courses sent to the kitchen and bar, split bills.",
+        label: "Full-service restaurant",
+        description: "Table management, waiter ordering, kitchen tickets, split bills and tips.",
         modules: ["loyalty", "promotions", "multi_currency", "tables", "open_orders", "menu_modifiers", "kds", "recipes", "split_bills", "tips_service_charge", "card_terminals"],
       },
       {
+        id: "restaurant_counter",
+        label: "Quick-service restaurant",
+        description: "Guests order and pay first, then collect from the counter.",
+        modules: ["loyalty", "promotions", "multi_currency", "menu_modifiers", "kds", "recipes", "card_terminals"],
+      },
+      {
+        id: "fine_dining",
+        label: "Fine dining",
+        description: "Staff take the order at the table and the bill can be split.",
+        modules: ["loyalty", "promotions", "multi_currency", "tables", "open_orders", "menu_modifiers", "kds", "recipes", "split_bills", "tips_service_charge", "card_terminals"],
+      },
+      {
+        id: "cloud_kitchen",
+        label: "Cloud kitchen",
+        description: "Delivery orders and kitchen tickets, without a dine-in floor.",
+        modules: ["loyalty", "promotions", "multi_currency", "open_orders", "menu_modifiers", "kds", "recipes", "delivery_channels", "card_terminals"],
+        note: "Connecting a delivery app is a separate add-on.",
+      },
+      {
         id: "restaurant_delivery",
-        label: "Dine-in + delivery",
-        description: "Everything above, plus orders from delivery apps.",
+        label: "Restaurant with delivery",
+        description: "Dine-in, takeaway and delivery orders on one kitchen.",
         modules: ["loyalty", "promotions", "multi_currency", "tables", "open_orders", "menu_modifiers", "kds", "recipes", "split_bills", "tips_service_charge", "delivery_channels", "card_terminals"],
+        note: "Connecting a delivery app is a separate add-on.",
+      },
+      {
+        id: "restaurant_all",
+        label: "All-in-one restaurant",
+        description: "Dine-in, counter service, takeaway and delivery orders together.",
+        modules: ["loyalty", "promotions", "multi_currency", "tables", "open_orders", "menu_modifiers", "kds", "recipes", "split_bills", "tips_service_charge", "delivery_channels", "card_terminals"],
+        allInOne: true,
+        note: "Connecting a delivery app is a separate add-on.",
       },
     ],
   },
   {
     profile: "cafe",
     label: "Cafe",
-    description: "Coffee, bakery and sandwiches with sizes, milk choices and breakfast deals.",
+    description: "Coffee, bakery and sandwiches with sizes and add-ons.",
     subTypes: [
       {
         id: "counter_cafe",
         label: "Counter cafe",
-        description: "Order and pay at the counter; drinks go to the barista.",
+        description: "Guests order and pay at the counter. The barista prepares the drinks.",
         modules: ["loyalty", "promotions", "menu_modifiers", "open_orders", "kds", "recipes", "card_terminals"],
       },
       {
         id: "sit_down_cafe",
         label: "Sit-down cafe",
-        description: "Adds tables, split bills and tips for guests who stay.",
+        description: "Table service, with split bills and tips for guests who stay.",
         modules: ["loyalty", "promotions", "menu_modifiers", "open_orders", "kds", "recipes", "tables", "split_bills", "tips_service_charge", "card_terminals"],
+      },
+      {
+        id: "bakery_cafe",
+        label: "Bakery and coffee shop",
+        description: "Bakery items, drinks and takeaway, with sizes and add-ons.",
+        modules: ["loyalty", "promotions", "menu_modifiers", "open_orders", "kds", "recipes", "card_terminals"],
+      },
+      {
+        id: "cafe_quick",
+        label: "Quick-service cafe",
+        description: "Guests pay first. The order goes to the barista after payment.",
+        modules: ["loyalty", "promotions", "menu_modifiers", "kds", "recipes", "card_terminals"],
+      },
+      {
+        id: "cafe_delivery",
+        label: "Cafe with delivery",
+        description: "Counter sales plus delivery orders on the same menu.",
+        modules: ["loyalty", "promotions", "menu_modifiers", "open_orders", "kds", "recipes", "card_terminals", "delivery_channels"],
+        note: "Connecting a delivery app is a separate add-on.",
+      },
+      {
+        id: "cafe_all",
+        label: "All-in-one cafe",
+        description: "Counter, dine-in, takeaway and delivery on one setup.",
+        modules: ["loyalty", "promotions", "menu_modifiers", "open_orders", "kds", "recipes", "tables", "split_bills", "tips_service_charge", "card_terminals", "delivery_channels"],
+        allInOne: true,
+        note: "Connecting a delivery app is a separate add-on.",
       },
     ],
   },
   {
     profile: "quick_service",
     label: "Quick Service",
-    description: "Burgers, wraps and combo meals: pay first, cooked to order.",
+    description: "Pay first, then the kitchen prepares the order.",
     subTypes: [
       {
         id: "qsr_counter",
-        label: "Counter & takeaway",
-        description: "Pay-first counter with kitchen tickets and meal deals.",
+        label: "Fast-food counter",
+        description: "Order and pay at the counter, then collect when the kitchen is done.",
         modules: ["loyalty", "promotions", "menu_modifiers", "open_orders", "kds", "recipes", "card_terminals"],
       },
       {
+        id: "qsr_burger",
+        label: "Burger and sandwich shop",
+        description: "Add-ons, combo choices and kitchen tickets.",
+        modules: ["loyalty", "promotions", "menu_modifiers", "open_orders", "kds", "recipes", "card_terminals"],
+      },
+      {
+        id: "qsr_truck",
+        label: "Food truck",
+        description: "A compact counter for fast service away from a full dining room.",
+        modules: ["promotions", "menu_modifiers", "open_orders", "kds", "recipes", "card_terminals"],
+      },
+      {
         id: "qsr_delivery",
-        label: "Counter + delivery apps",
-        description: "Adds orders from Talabat, Deliveroo and the like.",
+        label: "Takeaway and delivery",
+        description: "Prepaid orders for pickup and delivery, with order status.",
         modules: ["loyalty", "promotions", "menu_modifiers", "open_orders", "kds", "recipes", "delivery_channels", "card_terminals"],
+        note: "Connecting a delivery app is a separate add-on.",
+      },
+      {
+        id: "qsr_all",
+        label: "All-in-one quick service",
+        description: "Counter, takeaway, pickup and delivery on one kitchen.",
+        modules: ["loyalty", "promotions", "menu_modifiers", "open_orders", "kds", "recipes", "delivery_channels", "card_terminals"],
+        allInOne: true,
+        note: "Connecting a delivery app is a separate add-on.",
       },
     ],
   },
