@@ -1,0 +1,83 @@
+{
+  "expo": {
+    "name": "AxizPOS Business",
+    "slug": "axizpos-business",
+    "scheme": "axizpos",
+    "version": "1.0.0",
+    "orientation": "default",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "ios": {
+      "supportsTablet": true,
+      "icon": "./assets/icon.png",
+      "bundleIdentifier": "com.axizpos.business",
+      "infoPlist": {
+        "NSCameraUsageDescription": "AxizPOS uses the camera to scan barcodes and attach photos to business records.",
+        "NSFaceIDUsageDescription": "AxizPOS uses Face ID to unlock a saved business session on this device.",
+        "NSPhotoLibraryUsageDescription": "AxizPOS uses your photo library when you attach images to products and documents."
+      }
+    },
+    "android": {
+      "package": "com.axizpos.business",
+      "adaptiveIcon": {
+        "backgroundColor": "#FFFFFF",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false,
+      "permissions": ["CAMERA", "USE_BIOMETRIC", "USE_FINGERPRINT"]
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      "expo-localization",
+      "expo-font",
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#F7F8FA",
+          "image": "./assets/splash-icon.png",
+          "imageWidth": 240
+        }
+      ],
+      [
+        "expo-local-authentication",
+        {
+          "faceIDPermission": "Allow AxizPOS to use Face ID to unlock your saved session."
+        }
+      ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow AxizPOS to use the camera for barcodes and document photos."
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "color": "#F26A21"
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": false
+    },
+    "extra": {
+      "eas": {
+        "projectId": "REPLACE_WITH_EAS_PROJECT_ID"
+      }
+    },
+    "owner": "axizpos",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/REPLACE_WITH_EAS_PROJECT_ID"
+    }
+  }
+}

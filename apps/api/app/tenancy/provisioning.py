@@ -52,6 +52,7 @@ class Job:
     tenant_id: uuid.UUID | None
     owner_username: str | None
     country: str | None = None
+    address: str | None = None
 
     @property
     def database(self) -> str:
@@ -181,8 +182,20 @@ def step_settings(job: Job) -> None:
         row.vat_registered = job.trn is not None
         row.onboarded_at = datetime.now(UTC)
         row.live_at = None
-        if db.scalar(select(Store.id).limit(1)) is None:
-            db.add(Store(code="MAIN", name=job.store_name, currency=job.currency, is_warehouse=False, is_active=True))
+        store = db.scalar(select(Store).limit(1))
+        if store is None:
+            db.add(
+                Store(
+                    code="MAIN",
+                    name=job.store_name,
+                    currency=job.currency,
+                    address=job.address,
+                    is_warehouse=False,
+                    is_active=True,
+                )
+            )
+        elif job.address:
+            store.address = job.address
         ensure_taxonomy(db, job.profile)
         db.commit()
 
@@ -230,6 +243,7 @@ def provision(request_id: uuid.UUID, settings: Settings) -> None:
             currency=row.currency or "AED",
             trn=row.trn,
             country=row.country,
+            address=row.address,
             email=row.email,
             full_name=row.full_name,
             password_hash=row.password_hash,

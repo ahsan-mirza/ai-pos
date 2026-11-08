@@ -778,8 +778,15 @@ class ProductUpdate(FashionAttributes):
 
 class StoreUpdate(ApiModel):
     name: str | None = Field(default=None, min_length=1, max_length=120)
-    address: str | None = Field(default=None, max_length=255)
+    address: str | None = None
     phone: str | None = Field(default=None, max_length=40)
+
+    @field_validator("address")
+    @classmethod
+    def normalize_store_address(cls, value: str | None) -> str | None:
+        from app.schemas.address import clean_address
+
+        return clean_address(value, required=False)
 
     @field_validator("phone")
     @classmethod

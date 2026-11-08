@@ -1,4 +1,4 @@
-import { EMIRATE_LABELS, Permission, countryTax, type Emirate, type Store } from "@ai-pos/shared-types";
+import { EMIRATE_LABELS, Permission, addressError, countryTax, normalizeAddress, type Emirate, type Store } from "@ai-pos/shared-types";
 import { CountryField, PhoneField, phoneError, requiredError } from "@ai-pos/ui";
 import { MapPin, Phone, Warehouse } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -69,9 +69,12 @@ export function StoresPage() {
                 </span>
               </div>
               <h3 className="mt-2 text-2xl font-semibold">{store.name}</h3>
-              <p className={`mt-4 flex items-center gap-2 text-sm ${dark ? "text-white/70" : "text-charcoal/70"}`}>
-                <MapPin size={14} aria-hidden="true" /> {store.address ?? "No address"}
-                {store.emirate ? ` · ${EMIRATE_LABELS[store.emirate]}` : ""}
+              <p className={`mt-4 flex items-start gap-2 text-sm ${dark ? "text-white/70" : "text-charcoal/70"}`}>
+                <MapPin size={14} className="mt-0.5 shrink-0" aria-hidden="true" />
+                <span className="min-w-0 whitespace-pre-wrap break-words">
+                  {store.address ?? "No address"}
+                  {store.emirate ? ` · ${EMIRATE_LABELS[store.emirate]}` : ""}
+                </span>
               </p>
               <p className={`mt-1 flex items-center gap-2 text-sm ${dark ? "text-white/70" : "text-charcoal/70"}`}>
                 <Phone size={14} aria-hidden="true" /> {store.phone ?? "No phone"}
@@ -141,6 +144,8 @@ function StoreModal({
     const next: FieldErrors = {};
     const nameProblem = requiredError(name, "the branch name");
     if (nameProblem) next.name = nameProblem;
+    const addressProblem = addressError(address);
+    if (addressProblem) next.address = addressProblem;
     const phoneProblem = phoneError(phone);
     if (phoneProblem) next.phone = phoneProblem;
     setErrors(next);
@@ -150,7 +155,7 @@ function StoreModal({
     try {
       await storesApi.update(store.id, {
         name: name.trim(),
-        address: address.trim() || null,
+        address: address === "" ? null : normalizeAddress(address),
         phone: phone.trim() || null,
         country: branchCountry || null,
         city: city.trim() || null,
@@ -212,7 +217,13 @@ function StoreModal({
         <TextField
           label="Address"
           value={address}
-          onChange={(event) => setAddress(event.target.value)}
+          autoComplete="street-address"
+          dir="auto"
+          error={errors.address}
+          onChange={(event) => {
+            setAddress(event.target.value);
+            setErrors((current) => ({ ...current, address: "" }));
+          }}
         />
         <PhoneField
           label="Phone"

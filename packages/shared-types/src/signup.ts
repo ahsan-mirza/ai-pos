@@ -78,6 +78,7 @@ export interface SignupBusiness {
 export interface SignupStore {
   store_name: string;
   slug: string;
+  address: string;
   currency: string;
   country: string;
   trn: string | null;
@@ -290,13 +291,21 @@ export interface SignupCountry {
   currency: string;
 }
 
-const regionNames = new Intl.DisplayNames(["en"], { type: "region" });
+function englishRegionName(code: string): string {
+  const DisplayNames = typeof Intl === "undefined" ? undefined : Intl.DisplayNames;
+  if (typeof DisplayNames !== "function") return code;
+  try {
+    return new DisplayNames(["en"], { type: "region" }).of(code) ?? code;
+  } catch {
+    return code;
+  }
+}
 
 /** Every country the signup form can store, with the currency that country selects. */
 export const SIGNUP_COUNTRIES: readonly SignupCountry[] = Object.keys(COUNTRY_CURRENCIES)
   .map((code) => ({
     code,
-    name: regionNames.of(code) ?? code,
+    name: englishRegionName(code),
     currency: currencyForCountry(code),
   }))
   .sort((left, right) => left.name.localeCompare(right.name));

@@ -406,6 +406,7 @@ def choose_store(settings: Settings, request_id: uuid.UUID, token: str | None, d
         row.currency = currency_for_country(data.country)
         row.country = data.country
         row.trn = data.trn
+        row.address = data.address
         row.status = "PROVISIONING"
         row.error = None
         food = row.profile in capability_catalog.FOOD_AND_BEVERAGE

@@ -9,6 +9,7 @@ import { Toast } from "../../components/ui/Toast";
 import { env } from "../../config/env";
 import { apiGet, apiPost } from "../../lib/api";
 import { useAuth } from "../../lib/auth";
+import { useCurrency } from "../../lib/currency";
 import { formatDate, storeOptions, useStores } from "../inventory/shared";
 import { errorMessage } from "../users/api";
 
@@ -224,14 +225,7 @@ export function RegistersPage() {
       ) : null}
       {issued ? <KeyModal issued={issued} onClose={() => setIssued(null)} /> : null}
       {activation ? (
-        <ActivationModal
-          device={activation.device}
-          storeName={
-            stores.find((store) => store.id === activation.device.store_id)?.name ?? activation.device.store_code
-          }
-          activation={activation.key}
-          onClose={() => setActivation(null)}
-        />
+        <ActivationModal device={activation.device} activation={activation.key} onClose={() => setActivation(null)} />
       ) : null}
       {toast ? <Toast message={toast} onDismiss={dismissToast} /> : null}
     </section>
@@ -327,28 +321,43 @@ async function copyVisible(value: string): Promise<boolean> {
 
 function ActivationModal({
   device,
-  storeName,
   activation,
   onClose,
 }: {
   device: Device;
-  storeName: string;
   activation: DeviceActivationKey;
   onClose: () => void;
 }) {
-  const [copied, setCopied] = useState(false);
+  const { settings } = useCurrency();
+  const storeCode = settings?.store_code || activation.tenant_domain.split(".")[0] || activation.tenant_domain;
+  const [copied, setCopied] = useState<"code" | "key" | null>(null);
   const [copyError, setCopyError] = useState<string | null>(null);
+  const copy = (kind: "code" | "key", value: string) => {
+    setCopied(null);
+    setCopyError(null);
+    void copyVisible(value).then((ok) => {
+      if (ok) setCopied(kind);
+      else setCopyError(kind === "code" ? "Could not copy the store code. Select it and copy it manually." : "Could not copy the activation key. Select it and copy it manually.");
+    });
+  };
   return (
     <Modal
       title={`Activate ${device.code}`}
-      subtitle="On the new register, enter the store code, then paste this key. The key works once."
+      subtitle="On the new register, enter this store code, then paste the key. The key works once."
       onClose={onClose}
       footer={<PrimaryButton onClick={onClose}>Done</PrimaryButton>}
     >
       <dl className="space-y-3">
         <div className="rounded-2xl bg-surface p-4">
-          <dt className="text-[11px] font-semibold uppercase tracking-[0.18em] text-charcoal/50">Store name</dt>
-          <dd className="mt-1 text-lg font-semibold">{storeName}</dd>
+          <dt className="text-[11px] font-semibold uppercase tracking-[0.18em] text-charcoal/50">Store code</dt>
+          <dd className="mt-1 font-mono text-lg font-semibold tracking-tight">{storeCode}</dd>
+          <button
+            type="button"
+            onClick={() => copy("code", storeCode)}
+            className={`mt-3 inline-flex items-center gap-2 rounded-full border border-line px-4 py-2 text-sm font-semibold ${actionHoverClass("neutral")}`}
+          >
+            <Copy size={14} aria-hidden="true" /> {copied === "code" ? "Copied" : "Copy store code"}
+          </button>
         </div>
         <div className="rounded-2xl bg-charcoal p-4 text-white">
           <dt className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-white/50">
@@ -359,17 +368,10 @@ function ActivationModal({
       </dl>
       <button
         type="button"
-        onClick={() => {
-          setCopied(false);
-          setCopyError(null);
-          void copyVisible(activation.activation_key).then((ok) => {
-            if (ok) setCopied(true);
-            else setCopyError("Could not copy the activation key. Select it and copy it manually.");
-          });
-        }}
+        onClick={() => copy("key", activation.activation_key)}
         className={`mt-3 inline-flex items-center gap-2 rounded-full border border-line px-4 py-2 text-sm font-semibold ${actionHoverClass("neutral")}`}
       >
-        <Copy size={14} aria-hidden="true" /> {copied ? "Copied" : "Copy activation key"}
+        <Copy size={14} aria-hidden="true" /> {copied === "key" ? "Copied" : "Copy activation key"}
       </button>
       {copyError ? <p className="mt-2 text-sm text-danger">{copyError}</p> : null}
       <p className="mt-4 text-sm text-charcoal/60">

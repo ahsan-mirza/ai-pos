@@ -12,6 +12,8 @@
     "dev:pos": "pnpm --filter @ai-pos/desktop tauri:dev",
     "dev:pos:web": "pnpm --filter @ai-pos/desktop dev",
     "dev:admin": "pnpm --filter @ai-pos/web dev",
+    "dev:mobile": "pnpm --filter @ai-pos/mobile start",
+    "android": "pnpm --filter @ai-pos/mobile android",
     "dev:console": "pnpm --filter @ai-pos/super-admin dev",
     "dev:site": "pnpm --filter @ai-pos/site dev",
     "start:backend:dev": "pnpm --filter @ai-pos/api start:dev",

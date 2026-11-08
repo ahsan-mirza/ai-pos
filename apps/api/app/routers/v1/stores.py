@@ -33,6 +33,21 @@ def list_stores(
     return catalog_service.list_stores(db, limit=limit)
 
 
+@router.get("/{store_id}", response_model=StoreOut)
+def read_store(
+    store_id: uuid.UUID,
+    db: Annotated[Session, Depends(get_db)],
+    _: Annotated[
+        Principal,
+        Depends(authorize(Permission.PORTAL_ACCESS, allow_device=True, scopes=("portal", "pos"))),
+    ],
+) -> StoreOut:
+    store = db.get(Store, store_id)
+    if store is None:
+        raise ApiError(404, "not_found", "Store was not found.")
+    return StoreOut.model_validate(store)
+
+
 @router.patch("/{store_id}", response_model=StoreOut)
 def update_store(
     store_id: uuid.UUID,

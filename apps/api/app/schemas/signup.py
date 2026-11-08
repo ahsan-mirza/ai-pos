@@ -88,6 +88,7 @@ class SignupBusiness(ApiModel):
 class SignupStore(ApiModel):
     store_name: str = Field(min_length=1, max_length=120)
     slug: str = Field(min_length=1, max_length=32)
+    address: str
     currency: str = Field(pattern=r"^[A-Z]{3}$")
     country: str = Field(pattern=r"^[A-Z]{2}$")
     trn: str | None = Field(default=None, max_length=32)
@@ -98,6 +99,16 @@ class SignupStore(ApiModel):
         cleaned = re.sub(r"\s+", " ", value).strip()
         if len(cleaned) < 2:
             raise ValueError("Enter a store name.")
+        return cleaned
+
+    @field_validator("address")
+    @classmethod
+    def _address(cls, value: str) -> str:
+        from app.schemas.address import clean_address
+
+        cleaned = clean_address(value, required=True)
+        if cleaned is None:
+            raise ValueError("Enter the store address.")
         return cleaned
 
     @model_validator(mode="after")

@@ -90,7 +90,14 @@ def _allow_go_live(slug: str) -> None:
 
 
 def _store(slug: str = "alnoor") -> dict:
-    return {"store_name": "Al Noor Mobiles", "slug": slug, "currency": "AED", "country": "AE", "trn": None}
+    return {
+        "store_name": "Al Noor Mobiles",
+        "slug": slug,
+        "address": "Shop 12, Building A, Main Street",
+        "currency": "AED",
+        "country": "AE",
+        "trn": None,
+    }
 
 
 def _tenant_headers(slug: str, token: str | None = None) -> dict[str, str]:
@@ -600,3 +607,55 @@ def test_signup_country_sets_the_store_currency() -> None:
     assert currency_for_country("US") == "USD"
     assert currency_for_country("JP") == "USD"
     assert currency_for_country("ZZ") == "USD"
+
+
+def test_a_store_address_is_kept_and_stays_inside_the_tenant(signup: TestClient) -> None:
+    address = "  Office #204, Al Nahda 2, Dubai  "
+    started = _verified(signup, email="owner@alpha.ae", phone="+971501110201")
+    chosen = _post(signup, started, "business", {"profile": "retail_fashion", "sub_type": "fashion_boutique"})
+    assert chosen.status_code == 200, chosen.text
+    blank = _post(signup, started, "store", {**_store("alpha"), "address": "   "})
+    assert blank.status_code == 422
+    assert "Enter the store address" in blank.text
+
+    saved = _post(signup, started, "store", {**_store("alpha"), "address": address})
+    assert saved.status_code == 200, saved.text
+    state = _status(signup, started)
+    assert state["status"] == "READY", state
+    handed = signup.post(
+        "/api/v1/auth/handoff", headers=_tenant_headers("alpha"), json={"token": state["handoff_token"]}
+    )
+    assert handed.status_code == 200, handed.text
+    headers = _tenant_headers("alpha", handed.json()["access_token"])
+    stores = signup.get("/api/v1/stores", headers=headers)
+    assert stores.status_code == 200, stores.text
+    row = stores.json()[0]
+    assert row["address"] == "Office #204, Al Nahda 2, Dubai"
+
+    edited = "شارع الشيخ زايد، دبي، الإمارات العربية المتحدة"
+    patched = signup.patch(f"/api/v1/stores/{row['id']}", headers=headers, json={"address": edited})
+    assert patched.status_code == 200, patched.text
+    assert patched.json()["address"] == edited
+    again = signup.get(f"/api/v1/stores/{row['id']}", headers=headers)
+    assert again.status_code == 200, again.text
+    assert again.json()["address"] == edited
+    receipt = signup.get(f"/api/v1/settings/receipt?store_id={row['id']}", headers=headers)
+    assert receipt.status_code == 200, receipt.text
+    assert receipt.json()["store"]["address"] == edited
+
+    other = _verified(signup, email="owner@beta.ae", phone="+971501110202")
+    chosen = _post(signup, other, "business", {"profile": "retail_fashion", "sub_type": "fashion_boutique"})
+    assert chosen.status_code == 200
+    assert _post(signup, other, "store", {**_store("beta"), "address": "Unit 4/5, Block-C"}).status_code == 200
+    other_state = _status(signup, other)
+    other_hand = signup.post(
+        "/api/v1/auth/handoff", headers=_tenant_headers("beta"), json={"token": other_state["handoff_token"]}
+    )
+    assert other_hand.status_code == 200, other_hand.text
+    blocked = signup.patch(
+        f"/api/v1/stores/{row['id']}",
+        headers=_tenant_headers("beta", other_hand.json()["access_token"]),
+        json={"address": "House No. 25-B, Street 10"},
+    )
+    assert blocked.status_code == 404
+    assert signup.get(f"/api/v1/stores/{row['id']}", headers=headers).json()["address"] == edited

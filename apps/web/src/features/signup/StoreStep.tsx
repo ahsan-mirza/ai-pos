@@ -1,4 +1,12 @@
-import { currencyForCountry, normalizeStoreCode, taxIdError, taxIdField, type SignupState } from "@ai-pos/shared-types";
+import {
+  addressError,
+  currencyForCountry,
+  normalizeAddress,
+  normalizeStoreCode,
+  taxIdError,
+  taxIdField,
+  type SignupState,
+} from "@ai-pos/shared-types";
 import { CountryField, availabilityBlocksSubmit, normalizeStoreName, storeNameError } from "@ai-pos/ui";
 import { Check, Loader2, X } from "lucide-react";
 import { useState, type FormEvent } from "react";
@@ -52,6 +60,7 @@ export function StoreStep({
 }) {
   const [storeName, setStoreName] = useState("");
   const [slug, setSlug] = useState("");
+  const [address, setAddress] = useState("");
   const [slugEdited, setSlugEdited] = useState(false);
   const [country, setCountry] = useState(initialCountry);
   const [trn, setTrn] = useState("");
@@ -67,11 +76,15 @@ export function StoreStep({
   const trnValid = taxError === null;
   const slugReady = !availabilityBlocksSubmit(slugCheck.status, slug.length > 0);
   const nameReady = !availabilityBlocksSubmit(nameCheck.status, nameValid);
-  const ready = nameReady && slugReady && trnValid && !busy;
+  const addressProblem = addressError(address, true);
+  const ready = nameReady && slugReady && trnValid && addressProblem === undefined && !busy;
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
-    if (!ready) return;
+    if (!ready || addressProblem) {
+      if (addressProblem) setError(addressProblem);
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
@@ -79,6 +92,7 @@ export function StoreStep({
         await signupApi.store(session, {
           store_name: normalizeStoreName(storeName),
           slug,
+          address: normalizeAddress(address),
           currency,
           country,
           trn: trn === "" ? null : trn,
@@ -108,7 +122,7 @@ export function StoreStep({
         />
         <div>
           <label className="block text-sm font-medium" htmlFor="signup-slug">
-            Store address
+            Store code
           </label>
           <div className="mt-1.5 flex items-center rounded-xl border border-transparent bg-surface pr-3 focus-within:border-accent focus-within:bg-white">
             <input
@@ -140,16 +154,14 @@ export function StoreStep({
               <span className="text-charcoal/50">Checking…</span>
             ) : slugCheck.status === "error" ? (
               <span className="text-accent">
-                We couldn&apos;t check this address.{" "}
+                We couldn&apos;t check this code.{" "}
                 <button type="button" className="font-semibold underline" onClick={slugCheck.retry}>
                   Retry
                 </button>
               </span>
             ) : slugCheck.result === null ? (
               <span className="text-charcoal/50">
-                {env.storesShareThisHost
-                  ? "Your staff sign in on this site with this store code."
-                  : "Your staff sign in at this address."}
+                Your staff sign in with this code.
               </span>
             ) : slugCheck.result.available ? (
               <span className="text-emerald-700">Available</span>
@@ -175,6 +187,16 @@ export function StoreStep({
             )}
           </p>
         </div>
+        <TextField
+          label="Store address"
+          required
+          value={address}
+          autoComplete="street-address"
+          dir="auto"
+          placeholder="Shop 12, Building A, Main Street"
+          error={address !== "" ? addressProblem : undefined}
+          onChange={(event) => setAddress(event.target.value)}
+        />
         <div className="grid gap-4 sm:grid-cols-2">
           <CountryField label="Country" value={country} onChange={setCountry} detail={currencyForCountry} required />
           <TextField label="Currency" value={currency} readOnly disabled hint="Set by the country." />

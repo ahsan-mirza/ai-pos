@@ -21,6 +21,17 @@ from app.tenancy.models import ControlBase, SignupRequest, SignupSlugHold
 PASSWORD = "Owner-password-1"
 
 
+def _named(name: str, slug: str) -> dict:
+    return {
+        "store_name": name,
+        "slug": slug,
+        "address": "Shop 12, Main Street",
+        "currency": "AED",
+        "country": "AE",
+        "trn": None,
+    }
+
+
 def _create_all(url: str) -> None:
     engine = build_engine(url)
     Base.metadata.create_all(engine)
@@ -239,27 +250,27 @@ def test_store_names_can_be_shared_and_addresses_cannot(signup: TestClient, monk
     named = signup.post(
         f"/api/v1/signup/{first['id']}/store",
         headers=headers,
-        json={"store_name": "  Al   Noor  ", "slug": "alnoor", "currency": "AED", "country": "AE", "trn": None},
+        json=_named("  Al   Noor  ", "alnoor"),
     )
     assert named.status_code == 200, named.text
     assert named.json()["store_name"] == "Al Noor"
     short = signup.post(
         f"/api/v1/signup/{second['id']}/store",
         headers={"X-Signup-Token": second["token"]},
-        json={"store_name": " A ", "slug": "other", "currency": "AED", "country": "AE", "trn": None},
+        json=_named(" A ", "other"),
     )
     assert short.status_code == 422
     shared = signup.post(
         f"/api/v1/signup/{second['id']}/store",
         headers={"X-Signup-Token": second["token"]},
-        json={"store_name": "Al Noor", "slug": "alnoor", "currency": "AED", "country": "AE", "trn": None},
+        json=_named("Al Noor", "alnoor"),
     )
     assert shared.status_code == 409, shared.text
     assert shared.json()["error"]["details"]["fields"]["slug"]
     different = signup.post(
         f"/api/v1/signup/{second['id']}/store",
         headers={"X-Signup-Token": second["token"]},
-        json={"store_name": "Al Noor", "slug": "alnoor-2", "currency": "AED", "country": "AE", "trn": None},
+        json=_named("Al Noor", "alnoor-2"),
     )
     assert different.status_code == 200, different.text
     assert different.json()["store_name"] == "Al Noor"
@@ -278,7 +289,7 @@ def test_a_failed_setup_releases_the_address_and_the_filter_stays_safe(signup: T
     queued = signup.post(
         f"/api/v1/signup/{started['id']}/store",
         headers={"X-Signup-Token": started["token"]},
-        json={"store_name": "Al Noor", "slug": "released", "currency": "AED", "country": "AE", "trn": None},
+        json=_named("Al Noor", "released"),
     )
     assert queued.status_code == 200, queued.text
     state = signup.get(

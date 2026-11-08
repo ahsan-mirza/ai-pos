@@ -1,4 +1,5 @@
 export { formatMoney, isValidImei, lineTaxCents } from "./money.js";
+export { ADDRESS_MAX_LENGTH, addressError, normalizeAddress } from "./address.js";
 export { isStoreCode, normalizeStoreCode, storeCodeError } from "./storeCode.js";
 export { DEFAULT_TAX_POLICY, TAX_TREATMENT_LABELS, divHalfUp, enteredIncludesTax, forCustomer, lineTax, rateFor, treatmentOf } from "./tax.js";
 export type { Device, DeviceActivationKey, DeviceCreate, DeviceKey } from "./devices.js";

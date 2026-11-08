@@ -89,7 +89,7 @@ class StorePayload(ApiModel):
     code: str = Field(min_length=1, max_length=32)
     name: str = Field(min_length=1, max_length=120)
     currency: str
-    address: str | None = Field(default=None, max_length=255)
+    address: str | None = None
     phone: str | None = Field(default=None, max_length=40)
     country: str | None = None
     city: str | None = Field(default=None, max_length=120)
@@ -101,6 +101,13 @@ class StorePayload(ApiModel):
     @classmethod
     def normalize_currency(cls, value: str) -> str:
         return _currency(value)
+
+    @field_validator("address")
+    @classmethod
+    def normalize_address(cls, value: str | None) -> str | None:
+        from app.schemas.address import clean_address
+
+        return clean_address(value, required=False)
 
 
 class ProductPayload(ApiModel):

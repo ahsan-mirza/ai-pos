@@ -12,6 +12,7 @@ def _store(country: str, trn: str | None) -> SignupStore:
     return SignupStore(
         store_name="Al Noor",
         slug="alnoor",
+        address="Shop 12, Building A, Main Street",
         currency="USD",
         country=country,
         trn=trn,

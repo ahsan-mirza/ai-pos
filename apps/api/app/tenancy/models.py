@@ -198,6 +198,7 @@ class SignupRequest(ControlBase):
     currency: Mapped[str | None] = mapped_column(String(3), nullable=True)
     country: Mapped[str | None] = mapped_column(String(2), nullable=True)
     trn: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    address: Mapped[str | None] = mapped_column(String(255), nullable=True)
     status: Mapped[str] = mapped_column(String(16), default="PENDING_OTP", index=True)
     steps: Mapped[list] = mapped_column(JSON, default=list)
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
