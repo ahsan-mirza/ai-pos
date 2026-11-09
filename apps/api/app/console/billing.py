@@ -14,6 +14,7 @@ from datetime import UTC, datetime, timedelta
 import httpx
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
+from sqlalchemy.orm.attributes import flag_modified
 
 from app.console.entitlements import get_tenant, tenant_session
 from app.console.security import OperatorPrincipal, audit_operator
@@ -26,17 +27,22 @@ from app.schemas.billing import (
     AddonIn,
     AddonOut,
     AddonQty,
+    AnnualDiscountIn,
     CatalogOut,
     CheckoutIn,
     CheckoutOut,
     CheckoutStatus,
+    ConfigChangeOut,
     CycleIn,
     CycleOut,
     FeeIn,
     FeeOut,
     OverviewOut,
+    PlanImpactOut,
     PlanIn,
     PlanOut,
+    PlanPriceIn,
+    PlanPriceOut,
     PlanRevenue,
     QuoteLine,
     QuoteOut,
@@ -55,6 +61,8 @@ from app.tenancy.models import (
     BillingInvoice,
     BillingInvoiceLine,
     BillingPlan,
+    BillingPlanPrice,
+    OperatorAuditLog,
     Subscription,
     SubscriptionItem,
     Tenant,
@@ -81,6 +89,66 @@ _CYCLES = (
     ("HALF_YEARLY", "Half-Yearly", 6, 1_200, 3),
     ("ANNUAL", "Annual", 12, 2_500, 4),
 )
+# New commercial catalog. These codes sit beside Lite, Standard, and Pro. They do not replace them.
+NEW_PLAN_CODES = frozenset({"FREE", "GROWTH", "PRO_AI", "ENTERPRISE"})
+# 20 percent. The shared Annual cycle stays at 25 percent for Lite, Standard, and Pro.
+NEW_ANNUAL_DISCOUNT_BPS = 2_000
+# Countries the price table can hold later. Only AE is inserted. No rate is invented for the others.
+PREPARED_MARKETS = (
+    ("SA", "SAR"),
+    ("QA", "QAR"),
+    ("KW", "KWD"),
+    ("BH", "BHD"),
+    ("OM", "OMR"),
+)
+
+_FREEMIUM_LIMITS = {
+    "FREE": {
+        "branches": 1,
+        "registers": 1,
+        "staff": 2,
+        "products": 500,
+        "customers": 500,
+        "sales_history_days": 30,
+        "ai_questions_per_month": 10,
+    },
+    "GROWTH": {
+        "branches": 2,
+        "registers": 2,
+        "staff": 5,
+        "products": 5_000,
+        "customers": 5_000,
+        "sales_history_days": 365,
+        "ai_questions_per_month": 100,
+    },
+    "PRO_AI": {
+        "branches": 5,
+        "registers": 5,
+        "staff": 15,
+        "products": 25_000,
+        "customers": 25_000,
+        "sales_history_days": None,
+        "ai_questions_per_month": 500,
+    },
+    "ENTERPRISE": {
+        "branches": None,
+        "registers": None,
+        "staff": None,
+        "products": None,
+        "customers": None,
+        "sales_history_days": None,
+        "ai_questions_per_month": None,
+    },
+}
+# code, name, registers, monthly fils (UAE list price), trial days, sort order
+_FREEMIUM = (
+    ("FREE", "Free", 1, 0, 0, 10),
+    ("GROWTH", "Growth", 2, 12_900, 14, 11),
+    ("PRO_AI", "Pro AI", 5, 29_900, 14, 12),
+    ("ENTERPRISE", "Enterprise", 1, 0, 0, 13),
+)
+_UAE_PRICES = {"FREE": 0, "GROWTH": 12_900, "PRO_AI": 29_900}
+
 _ADDONS = (
     (
         "hardware_lease",
@@ -104,13 +172,15 @@ _ADDONS = (
 )
 
 
-def require_module_keys(keys: list[str], *, with_dependencies: bool) -> list[str]:
+def require_module_keys(keys: list[str], *, with_dependencies: bool, implemented_only: bool = False) -> list[str]:
     """Keeps stored module ids inside the registered capability catalogue."""
     known = {capability.value for capability in capability_catalog.Capability}
     cleaned: list[str] = []
     for key in keys:
         if key not in known:
             raise ApiError(422, "unknown_module", f"{key} is not a registered module.")
+        if implemented_only and not capability_catalog.SPECS[capability_catalog.Capability(key)].available:
+            raise ApiError(422, "unsupported_module", f"{key} is not implemented.")
         if key not in cleaned:
             cleaned.append(key)
     if with_dependencies:
@@ -131,6 +201,43 @@ def cycle_amount(monthly_fils: int, months: int, discount_bps: int) -> int:
     if months < 1 or not 0 <= discount_bps <= 10_000 or monthly_fils < 0:
         raise ApiError(422, "invalid_price", "A price, a cycle length, or a discount is out of range.")
     return monthly_fils * months * (10_000 - discount_bps) // 10_000
+
+
+def current_annual_discount(db: Session) -> int:
+    """The annual rate for a new Free, Growth, Pro AI, or Enterprise invoice. Legacy plans do not use it."""
+    from app.console.promotional_trial import _policy
+
+    raw = _policy(db).new_annual_discount_bps
+    return NEW_ANNUAL_DISCOUNT_BPS if raw is None else int(raw)
+
+
+def discount_bps_for(plan: BillingPlan, cycle: BillingCycle, db: Session | None = None) -> int:
+    """Annual discount for a new Free, Growth, Pro AI, or Enterprise invoice.
+
+    Lite, Standard, and Pro keep the billing cycle's own discount. Annual stays 25 percent for those plans
+    unless a caller passes the control session, in which case the published new-plan rate is used.
+    """
+    if plan.code in NEW_PLAN_CODES and cycle.code == "ANNUAL":
+        return current_annual_discount(db) if db is not None else NEW_ANNUAL_DISCOUNT_BPS
+    return cycle.discount_bps
+
+
+def monthly_fils_for(db: Session, plan: BillingPlan, country: str | None) -> tuple[int, str]:
+    """Country list price when one is published. Otherwise the plan's own fils, which stays the legacy price."""
+    if country:
+        code = country.strip().upper()
+        row = db.scalar(
+            select(BillingPlanPrice).where(
+                BillingPlanPrice.plan_id == plan.id,
+                BillingPlanPrice.country == code,
+                BillingPlanPrice.enabled.is_(True),
+            )
+        )
+        if row is not None:
+            return row.monthly_fils, row.currency
+        if plan.code in NEW_PLAN_CODES:
+            raise ApiError(422, "price_unavailable", f"{plan.name} has no published price for {code}.")
+    return plan.monthly_fils, "AED"
 
 
 # Descriptions match the capability catalogue. The monthly price stays 0 until the console sets it.
@@ -215,10 +322,59 @@ def ensure_module_addons(db: Session) -> None:
     db.flush()
 
 
+def ensure_freemium_catalog(db: Session) -> bool:
+    """Inserts Free, Growth, Pro AI, and Enterprise, and the UAE price rows, when they are missing.
+
+    An existing row is not rewritten. Issued invoices are not read or updated here.
+    """
+    now = datetime.now(UTC)
+    changed = False
+    for code, name, registers, monthly, trial, order in _FREEMIUM:
+        row = db.scalar(select(BillingPlan).where(BillingPlan.code == code))
+        if row is None:
+            row = BillingPlan(
+                code=code,
+                name=name,
+                included_registers=registers,
+                included_modules=[],
+                monthly_fils=monthly,
+                trial_days=trial,
+                sort_order=order,
+                resource_limits=dict(_FREEMIUM_LIMITS[code]),
+                updated_at=now,
+            )
+            db.add(row)
+            db.flush()
+            changed = True
+        if code not in _UAE_PRICES:
+            continue
+        price = db.scalar(
+            select(BillingPlanPrice.id).where(BillingPlanPrice.plan_id == row.id, BillingPlanPrice.country == "AE")
+        )
+        if price is None:
+            db.add(
+                BillingPlanPrice(
+                    plan_id=row.id,
+                    country="AE",
+                    currency="AED",
+                    monthly_fils=_UAE_PRICES[code],
+                    enabled=True,
+                    updated_at=now,
+                )
+            )
+            changed = True
+    if changed:
+        db.flush()
+    return changed
+
+
 def ensure_catalog(db: Session) -> bool:
     """Inserts the starting catalog once. Later edits in the console are left alone."""
-    if db.scalar(select(BillingPlan.id).limit(1)) is not None:
-        return False
+    created = False
+    if db.scalar(select(BillingPlan.id).limit(1)) is None:
+        created = True
+    if not created:
+        return ensure_freemium_catalog(db)
     now = datetime.now(UTC)
     for code, name, registers, modules, monthly, trial, order in _PLANS:
         db.add(
@@ -254,11 +410,16 @@ def ensure_catalog(db: Session) -> bool:
         )
     db.add(BillingFee(code="onboarding", name="Onboarding", amount_fils=25_000, updated_at=now))
     db.flush()
+    ensure_freemium_catalog(db)
     return True
 
 
 def start_trial(db: Session, tenant: Tenant) -> None:
-    """Gives a new store the Standard monthly trial. No-op when a subscription already exists."""
+    """Gives a new store the Standard monthly trial. No-op when a subscription already exists.
+
+    This is the legacy onboarding trial. It is not the Pro AI promotion, and it does not change a store
+    that already has a subscription.
+    """
     ensure_catalog(db)
     if db.scalar(select(Subscription.id).where(Subscription.tenant_id == tenant.id)) is not None:
         return
@@ -278,6 +439,66 @@ def start_trial(db: Session, tenant: Tenant) -> None:
     tenant.plan = plan.code
     tenant.practice_mode = True
     db.flush()
+
+
+def assign_free(db: Session, tenant: Tenant) -> Subscription:
+    """Attaches Free as the base subscription when the tenant has none.
+
+    A tenant that already has Lite, Standard, Pro, or any other plan is left on that plan.
+    Calling this twice does not insert a second subscription row. No invoice is created.
+    """
+    ensure_catalog(db)
+    existing = db.scalar(select(Subscription).where(Subscription.tenant_id == tenant.id))
+    if existing is not None:
+        return existing
+    plan = db.scalar(select(BillingPlan).where(BillingPlan.code == "FREE", BillingPlan.active.is_(True)))
+    cycle = db.scalar(select(BillingCycle).where(BillingCycle.code == "MONTHLY", BillingCycle.active.is_(True)))
+    if plan is None or cycle is None:
+        raise ApiError(422, "catalog_missing", "The Free plan is not available.")
+    row = Subscription(
+        tenant_id=tenant.id,
+        plan_id=plan.id,
+        cycle_id=cycle.id,
+        status="active",
+        trial_ends_at=None,
+        current_period_end=None,
+    )
+    db.add(row)
+    tenant.plan = plan.code
+    db.flush()
+    return row
+
+
+def adopt_free_if_unpaid(db: Session, tenant: Tenant) -> Subscription:
+    """Moves a store onto Free when the owner chooses it and nothing has been paid.
+
+    An active or past-due subscription is left on its current plan. A missing subscription is created as Free.
+    """
+    ensure_catalog(db)
+    existing = db.scalar(select(Subscription).where(Subscription.tenant_id == tenant.id))
+    if existing is None:
+        return assign_free(db, tenant)
+    current = db.get(BillingPlan, existing.plan_id)
+    if current is not None and current.code == "FREE":
+        return existing
+    if existing.status != "trialing":
+        raise ApiError(
+            409,
+            "plan_already_set",
+            "This store already has a subscription. Choosing Free does not replace it.",
+        )
+    plan = db.scalar(select(BillingPlan).where(BillingPlan.code == "FREE", BillingPlan.active.is_(True)))
+    cycle = db.scalar(select(BillingCycle).where(BillingCycle.code == "MONTHLY", BillingCycle.active.is_(True)))
+    if plan is None or cycle is None:
+        raise ApiError(422, "catalog_missing", "The Free plan is not available.")
+    existing.plan_id = plan.id
+    existing.cycle_id = cycle.id
+    existing.status = "active"
+    existing.trial_ends_at = None
+    existing.current_period_end = None
+    tenant.plan = plan.code
+    db.flush()
+    return existing
 
 
 def _plans(db: Session) -> list[BillingPlan]:
@@ -307,6 +528,9 @@ def plan_out(row: BillingPlan) -> PlanOut:
         trial_days=row.trial_days,
         active=row.active,
         sort_order=row.sort_order,
+        resource_limits=dict(row.resource_limits) if row.resource_limits else None,
+        custom_pricing=row.code == "ENTERPRISE",
+        catalog_family="current" if row.code in NEW_PLAN_CODES else "legacy",
     )
 
 
@@ -366,6 +590,7 @@ def catalog(db: Session) -> CatalogOut:
 
     fill_listings(db)
     from app.console import hardware
+    from app.console.transfers import active_bank_snapshot
 
     return CatalogOut(
         plans=[plan_out(row) for row in _plans(db)],
@@ -373,6 +598,8 @@ def catalog(db: Session) -> CatalogOut:
         addons=[addon_out(row) for row in _addons(db)],
         fees=[fee_out(row) for row in _fees(db)],
         hardware=hardware.list_items(db, sellable_only=True),
+        transfer_available=active_bank_snapshot(db) is not None,
+        current_annual_discount_bps=current_annual_discount(db),
     )
 
 
@@ -392,6 +619,29 @@ def _audit_price(
     audit_operator(db, operator, action, before=before, after=after, reason=reason)
 
 
+_LIMIT_KEYS = frozenset(
+    {"branches", "registers", "staff", "products", "customers", "sales_history_days", "ai_questions_per_month"}
+)
+
+
+def _resource_limits(value: dict | None, previous: dict | None) -> dict | None:
+    """None leaves the stored caps alone. A key set to null means that cap is not enforced."""
+    if value is None:
+        return dict(previous) if previous else None
+    cleaned: dict[str, int | None] = {}
+    for key, raw in value.items():
+        if key not in _LIMIT_KEYS:
+            raise ApiError(422, "unknown_limit", f"{key} is not a resource limit.")
+        if raw is None:
+            cleaned[key] = None
+            continue
+        number = int(raw)
+        if number < 0:
+            raise ApiError(422, "invalid_limit", f"{key} cannot be negative.")
+        cleaned[key] = number
+    return cleaned
+
+
 def update_plan(db: Session, operator: OperatorPrincipal, plan_id: uuid.UUID, data: PlanIn) -> PlanOut:
     ensure_catalog(db)
     row = db.get(BillingPlan, plan_id)
@@ -400,15 +650,193 @@ def update_plan(db: Session, operator: OperatorPrincipal, plan_id: uuid.UUID, da
     before = plan_out(row).model_dump(mode="json")
     row.name = data.name.strip()
     row.included_registers = data.included_registers
-    row.included_modules = require_module_keys(data.included_modules, with_dependencies=False)
+    row.included_modules = require_module_keys(data.included_modules, with_dependencies=True, implemented_only=True)
+    flag_modified(row, "included_modules")
     row.monthly_fils = data.monthly_fils
     row.trial_days = data.trial_days
     row.active = data.active
     row.sort_order = data.sort_order
+    row.resource_limits = _resource_limits(data.resource_limits, row.resource_limits)
+    flag_modified(row, "resource_limits")
     _touch(row)
+    from app.console.promotional_trial import bump_revision
+
+    bump_revision(db)
     _audit_price(db, operator, "billing.plan", before, plan_out(row).model_dump(mode="json"), data.reason)
     db.commit()
     return plan_out(row)
+
+
+def set_annual_discount(db: Session, operator: OperatorPrincipal, data: AnnualDiscountIn) -> int:
+    """Annual rate for a new Free, Growth, Pro AI, or Enterprise invoice.
+
+    Lite, Standard, and Pro keep the cycle discount. Issued invoices are not rewritten.
+    """
+    from app.console.promotional_trial import _policy, bump_revision
+
+    row = _policy(db)
+    before = int(row.new_annual_discount_bps or NEW_ANNUAL_DISCOUNT_BPS)
+    row.new_annual_discount_bps = data.discount_bps
+    row.updated_at = datetime.now(UTC)
+    bump_revision(db)
+    _audit_price(
+        db,
+        operator,
+        "billing.annual_discount",
+        {"discount_bps": before},
+        {"discount_bps": data.discount_bps},
+        data.reason,
+    )
+    db.commit()
+    return data.discount_bps
+
+
+def plan_impact(db: Session, plan_id: uuid.UUID) -> PlanImpactOut:
+    """Who a plan publish touches. Issued invoices are counted, not rewritten."""
+    row = db.get(BillingPlan, plan_id)
+    if row is None:
+        raise ApiError(404, "not_found", "Package was not found.")
+    tenants = int(
+        db.scalar(
+            select(func.count())
+            .select_from(Subscription)
+            .where(Subscription.plan_id == row.id, Subscription.status != "canceled")
+        )
+        or 0
+    )
+    from app.console.promotional_trial import TRIAL_TYPE, effective_status
+    from app.tenancy.models import PromotionalTrial
+
+    trials = list(db.scalars(select(PromotionalTrial).where(PromotionalTrial.trial_type == TRIAL_TYPE)))
+    active = sum(
+        1
+        for trial in trials
+        if effective_status(trial) == "active" and (row.code == "PRO_AI" or trial.base_plan_code == row.code)
+    )
+    open_invoices = int(
+        db.scalar(
+            select(func.count())
+            .select_from(BillingInvoice)
+            .where(BillingInvoice.plan_code == row.code, BillingInvoice.status == "pending")
+        )
+        or 0
+    )
+    return PlanImpactOut(
+        tenants=tenants,
+        active_promotional_trials=active,
+        open_invoices=open_invoices,
+        note=(
+            "Publishing changes future checkouts and the modules included by this plan. "
+            "Issued invoices keep their snapshots. An active Pro AI trial keeps its expiry. "
+            "The Standard practice trial is a separate subscription status."
+        ),
+    )
+
+
+def list_plan_prices(db: Session) -> list[PlanPriceOut]:
+    ensure_catalog(db)
+    codes = {row.id: row.code for row in _plans(db)}
+    rows = db.scalars(select(BillingPlanPrice).order_by(BillingPlanPrice.country, BillingPlanPrice.currency)).all()
+    return [
+        PlanPriceOut(
+            id=row.id,
+            plan_id=row.plan_id,
+            plan_code=codes.get(row.plan_id, ""),
+            country=row.country,
+            currency=row.currency,
+            monthly_fils=row.monthly_fils,
+            enabled=row.enabled,
+        )
+        for row in rows
+    ]
+
+
+def update_plan_price(db: Session, operator: OperatorPrincipal, price_id: uuid.UUID, data: PlanPriceIn) -> PlanPriceOut:
+    """Edits one country price. Open and paid invoices keep the fils they were issued with."""
+    ensure_catalog(db)
+    row = db.get(BillingPlanPrice, price_id)
+    if row is None:
+        raise ApiError(404, "not_found", "That country price was not found.")
+    plan = db.get(BillingPlan, row.plan_id)
+    before = {"country": row.country, "monthly_fils": row.monthly_fils, "enabled": row.enabled}
+    row.monthly_fils = data.monthly_fils
+    row.enabled = data.enabled
+    row.updated_at = datetime.now(UTC)
+    from app.console.promotional_trial import bump_revision
+
+    bump_revision(db)
+    after = {
+        "country": row.country,
+        "monthly_fils": row.monthly_fils,
+        "enabled": row.enabled,
+        "plan_code": plan.code if plan else "",
+    }
+    _audit_price(db, operator, "billing.plan_price", before, after, data.reason)
+    db.commit()
+    return PlanPriceOut(
+        id=row.id,
+        plan_id=row.plan_id,
+        plan_code=plan.code if plan else "",
+        country=row.country,
+        currency=row.currency,
+        monthly_fils=row.monthly_fils,
+        enabled=row.enabled,
+    )
+
+
+def propagate_plan(settings: Settings, db: Session, plan_id: uuid.UUID) -> int:
+    """Copies this plan's modules onto its stores and refreshes an open Pro AI trial. Expiry dates stay put."""
+    plan = db.get(BillingPlan, plan_id)
+    if plan is None:
+        return 0
+    from app.services.addon_access import invalidate_access_cache
+    from app.services.settings_service import load_settings
+
+    keys = list(plan.included_modules or [])
+    subs = list(
+        db.scalars(select(Subscription).where(Subscription.plan_id == plan.id, Subscription.status != "canceled"))
+    )
+    changed = 0
+    for sub in subs:
+        tenant = db.get(Tenant, sub.tenant_id)
+        if tenant is None:
+            continue
+        allowed = {item.value for item in capability_catalog.compatible(_business_profile(settings, tenant))}
+        granted = [key for key in keys if key in allowed]
+        with tenant_session(tenant, settings) as store:
+            settings_row = load_settings(store, lock=True)
+            if list(settings_row.plan_capabilities or []) == granted:
+                continue
+            settings_row.plan_capabilities = granted or None
+            store.commit()
+            invalidate_access_cache(tenant.id)
+            changed += 1
+    if plan.code == "PRO_AI":
+        from app.console.promotional_trial import republish_active
+
+        republish_active(settings, db)
+    return changed
+
+
+def configuration_history(db: Session, limit: int = 40) -> list[ConfigChangeOut]:
+    rows = db.scalars(
+        select(OperatorAuditLog)
+        .where(OperatorAuditLog.action.startswith("billing."))
+        .order_by(OperatorAuditLog.created_at.desc())
+        .limit(limit)
+    ).all()
+    return [
+        ConfigChangeOut(
+            id=row.id,
+            action=row.action,
+            reason=row.reason,
+            before=row.before if isinstance(row.before, dict) else None,
+            after=row.after if isinstance(row.after, dict) else None,
+            created_at=row.created_at,
+            operator_id=row.operator_id,
+        )
+        for row in rows
+    ]
 
 
 def update_cycle(db: Session, operator: OperatorPrincipal, cycle_id: uuid.UUID, data: CycleIn) -> CycleOut:
@@ -509,13 +937,18 @@ def quote_for(
     addons: list[AddonQty],
     hardware: list | None = None,
     stores: dict | None = None,
+    country: str | None = None,
 ) -> QuoteOut:
     ensure_catalog(db)
     plan = _active_plan(db, plan_code)
+    if plan.code == "ENTERPRISE":
+        raise ApiError(422, "custom_pricing", "Enterprise is priced on a contract.")
     cycle = _active_cycle(db, cycle_code)
     by_code = {row.code: row for row in _addons(db) if row.active}
     lines: list[QuoteLine] = []
-    plan_unit = cycle_amount(plan.monthly_fils, cycle.months, cycle.discount_bps)
+    monthly, currency = monthly_fils_for(db, plan, country)
+    plan_discount = discount_bps_for(plan, cycle, db)
+    plan_unit = cycle_amount(monthly, cycle.months, plan_discount)
     lines.append(
         QuoteLine(
             code=plan.code,
@@ -562,19 +995,20 @@ def quote_for(
                     refundable=addon.refundable,
                 )
             )
-    for fee in _fees(db):
-        if fee.active and fee.amount_fils:
-            lines.append(
-                QuoteLine(
-                    code=fee.code,
-                    label=fee.name,
-                    quantity=1,
-                    unit_fils=fee.amount_fils,
-                    amount_fils=fee.amount_fils,
-                    recurring=False,
-                    refundable=False,
+    if plan.code != "FREE":
+        for fee in _fees(db):
+            if fee.active and fee.amount_fils:
+                lines.append(
+                    QuoteLine(
+                        code=fee.code,
+                        label=fee.name,
+                        quantity=1,
+                        unit_fils=fee.amount_fils,
+                        amount_fils=fee.amount_fils,
+                        recurring=False,
+                        refundable=False,
+                    )
                 )
-            )
     from app.console import hardware as hardware_catalog
 
     hardware_lines, hardware_monthly, deposit = hardware_catalog.price_selection(
@@ -589,12 +1023,13 @@ def quote_for(
     recurring = sum(line.amount_fils for line in lines if line.recurring)
     once = sum(line.amount_fils for line in lines if not line.recurring)
     return QuoteOut(
+        currency=currency,
         plan_code=plan.code,
         plan_name=plan.name,
         cycle_code=cycle.code,
         cycle_name=cycle.name,
         months=cycle.months,
-        discount_bps=cycle.discount_bps,
+        discount_bps=plan_discount,
         included_registers=plan.included_registers,
         lines=lines,
         recurring_fils=recurring,
@@ -708,7 +1143,7 @@ def overview(db: Session) -> OverviewOut:
             addon = addons.get(item.addon_code)
             if addon is not None:
                 monthly += addon.monthly_fils * item.quantity
-        share = _monthly_equivalent(monthly, cycle.months, cycle.discount_bps)
+        share = _monthly_equivalent(monthly, cycle.months, discount_bps_for(plan, cycle, db))
         mrr += share
         bucket = plans.get(plan.code)
         if bucket is None:
@@ -829,6 +1264,14 @@ def _stripe_configured(settings: Settings) -> bool:
     return bool((settings.stripe_secret_key or "").strip())
 
 
+def _store_country(settings: Settings, tenant: Tenant) -> str | None:
+    """The store's country, used to pick a published price. A missing country keeps the plan's list price."""
+    from app.services.settings_service import load_settings
+
+    with tenant_session(tenant, settings) as store:
+        return load_settings(store).country
+
+
 def _business_profile(settings: Settings, tenant: Tenant) -> str:
     from app.services.settings_service import load_settings
 
@@ -911,7 +1354,7 @@ def _checkout_from_invoice(db: Session, invoice: BillingInvoice) -> CheckoutOut:
         cycle_code=invoice.cycle_code,
         cycle_name=cycle.name if cycle is not None else invoice.cycle_code,
         months=cycle.months if cycle is not None else 1,
-        discount_bps=cycle.discount_bps if cycle is not None else 0,
+        discount_bps=discount_bps_for(plan, cycle) if plan is not None and cycle is not None else 0,
         included_registers=plan.included_registers if plan is not None else 0,
         lines=[
             QuoteLine(
@@ -988,7 +1431,15 @@ def create_checkout(
         raise ApiError(422, "tax_not_acknowledged", "Confirm that practice tax stamps will be removed.")
     if data.mode == "keep" and data.opening_stock not in ("keep", "reset"):
         raise ApiError(422, "opening_stock_required", "Choose whether to keep opening stock or reset it to zero.")
-    priced = quote_for(db, data.plan_code, data.cycle_code, data.addons, data.hardware, stores)
+    priced = quote_for(
+        db,
+        data.plan_code,
+        data.cycle_code,
+        data.addons,
+        data.hardware,
+        stores,
+        country=_store_country(settings, tenant),
+    )
     if priced.recurring_fils <= 0:
         raise ApiError(422, "nothing_to_bill", "The package has no recurring price.")
     invoice = BillingInvoice(

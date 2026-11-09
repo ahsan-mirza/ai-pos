@@ -123,6 +123,10 @@ def apply_store(db: Session, payload: dict[str, object], source: SyncSource = "p
         raise SyncRejected("Store code is already in use.")
     details = {field: getattr(data, field) for field in ("address", "phone", "emirate", "is_warehouse", "is_active")}
     if existing is None:
+        from app.console.plan_limits import assert_room, count_of
+        from app.models.store import Store as StoreModel
+
+        assert_room(count_of(db, StoreModel), "branches")
         db.add(Store(id=data.id, code=data.code, name=data.name, currency=data.currency, **details))
         return data.id
     existing.code = data.code
@@ -205,6 +209,9 @@ def apply_product(db: Session, payload: dict[str, object], source: SyncSource = 
     if barcode_owner is not None and (existing is None or barcode_owner.id != existing.id):
         raise SyncRejected("Barcode is already in use.")
     if existing is None:
+        from app.console.plan_limits import assert_room, count_of
+
+        assert_room(count_of(db, Product), "products")
         category, sub = _categories_for(db, data)
         product = Product(
             id=data.id,
@@ -445,8 +452,9 @@ def push_batch(
 ) -> SyncPushResponse:
     if len(request.events) > settings.sync_max_batch_size:
         raise ApiError(413, "batch_too_large", "Sync batch exceeds the configured limit.")
-    # A locked register's sale stays queued: the desktop treats HTTP 403 as unavailable and retries.
-    if request.events:
+    # A completed sale is money the customer already paid. Subscription review must not drop it.
+    # Other batches stay closed until the subscription is operational.
+    if request.events and not any(event.entity_type in {"sale", "sale_return"} for event in request.events):
         from app.console.transfers import require_operations
 
         require_operations()

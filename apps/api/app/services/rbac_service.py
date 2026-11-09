@@ -436,6 +436,10 @@ def list_users(db: Session, actor: Principal) -> list[UserOut]:
 
 
 def create_user(db: Session, settings: Settings, actor: Principal, data: UserCreate) -> UserOut:
+    from app.console.plan_limits import assert_room
+
+    used = int(db.scalar(select(func.count()).select_from(User).where(User.is_active.is_(True))) or 0)
+    assert_room(used, "staff")
     role = _get_role(db, data.role_id)
     store_id = data.store_id if actor.store_id is None else (data.store_id or actor.store_id)
     _assert_store_scope(actor, store_id)

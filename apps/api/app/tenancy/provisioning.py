@@ -119,9 +119,9 @@ def step_register(job: Job) -> None:
             )
             db.add(existing)
             db.flush()
-            from app.console.billing import start_trial
+            from app.console.billing import assign_free
 
-            start_trial(db, existing)
+            assign_free(db, existing)
             db.commit()
         job.tenant_id = existing.id
     registry.invalidate(job.slug)

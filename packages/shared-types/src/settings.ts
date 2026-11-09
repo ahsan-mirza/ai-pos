@@ -89,6 +89,9 @@ export interface BusinessSettings {
   purchased_capabilities?: string[];
   /** Paid modules stay usable offline until this moment. */
   entitlement_until?: string | null;
+  /** Pro AI plan modules while a promotional trial is inside its window. Not paid add-ons. */
+  promotional_capabilities?: string[];
+  promotional_until?: string | null;
   /** False while the subscription payment is unverified, rejected, expired, or suspended. */
   subscription_operational?: boolean;
   /** Capabilities the Windows register implements. Admin-only modules are omitted. */

@@ -58,6 +58,7 @@ from app.models.quote_payment import QuotePayment
 from app.models.recipe import ModifierIngredient, Recipe, RecipeLine, RecipeUsage
 from app.models.repair_ticket import RepairAttachment, RepairDeposit, RepairEvent, RepairLine, RepairTicket
 from app.models.replenishment import DemandDaily, ReplenishmentRun, ReplenishmentSuggestion, SeasonalEvent
+from app.models.reservation import SeatingSessionOrder, TableActivityEvent
 from app.models.restaurant import DiningArea, DiningTable, OpenOrder, OpenOrderItem
 from app.models.return_item import ReturnItem
 from app.models.return_tender import ReturnTender
@@ -220,7 +221,7 @@ def subscription_gate(settings: Settings) -> tuple[str, str | None]:
         return "awaiting_proof", "An invoice is open. Go live stays closed until the payment is verified."
     if kind == "revoked":
         return "revoked", "The previous activation was revoked. Go live stays closed until a payment is verified again."
-    if state in {"unbilled", "active", "grace"}:
+    if state in {"unbilled", "active", "grace", "free"}:
         return state, None
     if state == "trial":
         return (
@@ -313,6 +314,8 @@ def checklist(db: Session, settings: Settings) -> Checklist:
             hint=(
                 "The invoice is verified."
                 if invoice_verified
+                else "Free is already your plan. Confirm the practice-data change and go live. No payment is required."
+                if state == "free"
                 else "Choose a plan and activate live operations after payment is verified. "
                 "Uploading a receipt does not activate the store."
             ),
@@ -497,6 +500,8 @@ def _delete_practice_transactions(db: Session) -> int:
         KitchenTicketItem,
         KitchenTicket,
         RecipeUsage,
+        SeatingSessionOrder,
+        TableActivityEvent,
         OpenOrderItem,
         OpenOrder,
         PromotionRedemption,
@@ -684,6 +689,26 @@ def _delete_configuration(db: Session, keeper_id: uuid.UUID) -> None:
     db.execute(delete(User).where(User.id.in_(removable)))
 
 
+def _adopt_free_choice(settings: Settings) -> None:
+    """Applies an explicit Free choice before the subscription gate. No invoice is written."""
+    if not settings.tenancy_enabled:
+        return
+    from app.console.billing import adopt_free_if_unpaid
+    from app.tenancy import registry
+    from app.tenancy.context import current_tenant
+    from app.tenancy.models import Tenant
+
+    ref = current_tenant()
+    if ref is None:
+        return
+    with registry.control_session(settings) as control:
+        tenant = control.get(Tenant, uuid.UUID(ref.id))
+        if tenant is None:
+            return
+        adopt_free_if_unpaid(control, tenant)
+        control.commit()
+
+
 def go_live(
     db: Session,
     principal: Principal,
@@ -693,6 +718,8 @@ def go_live(
     payment_verified: bool = False,
 ) -> GoLiveResult:
     """Takes the store live. A trial cannot skip payment unless the caller just verified it in this transaction."""
+    if (payload.plan_code or "").strip().upper() == "FREE":
+        _adopt_free_choice(settings)
     row = load_settings(db, lock=True)
     if row.live_at is not None:
         raise ApiError(409, "already_live", "This store is already live.")

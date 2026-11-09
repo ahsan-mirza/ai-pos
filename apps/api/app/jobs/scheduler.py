@@ -16,7 +16,7 @@ _scheduler: BackgroundScheduler | None = None
 
 
 # Billing, security, and cache work keep running while paid features are locked.
-_OPEN_WHEN_LOCKED = frozenset({"cache_invalidation", "anomaly_scan"})
+_OPEN_WHEN_LOCKED = frozenset({"cache_invalidation", "anomaly_scan", "expire_pro_ai_trials"})
 
 
 def _paid_job_blocked(settings: Settings, name: str) -> bool:

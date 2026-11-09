@@ -246,26 +246,59 @@ function PlanDetail({
   );
 }
 
+const LIMIT_FIELDS = [
+  ["branches", "Branches"],
+  ["registers", "Registers"],
+  ["staff", "Staff"],
+  ["products", "Products"],
+  ["customers", "Customers"],
+  ["sales_history_days", "Sales history (days)"],
+  ["ai_questions_per_month", "AI questions / month"],
+] as const;
+
 function PlanEditor({ plan, onClose, onSaved }: { plan: BillingPlan; onClose: () => void; onSaved: () => void }) {
   const [name, setName] = useState(plan.name);
   const [price, setPrice] = useState((plan.monthly_fils / 100).toFixed(2));
   const [registers, setRegisters] = useState(String(plan.included_registers));
-  const [modules, setModules] = useState(plan.included_modules.join(", "));
+  const [modules, setModules] = useState<string[]>(plan.included_modules);
+  const [catalogue, setCatalogue] = useState<ModuleCatalogueItem[]>([]);
+  const [limits, setLimits] = useState<Record<string, string>>(() =>
+    Object.fromEntries(LIMIT_FIELDS.map(([key]) => [key, plan.resource_limits?.[key] == null ? "" : String(plan.resource_limits[key])])),
+  );
   const [trial, setTrial] = useState(String(plan.trial_days));
+  const [sortOrder, setSortOrder] = useState(String(plan.sort_order));
   const [active, setActive] = useState(plan.active);
+  const [impact, setImpact] = useState<string | null>(null);
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    api
+      .get<ModuleCatalogueItem[]>("/modules")
+      .then((rows) => setCatalogue(rows.filter((row) => row.available)))
+      .catch(() => setCatalogue([]));
+    api
+      .get<{ tenants: number; active_promotional_trials: number; open_invoices: number; note: string }>(`/billing/plans/${plan.id}/impact`)
+      .then((row) => setImpact(`${row.tenants} stores, ${row.active_promotional_trials} active Pro AI trials, ${row.open_invoices} open invoices. ${row.note}`))
+      .catch(() => setImpact(null));
+  }, [plan.id]);
+  const selected = new Set(modules);
+  const dependencyWarning = catalogue
+    .filter((row) => selected.has(row.key) && row.requires.some((need) => !selected.has(need)))
+    .map((row) => `${row.label} needs ${row.requires.filter((need) => !selected.has(need)).join(", ")}`);
+  const toggle = (key: string) => {
+    setModules((current) => (current.includes(key) ? current.filter((item) => item !== key) : [...current, key]));
+  };
   return (
     <Modal
       title={plan.name}
-      subtitle={plan.code}
+      subtitle={`${plan.code} · code is fixed`}
       onClose={onClose}
       footer={
         <>
           <GhostButton onClick={onClose}>Cancel</GhostButton>
           <PrimaryButton
-            disabled={busy || reason.trim().length < 3}
+            disabled={busy || reason.trim().length < 3 || dependencyWarning.length > 0}
             onClick={() => {
               setBusy(true);
               setError(null);
@@ -273,39 +306,64 @@ function PlanEditor({ plan, onClose, onSaved }: { plan: BillingPlan; onClose: ()
                 .patch<BillingPlan>(`/billing/plans/${plan.id}`, {
                   name,
                   included_registers: Number(registers) || 1,
-                  included_modules: modules.split(",").map((item) => item.trim()).filter(Boolean),
+                  included_modules: modules,
                   monthly_fils: filsOf(price),
                   trial_days: Number(trial) || 0,
                   active,
-                  sort_order: plan.sort_order,
+                  sort_order: Number(sortOrder) || 0,
+                  resource_limits: Object.fromEntries(
+                    LIMIT_FIELDS.map(([key]) => {
+                      const raw = (limits[key] ?? "").trim();
+                      return [key, raw === "" ? null : Number(raw)];
+                    }),
+                  ),
                   reason: reason.trim(),
                 })
                 .then(onSaved)
                 .catch((caught: unknown) => {
-                  setError(errorText(caught, "Could not save the package."));
+                  setError(errorText(caught, "Could not publish the package."));
                   setBusy(false);
                 });
             }}
           >
-            {busy ? "Saving…" : "Save"}
+            {busy ? "Publishing…" : "Publish"}
           </PrimaryButton>
         </>
       }
     >
       <div className="grid gap-3">
         <Field label="Name" value={name} onChange={(event) => setName(event.target.value)} />
-        <Field label="Monthly price (AED)" value={price} inputMode="decimal" onChange={(event) => setPrice(event.target.value)} />
+        <Field label="Monthly list price (AED)" value={price} inputMode="decimal" onChange={(event) => setPrice(event.target.value)} hint="Country prices are edited under Commercial. This remains the fallback list price." />
         <Field label="Included registers" value={registers} inputMode="numeric" onChange={(event) => setRegisters(event.target.value)} />
-        <Field label="Included modules" value={modules} onChange={(event) => setModules(event.target.value)} hint="Comma-separated capability keys." />
-        <Field label="Trial days" value={trial} inputMode="numeric" onChange={(event) => setTrial(event.target.value)} />
+        <Field label="Sort order" value={sortOrder} inputMode="numeric" onChange={(event) => setSortOrder(event.target.value)} />
+        <fieldset className="rounded-2xl border border-line p-3">
+          <legend className="px-1 text-xs font-semibold uppercase tracking-wide text-charcoal/50">Included features</legend>
+          <p className="mb-2 text-xs text-charcoal/50">Only implemented modules. These are added on top of the business-type preset. Purchased plugins stay separate.</p>
+          <div className="max-h-52 space-y-1 overflow-auto">
+            {catalogue.map((row) => (
+              <label key={row.key} className="flex items-start gap-2 text-sm">
+                <input type="checkbox" className="mt-1" checked={selected.has(row.key)} onChange={() => toggle(row.key)} />
+                <span>
+                  {row.label}
+                  <span className="ml-2 font-mono text-[11px] text-charcoal/40">{row.key}</span>
+                  {row.requires.length ? <span className="mt-0.5 block text-[11px] text-charcoal/50">Needs {row.requires.join(", ")}</span> : null}
+                </span>
+              </label>
+            ))}
+          </div>
+        </fieldset>
+        {dependencyWarning.length ? <p className="rounded-2xl bg-amber-50 px-3 py-2 text-xs text-amber-900">{dependencyWarning.join(" ")}</p> : null}
+        <fieldset className="grid gap-2 rounded-2xl border border-line p-3 sm:grid-cols-2">
+          <legend className="px-1 text-xs font-semibold uppercase tracking-wide text-charcoal/50">Limits</legend>
+          {LIMIT_FIELDS.map(([key, label]) => (
+            <Field key={key} label={label} value={limits[key] ?? ""} inputMode="numeric" onChange={(event) => setLimits((current) => ({ ...current, [key]: event.target.value }))} hint="Blank means no cap" />
+          ))}
+        </fieldset>
+        <Field label="Practice trial days" value={trial} inputMode="numeric" onChange={(event) => setTrial(event.target.value)} hint="Legacy onboarding trial on this package. The Pro AI promotion is under Commercial." />
         <label className="flex items-center gap-2 text-sm">
-          <input type="checkbox" checked={active} onChange={(event) => setActive(event.target.checked)} /> Published on the site and in checkout
+          <input type="checkbox" checked={active} onChange={(event) => setActive(event.target.checked)} /> Available for new subscriptions
         </label>
-        {active ? (
-          <p className="rounded-2xl bg-amber-50 px-3 py-2 text-xs text-amber-900">
-            Publishing updates the public price. Existing subscriptions keep invoices that were already issued.
-          </p>
-        ) : null}
+        {impact ? <p className="rounded-2xl bg-amber-50 px-3 py-2 text-xs text-amber-900">{impact}</p> : null}
         <Reason value={reason} onChange={setReason} />
         <ErrorNote message={error} />
       </div>

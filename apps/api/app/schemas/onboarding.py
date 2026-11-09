@@ -29,7 +29,7 @@ class Checklist(ApiModel):
     store_name: str
     # Units "Keep opening stock" would carry: real products, with practice sales put back.
     opening_stock_units: int
-    # trial, pending_review, active, grace, restricted, or unbilled.
+    # free, trial, pending_review, active, grace, restricted, or unbilled.
     subscription_state: str
     next_key: str | None
     items: list[ChecklistItem]
@@ -47,6 +47,8 @@ class GoLiveRequest(ApiModel):
     opening_stock: Literal["keep", "reset"] | None = None
     # The owner has seen that practice tax stamps will be destroyed.
     tax_acknowledged: bool = False
+    # Set when the owner chooses Free. An unpaid trial can move to Free. A paid plan is not replaced.
+    plan_code: str | None = Field(default=None, max_length=32)
 
 
 class GoLiveResult(ApiModel):

@@ -69,6 +69,10 @@ export interface BillingPlan {
   trial_days: number;
   active: boolean;
   sort_order: number;
+  resource_limits?: Record<string, number | null> | null;
+  custom_pricing?: boolean;
+  /** current is the freemium catalog. legacy stays for a store already on Lite, Standard, or Pro. */
+  catalog_family?: "current" | "legacy";
 }
 
 export interface BillingCycle {
@@ -288,6 +292,10 @@ export interface BillingCatalog {
   addons: BillingAddon[];
   fees: BillingFee[];
   hardware?: HardwareItem[];
+  /** False until a bank account is published. Free go-live does not use it. */
+  transfer_available?: boolean;
+  /** Annual discount for a new-catalog invoice. Legacy invoices keep the cycle row. */
+  current_annual_discount_bps?: number;
 }
 
 export interface QuoteLine {

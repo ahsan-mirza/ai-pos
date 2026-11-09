@@ -3,6 +3,7 @@ import { ConfirmProvider } from "./components/ConfirmDialog";
 import { Shell } from "./components/Shell";
 import { SessionProvider, useSession } from "./lib/session";
 import { AddonsPage, BillingPage, PackagesPage, SubscriptionsPage } from "./pages/CommercialPage";
+import { CommercialControlsPage } from "./pages/CommercialControlsPage";
 import { HardwarePage } from "./pages/HardwarePage";
 import { PaymentsPage } from "./pages/PaymentsPage";
 import { MailPage } from "./pages/MailPage";
@@ -38,6 +39,7 @@ function Console() {
           <Route path="requests" element={<RequestsPage />} />
           <Route path="catalogue" element={<CataloguePage />} />
           <Route path="packages" element={<PackagesPage />} />
+          <Route path="commercial" element={<CommercialControlsPage />} />
           <Route path="billing" element={<BillingPage />} />
           <Route path="addons" element={<AddonsPage />} />
           <Route path="modules" element={<ModulesPage />} />

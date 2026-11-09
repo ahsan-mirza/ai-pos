@@ -1257,6 +1257,9 @@ def _spec_names(
 
 @portal_errors
 def create_product(db: Session, principal: Principal, data: ProductCreate, currency: str) -> ProductOut:
+    from app.console.plan_limits import assert_room, count_of
+
+    assert_room(count_of(db, Product), "products")
     if db.scalar(select(Product.id).where(Product.sku == data.sku.strip())) is not None:
         raise field_conflict("SKU is already in use.", sku="SKU is already in use.")
     if db.scalar(select(Product.id).where(Product.barcode == data.barcode.strip())) is not None:

@@ -2,6 +2,7 @@ import { formatMoney } from "@ai-pos/shared-types";
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { invalidateAccountSubscription } from "../../components/layout/AccountMenu";
+import { ProAiTrialCard } from "./ProAiTrialCard";
 import { ErrorNote, PrimaryButton } from "../../components/ui/Field";
 import { ApiRequestError, apiBlob, apiGet, apiUpload } from "../../lib/api";
 
@@ -23,6 +24,7 @@ interface AccessStatus {
   ai_allowed: boolean;
   operational?: boolean;
   attention: PaymentAttention | null;
+  subscription?: { plan_name: string; plan_code: string; status: string; cycle_name: string } | null;
 }
 
 const copy: Record<PaymentAttention["kind"], { title: string; message: string }> = {
@@ -115,10 +117,16 @@ export function SubscriptionPaymentPage() {
 
   if (attention === null) {
     return (
-      <section className="w-full">
-        <h1 className="text-3xl font-semibold tracking-tight">Subscription payment</h1>
+      <section className="grid w-full gap-4">
+        <h1 className="text-3xl font-semibold tracking-tight">Plans & add-ons</h1>
+        <ProAiTrialCard />
+        {access?.subscription ? (
+          <p className="text-sm text-charcoal/70">
+            Base plan: {access.subscription.plan_name} · {access.subscription.status} · {access.subscription.cycle_name}
+          </p>
+        ) : null}
         <ErrorNote message={error} />
-        <p className="mt-3 text-sm text-charcoal/60">
+        <p className="text-sm text-charcoal/60">
           {access === null ? "Loading the invoice…" : "There is no invoice waiting for a bank transfer."}
         </p>
       </section>
@@ -131,6 +139,12 @@ export function SubscriptionPaymentPage() {
 
   return (
     <section className="grid w-full gap-4">
+      <ProAiTrialCard />
+      {access?.subscription ? (
+        <p className="text-sm text-charcoal/70">
+          Base plan: {access.subscription.plan_name} · {access.subscription.status} · {access.subscription.cycle_name}
+        </p>
+      ) : null}
       <header>
         <h1 className="text-3xl font-semibold tracking-tight">{text.title}</h1>
         <p className="mt-2 text-sm text-charcoal/70">{attention.kind === "rejected" && attention.reason ? attention.reason : text.message}</p>

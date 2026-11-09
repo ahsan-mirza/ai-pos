@@ -54,6 +54,9 @@ function statusOf(access: AccountAccess): { label: string; tone: string; when: s
     return { label: "Pending payment", tone: "bg-amber-100 text-amber-900", when: null };
   }
   if (kind === "revoked") return { label: "Access updated", tone: "bg-red-100 text-red-800", when: null };
+  if (access.state === "free") {
+    return { label: "Free", tone: "bg-emerald-100 text-emerald-800", when: null };
+  }
   if (access.state === "trial") {
     return { label: "Trial", tone: "bg-amber-100 text-amber-900", when: day(subscription?.trial_ends_at ?? null) };
   }

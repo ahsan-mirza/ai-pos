@@ -3,6 +3,7 @@ import { useLocale } from "@ai-pos/ui";
 import { useEffect, useState } from "react";
 import { BarSeries, CategoryDonut, HorizontalBars, Sparkline, SplitBar } from "../../components/charts/Charts";
 import { SegmentedControl } from "../../components/ui/SegmentedControl";
+import { ProAiTrialCard } from "../billing/ProAiTrialCard";
 import { apiGet } from "../../lib/api";
 import { useCurrency } from "../../lib/currency";
 
@@ -51,6 +52,7 @@ export function DashboardPage() {
   if (summary === null) {
     return (
       <section className="space-y-6">
+        <ProAiTrialCard />
         <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
           <div>
             <h2 className="font-sans text-[28px] font-semibold leading-tight tracking-tight md:text-[32px]">
@@ -76,6 +78,7 @@ export function DashboardPage() {
 
   return (
     <section className="space-y-6">
+      <ProAiTrialCard />
       <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
         <div>
           <h2 className="font-sans text-[28px] font-semibold leading-tight tracking-tight md:text-[32px]">

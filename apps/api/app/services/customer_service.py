@@ -261,6 +261,9 @@ def _check_group(db: Session, group_id: uuid.UUID | None) -> None:
 
 def new_customer(db: Session, data: CustomerWrite, customer_id: uuid.UUID | None = None) -> Customer:
     """Adds a customer to the session without committing; the caller owns the transaction."""
+    from app.console.plan_limits import assert_room, count_of
+
+    assert_room(count_of(db, Customer), "customers")
     _check_group(db, data.group_id)
     customer = Customer(
         code=_next_code(db, data.company_name or data.name),

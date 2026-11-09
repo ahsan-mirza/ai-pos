@@ -33,10 +33,12 @@ from app.schemas.addon_access import ConsoleAddonAccessOut
 from app.schemas.billing import (
     AddonIn,
     AddonOut,
+    AnnualDiscountIn,
     BankAccountIn,
     BankAccountOut,
     BusinessTypeModules,
     CatalogOut,
+    ConfigChangeOut,
     CycleIn,
     CycleOut,
     EntitlementLine,
@@ -47,14 +49,19 @@ from app.schemas.billing import (
     ModuleSummary,
     OverviewOut,
     PaymentOut,
+    PlanImpactOut,
     PlanIn,
     PlanOut,
+    PlanPriceIn,
+    PlanPriceOut,
     RejectIn,
     ReviewNotice,
     ReviewSummary,
     SubscriptionAssign,
     SubscriptionOut,
     TransferOut,
+    TrialConfigIn,
+    TrialConfigOut,
 )
 from app.schemas.console import (
     ConsoleChangeRequest,
@@ -358,10 +365,46 @@ def billing_catalog(_: CurrentOperator, settings: Config) -> CatalogOut:
         return found
 
 
+@router.get("/billing/plans/{plan_id}/impact", response_model=PlanImpactOut)
+def billing_plan_impact(plan_id: uuid.UUID, _: CurrentOperator, settings: Config) -> PlanImpactOut:
+    with registry.control_session(settings) as db:
+        return billing.plan_impact(db, plan_id)
+
+
 @router.patch("/billing/plans/{plan_id}", response_model=PlanOut)
 def billing_plan(plan_id: uuid.UUID, payload: PlanIn, operator: ConsoleAdmin, settings: Config) -> PlanOut:
     with registry.control_session(settings) as db:
-        return billing.update_plan(db, operator, plan_id, payload)
+        updated = billing.update_plan(db, operator, plan_id, payload)
+        billing.propagate_plan(settings, db, plan_id)
+        return updated
+
+
+@router.put("/billing/annual-discount")
+def billing_annual_discount(payload: AnnualDiscountIn, operator: ConsoleAdmin, settings: Config) -> dict[str, int]:
+    with registry.control_session(settings) as db:
+        return {"discount_bps": billing.set_annual_discount(db, operator, payload)}
+
+
+@router.get("/billing/plan-prices", response_model=list[PlanPriceOut])
+def billing_plan_prices(_: CurrentOperator, settings: Config) -> list[PlanPriceOut]:
+    with registry.control_session(settings) as db:
+        found = billing.list_plan_prices(db)
+        db.commit()
+        return found
+
+
+@router.patch("/billing/plan-prices/{price_id}", response_model=PlanPriceOut)
+def billing_plan_price(
+    price_id: uuid.UUID, payload: PlanPriceIn, operator: ConsoleAdmin, settings: Config
+) -> PlanPriceOut:
+    with registry.control_session(settings) as db:
+        return billing.update_plan_price(db, operator, price_id, payload)
+
+
+@router.get("/billing/configuration-history", response_model=list[ConfigChangeOut])
+def billing_configuration_history(_: CurrentOperator, settings: Config) -> list[ConfigChangeOut]:
+    with registry.control_session(settings) as db:
+        return billing.configuration_history(db)
 
 
 @router.patch("/billing/cycles/{cycle_id}", response_model=CycleOut)
@@ -527,6 +570,34 @@ def update_bank_account(
 ) -> BankAccountOut:
     with registry.control_session(settings) as db:
         return _bank_out(transfers.save_account(db, operator, payload.model_dump(), account_id))
+
+
+@router.get("/billing/pro-ai-trial", response_model=TrialConfigOut)
+def read_pro_ai_trial(_: CurrentOperator, settings: Config) -> TrialConfigOut:
+    from app.console.promotional_trial import trial_config
+
+    with registry.control_session(settings) as db:
+        return trial_config(db)
+
+
+@router.put("/billing/pro-ai-trial", response_model=TrialConfigOut)
+def write_pro_ai_trial(payload: TrialConfigIn, operator: ConsoleAdmin, settings: Config) -> TrialConfigOut:
+    from app.console.promotional_trial import configure_trial, trial_config
+    from app.console.security import audit_operator
+
+    with registry.control_session(settings) as db:
+        before = trial_config(db).model_dump(mode="json")
+        current = configure_trial(db, enabled=payload.enabled, days=payload.days, plans=payload.eligible_plans)
+        audit_operator(
+            db,
+            operator,
+            "billing.pro_ai_trial",
+            before=before,
+            after=current.model_dump(mode="json"),
+            reason=payload.reason,
+        )
+        db.commit()
+        return current
 
 
 @router.get("/billing/grace")

@@ -224,6 +224,11 @@ def list_sales(
         statement = statement.where(Sale.store_id == store_scope)
     if customer_id is not None:
         statement = statement.where(Sale.customer_id == customer_id)
+    from app.console.plan_limits import history_cutoff
+
+    cutoff = history_cutoff()
+    if cutoff is not None:
+        statement = statement.where(Sale.created_at >= cutoff)
     sales = list(db.scalars(statement).unique().all())
     names = _customer_names(db, sales)
     return [sale_out(sale, settings, names.get(sale.customer_id) if sale.customer_id else None) for sale in sales]

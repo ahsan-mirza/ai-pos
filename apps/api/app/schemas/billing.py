@@ -22,6 +22,10 @@ class PlanOut(ApiModel):
     trial_days: int
     active: bool
     sort_order: int
+    resource_limits: dict | None = None
+    custom_pricing: bool = False
+    # current plans are the freemium catalog. legacy plans stay for stores already on them.
+    catalog_family: Literal["current", "legacy"] = "legacy"
 
 
 class PlanIn(ApiModel):
@@ -32,7 +36,64 @@ class PlanIn(ApiModel):
     trial_days: int = Field(ge=0, le=365)
     active: bool = True
     sort_order: int = Field(default=0, ge=0, le=100)
+    # Omitted leaves the stored caps unchanged. Null on a key means that cap is not enforced.
+    resource_limits: dict[str, int | None] | None = None
     reason: str = Field(min_length=3, max_length=500)
+
+
+class PlanImpactOut(ApiModel):
+    tenants: int
+    active_promotional_trials: int
+    open_invoices: int
+    note: str
+
+
+class PlanPriceOut(ApiModel):
+    id: UUID
+    plan_id: UUID
+    plan_code: str
+    country: str
+    currency: str
+    monthly_fils: int
+    enabled: bool
+
+
+class PlanPriceIn(ApiModel):
+    monthly_fils: int = Field(ge=0, le=100_000_000)
+    enabled: bool = True
+    reason: str = Field(min_length=3, max_length=500)
+
+
+class TrialConfigOut(ApiModel):
+    enabled: bool
+    days: int
+    eligible_plans: list[str]
+    promotional_plan: str = "PRO_AI"
+    active_trials: int
+    consumed_trials: int
+    commercial_revision: int
+
+
+class AnnualDiscountIn(ApiModel):
+    discount_bps: int = Field(ge=0, le=10_000)
+    reason: str = Field(min_length=3, max_length=500)
+
+
+class TrialConfigIn(ApiModel):
+    enabled: bool
+    days: int | None = Field(default=None, ge=1, le=90)
+    eligible_plans: list[str] | None = None
+    reason: str = Field(min_length=3, max_length=500)
+
+
+class ConfigChangeOut(ApiModel):
+    id: UUID
+    action: str
+    reason: str | None = None
+    before: dict | None = None
+    after: dict | None = None
+    created_at: datetime
+    operator_id: UUID | None = None
 
 
 class CycleOut(ApiModel):
@@ -186,6 +247,10 @@ class CatalogOut(ApiModel):
     addons: list[AddonOut]
     fees: list[FeeOut]
     hardware: list[HardwareItemOut] = Field(default_factory=list)
+    # False until the console publishes a bank account. Free activation does not read this.
+    transfer_available: bool = False
+    # Annual discount applied to a new Free, Growth, Pro AI, or Enterprise invoice. Cycle rows keep their own rate.
+    current_annual_discount_bps: int = 0
 
 
 class AddonQty(ApiModel):
@@ -403,12 +468,32 @@ class AccessSubscription(ApiModel):
     grace_ends_at: datetime | None = None
 
 
+class PromotionalTrialOut(ApiModel):
+    """The Pro AI promotion. status not_started means no row. The base plan is the subscription, not this trial."""
+
+    eligible: bool
+    reason: str | None = None
+    status: Literal["not_started", "active", "expired", "cancelled"]
+    base_plan_code: str | None = None
+    base_plan_name: str | None = None
+    promotional_plan_code: str = "PRO_AI"
+    trial_days: int = 14
+    starts_at: datetime | None = None
+    expires_at: datetime | None = None
+    days_remaining: int | None = None
+    capabilities: list[str] = Field(default_factory=list)
+    capability_keys: list[str] = Field(default_factory=list)
+    enabled: bool = True
+    reminder: str | None = None
+
+
 class AccessOut(ApiModel):
     state: str
     ai_allowed: bool
     operational: bool = True
     attention: PaymentAttention | None = None
     subscription: AccessSubscription | None = None
+    promotional_trial: PromotionalTrialOut | None = None
 
 
 MarketplaceState = Literal[

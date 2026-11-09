@@ -39,6 +39,8 @@ class BusinessSettingsOut(BaseModel):
     purchased_capabilities: list[str] = Field(default_factory=list)
     # Paid modules remain usable offline until this moment. Null when nothing was purchased.
     entitlement_until: datetime | None = None
+    promotional_capabilities: list[str] = Field(default_factory=list)
+    promotional_until: datetime | None = None
     # False while payment is unverified, rejected, expired, or the tenant is suspended.
     subscription_operational: bool = True
     # Subset of capabilities the Windows register implements. Admin-only modules are left out.

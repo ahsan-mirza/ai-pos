@@ -3,6 +3,7 @@ import type {
   BillingCatalog,
   BillingCheckout,
   BillingCheckoutStatus,
+  BillingPlan,
   BillingQuote,
   HardwarePick,
   GoLiveMode,
@@ -10,8 +11,9 @@ import type {
   OpeningStockChoice,
 } from "@ai-pos/shared-types";
 import { formatMoney } from "@ai-pos/shared-types";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { Minus, Plus, Rocket, ShieldCheck } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ErrorNote, GhostButton, PrimaryButton, TextField } from "../../components/ui/Field";
 import { Modal } from "../../components/ui/Modal";
 import { ApiRequestError, apiGet, apiPost, apiUpload } from "../../lib/api";
@@ -33,7 +35,29 @@ const FRESH_CLEARED = [
 ];
 const FRESH_KEPT = ["Your business name, tax number and currency", "Your own login", "The setup wizard, so you can start again"];
 
-type Step = "mode" | "stock" | "package" | "confirm";
+type Step = "plan" | "cycle" | "extras" | "data" | "confirm";
+
+const CURRENT_CODES = new Set(["FREE", "GROWTH", "PRO_AI", "ENTERPRISE"]);
+
+function planFamily(plan: BillingPlan): "current" | "legacy" {
+  if (plan.catalog_family === "current" || plan.catalog_family === "legacy") return plan.catalog_family;
+  return CURRENT_CODES.has(plan.code) ? "current" : "legacy";
+}
+
+function isCustom(plan: BillingPlan | undefined): boolean {
+  return plan?.custom_pricing === true || plan?.code === "ENTERPRISE";
+}
+
+function isFreePlan(plan: BillingPlan | undefined): boolean {
+  return plan?.code === "FREE";
+}
+
+function cycleDiscountBps(plan: BillingPlan | undefined, cycleCode: string, cycleBps: number, catalog: BillingCatalog): number {
+  if (plan && planFamily(plan) === "current" && cycleCode === "ANNUAL" && catalog.current_annual_discount_bps != null) {
+    return catalog.current_annual_discount_bps;
+  }
+  return cycleBps;
+}
 
 function asResult(status: BillingCheckoutStatus, fallbackMode: GoLiveMode): GoLiveResult {
   const raw = status.result;
@@ -73,6 +97,10 @@ export function GoLiveModal({
   const [catalog, setCatalog] = useState<BillingCatalog | null | undefined>(undefined);
   const [planCode, setPlanCode] = useState("");
   const [cycleCode, setCycleCode] = useState("");
+  const [currentPlanCode, setCurrentPlanCode] = useState<string | null>(null);
+  const [accessReady, setAccessReady] = useState(false);
+  const planTouched = useRef(false);
+  const reduceMotion = useReducedMotion();
   const [quantities, setQuantities] = useState<Record<string, number>>({});
   const [stores, setStores] = useState<{ id: string; name: string }[]>([]);
   const [picks, setPicks] = useState<HardwarePick[]>([]);
@@ -91,9 +119,7 @@ export function GoLiveModal({
       .then((found) => {
         if (cancelled) return;
         setCatalog(found);
-        const plan = found.plans.find((row) => row.code === "STANDARD" && row.active) ?? found.plans.find((row) => row.active);
         const cycle = found.cycles.find((row) => row.code === "MONTHLY" && row.active) ?? found.cycles.find((row) => row.active);
-        setPlanCode(plan?.code ?? "");
         setCycleCode(cycle?.code ?? "");
       })
       .catch((caught: unknown) => {
@@ -110,15 +136,46 @@ export function GoLiveModal({
   }, []);
 
   useEffect(() => {
+    let cancelled = false;
+    apiGet<{ subscription: { plan_code: string } | null }>("/api/v1/billing/access")
+      .then((found) => {
+        if (cancelled) return;
+        setCurrentPlanCode(found.subscription?.plan_code ?? null);
+      })
+      .catch(() => {
+        if (!cancelled) setCurrentPlanCode(null);
+      })
+      .finally(() => {
+        if (!cancelled) setAccessReady(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!catalog || !accessReady || planTouched.current) return;
+    const active = catalog.plans.filter((row) => row.active);
+    const current = active.find((row) => row.code === currentPlanCode);
+    const free = active.find((row) => row.code === "FREE");
+    const next = current ?? free ?? active.find((row) => planFamily(row) === "current") ?? active[0];
+    if (next) setPlanCode(next.code);
+  }, [catalog, accessReady, currentPlanCode]);
+
+  useEffect(() => {
     apiGet<{ id: string; name: string }[]>("/api/v1/stores?limit=50")
       .then((rows) => setStores(rows.map((row) => ({ id: row.id, name: row.name }))))
       .catch(() => setStores([]));
   }, []);
 
-  const steps: Step[] = ["mode"];
-  if (mode === "keep") steps.push("stock");
-  if (catalog) steps.push("package");
-  steps.push("confirm");
+  const selectedPlan = catalog?.plans.find((row) => row.code === planCode);
+  const freePlan = isFreePlan(selectedPlan);
+  const customPlan = isCustom(selectedPlan);
+  const payable = Boolean(catalog && selectedPlan && !freePlan && !customPlan);
+  const steps: Step[] = [];
+  if (catalog) steps.push("plan");
+  if (payable) steps.push("cycle", "extras");
+  steps.push("data", "confirm");
   const step = steps[Math.min(stepIndex, steps.length - 1)] ?? "confirm";
   const matches = storeName !== "" && confirm.trim().toLowerCase() === storeName.trim().toLowerCase();
   const units = openingStockUnits.toLocaleString();
@@ -131,14 +188,20 @@ export function GoLiveModal({
   );
 
   useEffect(() => {
-    if (!catalog || step !== "package" || !planCode || !cycleCode) return;
+    if (!catalog || !payable || !planCode || !cycleCode) {
+      setQuote(null);
+      return;
+    }
     const timer = window.setTimeout(() => {
       apiPost<BillingQuote>("/api/v1/billing/quote", { plan_code: planCode, cycle_code: cycleCode, addons, hardware: picks })
-        .then(setQuote)
+        .then((priced) => {
+          setQuote(priced);
+          setError(null);
+        })
         .catch((caught: unknown) => setError(caught instanceof ApiRequestError ? caught.message : "Could not price this package."));
     }, 200);
     return () => window.clearTimeout(timer);
-  }, [catalog, step, planCode, cycleCode, addons, picks]);
+  }, [catalog, payable, planCode, cycleCode, addons, picks]);
 
   useEffect(() => {
     if (!watching) return;
@@ -163,13 +226,14 @@ export function GoLiveModal({
     setBusy(true);
     setError(null);
     try {
-      if (!catalog) {
+      if (!catalog || freePlan) {
         setResult(
           await apiPost<GoLiveResult>("/api/v1/onboarding/go-live", {
             confirm,
             mode,
             opening_stock: mode === "keep" ? openingStock : "reset",
             tax_acknowledged: true,
+            plan_code: freePlan ? "FREE" : undefined,
           }),
         );
         return;
@@ -380,24 +444,39 @@ export function GoLiveModal({
     );
   }
 
+  if (catalog === undefined) {
+    return (
+      <Modal title="Go live" subtitle="Loading the plan catalog." onClose={onClose} footer={<GhostButton onClick={onClose}>Not yet</GhostButton>}>
+        <p className="text-sm text-charcoal/70">Checking the published plans.</p>
+      </Modal>
+    );
+  }
+
   const subtitle =
-    step === "mode"
-      ? "Choose what to carry into the live store. This can only be done once."
-      : step === "stock"
-        ? "Opening stock decides day-one inventory value."
-        : step === "package"
-          ? "Choose a package, then add the counter kit if you want hardware with it."
-          : "Practice tax stamps cannot be used on live invoices.";
+    step === "plan"
+      ? "Choose the plan this store goes live on."
+      : step === "cycle"
+        ? "The billing period changes the amount due now. The quote is the invoice amount."
+        : step === "extras"
+          ? "Hardware is optional. Software plugins stay in Plans & add-ons and are not added to this invoice."
+          : step === "data"
+            ? "Choose what to carry into the live store. This can only be done once."
+            : "Practice tax stamps cannot be used on live invoices.";
+  const transferReady = catalog?.transfer_available !== false;
+  const continueDisabled =
+    catalog === undefined ||
+    (step === "plan" && (planCode === "" || customPlan)) ||
+    ((step === "cycle" || step === "extras") && payable && quote === null);
 
   return (
     <Modal
       title="Go live"
       subtitle={subtitle}
-      width={step === "package" ? "xl" : "md"}
+      width={step === "plan" || step === "cycle" || step === "extras" ? "xl" : "md"}
       onClose={onClose}
       footer={
         <>
-          {step === "package" && quote ? (
+          {payable && quote && step !== "plan" ? (
             <p className="mr-auto text-sm">
               <span className="text-charcoal/60">Due now</span>
               <span className="ml-2 text-base font-semibold tabular-nums">{formatMoney(quote.total_fils, quote.currency)}</span>
@@ -407,28 +486,45 @@ export function GoLiveModal({
             {stepIndex === 0 ? "Not yet" : "Back"}
           </GhostButton>
           {step !== "confirm" ? (
-            <PrimaryButton onClick={() => setStepIndex(stepIndex + 1)} disabled={catalog === undefined || (step === "package" && !quote)}>
+            <PrimaryButton onClick={() => setStepIndex(stepIndex + 1)} disabled={continueDisabled}>
               Continue
             </PrimaryButton>
-          ) : (
+          ) : payable ? (
             <>
-              {catalog ? (
-                <GhostButton onClick={() => void goLive()} disabled={!matches || !taxAck || busy || watching !== null}>
-                  {watching ? "Waiting for card payment…" : "Pay by card"}
-                </GhostButton>
-              ) : null}
+              <GhostButton onClick={() => void goLive()} disabled={!matches || !taxAck || busy || watching !== null}>
+                {watching ? "Waiting for card payment…" : "Pay by card"}
+              </GhostButton>
               <PrimaryButton
-                onClick={() => void (catalog ? payByTransfer() : goLive())}
-                disabled={!matches || !taxAck || busy || watching !== null}
+                onClick={() => void payByTransfer()}
+                disabled={!matches || !taxAck || busy || watching !== null || !transferReady}
               >
-                {busy ? "Preparing…" : catalog ? "Review invoice" : "Go live"}
+                {busy ? "Preparing…" : "Review invoice"}
               </PrimaryButton>
             </>
+          ) : (
+            <PrimaryButton onClick={() => void goLive()} disabled={!matches || !taxAck || busy}>
+              {busy ? "Preparing…" : "Go live"}
+            </PrimaryButton>
           )}
         </>
       }
     >
-      {step === "mode" ? (
+      <ol className="mb-4 flex flex-wrap gap-2 text-xs text-charcoal/60">
+        {steps.map((name, index) => (
+          <li key={name} className={name === step ? "font-semibold text-charcoal" : undefined}>
+            {index + 1}. {stepLabel(name)}
+          </li>
+        ))}
+      </ol>
+      <AnimatePresence mode="wait">
+        <motion.div
+          key={step}
+          initial={reduceMotion ? false : { opacity: 0, y: 6 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={reduceMotion ? undefined : { opacity: 0 }}
+          transition={{ duration: 0.18 }}
+        >
+      {step === "data" ? (
         <div className="grid gap-3">
           <Choice
             selected={mode === "keep"}
@@ -442,33 +538,76 @@ export function GoLiveModal({
             detail="Drop the practice setup and open the wizard again on an empty live store."
             onSelect={() => setMode("fresh")}
           />
+          {mode === "keep" ? (
+            <>
+              <Choice
+                selected={openingStock === "keep"}
+                title={`Keep opening stock (${units} units)`}
+                detail="Practice sales are put back. Imported and counted quantities stay as the day-one baseline."
+                onSelect={() => setOpeningStock("keep")}
+              />
+              <Choice
+                selected={openingStock === "reset"}
+                title="Reset to zero"
+                detail="On-hand and serials go to zero so you can count the shelf. Reorder levels and shelf locations stay."
+                onSelect={() => setOpeningStock("reset")}
+              />
+            </>
+          ) : null}
           <Lists cleared={mode === "keep" ? KEEP_CLEARED : FRESH_CLEARED} kept={mode === "keep" ? KEEP_KEPT : FRESH_KEPT} />
         </div>
       ) : null}
-      {step === "stock" ? (
-        <div className="grid gap-3">
-          <Choice
-            selected={openingStock === "keep"}
-            title={`Keep opening stock (${units} units)`}
-            detail="Practice sales are put back. Imported and counted quantities stay as the day-one baseline."
-            onSelect={() => setOpeningStock("keep")}
-          />
-          <Choice
-            selected={openingStock === "reset"}
-            title="Reset to zero"
-            detail="On-hand and serials go to zero so you can count the shelf. Reorder levels and shelf locations stay."
-            onSelect={() => setOpeningStock("reset")}
-          />
-        </div>
-      ) : null}
-      {step === "package" && catalog ? (
+      {step === "plan" && catalog ? (
         <PackageStep
+          section="plan"
           catalog={catalog}
           planCode={planCode}
           cycleCode={cycleCode}
           quantities={quantities}
           quote={quote}
           error={error}
+          currentPlanCode={currentPlanCode}
+          onPlan={(code) => {
+            planTouched.current = true;
+            setPlanCode(code);
+            setQuote(null);
+            setError(null);
+          }}
+          onCycle={setCycleCode}
+          onQuantity={(code, quantity) => setQuantities({ ...quantities, [code]: quantity })}
+          stores={stores}
+          picks={picks}
+          onPicks={setPicks}
+        />
+      ) : null}
+      {step === "cycle" && catalog ? (
+        <PackageStep
+          section="cycle"
+          catalog={catalog}
+          planCode={planCode}
+          cycleCode={cycleCode}
+          quantities={quantities}
+          quote={quote}
+          error={error}
+          currentPlanCode={currentPlanCode}
+          onPlan={setPlanCode}
+          onCycle={setCycleCode}
+          onQuantity={(code, quantity) => setQuantities({ ...quantities, [code]: quantity })}
+          stores={stores}
+          picks={picks}
+          onPicks={setPicks}
+        />
+      ) : null}
+      {step === "extras" && catalog ? (
+        <PackageStep
+          section="extras"
+          catalog={catalog}
+          planCode={planCode}
+          cycleCode={cycleCode}
+          quantities={quantities}
+          quote={quote}
+          error={error}
+          currentPlanCode={currentPlanCode}
           onPlan={setPlanCode}
           onCycle={setCycleCode}
           onQuantity={(code, quantity) => setQuantities({ ...quantities, [code]: quantity })}
@@ -479,11 +618,27 @@ export function GoLiveModal({
       ) : null}
       {step === "confirm" ? (
         <div>
-          {catalog && quote ? (
+          {payable && quote ? (
+            <>
+              <QuoteSummary quote={quote} />
+              <p className="mb-4 mt-4 text-sm text-charcoal/70">
+                Due now is {formatMoney(quote.total_fils, quote.currency)}. That is the invoice total, including the plan
+                for {quote.cycle_name}
+                {quote.one_time_fils > 0 ? " and the one-time lines above" : ""}. Transfer that amount, then submit proof.
+                The store stays in practice until the payment is verified.
+              </p>
+              {catalog && !transferReady ? (
+                <p className="mb-4 rounded-2xl bg-amber-50 p-4 text-sm text-amber-950">
+                  Bank transfer details have not been published, so reviewing an invoice is closed. An administrator
+                  publishes the account in the console. This does not block Free.
+                </p>
+              ) : null}
+            </>
+          ) : null}
+          {freePlan ? (
             <p className="mb-4 text-sm text-charcoal/70">
-              {quote.plan_name} for {quote.cycle_name} is {formatMoney(quote.total_fils, quote.currency)}. Review your
-              invoice and transfer that amount to the bank account listed on it. Then submit your payment proof. Your
-              subscription features will be activated after our team verifies your payment.
+              Free does not create an invoice and does not ask for a bank transfer. Confirm the practice-data change to
+              go live.
             </p>
           ) : null}
           <p className="rounded-2xl bg-surface px-4 py-3 text-sm text-charcoal/70">
@@ -513,8 +668,18 @@ export function GoLiveModal({
           <ErrorNote message={error} />
         </div>
       ) : null}
+        </motion.div>
+      </AnimatePresence>
     </Modal>
   );
+}
+
+function stepLabel(step: Step): string {
+  if (step === "plan") return "Plan";
+  if (step === "cycle") return "Billing";
+  if (step === "extras") return "Hardware";
+  if (step === "data") return "Your data";
+  return "Confirm";
 }
 
 function Choice({
@@ -552,12 +717,14 @@ const KIT = [
 ] as const;
 
 function PackageStep({
+  section,
   catalog,
   planCode,
   cycleCode,
   quantities,
   quote,
   error,
+  currentPlanCode,
   onPlan,
   onCycle,
   onQuantity,
@@ -565,12 +732,14 @@ function PackageStep({
   picks,
   onPicks,
 }: {
+  section: "plan" | "cycle" | "extras";
   catalog: BillingCatalog;
   planCode: string;
   cycleCode: string;
   quantities: Record<string, number>;
   quote: BillingQuote | null;
   error: string | null;
+  currentPlanCode: string | null;
   onPlan: (code: string) => void;
   onCycle: (code: string) => void;
   onQuantity: (code: string, quantity: number) => void;
@@ -578,84 +747,111 @@ function PackageStep({
   picks: HardwarePick[];
   onPicks: (next: HardwarePick[]) => void;
 }) {
-  const plans = catalog.plans.filter((row) => row.active).sort((a, b) => a.sort_order - b.sort_order);
+  const plans = catalog.plans
+    .filter((row) => row.active && (planFamily(row) === "current" || row.code === currentPlanCode))
+    .sort((a, b) => a.sort_order - b.sort_order);
   const cycles = catalog.cycles.filter((row) => row.active).sort((a, b) => a.sort_order - b.sort_order);
   const addons = catalog.addons
     .filter((row) => row.active && row.module_keys.length === 0)
     .sort((a, b) => a.sort_order - b.sort_order);
-  const plan = plans.find((row) => row.code === planCode);
+  const plan = catalog.plans.find((row) => row.code === planCode);
+  const showsLegacy = plans.some((row) => planFamily(row) === "legacy");
 
   return (
     <div className="grid gap-6">
-      <section>
-        <h3 className="text-sm font-semibold">Package</h3>
-        <div className="mt-2 grid gap-3 sm:grid-cols-3">
-          {plans.map((row) => {
-            const selected = row.code === planCode;
-            return (
-              <button
-                key={row.id}
-                type="button"
-                aria-pressed={selected}
-                onClick={() => onPlan(row.code)}
-                className={`rounded-2xl border px-4 py-3 text-left ${
-                  selected ? "border-accent bg-accent/5 ring-2 ring-accent" : "border-line bg-white hover:bg-surface"
-                }`}
-              >
-                <p className="text-sm font-semibold">{row.name}</p>
-                <p className="mt-1 text-lg font-semibold tabular-nums">
-                  {formatMoney(row.monthly_fils, "AED")}
-                  <span className="text-sm font-normal text-charcoal/60"> / month</span>
-                </p>
-                <p className="mt-1 text-sm text-charcoal/70">
-                  {row.included_registers} {row.included_registers === 1 ? "register" : "registers"} included
-                </p>
-              </button>
-            );
-          })}
-        </div>
-      </section>
-      <section>
-        <h3 className="text-sm font-semibold">Billing cycle</h3>
-        <div className="mt-2 flex flex-wrap gap-2">
-          {cycles.map((row) => {
-            const selected = row.code === cycleCode;
-            return (
-              <button
-                key={row.id}
-                type="button"
-                aria-pressed={selected}
-                onClick={() => onCycle(row.code)}
-                className={`inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-medium ${
-                  selected ? "border-accent bg-accent/5 text-charcoal ring-2 ring-accent" : "border-line bg-white hover:bg-surface"
-                }`}
-              >
-                {row.name}
-                {row.discount_bps > 0 ? (
-                  <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700">
-                    Save {row.discount_bps / 100}%
-                  </span>
-                ) : null}
-              </button>
-            );
-          })}
-        </div>
-      </section>
-      <section className="grid gap-3">
-        <h3 className="text-sm font-semibold">Add-ons</h3>
-        {addons.map((addon) => (
-          <AddonCard
-            key={addon.id}
-            addon={addon}
-            quantity={quantities[addon.code] ?? 0}
-            registers={plan?.included_registers ?? 0}
-            planName={plan?.name ?? "your package"}
-            onQuantity={(quantity) => onQuantity(addon.code, quantity)}
-          />
-        ))}
-      </section>
-      <HardwarePicker items={catalog.hardware ?? []} stores={stores} picks={picks} onPicks={onPicks} />
-      {quote ? <QuoteSummary quote={quote} /> : null}
+      {section === "plan" ? (
+        <section>
+          <h3 className="text-sm font-semibold">Plan</h3>
+          <div className="mt-2 grid gap-3 sm:grid-cols-2">
+            {plans.map((row) => {
+              const selected = row.code === planCode;
+              const custom = isCustom(row);
+              return (
+                <button
+                  key={row.id}
+                  type="button"
+                  aria-pressed={selected}
+                  onClick={() => onPlan(row.code)}
+                  className={`rounded-2xl border px-4 py-3 text-left ${
+                    selected ? "border-accent bg-accent/5 ring-2 ring-accent" : "border-line bg-white hover:bg-surface"
+                  }`}
+                >
+                  <p className="text-sm font-semibold">
+                    {row.name}
+                    {row.code === currentPlanCode ? <span className="ml-2 text-xs font-medium text-charcoal/50">Current plan</span> : null}
+                  </p>
+                  <p className="mt-1 text-lg font-semibold tabular-nums">
+                    {custom ? "Custom" : formatMoney(row.monthly_fils, "AED")}
+                    {custom ? null : <span className="text-sm font-normal text-charcoal/60">{row.monthly_fils === 0 ? " forever" : " / month"}</span>}
+                  </p>
+                  <p className="mt-1 text-sm text-charcoal/70">
+                    {custom
+                      ? "Priced on a contract. Contact sales to continue on Enterprise."
+                      : `${row.included_registers} ${row.included_registers === 1 ? "register" : "registers"} included`}
+                  </p>
+                </button>
+              );
+            })}
+          </div>
+          {showsLegacy ? (
+            <p className="mt-3 text-sm text-charcoal/60">
+              Lite, Standard, and Pro stay here only because this store is already on one of them.
+            </p>
+          ) : null}
+          {isCustom(plan) ? (
+            <p className="mt-3 text-sm text-charcoal/70">Choose Free, Growth, or Pro AI to continue. Enterprise is not billed at zero.</p>
+          ) : null}
+        </section>
+      ) : null}
+      {section === "cycle" ? (
+        <section>
+          <h3 className="text-sm font-semibold">Billing cycle</h3>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {cycles.map((row) => {
+              const selected = row.code === cycleCode;
+              const save = cycleDiscountBps(plan, row.code, row.discount_bps, catalog);
+              return (
+                <button
+                  key={row.id}
+                  type="button"
+                  aria-pressed={selected}
+                  onClick={() => onCycle(row.code)}
+                  className={`inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-medium ${
+                    selected ? "border-accent bg-accent/5 text-charcoal ring-2 ring-accent" : "border-line bg-white hover:bg-surface"
+                  }`}
+                >
+                  {row.name}
+                  {save > 0 ? (
+                    <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700">
+                      Save {save / 100}%
+                    </span>
+                  ) : null}
+                </button>
+              );
+            })}
+          </div>
+          {quote ? <div className="mt-4"><QuoteSummary quote={quote} /></div> : null}
+        </section>
+      ) : null}
+      {section === "extras" ? (
+        <>
+          <section className="grid gap-3">
+            <h3 className="text-sm font-semibold">Hardware</h3>
+            {addons.map((addon) => (
+              <AddonCard
+                key={addon.id}
+                addon={addon}
+                quantity={quantities[addon.code] ?? 0}
+                registers={plan?.included_registers ?? 0}
+                planName={plan?.name ?? "your package"}
+                onQuantity={(quantity) => onQuantity(addon.code, quantity)}
+              />
+            ))}
+          </section>
+          <HardwarePicker items={catalog.hardware ?? []} stores={stores} picks={picks} onPicks={onPicks} />
+          {quote ? <QuoteSummary quote={quote} /> : null}
+        </>
+      ) : null}
       <ErrorNote message={error} />
     </div>
   );

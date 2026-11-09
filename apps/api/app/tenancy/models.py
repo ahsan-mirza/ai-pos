@@ -240,6 +240,23 @@ class BillingPlan(ControlBase):
     trial_days: Mapped[int] = mapped_column(Integer, default=14)
     active: Mapped[bool] = mapped_column(Boolean, default=True)
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    # Null on Lite, Standard, and Pro. Free, Growth, Pro AI, and Enterprise store the editable caps.
+    resource_limits: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
+
+
+class BillingPlanPrice(ControlBase):
+    """One country's monthly price for a plan. Missing countries are not for sale. Amounts are fils, not an FX quote."""
+
+    __tablename__ = "billing_plan_prices"
+    __table_args__ = (UniqueConstraint("plan_id", "country", name="uq_billing_plan_prices_country"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    plan_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("billing_plans.id"), index=True)
+    country: Mapped[str] = mapped_column(String(2))
+    currency: Mapped[str] = mapped_column(String(3))
+    monthly_fils: Mapped[int] = mapped_column(Integer, default=0)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
 
 
@@ -430,6 +447,38 @@ class BillingPolicy(ControlBase):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     grace_days: Mapped[int] = mapped_column(Integer, default=5)
+    # Console switch for the Pro AI promotion. It does not start or stop the Standard practice trial.
+    pro_ai_trial_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
+    # Future trials only. Rows already stored keep their own expiry.
+    pro_ai_trial_days: Mapped[int] = mapped_column(Integer, default=14)
+    pro_ai_trial_plans: Mapped[list] = mapped_column(JSON, default=lambda: ["FREE", "GROWTH"])
+    # Annual discount for a new Free, Growth, Pro AI, or Enterprise invoice. Legacy plans keep the cycle row.
+    new_annual_discount_bps: Mapped[int] = mapped_column(Integer, default=2000)
+    # Bumped when a commercial publish commits. Issued invoices are not rewritten.
+    commercial_revision: Mapped[int] = mapped_column(Integer, default=1)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
+
+
+class PromotionalTrial(ControlBase):
+    """One Pro AI promotion per tenant. The base subscription row is not replaced."""
+
+    __tablename__ = "promotional_trials"
+    __table_args__ = (UniqueConstraint("tenant_id", "trial_type", name="uq_promotional_trials_tenant_type"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("tenants.id"), index=True)
+    trial_type: Mapped[str] = mapped_column(String(32), default="PRO_AI_PROMOTIONAL")
+    status: Mapped[str] = mapped_column(String(16), default="active")
+    base_plan_code: Mapped[str] = mapped_column(String(32))
+    promotional_plan_code: Mapped[str] = mapped_column(String(32), default="PRO_AI")
+    starts_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    consumed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    granted_by: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True), nullable=True)
+    expiration_reason: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    # Notice kinds already recorded, so a worker retry does not send them again.
+    notices_sent: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
 
 

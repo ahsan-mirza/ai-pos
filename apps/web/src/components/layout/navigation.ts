@@ -434,6 +434,14 @@ export const navGroups: NavGroup[] = [
         capability: Capability.AxizReach,
         isActive: under("/reach"),
       },
+      {
+        to: "/subscription",
+        label: "Plans & add-ons",
+        icon: CreditCard,
+        permission: Permission.SettingsManage,
+        settingsOnly: true,
+        isActive: under("/subscription"),
+      },
       { to: "/users", label: "Users", icon: UserCog, permission: Permission.UsersRead, isActive: under("/users") },
       { to: "/staff", label: "Staff & payroll", icon: Timer, permission: Permission.StaffManage, isActive: under("/staff") },
       {

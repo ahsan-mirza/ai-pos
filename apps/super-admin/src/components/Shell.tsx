@@ -9,6 +9,7 @@ import {
   LogOut,
   MonitorSmartphone,
   Package,
+  SlidersHorizontal,
   PanelLeftClose,
   PanelLeftOpen,
   Puzzle,
@@ -47,6 +48,7 @@ const groups: { label: string; items: NavItem[] }[] = [
     items: [
       { to: "/catalogue", label: "Catalogue", icon: Layers },
       { to: "/packages", label: "Packages", icon: Package },
+      { to: "/commercial", label: "Commercial", icon: SlidersHorizontal },
       { to: "/billing", label: "Billing", icon: Receipt },
       { to: "/hardware", label: "Hardware", icon: MonitorSmartphone },
       { to: "/addons", label: "Add-ons", icon: Puzzle },

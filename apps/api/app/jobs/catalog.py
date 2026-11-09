@@ -105,6 +105,22 @@ def _payment_refunds(db: Session, settings: Settings) -> str:
     return integrated_payment_service.process_refunds(db, settings)
 
 
+def _expire_pro_ai_trials(db: Session, settings: Settings) -> str:
+    del db
+    from app.console.promotional_trial import expire_due
+
+    return expire_due(settings)
+
+
+register(
+    Job(
+        "expire_pro_ai_trials",
+        "End elapsed Pro AI promotions and record each reminder once",
+        _expire_pro_ai_trials,
+        {"trigger": "interval", "minutes": 30},
+        120,
+    )
+)
 register(
     Job("dispatch_messages", "Send queued customer messages", _dispatch, {"trigger": "interval", "minutes": 1}, 120)
 )

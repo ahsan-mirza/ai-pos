@@ -75,10 +75,24 @@ def test_public_catalog_lists_the_seed_plans_without_a_tenant(tmp_path) -> None:
         response = client.get("/api/v1/billing/public-catalog")
         assert response.status_code == 200, response.text
         body = response.json()
-        assert [plan["code"] for plan in body["plans"]] == ["LITE", "STANDARD", "PRO"]
-        assert body["plans"][0]["monthly_fils"] == 14_900
-        assert body["plans"][1]["monthly_fils"] == 29_900
-        assert body["plans"][2]["monthly_fils"] == 49_900
+        codes = [plan["code"] for plan in body["plans"]]
+        assert codes[:3] == ["LITE", "STANDARD", "PRO"]
+        by_code = {plan["code"]: plan for plan in body["plans"]}
+        assert by_code["LITE"]["monthly_fils"] == 14_900
+        assert by_code["STANDARD"]["monthly_fils"] == 29_900
+        assert by_code["PRO"]["monthly_fils"] == 49_900
+        assert by_code["FREE"]["monthly_fils"] == 0
+        assert by_code["GROWTH"]["monthly_fils"] == 12_900
+        assert by_code["PRO_AI"]["monthly_fils"] == 29_900
+        assert by_code["LITE"]["resource_limits"] is None
+        assert by_code["LITE"]["catalog_family"] == "legacy"
+        assert by_code["FREE"]["catalog_family"] == "current"
+        assert by_code["FREE"]["resource_limits"]["branches"] == 1
+        assert by_code["ENTERPRISE"]["custom_pricing"] is True
+        assert body["current_annual_discount_bps"] == 2_000
+        assert body["transfer_available"] is False
+        annual = next(cycle for cycle in body["cycles"] if cycle["code"] == "ANNUAL")
+        assert annual["discount_bps"] == 2_500
         assert {cycle["code"] for cycle in body["cycles"]} == {"MONTHLY", "QUARTERLY", "HALF_YEARLY", "ANNUAL"}
         assert {addon["code"] for addon in body["addons"]} == {
             "hardware_lease",

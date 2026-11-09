@@ -6,7 +6,7 @@ import secrets
 import uuid
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -83,6 +83,10 @@ def list_devices(db: Session, principal: Principal, store_id: uuid.UUID | None) 
 
 
 def create_device(db: Session, principal: Principal, data: DeviceCreate) -> DeviceKeyOut:
+    from app.console.plan_limits import assert_room
+
+    used = int(db.scalar(select(func.count()).select_from(Device).where(Device.revoked_at.is_(None))) or 0)
+    assert_room(used, "registers")
     _scoped(principal, data.store_id)
     if db.get(Store, data.store_id) is None:
         raise ApiError(422, "unknown_store", "Store does not exist.")

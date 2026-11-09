@@ -25,6 +25,7 @@ from app.schemas.billing import (
     CheckoutOut,
     CheckoutStatus,
     MarketplaceOut,
+    PromotionalTrialOut,
     QuoteIn,
     QuoteOut,
 )
@@ -128,7 +129,17 @@ def quote(
     tenant_id = _tenant_id(settings)
     stores = _stores(settings, tenant_id)
     with registry.control_session(settings) as db:
-        return billing.quote_for(db, payload.plan_code, payload.cycle_code, payload.addons, payload.hardware, stores)
+        tenant = db.get(Tenant, tenant_id)
+        assert tenant is not None
+        return billing.quote_for(
+            db,
+            payload.plan_code,
+            payload.cycle_code,
+            payload.addons,
+            payload.hardware,
+            stores,
+            country=billing._store_country(settings, tenant),
+        )
 
 
 @router.post("/addons/{code}/checkout", response_model=CheckoutOut)
@@ -216,13 +227,59 @@ def access_status(principal: Annotated[Principal, Depends(get_principal)], setti
                 current_period_end=summary.current_period_end,
                 grace_ends_at=grace_end,
             )
+        from app.console import promotional_trial
+        from app.console.billing import _business_profile
+
+        profile = _business_profile(settings, tenant) if tenant is not None else ""
+        trial = promotional_trial.present(db, tenant, profile) if tenant is not None else None
         return AccessOut(
             state=transfers.access_state(db, tenant_id),
             ai_allowed=transfers.ai_allowed(db, tenant_id),
             operational=transfers.operational_block(db, tenant_id) is None,
             attention=transfers.attention(db, tenant_id),
             subscription=subscription,
+            promotional_trial=trial,
         )
+
+
+@router.get("/promotional-trial", response_model=PromotionalTrialOut)
+def promotional_trial_status(
+    _: Annotated[Principal, Depends(authorize(Permission.SETTINGS_MANAGE))], settings: Config
+) -> PromotionalTrialOut:
+    tenant_id = _tenant_id(settings)
+    with registry.control_session(settings) as db:
+        tenant = db.get(Tenant, tenant_id)
+        if tenant is None:
+            raise ApiError(404, "tenant_not_found", "This store is not registered.")
+        from app.console import promotional_trial
+        from app.console.billing import _business_profile
+
+        return promotional_trial.present(db, tenant, _business_profile(settings, tenant))
+
+
+@router.post("/promotional-trial", response_model=PromotionalTrialOut)
+def start_promotional_trial(
+    principal: Annotated[Principal, Depends(authorize(Permission.SETTINGS_MANAGE))], settings: Config
+) -> PromotionalTrialOut:
+    """Starts the one Pro AI promotion. The base subscription and invoices stay as they are."""
+    if principal.user is None:
+        raise ApiError(403, "business_wide_only", "Only a business-wide admin can start the trial.")
+    tenant_id = _tenant_id(settings)
+    from app.console import promotional_trial
+    from app.console.billing import _business_profile
+
+    with registry.control_session(settings) as db:
+        tenant = db.get(Tenant, tenant_id)
+        if tenant is None:
+            raise ApiError(404, "tenant_not_found", "This store is not registered.")
+        row = promotional_trial.start(db, tenant, principal.user.id)
+        profile = _business_profile(settings, tenant)
+        expires_at = row.expires_at
+        active = promotional_trial.effective_status(row) == "active"
+        keys = promotional_trial._module_keys(db, profile) if active else []
+        db.commit()
+        promotional_trial.publish_window(settings, tenant, keys, expires_at)
+        return promotional_trial.present(db, tenant, profile)
 
 
 @router.post("/transfers")

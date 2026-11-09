@@ -13,7 +13,7 @@ from app.main import create_app
 from app.models import Base
 from app.schemas.signup import SignupStart
 from app.tenancy import provisioning, registry, signup_service
-from app.tenancy.models import ControlBase, SignupRequest, Subscription, Tenant
+from app.tenancy.models import ControlBase, SignupRequest, Tenant
 
 PASSWORD = "Owner-password-1"
 
@@ -86,20 +86,6 @@ def _verified(client: TestClient, **start) -> dict:
     started = _start(client, **start)
     assert _post(client, started, "verify", {"code": started["dev_code"]}).json()["status"] == "VERIFIED"
     return started
-
-
-def _allow_go_live(slug: str) -> None:
-    """Marks the trial subscription paid. Direct Go live stays refused until this happens."""
-    from datetime import UTC, datetime, timedelta
-
-    with registry.control_session(get_settings()) as db:
-        tenant = db.scalar(select(Tenant).where(Tenant.slug == slug))
-        assert tenant is not None
-        row = db.scalar(select(Subscription).where(Subscription.tenant_id == tenant.id))
-        assert row is not None
-        row.status = "active"
-        row.current_period_end = datetime.now(UTC) + timedelta(days=30)
-        db.commit()
 
 
 def _store(slug: str = "alnoor") -> dict:
@@ -185,6 +171,7 @@ def test_signup_provisions_a_practice_store_and_hands_the_owner_over(signup: Tes
 
     settings = signup.get("/api/v1/settings", headers=_tenant_headers("alnoor", token)).json()
     assert settings["practice_mode"] is True and settings["onboarded"] is True
+    assert settings["subscription_operational"] is True
     assert settings["currency"] == "AED" and settings["business_profile"] == "electronics_wholesale"
     assert "repairs" in settings["capabilities"] and "wholesale_pricing" not in settings["capabilities"]
 
@@ -196,14 +183,8 @@ def test_signup_provisions_a_practice_store_and_hands_the_owner_over(signup: Tes
     assert by_key["catalogue"]["skippable"] is True
     assert by_key["explore"]["done"] is False
     assert by_key["configure"]["done"] is True
-    assert checklist["subscription_state"] == "trial"
-    assert by_key["activate"]["blocked"]
-    blocked = signup.post(
-        "/api/v1/onboarding/go-live",
-        headers=headers,
-        json={"confirm": "al noor mobiles", "mode": "keep", "opening_stock": "keep", "tax_acknowledged": True},
-    )
-    assert (blocked.status_code, blocked.json()["error"]["code"]) == (409, "subscription_unverified")
+    assert checklist["subscription_state"] == "free"
+    assert by_key["activate"]["blocked"] is None
     explored = signup.post("/api/v1/onboarding/explore", headers=headers).json()
     assert next(item for item in explored["items"] if item["key"] == "explore")["done"] is True
     again = signup.post("/api/v1/onboarding/explore", headers=headers).json()
@@ -227,7 +208,6 @@ def test_signup_provisions_a_practice_store_and_hands_the_owner_over(signup: Tes
     assert catalogue["next_key"] != "catalogue"
     kept = signup.get("/api/v1/onboarding/checklist", headers=headers).json()
     assert next(item for item in kept["items"] if item["key"] == "team")["skipped"] is True
-    _allow_go_live("alnoor")
 
     login = signup.post(
         "/api/v1/auth/login-password",
@@ -454,7 +434,14 @@ def test_restaurants_start_with_a_menu_meals_tables_and_a_kitchen(signup: TestCl
     stations = signup.get("/api/v1/kds/stations", headers=headers, params={"store_id": store_id}).json()
     assert sorted(station["name"] for station in stations) == ["Bar", "Kitchen"]
     menu = signup.get("/api/v1/menu/register", headers=headers).json()
-    assert sorted(group["name"] for group in menu["groups"]) == ["Add-ons", "Cooking", "Juice"]
+    assert sorted(group["name"] for group in menu["groups"]) == [
+        "Add-ons",
+        "Cooking",
+        "Juice",
+        "Sauces",
+        "Size",
+        "Spice level",
+    ]
     meals = signup.get("/api/v1/menu/combos", headers=headers).json()
     assert sorted(meal["name"] for meal in meals) == ["Burger Meal", "Business Lunch"]
 
@@ -496,7 +483,6 @@ def test_restaurants_start_with_a_menu_meals_tables_and_a_kitchen(signup: TestCl
     assert next(item for item in checklist["items"] if item["key"] == "catalogue")["label"] == (
         "Add your first menu items"
     )
-    _allow_go_live("grill")
     live = signup.post(
         "/api/v1/onboarding/go-live",
         headers=headers,
@@ -505,7 +491,8 @@ def test_restaurants_start_with_a_menu_meals_tables_and_a_kitchen(signup: TestCl
     assert live.status_code == 200, live.text
     assert live.json()["sample_products_removed"] == 19 + 2 + 6
     assert signup.get("/api/v1/menu/combos", headers=headers).json() == []
-    assert signup.get("/api/v1/menu/register", headers=headers).json()["groups"] == []
+    kept_groups = signup.get("/api/v1/menu/register", headers=headers).json()["groups"]
+    assert sorted(group["name"] for group in kept_groups) == ["Add-ons", "Sauces", "Size", "Spice level"]
     assert signup.get("/api/v1/orders", headers=headers, params={"store_id": store_id}).json() == []
     kept = signup.get("/api/v1/dining/floor", headers=headers, params={"store_id": store_id}).json()
     assert sum(len(area["tables"]) for area in kept["areas"]) == 12

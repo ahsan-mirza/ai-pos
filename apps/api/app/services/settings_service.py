@@ -71,6 +71,8 @@ class SettingsSnapshot:
     entitlement_revision: int = 1
     purchased_capabilities: tuple[str, ...] = ()
     entitlement_until: datetime | None = None
+    promotional_capabilities: tuple[str, ...] = ()
+    promotional_until: datetime | None = None
     country: str | None = None
 
 
@@ -252,6 +254,18 @@ def _tax_portal_pending(row: BusinessSettings) -> bool:
     return credential is None or credential.environment != "production"
 
 
+def effective_promotional_keys(row: BusinessSettings, now: datetime | None = None) -> list[str]:
+    """Pro AI plan modules inside the promotional window. A missing end grants nothing."""
+    parsed = [capability.value for capability in capability_catalog.parse(row.promotional_capabilities or [])]
+    until = row.promotional_until
+    if until is None:
+        return []
+    stamp = until if until.tzinfo is not None else until.replace(tzinfo=UTC)
+    if stamp <= (now or datetime.now(UTC)):
+        return []
+    return parsed
+
+
 def effective_purchased_keys(row: BusinessSettings, now: datetime | None = None) -> list[str]:
     """Paid module keys that are still inside the subscription window. A missing end does not keep them forever."""
     parsed = [capability.value for capability in capability_catalog.parse(row.purchased_capabilities or [])]
@@ -268,12 +282,16 @@ def snapshot_of(row: BusinessSettings) -> SettingsSnapshot:
     profile = row.business_profile or capability_catalog.DEFAULT_PROFILE
     managed = managed_of(row)
     purchased = effective_purchased_keys(row)
-    resolved = capability_catalog.resolve(profile, row.capabilities, managed, purchased)
+    promotional = effective_promotional_keys(row)
+    plan_keys = [capability.value for capability in capability_catalog.parse(row.plan_capabilities or [])]
+    resolved = capability_catalog.resolve(profile, row.capabilities, managed, [*purchased, *promotional, *plan_keys])
     return SettingsSnapshot(
         managed_capabilities=managed,
         entitlement_revision=int(row.cache_generation or 1),
         purchased_capabilities=tuple(purchased),
         entitlement_until=row.entitlement_until,
+        promotional_capabilities=tuple(promotional),
+        promotional_until=row.promotional_until,
         business_profile=profile,
         capabilities=resolved.enabled,
         planned_capabilities=resolved.planned,
@@ -371,6 +389,8 @@ def settings_out(settings: BusinessSettings | SettingsSnapshot) -> BusinessSetti
         entitlement_revision=snapshot.entitlement_revision,
         purchased_capabilities=list(snapshot.purchased_capabilities),
         entitlement_until=snapshot.entitlement_until,
+        promotional_capabilities=list(snapshot.promotional_capabilities),
+        promotional_until=snapshot.promotional_until,
         register_capabilities=[
             capability.value
             for capability in snapshot.capabilities

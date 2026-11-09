@@ -35,6 +35,8 @@ export interface ProfileSnapshot {
   entitlement_revision?: number | null;
   purchased_capabilities?: readonly string[] | null;
   entitlement_until?: string | null;
+  promotional_capabilities?: readonly string[] | null;
+  promotional_until?: string | null;
   subscription_operational?: boolean;
   subscription_seen_at?: number;
 }
@@ -50,8 +52,16 @@ function entitled(raw: ProfileSnapshot): readonly string[] | null | undefined {
   if (!capabilities) return capabilities;
   const until = raw.entitlement_until ? Date.parse(raw.entitlement_until) : Number.NaN;
   const purchased = new Set(raw.purchased_capabilities ?? []);
-  if (purchased.size === 0 || Number.isNaN(until) || until > Date.now()) return capabilities;
-  return capabilities.filter((id) => !purchased.has(id));
+  let current = capabilities;
+  if (purchased.size > 0 && !Number.isNaN(until) && until <= Date.now()) {
+    current = current.filter((id) => !purchased.has(id));
+  }
+  const promoUntil = raw.promotional_until ? Date.parse(raw.promotional_until) : Number.NaN;
+  const promo = new Set(raw.promotional_capabilities ?? []);
+  if (promo.size > 0 && !Number.isNaN(promoUntil) && promoUntil <= Date.now()) {
+    current = current.filter((id) => !promo.has(id));
+  }
+  return current;
 }
 
 function build(raw: ProfileSnapshot | null): RegisterCapabilities {
@@ -153,6 +163,8 @@ export function applyProfile(raw: ProfileSnapshot | null | undefined): void {
       entitlement_revision,
       purchased_capabilities,
       entitlement_until,
+      promotional_capabilities,
+      promotional_until,
       subscription_operational,
     } = raw;
     const seenAt = subscription_operational == null ? undefined : Date.now();
@@ -168,6 +180,8 @@ export function applyProfile(raw: ProfileSnapshot | null | undefined): void {
         entitlement_revision,
         purchased_capabilities,
         entitlement_until,
+        promotional_capabilities,
+        promotional_until,
         subscription_operational,
         subscription_seen_at: seenAt,
       }),

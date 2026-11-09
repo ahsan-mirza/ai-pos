@@ -15,6 +15,7 @@ from app.core.errors import ApiError
 from app.tenancy.models import (
     BillingInvoice,
     BillingPayment,
+    BillingPlan,
     BillingPolicy,
     BillingTransfer,
     PlatformBankAccount,
@@ -69,13 +70,19 @@ def _aware(value: datetime) -> datetime:
 
 
 def access_state(db: Session, tenant_id: uuid.UUID, now: datetime | None = None) -> str:
-    """active, trial, grace, or restricted. No subscription row means the store is not on this billing policy."""
+    """active, free, trial, grace, or restricted. No subscription row means the store is not on this billing policy.
+
+    Free is an active base plan with no paid-through date. It is not unbilled and it is not the legacy trial.
+    """
     moment = now or datetime.now(UTC)
     row = db.scalar(select(Subscription).where(Subscription.tenant_id == tenant_id))
     if row is None:
         return "unbilled"
     if row.status == "canceled":
         return "restricted"
+    plan = db.get(BillingPlan, row.plan_id)
+    if row.status == "active" and plan is not None and plan.code == "FREE":
+        return "free"
     if row.status == "trialing" and row.trial_ends_at is not None and moment <= _aware(row.trial_ends_at):
         return "trial"
     end = _aware(row.current_period_end) if row.current_period_end is not None else None
@@ -115,7 +122,7 @@ def operational_block(db: Session, tenant_id: uuid.UUID) -> dict[str, str] | Non
             "revoked",
             "The previous activation was revoked. Paid features stay locked until a payment is verified again.",
         )
-    elif state in {"active", "grace"}:
+    elif state in {"active", "grace", "free"}:
         return None
     elif not kind and state in {"unbilled", "trial"}:
         # A practice trial with no invoice can still open its sample catalog. The first invoice closes paid APIs.
@@ -190,7 +197,7 @@ def ai_allowed(db: Session, tenant_id: uuid.UUID) -> bool:
     """AI stays closed during grace. A pending receipt closes it too."""
     if operational_block(db, tenant_id) is not None:
         return False
-    return access_state(db, tenant_id) in {"unbilled", "active"}
+    return access_state(db, tenant_id) in {"unbilled", "active", "free"}
 
 
 def list_accounts(db: Session) -> list[PlatformBankAccount]:

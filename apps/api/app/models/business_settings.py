@@ -64,6 +64,11 @@ class BusinessSettings(TenantScoped, TimestampMixin, Base):
     purchased_capabilities: Mapped[list | None] = mapped_column(JSON, nullable=True)
     # Paid modules stay available offline until this moment (period end plus the billing grace period).
     entitlement_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Modules copied from the Pro AI plan while a promotional trial is inside its window. Not paid add-ons.
+    promotional_capabilities: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    promotional_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Extra modules the store's current plan includes. The business-type preset and purchased add-ons stay beside this.
+    plan_capabilities: Mapped[list | None] = mapped_column(JSON, nullable=True)
     # Modules IT support forced on or off from the console, {"serial_tracking": "on"}; the tenant cannot change them.
     managed_capabilities: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     # Per-module configuration validated by app.schemas.module_settings.ModuleSettings; None keeps the defaults.
