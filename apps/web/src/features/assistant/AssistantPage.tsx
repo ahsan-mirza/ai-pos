@@ -1,3 +1,4 @@
+import { useLocale } from "@ai-pos/ui";
 import { useEffect } from "react";
 import { AiMark } from "../../components/ui/AiMark";
 import { useAssistant } from "./AssistantProvider";
@@ -5,6 +6,7 @@ import { useAssistant } from "./AssistantProvider";
 /** Bookmark for /assistant. The conversation itself lives in the drawer, so this page does not replace the portal. */
 export function AssistantPage() {
   const assistant = useAssistant();
+  const { t } = useLocale();
   useEffect(() => {
     assistant.openDrawer();
   }, [assistant.openDrawer]);
@@ -12,7 +14,7 @@ export function AssistantPage() {
   return (
     <section>
       <h1 className="flex items-center gap-2 text-xl font-semibold">
-        <AiMark size={18} /> AI Assistant
+        <AiMark size={18} /> {t("Axiz AI Business Copilot")}
       </h1>
       <p className="mt-2 text-sm text-charcoal/60">
         The assistant opens beside your work. Closing it leaves this page, your filters, and anything you have not saved exactly as they were.
@@ -23,7 +25,7 @@ export function AssistantPage() {
           onClick={assistant.openDrawer}
           className="mt-4 rounded-full bg-accent px-4 py-2 text-sm font-semibold text-white hover:bg-accent-hover"
         >
-          Open AI Assistant
+          {t("Axiz AI Business Copilot")}
         </button>
       )}
     </section>

@@ -239,7 +239,7 @@ export function Header({
         {assistant.allowed ? (
           <button
             type="button"
-            aria-label={t("AI Assistant")}
+            aria-label={t("Axiz AI Business Copilot")}
             aria-expanded={assistant.open}
             aria-controls="ai-assistant-drawer"
             title={t("Ask your business")}
@@ -249,7 +249,7 @@ export function Header({
             }`}
           >
             <AiMark size={15} />
-            <span className="hidden sm:inline">{t("AI Assistant")}</span>
+            <span className="hidden sm:inline">{t("Axiz AI Business Copilot")}</span>
           </button>
         ) : null}
         <Notifications />

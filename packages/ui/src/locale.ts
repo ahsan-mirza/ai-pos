@@ -262,6 +262,11 @@ const arabic: Record<string, string> = {
   "Mark all read": "تعليم الكل كمقروء",
   "Nothing needs your attention right now.": "لا يوجد ما يحتاج إلى انتباهك الآن.",
   "AI Assistant": "المساعد الذكي",
+  "Axiz AI Business Copilot": "مساعد أعمال أكسيز الذكي",
+  "Attach a spreadsheet or PDF": "إرفاق جدول أو ملف PDF",
+  "The file could not be read.": "تعذر قراءة الملف.",
+  "I analyzed {name}. Found {rows} product rows. Columns: {columns}. Possible duplicate codes: {duplicates}. Rows missing a selling price: {missing_prices}. Existing products: {existing}. New products: {new}. No products were written.":
+    "حلّلت {name}. وجدت {rows} صف منتج. الأعمدة: {columns}. الرموز المكررة المحتملة: {duplicates}. الصفوف بلا سعر بيع: {missing_prices}. المنتجات الموجودة: {existing}. المنتجات الجديدة: {new}. لم يُكتب أي منتج.",
   "Ask your business": "اسأل عن نشاطك",
   "Business currency": "عملة النشاط",
   Breadcrumb: "مسار التنقل",

@@ -1,7 +1,7 @@
 import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, File, Request, UploadFile
 from sqlalchemy.orm import Session
 
 from app.core.config import Settings, get_settings
@@ -15,8 +15,10 @@ from app.schemas.assistant import (
     AssistantHealth,
     AssistantInfo,
     AssistantReply,
+    DocumentAnalysisOut,
 )
-from app.services import assistant_scope, assistant_service
+from app.services import assistant_documents, assistant_scope, assistant_service
+from app.services.import_parser import MAX_FILE_BYTES
 
 router = APIRouter()
 Db = Annotated[Session, Depends(get_db)]
@@ -46,6 +48,26 @@ def read_conversation(conversation_id: uuid.UUID, principal: CanAsk) -> Assistan
 def remove_conversation(conversation_id: uuid.UUID, principal: CanAsk) -> None:
     if not assistant_scope.delete_conversation(principal, conversation_id):
         raise ApiError(404, "conversation_not_found", "That conversation does not exist.")
+
+
+@router.post("/documents", response_model=DocumentAnalysisOut)
+async def analyze_document(db: Db, principal: CanAsk, file: Annotated[UploadFile, File()]) -> DocumentAnalysisOut:
+    """Reads an attached catalog. The response is calculated from the file. No products are created."""
+    del principal
+    data = await file.read(MAX_FILE_BYTES + 1)
+    if len(data) > MAX_FILE_BYTES:
+        raise ApiError(413, "file_too_large", "Attachments are limited to 10 MB.")
+    found = assistant_documents.analyze(db, file.filename or "upload", data)
+    return DocumentAnalysisOut.model_validate(found, from_attributes=True)
+
+
+@router.get("/documents/{document_id}", response_model=DocumentAnalysisOut)
+def read_document(document_id: str, principal: CanAsk) -> DocumentAnalysisOut:
+    del principal
+    found = assistant_documents.load_analysis(document_id)
+    if found is None:
+        raise ApiError(404, "document_not_found", "That file analysis does not exist.")
+    return DocumentAnalysisOut.model_validate(found, from_attributes=True)
 
 
 @router.post("/ask", response_model=AssistantReply)

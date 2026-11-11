@@ -27,6 +27,7 @@ interface AssistantState {
   userName: string;
   businessName: string;
   ask: (text: string, options?: { retry?: boolean }) => Promise<void>;
+  append: (userText: string, answerText: string) => void;
   startNew: () => void;
   resume: (id: string) => void;
   clearCurrent: () => void;
@@ -179,6 +180,26 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
     [activeId, messages, moduleLabel, storeId, storeLabel, updateThread],
   );
 
+  const append = useCallback(
+    (userText: string, answerText: string) => {
+      const threadId = activeId;
+      const user = userText.trim();
+      const answer = answerText.trim();
+      if (!threadId || user.length < 1 || answer.length < 1) return;
+      const now = new Date().toISOString();
+      updateThread(threadId, (thread) => ({
+        ...thread,
+        updatedAt: now,
+        messages: [
+          ...thread.messages,
+          { id: crypto.randomUUID(), role: "user" as const, content: user.slice(0, 500) },
+          { id: crypto.randomUUID(), role: "assistant" as const, content: answer.slice(0, 4000) },
+        ].slice(-30),
+      }));
+    },
+    [activeId, updateThread],
+  );
+
   const startNew = useCallback(() => {
     if (messages.length === 0) return;
     const thread = blankThread();
@@ -220,6 +241,7 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
       userName,
       businessName,
       ask,
+      append,
       startNew,
       resume,
       clearCurrent,
@@ -240,6 +262,7 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
       userName,
       businessName,
       ask,
+      append,
       startNew,
       resume,
       clearCurrent,

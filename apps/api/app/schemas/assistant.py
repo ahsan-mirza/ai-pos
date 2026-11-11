@@ -65,3 +65,20 @@ class AssistantInfo(ApiModel):
     provider: str
     tools: list[str]
     suggestions: dict[str, list[str]]
+
+
+class DocumentAnalysisOut(ApiModel):
+    """A file reading. committed is always false: attaching a file does not write products."""
+
+    id: str
+    file_name: str
+    source: str
+    columns: list[str]
+    row_count: int
+    duplicate_codes: int
+    missing_prices: int
+    missing_codes: int
+    existing_products: int
+    new_products: int
+    warnings: list[str]
+    committed: bool = False

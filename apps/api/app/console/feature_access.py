@@ -8,12 +8,16 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass
+from typing import Annotated
 
+from fastapi import Depends
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.console.billing import NEW_PLAN_CODES, monthly_fils_for
 from app.core import capabilities as catalog
+from app.core.config import Settings, get_settings
+from app.core.database import get_db
 from app.core.errors import ApiError
 from app.schemas.billing import FeatureAccess
 from app.tenancy.models import BillingAddon, BillingPlan, BillingPlanPrice, Subscription, Tenant
@@ -144,14 +148,10 @@ def allowed(decision: FeatureAccess) -> bool:
 
 
 def require_feature(feature_key: str):
-    """Rejects a route the store's published plan does not include. Tenancy off keeps local tests open."""
+    """Rejects a route the store's published plan does not include. Tenancy off keeps local tests open.
 
-    from typing import Annotated
-
-    from fastapi import Depends
-
-    from app.core.config import Settings, get_settings
-    from app.core.database import get_db
+    The dependency names stay in this module. A nested import leaves them as required query fields.
+    """
 
     def dependency(
         db: Annotated[Session, Depends(get_db)],

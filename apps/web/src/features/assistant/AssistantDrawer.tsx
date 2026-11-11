@@ -1,13 +1,28 @@
-import { actionHoverClass } from "@ai-pos/ui";
+import { actionHoverClass, useLocale } from "@ai-pos/ui";
 import type { AssistantToolResult } from "@ai-pos/shared-types";
-import { History, Plus, SendHorizontal, X } from "lucide-react";
+import { History, Paperclip, Plus, SendHorizontal, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { AiMark } from "../../components/ui/AiMark";
 import { ErrorNote } from "../../components/ui/Field";
+import { ApiRequestError, apiUpload } from "../../lib/api";
 import { useAssistant } from "./AssistantProvider";
 import type { AssistantMessage } from "./assistantStorage";
 
 const isArabic = (text: string) => /[\u0600-\u06FF]/.test(text);
+
+interface DocumentAnalysis {
+  file_name: string;
+  columns: string[];
+  row_count: number;
+  duplicate_codes: number;
+  missing_prices: number;
+  existing_products: number;
+  new_products: number;
+}
+
+function fill(template: string, values: Record<string, string>): string {
+  return Object.entries(values).reduce((text, [key, value]) => text.replaceAll(`{${key}}`, value), template);
+}
 
 function RichText({ text }: { text: string }) {
   const chunks = text.split(/(\*\*[^*]+\*\*)/g);
@@ -87,6 +102,9 @@ export function AssistantDrawer() {
   const [historyOpen, setHistoryOpen] = useState(false);
   const [confirmClear, setConfirmClear] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const { t } = useLocale();
+  const [analyzing, setAnalyzing] = useState(false);
   const scrollerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -128,11 +146,42 @@ export function AssistantDrawer() {
   const readingReports = assistant.busy && pending?.role === "user" && !isConversational(pending.content);
 
   const send = () => {
-    if (assistant.busy || draft.trim().length < 2) return;
+    if (assistant.busy || analyzing || draft.trim().length < 2) return;
     const text = draft;
     setDraft("");
     if (inputRef.current) inputRef.current.style.height = "auto";
     void assistant.ask(text);
+  };
+
+  const attach = async (file: File | undefined) => {
+    if (!file || assistant.busy || analyzing) return;
+    const form = new FormData();
+    form.append("file", file);
+    setAnalyzing(true);
+    try {
+      const found = await apiUpload<DocumentAnalysis>("/api/v1/assistant/documents", form);
+      const summary = fill(
+        t(
+          "I analyzed {name}. Found {rows} product rows. Columns: {columns}. Possible duplicate codes: {duplicates}. Rows missing a selling price: {missing_prices}. Existing products: {existing}. New products: {new}. No products were written.",
+        ),
+        {
+          name: found.file_name,
+          rows: String(found.row_count),
+          columns: found.columns.join(", ") || "—",
+          duplicates: String(found.duplicate_codes),
+          missing_prices: String(found.missing_prices),
+          existing: String(found.existing_products),
+          new: String(found.new_products),
+        },
+      );
+      assistant.append(file.name, summary);
+    } catch (caught) {
+      const message = caught instanceof ApiRequestError ? caught.message : t("The file could not be read.");
+      assistant.append(file.name, message);
+    } finally {
+      setAnalyzing(false);
+      if (fileRef.current) fileRef.current.value = "";
+    }
   };
 
   return (
@@ -156,7 +205,7 @@ export function AssistantDrawer() {
           </span>
           <div className="min-w-0 flex-1">
             <h2 id="ai-assistant-title" className="flex items-center gap-2 text-sm font-semibold text-charcoal">
-              AI Assistant
+              {t("Axiz AI Business Copilot")}
               <span className="rounded-full bg-accent/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-accent">
                 Beta
               </span>
@@ -269,6 +318,22 @@ export function AssistantDrawer() {
               send();
             }}
           >
+            <input
+              ref={fileRef}
+              type="file"
+              accept=".xlsx,.csv,.pdf,application/pdf,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+              className="hidden"
+              onChange={(event) => void attach(event.target.files?.[0])}
+            />
+            <button
+              type="button"
+              aria-label={t("Attach a spreadsheet or PDF")}
+              disabled={assistant.busy || analyzing}
+              onClick={() => fileRef.current?.click()}
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-charcoal/70 hover:bg-surface disabled:opacity-40"
+            >
+              <Paperclip size={18} aria-hidden="true" />
+            </button>
             <textarea
               ref={inputRef}
               aria-label="Your question"
@@ -277,7 +342,7 @@ export function AssistantDrawer() {
               value={draft}
               maxLength={500}
               placeholder="Ask about your business..."
-              disabled={assistant.busy}
+              disabled={assistant.busy || analyzing}
               onChange={(event) => {
                 setDraft(event.target.value);
                 event.target.style.height = "auto";
@@ -294,7 +359,7 @@ export function AssistantDrawer() {
             <button
               type="submit"
               aria-label="Send"
-              disabled={assistant.busy || draft.trim().length < 2}
+              disabled={assistant.busy || analyzing || draft.trim().length < 2}
               className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-accent text-white hover:bg-accent-hover disabled:opacity-40"
             >
               <SendHorizontal size={18} aria-hidden="true" />
