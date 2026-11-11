@@ -494,6 +494,7 @@ export {
 } from "./inventory.js";
 export { allSpecKeys, specKey, specSchemaFor, specSummary, titleFromSpecs } from "./specifications.js";
 export type { SpecField, SpecSchema } from "./specifications.js";
+export type { ProductAttribute } from "./attributes.js";
 export type {
   AdjustmentMode,
   Availability,

@@ -14,6 +14,9 @@ const primaryButtonClass =
 const secondaryButtonClass =
   "flex min-h-12 w-full items-center justify-center rounded-2xl border border-line bg-card px-3 py-2 text-center text-sm font-semibold leading-tight text-charcoal transition-colors hover:border-accent hover:text-accent disabled:opacity-40 dark:border-white/15 dark:bg-white/5 dark:text-white dark:hover:border-accent";
 
+const recoveryLinkClass =
+  "inline-flex min-h-11 items-center justify-center whitespace-nowrap bg-transparent px-1.5 text-[13px] font-medium text-accent shadow-none transition-colors hover:text-accent-hover hover:underline focus-visible:text-accent-hover focus-visible:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/40 sm:text-sm";
+
 const noticeClass = "rounded-2xl bg-emerald-500/10 px-4 py-3 text-sm text-emerald-800 dark:text-emerald-200";
 const alertClass = "rounded-2xl bg-danger/10 px-4 py-3 text-sm text-danger";
 const CODE_LENGTH = 6;
@@ -31,6 +34,7 @@ function CodeBoxes({
   onChange: (value: string) => void;
   onComplete: (value: string) => void;
 }) {
+  const { t } = useLocale();
   const refs = useRef<Array<HTMLInputElement | null>>([]);
   const digits = value.replace(/\D/g, "").slice(0, CODE_LENGTH);
   const digitsRef = useRef(digits);
@@ -61,7 +65,7 @@ function CodeBoxes({
   return (
     <div>
       <span className="text-sm font-medium text-charcoal dark:text-white" id="reset-code-label">
-        Code
+        {t("Code")}
       </span>
       <div className="mt-1.5 grid grid-cols-6 gap-2" role="group" aria-labelledby="reset-code-label">
         {Array.from({ length: CODE_LENGTH }, (_, index) => (
@@ -70,7 +74,7 @@ function CodeBoxes({
             ref={(node) => {
               refs.current[index] = node;
             }}
-            aria-label={`Digit ${index + 1} of ${CODE_LENGTH}`}
+            aria-label={t("Digit {index} of {total}", { index: index + 1, total: CODE_LENGTH })}
             inputMode="numeric"
             autoComplete={index === 0 ? "one-time-code" : "off"}
             disabled={disabled}
@@ -134,34 +138,35 @@ function LoginField({
   type = "text",
   error,
   ...props
-}: InputHTMLAttributes<HTMLInputElement> & { id: string; label: string; icon: LucideIcon; error?: string }) {
+}: InputHTMLAttributes<HTMLInputElement> & { id: string; label: string; icon: LucideIcon;   error?: string }) {
+  const { t } = useLocale();
   const [showPassword, setShowPassword] = useState(false);
   const isPassword = type === "password";
   return (
     <label className="text-sm font-medium text-charcoal dark:text-white" htmlFor={id}>
       {label}
       <span className="relative mt-1.5 block">
-        <Icon className="pointer-events-none absolute left-3.5 top-1/2 h-5 w-5 -translate-y-1/2 text-charcoal/40 dark:text-white/40" aria-hidden="true" />
+        <Icon className="pointer-events-none absolute start-3.5 top-1/2 h-5 w-5 -translate-y-1/2 text-charcoal/40 dark:text-white/40" aria-hidden="true" />
         <input
           id={id}
           type={isPassword && showPassword ? "text" : type}
           {...props}
           aria-invalid={error ? true : undefined}
           aria-describedby={error ? `${id}-error` : undefined}
-          className={`h-12 w-full rounded-2xl border bg-surface pl-11 text-base text-charcoal transition placeholder:text-charcoal/40 focus:bg-card focus:outline-none focus:ring-2 dark:bg-[#2D2A32] dark:text-white dark:placeholder:text-white/35 dark:focus:bg-[#2D2A32] ${
+          className={`h-12 w-full rounded-2xl border bg-surface ps-11 text-base text-charcoal transition placeholder:text-charcoal/40 focus:bg-card focus:outline-none focus:ring-2 dark:bg-[#2D2A32] dark:text-white dark:placeholder:text-white/35 dark:focus:bg-[#2D2A32] ${
             error
               ? "border-danger focus:border-danger focus:ring-danger/40"
               : "border-line focus:border-accent focus:ring-accent/35 dark:border-white/10"
-          } ${isPassword ? "pr-12" : "pr-4"}`}
+          } ${isPassword ? "pe-12" : "pe-4"}`}
         />
         {isPassword ? (
           <button
             type="button"
-            aria-label={showPassword ? "Hide password" : "Show password"}
+            aria-label={showPassword ? t("Hide password") : t("Show password")}
             aria-pressed={showPassword}
             onMouseDown={(event) => event.preventDefault()}
             onClick={() => setShowPassword((value) => !value)}
-            className="absolute right-1 top-1/2 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-xl text-charcoal/45 hover:text-charcoal dark:text-white/50 dark:hover:text-white"
+            className="absolute end-1 top-1/2 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-xl text-charcoal/45 hover:text-charcoal dark:text-white/50 dark:hover:text-white"
           >
             {showPassword ? <EyeOff className="h-5 w-5" aria-hidden="true" /> : <Eye className="h-5 w-5" aria-hidden="true" />}
           </button>
@@ -177,6 +182,7 @@ function LoginField({
 }
 
 function AuthFrame({ children, footer }: { children: ReactNode; footer?: ReactNode }) {
+  const { t } = useLocale();
   return (
     <div className="flex min-h-screen flex-col items-center bg-canvas px-4 py-6 font-sans text-charcoal sm:px-6 sm:py-10 dark:bg-[#121215] dark:text-white">
       <div className="my-auto flex w-full max-w-md flex-col gap-4 md:max-w-lg">
@@ -184,7 +190,7 @@ function AuthFrame({ children, footer }: { children: ReactNode; footer?: ReactNo
         <section className="rounded-card border border-line bg-card px-5 py-6 shadow-[0_16px_40px_-28px_rgb(34_32_38/0.55)] sm:px-8 sm:py-8 dark:border-white/10 dark:bg-[#1c1b1f] dark:shadow-none">
           <header className="text-center">
             <BrandLogo className="mx-auto h-8" />
-            <p className="mt-3 text-sm text-charcoal/60 dark:text-white/60">Manage your business. Smarter.</p>
+            <p className="mt-3 text-sm text-charcoal/60 dark:text-white/60">{t("Manage your business. Smarter.")}</p>
           </header>
           {children}
         </section>
@@ -248,8 +254,8 @@ export function LoginPage() {
     event.preventDefault();
     const next: { store?: string; identity?: string; password?: string } = {};
     if (storeProblem) next.store = t(storeProblem);
-    if (identity.trim() === "") next.identity = "Enter your email or username.";
-    if (password === "") next.password = "Enter your password.";
+    if (identity.trim() === "") next.identity = t("Enter your email or username.");
+    if (password === "") next.password = t("Enter your password.");
     setFieldError(next);
     if (Object.keys(next).length > 0) return;
     setBusy(true);
@@ -258,7 +264,7 @@ export function LoginPage() {
       rememberStore();
       await login(identity.trim(), password);
     } catch (caught) {
-      setError(caught instanceof ApiRequestError ? caught.message : "Sign-in failed.");
+      setError(caught instanceof ApiRequestError ? caught.message : t("Sign-in failed."));
       setPassword("");
     } finally {
       setBusy(false);
@@ -271,7 +277,7 @@ export function LoginPage() {
       return;
     }
     if (!email.trim().includes("@")) {
-      setFieldError({ email: "Enter the email on the account." });
+      setFieldError({ email: t("Enter the email on the account.") });
       return;
     }
     setFieldError({});
@@ -285,7 +291,7 @@ export function LoginPage() {
       setCode("");
       setStep("code");
     } catch (caught) {
-      setError(caught instanceof ApiRequestError ? caught.message : "Could not send the code.");
+      setError(caught instanceof ApiRequestError ? caught.message : t("Could not send the code."));
     } finally {
       setBusy(false);
     }
@@ -317,7 +323,7 @@ export function LoginPage() {
         setStep("password");
       }
     } catch (caught) {
-      setError(caught instanceof ApiRequestError ? caught.message : "That code is wrong or has expired.");
+      setError(caught instanceof ApiRequestError ? caught.message : t("That code is wrong or has expired."));
       setCode("");
     } finally {
       verifying.current = false;
@@ -327,7 +333,7 @@ export function LoginPage() {
 
   const reset = async () => {
     if (password !== confirm) {
-      setFieldError({ confirm: "The two passwords do not match." });
+      setFieldError({ confirm: t("The two passwords do not match.") });
       setError(null);
       return;
     }
@@ -339,10 +345,10 @@ export function LoginPage() {
       setPassword("");
       setConfirm("");
       setCode("");
-      setNotice("Password updated. Sign in with the new password.");
+      setNotice(t("Password updated. Sign in with the new password."));
       setStep("sign-in");
     } catch (caught) {
-      setError(caught instanceof ApiRequestError ? caught.message : "Could not reset the password.");
+      setError(caught instanceof ApiRequestError ? caught.message : t("Could not reset the password."));
     } finally {
       setBusy(false);
     }
@@ -365,8 +371,8 @@ export function LoginPage() {
       {step === "sign-in" ? (
         <form className="mt-6 flex flex-col gap-4" onSubmit={(event) => void submit(event)}>
           <div>
-            <h1 className="text-xl font-semibold text-charcoal dark:text-white">Welcome back</h1>
-            <p className="mt-1 text-sm text-charcoal/60 dark:text-white/60">Sign in to your AxizPOS store.</p>
+            <h1 className="text-xl font-semibold text-charcoal dark:text-white">{t("Welcome back")}</h1>
+            <p className="mt-1 text-sm text-charcoal/60 dark:text-white/60">{t("Sign in to your AxizPOS store.")}</p>
           </div>
           {env.needsStoreCode ? (
             <LoginField
@@ -384,19 +390,19 @@ export function LoginPage() {
           ) : null}
           <LoginField
             id="identity"
-            label="Email or username"
+            label={t("Email or username")}
             icon={User}
             autoComplete="username"
             spellCheck={false}
             value={identity}
             error={fieldError.identity}
             onChange={(event) => setIdentity(event.target.value)}
-            placeholder="email or username"
+            placeholder={t("email or username")}
             required
           />
           <LoginField
             id="password"
-            label="Password"
+            label={t("Password")}
             icon={Lock}
             type="password"
             autoComplete="current-password"
@@ -412,12 +418,12 @@ export function LoginPage() {
             </p>
           ) : null}
           <button type="submit" disabled={busy} className={primaryButtonClass}>
-            {busy ? "Signing in…" : "Sign In"}
+            {busy ? t("Signing in…") : t("Sign In")}
           </button>
-          <div className="grid grid-cols-1 gap-2 min-[420px]:grid-cols-2">
+          <div className="-mx-2 flex flex-nowrap items-center justify-center gap-x-1">
             <button
               type="button"
-              className={secondaryButtonClass}
+              className={recoveryLinkClass}
               onClick={() => {
                 setError(null);
                 setNotice(null);
@@ -426,11 +432,12 @@ export function LoginPage() {
                 setStep("email");
               }}
             >
-              Forgot Store Code?
+              {t("Forgot Store Code?")}
             </button>
+            <span aria-hidden="true" className="h-3.5 w-px shrink-0 bg-charcoal/25 dark:bg-white/30" />
             <button
               type="button"
-              className={secondaryButtonClass}
+              className={recoveryLinkClass}
               onClick={() => {
                 setError(null);
                 setNotice(null);
@@ -439,14 +446,14 @@ export function LoginPage() {
                 setStep("email");
               }}
             >
-              Forgot Password?
+              {t("Forgot Password?")}
             </button>
           </div>
           {env.onTenantHost ? null : (
             <div className="border-t border-line pt-4 dark:border-white/10">
-              <p className="text-center text-sm text-charcoal/70 dark:text-white/60">New to AxizPOS?</p>
+              <p className="text-center text-sm text-charcoal/70 dark:text-white/60">{t("New to AxizPOS?")}</p>
               <a href="/signup" className={`${secondaryButtonClass} mt-3`}>
-                Create Your Store
+                {t("Create Your Store")}
               </a>
             </div>
           )}
@@ -460,7 +467,7 @@ export function LoginPage() {
           }}
         >
           <div>
-            <ol className="mb-3 flex flex-wrap gap-x-3 gap-y-1 text-xs font-semibold" aria-label="Recovery steps">
+            <ol className="mb-3 flex flex-wrap gap-x-3 gap-y-1 text-xs font-semibold" aria-label={t("Recovery steps")}>
               {(recovery === "store" ? STORE_STEPS : PASSWORD_STEPS).map((item, index) => {
                 const active = item.id === step;
                 const steps = recovery === "store" ? STORE_STEPS : PASSWORD_STEPS;
@@ -471,7 +478,7 @@ export function LoginPage() {
                     className={active ? "text-accent" : done ? "text-charcoal dark:text-white" : "text-charcoal/40 dark:text-white/40"}
                     aria-current={active ? "step" : undefined}
                   >
-                    {index + 1}. {item.id === "stores" ? codesLabel : item.label}
+                    {index + 1}. {item.id === "stores" ? codesLabel : t(item.label)}
                   </li>
                 );
               })}
@@ -480,23 +487,23 @@ export function LoginPage() {
               {step === "email"
                 ? recovery === "store"
                   ? t(businessCodePhrase(null, "find"))
-                  : "Reset password"
+                  : t("Reset password")
                 : step === "code"
-                  ? "Enter the code"
+                  ? t("Enter the code")
                   : step === "stores"
                     ? t(businessCodePhrase(null, "yours"))
-                    : "Choose a new password"}
+                    : t("Choose a new password")}
             </h1>
             <p className="mt-1 text-sm text-charcoal/60 dark:text-white/60">
               {step === "email"
                 ? recovery === "store"
                   ? t(businessCodePhrase(null, "afterCode"))
-                  : "We email a 6-digit code to the address on your portal account."
+                  : t("We email a 6-digit code to the address on your portal account.")
                 : step === "code"
-                  ? `Enter the 6-digit code sent to ${email.trim()}.`
+                  ? t("Enter the 6-digit code sent to {email}.", { email: email.trim() })
                   : step === "stores"
                     ? t(businessCodePhrase(null, "useWithPassword"))
-                    : `At least ${PASSWORD_MIN_LENGTH} characters.`}
+                    : t("At least {count} characters.", { count: PASSWORD_MIN_LENGTH })}
             </p>
           </div>
           {step === "email" && recovery === "password" && env.needsStoreCode ? (
@@ -515,7 +522,7 @@ export function LoginPage() {
           {step === "email" ? (
             <LoginField
               id="reset-email"
-              label="Email"
+              label={t("Email")}
               icon={Mail}
               type="email"
               autoComplete="email"
@@ -561,7 +568,7 @@ export function LoginPage() {
             <>
               <LoginField
                 id="reset-password"
-                label="New password"
+                label={t("New password")}
                 icon={Lock}
                 type="password"
                 autoComplete="new-password"
@@ -572,7 +579,7 @@ export function LoginPage() {
               />
               <LoginField
                 id="reset-confirm"
-                label="Confirm password"
+                label={t("Confirm password")}
                 icon={Lock}
                 type="password"
                 autoComplete="new-password"
@@ -600,7 +607,7 @@ export function LoginPage() {
                 setStep("sign-in");
               }}
             >
-              Back to sign in
+              {t("Back to sign in")}
             </button>
           ) : (
             <button
@@ -614,7 +621,7 @@ export function LoginPage() {
               }
               className={primaryButtonClass}
             >
-              {busy ? "Please wait…" : step === "email" ? "Email me a code" : step === "code" ? "Continue" : "Update password"}
+              {busy ? t("Please wait…") : step === "email" ? t("Email me a code") : step === "code" ? t("Continue") : t("Update password")}
             </button>
           )}
           {step === "code" ? (
@@ -624,7 +631,7 @@ export function LoginPage() {
               className="text-center text-sm font-semibold text-accent hover:underline disabled:opacity-40"
               onClick={() => void requestCode()}
             >
-              Resend code
+              {t("Resend code")}
             </button>
           ) : null}
           {step === "stores" ? null : (
@@ -637,7 +644,7 @@ export function LoginPage() {
                 if (step === "email") setNotice(null);
               }}
             >
-              {step === "password" ? "Back to code" : step === "code" ? "Use a different email" : "Back to sign in"}
+              {step === "password" ? t("Back to code") : step === "code" ? t("Use a different email") : t("Back to sign in")}
             </button>
           )}
         </form>

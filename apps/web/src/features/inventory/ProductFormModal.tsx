@@ -59,10 +59,14 @@ export interface ProductPreset {
 }
 
 function specsToSave(schema: SpecSchema, specs: Record<string, string>): Record<string, string> {
+  const schemaKeys = new Set(schema.fields.map((field) => field.key));
   const source =
     schema.id === "OTHER"
       ? specs
-      : Object.fromEntries(schema.fields.map((field) => [field.key, specs[field.key] ?? ""]));
+      : {
+          ...Object.fromEntries(schema.fields.map((field) => [field.key, specs[field.key] ?? ""])),
+          ...Object.fromEntries(Object.entries(specs).filter(([key]) => !schemaKeys.has(key))),
+        };
   return Object.fromEntries(
     Object.entries(source)
       .map(([key, value]) => [key, value.trim()] as const)
@@ -937,6 +941,22 @@ export function ProductFormModal({
           multiValues={matrixAxes}
           onMultiChange={setAxisValues}
         />
+        {Object.keys(specs).some((key) => !schema.fields.some((field) => field.key === key)) ? (
+          <div className="mt-4 grid gap-3 md:grid-cols-2">
+            {Object.keys(specs)
+              .filter((key) => !schema.fields.some((field) => field.key === key))
+              .map((key) => (
+                <label key={key} className="text-sm">
+                  <span className="mb-1 block font-medium">{key.replaceAll("_", " ")}</span>
+                  <input
+                    value={specs[key] ?? ""}
+                    onChange={(event) => setSpec({ ...specs, [key]: event.target.value })}
+                    className="h-11 w-full rounded-2xl border border-line px-3"
+                  />
+                </label>
+              ))}
+          </div>
+        ) : null}
         {fashionMatrix ? (
           <FashionVariantComposer
             axes={matrixKeys.map((key) => ({

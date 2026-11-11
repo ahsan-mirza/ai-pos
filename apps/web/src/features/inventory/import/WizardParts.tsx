@@ -4,13 +4,14 @@ import type { ReactNode } from "react";
 
 export const STEPS = [
   { id: 1, label: "Upload", hint: "File, branch & supplier" },
-  { id: 2, label: "Map columns", hint: "Match file headers" },
-  { id: 3, label: "Preview & commit", hint: "Review every line" },
+  { id: 2, label: "Map columns", hint: "Standard fields" },
+  { id: 3, label: "Specifications", hint: "Optional attributes" },
+  { id: 4, label: "Preview & commit", hint: "Review every line" },
 ] as const;
 
 export function StepProgress({ step }: { step: number }) {
   return (
-    <ol className="grid grid-cols-3 gap-2" aria-label="Import progress">
+    <ol className="grid grid-cols-2 gap-2 sm:grid-cols-4" aria-label="Import progress">
       {STEPS.map((item) => {
         const done = step > item.id;
         const current = step === item.id;

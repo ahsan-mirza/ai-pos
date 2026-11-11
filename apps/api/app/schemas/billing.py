@@ -12,6 +12,14 @@ PurgeMode = Literal["keep", "fresh"]
 OpeningStock = Literal["keep", "reset"]
 
 
+class CountryPriceOut(ApiModel):
+    """A published country list price. The amount is fils in that currency, not a converted quote."""
+
+    country: str
+    currency: str
+    monthly_fils: int
+
+
 class PlanOut(ApiModel):
     id: UUID
     code: str
@@ -26,6 +34,8 @@ class PlanOut(ApiModel):
     custom_pricing: bool = False
     # current plans are the freemium catalog. legacy plans stay for stores already on them.
     catalog_family: Literal["current", "legacy"] = "legacy"
+    # Enabled country rows. Empty when this plan has no regional price.
+    prices: list[CountryPriceOut] = Field(default_factory=list)
 
 
 class PlanIn(ApiModel):
@@ -241,6 +251,15 @@ class FeeIn(ApiModel):
     reason: str = Field(min_length=3, max_length=500)
 
 
+class PublicTrialOut(ApiModel):
+    """Published Pro AI promotion. Counts of who has used it stay off the public catalog."""
+
+    enabled: bool = False
+    days: int = 0
+    plan_code: str = ""
+    eligible_plans: list[str] = Field(default_factory=list)
+
+
 class CatalogOut(ApiModel):
     plans: list[PlanOut]
     cycles: list[CycleOut]
@@ -251,6 +270,7 @@ class CatalogOut(ApiModel):
     transfer_available: bool = False
     # Annual discount applied to a new Free, Growth, Pro AI, or Enterprise invoice. Cycle rows keep their own rate.
     current_annual_discount_bps: int = 0
+    promotional_trial: PublicTrialOut = Field(default_factory=PublicTrialOut)
 
 
 class AddonQty(ApiModel):
@@ -531,3 +551,41 @@ class SubscriptionAssign(ApiModel):
     cycle_code: str = Field(min_length=1, max_length=32)
     addons: list[AddonQty] = Field(default_factory=list, max_length=20)
     reason: str = Field(min_length=3, max_length=500)
+
+
+FeatureState = Literal[
+    "INCLUDED",
+    "TRIAL_INCLUDED",
+    "UPGRADE_REQUIRED",
+    "PLUGIN_REQUIRED",
+    "BUSINESS_TYPE_UNAVAILABLE",
+    "COUNTRY_UNAVAILABLE",
+    "FEATURE_DISABLED",
+    "SUBSCRIPTION_RESTRICTED",
+    "SWITCHED_OFF",
+]
+
+
+class FeatureAccess(ApiModel):
+    """One capability as the published catalog applies to this store. Prices are fils from that catalog."""
+
+    feature_key: str
+    label: str
+    description: str
+    state: FeatureState
+    current_plan: str | None = None
+    current_plan_name: str | None = None
+    required_plan: str | None = None
+    required_plan_name: str | None = None
+    price_fils: int | None = None
+    currency: str | None = None
+    price_published: bool = False
+    custom_pricing: bool = False
+    trial_available: bool = False
+    plugin_code: str | None = None
+    plugin_name: str | None = None
+    benefits: list[str] = Field(default_factory=list)
+
+
+class FeatureAccessList(ApiModel):
+    features: list[FeatureAccess]

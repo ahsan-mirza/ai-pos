@@ -2,7 +2,7 @@ import type { PaymentIntentStatus, PaymentMethod, SaleTender } from "@ai-pos/sha
 import type { RegisterCustomer } from "../../lib/tauri";
 import { foreignValue } from "./fx";
 
-export type TenderChoice = "cash" | "card" | "transfer" | "cheque" | "qr" | "bnpl" | "on_account" | "split" | "channel";
+export type TenderChoice = "cash" | "card" | "transfer" | "cheque" | "qr" | "bnpl" | "on_account" | "split" | "channel" | "cod";
 
 /** One guest's part of a split bill, collected guest by guest; each becomes its own tender. */
 export interface GuestShare {
@@ -399,6 +399,13 @@ function planWithoutCredits(draft: PaymentDraft, totalCents: number, customer: R
         blocker: number === "" || bank === "" || dated === "" ? "Enter the cheque number, bank and date." : null,
       };
     }
+    case "cod":
+      return {
+        ...base,
+        paidCents: 0,
+        paymentMethod: "cod",
+        tenders: [{ method: "cod", amount_cents: totalCents, reference: "" }],
+      };
     case "on_account": {
       if (customer === null || customer.customer_type !== "WHOLESALE") {
         return {

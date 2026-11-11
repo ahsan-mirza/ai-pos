@@ -1,10 +1,9 @@
 import { formatMoney } from "@ai-pos/shared-types";
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
 import { invalidateAccountSubscription } from "../../components/layout/AccountMenu";
-import { ProAiTrialCard } from "./ProAiTrialCard";
 import { ErrorNote, PrimaryButton } from "../../components/ui/Field";
 import { ApiRequestError, apiBlob, apiGet, apiUpload } from "../../lib/api";
+import { SubscriptionCenter, type SubscriptionSummary } from "./SubscriptionCenter";
 
 interface PaymentAttention {
   kind: "awaiting_proof" | "pending_review" | "rejected" | "revoked";
@@ -24,7 +23,8 @@ interface AccessStatus {
   ai_allowed: boolean;
   operational?: boolean;
   attention: PaymentAttention | null;
-  subscription?: { plan_name: string; plan_code: string; status: string; cycle_name: string } | null;
+  subscription?: SubscriptionSummary | null;
+  promotional_trial?: { eligible: boolean; status: string } | null;
 }
 
 const copy: Record<PaymentAttention["kind"], { title: string; message: string }> = {
@@ -115,43 +115,118 @@ export function SubscriptionPaymentPage() {
     }
   };
 
-  if (attention === null) {
+  if (access === null && error === null) {
     return (
-      <section className="grid w-full gap-4">
-        <h1 className="text-3xl font-semibold tracking-tight">Plans & add-ons</h1>
-        <ProAiTrialCard />
-        {access?.subscription ? (
-          <p className="text-sm text-charcoal/70">
-            Base plan: {access.subscription.plan_name} · {access.subscription.status} · {access.subscription.cycle_name}
-          </p>
-        ) : null}
-        <ErrorNote message={error} />
-        <p className="text-sm text-charcoal/60">
-          {access === null ? "Loading the invoice…" : "There is no invoice waiting for a bank transfer."}
-        </p>
+      <section className="grid gap-4" aria-busy="true">
+        <div className="h-16 animate-pulse rounded-3xl bg-zinc-100 dark:bg-zinc-800" />
+        <div className="h-40 animate-pulse rounded-3xl bg-zinc-100 dark:bg-zinc-800" />
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          {Array.from({ length: 4 }, (_, index) => (
+            <div key={index} className="h-56 animate-pulse rounded-3xl bg-zinc-100 dark:bg-zinc-800" />
+          ))}
+        </div>
       </section>
     );
   }
 
+  const trial = access?.promotional_trial;
+  const proof =
+    attention === null ? null : (
+      <PaymentProof
+        attention={attention}
+        notice={notice}
+        error={error}
+        busy={busy}
+        date={date}
+        reference={reference}
+        bank={bank}
+        note={note}
+        file={file}
+        onDate={setDate}
+        onReference={setReference}
+        onBank={setBank}
+        onNote={setNote}
+        onFile={setFile}
+        onSubmit={() => void submit()}
+        onOpenProof={() => void openProof()}
+      />
+    );
+
+  return (
+    <SubscriptionCenter
+      subscription={access?.subscription ?? null}
+      attention={
+        attention
+          ? {
+              kind: attention.kind,
+              invoice_id: attention.invoice_id,
+              plan_code: attention.plan_code,
+              cycle_code: attention.cycle_code,
+              currency: attention.currency,
+              total_fils: attention.total_fils,
+            }
+          : null
+      }
+      trialEligible={trial?.eligible === true && trial.status === "not_started"}
+      onInvoiced={load}
+      billing={
+        <>
+          <ErrorNote message={attention ? null : error} />
+          {proof}
+        </>
+      }
+    />
+  );
+}
+
+function PaymentProof({
+  attention,
+  notice,
+  error,
+  busy,
+  date,
+  reference,
+  bank,
+  note,
+  file,
+  onDate,
+  onReference,
+  onBank,
+  onNote,
+  onFile,
+  onSubmit,
+  onOpenProof,
+}: {
+  attention: PaymentAttention;
+  notice: string | null;
+  error: string | null;
+  busy: boolean;
+  date: string;
+  reference: string;
+  bank: string;
+  note: string;
+  file: File | null;
+  onDate: (value: string) => void;
+  onReference: (value: string) => void;
+  onBank: (value: string) => void;
+  onNote: (value: string) => void;
+  onFile: (value: File | null) => void;
+  onSubmit: () => void;
+  onOpenProof: () => void;
+}) {
   const text = copy[attention.kind];
   const details = attention.bank;
   const canSubmit = attention.kind === "awaiting_proof" || attention.kind === "rejected";
 
   return (
-    <section className="grid w-full gap-4">
-      <ProAiTrialCard />
-      {access?.subscription ? (
-        <p className="text-sm text-charcoal/70">
-          Base plan: {access.subscription.plan_name} · {access.subscription.status} · {access.subscription.cycle_name}
-        </p>
-      ) : null}
+    <div className="grid gap-4">
       <header>
-        <h1 className="text-3xl font-semibold tracking-tight">{text.title}</h1>
+        <h3 className="text-lg font-semibold tracking-tight">{text.title}</h3>
         <p className="mt-2 text-sm text-charcoal/70">{attention.kind === "rejected" && attention.reason ? attention.reason : text.message}</p>
       </header>
       {notice ? <p className="rounded-2xl bg-accent/10 px-4 py-3 text-sm font-medium">{notice}</p> : null}
       <ErrorNote message={error} />
-      <article className="rounded-card border border-line bg-white p-6">
+      <article className="rounded-card border border-line bg-zinc-50 p-6 dark:bg-white/5">
         <h2 className="text-lg font-semibold">Invoice</h2>
         <dl className="mt-4 grid gap-2 text-sm sm:grid-cols-2">
           <div>
@@ -218,17 +293,17 @@ export function SubscriptionPaymentPage() {
       </article>
 
       {attention.transfer_id && attention.kind !== "awaiting_proof" ? (
-        <button type="button" onClick={() => void openProof()} className="text-left text-sm font-semibold text-accent">
+        <button type="button" onClick={onOpenProof} className="text-left text-sm font-semibold text-accent">
           View submitted proof
         </button>
       ) : null}
 
       {canSubmit ? (
         <form
-          className="grid gap-3 rounded-card border border-line bg-white p-6"
+          className="grid gap-3 rounded-card border border-line bg-white p-6 dark:bg-zinc-900"
           onSubmit={(event) => {
             event.preventDefault();
-            void submit();
+            onSubmit();
           }}
         >
           <h2 className="text-lg font-semibold">{attention.kind === "rejected" ? "Resubmit payment proof" : "Submit payment proof"}</h2>
@@ -237,19 +312,19 @@ export function SubscriptionPaymentPage() {
           </p>
           <label className="grid gap-1 text-sm">
             Payment date
-            <input type="date" required value={date} onChange={(event) => setDate(event.target.value)} className="h-10 rounded-xl border border-line px-3" />
+            <input type="date" required value={date} onChange={(event) => onDate(event.target.value)} className="h-10 rounded-xl border border-line px-3" />
           </label>
           <label className="grid gap-1 text-sm">
             Transfer reference
-            <input value={reference} onChange={(event) => setReference(event.target.value)} className="h-10 rounded-xl border border-line px-3" />
+            <input value={reference} onChange={(event) => onReference(event.target.value)} className="h-10 rounded-xl border border-line px-3" />
           </label>
           <label className="grid gap-1 text-sm">
             Sending bank
-            <input value={bank} onChange={(event) => setBank(event.target.value)} className="h-10 rounded-xl border border-line px-3" />
+            <input value={bank} onChange={(event) => onBank(event.target.value)} className="h-10 rounded-xl border border-line px-3" />
           </label>
           <label className="grid gap-1 text-sm">
             Note
-            <textarea value={note} onChange={(event) => setNote(event.target.value)} className="min-h-20 rounded-xl border border-line px-3 py-2" />
+            <textarea value={note} onChange={(event) => onNote(event.target.value)} className="min-h-20 rounded-xl border border-line px-3 py-2" />
           </label>
           <label className="grid gap-1 text-sm">
             Transaction slip (PNG, JPEG, or PDF, up to 2 MB)
@@ -257,7 +332,7 @@ export function SubscriptionPaymentPage() {
               type="file"
               required
               accept="image/png,image/jpeg,application/pdf"
-              onChange={(event) => setFile(event.target.files?.[0] ?? null)}
+              onChange={(event) => onFile(event.target.files?.[0] ?? null)}
             />
           </label>
           <div>
@@ -267,9 +342,6 @@ export function SubscriptionPaymentPage() {
           </div>
         </form>
       ) : null}
-      <Link to="/" className="text-sm font-semibold text-accent">
-        Back to the portal
-      </Link>
-    </section>
+    </div>
   );
 }

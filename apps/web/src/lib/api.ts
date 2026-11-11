@@ -24,6 +24,37 @@ export class ApiRequestError extends Error {
   }
 }
 
+const FEATURE_DENIALS = new Set([
+  "UPGRADE_REQUIRED",
+  "PLUGIN_REQUIRED",
+  "COUNTRY_UNAVAILABLE",
+  "FEATURE_DISABLED",
+  "BUSINESS_TYPE_UNAVAILABLE",
+  "SUBSCRIPTION_RESTRICTED",
+]);
+
+type FeatureDenialListener = (featureKey: string) => void;
+let featureDenialListener: FeatureDenialListener | null = null;
+
+/** The upgrade modal registers once. A denied API opens it without each screen repeating the rule. */
+export function onFeatureDenied(listener: FeatureDenialListener): () => void {
+  featureDenialListener = listener;
+  return () => {
+    if (featureDenialListener === listener) featureDenialListener = null;
+  };
+}
+
+function notifyFeatureDenied(error: ApiRequestError): void {
+  if (error.code === null || !FEATURE_DENIALS.has(error.code)) return;
+  const details = error.details;
+  const featureKey =
+    details !== null && typeof details === "object" && "feature_key" in details
+      ? String((details as { feature_key?: unknown }).feature_key ?? "")
+      : "";
+  if (featureKey === "") return;
+  featureDenialListener?.(featureKey);
+}
+
 /** fetch() only throws when no response arrived: the server is down, the address is wrong, or CORS blocked it. */
 function unreachable(): ApiRequestError {
   return new ApiRequestError(
@@ -140,6 +171,7 @@ async function rejected<T>(response: Response, auth: boolean, renew: boolean, re
     }
     onUnauthorized?.();
   }
+  notifyFeatureDenied(error);
   throw error;
 }
 

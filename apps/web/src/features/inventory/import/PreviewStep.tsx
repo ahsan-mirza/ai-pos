@@ -213,6 +213,14 @@ export function PreviewStep({
                       {row.status === "EXISTING" && row.existing_name ? (
                         <span className="block truncate text-xs text-charcoal/50">Matches {row.existing_name}</span>
                       ) : null}
+                      {row.attributes && Object.values(row.attributes).some(Boolean) ? (
+                        <span className="mt-0.5 block truncate text-xs text-charcoal/60">
+                          {Object.entries(row.attributes)
+                            .filter(([, value]) => value)
+                            .map(([key, value]) => `${key}: ${value}`)
+                            .join(" · ")}
+                        </span>
+                      ) : null}
                       {row.is_serialized ? (
                         <span className="mt-0.5 inline-flex items-center gap-1 text-xs text-charcoal/60">
                           <Smartphone size={12} aria-hidden="true" /> {row.serials.length} IMEI / serial

@@ -95,6 +95,24 @@ def orders_out(db: Session, orders: list[OpenOrder]) -> list[OrderOut]:
     channel_ids = {order.channel_id for order in orders if order.channel_id is not None}
     for hook in CHANNEL_NAMES:
         channels.update(hook(db, channel_ids))
+    from app.models.sale import Sale
+    from app.services.delivery_finance import payment_state
+
+    order_ids = [order.id for order in orders]
+    sales = (
+        list(db.scalars(select(Sale).where(Sale.order_id.in_(order_ids), Sale.status == "completed")).all())
+        if order_ids
+        else []
+    )
+    sale_for: dict[uuid.UUID, Sale] = {}
+    for sale in sales:
+        if sale.order_id is None:
+            continue
+        current = sale_for.get(sale.order_id)
+        if current is None or sale.created_at >= current.created_at:
+            sale_for[sale.order_id] = sale
+    rider_ids = {order.rider_id for order in orders if order.rider_id is not None}
+    riders = dict(db.execute(select(User.id, User.full_name).where(User.id.in_(rider_ids))).all()) if rider_ids else {}
     return [
         OrderOut(
             id=order.id,
@@ -120,6 +138,16 @@ def orders_out(db: Session, orders: list[OpenOrder]) -> list[OrderOut]:
             external_ref=order.external_ref,
             channel_status=order.channel_status,
             prep_minutes=order.prep_minutes,
+            payment_arrangement=order.payment_arrangement,  # type: ignore[arg-type]
+            delivery_status=order.delivery_status,  # type: ignore[arg-type]
+            rider_id=order.rider_id,
+            rider_name=riders.get(order.rider_id) if order.rider_id else None,
+            delivery_phone=order.delivery_phone,
+            delivery_address=order.delivery_address,
+            cod_expected_cents=order.cod_expected_cents,
+            cod_collected_cents=order.cod_collected_cents,
+            cod_handed_cents=order.cod_handed_cents,
+            payment_state=payment_state(order, sale_for.get(order.id)),
             items=[
                 OrderItemOut(
                     id=item.id,
@@ -783,6 +811,9 @@ def void_order(db: Session, principal: Principal, order_id: uuid.UUID, data: Ite
         return orders_out(db, [order])[0]
     if order.status == "SETTLED" or any(item.paid_sale_id is not None for item in order.items):
         raise ApiError(409, "already_paid", "This sale is complete. Refund it from Returns.")
+    from app.services.delivery_finance import guard_void, release_on_void
+
+    guard_void(order)
     if order.status != "OPEN":
         raise ApiError(409, "order_closed", f"Order {order.number} is already {order.status.lower()}.")
     if data.revision != order.revision:
@@ -801,6 +832,7 @@ def void_order(db: Session, principal: Principal, order_id: uuid.UUID, data: Ite
         for hook in ON_VOID:
             hook(db, order, sent)
     previous = order.status
+    release_on_void(db, order, actor.id)
     order.status = "VOID"
     order.closed_at = now
     audit.record(
@@ -920,15 +952,30 @@ def settle(db: Session, data: SalePayload, sale_id: uuid.UUID) -> None:
             details={"order_id": str(data.order_id)},
         )
         return
+    from app.models.sale import Sale
+    from app.services.delivery_finance import finish_delivery, remember_sale
+
+    sale = db.get(Sale, sale_id)
+    methods = {tender.method for tender in data.resolved_tenders()}
+    deferred = sale is not None and remember_sale(order, sale, methods)
     wanted = set(data.order_item_ids) if data.order_item_ids else None
-    for item in live_items(order):
-        if item.paid_sale_id is None and (wanted is None or item.id in wanted):
-            item.paid_sale_id = sale_id
-    if all(item.paid_sale_id is not None for item in live_items(order)):
-        order.status = "SETTLED"
-        order.closed_at = _now()
-        if order.channel_id is not None:
-            order.channel_status = "COMPLETED"
+    if order.service_type == "DELIVERY":
+        if not deferred and sale is not None:
+            for item in live_items(order):
+                if item.paid_sale_id is None and (wanted is None or item.id in wanted):
+                    item.paid_sale_id = sale_id
+            finish_delivery(order)
+    else:
+        for item in live_items(order):
+            if item.paid_sale_id is None and (wanted is None or item.id in wanted):
+                item.paid_sale_id = sale_id
+        if all(item.paid_sale_id is not None for item in live_items(order)):
+            order.status = "SETTLED"
+            order.closed_at = _now()
+            if order.channel_id is not None:
+                order.channel_status = "COMPLETED"
+    if order.service_type == "DELIVERY" and order.channel_id is not None and order.status == "SETTLED":
+        order.channel_status = "COMPLETED"
     _touch(order)
     if order.table_id is not None:
         from app.services.reservation_service import observe_order

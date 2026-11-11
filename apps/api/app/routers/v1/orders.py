@@ -9,6 +9,11 @@ from app.core.database import get_db
 from app.core.deps import Principal, authorize
 from app.core.permissions import Permission
 from app.schemas.orders import (
+    CodCollection,
+    CodHandoverIn,
+    DeliveryAssign,
+    DeliveryOutcome,
+    DeliveryProgress,
     GuestSuggestionsOut,
     ItemQuantity,
     ItemVoid,
@@ -20,7 +25,7 @@ from app.schemas.orders import (
     OrderOut,
     OrderUpdate,
 )
-from app.services import guest_suggestion_service, order_service
+from app.services import delivery_finance, guest_suggestion_service, order_service
 
 router = APIRouter()
 Db = Annotated[Session, Depends(get_db)]
@@ -37,6 +42,11 @@ def list_orders(
     since: Annotated[datetime | None, Query()] = None,
 ) -> list[OrderOut]:
     return order_service.list_orders(db, principal, store_id=store_id, status=status, since=since)
+
+
+@router.get("/cod-pending", response_model=list[OrderOut])
+def cod_pending(db: Db, principal: CanOrder, store_id: uuid.UUID) -> list[OrderOut]:
+    return delivery_finance.pending_cod(db, principal, store_id=store_id)
 
 
 @router.get("/suggestions", response_model=GuestSuggestionsOut)
@@ -117,3 +127,75 @@ def move_order(order_id: uuid.UUID, payload: OrderMove, db: Db, principal: CanOr
 @router.post("/{order_id}/merge", response_model=OrderOut)
 def merge_order(order_id: uuid.UUID, payload: OrderMerge, db: Db, principal: CanOrder) -> OrderOut:
     return order_service.merge_order(db, principal, order_id, payload)
+
+
+@router.post("/{order_id}/delivery/assign", response_model=OrderOut)
+def assign_rider(order_id: uuid.UUID, payload: DeliveryAssign, db: Db, principal: CanOrder) -> OrderOut:
+    return delivery_finance.assign_rider(
+        db,
+        principal,
+        order_id,
+        revision=payload.revision,
+        user_id=payload.user_id,
+        rider_id=payload.rider_id,
+        phone=payload.phone,
+        address=payload.address,
+    )
+
+
+@router.post("/{order_id}/delivery/start", response_model=OrderOut)
+def start_delivery(order_id: uuid.UUID, payload: OrderAction, db: Db, principal: CanOrder) -> OrderOut:
+    return delivery_finance.start_delivery(db, principal, order_id, revision=payload.revision, user_id=payload.user_id)
+
+
+@router.post("/{order_id}/delivery/delivered", response_model=OrderOut)
+def mark_delivered(order_id: uuid.UUID, payload: DeliveryProgress, db: Db, principal: CanOrder) -> OrderOut:
+    return delivery_finance.mark_delivered(
+        db,
+        principal,
+        order_id,
+        revision=payload.revision,
+        user_id=payload.user_id,
+        collected_cents=payload.collected_cents,
+    )
+
+
+@router.post("/{order_id}/delivery/collection", response_model=OrderOut)
+def report_collection(order_id: uuid.UUID, payload: CodCollection, db: Db, principal: CanOrder) -> OrderOut:
+    return delivery_finance.report_collection(
+        db,
+        principal,
+        order_id,
+        revision=payload.revision,
+        user_id=payload.user_id,
+        collected_cents=payload.collected_cents,
+    )
+
+
+@router.post("/{order_id}/delivery/outcome", response_model=OrderOut)
+def delivery_outcome(order_id: uuid.UUID, payload: DeliveryOutcome, db: Db, principal: CanOrder) -> OrderOut:
+    return delivery_finance.set_outcome(
+        db,
+        principal,
+        order_id,
+        revision=payload.revision,
+        user_id=payload.user_id,
+        status=payload.status,
+        reason=payload.reason,
+    )
+
+
+@router.post("/{order_id}/delivery/handover", response_model=OrderOut)
+def cod_handover(order_id: uuid.UUID, payload: CodHandoverIn, db: Db, principal: CanOrder) -> OrderOut:
+    return delivery_finance.handover(
+        db,
+        principal,
+        order_id,
+        revision=payload.revision,
+        user_id=payload.user_id,
+        shift_id=payload.shift_id,
+        received_cents=payload.received_cents,
+        idempotency_key=payload.idempotency_key,
+        note=payload.note,
+        approved_by_id=payload.approved_by_id,
+    )

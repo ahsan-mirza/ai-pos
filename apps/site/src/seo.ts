@@ -388,7 +388,7 @@ export const SEO_PAGES: readonly SeoPage[] = [
         heading: "What is set up for UAE selling",
         paragraphs: [
           "Package prices on the public pricing section are in AED. The portal includes a VAT report that reads the sales the store recorded. Managers can ask the assistant in English or Arabic. The answers come from that store.",
-          "Sales questions on the website go through the WhatsApp number published in the console. If that number is not published, the contact form says so. It does not pretend a message was sent. Get Started Free opens registration. A new store starts on the Standard trial.",
+          "Sales questions on the website go through the WhatsApp number published in the console. If that number is not published, the contact form says so. It does not pretend a message was sent. Get Started Free opens registration. A new store starts on the Free plan.",
         ],
       },
       {

@@ -70,7 +70,7 @@ function when(value: string | null): string {
 export function KeyboardStatusBar() {
   const { status, enabled, layout, toggle, hide, press } = useVirtualKeyboard();
   const { profile } = useCapabilities();
-  const { session, navigate } = useShell();
+  const { session, navigate, catalogSummary } = useShell();
   const activation = terminal();
   const spec = profileSpec(profile);
   const restaurantName = activation?.tenant_name || store.name;
@@ -272,15 +272,18 @@ export function KeyboardStatusBar() {
     <>
       <footer className="relative flex h-9 shrink-0 flex-nowrap items-center justify-between gap-3 border-t border-slate-800 bg-slate-900 px-3">
         <p
-          className="min-w-0 max-w-[42%] truncate text-xs text-slate-300"
+          className="min-w-0 max-w-[34%] shrink truncate text-xs text-slate-300"
           title={`${restaurantName} · ${spec.label} · ${store.code} · ${store.name}${activation?.register_code ? ` · ${activation.register_code}` : ""}`}
         >
           <span className="font-semibold text-slate-100">{restaurantName}</span>
           <span className="text-slate-500"> · </span>
           <span>{spec.shortLabel}</span>
         </p>
+        <p className="min-w-0 flex-1 truncate text-center text-[11px] font-semibold uppercase tracking-wider text-slate-400" role="status" title={catalogSummary ?? undefined}>
+          {catalogSummary}
+        </p>
         <div
-          className="flex min-w-0 flex-1 flex-nowrap items-center justify-end gap-0.5 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+          className="flex min-w-0 max-w-[46%] shrink-0 flex-nowrap items-center justify-end gap-0.5 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
           role="group"
           aria-label="Device status"
           data-device-status="strip"

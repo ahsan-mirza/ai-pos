@@ -1,5 +1,5 @@
 import type { PublicHardware } from "../catalog";
-import { aed } from "../catalog";
+import { money } from "../catalog";
 import { SectionHeading } from "./SectionHeading";
 
 /** Published hardware from the console catalogue. Hidden when the live list is empty. */
@@ -32,11 +32,11 @@ export function HardwareShelf({
                 <h3 className="mt-2 text-xl font-semibold text-charcoal">{item.name}</h3>
                 {item.description ? <p className="mt-2 text-sm leading-6 text-charcoal/70">{item.description}</p> : null}
                 <ul className="mt-4 space-y-1 text-sm text-charcoal/80">
-                  {item.lease_available ? <li>Lease {aed(item.monthly_fils)} / month</li> : null}
-                  {item.purchase_available && item.purchase_fils != null ? <li>Buy {aed(item.purchase_fils)}</li> : null}
-                  {item.deposit_fils > 0 ? <li>Refundable deposit {aed(item.deposit_fils)}, charged once</li> : null}
-                  {item.fee_fils > 0 ? <li>One-time fee {aed(item.fee_fils)}</li> : null}
-                  {item.delivery_fils > 0 ? <li>Delivery {aed(item.delivery_fils)}</li> : null}
+                  {item.lease_available ? <li>Lease {money(item.monthly_fils, item.currency)} / month</li> : null}
+                  {item.purchase_available && item.purchase_fils != null ? <li>Buy {money(item.purchase_fils, item.currency)}</li> : null}
+                  {item.deposit_fils > 0 ? <li>Refundable deposit {money(item.deposit_fils, item.currency)}, charged once</li> : null}
+                  {item.fee_fils > 0 ? <li>One-time fee {money(item.fee_fils, item.currency)}</li> : null}
+                  {item.delivery_fils > 0 ? <li>Delivery {money(item.delivery_fils, item.currency)}</li> : null}
                 </ul>
                 <button
                   type="button"

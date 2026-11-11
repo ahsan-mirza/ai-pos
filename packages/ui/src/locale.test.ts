@@ -21,6 +21,9 @@ describe("locale", () => {
     expect(document.documentElement.lang).toBe("en");
     expect(document.documentElement.dir).toBe("ltr");
     expect(localize("Dashboard")).toBe("Dashboard");
+    expect(localize("Plan", "ar")).toBe("الخطة");
+    expect(localize("Your data", "ar")).toBe("بياناتك");
+    expect(localize("Step {current} of {total}", "ar", { current: 2, total: 3 })).toBe("الخطوة 2 من 3");
     applyDocumentLocale("en");
   });
 });

@@ -27,13 +27,14 @@ interface RegisterShellProps {
 export function RegisterShell({ session, view, onNavigate, onLock, children }: RegisterShellProps) {
   const { theme } = useRegisterLayout();
   const [busy, setBusy] = useState(false);
+  const [catalogSummary, setCatalogSummary] = useState<string | null>(null);
   const notifier = useRef<((message: string) => void) | null>(null);
   const setNotifier = useCallback((notify: ((message: string) => void) | null) => {
     notifier.current = notify;
   }, []);
   const value = useMemo(
-    () => ({ session, view, setBusy, setNotifier, navigate: onNavigate }),
-    [session, view, setNotifier, onNavigate],
+    () => ({ session, view, setBusy, setNotifier, catalogSummary, setCatalogSummary, navigate: onNavigate }),
+    [session, view, setNotifier, catalogSummary, onNavigate],
   );
 
   useEffect(() => {

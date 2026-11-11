@@ -4,9 +4,21 @@ export const drawerShell =
   "flex min-h-0 flex-col border-zinc-200 bg-white font-sans text-zinc-900 dark:border-zinc-800 dark:bg-charcoal dark:text-zinc-100";
 
 /** Drawer title row shared by the cart and the refund summary. */
-export function DrawerHeader({ title, count, badge, children }: { title: string; count?: string; badge?: ReactNode; children?: ReactNode }) {
+export function DrawerHeader({
+  title,
+  count,
+  badge,
+  children,
+  className = "h-16 px-5",
+}: {
+  title: string;
+  count?: string;
+  badge?: ReactNode;
+  children?: ReactNode;
+  className?: string;
+}) {
   return (
-    <div className="flex h-16 shrink-0 items-center gap-3 border-b border-zinc-200 px-5 dark:border-zinc-800">
+    <div className={`flex shrink-0 items-center gap-3 border-b border-zinc-200 dark:border-zinc-800 ${className}`}>
       <h2 className="text-base font-semibold">{title}</h2>
       {count ? (
         <span className="rounded-full bg-zinc-100 px-2.5 py-1 text-xs font-semibold tabular-nums text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300">

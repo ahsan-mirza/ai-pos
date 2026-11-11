@@ -1,8 +1,11 @@
+import { applyDocumentLocale, readLocale } from "@ai-pos/ui";
 import { MotionConfig } from "framer-motion";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { App } from "./App";
 import "./index.css";
+
+applyDocumentLocale(readLocale());
 
 const root = document.getElementById("root");
 if (root === null) throw new Error("Root element is missing.");

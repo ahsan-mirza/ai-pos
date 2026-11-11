@@ -50,6 +50,8 @@ class Capability(StrEnum):
     ONLINE_STORE = "online_store"
     CUSTOMER_REORDERS = "customer_reorders"
     DEEP_ANALYTICS = "deep_analytics"
+    AI_INSIGHTS = "ai_insights"
+    SALES_INSIGHTS = "sales_insights"
     AXIZ_REACH = "axiz_reach"
     UAE_EINVOICING = "uae_einvoicing"
     DELIVERY_INTEGRATIONS = "delivery_integrations"
@@ -99,6 +101,8 @@ SPECS: dict[Capability, CapabilitySpec] = {
     C.ONLINE_STORE: CapabilitySpec("Online store", True),
     C.CUSTOMER_REORDERS: CapabilitySpec("Customer reorder plans", True),
     C.DEEP_ANALYTICS: CapabilitySpec("Deep analytics", True),
+    C.AI_INSIGHTS: CapabilitySpec("AI insights", True),
+    C.SALES_INSIGHTS: CapabilitySpec("Sales insights", True),
     C.AXIZ_REACH: CapabilitySpec("AxizReach — Customer Engagement", True),
     C.UAE_EINVOICING: CapabilitySpec("UAE e-Invoicing", True),
     C.DELIVERY_INTEGRATIONS: CapabilitySpec("Delivery Integrations", True),
@@ -202,6 +206,8 @@ _RETAIL_CORE = (
     C.TAX_FREE,
     C.ONLINE_STORE,
     C.DEEP_ANALYTICS,
+    C.AI_INSIGHTS,
+    C.SALES_INSIGHTS,
     C.AXIZ_REACH,
     C.UAE_EINVOICING,
 )
@@ -220,6 +226,8 @@ _FOOD_CORE = (
     C.DELIVERY_CHANNELS,
     C.CARD_TERMINALS,
     C.DEEP_ANALYTICS,
+    C.AI_INSIGHTS,
+    C.SALES_INSIGHTS,
     C.AXIZ_REACH,
     C.UAE_EINVOICING,
     C.DELIVERY_INTEGRATIONS,

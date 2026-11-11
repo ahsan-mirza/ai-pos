@@ -9,7 +9,6 @@ import { CustomerSearchPopover } from "./CustomerSearchPopover";
 import { QuickAddCustomerModal } from "./QuickAddCustomerModal";
 
 interface CustomerBarProps {
-  session: CashierSession;
   customer: RegisterCustomer | null;
   currency: string;
   disabled?: boolean;
@@ -56,12 +55,40 @@ function CustomerProfile({ customer }: { customer: RegisterCustomer }) {
   );
 }
 
-export function CustomerBar({ session, customer, currency, disabled = false, pendingCents, onAttach }: CustomerBarProps) {
+/** Header lookup. Attaching a guest still fills the sale column; this only finds or creates them. */
+export function GuestLookup({
+  session,
+  disabled = false,
+  onAttach,
+}: {
+  session: CashierSession;
+  disabled?: boolean;
+  onAttach: (customer: RegisterCustomer) => void;
+}) {
   const [adding, setAdding] = useState<string | null>(null);
+  return (
+    <>
+      <CustomerSearchPopover disabled={disabled} onSelect={onAttach} onQuickAdd={setAdding} />
+      {adding !== null ? (
+        <QuickAddCustomerModal
+          session={session}
+          query={adding}
+          onClose={() => setAdding(null)}
+          onCreated={(created) => {
+            setAdding(null);
+            onAttach(created);
+          }}
+        />
+      ) : null}
+    </>
+  );
+}
 
-  if (customer !== null) {
-    const wholesale = customer.customer_type === "WHOLESALE";
-    return (
+export function CustomerBar({ customer, currency, disabled = false, pendingCents, onAttach }: CustomerBarProps) {
+  if (customer === null) return null;
+
+  const wholesale = customer.customer_type === "WHOLESALE";
+  return (
       <div className="space-y-2">
         <div className="flex items-start gap-3 rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-800/40 p-3">
           <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary text-white">
@@ -96,25 +123,7 @@ export function CustomerBar({ session, customer, currency, disabled = false, pen
             <X size={16} aria-hidden="true" />
           </button>
         </div>
-        {wholesale ? <CreditBadge customer={customer} currency={currency} pendingCents={pendingCents} /> : null}
-      </div>
-    );
-  }
-
-  return (
-    <>
-      <CustomerSearchPopover disabled={disabled} onSelect={onAttach} onQuickAdd={setAdding} />
-      {adding !== null ? (
-        <QuickAddCustomerModal
-          session={session}
-          query={adding}
-          onClose={() => setAdding(null)}
-          onCreated={(created) => {
-            setAdding(null);
-            onAttach(created);
-          }}
-        />
-      ) : null}
-    </>
+      {wholesale ? <CreditBadge customer={customer} currency={currency} pendingCents={pendingCents} /> : null}
+    </div>
   );
 }

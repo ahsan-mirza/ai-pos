@@ -103,6 +103,17 @@ class OpenOrder(TenantScoped, Base):
     channel_status: Mapped[str | None] = mapped_column(String(12), nullable=True)
     prep_minutes: Mapped[int | None] = mapped_column(Integer, nullable=True)
     channel_payload: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    # Delivery money is not the tab status. PAID_NOW, CREDIT, and COD settle through the existing sale.
+    payment_arrangement: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    delivery_status: Mapped[str | None] = mapped_column(String(24), nullable=True)
+    rider_id: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    delivery_phone: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    delivery_address: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    cod_expected_cents: Mapped[int] = mapped_column(Integer, default=0)
+    # What the rider says the customer handed over. This is not money in the drawer.
+    cod_collected_cents: Mapped[int] = mapped_column(Integer, default=0)
+    # Cash the cashier has actually accepted into the register.
+    cod_handed_cents: Mapped[int] = mapped_column(Integer, default=0)
     opened_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow, index=True)
@@ -144,3 +155,30 @@ class OpenOrderItem(TenantScoped, Base):
     )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     order: Mapped[OpenOrder] = relationship("OpenOrder", back_populates="items")
+
+
+class CodHandover(TenantScoped, Base):
+    """Cash a cashier accepted from a rider. Rows are not edited; a correction is another handover or a reversal."""
+
+    __tablename__ = "cod_handovers"
+    __table_args__ = (
+        tenant_unique("idempotency_key", name="uq_cod_handovers_key"),
+        CheckConstraint("received_cents >= 1", name="cod_received_positive"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    order_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("open_orders.id"), index=True)
+    sale_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("sales.id"), index=True)
+    store_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("stores.id"), index=True)
+    rider_id: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    cashier_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("users.id"))
+    # Set only when the counted cash was short of the amount still owed. A full count has no approver.
+    approved_by_id: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    shift_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("register_shifts.id"), index=True)
+    expected_cents: Mapped[int] = mapped_column(Integer)
+    collected_cents: Mapped[int] = mapped_column(Integer, default=0)
+    received_cents: Mapped[int] = mapped_column(Integer)
+    outstanding_after_cents: Mapped[int] = mapped_column(Integer)
+    idempotency_key: Mapped[str] = mapped_column(String(80))
+    note: Mapped[str] = mapped_column(String(255), default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)

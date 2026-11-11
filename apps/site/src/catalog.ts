@@ -1,6 +1,11 @@
-import { cycleAmountFils } from "@ai-pos/shared-types";
-
-/** Starting catalog from `ensure_catalog` in the API. Used when the public catalog cannot be loaded. */
+import {
+  CAPABILITIES,
+  PROFILE_ELIGIBLE,
+  cycleAmountFils,
+  formatMoney,
+  isCapability,
+  type BusinessProfile,
+} from "@ai-pos/shared-types";
 
 export interface Plan {
   code: string;
@@ -9,6 +14,20 @@ export interface Plan {
   included_modules: string[];
   monthly_fils: number;
   trial_days: number;
+  active: boolean;
+  sort_order: number;
+  catalog_family: "current" | "legacy";
+  custom_pricing: boolean;
+  /** Configured caps. A null value means that cap is not enforced. */
+  resource_limits: Record<string, number | null>;
+  /** Published country list prices. Empty when this plan has no regional price. */
+  prices: CountryPrice[];
+}
+
+export interface CountryPrice {
+  country: string;
+  currency: string;
+  monthly_fils: number;
 }
 
 export interface Cycle {
@@ -28,6 +47,17 @@ export interface Addon {
   /** Capability ids this priced add-on is allowed to sell. Empty when it does not unlock a product module. */
   module_keys: string[];
   active: boolean;
+  sort_order: number;
+  short_description: string;
+  category: string;
+  featured: boolean;
+  benefits: AddonBenefit[];
+  documentation_url: string;
+}
+
+export interface AddonBenefit {
+  title: string;
+  description: string;
 }
 
 export interface Fee {
@@ -53,82 +83,35 @@ export interface PublicHardware {
   currency: string;
 }
 
+export interface PublicTrial {
+  enabled: boolean;
+  days: number;
+  plan_code: string;
+  eligible_plans: string[];
+}
+
 export interface PublicCatalog {
   plans: Plan[];
   cycles: Cycle[];
   addons: Addon[];
   fees: Fee[];
   hardware: PublicHardware[];
+  /** Null when the payload did not publish a new-plan annual rate. */
+  current_annual_discount_bps: number | null;
+  promotional_trial: PublicTrial;
 }
 
-export const SEED: PublicCatalog = {
-  plans: [
-    {
-      code: "LITE",
-      name: "Lite",
-      included_registers: 1,
-      included_modules: ["promotions", "loyalty"],
-      monthly_fils: 14_900,
-      trial_days: 14,
-    },
-    {
-      code: "STANDARD",
-      name: "Standard",
-      included_registers: 3,
-      included_modules: ["promotions", "loyalty", "card_terminals", "quotes_layaway"],
-      monthly_fils: 29_900,
-      trial_days: 14,
-    },
-    {
-      code: "PRO",
-      name: "Pro",
-      included_registers: 8,
-      included_modules: ["promotions", "loyalty", "card_terminals", "bnpl", "gift_cards", "kds", "tables"],
-      monthly_fils: 49_900,
-      trial_days: 30,
-    },
-  ],
-  cycles: [
-    { code: "MONTHLY", name: "Monthly", months: 1, discount_bps: 0 },
-    { code: "QUARTERLY", name: "Quarterly", months: 3, discount_bps: 500 },
-    { code: "HALF_YEARLY", name: "Half-Yearly", months: 6, discount_bps: 1_200 },
-    { code: "ANNUAL", name: "Annual", months: 12, discount_bps: 2_500 },
-  ],
-  addons: [
-    {
-      code: "hardware_lease",
-      name: "Hardware lease",
-      description: "Register hardware, rented. The one-time amount is a refundable deposit.",
-      monthly_fils: 15_000,
-      one_time_fils: 50_000,
-      refundable: true,
-      module_keys: [],
-      active: true,
-    },
-    {
-      code: "equipment_protection",
-      name: "Equipment protection",
-      description: "Covers leased hardware.",
-      monthly_fils: 3_900,
-      one_time_fils: 0,
-      refundable: false,
-      module_keys: [],
-      active: true,
-    },
-    {
-      code: "extra_register",
-      name: "Extra register",
-      description: "A register beyond the ones included in the package.",
-      monthly_fils: 4_900,
-      one_time_fils: 0,
-      refundable: false,
-      module_keys: [],
-      active: true,
-    },
-  ],
-  fees: [{ code: "onboarding", name: "Onboarding", amount_fils: 25_000 }],
+export const EMPTY_CATALOG: PublicCatalog = {
+  plans: [],
+  cycles: [],
+  addons: [],
+  fees: [],
   hardware: [],
+  current_annual_discount_bps: null,
+  promotional_trial: { enabled: false, days: 0, plan_code: "", eligible_plans: [] },
 };
+
+const CURRENT_CODES = new Set(["FREE", "GROWTH", "PRO_AI", "ENTERPRISE"]);
 
 /** Same integer fils rounding as `cycle_amount` in the API. */
 export function cycleAmount(monthlyFils: number, months: number, discountBps: number): number {
@@ -136,148 +119,277 @@ export function cycleAmount(monthlyFils: number, months: number, discountBps: nu
 }
 
 export function aed(fils: number): string {
-  return new Intl.NumberFormat("en-AE", {
-    style: "currency",
-    currency: "AED",
-    minimumFractionDigits: fils % 100 === 0 ? 0 : 2,
-  }).format(fils / 100);
+  return money(fils, "AED");
 }
 
-export const STORE_MIN = 1;
-export const STORE_MAX = 24;
-
-export interface Estimate {
-  stores: number;
-  registers: number;
-  cycle: Cycle;
-  /** Discounted package for every store over this cycle. */
-  packageFils: number;
-  /** Same package with the cycle discount removed. */
-  packageListFils: number;
-  /** Package list minus the discounted package. Hardware, fees, and deposits are excluded. */
-  savingFils: number;
-  /** Face-value hardware rent for one month, one lease per included register. */
-  leaseMonthlyFils: number | null;
-  /** Face-value hardware rent for the whole cycle. The cycle discount does not apply. */
-  leaseCycleFils: number | null;
-  depositFils: number | null;
-  protectionMonthlyFils: number | null;
-  protectionCycleFils: number | null;
-  /** Onboarding once per store, the same count the payback figure already used. */
-  onboardingFils: number | null;
-  onboardingUnitFils: number | null;
-  recurringCycleFils: number;
-  dueNowFils: number;
-  nextCycleFils: number;
-  /** Discounted package for one store for the whole cycle. */
-  perStoreFils: number;
-  discountPercent: number;
-  paybackMonths: number | null;
-  /** Cycle with the lowest effective monthly package price, when it beats paying monthly. */
-  bestValueCode: string | null;
+/** Formats fils in the currency the catalog published. Digits stay Western. */
+export function money(fils: number, currency: string): string {
+  const code = /^[A-Z]{3}$/.test(currency) ? currency : "AED";
+  return formatMoney(fils, code, "en");
 }
 
-function clampStores(stores: number): number {
-  if (!Number.isFinite(stores)) return STORE_MIN;
-  return Math.min(STORE_MAX, Math.max(STORE_MIN, Math.trunc(stores)));
+const LIMIT_LABELS: Record<string, string> = {
+  branches: "Branches",
+  registers: "Registers",
+  staff: "Staff",
+  products: "Products",
+  customers: "Customers",
+  sales_history_days: "Sales history",
+  ai_questions_per_month: "AI questions",
+};
+
+export function isCustomPlan(plan: Plan): boolean {
+  return plan.custom_pricing || plan.code === "ENTERPRISE";
 }
 
-/** Lowest effective monthly package price. A tie prefers the longer cycle. */
-export function bestValueCycle(plan: Plan, cycles: Cycle[]): string | null {
-  let best: { code: string; monthly: number; months: number } | null = null;
-  for (const cycle of cycles) {
-    if (cycle.months < 1) continue;
-    const monthly = cycleAmount(plan.monthly_fils, cycle.months, cycle.discount_bps) / cycle.months;
-    const cheaper = best === null || monthly < best.monthly - 1e-6;
-    const tie = best !== null && Math.abs(monthly - best.monthly) <= 1e-6 && cycle.months > best.months;
-    if (cheaper || tie) best = { code: cycle.code, monthly, months: cycle.months };
+export function isFreePlan(plan: Plan): boolean {
+  return plan.code === "FREE";
+}
+
+/** Current catalog. Legacy plans stay out of the public grid. */
+export function showcasePlans(catalog: PublicCatalog): Plan[] {
+  return catalog.plans
+    .filter((plan) => plan.active && plan.catalog_family === "current")
+    .sort((left, right) => left.sort_order - right.sort_order || left.name.localeCompare(right.name));
+}
+
+export function legacyPlanNames(catalog: PublicCatalog): string[] {
+  return catalog.plans.filter((plan) => plan.active && plan.catalog_family === "legacy").map((plan) => plan.name);
+}
+
+/** New plans use the published annual rate. Other cycles, and legacy plans, use the cycle row. */
+export function cycleDiscountBps(plan: Plan, cycle: Cycle, catalog: PublicCatalog): number {
+  if (plan.catalog_family === "current" && cycle.code === "ANNUAL" && catalog.current_annual_discount_bps !== null) {
+    return catalog.current_annual_discount_bps;
   }
-  if (best === null) return null;
-  const undiscounted = cycles.find((cycle) => cycle.months === 1 && cycle.discount_bps === 0);
-  if (undiscounted && best.code === undiscounted.code) return null;
-  return best.code;
+  return cycle.discount_bps;
 }
 
-export function estimate(
-  plan: Plan,
-  stores: number,
-  catalog: PublicCatalog,
-  cycleCode: string,
-  options?: { protection?: boolean },
-): Estimate {
-  const count = clampStores(stores);
-  const cycle =
-    catalog.cycles.find((item) => item.code === cycleCode) ??
-    catalog.cycles.find((item) => item.code === "ANNUAL") ??
-    catalog.cycles[0] ??
-    { code: "MONTHLY", name: "Monthly", months: 1, discount_bps: 0 };
-  const hardware = catalog.addons.find((addon) => addon.code === "hardware_lease");
-  const protection = catalog.addons.find((addon) => addon.code === "equipment_protection");
-  const onboarding = catalog.fees.find((fee) => fee.code === "onboarding");
-  const registers = plan.included_registers * count;
-  const perStoreFils = cycleAmount(plan.monthly_fils, cycle.months, cycle.discount_bps);
-  const packageFils = perStoreFils * count;
-  const packageListFils = plan.monthly_fils * cycle.months * count;
-  const savingFils = packageListFils - packageFils;
-  const leaseMonthlyFils = hardware ? hardware.monthly_fils * registers : null;
-  const leaseCycleFils = leaseMonthlyFils === null ? null : leaseMonthlyFils * cycle.months;
-  const depositFils = hardware && hardware.one_time_fils > 0 ? hardware.one_time_fils * registers : null;
-  const protectionOn = options?.protection === true && protection !== undefined;
-  const protectionMonthlyFils = protectionOn ? protection.monthly_fils * registers : null;
-  const protectionCycleFils = protectionMonthlyFils === null ? null : protectionMonthlyFils * cycle.months;
-  const onboardingUnitFils = onboarding?.amount_fils ?? null;
-  const onboardingFils = onboardingUnitFils === null ? null : onboardingUnitFils * count;
-  const recurringCycleFils = packageFils + (leaseCycleFils ?? 0) + (protectionCycleFils ?? 0);
-  const dueNowFils = recurringCycleFils + (onboardingFils ?? 0) + (depositFils ?? 0);
-  const perMonth = cycle.months > 0 ? savingFils / cycle.months : 0;
-  const paybackMonths =
-    onboardingUnitFils !== null && perMonth > 0 ? (onboardingUnitFils * count) / perMonth : null;
+export interface PublishedPrice {
+  kind: "free" | "custom" | "priced" | "unavailable";
+  amountFils: number | null;
+  discountBps: number;
+  currency: string;
+}
+
+/** Countries that have at least one published price on a current plan. */
+export function publishedCountries(catalog: PublicCatalog): string[] {
+  const seen: string[] = [];
+  for (const plan of showcasePlans(catalog)) {
+    for (const price of plan.prices) {
+      if (!seen.includes(price.country)) seen.push(price.country);
+    }
+  }
+  return seen;
+}
+
+/** AE when that row exists, otherwise the first published country. */
+export function defaultCountry(catalog: PublicCatalog): string | null {
+  const countries = publishedCountries(catalog);
+  if (countries.includes("AE")) return "AE";
+  return countries[0] ?? null;
+}
+
+/**
+ * One subscription for the selected cycle and country.
+ * A current paid plan uses its published country row. A zero amount is a price only for Free.
+ */
+export function publishedPrice(plan: Plan, cycle: Cycle, catalog: PublicCatalog, country: string | null): PublishedPrice {
+  const discountBps = cycleDiscountBps(plan, cycle, catalog);
+  if (isCustomPlan(plan)) return { kind: "custom", amountFils: null, discountBps, currency: "" };
+  if (isFreePlan(plan)) return { kind: "free", amountFils: 0, discountBps: 0, currency: "" };
+  const regional = country ? plan.prices.find((row) => row.country === country) : undefined;
+  if (regional) {
+    if (regional.monthly_fils <= 0) return { kind: "unavailable", amountFils: null, discountBps, currency: regional.currency };
+    return {
+      kind: "priced",
+      amountFils: cycleAmount(regional.monthly_fils, cycle.months, discountBps),
+      discountBps,
+      currency: regional.currency,
+    };
+  }
+  if (country && plan.catalog_family === "current") {
+    return { kind: "unavailable", amountFils: null, discountBps, currency: "" };
+  }
+  if (plan.monthly_fils <= 0) return { kind: "unavailable", amountFils: null, discountBps, currency: "AED" };
   return {
-    stores: count,
-    registers,
-    cycle,
-    packageFils,
-    packageListFils,
-    savingFils,
-    leaseMonthlyFils,
-    leaseCycleFils,
-    depositFils,
-    protectionMonthlyFils,
-    protectionCycleFils,
-    onboardingFils,
-    onboardingUnitFils,
-    recurringCycleFils,
-    dueNowFils,
-    nextCycleFils: recurringCycleFils,
-    perStoreFils,
-    discountPercent: cycle.discount_bps / 100,
-    paybackMonths,
-    bestValueCode: bestValueCycle(plan, catalog.cycles),
+    kind: "priced",
+    amountFils: cycleAmount(plan.monthly_fils, cycle.months, discountBps),
+    discountBps,
+    currency: "AED",
   };
 }
 
-/** Short note for the contact form. Not a binding quote. */
-export function estimateNote(plan: Plan, quote: Estimate): string {
-  const storeWord = quote.stores === 1 ? "store" : "stores";
-  const registerWord = quote.registers === 1 ? "register" : "registers";
-  const lines = [
-    "AxizPOS estimate, not a final quote.",
-    `${plan.name}, ${quote.stores} ${storeWord}, ${quote.registers} included ${registerWord}, ${quote.cycle.name} (${quote.discountPercent}% off the package).`,
-    `Package this cycle: ${aed(quote.packageFils)}.`,
-    quote.leaseCycleFils !== null ? `Hardware lease this cycle: ${aed(quote.leaseCycleFils)}.` : "",
-    quote.protectionCycleFils !== null ? `Equipment protection this cycle: ${aed(quote.protectionCycleFils)}.` : "",
-    quote.onboardingFils !== null ? `Onboarding: ${aed(quote.onboardingFils)} once.` : "",
-    quote.depositFils !== null ? `Refundable deposit: ${aed(quote.depositFils)}.` : "",
-    `Due at the start: ${aed(quote.dueNowFils)}.`,
-    quote.savingFils > 0
-      ? `Package saving vs monthly over ${quote.cycle.months} ${quote.cycle.months === 1 ? "month" : "months"}: ${aed(quote.savingFils)}.`
-      : "",
-  ];
-  return lines.filter((line) => line.length > 0).join(" ").slice(0, 500);
+export interface PlanLimitLine {
+  key: string;
+  label: string;
+  text: string;
+}
+
+/** Configured caps only. Missing usage is not shown as zero. */
+export function planLimitLines(plan: Plan): PlanLimitLine[] {
+  const rows: PlanLimitLine[] = [];
+  if (plan.included_registers > 0) {
+    rows.push({ key: "included_registers", label: "Registers", text: String(plan.included_registers) });
+  }
+  for (const [key, value] of Object.entries(plan.resource_limits)) {
+    if (typeof value !== "number" || key === "registers") continue;
+    const suffix = key === "sales_history_days" ? " days" : "";
+    rows.push({ key, label: LIMIT_LABELS[key] ?? key.replaceAll("_", " "), text: `${value}${suffix}` });
+  }
+  return rows;
+}
+
+export interface ComparisonRow {
+  key: string;
+  pluginCodes: string[];
+}
+
+function fitsProfile(key: string, profile: BusinessProfile | null): boolean {
+  if (profile === null || !isCapability(key)) return true;
+  return PROFILE_ELIGIBLE[profile].includes(key);
+}
+
+/**
+ * Every published capability that a current plan includes or a published add-on sells.
+ * The cell mark, not the row, says whether that plan includes it.
+ */
+export function comparisonRows(plans: readonly Plan[], addons: readonly Addon[], profile: BusinessProfile | null = null): ComparisonRow[] {
+  const plugins = new Map<string, string[]>();
+  for (const addon of addons) {
+    if (!addon.active || addon.module_keys.length === 0) continue;
+    for (const key of addon.module_keys) {
+      if (!fitsProfile(key, profile)) continue;
+      const codes = plugins.get(key) ?? [];
+      if (!codes.includes(addon.code)) codes.push(addon.code);
+      plugins.set(key, codes);
+    }
+  }
+  const keys: string[] = [];
+  for (const plan of plans) {
+    for (const key of plan.included_modules) {
+      if (!fitsProfile(key, profile) || keys.includes(key)) continue;
+      keys.push(key);
+    }
+  }
+  for (const key of plugins.keys()) {
+    if (!keys.includes(key)) keys.push(key);
+  }
+  return keys.map((key) => ({ key, pluginCodes: plugins.get(key) ?? [] }));
+}
+
+/** Published add-ons a visitor can buy. Draft and archived rows never reach this list. */
+export function publicPlugins(addons: readonly Addon[], profile: BusinessProfile | null = null): Addon[] {
+  return addons
+    .filter((addon) => addon.active)
+    .filter((addon) => {
+      if (profile === null) return true;
+      const keys = addon.module_keys.filter((key) => isCapability(key));
+      if (keys.length === 0) return true;
+      return keys.some((key) => PROFILE_ELIGIBLE[profile].includes(key));
+    })
+    .sort((left, right) => Number(right.featured) - Number(left.featured) || left.sort_order - right.sort_order || left.name.localeCompare(right.name));
+}
+
+/**
+ * Add-on amounts on the public catalog are AED fils. Another country's currency is not invented from that figure.
+ */
+export function addonPriceText(addon: Addon, currency: string | null): string | null {
+  if (currency !== null && currency !== "AED") return null;
+  const parts: string[] = [];
+  if (addon.monthly_fils > 0) parts.push(`${money(addon.monthly_fils, "AED")} / month`);
+  if (addon.one_time_fils > 0) {
+    parts.push(addon.refundable ? `${money(addon.one_time_fils, "AED")} refundable deposit` : `${money(addon.one_time_fils, "AED")} once`);
+  }
+  return parts.length > 0 ? parts.join(" · ") : null;
+}
+
+export type ComparisonMark = "included" | "addon" | "custom" | "absent";
+
+/**
+ * Included comes only from the plan's published module list.
+ * A published add-on that sells the same module is optional, not part of the plan.
+ * A custom-priced plan negotiates anything it does not already include and does not sell as an add-on.
+ */
+export function comparisonMark(plan: Plan, row: ComparisonRow): ComparisonMark {
+  if (plan.included_modules.includes(row.key)) return "included";
+  if (row.pluginCodes.length > 0) return "addon";
+  if (isCustomPlan(plan)) return "custom";
+  return "absent";
+}
+
+const GROUP_LABEL: Record<string, string> = {
+  selling: "POS & Checkout",
+  inventory: "Inventory & Products",
+  customers: "Customers & CRM",
+  service: "Service",
+  food_beverage: "Restaurant & Kitchen",
+};
+
+const FEATURE_GROUP: Record<string, string> = {
+  ai_insights: "AI & Automation",
+  deep_analytics: "AI & Automation",
+  sales_insights: "Sales & Orders",
+  quotes_layaway: "Sales & Orders",
+  sales_orders: "Sales & Orders",
+  promotions: "Sales & Orders",
+  customer_reorders: "Sales & Orders",
+  uae_einvoicing: "Integrations & Extensions",
+  online_store: "Integrations & Extensions",
+  card_terminals: "Integrations & Extensions",
+  bnpl: "Integrations & Extensions",
+  delivery_integrations: "Integrations & Extensions",
+  axiz_reach: "Integrations & Extensions",
+  multi_currency: "Integrations & Extensions",
+};
+
+const GROUP_ORDER = [
+  "POS & Checkout",
+  "Sales & Orders",
+  "Inventory & Products",
+  "Customers & CRM",
+  "Finance & Accounting",
+  "AI & Automation",
+  "Restaurant & Kitchen",
+  "Integrations & Extensions",
+  "Administration & Security",
+  "Service",
+  "Other",
+];
+
+/** Display group for a catalog feature key. Empty groups are omitted by the caller. */
+export function featureGroup(key: string): string {
+  const override = FEATURE_GROUP[key];
+  if (override) return override;
+  const spec = CAPABILITIES.find((row) => row.id === key);
+  return GROUP_LABEL[spec?.group ?? ""] ?? "Other";
+}
+
+export function groupedComparison(rows: readonly ComparisonRow[]): { label: string; rows: ComparisonRow[] }[] {
+  const byGroup = new Map<string, ComparisonRow[]>();
+  for (const row of rows) {
+    const label = featureGroup(row.key);
+    const list = byGroup.get(label) ?? [];
+    list.push(row);
+    byGroup.set(label, list);
+  }
+  return [...byGroup.entries()]
+    .sort((left, right) => GROUP_ORDER.indexOf(left[0]) - GROUP_ORDER.indexOf(right[0]))
+    .map(([label, groupRows]) => ({ label, rows: groupRows }));
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
+}
+
+function readLimits(value: unknown): Record<string, number | null> {
+  if (!isRecord(value)) return {};
+  const limits: Record<string, number | null> = {};
+  for (const [key, raw] of Object.entries(value)) {
+    if (typeof raw === "number") limits[key] = raw;
+    else if (raw === null) limits[key] = null;
+  }
+  return limits;
 }
 
 function readPlan(value: unknown): Plan | null {
@@ -294,6 +406,12 @@ function readPlan(value: unknown): Plan | null {
   ) {
     return null;
   }
+  const family =
+    value.catalog_family === "current" || value.catalog_family === "legacy"
+      ? value.catalog_family
+      : CURRENT_CODES.has(value.code)
+        ? "current"
+        : "legacy";
   return {
     code: value.code,
     name: value.name,
@@ -301,7 +419,24 @@ function readPlan(value: unknown): Plan | null {
     included_modules: modules as string[],
     monthly_fils: value.monthly_fils,
     trial_days: value.trial_days,
+    active: value.active !== false,
+    sort_order: typeof value.sort_order === "number" ? value.sort_order : 0,
+    catalog_family: family,
+    custom_pricing: value.custom_pricing === true || value.code === "ENTERPRISE",
+    resource_limits: readLimits(value.resource_limits),
+    prices: readPrices(value.prices),
   };
+}
+
+function readPrices(value: unknown): CountryPrice[] {
+  if (!Array.isArray(value)) return [];
+  const prices: CountryPrice[] = [];
+  for (const row of value) {
+    if (!isRecord(row)) continue;
+    if (typeof row.country !== "string" || typeof row.currency !== "string" || typeof row.monthly_fils !== "number") continue;
+    prices.push({ country: row.country, currency: row.currency, monthly_fils: row.monthly_fils });
+  }
+  return prices;
 }
 
 function readCycle(value: unknown): Cycle | null {
@@ -328,6 +463,13 @@ function readAddon(value: unknown): Addon | null {
     return null;
   }
   const keys = Array.isArray(value.module_keys) ? value.module_keys.filter((item) => typeof item === "string") : [];
+  const listing = isRecord(value.listing) ? value.listing : null;
+  const publication = listing && typeof listing.publication === "string" ? listing.publication : "published";
+  if (publication === "draft" || publication === "archived") return null;
+  const short =
+    listing && typeof listing.short_description === "string" ? listing.short_description : "";
+  const category = listing && typeof listing.category === "string" ? listing.category : "";
+  const documentation = listing && typeof listing.documentation_url === "string" ? listing.documentation_url : "";
   return {
     code: value.code,
     name: value.name,
@@ -337,7 +479,26 @@ function readAddon(value: unknown): Addon | null {
     refundable: value.refundable === true,
     module_keys: keys,
     active: value.active !== false,
+    sort_order: typeof value.sort_order === "number" ? value.sort_order : 0,
+    short_description: short,
+    category,
+    featured: listing?.featured === true,
+    benefits: readBenefits(listing?.benefits),
+    documentation_url: documentation.startsWith("http://") || documentation.startsWith("https://") ? documentation : "",
   };
+}
+
+function readBenefits(value: unknown): AddonBenefit[] {
+  if (!Array.isArray(value)) return [];
+  const benefits: AddonBenefit[] = [];
+  for (const row of value) {
+    if (!isRecord(row)) continue;
+    const title = typeof row.title === "string" ? row.title : "";
+    const description = typeof row.description === "string" ? row.description : "";
+    if (title === "" && description === "") continue;
+    benefits.push({ title, description });
+  }
+  return benefits;
 }
 
 function readFee(value: unknown): Fee | null {
@@ -356,7 +517,22 @@ export function parseCatalog(value: unknown): PublicCatalog | null {
   const fees = Array.isArray(value.fees) ? value.fees.map(readFee).filter((row) => row !== null) : [];
   const hardware = Array.isArray(value.hardware) ? value.hardware.map(readHardware).filter((row) => row !== null) : [];
   if (plans.length === 0) return null;
-  return { plans, cycles, addons, fees, hardware };
+  const trial = isRecord(value.promotional_trial) ? value.promotional_trial : null;
+  const eligible = trial && Array.isArray(trial.eligible_plans) ? trial.eligible_plans.filter((item) => typeof item === "string") : [];
+  return {
+    plans,
+    cycles,
+    addons,
+    fees,
+    hardware,
+    current_annual_discount_bps: typeof value.current_annual_discount_bps === "number" ? value.current_annual_discount_bps : null,
+    promotional_trial: {
+      enabled: trial?.enabled === true,
+      days: trial && typeof trial.days === "number" ? trial.days : 0,
+      plan_code: trial && typeof trial.plan_code === "string" ? trial.plan_code : "",
+      eligible_plans: eligible,
+    },
+  };
 }
 
 function readHardware(value: unknown): PublicHardware | null {
@@ -386,11 +562,11 @@ function readHardware(value: unknown): PublicHardware | null {
 
 export async function loadCatalog(url: string): Promise<{ catalog: PublicCatalog; live: boolean }> {
   try {
-    const response = await fetch(url);
-    if (!response.ok) return { catalog: SEED, live: false };
+    const response = await fetch(url, { cache: "no-store" });
+    if (!response.ok) return { catalog: EMPTY_CATALOG, live: false };
     const parsed = parseCatalog(await response.json());
-    return parsed ? { catalog: parsed, live: true } : { catalog: SEED, live: false };
+    return parsed ? { catalog: parsed, live: true } : { catalog: EMPTY_CATALOG, live: false };
   } catch {
-    return { catalog: SEED, live: false };
+    return { catalog: EMPTY_CATALOG, live: false };
   }
 }

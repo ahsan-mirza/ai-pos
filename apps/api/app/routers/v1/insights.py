@@ -4,6 +4,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
+from app.console.feature_access import require_feature
 from app.core.capabilities import Capability, require_capability
 from app.core.database import get_db
 from app.core.deps import Principal, authorize
@@ -27,7 +28,7 @@ CanRead = Annotated[Principal, Depends(authorize(Permission.PORTAL_REPORTS_READ)
 AtRegister = Annotated[Principal, Depends(authorize(allow_device=True, scopes=("pos", "portal")))]
 
 
-@router.get("/anomalies", response_model=AnomalyReport)
+@router.get("/anomalies", response_model=AnomalyReport, dependencies=[Depends(require_feature("ai_insights"))])
 def anomalies(
     db: Db,
     principal: CanAudit,
@@ -39,7 +40,7 @@ def anomalies(
     return insights_service.anomalies(db, principal, days=days, store_id=store_id)
 
 
-@router.get("/pricing", response_model=PricingReport)
+@router.get("/pricing", response_model=PricingReport, dependencies=[Depends(require_feature("ai_insights"))])
 def pricing(
     db: Db,
     principal: CanRead,
@@ -50,7 +51,7 @@ def pricing(
     return insights_service.pricing(db, principal, store_id=store_id, limit=limit)
 
 
-@router.get("/shrink", response_model=ShrinkReport)
+@router.get("/shrink", response_model=ShrinkReport, dependencies=[Depends(require_feature("ai_insights"))])
 def shrink(
     db: Db,
     principal: CanRead,

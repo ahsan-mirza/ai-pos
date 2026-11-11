@@ -8,6 +8,7 @@ import type {
   ImportPreviewRequest,
   ImportUpload,
   MappingTemplate,
+  ProductAttribute,
   MappingTemplateWrite,
   RollbackPreview,
   RollbackResult,
@@ -39,6 +40,9 @@ export const importApi = {
     apiGet<MappingTemplate[]>(`${base}/import/templates${query({ supplier_id: supplierId })}`),
   saveTemplate: (body: MappingTemplateWrite) => apiPost<MappingTemplate>(`${base}/import/templates`, body),
   deleteTemplate: (id: string) => apiDelete(`${base}/import/templates/${id}`),
+  attributes: () => apiGet<ProductAttribute[]>(`${base}/product-attributes`),
+  createAttribute: (body: { name: string; data_type?: string; filterable?: boolean }) =>
+    apiPost<ProductAttribute>(`${base}/product-attributes`, body),
   suppliers: () => apiGet<Supplier[]>(`${base}/suppliers`),
   createSupplier: (body: SupplierCreate) => apiPost<Supplier>(`${base}/suppliers`, body),
 };

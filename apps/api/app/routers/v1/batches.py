@@ -11,6 +11,7 @@ from app.core.deps import Principal, authorize
 from app.core.errors import ApiError
 from app.core.pagination import Offset, set_total
 from app.core.permissions import Permission
+from app.schemas.attributes import AttributeCreate, AttributeOut, AttributeUpdate, attribute_out
 from app.schemas.batches import (
     BatchDetail,
     BatchPage,
@@ -28,7 +29,7 @@ from app.schemas.batches import (
     TemplateWrite,
     UploadOut,
 )
-from app.services import import_batch_service as service
+from app.services import attribute_service, import_batch_service as service
 from app.services.import_parser import MAX_FILE_BYTES
 
 router = APIRouter()
@@ -41,12 +42,40 @@ CanCorrect = Annotated[Principal, Depends(authorize(Permission.INVENTORY_ADJUST_
 # --- Import wizard -------------------------------------------------------------------------------
 
 
+@router.get("/product-attributes", response_model=list[AttributeOut])
+def product_attributes(db: Db, _: CanImport) -> list[AttributeOut]:
+    return [attribute_out(row) for row in attribute_service.list_definitions(db)]
+
+
+@router.post("/product-attributes", response_model=AttributeOut, status_code=201)
+def create_product_attribute(db: Db, _: CanImport, data: AttributeCreate) -> AttributeOut:
+    row = attribute_service.create_definition(
+        db,
+        name=data.name,
+        key=data.key,
+        data_type=data.data_type,
+        unit=data.unit,
+        options=data.options,
+        description=data.description,
+        required=data.required,
+        searchable=data.searchable,
+        filterable=data.filterable,
+    )
+    return attribute_out(row)
+
+
+@router.patch("/product-attributes/{attribute_id}", response_model=AttributeOut)
+def update_product_attribute(db: Db, _: CanImport, attribute_id: uuid.UUID, data: AttributeUpdate) -> AttributeOut:
+    row = attribute_service.update_definition(db, attribute_id, data.model_dump(exclude_unset=True))
+    return attribute_out(row)
+
+
 @router.post("/import/upload", response_model=UploadOut)
-async def upload(principal: CanImport, file: Annotated[UploadFile, File()]) -> UploadOut:
+async def upload(db: Db, principal: CanImport, file: Annotated[UploadFile, File()]) -> UploadOut:
     data = await file.read(MAX_FILE_BYTES + 1)
     if len(data) > MAX_FILE_BYTES:
         raise ApiError(413, "file_too_large", "Purchase files are limited to 10 MB.")
-    return service.upload(principal, file.filename or "purchases", data)
+    return service.upload(principal, file.filename or "purchases", data, db)
 
 
 @router.post("/import/preview", response_model=PreviewOut)

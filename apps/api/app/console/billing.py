@@ -33,6 +33,7 @@ from app.schemas.billing import (
     CheckoutOut,
     CheckoutStatus,
     ConfigChangeOut,
+    CountryPriceOut,
     CycleIn,
     CycleOut,
     FeeIn,
@@ -148,6 +149,12 @@ _FREEMIUM = (
     ("ENTERPRISE", "Enterprise", 1, 0, 0, 13),
 )
 _UAE_PRICES = {"FREE": 0, "GROWTH": 12_900, "PRO_AI": 29_900}
+# First publish for a plan row that does not exist yet. A later console edit is stored on the row and is not
+# rewritten here. Empty means the plan adds no modules of its own. Plugins stay on add-ons, not on these lists.
+_STARTER_PLAN_MODULES: dict[str, list[str]] = {
+    "GROWTH": ["sales_insights"],
+    "PRO_AI": ["sales_insights", "ai_insights", "deep_analytics"],
+}
 
 _ADDONS = (
     (
@@ -270,6 +277,8 @@ _MODULE_DESCRIPTIONS: dict[str, str] = {
     "alterations": "Alteration tickets with measurements, due dates and a ready-for-collection message.",
     "online_store": "Web-store orders (Shopify or any shop) reserve stock and are shipped or collected in store.",
     "deep_analytics": "Sales, margin, inventory, and the reports for this business type.",
+    "ai_insights": "Pricing, shrinkage, and cashier signals that sit above the everyday sales totals.",
+    "sales_insights": "Branch, product, staff, and tender breakdowns beyond the basic sales totals.",
     "axiz_reach": (
         "Marketing campaigns across WhatsApp, SMS, and email. Provider setup and receipts stay in the starter kit."
     ),
@@ -336,7 +345,7 @@ def ensure_freemium_catalog(db: Session) -> bool:
                 code=code,
                 name=name,
                 included_registers=registers,
-                included_modules=[],
+                included_modules=list(_STARTER_PLAN_MODULES.get(code, [])),
                 monthly_fils=monthly,
                 trial_days=trial,
                 sort_order=order,
@@ -583,6 +592,21 @@ def fee_out(row: BillingFee) -> FeeOut:
     return FeeOut(id=row.id, code=row.code, name=row.name, amount_fils=row.amount_fils, active=row.active)
 
 
+def _country_prices(db: Session) -> dict[uuid.UUID, list[CountryPriceOut]]:
+    """Enabled regional prices. A disabled row stays off the public catalog."""
+    grouped: dict[uuid.UUID, list[CountryPriceOut]] = {}
+    rows = db.scalars(
+        select(BillingPlanPrice)
+        .where(BillingPlanPrice.enabled.is_(True))
+        .order_by(BillingPlanPrice.country, BillingPlanPrice.currency)
+    ).all()
+    for row in rows:
+        grouped.setdefault(row.plan_id, []).append(
+            CountryPriceOut(country=row.country, currency=row.currency, monthly_fils=row.monthly_fils)
+        )
+    return grouped
+
+
 def catalog(db: Session) -> CatalogOut:
     ensure_catalog(db)
     ensure_module_addons(db)
@@ -590,16 +614,25 @@ def catalog(db: Session) -> CatalogOut:
 
     fill_listings(db)
     from app.console import hardware
+    from app.console.promotional_trial import PLAN_CODE, eligible_plan_codes, trial_days, trial_enabled
     from app.console.transfers import active_bank_snapshot
+    from app.schemas.billing import PublicTrialOut
 
+    prices = _country_prices(db)
     return CatalogOut(
-        plans=[plan_out(row) for row in _plans(db)],
+        plans=[plan_out(row).model_copy(update={"prices": prices.get(row.id, [])}) for row in _plans(db)],
         cycles=[cycle_out(row) for row in _cycles(db)],
         addons=[addon_out(row) for row in _addons(db)],
         fees=[fee_out(row) for row in _fees(db)],
         hardware=hardware.list_items(db, sellable_only=True),
         transfer_available=active_bank_snapshot(db) is not None,
         current_annual_discount_bps=current_annual_discount(db),
+        promotional_trial=PublicTrialOut(
+            enabled=trial_enabled(db),
+            days=trial_days(db),
+            plan_code=PLAN_CODE,
+            eligible_plans=sorted(eligible_plan_codes(db)),
+        ),
     )
 
 

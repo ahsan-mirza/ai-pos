@@ -71,6 +71,7 @@ import {
 import { DiscountModal } from "./DiscountModal";
 import { GiftCardSellModal } from "./GiftCardSellModal";
 import { CartList } from "./CartList";
+import { CategoryScroller } from "./CategoryScroller";
 import { GrocerySuggestions } from "./GrocerySuggestions";
 import { CheckoutSidebar } from "./CheckoutSidebar";
 import { loadCatalog, localCatalog, mergeCatalog, openingCatalog, store, useCatalogUpdates, type Catalog } from "./catalog";
@@ -156,6 +157,7 @@ const SALE_METHOD_LABELS: Record<PaymentMethod, string> = {
   channel: "Delivery app",
   bnpl: "Pay later",
   gift_card: "Gift card",
+  cod: "Cash on delivery",
 };
 
 interface CreditApprovalState {
@@ -256,7 +258,7 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
   const [rentOnly, setRentOnly] = useState<Set<string>>(new Set());
   const [rentChoice, setRentChoice] = useState<ProductUpsert | null>(null);
   const [rentFor, setRentFor] = useState<ProductUpsert | null>(null);
-  const [notice, setNotice] = useState("Search the catalog.");
+  const [notice, setNotice] = useState("");
   const [query, setQuery] = useState("");
   const [pendingSerial, setPendingSerial] = useState<ProductUpsert | null>(null);
   const [openPriceFor, setOpenPriceFor] = useState<ProductUpsert | null>(null);
@@ -307,6 +309,7 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
   const food = capabilities.foodAndBeverage;
   const kitchenOn = capabilities.enabled.has(Capability.Kds);
   const [orderMode, setOrderMode] = useState<OrderMode>("dine_in");
+  const [deliveryPay, setDeliveryPay] = useState<null | "now" | "credit" | "cod">(null);
   const [tableSession, setTableSession] = useState<TableSession | null>(null);
   const [floorAreas, setFloorAreas] = useState<DiningArea[]>([]);
   const sessionRef = useRef<TableSession | null>(null);
@@ -380,11 +383,22 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
 
   useEffect(() => onDisplayReady(republishDisplay), []);
   useShellPage(charging, setNotice);
-  const { navigate } = useShell();
+  const { navigate, setCatalogSummary } = useShell();
   const needsCredit = (plan.overLimitCents > 0 || plan.holdReason !== null) && creditApproval === null;
   const belowFloor = useMemo(() => linesBelowFloor(cart.lines, floors), [cart.lines, floors]);
+  const deliveryChoice = food && orderMode === "delivery" && payment.choice !== "channel";
+  useEffect(() => {
+    if (!deliveryChoice || deliveryPay === null || payment.choice === "channel") return;
+    const next = deliveryPay === "cod" ? "cod" : deliveryPay === "credit" ? "on_account" : payment.choice === "cod" || payment.choice === "on_account" ? "cash" : payment.choice;
+    if (next !== payment.choice) setPayment((current) => ({ ...current, choice: next }));
+  }, [deliveryChoice, deliveryPay, payment.choice]);
   const chargeBlocked =
-    cart.lines.length === 0 || charging || plan.blocker !== null || needsCredit || belowFloor.length > 0;
+    cart.lines.length === 0 ||
+    charging ||
+    plan.blocker !== null ||
+    needsCredit ||
+    belowFloor.length > 0 ||
+    (deliveryChoice && deliveryPay === null);
   const categories = useMemo(
     () =>
       [
@@ -404,6 +418,18 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
     [hits, category],
   );
   const gridEntries = useMemo(() => groupHits(visibleHits, catalog.products), [visibleHits, catalog.products]);
+  const catalogSummary = useMemo(() => {
+    if (searching) return "Searching…";
+    if (syncingCatalog && catalog.products.length > 0) return "Syncing catalogue…";
+    const count = `${visibleHits.length} ${visibleHits.length === 1 ? "product" : "products"}`;
+    const match = debouncedQuery.trim() !== "" ? ` matching "${debouncedQuery.trim()}"` : "";
+    const scope = category ? ` in ${category}` : "";
+    return `${count}${match}${scope}`;
+  }, [searching, syncingCatalog, catalog.products.length, visibleHits.length, debouncedQuery, category]);
+  useEffect(() => {
+    setCatalogSummary(catalogSummary);
+  }, [catalogSummary, setCatalogSummary]);
+  useEffect(() => () => setCatalogSummary(null), [setCatalogSummary]);
   const [picker, setPicker] = useState<{ group: ModelGroup; title?: string } | null>(null);
   const [exchange, setExchange] = useState<ExchangeIntent | null>(() => takeExchange());
 
@@ -585,16 +611,6 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
         );
       });
   }, [resetSale, session.user.id, showCancelled]);
-
-  useEffect(() => {
-    setNotice((current) =>
-      current === "Search the catalog."
-        ? food
-          ? "Search the menu, or pick a category."
-          : searchPlaceholder(capabilities.profile)
-        : current,
-    );
-  }, [food, capabilities.profile]);
 
   useEffect(() => {
     if (!food) return;
@@ -983,7 +999,9 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
         ? `Cash sale of ${formatMoney(total, currency)} recorded. Change due ${formatMoney(plan.changeCents, currency)}.`
         : payment.choice === "on_account"
           ? `Sale of ${formatMoney(total, currency)} recorded: ${formatMoney(plan.paidCents, currency)} paid, ${formatMoney(plan.onAccountCents, currency)} on account.`
-          : `${SALE_METHOD_LABELS[plan.paymentMethod]} sale of ${formatMoney(total, currency)} recorded.`;
+          : payment.choice === "cod"
+            ? `Cash on delivery of ${formatMoney(total, currency)} recorded. The drawer is unchanged until the rider's cash is accepted.`
+            : `${SALE_METHOD_LABELS[plan.paymentMethod]} sale of ${formatMoney(total, currency)} recorded.`;
     const saleId = batch.events.find((event) => event.entity_type === "sale")?.payload.client_sale_id;
     const numbered = invoiceOf(batch);
     const invoice = numbered ? ` Invoice ${numbered}.` : typeof saleId === "string" ? ` Invoice ${invoiceNumber(saleId)}.` : "";
@@ -1055,7 +1073,6 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
 
   const itemCount = totals.pieces;
   const itemLabel = `${itemCount} item${itemCount === 1 ? "" : "s"}`;
-  const syncLabel = desktop ? `${report.pending} unsynced` : online ? t("Live") : t("Offline");
   const sync: SyncState = desktop
     ? {
         tone: report.pending > 0 ? "pending" : "synced",
@@ -1203,21 +1220,7 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
             open={cartOpen}
             onDismiss={() => setCartOpen(false)}
             header={
-              <DrawerHeader
-                title="Current sale"
-                count={itemLabel}
-                badge={
-                  <span
-                    className={`rounded-full px-2.5 py-1 text-[11px] font-semibold tabular-nums ring-1 ${
-                      online
-                        ? "bg-emerald-500/10 text-emerald-700 ring-emerald-500/20 dark:text-emerald-300"
-                        : "bg-amber-500/10 text-amber-700 ring-amber-500/25 dark:text-amber-300"
-                    }`}
-                  >
-                    {syncLabel}
-                  </span>
-                }
-              >
+              <DrawerHeader title="Current sale" count={itemLabel} className="h-12 px-3">
                 <button
                   ref={closeCartRef}
                   type="button"
@@ -1364,6 +1367,29 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
                   />
                 </div>
               ) : null}
+              {deliveryChoice ? (
+                <div className="mb-2 grid grid-cols-3 gap-1" role="group" aria-label="Delivery payment">
+                  {(
+                    [
+                      ["now", "Paid now"],
+                      ["credit", "Credit"],
+                      ["cod", "COD"],
+                    ] as const
+                  ).map(([value, label]) => (
+                    <button
+                      key={value}
+                      type="button"
+                      aria-pressed={deliveryPay === value}
+                      disabled={charging || (value === "credit" && !canSellOnAccount)}
+                      title={value === "credit" && !canSellOnAccount ? "Customer credit is not enabled for this register" : undefined}
+                      onClick={() => setDeliveryPay(value)}
+                      className={`h-10 rounded-xl text-xs font-semibold ${deliveryPay === value ? "bg-primary-500 text-white" : "bg-zinc-100 text-zinc-700 dark:bg-white/10 dark:text-zinc-200"}`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
               <TenderPanel
                 coupon={
                   couponsOffered
@@ -1472,7 +1498,7 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
         }
       >
         <div className="flex h-full min-h-0 min-w-0 flex-col">
-          <div className="shrink-0 space-y-3 px-5 pt-5">
+          <div className="shrink-0 space-y-3">
           {cart.mode === "WHOLESALE" ? (
             <p className="rounded-xl border border-primary-500/20 bg-primary-500/10 px-4 py-3 text-sm text-zinc-700 dark:text-zinc-200">
               Wholesale pricing at <span className="font-semibold text-zinc-950 dark:text-white">{PRICE_TIER_LABELS[tier]}</span>
@@ -1488,6 +1514,8 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
               areas={floorAreas}
               storeId={store.id}
               pendingCount={cart.lines.length}
+              cashier={session}
+              onCustomer={(customer) => dispatch({ type: "attach_customer", customer })}
               onCancelOrder={() => setCancelOpen(true)}
               onMode={setOrderMode}
               onSeat={(tableNumber, guestCount, tableId, orderId) => {
@@ -1665,9 +1693,11 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
               actionLabel={food ? "Search menu" : "Search Catalog"}
               shortcut={food ? null : "F2"}
             />
-            <p className="mt-2.5 min-h-5 text-sm text-zinc-600 dark:text-zinc-400" role="status">
-              {notice}
-            </p>
+            {notice ? (
+              <p className="mt-2.5 text-sm text-zinc-600 dark:text-zinc-400" role="status">
+                {notice}
+              </p>
+            ) : null}
           </div>
 
           {(() => {
@@ -1681,39 +1711,14 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
             const chips = preferred.length > 0 ? [{ value: "", label: food ? "All dishes" : "All products" }, ...preferred, ...extra] : categories.length > 0 ? [{ value: "", label: "All products" }, ...extra] : [];
             if (chips.length === 0) return null;
             return (
-            <div className="no-scrollbar -mx-5 flex gap-2 overflow-x-auto px-5" role="group" aria-label="Categories">
-              {chips.map((chip) => {
-                const value = chip.value === "" ? null : chip.value;
-                const active = category === value;
-                return (
-                  <button
-                    key={chip.label}
-                    type="button"
-                    aria-pressed={active}
-                    onClick={() => setCategory(value)}
-                    className={`h-12 shrink-0 rounded-2xl px-4 text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/50 ${
-                      active
-                        ? "bg-primary-500 text-white shadow-sm shadow-primary-500/25"
-                        : "border border-zinc-200 bg-white text-zinc-600 hover:border-zinc-300 hover:text-zinc-900 dark:border-zinc-800 dark:bg-zinc-900/60 dark:text-zinc-300 dark:hover:border-zinc-700 dark:hover:text-white"
-                    }`}
-                  >
-                    {chip.label}
-                  </button>
-                );
-              })}
-            </div>
+              <CategoryScroller
+                chips={chips.map((chip) => ({ value: chip.value === "" ? null : chip.value, label: chip.label }))}
+                selected={category}
+                onSelect={setCategory}
+              />
             );
           })()}
 
-          <p className={ui.label}>
-            {searching
-              ? "Searching…"
-              : syncingCatalog && catalog.products.length > 0
-                ? "Syncing catalogue…"
-              : `${visibleHits.length} ${visibleHits.length === 1 ? "product" : "products"}${
-                  debouncedQuery.trim() !== "" ? ` matching "${debouncedQuery.trim()}"` : ""
-                }${category ? ` in ${category}` : ""}`}
-          </p>
           {catalog.message && catalog.products.length > 0 ? (
             <p className="rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-200" role="status">
               {catalog.message}{" "}

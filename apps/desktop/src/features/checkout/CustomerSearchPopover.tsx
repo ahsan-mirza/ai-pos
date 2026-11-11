@@ -71,9 +71,9 @@ export function CustomerSearchPopover({ disabled = false, onSelect, onQuickAdd }
         {foodAndBeverage ? "Find a guest" : "Attach B2B customer or walk-in"}
       </label>
       <Search
-        size={16}
+        size={15}
         aria-hidden="true"
-        className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-zinc-500 dark:text-white/50"
+        className="pointer-events-none absolute start-3 top-1/2 -translate-y-1/2 text-zinc-500 dark:text-white/50"
       />
       <input
         id="customer-search"
@@ -106,16 +106,16 @@ export function CustomerSearchPopover({ disabled = false, onSelect, onQuickAdd }
             setOpen(false);
           }
         }}
-        className="h-12 w-full rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900/60 pl-10 pr-4 text-sm tabular-nums text-zinc-900 dark:text-white placeholder:text-zinc-500 dark:placeholder:text-white/40 transition-colors focus:border-primary focus:outline-none focus:ring-4 focus:ring-primary/20 disabled:opacity-40"
+        className="h-10 w-full rounded-full border border-zinc-200 bg-zinc-50 ps-9 pe-3 text-sm text-zinc-900 placeholder:text-zinc-500 focus:border-primary focus:bg-white focus:outline-none focus:ring-2 focus:ring-primary/30 disabled:opacity-40 dark:border-zinc-700 dark:bg-zinc-800/70 dark:text-white dark:placeholder:text-white/40 dark:focus:bg-zinc-900"
       />
       {open ? (
         <ul
           id={listId}
           role="listbox"
-          className="absolute left-0 right-0 top-full z-20 mt-1.5 max-h-72 overflow-y-auto rounded-2xl bg-white p-1.5 text-charcoal shadow-2xl"
+          className="absolute inset-x-0 top-full z-30 mt-1.5 max-h-72 overflow-y-auto rounded-2xl bg-white p-1.5 text-charcoal shadow-2xl dark:bg-zinc-900 dark:text-zinc-100"
         >
           {results.length === 0 ? (
-            <li className="px-3 py-2.5 text-sm text-charcoal/60">
+            <li className="px-3 py-2.5 text-sm text-charcoal/60 dark:text-zinc-400">
               {trimmed === "" ? "No customers cached on this register yet." : `No customer matches "${trimmed}".`}
             </li>
           ) : null}
@@ -137,11 +137,11 @@ export function CustomerSearchPopover({ disabled = false, onSelect, onQuickAdd }
                 type="button"
                 onMouseEnter={() => setActive(index)}
                 onClick={() => choose(row)}
-                className={`flex w-full items-center justify-between gap-3 rounded-xl px-3 py-2 text-left ${index === active ? "bg-surface" : ""}`}
+                className={`flex w-full items-center justify-between gap-3 rounded-xl px-3 py-2 text-left ${index === active ? "bg-surface dark:bg-white/10" : ""}`}
               >
                 <span className="min-w-0">
                   <span className="block truncate text-sm font-semibold">{row.company_name ?? row.name}</span>
-                  <span className="block truncate text-xs tabular-nums text-charcoal/50">
+                  <span className="block truncate text-xs tabular-nums text-charcoal/50 dark:text-zinc-400">
                     {[row.code === "NEW" ? "Not synced yet" : row.code, row.phone].filter(Boolean).join(" · ")}
                   </span>
                 </span>

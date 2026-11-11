@@ -3,6 +3,7 @@ import { DateInput } from "@ai-pos/ui";
 import {
   ArrowLeftRight,
   Banknote,
+  Bike,
   BookUser,
   CalendarClock,
   CreditCard,
@@ -58,6 +59,7 @@ const tenderIcons: Record<TenderChoice, LucideIcon> = {
   on_account: BookUser,
   split: Users,
   channel: Truck,
+  cod: Bike,
 };
 
 const shortLabels: Record<TenderChoice, string> = {
@@ -70,6 +72,7 @@ const shortLabels: Record<TenderChoice, string> = {
   on_account: "Account",
   split: "Split",
   channel: "App",
+  cod: "COD",
 };
 
 /** Guest-by-guest payment: equal or custom shares, each collected by cash or card and ticked off as paid. */
@@ -272,7 +275,7 @@ export function TenderPanel({
   );
   const foreignCash = enabled.has(Capability.MultiCurrency) ? currencies : [];
   const loyaltyOn = enabled.has(Capability.Loyalty);
-  const hiddenChoice = !options.some((option) => option.value === draft.choice);
+  const hiddenChoice = draft.choice !== "cod" && !options.some((option) => option.value === draft.choice);
   const staleForeign = draft.cashCurrency != null && foreignCash.length === 0;
   useEffect(() => {
     if (hiddenChoice || staleForeign) onChange({ ...draft, choice: hiddenChoice ? "cash" : draft.choice, cashCurrency: null });
@@ -299,8 +302,13 @@ export function TenderPanel({
 
   return (
     <div className="space-y-2">
+      {draft.choice === "cod" ? (
+        <p className="rounded-2xl bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:bg-amber-500/10 dark:text-amber-100">
+          Cash on delivery. The rider collects {formatMoney(dueCents, currency)}. Nothing is added to the drawer until the cashier accepts the cash.
+        </p>
+      ) : null}
       <div
-        className="no-scrollbar flex gap-1 overflow-x-auto rounded-2xl bg-zinc-100 p-1 dark:bg-black/25"
+        className={`no-scrollbar flex gap-1 overflow-x-auto rounded-2xl bg-zinc-100 p-1 dark:bg-black/25 ${draft.choice === "cod" ? "hidden" : ""}`}
         role="group"
         aria-label="Payment method"
       >

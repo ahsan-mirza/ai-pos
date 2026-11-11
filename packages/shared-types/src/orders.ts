@@ -100,6 +100,19 @@ export interface Order {
   external_ref?: string | null;
   channel_status?: string | null;
   prep_minutes?: number | null;
+  /** PAID_NOW, CREDIT, or COD. Absent on dine-in and takeaway. */
+  payment_arrangement?: "PAID_NOW" | "CREDIT" | "COD" | null;
+  /** Independent of kitchen progress and of whether the tab is paid. */
+  delivery_status?: "PENDING" | "ASSIGNED" | "OUT_FOR_DELIVERY" | "DELIVERED" | "FAILED" | "RETURNED" | "CANCELLED" | null;
+  rider_id?: string | null;
+  rider_name?: string | null;
+  delivery_phone?: string | null;
+  delivery_address?: string | null;
+  cod_expected_cents?: number;
+  cod_collected_cents?: number;
+  cod_handed_cents?: number;
+  /** Financial state. Kitchen and delivery status do not change this. */
+  payment_state?: string | null;
   items: OrderItem[];
   open_cents: number;
 }

@@ -61,6 +61,8 @@ def list_products(
     season: Annotated[str | None, Query(max_length=16)] = None,
     collection: Annotated[str | None, Query(max_length=80)] = None,
     gender: Annotated[str | None, Query(max_length=12)] = None,
+    attribute_key: Annotated[str | None, Query(max_length=32)] = None,
+    attribute_value: Annotated[str | None, Query(max_length=200)] = None,
     after: Annotated[uuid.UUID | None, Query(description="Last product id of the previous page.")] = None,
     limit: Annotated[int, Query(ge=1, le=1000)] = 50,
 ) -> list[ProductOut]:
@@ -76,6 +78,8 @@ def list_products(
         season=season,
         collection=collection,
         gender=gender,
+        attribute_key=attribute_key,
+        attribute_value=attribute_value,
     )
 
 

@@ -18,7 +18,17 @@ from tests.test_returns import (
     seed_catalog,
 )
 
-from app.models import AuditLog, BatchAllocation, BatchItem, InventoryLevel, PurchaseBatch, SaleItem, SerialNumber
+from app.models import (
+    AuditLog,
+    BatchAllocation,
+    BatchItem,
+    InventoryLevel,
+    Product,
+    ProductAttributeValue,
+    PurchaseBatch,
+    SaleItem,
+    SerialNumber,
+)
 from app.services import barcodes, import_batch_service, import_parser
 
 MAPPING = {"name": "Product Name", "code": "SKU", "quantity": "Qty", "cost": "Unit Cost", "price": "Retail Price"}
@@ -351,6 +361,100 @@ def test_cashier_cannot_import(client) -> None:
     seed_catalog(client)
     response = client.post("/api/v1/inventory/import/upload", files={"file": ("x.csv", b"a,b\n1,2\n", "text/csv")})
     assert response.status_code == 401
+
+
+def test_attribute_mapping_is_optional_and_typed(client, session: Session) -> None:
+    seed_catalog(client)
+    token = admin_token(client)
+    plain = import_csv(
+        client,
+        token,
+        "Product Name,SKU,Qty,Unit Cost,Retail Price\nPlain Cable,PLAIN-1,1,5,15\n",
+    )
+    assert plain["line_count"] == 1
+
+    body = (
+        "Product Name,SKU,Qty,Unit Cost,Retail Price,CPU,Memory,SSD\n"
+        "ThinkPad,LAP-1,1,1000,1500,Intel Core i7,16 GB,512GB SSD\n"
+        "Bad RAM,LAP-2,1,1000,1500,Intel Core i5,lots,256GB SSD\n"
+    )
+    uploaded = upload(client, token, body)
+    assert uploaded["suggested_attributes"]["processor"] == "CPU"
+    assert uploaded["suggested_attributes"]["ram"] == "Memory"
+    assert uploaded["suggested_attributes"]["storage"] == "SSD"
+    request = {
+        "upload_id": uploaded["upload_id"],
+        "store_id": STORE_ID,
+        "mapping": MAPPING,
+        "options": {"attribute_mapping": uploaded["suggested_attributes"]},
+    }
+    preview = client.post("/api/v1/inventory/import/preview", headers=bearer(token), json=request)
+    assert preview.status_code == 200, preview.text
+    rows = preview.json()["rows"]
+    assert rows[0]["status"] == "NEW"
+    assert rows[0]["attributes"]["processor"] == "Intel Core i7"
+    assert rows[1]["status"] == "ERROR"
+    assert any("RAM" in error for error in rows[1]["errors"])
+    kept = [
+        {key: row[key] for key in ("row_number", "include", "name", "code", "quantity", "cost_cents", "price_cents", "model_number", "category", "sub_category", "serials", "expiry_date", "attributes")}
+        for row in rows
+        if row["status"] != "ERROR"
+    ]
+    committed = client.post(
+        "/api/v1/inventory/import/commit", headers=bearer(token), json={**request, "rows": kept}
+    )
+    assert committed.status_code == 201, committed.text
+    session.expire_all()
+    product = session.scalar(select(Product).where(Product.sku == "LAP-1"))
+    assert product is not None
+    assert product.specifications["processor"] == "Intel Core i7"
+    assert product.specifications["ram"] == "16 GB"
+    assert product.specifications["storage"] == "512GB SSD"
+    assert session.scalar(select(ProductAttributeValue).where(ProductAttributeValue.product_id == product.id)) is not None
+    listed = client.get(
+        "/api/v1/products",
+        headers=bearer(token),
+        params={"attribute_key": "processor", "attribute_value": "Intel Core i7", "limit": 20},
+    )
+    assert listed.status_code == 200, listed.text
+    assert [row["sku"] for row in listed.json()] == ["LAP-1"]
+
+    tracked_upload = upload(
+        client,
+        token,
+        "Product Name,SKU,Qty,Unit Cost,Retail Price,IMEI\nPhone,PH-1,1,10,20,356938035643809\n",
+    )
+    tracked = client.post(
+        "/api/v1/inventory/import/preview",
+        headers=bearer(token),
+        json={
+            "upload_id": tracked_upload["upload_id"],
+            "store_id": STORE_ID,
+            "mapping": MAPPING,
+            "options": {"attribute_mapping": {"processor": "IMEI"}},
+        },
+    )
+    assert tracked.status_code == 422
+    assert tracked.json()["error"]["code"] == "tracking_field"
+
+
+def test_attribute_templates_follow_the_business_type() -> None:
+    from app.services.attribute_catalog import for_profile
+
+    electronics = {row.key for row in for_profile("electronics_wholesale")}
+    fashion = {row.key for row in for_profile("retail_fashion")}
+    grocery = {row.key for row in for_profile("grocery")}
+    cafe = {row.key for row in for_profile("cafe")}
+    retail = {row.key for row in for_profile("wholesale_retail")}
+    assert {"processor", "ram", "storage", "gpu"}.issubset(electronics)
+    assert "processor" not in fashion
+    assert {"size", "color", "material"}.issubset(fashion)
+    assert {"weight", "volume", "flavor"}.issubset(grocery)
+    assert "expiry" not in grocery
+    assert {"serving_size", "dietary", "spice_level"}.issubset(cafe)
+    assert "ram" not in cafe
+    assert "brand" in retail
+    assert "processor" not in retail
 
 
 def test_value_parsing_rules() -> None:

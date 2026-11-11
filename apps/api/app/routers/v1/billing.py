@@ -24,6 +24,7 @@ from app.schemas.billing import (
     CheckoutIn,
     CheckoutOut,
     CheckoutStatus,
+    FeatureAccessList,
     MarketplaceOut,
     PromotionalTrialOut,
     QuoteIn,
@@ -67,14 +68,15 @@ def _stores(settings: Settings, tenant_id: uuid.UUID) -> dict[uuid.UUID, str]:
 
 
 def _active_catalog(found: CatalogOut) -> CatalogOut:
+    """Published rows only. Operator price notes stay off the public payload."""
     return found.model_copy(
         update={
             "plans": [row for row in found.plans if row.active],
             "cycles": [row for row in found.cycles if row.active],
             "addons": [
-                row
+                row.model_copy(update={"price_history": []})
                 for row in found.addons
-                if row.active and (not row.module_keys or row.monthly_fils > 0)
+                if row.active and row.listing.publication == "published"
             ],
             "fees": [row for row in found.fees if row.active],
         }
@@ -82,8 +84,9 @@ def _active_catalog(found: CatalogOut) -> CatalogOut:
 
 
 @router.get("/public-catalog", response_model=CatalogOut)
-def public_catalog(settings: Config) -> CatalogOut:
+def public_catalog(response: Response, settings: Config) -> CatalogOut:
     """Active packages, cycles, add-ons, and fees for the marketing site. No store session and no tenant."""
+    response.headers["Cache-Control"] = "public, max-age=60"
     if not settings.tenancy_enabled:
         raise ApiError(
             404, "billing_unavailable", "Subscriptions are available when the server hosts more than one store."
@@ -197,6 +200,48 @@ def simulate(
     tenant_id = _tenant_id(settings)
     with registry.control_session(settings) as db:
         return billing.simulate_checkout(db, settings, tenant_id, checkout_id)
+
+
+@router.get("/features", response_model=FeatureAccessList)
+def feature_access(
+    principal: Annotated[Principal, Depends(get_principal)],
+    settings: Config,
+) -> FeatureAccessList:
+    """Published plan and add-on access for this store. The portal modal reads this and does not decide it."""
+    del principal
+    from app.console.feature_access import explain
+    from app.services.settings_service import (
+        effective_promotional_keys,
+        effective_purchased_keys,
+        load_settings,
+        managed_of,
+    )
+
+    tenant_id = _tenant_id(settings)
+    with registry.control_session(settings) as db:
+        tenant = db.get(Tenant, tenant_id)
+        if tenant is None:
+            raise ApiError(404, "tenant_not_found", "This store is not registered.")
+        from app.console.entitlements import tenant_session
+
+        with tenant_session(tenant, settings) as store:
+            row = load_settings(store)
+            profile = row.business_profile
+            purchased = effective_purchased_keys(row)
+            promotional = effective_promotional_keys(row)
+            managed = managed_of(row)
+            country = (row.country or "").strip().upper() or None
+        return FeatureAccessList(
+            features=explain(
+                db,
+                tenant,
+                profile=profile,
+                purchased=purchased,
+                promotional=promotional,
+                managed=managed,
+                country=country,
+            )
+        )
 
 
 @router.get("/access", response_model=AccessOut)

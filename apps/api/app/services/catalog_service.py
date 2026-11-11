@@ -53,6 +53,8 @@ def list_products(
     season: str | None = None,
     collection: str | None = None,
     gender: str | None = None,
+    attribute_key: str | None = None,
+    attribute_value: str | None = None,
     after: uuid.UUID | None = None,
 ) -> list[ProductOut]:
     """Global catalog with stock at `store_id`, or consolidated across active branches when it is None. Pages in
@@ -78,6 +80,8 @@ def list_products(
             season=season,
             collection=collection,
             gender=gender,
+            attribute_key=attribute_key,
+            attribute_value=attribute_value,
             after=after,
         )
     finally:
@@ -102,6 +106,8 @@ def _list_products(
     season: str | None = None,
     collection: str | None = None,
     gender: str | None = None,
+    attribute_key: str | None = None,
+    attribute_value: str | None = None,
     after: uuid.UUID | None = None,
 ) -> list[ProductOut]:
     statement = select(Product).order_by(Product.name, Product.id).limit(limit)
@@ -120,6 +126,10 @@ def _list_products(
         statement = statement.where(Product.brand_id == brand_id)
     if product_model_id is not None:
         statement = statement.where(Product.product_model_id == product_model_id)
+    if attribute_key and attribute_value:
+        from app.services.attribute_service import matches
+
+        statement = statement.where(matches(db, attribute_key, attribute_value))
     statement = fashion_attributes.filter_products(statement, season=season, collection=collection, gender=gender)
     return products_out(db, list(db.scalars(statement).unique().all()), store_id)
 

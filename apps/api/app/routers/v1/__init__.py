@@ -2,6 +2,7 @@ import logging
 
 from fastapi import APIRouter, Depends
 
+from app.console.feature_access import require_feature
 from app.core.capabilities import Capability, require_capability
 from app.routers.v1.accounting import router as accounting_router
 from app.routers.v1.addon_access import router as addon_access_router
@@ -142,7 +143,12 @@ api_router.include_router(
     quotes_router, prefix="/quotes", tags=["quotes"], dependencies=module(Capability.QUOTES_LAYAWAY)
 )
 api_router.include_router(sales_router, prefix="/sales", tags=["sales"])
-api_router.include_router(sales_insights_router, prefix="/sales-insights", tags=["sales insights"])
+api_router.include_router(
+    sales_insights_router,
+    prefix="/sales-insights",
+    tags=["sales insights"],
+    dependencies=[Depends(require_feature("sales_insights"))],
+)
 api_router.include_router(
     sales_orders_router,
     prefix="/sales-orders",
@@ -171,7 +177,7 @@ api_router.include_router(
     deep_analytics_router,
     prefix="/deep-analytics",
     tags=["deep analytics"],
-    dependencies=module(Capability.DEEP_ANALYTICS),
+    dependencies=[Depends(require_feature("deep_analytics")), *module(Capability.DEEP_ANALYTICS)],
 )
 api_router.include_router(sync_router, prefix="/sync", tags=["sync"])
 api_router.include_router(settings_router, prefix="/settings", tags=["settings"])

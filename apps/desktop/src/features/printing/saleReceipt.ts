@@ -1,6 +1,6 @@
 import seed from "@ai-pos/catalog/seed.json";
 import { asGiftReceipt, slipDefault, slipLanguage, receiptTitle, type ReceiptDoc, type ReceiptIdentity } from "@ai-pos/receipt";
-import { zatcaQr, type Receipt, type SaleTender } from "@ai-pos/shared-types";
+import { formatMoney, zatcaQr, type Receipt, type SaleTender } from "@ai-pos/shared-types";
 import { env } from "../../config/env";
 import { terminal } from "../../config/terminal";
 import type { CartLine, CartTotals } from "../checkout/cart";
@@ -77,6 +77,13 @@ export function saleReceipt(input: SaleReceiptInput): ReceiptDoc {
     amountCents: tender.method === "cash" && input.changeCents ? tender.amount_cents + input.changeCents : tender.amount_cents,
   }));
   if (input.onAccountCents > 0) tenders.push({ label: "On account", amountCents: input.onAccountCents });
+  const codTender = input.tenders.find((tender) => tender.method === "cod");
+  const credit = input.onAccountCents > 0;
+  const paymentNote = codTender
+    ? `Cash on Delivery. Collect ${formatMoney(codTender.amount_cents, businessCurrency())}. Payment not yet received by the store.`
+    : credit
+      ? "On customer credit. Amount due on the account. This receipt is not paid."
+      : "";
   return {
     ...identity,
     ...title,
@@ -101,10 +108,9 @@ export function saleReceipt(input: SaleReceiptInput): ReceiptDoc {
     changeCents: input.changeCents,
     currency: businessCurrency(),
     language,
-    footer:
-      (language === "ar" ? identity.branding?.footer_text_ar : identity.branding?.footer_text)?.trim()
-        ? ""
-        : slipDefault("thankYou", language),
+    footer: [paymentNote, (language === "ar" ? identity.branding?.footer_text_ar : identity.branding?.footer_text)?.trim() ? "" : slipDefault("thankYou", language)]
+      .filter(Boolean)
+      .join(" "),
     qr: receiptQr(identity, issuedAt, input.totals.total, input.totals.tax),
   };
 }

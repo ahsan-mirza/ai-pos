@@ -85,6 +85,44 @@ class OrderMove(ApiModel):
     table_id: UUID | None
 
 
+class DeliveryAssign(ApiModel):
+    revision: int
+    user_id: UUID | None = None
+    rider_id: UUID
+    phone: str | None = Field(default=None, max_length=40)
+    address: str | None = Field(default=None, max_length=255)
+
+
+class DeliveryProgress(ApiModel):
+    revision: int
+    user_id: UUID | None = None
+    collected_cents: int | None = Field(default=None, ge=0)
+
+
+class CodCollection(ApiModel):
+    revision: int
+    user_id: UUID | None = None
+    collected_cents: int = Field(ge=0)
+
+
+class CodHandoverIn(ApiModel):
+    revision: int
+    user_id: UUID | None = None
+    shift_id: UUID
+    received_cents: int = Field(ge=1)
+    idempotency_key: str = Field(min_length=8, max_length=80)
+    note: str = Field(default="", max_length=255)
+    # Required when received_cents is less than the amount the order still owes.
+    approved_by_id: UUID | None = None
+
+
+class DeliveryOutcome(ApiModel):
+    revision: int
+    user_id: UUID | None = None
+    status: Literal["FAILED", "RETURNED"]
+    reason: str = Field(min_length=3, max_length=160)
+
+
 class OrderMerge(ApiModel):
     revision: int
     user_id: UUID | None = None
@@ -135,6 +173,18 @@ class OrderOut(ApiModel):
     external_ref: str | None = None
     channel_status: str | None = None
     prep_minutes: int | None = None
+    payment_arrangement: Literal["PAID_NOW", "CREDIT", "COD"] | None = None
+    delivery_status: Literal[
+        "PENDING", "ASSIGNED", "OUT_FOR_DELIVERY", "DELIVERED", "FAILED", "RETURNED", "CANCELLED"
+    ] | None = None
+    rider_id: UUID | None = None
+    rider_name: str | None = None
+    delivery_phone: str | None = None
+    delivery_address: str | None = None
+    cod_expected_cents: int = 0
+    cod_collected_cents: int = 0
+    cod_handed_cents: int = 0
+    payment_state: str | None = None
     items: list[OrderItemOut]
     # Unpaid, unvoided lines at their ordered prices (before tax and service charge).
     open_cents: int

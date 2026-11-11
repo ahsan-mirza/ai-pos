@@ -104,7 +104,7 @@ def _upload_meta(upload_id: str) -> dict:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-def upload(principal: Principal, file_name: str, data: bytes) -> UploadOut:
+def upload(principal: Principal, file_name: str, data: bytes, db: Session | None = None) -> UploadOut:
     _actor(principal)
     name = Path(file_name or "purchases").name[:255] or "purchases"
     parsed = import_parser.parse(name, data)
@@ -122,6 +122,15 @@ def upload(principal: Principal, file_name: str, data: bytes) -> UploadOut:
         "uploaded_at": datetime.now(UTC).isoformat(),
     }
     (folder / f"{upload_id}.json").write_text(json.dumps(meta), encoding="utf-8")
+    suggested = import_parser.suggest_mapping(parsed.headers)
+    suggested_attributes: dict[str, str] = {}
+    if db is not None:
+        from app.services import attribute_service
+        from app.services.attribute_catalog import suggest as suggest_attributes
+
+        definitions = attribute_service.ensure(db)
+        suggested_attributes = suggest_attributes(parsed.headers, definitions, set(suggested.values()))
+        db.commit()
     return UploadOut(
         upload_id=upload_id,
         file_name=name,
@@ -129,7 +138,8 @@ def upload(principal: Principal, file_name: str, data: bytes) -> UploadOut:
         headers=parsed.headers,
         sample_rows=parsed.rows[:8],
         total_rows=len(parsed.rows),
-        suggested_mapping=import_parser.suggest_mapping(parsed.headers),
+        suggested_mapping=suggested,
+        suggested_attributes=suggested_attributes,
         warnings=parsed.warnings,
     )
 
@@ -147,9 +157,14 @@ def _check_mapping(mapping: dict[str, str], headers: list[str], options: ImportO
         raise ApiError(422, "mapping_unknown_column", f"Column not found in the file: {', '.join(unknown)}.")
 
 
-def _map_rows(meta: dict, mapping: dict[str, str]) -> tuple[list[ImportRow], dict[int, list[str]]]:
+def _map_rows(
+    meta: dict, mapping: dict[str, str], attribute_mapping: dict[str, str] | None = None
+) -> tuple[list[ImportRow], dict[int, list[str]]]:
     headers: list[str] = meta["headers"]
     index = {name: headers.index(header) for name, header in mapping.items() if header in headers}
+    attributes_index = {
+        key: headers.index(header) for key, header in (attribute_mapping or {}).items() if header in headers
+    }
     rows: list[ImportRow] = []
     problems: dict[int, list[str]] = defaultdict(list)
     for offset, raw in enumerate(meta["rows"]):
@@ -184,6 +199,10 @@ def _map_rows(meta: dict, mapping: dict[str, str]) -> tuple[list[ImportRow], dic
                 sub_category=value("sub_category")[:80],
                 serials=serials,
                 expiry_date=parsed("expiry_date", import_parser.parse_date, "Expiry date"),
+                attributes={
+                    key: raw[position].strip() if position < len(raw) else ""
+                    for key, position in attributes_index.items()
+                },
             )
         )
     return rows, problems
@@ -241,6 +260,7 @@ def _evaluate(
     rows: list[ImportRow],
     options: ImportOptions,
     problems: dict[int, list[str]],
+    definitions: dict | None = None,
 ) -> list[PreviewRow]:
     codes = {row.code.strip().lower() for row in rows if row.code.strip()}
     products = _products_by_code(db, codes)
@@ -300,6 +320,10 @@ def _evaluate(
             warnings.append("Selling price is below the purchase cost.")
         if product is not None and row.name.strip() and row.name.strip().lower() != product.name.lower():
             warnings.append(f"Matched existing product “{product.name}” by its code.")
+        if row.attributes and definitions:
+            from app.services.attribute_service import row_issues
+
+            errors.extend(row_issues(row.attributes, definitions)[0])
         if product is None and code and row.include:
             if code.lower() in first_new:
                 warnings.append(f"Same new product as row {first_new[code.lower()]}.")
@@ -342,11 +366,15 @@ def preview(db: Session, principal: Principal, data: PreviewRequest) -> PreviewO
     _store(db, data.store_id)
     meta = _upload_meta(data.upload_id)
     _check_mapping(data.mapping, meta["headers"], data.options)
+    from app.services import attribute_service
+
+    attribute_service.check_mapping(data.options.attribute_mapping, meta["headers"], dict(data.mapping))
+    definitions = attribute_service.definitions_by_key(db) if data.options.attribute_mapping else {}
     if data.rows is not None:
         rows, problems = data.rows, {}
     else:
-        rows, problems = _map_rows(meta, data.mapping)
-    evaluated = _evaluate(db, rows, data.options, problems)
+        rows, problems = _map_rows(meta, data.mapping, data.options.attribute_mapping)
+    evaluated = _evaluate(db, rows, data.options, problems, definitions)
     return PreviewOut(
         upload_id=data.upload_id, currency=business_currency(db), rows=evaluated, totals=_totals(evaluated)
     )
@@ -480,10 +508,14 @@ def commit(db: Session, settings: Settings, principal: Principal, data: CommitRe
         raise ApiError(422, "consignment_supplier", "Consignment stock belongs to a supplier: choose one.")
     meta = _upload_meta(data.upload_id)
     _check_mapping(data.mapping, meta["headers"], data.options)
+    from app.services import attribute_service
+
+    attribute_service.check_mapping(data.options.attribute_mapping, meta["headers"], dict(data.mapping))
+    definitions = attribute_service.definitions_by_key(db) if any(row.attributes for row in data.rows) else {}
     rows = [row for row in data.rows if row.include]
     if not rows:
         raise ApiError(422, "nothing_to_import", "Include at least one row to import.")
-    evaluated = _evaluate(db, rows, data.options, {})
+    evaluated = _evaluate(db, rows, data.options, {}, definitions)
     invalid = [row for row in evaluated if row.errors]
     if invalid:
         numbers = ", ".join(str(row.row_number) for row in invalid[:10])
@@ -538,6 +570,8 @@ def commit(db: Session, settings: Settings, principal: Principal, data: CommitRe
         ):
             product.price_cents = row.price_cents
             master_updates += 1
+        if row.attributes and definitions:
+            attribute_service.apply(db, product, row.attributes, definitions)
         quantity = row.quantity or 0
         item = BatchItem(
             id=uuid.uuid4(),

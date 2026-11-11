@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { loadCatalog, SEED, type PublicCatalog } from "./catalog";
+import { EMPTY_CATALOG, loadCatalog, type PublicCatalog } from "./catalog";
 import { Benefits } from "./components/Benefits";
 import { Faq } from "./components/Faq";
 import { Features } from "./components/Features";
@@ -24,8 +24,9 @@ import { EMPTY_WHATSAPP, parsePublicWhatsApp, type PublicWhatsApp } from "./what
 
 export function App() {
   const { theme, toggle } = useSiteTheme();
-  const [catalog, setCatalog] = useState<PublicCatalog>(SEED);
+  const [catalog, setCatalog] = useState<PublicCatalog>(EMPTY_CATALOG);
   const [live, setLive] = useState(false);
+  const [catalogStatus, setCatalogStatus] = useState<"loading" | "ready" | "unavailable">("loading");
   const [quoteDraft, setQuoteDraft] = useState<string | null>(null);
   const [contact, setContact] = useState<PublicWhatsApp>(EMPTY_WHATSAPP);
   const [contactStatus, setContactStatus] = useState<"loading" | "ready" | "unavailable">("loading");
@@ -36,6 +37,7 @@ export function App() {
       if (cancelled) return;
       setCatalog(result.catalog);
       setLive(result.live);
+      setCatalogStatus(result.live ? "ready" : "unavailable");
     });
     fetch(`${apiBaseUrl}/api/v1/site/contact`)
       .then(async (response) => {
@@ -86,7 +88,7 @@ export function App() {
         <Benefits />
         <Pricing
           catalog={catalog}
-          live={live}
+          status={catalogStatus}
           onQuote={(note) => {
             setQuoteDraft(note);
             document.getElementById("contact")?.scrollIntoView({ behavior: "smooth" });

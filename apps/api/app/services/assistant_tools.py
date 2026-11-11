@@ -1133,6 +1133,13 @@ def run(
     tool = TOOLS.get(name)
     if tool is None or not principal.has(tool.permission):
         return None
+    from app.console.feature_access import TOOL_FEATURES, FeatureDenied, block_tool
+
+    feature = TOOL_FEATURES.get(name)
+    if feature is not None:
+        denied = block_tool(db, feature)
+        if denied is not None:
+            raise FeatureDenied(denied)
     args = accepted_args(tool, args)
     ctx = ToolContext(db=db, principal=principal, today=today, language=language, currency=business_currency(db))
     branch_id, _store_code = _store_scope(ctx, args)

@@ -300,6 +300,7 @@ export const paymentLabels: Record<Receipt["payment_method"], string> = {
   channel: "Delivery app",
   bnpl: "Pay later",
   gift_card: "Gift card",
+  cod: "Cash on delivery",
 };
 
 /** Where the returned unit goes, matching how the API updates serial status and stock. */

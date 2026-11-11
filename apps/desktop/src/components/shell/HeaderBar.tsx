@@ -1,8 +1,7 @@
 import { LanguageSwitch, useLocale } from "@ai-pos/ui";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { ChevronRight, FlaskConical, Moon, MoreHorizontal, Store as StoreIcon, Sun } from "lucide-react";
+import { FlaskConical, Moon, MoreHorizontal, Sun } from "lucide-react";
 import { useEffect, useId, useState, type ReactNode } from "react";
-import { store } from "../../features/checkout/catalog";
 import { useCapabilities } from "../../lib/capabilities";
 import { useRegisterLayout } from "../RegisterLayout";
 
@@ -74,14 +73,13 @@ function ThemeToggle() {
  * One-row workspace header shared by every register page. Checkout actions stay on the right, after
  * connection, language, and theme. The signed-in cashier stays in the sidebar.
  */
-export function HeaderBar({ title, sync, actions }: { title: string; sync: SyncState; actions?: ReactNode }) {
+export function HeaderBar({ sync, actions }: { title: string; sync: SyncState; actions?: ReactNode }) {
   const { t } = useLocale();
   const { practice } = useCapabilities();
   const reduced = useReducedMotion() === true;
   const [more, setMore] = useState(false);
   const moreId = useId();
   const { className: syncClass, dot } = syncStyles[sync.tone];
-  const branch = /^restur[ae]nt$/i.test(store.name.trim()) ? t("Restaurant") : store.name;
 
   useEffect(() => {
     if (!more) return;
@@ -95,20 +93,7 @@ export function HeaderBar({ title, sync, actions }: { title: string; sync: SyncS
   }, [more]);
 
   return (
-    <header className="flex h-14 shrink-0 items-center justify-between gap-2 border-b border-zinc-200 bg-white px-3 dark:border-zinc-800 dark:bg-zinc-900 min-[1280px]:gap-3 min-[1280px]:px-4">
-      <div className="flex min-w-0 items-center gap-1.5 overflow-hidden">
-        <StoreIcon size={16} aria-hidden="true" className="shrink-0 text-zinc-400" />
-        <nav aria-label={t("Breadcrumb")} className="flex min-w-0 items-center gap-1.5 overflow-hidden text-sm">
-          <span className="max-w-[5.5rem] truncate font-medium text-zinc-500 min-[1366px]:max-w-[9rem] dark:text-zinc-400" dir="auto" title={branch}>
-            {branch}
-          </span>
-          <ChevronRight size={14} aria-hidden="true" className="shrink-0 text-zinc-300 rtl:scale-x-[-1] dark:text-zinc-600" />
-          <span aria-current="page" className="shrink-0 font-semibold text-zinc-950 dark:text-white">
-            {t(title)}
-          </span>
-        </nav>
-      </div>
-
+    <header className="flex h-14 shrink-0 items-center justify-end gap-2 border-b border-zinc-200 bg-white px-3 dark:border-zinc-800 dark:bg-zinc-900 min-[1280px]:gap-3 min-[1280px]:px-4">
       <div className="flex shrink-0 items-center gap-1.5 min-[1366px]:gap-2">
         {practice ? (
           <span

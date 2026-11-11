@@ -44,6 +44,8 @@ export const PaymentMethod = {
   Bnpl: "bnpl",
   /** A gift card spent as payment. */
   GiftCard: "gift_card",
+  /** Cash the rider is expected to collect. It is not money in the register until handover. */
+  Cod: "cod",
 } as const;
 export type PaymentMethod = (typeof PaymentMethod)[keyof typeof PaymentMethod];
 

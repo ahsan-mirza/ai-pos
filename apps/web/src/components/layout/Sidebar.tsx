@@ -5,6 +5,7 @@ import { Link, useLocation } from "react-router-dom";
 import { useTenant } from "../../context/TenantContext";
 import { useAuth, useIsSuperAdmin } from "../../lib/auth";
 import { portalHomePath } from "../../lib/portal-home";
+import { featureIsBlocked, useFeatureActions } from "../../lib/featureAccess";
 import { useCapabilities } from "../../lib/capabilities";
 import { useCanManageSettings } from "../../lib/currency";
 import { AiMark } from "../ui/AiMark";
@@ -12,7 +13,7 @@ import { labelOf, navGroups, settingsTabAllowed, settingsTabs, type NavItem } fr
 import { revealSection, toggleSection } from "./sidebarSections";
 import { StoreSwitcher } from "./StoreSwitcher";
 
-type VisibleItem = NavItem & { label: string };
+type VisibleItem = NavItem & { label: string; locked: boolean };
 
 interface VisibleGroup {
   id: string;
@@ -27,6 +28,7 @@ function useVisibleGroups(): VisibleGroup[] {
   const canManageSettings = useCanManageSettings();
   const superAdmin = useIsSuperAdmin();
   const capabilities = useCapabilities();
+  const features = useFeatureActions();
   const tenant = useTenant();
   const gate = { can, canManageSettings, superAdmin, has: capabilities.has, allows: tenant.allows };
   return navGroups
@@ -38,14 +40,16 @@ function useVisibleGroups(): VisibleGroup[] {
           const open = settingsTabs.filter((tab) => settingsTabAllowed(tab, gate));
           const first = open[0];
           if (first === undefined) return [];
-          return [{ ...item, to: first.to, label: t(labelOf(item, capabilities)) }];
+          return [{ ...item, to: first.to, label: t(labelOf(item, capabilities)), locked: false }];
         }
+        const decision = item.feature ? features.get(item.feature) : undefined;
+        const locked = featureIsBlocked(decision);
         const visible =
           tenant.allows(item.profiles) &&
-          (item.capability === undefined || capabilities.has(item.capability)) &&
+          (locked || item.capability === undefined || capabilities.has(item.capability)) &&
           (!item.superAdminOnly || superAdmin) &&
           (item.settingsOnly ? canManageSettings : can(item.permission));
-        return visible ? [{ ...item, label: t(labelOf(item, capabilities)) }] : [];
+        return visible ? [{ ...item, label: t(labelOf(item, capabilities)), locked }] : [];
       }),
     }))
     .filter((group) => group.items.length > 0);
@@ -99,21 +103,22 @@ function SidebarNav({
   groups,
   isOpen,
   onToggle,
-  onNavigate,
   onTip,
-  subscriptionLocked,
+  onNavigate,
+  subscriptionLocked = false,
 }: {
-  instance: "rail" | "drawer";
+  instance: string;
   collapsed: boolean;
   groups: VisibleGroup[];
   isOpen: (id: string) => boolean;
   onToggle: (id: string) => void;
-  onNavigate?: () => void;
   onTip?: (tip: Tip | null) => void;
-  subscriptionLocked: boolean;
+  onNavigate?: () => void;
+  subscriptionLocked?: boolean;
 }) {
   const { t } = useLocale();
   const { pathname, hash } = useLocation();
+  const { open: openFeature } = useFeatureActions();
 
   const showTip = (item: VisibleItem) => (event: MouseEvent<HTMLElement> | FocusEvent<HTMLElement>) => {
     if (!collapsed || !onTip) return;
@@ -167,6 +172,24 @@ function SidebarNav({
                           <Lock aria-hidden="true" size={16} className="shrink-0" />
                           <span className={`whitespace-nowrap ${collapsed ? "sr-only" : ""}`}>{item.label}</span>
                         </span>
+                      ) : item.locked && item.feature ? (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (item.feature) openFeature(item.feature);
+                            onNavigate?.();
+                          }}
+                          aria-label={collapsed ? item.label : undefined}
+                          onMouseEnter={showTip(item)}
+                          onMouseLeave={hideTip}
+                          onFocus={showTip(item)}
+                          onBlur={hideTip}
+                          className="group flex h-10 w-full items-center gap-3 rounded-lg px-[18px] text-start text-[13px] font-medium text-charcoal/70 hover:bg-charcoal/[0.04]"
+                        >
+                          <item.icon aria-hidden="true" size={18} strokeWidth={1.75} className="shrink-0 text-charcoal/50" />
+                          <span className={`min-w-0 flex-1 truncate ${collapsed ? "sr-only" : ""}`}>{item.label}</span>
+                          <Lock aria-hidden="true" size={14} className={`shrink-0 text-charcoal/40 ${collapsed ? "sr-only" : ""}`} />
+                        </button>
                       ) : (
                       <Link
                         to={item.to}

@@ -64,6 +64,8 @@ class SupplierOut(ApiModel):
 class ImportOptions(ApiModel):
     auto_generate_codes: bool = False
     update_master_price: bool = False
+    # Attribute key -> spreadsheet header. Empty means a standard import with no specifications.
+    attribute_mapping: dict[str, str] = Field(default_factory=dict)
 
 
 class TemplateWrite(ApiModel):
@@ -94,6 +96,7 @@ class UploadOut(ApiModel):
     sample_rows: list[list[str]]
     total_rows: int
     suggested_mapping: dict[str, str]
+    suggested_attributes: dict[str, str] = Field(default_factory=dict)
     warnings: list[str]
 
 
@@ -112,6 +115,8 @@ class ImportRow(ApiModel):
     sub_category: str = Field(default="", max_length=80)
     serials: list[str] = Field(default_factory=list, max_length=5000)
     expiry_date: date | None = None
+    # Attribute key -> cell text. Omitted keys are not required.
+    attributes: dict[str, str] = Field(default_factory=dict)
 
 
 class PreviewRequest(ApiModel):

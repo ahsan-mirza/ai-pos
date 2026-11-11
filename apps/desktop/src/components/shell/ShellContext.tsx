@@ -10,6 +10,9 @@ export interface ShellValue {
   setBusy: (busy: boolean) => void;
   /** Pages register where sidebar tools (printer settings, etc.) post their status messages. */
   setNotifier: (notify: ((message: string) => void) | null) => void;
+  /** Checkout posts the visible product count for the register status bar. */
+  catalogSummary: string | null;
+  setCatalogSummary: (summary: string | null) => void;
   /** Switches page, e.g. Returns hands an exchange over to Checkout. */
   navigate: (view: RegisterView) => void;
 }

@@ -20,7 +20,7 @@ import {
 } from "@ai-pos/shared-types";
 import { FloorTableCard, serviceOf } from "../../components/FloorTableCard";
 import { FloorBoard, aggregateService, formatSeatedDuration, KITCHEN_LABEL as floorKitchenLabel, tableDisplayNumber } from "@ai-pos/ui";
-import { ChefHat, CreditCard, Merge, Minus, MoveRight, Plus, Receipt, Search, Send, Split, Truck, Users, UtensilsCrossed, X } from "lucide-react";
+import { Banknote, ChefHat, CreditCard, Merge, Minus, MoveRight, Plus, Receipt, Search, Send, Split, Truck, Users, UtensilsCrossed, X } from "lucide-react";
 import { useCallback, useEffect, useId, useMemo, useState } from "react";
 import { ManagerApprovalModal } from "../../components/ManagerApprovalModal";
 import { DrawerHeader } from "../../components/shell/Drawer";
@@ -36,6 +36,8 @@ import { ComboBuilderModal } from "../checkout/ComboBuilderModal";
 import { ModifierPickerModal } from "../checkout/ModifierPickerModal";
 import { QuantityModal } from "../checkout/QuantityModal";
 import { verifyManager } from "../checkout/wholesaleClient";
+import { staffApi, type RegisterStaff } from "../../lib/retailClient";
+import { DeliveryCashDialog } from "./DeliveryCashDialog";
 import { printKitchenTickets } from "./kitchenPrint";
 import { SplitChecksModal } from "./SplitChecksModal";
 import { IncomingDeliveries, KeyInDeliveryModal } from "./IncomingDeliveries";
@@ -85,6 +87,27 @@ function orderKitchenLabel(order: Order): string {
   if (preparing > 0) return "Preparing";
   return "Sent to kitchen";
 }
+
+const PAYMENT_LABEL: Record<string, string> = {
+  UNPAID: "Unpaid",
+  PAID: "Paid",
+  PARTIAL: "Partially paid",
+  CREDIT_OUTSTANDING: "Credit outstanding",
+  COD_AWAITING_COLLECTION: "COD awaiting collection",
+  COD_AWAITING_HANDOVER: "COD awaiting handover",
+  COD_PARTIAL: "COD partially handed over",
+  CANCELLED: "Cancelled",
+};
+
+const DELIVERY_LABEL: Record<string, string> = {
+  PENDING: "Pending",
+  ASSIGNED: "Assigned",
+  OUT_FOR_DELIVERY: "Out for delivery",
+  DELIVERED: "Delivered",
+  FAILED: "Failed",
+  RETURNED: "Returned",
+  CANCELLED: "Cancelled",
+};
 
 function handoffLabel(service: ServiceType): string {
   if (service === "TAKEAWAY") return "Picked up";
@@ -274,6 +297,10 @@ export function OrdersPage({ session }: { session: CashierSession }) {
   const [busy, setBusy] = useState(false);
   const [seating, setSeating] = useState<DiningTable | null>(null);
   const [adding, setAdding] = useState(false);
+  const [cashOpen, setCashOpen] = useState(false);
+  const [riders, setRiders] = useState<RegisterStaff[]>([]);
+  const [riderId, setRiderId] = useState("");
+  const [collectedDraft, setCollectedDraft] = useState("");
 
   const selected = orders.find((order) => order.id === selectedId) ?? null;
 
@@ -350,6 +377,11 @@ export function OrdersPage({ session }: { session: CashierSession }) {
   useEffect(() => {
     if (channelsOn) void channelsApi.list().then(setChannels).catch(() => setChannels([]));
   }, [channelsOn]);
+
+  useEffect(() => {
+    if (selected?.service_type !== "DELIVERY") return;
+    void staffApi.list(storeId).then(setRiders).catch(() => setRiders([]));
+  }, [selected?.service_type, storeId]);
 
   /** Runs a write; a stale order refreshes and asks the cashier to try again. */
   const write = useCallback(
@@ -584,6 +616,9 @@ export function OrdersPage({ session }: { session: CashierSession }) {
               <Truck size={16} aria-hidden="true" /> Delivery order
             </button>
           ) : null}
+          <button type="button" className={`${ui.secondaryAction} h-12 px-4`} disabled={busy} onClick={() => setCashOpen(true)}>
+            <Banknote size={16} aria-hidden="true" /> Rider cash
+          </button>
         </div>
       }
       drawer={
@@ -615,9 +650,29 @@ export function OrdersPage({ session }: { session: CashierSession }) {
                   <span className="inline-flex items-center gap-1 text-zinc-500 dark:text-white/50"><Users size={13} aria-hidden="true" /> {selected.covers} {selected.covers === 1 ? "guest" : "guests"}</span>
                   <span className="text-zinc-500 dark:text-white/50">· {formatSeatedDuration(minutesSince(selected.opened_at))}</span>
                   <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 font-semibold text-primary">
-                    <ChefHat size={12} aria-hidden="true" /> {orderKitchenLabel(selected)}
+                    <ChefHat size={12} aria-hidden="true" /> Kitchen: {orderKitchenLabel(selected)}
                   </span>
+                  {selected.service_type === "DELIVERY" ? (
+                    <>
+                      <span className="rounded-full bg-sky-100 px-2 py-0.5 font-semibold text-sky-800 dark:bg-sky-500/20 dark:text-sky-100">
+                        Delivery: {DELIVERY_LABEL[selected.delivery_status ?? ""] ?? selected.delivery_status ?? "Pending"}
+                      </span>
+                      <span className="rounded-full bg-amber-100 px-2 py-0.5 font-semibold text-amber-900 dark:bg-amber-500/20 dark:text-amber-100">
+                        Payment: {PAYMENT_LABEL[selected.payment_state ?? ""] ?? selected.payment_state ?? "Unpaid"}
+                      </span>
+                    </>
+                  ) : null}
                 </div>
+                {selected.service_type === "DELIVERY" && selected.payment_arrangement === "COD" ? (
+                  <p className="text-xs text-zinc-600 dark:text-zinc-300">
+                    COD expected {formatMoney(selected.cod_expected_cents ?? 0, currency)}
+                    {" · "}rider collected {formatMoney(selected.cod_collected_cents ?? 0, currency)}
+                    {" · "}in the drawer {formatMoney(selected.cod_handed_cents ?? 0, currency)}
+                  </p>
+                ) : null}
+                {selected.service_type === "DELIVERY" && selected.payment_arrangement === "CREDIT" ? (
+                  <p className="text-xs text-zinc-600 dark:text-zinc-300">Customer credit. The drawer does not increase until the account is paid.</p>
+                ) : null}
                 <p className="text-xs text-zinc-500 dark:text-white/50">
                   Opened {new Date(selected.opened_at).toLocaleString()}
                   {selected.opened_by_name ? ` · ${selected.opened_by_name}` : ""}
@@ -752,6 +807,93 @@ export function OrdersPage({ session }: { session: CashierSession }) {
                         <Send size={15} aria-hidden="true" /> Send to kitchen
                       </button>
                     ) : null}
+                  </div>
+                ) : null}
+                {selected.service_type === "DELIVERY" && !["CANCELLED", "FAILED", "RETURNED"].includes(selected.delivery_status ?? "") ? (
+                  <div className="grid grid-cols-2 gap-2">
+                    <label className="col-span-2 text-xs font-medium text-zinc-600 dark:text-zinc-300">
+                      Rider
+                      <select
+                        value={riderId}
+                        onChange={(event) => setRiderId(event.target.value)}
+                        className="mt-1 h-10 w-full rounded-xl border border-zinc-300 bg-white px-2 dark:border-zinc-600 dark:bg-zinc-900"
+                      >
+                        <option value="">Choose a rider</option>
+                        {riders.map((rider) => (
+                          <option key={rider.id} value={rider.id}>
+                            {rider.full_name}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <button
+                      type="button"
+                      disabled={busy || selected.delivery_status === "DELIVERED" || riderId === "" || riderId === userId}
+                      title={riderId === userId ? "The rider cannot later confirm their own cash" : undefined}
+                      onClick={() => void write(() => ordersApi.assignRider(selected, userId, riderId), "Rider assigned. Payment is unchanged.")}
+                      className={`${ui.secondaryAction} h-11 rounded-2xl text-xs`}
+                    >
+                      Assign rider
+                    </button>
+                    <button
+                      type="button"
+                      disabled={busy || selected.delivery_status === "DELIVERED" || selected.rider_id === null || selected.delivery_status === "OUT_FOR_DELIVERY"}
+                      onClick={() => void write(() => ordersApi.startDelivery(selected, userId), "Out for delivery. Payment is unchanged.")}
+                      className={`${ui.secondaryAction} h-11 rounded-2xl text-xs`}
+                    >
+                      Start delivery
+                    </button>
+                    {selected.payment_arrangement === "COD" && selected.delivery_status === "OUT_FOR_DELIVERY" ? (
+                      <label className="col-span-2 text-xs font-medium text-zinc-600 dark:text-zinc-300">
+                        Cash the customer paid the rider
+                        <input
+                          inputMode="decimal"
+                          value={collectedDraft}
+                          onChange={(event) => setCollectedDraft(event.target.value)}
+                          placeholder="0.00"
+                          aria-label="Cash the customer paid the rider"
+                          className="mt-1 h-10 w-full rounded-xl border border-zinc-300 bg-white px-2 dark:border-zinc-600 dark:bg-zinc-900"
+                        />
+                      </label>
+                    ) : null}
+                    <button
+                      type="button"
+                      disabled={busy || selected.delivery_status !== "OUT_FOR_DELIVERY"}
+                      onClick={() => {
+                        const collected =
+                          selected.payment_arrangement === "COD" ? Math.round(Number(collectedDraft) * 100) : null;
+                        if (
+                          selected.payment_arrangement === "COD" &&
+                          (collected === null || !Number.isFinite(collected) || collected < 0 || collected > (selected.cod_expected_cents ?? 0))
+                        ) {
+                          setNotice("Enter the cash the customer paid the rider. It cannot exceed the order total.");
+                          return;
+                        }
+                        void write(
+                          () => ordersApi.markDelivered(selected, userId, collected),
+                          "Delivered. Store cash is still unpaid until the rider hands it over.",
+                        );
+                      }}
+                      className={`${ui.secondaryAction} col-span-2 h-11 rounded-2xl text-xs`}
+                    >
+                      Mark delivered
+                    </button>
+                    <button
+                      type="button"
+                      disabled={busy || !["PENDING", "ASSIGNED", "OUT_FOR_DELIVERY"].includes(selected.delivery_status ?? "PENDING")}
+                      onClick={() => void write(() => ordersApi.setDeliveryOutcome(selected, userId, "FAILED", "Customer unavailable"), "Delivery failed. Payment is unchanged.")}
+                      className={`${ui.secondaryAction} h-11 rounded-2xl text-xs`}
+                    >
+                      Failed
+                    </button>
+                    <button
+                      type="button"
+                      disabled={busy || !["OUT_FOR_DELIVERY", "DELIVERED"].includes(selected.delivery_status ?? "")}
+                      onClick={() => void write(() => ordersApi.setDeliveryOutcome(selected, userId, "RETURNED", "Order returned"), "Delivery returned. Payment is unchanged.")}
+                      className={`${ui.secondaryAction} h-11 rounded-2xl text-xs`}
+                    >
+                      Returned
+                    </button>
                   </div>
                 ) : null}
                 {selected.items.some((item) => !item.voided_at && item.kitchen_status === "ready") ? (
@@ -917,7 +1059,8 @@ export function OrdersPage({ session }: { session: CashierSession }) {
                 </span>
                 <span className="mt-1 block text-xs text-zinc-500 dark:text-white/50">
                   {order.service_type === "DELIVERY" ? `${order.channel_name ?? "Delivery"} ${order.external_ref ?? ""}` : order.service_type === "TAKEAWAY" ? "Takeaway" : "Dine-in"} · {order.items.filter((item) => !item.voided_at).length} lines · {formatSeatedDuration(minutesSince(order.opened_at))}
-                  {phase ? ` · ${phase}` : ""}
+                  {phase ? ` · Kitchen ${phase}` : ""}
+                  {order.service_type === "DELIVERY" ? ` · ${DELIVERY_LABEL[order.delivery_status ?? ""] ?? "Pending"} · ${PAYMENT_LABEL[order.payment_state ?? ""] ?? "Unpaid"}` : ""}
                 </span>
               </button>
               );
@@ -980,6 +1123,21 @@ export function OrdersPage({ session }: { session: CashierSession }) {
           onPayEqually={(guests) => {
             setSplitting(false);
             pay(unpaid.map((item) => item.id), `order #${selected.number}, ${guests} ways`, guests);
+          }}
+        />
+      ) : null}
+
+      {cashOpen ? (
+        <DeliveryCashDialog
+          storeId={storeId}
+          userId={userId}
+          currency={currency}
+          verify={(username, pin) => verifyManager(session, username, pin, Permission.PosDrawerOverride)}
+          onClose={() => setCashOpen(false)}
+          onDone={(message) => {
+            setCashOpen(false);
+            setNotice(message);
+            void refresh();
           }}
         />
       ) : null}

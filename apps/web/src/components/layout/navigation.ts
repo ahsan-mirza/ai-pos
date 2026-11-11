@@ -55,6 +55,8 @@ export interface NavItem {
   permission: Permission;
   /** Hidden while this module is switched off for the business. */
   capability?: Capability;
+  /** Published plan or plugin check. A locked item stays visible and opens the upgrade modal. */
+  feature?: Capability;
   /** Hidden unless the tenant's business type is in this list. Stricter than the module switch. */
   profiles?: readonly BusinessProfile[];
   /** Business-wide settings need a manager who is not pinned to one store. */
@@ -159,8 +161,8 @@ export const navGroups: NavGroup[] = [
     label: "Workspace",
     items: [
       { to: portalHomePath(), label: "Dashboard", icon: LayoutDashboard, permission: Permission.PortalReportsRead, isActive: (path) => path === "/" || path === "/dashboard" },
-      { to: "/insights", label: "AI insights", icon: Radar, ai: true, permission: Permission.PortalReportsRead, isActive: under("/insights") },
-      { to: "/sales-insights", label: "Sales Insights", icon: ChartColumn, permission: Permission.PortalReportsRead, isActive: under("/sales-insights") },
+      { to: "/insights", label: "AI insights", icon: Radar, ai: true, permission: Permission.PortalReportsRead, feature: Capability.AiInsights, isActive: under("/insights") },
+      { to: "/sales-insights", label: "Sales Insights", icon: ChartColumn, permission: Permission.PortalReportsRead, feature: Capability.SalesInsights, isActive: under("/sales-insights") },
       {
         to: "/inventory",
         label: (ctx) => (profileSpec(ctx.profile).group === "food_beverage" ? "Inventory" : "Inventory & Batches"),
@@ -361,6 +363,7 @@ export const navGroups: NavGroup[] = [
         icon: Truck,
         permission: Permission.DeliveryView,
         capability: Capability.DeliveryIntegrations,
+        feature: Capability.DeliveryIntegrations,
         profiles: ["restaurant", "cafe", "quick_service"],
         isActive: under("/delivery"),
       },
@@ -396,6 +399,7 @@ export const navGroups: NavGroup[] = [
         icon: ChartColumn,
         permission: Permission.PortalReportsRead,
         capability: Capability.DeepAnalytics,
+        feature: Capability.DeepAnalytics,
         isActive: under("/analytics/deep"),
       },
       {
@@ -418,6 +422,7 @@ export const navGroups: NavGroup[] = [
         icon: ShieldCheck,
         permission: Permission.PortalReportsRead,
         capability: Capability.UaeEinvoicing,
+        feature: Capability.UaeEinvoicing,
         isActive: under("/einvoicing"),
       },
     ],
@@ -432,6 +437,7 @@ export const navGroups: NavGroup[] = [
         icon: Smartphone,
         permission: Permission.MessagingManage,
         capability: Capability.AxizReach,
+        feature: Capability.AxizReach,
         isActive: under("/reach"),
       },
       {

@@ -11,11 +11,13 @@ import type {
   OpeningStockChoice,
 } from "@ai-pos/shared-types";
 import { formatMoney } from "@ai-pos/shared-types";
+import { useLocale } from "@ai-pos/ui";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { Minus, Plus, Rocket, ShieldCheck } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ErrorNote, GhostButton, PrimaryButton, TextField } from "../../components/ui/Field";
 import { Modal } from "../../components/ui/Modal";
+import { WizardStepper } from "../../components/ui/WizardStepper";
 import { ApiRequestError, apiGet, apiPost, apiUpload } from "../../lib/api";
 
 const KEEP_CLEARED = [
@@ -36,6 +38,15 @@ const FRESH_CLEARED = [
 const FRESH_KEPT = ["Your business name, tax number and currency", "Your own login", "The setup wizard, so you can start again"];
 
 type Step = "plan" | "cycle" | "extras" | "data" | "confirm";
+
+/** Steps on screen. Billing and hardware exist only for a payable plan, so Free and Enterprise omit them. */
+export function goLiveSteps(hasCatalog: boolean, payable: boolean): Step[] {
+  const steps: Step[] = [];
+  if (hasCatalog) steps.push("plan");
+  if (payable) steps.push("cycle", "extras");
+  steps.push("data", "confirm");
+  return steps;
+}
 
 const CURRENT_CODES = new Set(["FREE", "GROWTH", "PRO_AI", "ENTERPRISE"]);
 
@@ -101,6 +112,7 @@ export function GoLiveModal({
   const [accessReady, setAccessReady] = useState(false);
   const planTouched = useRef(false);
   const reduceMotion = useReducedMotion();
+  const { locale } = useLocale();
   const [quantities, setQuantities] = useState<Record<string, number>>({});
   const [stores, setStores] = useState<{ id: string; name: string }[]>([]);
   const [picks, setPicks] = useState<HardwarePick[]>([]);
@@ -172,11 +184,9 @@ export function GoLiveModal({
   const freePlan = isFreePlan(selectedPlan);
   const customPlan = isCustom(selectedPlan);
   const payable = Boolean(catalog && selectedPlan && !freePlan && !customPlan);
-  const steps: Step[] = [];
-  if (catalog) steps.push("plan");
-  if (payable) steps.push("cycle", "extras");
-  steps.push("data", "confirm");
+  const steps = goLiveSteps(Boolean(catalog), payable);
   const step = steps[Math.min(stepIndex, steps.length - 1)] ?? "confirm";
+  const currentIndex = Math.max(0, steps.indexOf(step));
   const matches = storeName !== "" && confirm.trim().toLowerCase() === storeName.trim().toLowerCase();
   const units = openingStockUnits.toLocaleString();
   const addons = useMemo(
@@ -474,6 +484,21 @@ export function GoLiveModal({
       subtitle={subtitle}
       width={step === "plan" || step === "cycle" || step === "extras" ? "xl" : "md"}
       onClose={onClose}
+      headerExtra={
+        <WizardStepper
+          steps={steps.map((id) => ({ id, label: stepLabel(id) }))}
+          currentStep={step}
+          completedSteps={steps.slice(0, currentIndex)}
+          dir={locale === "ar" ? "rtl" : "ltr"}
+          invalid={error !== null && step !== "data"}
+          canNavigate={() => !busy}
+          onNavigate={(id) => {
+            const index = steps.indexOf(id as Step);
+            if (busy || index < 0 || index >= currentIndex) return;
+            setStepIndex(index);
+          }}
+        />
+      }
       footer={
         <>
           {payable && quote && step !== "plan" ? (
@@ -509,13 +534,6 @@ export function GoLiveModal({
         </>
       }
     >
-      <ol className="mb-4 flex flex-wrap gap-2 text-xs text-charcoal/60">
-        {steps.map((name, index) => (
-          <li key={name} className={name === step ? "font-semibold text-charcoal" : undefined}>
-            {index + 1}. {stepLabel(name)}
-          </li>
-        ))}
-      </ol>
       <AnimatePresence mode="wait">
         <motion.div
           key={step}

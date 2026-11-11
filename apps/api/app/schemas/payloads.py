@@ -35,6 +35,8 @@ PaymentMethod = Literal[
     "bnpl",
     # A gift card (GIFT_CARD store credit) spent as payment.
     "gift_card",
+    # Cash the rider still has to bring back. It is not register cash and not customer credit.
+    "cod",
 ]
 TaxCategory = Literal["STANDARD", "ZERO", "EXEMPT"]
 Emirate = Literal["AUH", "DXB", "SHJ", "AJM", "UAQ", "RAK", "FUJ"]

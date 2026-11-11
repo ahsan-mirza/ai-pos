@@ -38,7 +38,7 @@ export function CheckoutSidebar({ open, onDismiss, header, customer, cart, summa
         {header}
 
         <div className="custom-scrollbar min-h-0 flex-1 overflow-y-auto xl:flex xl:flex-col xl:overflow-hidden">
-          <div className="px-4 pt-3">{customer}</div>
+          {customer ? <div className="px-4 pt-3">{customer}</div> : null}
           {cart}
 
           <section

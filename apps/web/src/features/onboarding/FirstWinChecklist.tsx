@@ -135,7 +135,7 @@ export function FirstWinChecklist() {
           next.href === "#go-live" ? (
             <button
               type="button"
-              onClick={openGoLive}
+              onClick={() => openGoLive()}
               className="mt-0.5 shrink-0 rounded-full bg-accent px-3 py-1 text-xs font-semibold text-white hover:bg-accent-hover"
             >
               {next.action}

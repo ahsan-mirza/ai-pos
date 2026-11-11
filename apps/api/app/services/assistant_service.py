@@ -16,6 +16,7 @@ import httpx
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.console.feature_access import FeatureDenied
 from app.core.config import Settings
 from app.core.deps import Principal
 from app.models.store import Store
@@ -724,6 +725,8 @@ def _builtin(
         result = assistant_tools.run(db, principal, chosen.tool, chosen.args, language=language, today=_today())
     except assistant_tools.BranchAccessDenied:
         return reply(DENIED[language])
+    except FeatureDenied as blocked:
+        return reply(_upgrade_sentence(blocked.decision, language))
     if result is None:
         if language == "ar":
             return reply("هذا التقرير غير متاح لدورك. اطلب من المدير الصلاحية المناسبة.")
@@ -790,6 +793,19 @@ def _messages(db: Session, principal: Principal, data: AssistantAsk) -> list[dic
     ]
 
 
+def _upgrade_sentence(decision, language: str) -> str:
+    """The assistant states the plan limit. It does not run the tool or invent the numbers."""
+    if language == "ar":
+        required = decision.required_plan_name or "خطة أعلى"
+        if decision.state == "PLUGIN_REQUIRED":
+            return f"{decision.label} إضافة مستقلة وغير مشمولة في خطتك."
+        return f"{decision.label} غير مشمول في خطتك الحالية. يتطلب {required}."
+    if decision.state == "PLUGIN_REQUIRED":
+        return f"{decision.label} is a separate plugin and is not included in your plan."
+    required = decision.required_plan_name or "a higher plan"
+    return f"{decision.label} is not included in your current plan. It requires {required}."
+
+
 def _tool_error() -> str:
     return '{"error": "This report is not available to you."}'
 
@@ -801,6 +817,16 @@ def _run_model_tool(db: Session, principal: Principal, name: str, args: Any, lan
         return assistant_tools.run(db, principal, name, args, language=language, today=_today())
     except assistant_tools.BranchAccessDenied:
         return None
+    except FeatureDenied as blocked:
+        sentence = _upgrade_sentence(blocked.decision, language)
+        return ToolResult(
+            tool=name if isinstance(name, str) else "upgrade",
+            title=sentence,
+            period=None,
+            facts={"upgrade_required": True},
+            columns=[],
+            rows=[],
+        )
     except Exception as error:
         log.warning("assistant tool failed: %s", type(error).__name__)
         return None

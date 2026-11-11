@@ -1,3 +1,4 @@
+import { LanguageSwitch } from "@ai-pos/ui";
 import { LogIn, Menu, Moon, Sparkles, Sun, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { portalUrl } from "../env";
@@ -93,6 +94,9 @@ export function Navbar({
         </nav>
 
         <div className="flex items-center gap-1 sm:gap-2">
+          <span className="hidden sm:inline-flex">
+            <LanguageSwitch compact />
+          </span>
           <button
             type="button"
             onClick={onToggleTheme}
@@ -142,6 +146,9 @@ export function Navbar({
                 <LogIn className="h-4 w-4" aria-hidden="true" />
                 Sign In
               </a>
+            </li>
+            <li className="px-3 py-2 sm:hidden">
+              <LanguageSwitch />
             </li>
             <li>
               <button

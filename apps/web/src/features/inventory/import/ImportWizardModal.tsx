@@ -10,6 +10,7 @@ import {
   type ImportRow,
   type ImportUpload,
   type MappingTemplate,
+  type ProductAttribute,
   type Supplier,
 } from "@ai-pos/shared-types";
 import { ArrowLeft, ArrowRight, CheckCircle2, Layers, Loader2, X } from "lucide-react";
@@ -21,6 +22,7 @@ import { useCapability } from "../../../lib/capabilities";
 import { message } from "../api";
 import { useStores } from "../shared";
 import { importApi } from "./api";
+import { AttributeStep } from "./AttributeStep";
 import { MappingStep, missingRequired } from "./MappingStep";
 import { PreviewStep } from "./PreviewStep";
 import { UploadStep, fileProblem } from "./UploadStep";
@@ -42,12 +44,17 @@ function toRow(row: ImportPreviewRow): ImportRow {
     sub_category: row.sub_category,
     serials: row.serials,
     expiry_date: row.expiry_date,
+    attributes: row.attributes ?? {},
   };
 }
 
 /** Templates only apply when every header they name exists in this file. */
 function fits(template: MappingTemplate, headers: string[]): boolean {
-  return Object.values(template.mapping).every((header) => !header || headers.includes(header));
+  const standard = Object.values(template.mapping).every((header) => !header || headers.includes(header));
+  const attributes = Object.values(template.options.attribute_mapping ?? {}).every(
+    (header) => !header || headers.includes(header),
+  );
+  return standard && attributes;
 }
 
 export function ImportWizardModal({
@@ -69,6 +76,8 @@ export function ImportWizardModal({
   const [supplierId, setSupplierId] = useState("");
   const [upload, setUpload] = useState<ImportUpload | null>(null);
   const [mapping, setMapping] = useState<ImportMapping>({});
+  const [attributeMapping, setAttributeMapping] = useState<Record<string, string>>({});
+  const [attributes, setAttributes] = useState<ProductAttribute[]>([]);
   const [options, setOptions] = useState<ImportOptions>(DEFAULT_OPTIONS);
   const [templates, setTemplates] = useState<MappingTemplate[]>([]);
   const [templateId, setTemplateId] = useState("");
@@ -134,6 +143,7 @@ export function ImportWizardModal({
       if (!template) return;
       setTemplateId(id);
       setMapping(template.mapping);
+      setAttributeMapping(template.options.attribute_mapping ?? {});
       setOptions((current) => ({ ...current, auto_generate_codes: template.options.auto_generate_codes }));
     },
     [templates],
@@ -154,10 +164,12 @@ export function ImportWizardModal({
       if (supplierId && preferred) {
         setTemplateId(preferred.id);
         setMapping(preferred.mapping);
+        setAttributeMapping(preferred.options.attribute_mapping ?? {});
         setOptions((current) => ({ ...current, auto_generate_codes: preferred.options.auto_generate_codes }));
       } else {
         setTemplateId("");
         setMapping(parsed.suggested_mapping);
+        setAttributeMapping(parsed.suggested_attributes ?? {});
       }
       setPreview(null);
       setStep(2);
@@ -177,7 +189,7 @@ export function ImportWizardModal({
         upload_id: upload.upload_id,
         store_id: storeId,
         mapping,
-        options,
+        options: { ...options, attribute_mapping: attributeMapping },
         rows: edited ? edited.map(toRow) : undefined,
       });
       setPreview(result);
@@ -206,7 +218,7 @@ export function ImportWizardModal({
         store_id: storeId,
         supplier_id: supplierId || null,
         mapping,
-        options,
+        options: { ...options, attribute_mapping: attributeMapping },
         rows: rows.map(toRow),
         save_template_as: saveAs?.trim() ? saveAs.trim() : null,
         notes,
@@ -240,7 +252,9 @@ export function ImportWizardModal({
       ? file !== null && storeId !== "" && fileProblem(file) === null
       : step === 2
         ? missing.length === 0
-        : false;
+        : step === 3
+          ? true
+          : false;
 
   return (
     <div
@@ -282,7 +296,7 @@ export function ImportWizardModal({
               <X size={18} aria-hidden="true" />
             </button>
           </div>
-          <StepProgress step={committed ? 4 : step} />
+          <StepProgress step={committed ? 5 : step} />
         </header>
 
         <div className="min-h-0 flex-1 overflow-y-auto px-5 py-6 sm:px-7">
@@ -365,7 +379,15 @@ export function ImportWizardModal({
               onSaveAs={setSaveAs}
               supplierName={supplier?.name ?? null}
             />
-          ) : step === 3 && preview ? (
+          ) : step === 3 && upload ? (
+            <AttributeStep
+              upload={upload}
+              attributes={attributes}
+              mapping={attributeMapping}
+              onMapping={setAttributeMapping}
+              onCreated={(created) => setAttributes((current) => [...current, created].sort((a, b) => a.sort_order - b.sort_order))}
+            />
+          ) : step === 4 && preview ? (
             <PreviewStep
               preview={preview}
               rows={rows}
@@ -389,8 +411,10 @@ export function ImportWizardModal({
               : step === 2
                 ? `${IMPORT_FIELDS.filter((spec) => mapping[spec.field]).length} of ${IMPORT_FIELDS.length} fields mapped`
                 : step === 3
-                  ? `${included.length} line${included.length === 1 ? "" : "s"} will be committed`
-                  : "Your original file is kept with the batch."}
+                  ? `${Object.keys(attributeMapping).length} specification column${Object.keys(attributeMapping).length === 1 ? "" : "s"} mapped`
+                  : step === 4
+                    ? `${included.length} line${included.length === 1 ? "" : "s"} will be committed`
+                    : "Your original file is kept with the batch."}
           </span>
           <div className="flex flex-wrap gap-3">
             {committed ? (
@@ -422,7 +446,20 @@ export function ImportWizardModal({
                     </span>
                   </PrimaryButton>
                 ) : step === 2 ? (
-                  <PrimaryButton disabled={!canNext || busy !== null} onClick={() => void runPreview(null)}>
+                  <PrimaryButton
+                    disabled={!canNext || busy !== null}
+                    onClick={() => {
+                      void importApi.attributes().then(setAttributes).catch(() => setAttributes([]));
+                      setStep(3);
+                    }}
+                  >
+                    <span className="inline-flex items-center gap-2">
+                      Specifications
+                      <ArrowRight size={16} aria-hidden="true" />
+                    </span>
+                  </PrimaryButton>
+                ) : step === 3 ? (
+                  <PrimaryButton disabled={busy !== null} onClick={() => void runPreview(null)}>
                     <span className="inline-flex items-center gap-2">
                       {busy === "preview" ? <Loader2 size={16} className="animate-spin" aria-hidden="true" /> : null}
                       {busy === "preview" ? "Checking rows…" : "Preview import"}

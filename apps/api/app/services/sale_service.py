@@ -747,10 +747,27 @@ def record_sale(
         if order is None or order.channel_id is None:
             raise SyncRejected("Delivery-app tenders only settle delivery-app orders.")
     on_account = sum(tender.amount_cents for tender in tenders if tender.method == "on_account")
+    cod = sum(tender.amount_cents for tender in tenders if tender.method == "cod")
+    if cod and on_account:
+        raise SyncRejected("Cash on delivery cannot also be charged to a customer account.")
+    if data.order_id is not None:
+        linked_order = db.get(OpenOrder, data.order_id)
+        if linked_order is not None and linked_order.service_type == "DELIVERY":
+            prior = db.scalar(
+                select(Sale.id).where(Sale.order_id == linked_order.id, Sale.status == "completed", Sale.id != data.id)
+            )
+            if prior is not None:
+                raise SyncRejected("This delivery already has a sale. Settle the balance instead of ringing it again.")
+            if cod and linked_order.store_id != data.store_id:
+                raise SyncRejected("Cash on delivery is only for a delivery order.")
+        elif cod:
+            raise SyncRejected("Cash on delivery is only for a delivery order.")
+    elif cod:
+        raise SyncRejected("Cash on delivery is only for a delivery order.")
     loyalty_cents = sum(tender.amount_cents for tender in tenders if tender.method == "loyalty")
     if loyalty_cents or data.loyalty_points_redeemed:
         loyalty_service.check_redemption(db, customer, data.loyalty_points_redeemed, loyalty_cents)
-    paid = data.total_cents - on_account
+    paid = data.total_cents - on_account - cod
     credit_approver: User | None = None
     if on_account:
         if not has_capability(db, Capability.B2B_CREDIT):
@@ -869,9 +886,15 @@ def record_sale(
         sale_type=data.sale_type,
         customer_id=customer.id if customer is not None else None,
         is_quote_proforma=False,
-        payment_status=ledger_service.payment_status(data.total_cents, paid),
+        payment_status=(
+            "COD_AWAITING"
+            if cod and paid <= 0
+            else "COD_PARTIAL"
+            if cod
+            else ledger_service.payment_status(data.total_cents, paid)
+        ),
         amount_paid_cents=paid,
-        due_balance_cents=on_account,
+        due_balance_cents=on_account + cod,
         due_date=ledger_service.due_date_for(customer, sold_at) if customer is not None else None,
         order_id=data.order_id,
         service_charge_cents=data.service_charge_cents,
@@ -1053,6 +1076,7 @@ def record_sale(
         earned_on = (
             data.total_cents
             - on_account
+            - cod
             - loyalty_cents
             - sum(tender.amount_cents for tender in tenders if tender.method == "deposit")
         )

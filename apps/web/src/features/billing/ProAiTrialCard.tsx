@@ -136,7 +136,7 @@ export function ProAiTrialCard() {
             </ul>
           ) : null}
           <div className="mt-3 flex flex-wrap gap-3">
-            <Link to="/subscription" className="font-semibold text-accent">
+            <Link to="/subscription?plan=PRO_AI" className="font-semibold text-accent">
               {t("View plans")}
             </Link>
             {trial.status === "expired" && practice ? (

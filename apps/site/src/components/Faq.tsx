@@ -40,7 +40,7 @@ const ITEMS = [
   {
     question: "How do I get started?",
     answer:
-      "Choose Get Started Free. That opens registration: create an account, pick a business type, and finish store setup. A new store starts on the Standard trial shown in Pricing, with sample items so you can practise. Going live follows that subscription. It is not an unlimited free plan. The contact form is for a person on the team. When a sales WhatsApp number is published, the form opens WhatsApp with your details and nothing is delivered until you press Send.",
+      "Choose Get Started Free. That opens registration: create an account, pick a business type, and finish store setup. A new store starts on the Free plan. Paid plans, limits, and any Pro AI trial are the ones published in Pricing. Starting Free does not create an invoice. The contact form is for a person on the team. When a sales WhatsApp number is published, the form opens WhatsApp with your details and nothing is delivered until you press Send.",
   },
   {
     question: "How do I get support?",

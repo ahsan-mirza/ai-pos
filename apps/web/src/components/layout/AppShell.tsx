@@ -10,6 +10,7 @@ import { portalRouteAllowed } from "../../lib/industry";
 import { portalHomePath } from "../../lib/portal-home";
 import { SaleReturnLive } from "../../features/returns/saleReturnLive";
 import { StoreScopeProvider } from "../../lib/storeScope";
+import { FeatureAccessProvider } from "../../lib/featureAccess";
 import { AssistantDrawer } from "../../features/assistant/AssistantDrawer";
 import { AssistantProvider } from "../../features/assistant/AssistantProvider";
 import { PwaChrome } from "../../pwa/PwaChrome";
@@ -58,6 +59,7 @@ export function AppShell() {
       <SaleReturnLive />
       <PracticeProvider>
         <AssistantProvider>
+          <FeatureAccessProvider>
           <div className="flex h-dvh w-screen overflow-hidden bg-[#f8fafc] font-sans text-charcoal">
             <Sidebar
               collapsed={collapsed}
@@ -80,6 +82,7 @@ export function AppShell() {
             </div>
           </div>
           <FirstWinChecklist />
+          </FeatureAccessProvider>
         </AssistantProvider>
       </PracticeProvider>
     </StoreScopeProvider>

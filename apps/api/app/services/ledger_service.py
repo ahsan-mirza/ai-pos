@@ -100,7 +100,9 @@ def open_invoices(db: Session, customer_id: uuid.UUID) -> list[Sale]:
         .where(
             Sale.customer_id == customer_id,
             Sale.is_quote_proforma.is_(False),
+            Sale.status == "completed",
             Sale.due_balance_cents > 0,
+            Sale.payment_status.notin_(("COD_AWAITING", "COD_PARTIAL")),
         )
         .order_by(Sale.created_at, Sale.id)
     )
@@ -129,6 +131,10 @@ def receive_payment(
         sale.payment_status = payment_status(sale.total_cents, sale.amount_paid_cents)
         remaining -= applied
         allocations.append((sale, applied))
+    from app.services.delivery_finance import note_sale_paid
+
+    for sale, _applied in allocations:
+        note_sale_paid(db, sale)
     invoices = ", ".join((sale.invoice_number or sale.client_sale_id[:8].upper()) for sale, _ in allocations)
     entry = _append(
         db,

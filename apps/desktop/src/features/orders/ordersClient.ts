@@ -124,6 +124,40 @@ export const ordersApi = {
   ) => call<Order>("PATCH", `/api/v1/orders/${order.id}`, { revision: order.revision, user_id: userId, ...changes }),
   handOver: (order: Order, userId: string) =>
     call<Order>("POST", `/api/v1/orders/${order.id}/hand-over`, { revision: order.revision, user_id: userId }),
+  codPending: (storeId: string) => call<Order[]>("GET", `/api/v1/orders/cod-pending?store_id=${storeId}`),
+  assignRider: (order: Order, userId: string, riderId: string) =>
+    call<Order>("POST", `/api/v1/orders/${order.id}/delivery/assign`, { revision: order.revision, user_id: userId, rider_id: riderId }),
+  startDelivery: (order: Order, userId: string) =>
+    call<Order>("POST", `/api/v1/orders/${order.id}/delivery/start`, { revision: order.revision, user_id: userId }),
+  markDelivered: (order: Order, userId: string, collectedCents: number | null) =>
+    call<Order>("POST", `/api/v1/orders/${order.id}/delivery/delivered`, {
+      revision: order.revision,
+      user_id: userId,
+      collected_cents: collectedCents,
+    }),
+  acceptCod: (
+    order: Order,
+    userId: string,
+    shiftId: string,
+    receivedCents: number,
+    idempotencyKey: string,
+    approvedById: string | null,
+  ) =>
+    call<Order>("POST", `/api/v1/orders/${order.id}/delivery/handover`, {
+      revision: order.revision,
+      user_id: userId,
+      shift_id: shiftId,
+      received_cents: receivedCents,
+      idempotency_key: idempotencyKey,
+      approved_by_id: approvedById,
+    }),
+  setDeliveryOutcome: (order: Order, userId: string, status: "FAILED" | "RETURNED", reason: string) =>
+    call<Order>("POST", `/api/v1/orders/${order.id}/delivery/outcome`, {
+      revision: order.revision,
+      user_id: userId,
+      status,
+      reason,
+    }),
   voidItem: (order: Order, itemId: string, userId: string, reason: string, approvedById: string | null) =>
     call<Order>("POST", `/api/v1/orders/${order.id}/items/${itemId}/void`, {
       revision: order.revision,

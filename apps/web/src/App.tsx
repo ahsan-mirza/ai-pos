@@ -92,6 +92,7 @@ import { PwaProvider, usePwa } from "./pwa/PwaContext";
 import { useCapability, useSettingsLabel } from "./lib/capabilities";
 import { TenantProvider } from "./context/TenantContext";
 import { CurrencyProvider, useCanManageSettings } from "./lib/currency";
+import { FeatureAccessGuard } from "./lib/featureAccess";
 import { SubscriptionPaymentPage } from "./features/billing/SubscriptionPaymentPage";
 import { OnboardingWizard } from "./features/onboarding/OnboardingWizard";
 import { SignupApp } from "./features/signup/SignupApp";
@@ -424,7 +425,9 @@ function Portal() {
             path="insights"
             element={
               <RequirePermission permission={Permission.PortalReportsRead}>
-                <InsightsPage />
+                <FeatureAccessGuard featureKey="ai_insights">
+                  <InsightsPage />
+                </FeatureAccessGuard>
               </RequirePermission>
             }
           />
@@ -432,7 +435,9 @@ function Portal() {
             path="sales-insights"
             element={
               <RequirePermission permission={Permission.PortalReportsRead}>
-                <SalesInsightsPage />
+                <FeatureAccessGuard featureKey="sales_insights">
+                  <SalesInsightsPage />
+                </FeatureAccessGuard>
               </RequirePermission>
             }
           />
@@ -448,9 +453,11 @@ function Portal() {
             path="einvoicing"
             element={
               <RequirePermission permission={Permission.PortalReportsRead}>
-                <RequireCapability capability={Capability.UaeEinvoicing}>
-                  <EInvoicingPage />
-                </RequireCapability>
+                <FeatureAccessGuard featureKey="uae_einvoicing">
+                  <RequireCapability capability={Capability.UaeEinvoicing}>
+                    <EInvoicingPage />
+                  </RequireCapability>
+                </FeatureAccessGuard>
               </RequirePermission>
             }
           />
@@ -458,9 +465,11 @@ function Portal() {
             path="analytics/deep"
             element={
               <RequirePermission permission={Permission.PortalReportsRead}>
-                <RequireCapability capability={Capability.DeepAnalytics}>
-                  <DeepAnalyticsPage />
-                </RequireCapability>
+                <FeatureAccessGuard featureKey="deep_analytics">
+                  <RequireCapability capability={Capability.DeepAnalytics}>
+                    <DeepAnalyticsPage />
+                  </RequireCapability>
+                </FeatureAccessGuard>
               </RequirePermission>
             }
           />
@@ -558,9 +567,11 @@ function Portal() {
               path="reach"
               element={
                 <RequirePermission permission={Permission.MessagingManage}>
-                  <RequireCapability capability={Capability.AxizReach}>
-                    <ReachPage />
-                  </RequireCapability>
+                  <FeatureAccessGuard featureKey="axiz_reach">
+                    <RequireCapability capability={Capability.AxizReach}>
+                      <ReachPage />
+                    </RequireCapability>
+                  </FeatureAccessGuard>
                 </RequirePermission>
               }
             />
@@ -636,9 +647,11 @@ function Portal() {
                 path="delivery"
                 element={
                   <RequirePermission permission={Permission.DeliveryView} framed>
-                    <RequireCapability capability={Capability.DeliveryIntegrations}>
-                      <DeliveryPage />
-                    </RequireCapability>
+                    <FeatureAccessGuard featureKey="delivery_integrations">
+                      <RequireCapability capability={Capability.DeliveryIntegrations}>
+                        <DeliveryPage />
+                      </RequireCapability>
+                    </FeatureAccessGuard>
                   </RequirePermission>
                 }
               />

@@ -1,11 +1,12 @@
 import type { DeliveryChannel, DiningArea } from "@ai-pos/shared-types";
-import { FloorBoard, Select } from "@ai-pos/ui";
+import { FloorBoard, Select, useLocale } from "@ai-pos/ui";
 import { ArrowLeft, Bike, ChevronDown, ChevronUp, Minus, Plus, Search, Soup, UtensilsCrossed } from "lucide-react";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { staffApi, type RegisterStaff } from "../../../lib/retailClient";
 import { channelsApi } from "../../orders/ordersClient";
 import type { RegisterCustomer } from "../../../lib/tauri";
-import { searchCustomers } from "../wholesaleClient";
+import type { CashierSession } from "../../auth/session";
+import { createCustomer, searchCustomers } from "../wholesaleClient";
 import { store } from "../catalog";
 import { FloorTableCard } from "../../../components/FloorTableCard";
 import { useBusinessCurrency } from "../currency";
@@ -16,7 +17,6 @@ import {
   type OrderMode,
   type TableSession,
   type TicketDetails,
-  sessionHeading,
 } from "./tableSessions";
 import { changeTypeGate, sectionChoices, serviceLabel } from "./orderTypeNav";
 
@@ -43,6 +43,37 @@ function venueLabel(name: string): string {
 
 function coversLabel(count: number): string {
   return `${count} ${count === 1 ? "Person" : "People"}`;
+}
+
+function phoneDigits(value: string): string {
+  return value.replace(/\D/g, "");
+}
+
+function uniqueCustomers(rows: RegisterCustomer[]): RegisterCustomer[] {
+  const seen = new Set<string>();
+  return rows.filter((row) => {
+    if (seen.has(row.id)) return false;
+    seen.add(row.id);
+    return true;
+  });
+}
+
+/** A phone match wins, including one unique partial number. A name matches only when no phone was typed. */
+function exactCustomer(rows: RegisterCustomer[], guestName: string, guestPhone: string): RegisterCustomer | null {
+  const unique = uniqueCustomers(rows);
+  const typedPhone = phoneDigits(guestPhone);
+  if (typedPhone.length >= 6) {
+    const exact = unique.filter((row) => phoneDigits(row.phone ?? "") === typedPhone);
+    if (exact.length === 1) return exact[0];
+    const partial = unique.filter((row) => phoneDigits(row.phone ?? "").includes(typedPhone));
+    return partial.length === 1 ? partial[0] : null;
+  }
+  const named = guestName.trim().toLowerCase();
+  if (!named) return null;
+  const byName = unique.filter(
+    (row) => row.name.trim().toLowerCase() === named || (row.company_name ?? "").trim().toLowerCase() === named,
+  );
+  return byName.length === 1 ? byName[0] : null;
 }
 
 function orderCode(session: TableSession): string {
@@ -150,21 +181,26 @@ export function OrderModeBar({
   areas,
   storeId,
   pendingCount,
+  cashier,
   onMode,
   onSeat,
   onTicket,
   onCancelOrder,
+  onCustomer,
 }: {
   mode: OrderMode;
   session: TableSession | null;
   areas: DiningArea[];
   storeId: string;
   pendingCount: number;
+  cashier: CashierSession;
   onMode: (mode: OrderMode) => void;
   onSeat: (tableNumber: string, guestCount: number, tableId: string | null, orderId: string | null) => void;
   onTicket: (details: TicketDetails) => void;
   onCancelOrder?: () => void;
+  onCustomer?: (customer: RegisterCustomer) => void;
 }) {
+  const { t } = useLocale();
   const floors = useMemo(() => areasOf(areas), [areas]);
   const sections = useMemo(() => sectionChoices(areas), [areas]);
   const currency = useBusinessCurrency();
@@ -184,7 +220,13 @@ export function OrderModeBar({
   const [driver, setDriver] = useState("");
   const [staff, setStaff] = useState<RegisterStaff[]>([]);
   const [matches, setMatches] = useState<RegisterCustomer[]>([]);
+  const [searched, setSearched] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
+  const [searchSource, setSearchSource] = useState<"name" | "phone">("name");
+  const [picked, setPicked] = useState<RegisterCustomer | null>(null);
+  const [savingGuest, setSavingGuest] = useState(false);
+  const [guestError, setGuestError] = useState<string | null>(null);
+  const guestBox = useRef<HTMLDivElement>(null);
   const seated = session !== null && session.order_mode === mode;
   const [expanded, setExpanded] = useState(!seated);
   const listId = useId();
@@ -270,6 +312,8 @@ export function OrderModeBar({
       setAddress("");
       setZone("");
       setDriver("");
+      setPicked(null);
+      setGuestError(null);
       return;
     }
     const [guestName, phoneNumber, packed, tableNumber, guestCount, orderMode] = ticketKey.split("\u001e");
@@ -308,47 +352,127 @@ export function OrderModeBar({
     };
   }, [mode, storeId]);
 
+  const lookupQuery = mode === "delivery" || mode === "takeaway" ? (searchSource === "phone" ? phone : name) : "";
+
   useEffect(() => {
-    if (mode !== "delivery" || name.trim().length < 2) {
+    const query = lookupQuery.trim();
+    if ((mode !== "delivery" && mode !== "takeaway") || query.length < 2) {
       setMatches([]);
+      setSearched("");
       return;
     }
     let cancelled = false;
     const timer = window.setTimeout(() => {
-      searchCustomers(name)
+      searchCustomers(query)
         .then((rows) => {
-          if (!cancelled) setMatches(rows);
+          if (!cancelled) {
+            setMatches(rows);
+            setSearched(query);
+          }
         })
         .catch(() => {
-          if (!cancelled) setMatches([]);
+          if (!cancelled) {
+            setMatches([]);
+            setSearched(query);
+          }
         });
     }, 160);
     return () => {
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [mode, name]);
+  }, [mode, lookupQuery]);
+
+  useEffect(() => {
+    const onPointer = (event: PointerEvent) => {
+      if (guestBox.current && !guestBox.current.contains(event.target as Node)) setSearchOpen(false);
+    };
+    window.addEventListener("pointerdown", onPointer);
+    return () => window.removeEventListener("pointerdown", onPointer);
+  }, []);
 
   const chooseCustomer = (customer: RegisterCustomer) => {
     setName(customer.name);
     setPhone(customer.phone ?? "");
     setAddress(customer.address ?? "");
+    setPicked(customer);
+    setGuestError(null);
     setSearchOpen(false);
     setMatches([]);
+    setSearched("");
   };
 
-  const submitTicket = () => {
-    onTicket({
-      guestName: name.trim(),
-      phone: phone.trim(),
-      address: address.trim(),
-      zone,
-      driver,
-      pickup,
-      tag: tag.trim(),
-    });
+  const resolveGuest = async (): Promise<RegisterCustomer | null> => {
+    const guestName = name.trim();
+    const guestPhone = phone.trim();
+    let customer =
+      picked &&
+      picked.name.trim().toLowerCase() === guestName.toLowerCase() &&
+      (phoneDigits(guestPhone).length < 6 || phoneDigits(picked.phone ?? "") === phoneDigits(guestPhone))
+        ? picked
+        : null;
+    if (!customer) {
+      const queries = [...new Set([guestName, guestPhone].filter((value) => value.length >= 2))];
+      const groups = await Promise.all(queries.map((query) => searchCustomers(query).catch(() => [] as RegisterCustomer[])));
+      const found = uniqueCustomers(groups.flat());
+      customer = exactCustomer(found, guestName, guestPhone);
+      if (!customer && found.length > 0) {
+        setMatches(found);
+        setSearched(guestPhone.length >= 2 ? guestPhone : guestName);
+        setSearchSource(guestPhone.length >= 2 ? "phone" : "name");
+        setSearchOpen(true);
+        setGuestError("More than one guest matches. Pick one from the list.");
+        return null;
+      }
+    }
+    if (!customer) {
+      customer = await createCustomer(cashier, {
+        name: guestName || `Walk-in ${guestPhone}`,
+        phone: guestPhone || null,
+        email: null,
+        customer_type: "RETAIL",
+        company_name: null,
+        trn_vat_number: null,
+        price_tier: "RETAIL",
+        credit_limit_cents: 0,
+        payment_terms: "DUE_ON_RECEIPT",
+      });
+    }
+    setName(customer.name);
+    setPhone(customer.phone ?? guestPhone);
+    setPicked(customer);
+    onCustomer?.(customer);
+    return customer;
   };
 
+  const startService = async () => {
+    if (savingGuest) return;
+    if (mode === "delivery" && channels.length > 0 && zone === "") return;
+    setSavingGuest(true);
+    setGuestError(null);
+    try {
+      const customer = await resolveGuest();
+      if (!customer) return;
+      onTicket({
+        guestName: customer.name,
+        phone: customer.phone ?? phone.trim(),
+        address: address.trim(),
+        zone,
+        driver,
+        pickup,
+        tag: tag.trim(),
+      });
+    } catch (caught) {
+      setGuestError(caught instanceof Error ? caught.message : "Could not save this guest.");
+    } finally {
+      setSavingGuest(false);
+    }
+  };
+
+  const guestQuery = lookupQuery.trim();
+  const guestResolved = (mode === "takeaway" || mode === "delivery") && guestQuery.length >= 2 && searched === guestQuery;
+  const guestListOpen = guestResolved && searchOpen;
+  const addingNew = guestResolved && matches.length === 0 && picked === null;
   const zoneNames = channels.map((item) => item.name);
   const zones = zone && !zoneNames.includes(zone) ? [zone, ...zoneNames] : zoneNames;
   const drivers = driver && !staff.some((member) => member.full_name === driver) ? [driver, ...staff.map((member) => member.full_name)] : staff.map((member) => member.full_name);
@@ -377,67 +501,33 @@ export function OrderModeBar({
           })}
         </div>
       ) : (
-      <div className="flex min-w-0 items-center gap-2">
+      <div className="flex h-11 min-w-0 flex-nowrap items-center gap-2 overflow-hidden border-b border-zinc-100 dark:border-zinc-800">
         <button
           type="button"
           onClick={requestChange}
-          className="inline-flex h-12 shrink-0 items-center gap-1.5 rounded-full border border-zinc-300 px-3 text-sm font-semibold text-zinc-800 hover:bg-zinc-50 dark:border-zinc-600 dark:text-zinc-100 dark:hover:bg-zinc-800"
+          className="inline-flex h-10 shrink-0 items-center gap-1.5 rounded-xl border border-zinc-300 bg-transparent px-3 text-sm font-semibold text-zinc-800 hover:bg-zinc-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 dark:border-zinc-600 dark:text-zinc-100 dark:hover:bg-zinc-800"
         >
-          <ArrowLeft size={16} aria-hidden="true" />
-          Change Order Type
+          <ArrowLeft size={16} aria-hidden="true" className="rtl:scale-x-[-1]" />
+          {t("Change Order Type")}
         </button>
-        <span className="inline-flex h-12 shrink-0 items-center gap-2 rounded-full bg-zinc-950 px-4 text-sm font-semibold text-white dark:bg-white dark:text-zinc-950">
-          {serviceLabel(mode)}
+        <span className="inline-flex h-10 shrink-0 items-center rounded-full bg-zinc-950 px-4 text-sm font-semibold text-white dark:border dark:border-zinc-600 dark:bg-zinc-800">
+          {t(serviceLabel(mode))}
         </span>
-        <div className="flex min-w-0 flex-1 gap-2 overflow-x-auto" role="group" aria-label={`${serviceLabel(mode)} options`}>
-          {mode === "dine_in" && sections.length === 0 ? (
-            <span className="inline-flex h-12 items-center whitespace-nowrap text-sm text-zinc-500 dark:text-zinc-400">
-              No sections are configured for this store.
-            </span>
-          ) : null}
-          {mode === "takeaway" ? (
-            <span className="inline-flex h-12 items-center whitespace-nowrap text-sm text-zinc-500 dark:text-zinc-400">
-              No pickup options are configured. Enter the guest below.
-            </span>
-          ) : null}
-          {mode === "delivery" ? (
-            channels.length === 0 ? (
-              <span className="inline-flex h-12 items-center whitespace-nowrap text-sm text-zinc-500 dark:text-zinc-400">
-                No delivery zones are configured.
-              </span>
-            ) : (
-              channels.map((item) => (
-                <button
-                  key={item.id}
-                  type="button"
-                  aria-pressed={zone === item.name}
-                  onClick={() => setZone(item.name)}
-                  className={`inline-flex h-12 shrink-0 items-center rounded-full px-4 text-sm font-semibold ${zone === item.name ? "bg-primary-500 text-white" : "bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-200"}`}
-                >
-                  {item.name}
-                </button>
-              ))
-            )
-          ) : null}
-        </div>
         {!expanded && seated && session ? (
-          <span className="hidden min-w-0 max-w-[10rem] truncate rounded-full bg-zinc-100 px-3 py-1 text-sm font-medium text-zinc-800 lg:inline dark:bg-zinc-800 dark:text-zinc-100">
+          <span className="min-w-0 flex-1 truncate text-sm font-medium text-zinc-600 dark:text-zinc-300">
             {summaryDetail(session, floors)}
           </span>
-        ) : null}
-        {expanded && session ? (
-          <span className="ml-auto rounded-full bg-primary-500/10 px-3 py-1.5 text-sm font-semibold text-primary-700 dark:text-primary-300">
-            {sessionHeading(session)}
-          </span>
-        ) : null}
+        ) : (
+          <span className="min-w-0 flex-1" />
+        )}
         <button
           type="button"
           aria-expanded={expanded}
           aria-controls="order-setup-panel"
           aria-keyshortcuts="Escape F2"
-          aria-label={expanded ? "Collapse order setup" : "Expand order setup"}
+          aria-label={t(expanded ? "Collapse order setup" : "Expand order setup")}
           onClick={() => setExpanded((open) => !open)}
-          className={`${expanded && session ? "" : "ml-auto "}inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-zinc-200 text-zinc-600 hover:bg-zinc-50 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800`}
+          className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-zinc-200 text-zinc-600 hover:bg-zinc-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
         >
           {expanded ? <ChevronUp size={16} aria-hidden="true" /> : <ChevronDown size={16} aria-hidden="true" />}
         </button>
@@ -445,18 +535,32 @@ export function OrderModeBar({
       )}
       <div id="order-setup-panel" className={choosing ? "hidden" : `order-setup-panel ${expanded ? "is-open" : ""}`}>
       <div className="order-setup-inner" inert={expanded ? undefined : true}>
-
-      {session && session.items.length > 0 ? (
-        <ul className="mt-3 flex flex-wrap gap-2" aria-label="Items on this order">
-          {session.items
-            .filter((item) => item.kitchen_status !== "VOIDED")
-            .map((item) => (
-              <li key={item.id} className="rounded-full bg-zinc-100 px-3 py-1 text-xs font-medium text-zinc-700 dark:bg-zinc-800 dark:text-zinc-200">
-                {item.quantity}× {item.product_name}
-                <span className="ml-1 text-zinc-500">{STATUS_LABEL[item.kitchen_status]}</span>
-              </li>
+      {mode === "dine_in" && sections.length === 0 ? (
+        <p className="mt-2 text-sm text-zinc-500 dark:text-zinc-400">{t("No sections are configured for this store.")}</p>
+      ) : null}
+      {mode === "takeaway" ? (
+        <p className="mt-2 text-sm text-zinc-500 dark:text-zinc-400">
+          {t("Search by name or phone. A new guest is added if nobody matches.")}
+        </p>
+      ) : null}
+      {mode === "delivery" ? (
+        channels.length === 0 ? (
+          <p className="mt-2 text-sm text-zinc-500 dark:text-zinc-400">{t("No delivery zones are configured.")}</p>
+        ) : (
+          <div className="mt-2 flex min-w-0 gap-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" role="group" aria-label={t("Delivery zones")}>
+            {channels.map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                aria-pressed={zone === item.name}
+                onClick={() => setZone(item.name)}
+                className={`inline-flex h-10 shrink-0 items-center rounded-full px-3 text-sm font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 ${zone === item.name ? "bg-primary-500 text-white" : "bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-200"}`}
+              >
+                {item.name}
+              </button>
             ))}
-        </ul>
+          </div>
+        )
       ) : null}
 
       <div key={mode} className="context-swap mt-2">
@@ -539,17 +643,95 @@ export function OrderModeBar({
             className="grid items-end gap-2 sm:grid-cols-2 xl:grid-cols-[1fr_1fr_8rem_9rem_auto]"
             onSubmit={(event) => {
               event.preventDefault();
-              submitTicket();
+              void startService();
             }}
           >
-            <label className={labelClass}>
-              Customer name
-              <input required value={name} onChange={(event) => setName(event.target.value)} autoComplete="name" className={`${field} mt-1`} />
-            </label>
-            <label className={labelClass}>
-              Phone
-              <input value={phone} onChange={(event) => setPhone(event.target.value)} inputMode="tel" autoComplete="tel" className={`${field} mt-1`} />
-            </label>
+            <div ref={guestBox} className="relative sm:col-span-2 xl:col-span-2">
+              <div className="grid gap-2 sm:grid-cols-2">
+                <label className={labelClass}>
+                  Customer name
+                  <input
+                    required
+                    value={name}
+                    role="combobox"
+                    aria-expanded={guestListOpen && searchSource === "name"}
+                    aria-controls={listId}
+                    aria-autocomplete="list"
+                    autoComplete="off"
+                    placeholder="Search name"
+                    onChange={(event) => {
+                      setName(event.target.value);
+                      setSearchSource("name");
+                      setSearchOpen(true);
+                      setPicked(null);
+                    }}
+                    onFocus={() => {
+                      setSearchSource("name");
+                      setSearchOpen(true);
+                    }}
+                    className={`${field} mt-1`}
+                  />
+                </label>
+                <label className={labelClass}>
+                  Phone
+                  <input
+                    value={phone}
+                    role="combobox"
+                    aria-expanded={guestListOpen && searchSource === "phone"}
+                    aria-controls={listId}
+                    aria-autocomplete="list"
+                    inputMode="tel"
+                    autoComplete="off"
+                    placeholder="Search phone"
+                    onChange={(event) => {
+                      setPhone(event.target.value);
+                      setSearchSource("phone");
+                      setSearchOpen(true);
+                      setPicked(null);
+                    }}
+                    onFocus={() => {
+                      setSearchSource("phone");
+                      setSearchOpen(true);
+                    }}
+                    className={`${field} mt-1`}
+                  />
+                </label>
+              </div>
+              {guestListOpen ? (
+                <ul
+                  id={listId}
+                  role="listbox"
+                  className="absolute z-20 mt-1 max-h-48 w-full overflow-y-auto rounded-xl border border-zinc-200 bg-white py-1 shadow-lg dark:border-zinc-800 dark:bg-zinc-900"
+                >
+                  {matches.map((customer) => (
+                    <li key={customer.id} role="option">
+                      <button
+                        type="button"
+                        onClick={() => chooseCustomer(customer)}
+                        className="flex w-full flex-col px-3 py-2 text-left text-sm hover:bg-zinc-100 dark:hover:bg-zinc-800"
+                      >
+                        <span className="font-medium">{customer.company_name ?? customer.name}</span>
+                        <span dir="ltr" className="text-xs text-zinc-500">
+                          {[customer.phone, customer.code === "NEW" ? "Not synced yet" : customer.code].filter(Boolean).join(" · ")}
+                        </span>
+                      </button>
+                    </li>
+                  ))}
+                  {matches.length === 0 ? (
+                    <li role="option">
+                      <button
+                        type="button"
+                        onClick={() => setSearchOpen(false)}
+                        className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm font-semibold text-emerald-700 hover:bg-emerald-50 dark:text-emerald-300 dark:hover:bg-emerald-500/10"
+                      >
+                        <Plus size={16} aria-hidden="true" className="shrink-0" />
+                        <span className="min-w-0 truncate">Add "{guestQuery}" as a new customer</span>
+                      </button>
+                    </li>
+                  ) : null}
+                </ul>
+              ) : null}
+            </div>
             <label className={labelClass}>
               Order tag
               <input value={tag} onChange={(event) => setTag(event.target.value)} placeholder="Token" className={`${field} mt-1`} />
@@ -558,9 +740,14 @@ export function OrderModeBar({
               Pickup time
               <input type="time" value={pickup} onChange={(event) => setPickup(event.target.value)} className={`${field} mt-1`} />
             </label>
-            <button type="submit" className="h-11 rounded-xl bg-emerald-600 px-4 text-sm font-semibold text-white hover:bg-emerald-500">
-              {session?.order_mode === "takeaway" ? "Update" : "Start takeaway"}
+            <button
+              type="submit"
+              disabled={savingGuest}
+              className="h-11 rounded-xl bg-emerald-600 px-4 text-sm font-semibold text-white hover:bg-emerald-500 disabled:opacity-60"
+            >
+              {savingGuest ? "Saving…" : session?.order_mode === "takeaway" ? "Update" : addingNew ? "Add & start" : "Start takeaway"}
             </button>
+            {guestError ? <p className="text-sm text-red-600 sm:col-span-2 dark:text-red-300">{guestError}</p> : null}
           </form>
         ) : null}
 
@@ -569,37 +756,72 @@ export function OrderModeBar({
             className="grid gap-3 md:grid-cols-2"
             onSubmit={(event) => {
               event.preventDefault();
-              if (zone === "") return;
-              submitTicket();
+              void startService();
             }}
           >
-            <div className="relative">
-              <label htmlFor="delivery-customer" className={labelClass}>
-                Customer
-                <span className="relative mt-1 block">
-                  <Search aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 z-10 h-4 w-4 -translate-y-1/2 text-zinc-400" />
+            <div ref={guestBox} className="relative md:col-span-2">
+              <div className="grid gap-3 md:grid-cols-2">
+                <label htmlFor="delivery-customer" className={labelClass}>
+                  Customer
+                  <span className="relative mt-1 block">
+                    <Search aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 z-10 h-4 w-4 -translate-y-1/2 text-zinc-400" />
+                    <input
+                      id="delivery-customer"
+                      required
+                      type="search"
+                      role="combobox"
+                      aria-expanded={guestListOpen && searchSource === "name"}
+                      aria-controls={listId}
+                      aria-autocomplete="list"
+                      value={name}
+                      autoComplete="off"
+                      placeholder="Search name or phone"
+                      onChange={(event) => {
+                        setName(event.target.value);
+                        setSearchSource("name");
+                        setSearchOpen(true);
+                        setPicked(null);
+                      }}
+                      onFocus={() => {
+                        setSearchSource("name");
+                        setSearchOpen(true);
+                      }}
+                      className={`${field} !pl-9 [&::-webkit-search-cancel-button]:hidden`}
+                    />
+                  </span>
+                </label>
+                <label className={labelClass}>
+                  Phone
                   <input
-                    id="delivery-customer"
                     required
-                    type="search"
+                    value={phone}
                     role="combobox"
-                    aria-expanded={searchOpen && matches.length > 0}
+                    aria-expanded={guestListOpen && searchSource === "phone"}
                     aria-controls={listId}
                     aria-autocomplete="list"
-                    value={name}
+                    inputMode="tel"
                     autoComplete="off"
-                    placeholder="Search name or phone"
+                    placeholder="Search phone"
                     onChange={(event) => {
-                      setName(event.target.value);
+                      setPhone(event.target.value);
+                      setSearchSource("phone");
+                      setSearchOpen(true);
+                      setPicked(null);
+                    }}
+                    onFocus={() => {
+                      setSearchSource("phone");
                       setSearchOpen(true);
                     }}
-                    onFocus={() => setSearchOpen(true)}
-                    className={`${field} !pl-9 [&::-webkit-search-cancel-button]:hidden`}
+                    className={`${field} mt-1`}
                   />
-                </span>
-              </label>
-              {searchOpen && matches.length > 0 ? (
-                <ul id={listId} role="listbox" className="absolute z-20 mt-1 max-h-48 w-full overflow-y-auto rounded-xl border border-zinc-200 bg-white py-1 shadow-lg dark:border-zinc-800 dark:bg-zinc-900">
+                </label>
+              </div>
+              {guestListOpen ? (
+                <ul
+                  id={listId}
+                  role="listbox"
+                  className="absolute z-20 mt-1 max-h-48 w-full overflow-y-auto rounded-xl border border-zinc-200 bg-white py-1 shadow-lg dark:border-zinc-800 dark:bg-zinc-900"
+                >
                   {matches.map((customer) => (
                     <li key={customer.id} role="option">
                       <button
@@ -607,18 +829,28 @@ export function OrderModeBar({
                         onClick={() => chooseCustomer(customer)}
                         className="flex w-full flex-col px-3 py-2 text-left text-sm hover:bg-zinc-100 dark:hover:bg-zinc-800"
                       >
-                        <span className="font-medium">{customer.name}</span>
-                        <span className="text-xs text-zinc-500">{[customer.phone, customer.address].filter(Boolean).join(" · ")}</span>
+                        <span className="font-medium">{customer.company_name ?? customer.name}</span>
+                        <span dir="ltr" className="text-xs text-zinc-500">
+                          {[customer.phone, customer.address, customer.code === "NEW" ? "Not synced yet" : customer.code].filter(Boolean).join(" · ")}
+                        </span>
                       </button>
                     </li>
                   ))}
+                  {matches.length === 0 ? (
+                    <li role="option">
+                      <button
+                        type="button"
+                        onClick={() => setSearchOpen(false)}
+                        className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm font-semibold text-primary-600 hover:bg-primary-500/10"
+                      >
+                        <Plus size={16} aria-hidden="true" className="shrink-0" />
+                        <span className="min-w-0 truncate">Add "{guestQuery}" as a new customer</span>
+                      </button>
+                    </li>
+                  ) : null}
                 </ul>
               ) : null}
             </div>
-            <label className={labelClass}>
-              Phone
-              <input required value={phone} onChange={(event) => setPhone(event.target.value)} inputMode="tel" autoComplete="tel" className={`${field} mt-1`} />
-            </label>
             <label className="block text-xs font-medium text-zinc-500 dark:text-zinc-400 md:col-span-2">
               Address
               <input required value={address} onChange={(event) => setAddress(event.target.value)} autoComplete="street-address" className={`${field} mt-1`} />
@@ -646,13 +878,30 @@ export function OrderModeBar({
               />
             </label>
             <div className="md:col-span-2 flex justify-end">
-              <button type="submit" className="h-11 rounded-xl bg-primary-500 px-4 text-sm font-semibold text-white hover:bg-primary-600">
-                {session?.order_mode === "delivery" ? "Update delivery" : "Start delivery"}
+              <button
+                type="submit"
+                disabled={savingGuest}
+                className="h-11 rounded-xl bg-primary-500 px-4 text-sm font-semibold text-white hover:bg-primary-600 disabled:opacity-60"
+              >
+                {savingGuest ? "Saving…" : session?.order_mode === "delivery" ? "Update delivery" : addingNew ? "Add & start" : "Start delivery"}
               </button>
             </div>
+            {guestError ? <p className="text-sm text-red-600 md:col-span-2 dark:text-red-300">{guestError}</p> : null}
           </form>
         ) : null}
       </div>
+      {session && session.items.length > 0 ? (
+        <ul className="mt-3 flex flex-wrap gap-2" aria-label={t("Items on this order")}>
+          {session.items
+            .filter((item) => item.kitchen_status !== "VOIDED")
+            .map((item) => (
+              <li key={item.id} className="rounded-full bg-zinc-100 px-3 py-1 text-xs font-medium text-zinc-700 dark:bg-zinc-800 dark:text-zinc-200">
+                {item.quantity}× {item.product_name}
+                <span className="ms-1 text-zinc-500">{t(STATUS_LABEL[item.kitchen_status] ?? item.kitchen_status)}</span>
+              </li>
+            ))}
+        </ul>
+      ) : null}
       </div>
       </div>
       {confirmOpen ? (

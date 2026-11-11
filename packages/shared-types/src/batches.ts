@@ -67,6 +67,8 @@ export type ImportMapping = Partial<Record<ImportField, string>>;
 export interface ImportOptions {
   auto_generate_codes: boolean;
   update_master_price: boolean;
+  /** Attribute key to spreadsheet header. Empty skips specifications. */
+  attribute_mapping?: Record<string, string>;
 }
 
 export interface Supplier {
@@ -112,6 +114,7 @@ export interface ImportUpload {
   sample_rows: string[][];
   total_rows: number;
   suggested_mapping: ImportMapping;
+  suggested_attributes?: Record<string, string>;
   warnings: string[];
 }
 
@@ -137,6 +140,7 @@ export interface ImportRow {
   sub_category: string;
   serials: string[];
   expiry_date: string | null;
+  attributes?: Record<string, string>;
 }
 
 export type ImportRowStatus = "NEW" | "EXISTING" | "ERROR";

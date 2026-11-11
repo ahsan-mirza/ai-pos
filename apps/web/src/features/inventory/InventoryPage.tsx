@@ -25,6 +25,7 @@ export function InventoryPage() {
   const products = useMemo(() => (live ?? []).map((product) => ({ ...product, currency })), [live, currency]);
   const source = live === null ? "loading" : "live";
   const [query, setQuery] = useState("");
+  const [specQuery, setSpecQuery] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [page, setPage] = useState(1);
@@ -33,10 +34,17 @@ export function InventoryPage() {
   const [modelId, setModelId] = useState<string | null>(null);
   const search = useProductSearch(query, products, source === "live");
   const { debouncedQuery, searching, resolve } = search;
-  const hits = search.hits.filter(
-    ({ product }) =>
-      (brandId === null || product.brand_id === brandId) && (modelId === null || product.product_model_id === modelId),
-  );
+  const hits = search.hits.filter(({ product }) => {
+    const spec = specQuery.trim().toLowerCase();
+    const matchesSpec =
+      spec === "" ||
+      Object.values(product.specifications ?? {}).some((value) => value.toLowerCase().includes(spec));
+    return (
+      matchesSpec &&
+      (brandId === null || product.brand_id === brandId) &&
+      (modelId === null || product.product_model_id === modelId)
+    );
+  });
 
   const { can } = useAuth();
   const manage = can(Permission.PortalInventoryManage);
@@ -337,6 +345,15 @@ export function InventoryPage() {
             }}
             placeholder="Search Product, Model, Barcode, or IMEI..."
             className="min-w-[min(100%,18rem)] grow-[2] basis-[22rem]"
+          />
+          <SearchField
+            hideLabel
+            id="inventory-spec-search"
+            label="Filter by specification"
+            value={specQuery}
+            onChange={(event) => setSpecQuery(event.target.value)}
+            placeholder="Filter specifications..."
+            className="min-w-[min(100%,12rem)] grow basis-40"
           />
           {source === "live" ? (
             <BrandModelFilters

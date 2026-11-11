@@ -36,6 +36,7 @@ from app.models.price_list import (
     ScheduledPriceChange,
     ScheduledPriceChangeLine,
 )
+from app.models.attribute import ProductAttributeDefinition, ProductAttributeValue
 from app.models.product import Product
 from app.models.product_image import ProductImage
 from app.models.product_price import ProductPrice
@@ -75,7 +76,7 @@ from app.models.reservation import (
     TableActivityEvent,
     TableSeatingSession,
 )
-from app.models.restaurant import DiningArea, DiningTable, OpenOrder, OpenOrderItem
+from app.models.restaurant import CodHandover, DiningArea, DiningTable, OpenOrder, OpenOrderItem
 from app.models.return_item import ReturnItem
 from app.models.return_tender import ReturnTender
 from app.models.role import Role, RolePermission
@@ -144,6 +145,8 @@ __all__ = [
     "GoodsReceipt",
     "GoodsReceiptLine",
     "ImportMappingTemplate",
+    "ProductAttributeDefinition",
+    "ProductAttributeValue",
     "InventoryLevel",
     "LegalEntity",
     "KitchenStation",
@@ -152,6 +155,7 @@ __all__ = [
     "LoyaltyEntry",
     "MarkdownEvent",
     "PriceChange",
+    "CodHandover",
     "DiningArea",
     "DiningTable",
     "OpenOrder",
