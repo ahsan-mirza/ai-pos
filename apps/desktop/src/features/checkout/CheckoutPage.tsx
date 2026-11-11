@@ -1235,7 +1235,6 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
             customer={
               <>
                 <CustomerBar
-                  session={session}
                   customer={cart.customer}
                   currency={currency}
                   disabled={charging}

@@ -64,16 +64,16 @@ function exactCustomer(rows: RegisterCustomer[], guestName: string, guestPhone: 
   const typedPhone = phoneDigits(guestPhone);
   if (typedPhone.length >= 6) {
     const exact = unique.filter((row) => phoneDigits(row.phone ?? "") === typedPhone);
-    if (exact.length === 1) return exact[0];
+    if (exact.length === 1) return exact[0] ?? null;
     const partial = unique.filter((row) => phoneDigits(row.phone ?? "").includes(typedPhone));
-    return partial.length === 1 ? partial[0] : null;
+    return partial.length === 1 ? (partial[0] ?? null) : null;
   }
   const named = guestName.trim().toLowerCase();
   if (!named) return null;
   const byName = unique.filter(
     (row) => row.name.trim().toLowerCase() === named || (row.company_name ?? "").trim().toLowerCase() === named,
   );
-  return byName.length === 1 ? byName[0] : null;
+  return byName.length === 1 ? (byName[0] ?? null) : null;
 }
 
 function orderCode(session: TableSession): string {

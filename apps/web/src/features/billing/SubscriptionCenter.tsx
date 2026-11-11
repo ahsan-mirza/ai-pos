@@ -291,7 +291,7 @@ export function SubscriptionCenter({
                 highlighted={plan.code === focusPlan}
                 trialEligible={trialEligible && plan.code === "PRO_AI"}
                 onUpgrade={() => {
-                  if (practice) openGoLive(plan.code);
+                  if (practice) openGoLive();
                   else setUpgrade(plan);
                 }}
               />

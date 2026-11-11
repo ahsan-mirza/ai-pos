@@ -1,6 +1,7 @@
 from app.models.accounting import GlAccount, JournalEntry, JournalLine
 from app.models.addon_access import UserAddonAccess
 from app.models.approval import ApprovalRequest
+from app.models.attribute import ProductAttributeDefinition, ProductAttributeValue
 from app.models.audit_log import AuditLog
 from app.models.banking import BankAccount, BankStatement, BankStatementLine
 from app.models.base import Base
@@ -36,7 +37,6 @@ from app.models.price_list import (
     ScheduledPriceChange,
     ScheduledPriceChangeLine,
 )
-from app.models.attribute import ProductAttributeDefinition, ProductAttributeValue
 from app.models.product import Product
 from app.models.product_image import ProductImage
 from app.models.product_price import ProductPrice

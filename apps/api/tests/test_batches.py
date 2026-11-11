@@ -396,7 +396,24 @@ def test_attribute_mapping_is_optional_and_typed(client, session: Session) -> No
     assert rows[1]["status"] == "ERROR"
     assert any("RAM" in error for error in rows[1]["errors"])
     kept = [
-        {key: row[key] for key in ("row_number", "include", "name", "code", "quantity", "cost_cents", "price_cents", "model_number", "category", "sub_category", "serials", "expiry_date", "attributes")}
+        {
+            key: row[key]
+            for key in (
+                "row_number",
+                "include",
+                "name",
+                "code",
+                "quantity",
+                "cost_cents",
+                "price_cents",
+                "model_number",
+                "category",
+                "sub_category",
+                "serials",
+                "expiry_date",
+                "attributes",
+            )
+        }
         for row in rows
         if row["status"] != "ERROR"
     ]
@@ -410,7 +427,8 @@ def test_attribute_mapping_is_optional_and_typed(client, session: Session) -> No
     assert product.specifications["processor"] == "Intel Core i7"
     assert product.specifications["ram"] == "16 GB"
     assert product.specifications["storage"] == "512GB SSD"
-    assert session.scalar(select(ProductAttributeValue).where(ProductAttributeValue.product_id == product.id)) is not None
+    stored = session.scalar(select(ProductAttributeValue).where(ProductAttributeValue.product_id == product.id))
+    assert stored is not None
     listed = client.get(
         "/api/v1/products",
         headers=bearer(token),

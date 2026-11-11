@@ -29,7 +29,8 @@ from app.schemas.batches import (
     TemplateWrite,
     UploadOut,
 )
-from app.services import attribute_service, import_batch_service as service
+from app.services import attribute_service
+from app.services import import_batch_service as service
 from app.services.import_parser import MAX_FILE_BYTES
 
 router = APIRouter()

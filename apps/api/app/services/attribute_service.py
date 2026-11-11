@@ -46,7 +46,11 @@ def ensure(db: Session) -> list[ProductAttributeDefinition]:
             )
         )
     db.flush()
-    rows = db.scalars(select(ProductAttributeDefinition).order_by(ProductAttributeDefinition.sort_order, ProductAttributeDefinition.name)).all()
+    rows = db.scalars(
+        select(ProductAttributeDefinition).order_by(
+            ProductAttributeDefinition.sort_order, ProductAttributeDefinition.name
+        )
+    ).all()
     return list(rows)
 
 
@@ -84,7 +88,10 @@ def create_definition(
     if not attribute_catalog.is_key(slug):
         raise ApiError(422, "invalid_attribute", "Use a short key of letters, numbers, and underscores.")
     ensure(db)
-    if db.scalar(select(ProductAttributeDefinition.id).where(func.lower(ProductAttributeDefinition.key) == slug)) is not None:
+    existing = db.scalar(
+        select(ProductAttributeDefinition.id).where(func.lower(ProductAttributeDefinition.key) == slug)
+    )
+    if existing is not None:
         raise ApiError(409, "conflict", "An attribute with this key already exists.")
     row = ProductAttributeDefinition(
         key=slug,
@@ -153,7 +160,8 @@ def check_mapping(mapping: dict[str, str], headers: list[str], standard: dict[st
         else:
             seen[header] = key
     if unknown:
-        raise ApiError(422, "mapping_unknown_column", f"Column not found in the file: {', '.join(sorted(set(unknown)))}.")
+        missing = ", ".join(sorted(set(unknown)))
+        raise ApiError(422, "mapping_unknown_column", f"Column not found in the file: {missing}.")
 
 
 def row_issues(
@@ -178,7 +186,12 @@ def row_issues(
     return errors, warnings
 
 
-def apply(db: Session, product: Product, attributes: dict[str, str], definitions: dict[str, ProductAttributeDefinition]) -> list[str]:
+def apply(
+    db: Session,
+    product: Product,
+    attributes: dict[str, str],
+    definitions: dict[str, ProductAttributeDefinition],
+) -> list[str]:
     """Writes typed values and the display copy on the product. Blank cells are skipped."""
     applied: list[str] = []
     specs = dict(product.specifications or {})
