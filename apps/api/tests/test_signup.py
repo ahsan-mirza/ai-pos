@@ -7,6 +7,7 @@ from fastapi.testclient import TestClient
 from pydantic import ValidationError
 from sqlalchemy import select
 
+from app.console import mail
 from app.core.config import get_settings
 from app.core.database import build_engine
 from app.main import create_app
@@ -544,12 +545,11 @@ def test_development_emails_a_fresh_code_and_accepts_the_optional_code(signup: T
     settings.signup_otp_channel = "email"
     sent: list[str] = []
 
-    def capture(_settings, provider: str, message) -> str:
-        assert provider == "smtp"
+    def capture(_settings, message) -> str:
         sent.append(message.body)
         return "sent"
 
-    monkeypatch.setattr(signup_service.messaging_providers, "deliver", capture)
+    monkeypatch.setattr(mail, "send", capture)
     try:
         started = _start(signup, email="mail@alnoor.ae", phone="+971 50 000 0002")
         assert started["channel"] == "email" and started["dev_code"] is None
@@ -575,7 +575,7 @@ def test_a_configured_signup_code_is_accepted_without_sending(signup: TestClient
     def refuse(*_args, **_kwargs) -> str:
         raise AssertionError("a fixed signup code is not sent")
 
-    monkeypatch.setattr(signup_service.messaging_providers, "deliver", refuse)
+    monkeypatch.setattr(mail, "send", refuse)
     try:
         started = _start(signup, email="fixed@alnoor.ae", phone="+971 50 000 0001")
         assert started["dev_code"] == "101010"

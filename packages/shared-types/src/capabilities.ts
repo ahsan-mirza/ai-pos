@@ -42,6 +42,7 @@ export const Capability = {
   AxizReach: "axiz_reach",
   UaeEinvoicing: "uae_einvoicing",
   DeliveryIntegrations: "delivery_integrations",
+  FleetDispatch: "fleet_dispatch",
 } as const;
 export type Capability = (typeof Capability)[keyof typeof Capability];
 
@@ -104,6 +105,7 @@ export const CAPABILITIES: readonly CapabilitySpec[] = [
   { id: "axiz_reach", label: "AxizReach — Customer Engagement", description: "Marketing campaigns, segments, and campaign reports. Provider setup and receipts stay in the starter kit.", group: "customers", available: true, requires: [] },
   { id: "uae_einvoicing", label: "UAE e-Invoicing", description: "Optional UAE e-invoicing add-on for in-scope B2B and B2G sales. Ordinary consumer receipts stay on the register.", group: "customers", available: true, requires: [] },
   { id: "delivery_integrations", label: "Delivery Integrations", description: "Marketplace and aggregator connections for restaurant and cafe delivery orders. Orders still arrive through Delivery channels.", group: "food_beverage", available: true, requires: [] },
+  { id: "fleet_dispatch", label: "Fleet dispatch", description: "Delivery dates, zones, vehicles, drivers, and a manual dispatch plan with capacity checks.", group: "selling", available: true, requires: ["sales_orders"] },
 ];
 
 const SPECS = new Map(CAPABILITIES.map((spec) => [spec.id, spec]));
@@ -281,6 +283,7 @@ export const PROFILE_ELIGIBLE: Record<BusinessProfile, readonly Capability[]> = 
     "repairs",
     "warranty",
     "trade_in",
+    "fleet_dispatch",
     "deep_analytics",
     "ai_insights",
     "sales_insights",
@@ -303,6 +306,7 @@ export const PROFILE_ELIGIBLE: Record<BusinessProfile, readonly Capability[]> = 
     "online_store",
     "customer_reorders",
     "repairs",
+    "fleet_dispatch",
     "deep_analytics",
     "ai_insights",
     "sales_insights",
@@ -331,6 +335,7 @@ export const PROFILE_ELIGIBLE: Record<BusinessProfile, readonly Capability[]> = 
     "ai_insights",
     "sales_insights",
     "fashion_rental",
+    "fleet_dispatch",
     "axiz_reach",
     "uae_einvoicing",
   ],
@@ -352,6 +357,7 @@ export const PROFILE_ELIGIBLE: Record<BusinessProfile, readonly Capability[]> = 
     "fefo",
     "consignment",
     "variants_matrix",
+    "fleet_dispatch",
     "deep_analytics",
     "ai_insights",
     "sales_insights",

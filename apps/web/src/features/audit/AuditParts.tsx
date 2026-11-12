@@ -1,4 +1,5 @@
 import { AUDIT_ACTION_LABELS, type AuditActionType, type AuditClientDevice } from "@ai-pos/shared-types";
+import { formatDateTime } from "@ai-pos/ui";
 import { Cpu, Globe, Monitor, TerminalSquare, type LucideIcon } from "lucide-react";
 
 const badgeStyles: Record<AuditActionType, string> = {
@@ -83,7 +84,7 @@ export function DeviceLabel({ device }: { device: AuditClientDevice }) {
 export const formatStamp = (value: string) => {
   const date = new Date(value);
   return {
-    day: date.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" }),
+    day: formatDateTime(date).slice(0, 10),
     time: date.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", second: "2-digit" }),
   };
 };

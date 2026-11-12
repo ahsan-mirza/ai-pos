@@ -149,6 +149,13 @@ export interface SalesOrder {
   channel_ref: string | null;
   customer_reference: string | null;
   requested_date: string | null;
+  scheduling_status?: string;
+  promised_on?: string | null;
+  window_start?: string | null;
+  window_end?: string | null;
+  delivery_zone_id?: string | null;
+  delivery_instructions?: string;
+  timezone?: string;
   delivery_address: string | null;
   notes: string;
   subtotal_cents: number;
@@ -163,6 +170,26 @@ export interface SalesOrder {
   deliveries: DeliveryNote[];
 }
 
+export interface SalesOrderEvent {
+  id: string;
+  kind: string;
+  summary: string;
+  created_at: string;
+  actor_id?: string | null;
+  actor_name?: string | null;
+}
+
+export interface FulfillmentBoard {
+  orders_open: number;
+  orders_today: number;
+  out_for_delivery: number;
+  delivered_today: number;
+  /** IANA zone used for the today counts. Every branch shares it. */
+  timezone?: string;
+  map_configured: boolean;
+  rows: SalesOrderRow[];
+}
+
 export interface SalesOrderRow {
   id: string;
   number: string;
@@ -175,6 +202,7 @@ export interface SalesOrderRow {
   outstanding_units: number;
   backordered_units: number;
   requested_date: string | null;
+  promised_on?: string | null;
   created_at: string;
 }
 

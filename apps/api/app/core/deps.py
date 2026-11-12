@@ -195,6 +195,26 @@ def authorize(
     return dependency
 
 
+def authorize_any(*required: Permission, scopes: tuple[str, ...] = ("portal",)) -> Callable[[Principal], Principal]:
+    """Like authorize, but any one of the permissions is enough. payroll:manage is not implied here."""
+
+    def dependency(principal: Annotated[Principal, Depends(get_principal)]) -> Principal:
+        if principal.kind == "device":
+            raise ApiError(403, "forbidden", "This action requires a signed-in user.")
+        if principal.scope not in scopes:
+            raise ApiError(403, "forbidden", "This token cannot be used for this action.")
+        if any(item.value in principal.permissions for item in required):
+            return principal
+        raise ApiError(
+            403,
+            "forbidden",
+            "You do not have permission for this action.",
+            details={"missing": [item.value for item in required]},
+        )
+
+    return dependency
+
+
 def current_user(principal: Annotated[Principal, Depends(get_principal)]) -> User:
     if principal.user is None:
         raise ApiError(403, "forbidden", "This action requires a signed-in user.")

@@ -1,5 +1,5 @@
 import type { HardwareItem } from "@ai-pos/shared-types";
-import { DataTable, Select, type DataTableColumn } from "@ai-pos/ui";
+import { AxizTabs, DataTable, Select, type DataTableColumn } from "@ai-pos/ui";
 import { useCallback, useEffect, useState } from "react";
 import { FilterSearch, FilterSlot, PageHeader } from "../components/PageHeader";
 import { ErrorNote, Field, GhostButton, Modal, PrimaryButton } from "../components/ui";
@@ -113,16 +113,7 @@ export function HardwarePage() {
         title="Hardware"
         description="Optional products a store can lease or buy. A refundable deposit is not monthly revenue."
         controls={
-          <>
-            <div className="inline-flex gap-2" role="group" aria-label="Hardware section">
-              <GhostButton aria-pressed={tab === "catalogue"} onClick={() => setTab("catalogue")}>
-                Catalogue
-              </GhostButton>
-              <GhostButton aria-pressed={tab === "orders"} onClick={() => setTab("orders")}>
-                Orders
-              </GhostButton>
-            </div>
-            {tab === "orders" ? (
+          tab === "orders" ? (
               <>
                 <FilterSearch label="Search orders" value={query} onChange={setQuery} placeholder="Search orders" />
                 <FilterSlot>
@@ -156,9 +147,19 @@ export function HardwarePage() {
                   />
                 </FilterSlot>
               </>
-            ) : null}
-          </>
+          ) : undefined
         }
+      />
+      <AxizTabs
+        ariaLabel="Hardware section"
+        className="-mx-4 mb-5 md:-mx-6"
+        inset="page"
+        activeTab={tab}
+        onChange={(id) => setTab(id as "catalogue" | "orders")}
+        tabs={[
+          { id: "catalogue", label: "Catalogue" },
+          { id: "orders", label: "Orders" },
+        ]}
       />
       {tab === "catalogue" ? <Catalogue admin={admin} /> : <Orders admin={admin} query={query} payment={payment} fulfillment={fulfillment} />}
     </section>

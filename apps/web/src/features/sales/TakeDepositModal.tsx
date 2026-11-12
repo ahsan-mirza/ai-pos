@@ -1,4 +1,5 @@
 import { formatMoney, type Quote } from "@ai-pos/shared-types";
+import { formatDateTime } from "@ai-pos/ui";
 import { useState } from "react";
 import { ErrorNote, GhostButton, PrimaryButton, TextField } from "../../components/ui/Field";
 import { Modal } from "../../components/ui/Modal";
@@ -83,7 +84,7 @@ export function TakeDepositModal({
             {(quote.payments ?? []).map((payment) => (
               <li key={payment.id} className="flex justify-between py-2">
                 <span className="text-charcoal/70">
-                  {new Date(payment.received_at).toLocaleDateString()} · {payment.method} · {payment.received_by_name ?? "—"}
+                  {formatDateTime(payment.received_at)} · {payment.method} · {payment.received_by_name ?? "—"}
                 </span>
                 <span className="font-semibold tabular-nums">{formatMoney(payment.amount_cents, currency)}</span>
               </li>

@@ -31,6 +31,7 @@ from app.routers.v1.downloads import router as downloads_router
 from app.routers.v1.einvoices import router as einvoices_router
 from app.routers.v1.expenses import router as expenses_router
 from app.routers.v1.expiry import router as expiry_router
+from app.routers.v1.fleet import router as fleet_router
 from app.routers.v1.fnb_table_orders import router as fnb_table_orders_router
 from app.routers.v1.fnb_table_orders import ws_router as fnb_table_ws_router
 from app.routers.v1.gift_cards import router as gift_cards_router
@@ -154,6 +155,12 @@ api_router.include_router(
     prefix="/sales-orders",
     tags=["sales orders"],
     dependencies=module(Capability.SALES_ORDERS),
+)
+api_router.include_router(
+    fleet_router,
+    prefix="/fleet",
+    tags=["fleet"],
+    dependencies=module(Capability.FLEET_DISPATCH),
 )
 api_router.include_router(
     reorders_router,

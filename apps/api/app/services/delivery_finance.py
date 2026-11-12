@@ -83,6 +83,9 @@ def finish_delivery(order: OpenOrder) -> None:
         return
     order.status = "SETTLED"
     order.closed_at = datetime.now(UTC)
+    # Channel money can post earlier. The channel ticket completes only once the meal has arrived.
+    if order.channel_id is not None and order.channel_status not in {"REJECTED", "COMPLETED"}:
+        order.channel_status = "COMPLETED"
 
 
 def mark_lines_paid(order: OpenOrder, sale_id: uuid.UUID) -> None:

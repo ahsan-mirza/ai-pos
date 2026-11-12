@@ -1,12 +1,9 @@
 """Emails a 6-digit code so a portal user can set a new password."""
 
-import hashlib
-import hmac
 import logging
-import secrets
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
 from app.console import mail
@@ -14,7 +11,8 @@ from app.core.config import Settings
 from app.core.errors import ApiError
 from app.core.security import hash_password
 from app.models.user import User
-from app.services.email_brand import password_changed_parts, password_reset_parts
+from app.services import otp_service
+from app.services.email_brand import password_changed_parts
 from app.services.messaging_providers import Outgoing, ProviderError
 
 logger = logging.getLogger("ai_pos.password_reset")
@@ -35,12 +33,9 @@ def _aware(value: datetime | None) -> datetime | None:
     return value if value.tzinfo is not None else value.replace(tzinfo=UTC)
 
 
-def _digest(user: User, code: str) -> str:
-    return hashlib.sha256(f"{user.id}:{code}".encode()).hexdigest()
-
-
 def _find(db: Session, email: str) -> User | None:
-    return db.scalar(select(User).where(User.email == email.strip().lower(), User.is_active.is_(True)))
+    address = email.strip().lower()
+    return db.scalar(select(User).where(func.lower(User.email) == address, User.is_active.is_(True)))
 
 
 def request_code(db: Session, settings: Settings, email: str) -> str:
@@ -53,19 +48,20 @@ def request_code(db: Session, settings: Settings, email: str) -> str:
     sent_at = _aware(user.reset_code_sent_at)
     if sent_at is not None and _now() - sent_at < timedelta(seconds=RESEND_SECONDS):
         return SENT
-    code = f"{secrets.randbelow(1_000_000):06d}"
-    user.reset_code_hash = _digest(user, code)
+    code = otp_service.new_code()
+    user.reset_code_hash = otp_service.seal(str(user.id), code)
     user.reset_code_expires_at = _now() + timedelta(minutes=CODE_MINUTES)
     user.reset_code_sent_at = _now()
     user.reset_code_attempts = 0
     db.commit()
-    plain, html_body = password_reset_parts(
-        code=code, minutes=CODE_MINUTES, name=user.full_name, support_email=settings.support_email
-    )
     try:
-        mail.send(
+        otp_service.send(
             settings,
-            Outgoing(to=user.email, subject="Reset your AxizPOS password", body=plain, html=html_body),
+            to=user.email,
+            purpose="password_reset",
+            code=code,
+            minutes=CODE_MINUTES,
+            name=user.full_name,
         )
     except ProviderError as error:
         user.reset_code_hash = None
@@ -85,7 +81,7 @@ def _match(db: Session, email: str, code: str) -> User:
     expires = _aware(user.reset_code_expires_at)
     if expires is None or expires <= _now() or user.reset_code_attempts >= MAX_ATTEMPTS:
         raise refused
-    if not hmac.compare_digest(user.reset_code_hash, _digest(user, code.strip())):
+    if not otp_service.matches(user.reset_code_hash, str(user.id), code):
         user.reset_code_attempts += 1
         db.commit()
         raise refused

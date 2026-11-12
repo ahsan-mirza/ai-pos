@@ -1,4 +1,5 @@
 import { formatMoney, type ExpiringStockRow } from "@ai-pos/shared-types";
+import { formatDate } from "@ai-pos/ui";
 import { useCallback, useEffect, useState } from "react";
 import { useConfirm } from "../../components/ui/ConfirmDialog";
 import { ErrorNote } from "../../components/ui/Field";
@@ -13,8 +14,7 @@ const ranges = [
   { value: "90", label: "90 days" },
 ] as const;
 
-const shortDate = (value: string) =>
-  new Date(`${value}T00:00:00`).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
+const shortDate = (value: string) => formatDate(value.slice(0, 10));
 
 function DaysLeft({ row }: { row: ExpiringStockRow }) {
   if (row.expired) {

@@ -1,5 +1,5 @@
 import { Permission, formatMoney } from "@ai-pos/shared-types";
-import { useLocale } from "@ai-pos/ui";
+import { AxizDatePicker, AxizTabs, useLocale } from "@ai-pos/ui";
 import { useEffect, useMemo, useState } from "react";
 import { BarSeries } from "../../components/charts/Charts";
 import { env } from "../../config/env";
@@ -281,11 +281,11 @@ export function SalesInsightsPage() {
           <>
             <label className="flex flex-col gap-1 text-xs font-medium text-charcoal/70">
               {t("From")}
-              <input type="date" className="h-[38px] rounded-xl border border-line px-3 text-sm" value={from} onChange={(event) => setFrom(event.target.value)} />
+              <AxizDatePicker variant="compact" leading aria-label={t("From")} value={from} onChange={(event) => setFrom(event.target.value)} className="h-[38px] w-full rounded-xl border border-line bg-white text-sm" />
             </label>
             <label className="flex flex-col gap-1 text-xs font-medium text-charcoal/70">
               {t("To")}
-              <input type="date" className="h-[38px] rounded-xl border border-line px-3 text-sm" value={to} onChange={(event) => setTo(event.target.value)} />
+              <AxizDatePicker variant="compact" leading aria-label={t("To")} value={to} onChange={(event) => setTo(event.target.value)} className="h-[38px] w-full rounded-xl border border-line bg-white text-sm" />
               {rangeError ? <span className="text-xs font-normal text-red-700">{t(rangeError)}</span> : null}
             </label>
           </>
@@ -352,18 +352,12 @@ export function SalesInsightsPage() {
         <Kpi label={t("Refunds")} value={summary ? money(summary.refund_cents) : "—"} hint={t("Refunds posted in this period. They are not also removed from the average sale.")} loading={loading} />
       </div>
 
-      <div className="flex gap-2 overflow-x-auto pb-1">
-        {TABS.map((item) => (
-          <button
-            key={item.id}
-            type="button"
-            className={`h-9 shrink-0 rounded-full px-3 text-sm ${tab === item.id ? "bg-charcoal text-white" : "border border-line bg-white"}`}
-            onClick={() => setTab(item.id)}
-          >
-            {t(item.label)}
-          </button>
-        ))}
-      </div>
+      <AxizTabs
+        ariaLabel={t("Sales insights")}
+        activeTab={tab}
+        onChange={(id) => setTab(id as Tab)}
+        tabs={TABS.map((item) => ({ id: item.id, label: t(item.label) }))}
+      />
 
       {loading && summary === null ? <div className="h-40 animate-pulse rounded-2xl bg-charcoal/5" /> : null}
 

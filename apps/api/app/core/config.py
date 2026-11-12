@@ -294,7 +294,17 @@ class Settings(BaseSettings):
     @property
     def cors_origin_list(self) -> list[str]:
         origins = [item.strip() for item in self.cors_origins.split(",") if item.strip()]
-        return origins + [item.strip() for item in self.console_origins.split(",") if item.strip()]
+        origins.extend(item.strip() for item in self.console_origins.split(",") if item.strip())
+        if self.app_env == "production":
+            return origins
+        # localhost and 127.0.0.1 are different browser origins. Dev pages use both.
+        mirrored = []
+        for origin in origins:
+            if "://localhost" in origin:
+                mirrored.append(origin.replace("://localhost", "://127.0.0.1", 1))
+            elif "://127.0.0.1" in origin:
+                mirrored.append(origin.replace("://127.0.0.1", "://localhost", 1))
+        return list(dict.fromkeys([*origins, *mirrored]))
 
     @property
     def tenancy_enabled(self) -> bool:

@@ -6,7 +6,7 @@ import {
   type PriceChangeStatus,
   type PriceTier,
 } from "@ai-pos/shared-types";
-import { actionHoverClass } from "@ai-pos/ui";
+import { actionHoverClass, formatDateTime } from "@ai-pos/ui";
 import { CalendarClock, ChevronDown, ChevronRight, Plus, Printer, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useConfirm } from "../../components/ui/ConfirmDialog";
@@ -28,7 +28,7 @@ const STATUS_TONE: Record<PriceChangeStatus, string> = {
 };
 
 function when(value: string): string {
-  return new Date(value).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+  return formatDateTime(value);
 }
 
 export function PriceChangesPage() {

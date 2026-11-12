@@ -9,6 +9,7 @@ import type {
   PaymentResult,
   Sale,
 } from "@ai-pos/shared-types";
+import { formatDate, formatDateTime } from "@ai-pos/ui";
 import { apiBlob, apiGet, apiPatch, apiPost } from "../../lib/api";
 
 function query(params: Record<string, string | number | boolean | null | undefined>): string {
@@ -85,6 +86,7 @@ export function message(error: unknown, fallback: string): string {
 }
 
 export function shortDate(value: string | null): string {
-  if (value === null) return "—";
-  return new Date(value).toLocaleDateString(undefined, { day: "2-digit", month: "short", year: "numeric" });
+  if (value === null || value === "") return "—";
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return formatDate(value);
+  return formatDateTime(value).slice(0, 10) || "—";
 }

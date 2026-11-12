@@ -18,6 +18,7 @@ from app.schemas.settings import (
     BusinessSettingsOut,
     CurrencyUpdate,
     ProfileUpdate,
+    ReportingTimezoneUpdate,
     TaxSettingsUpdate,
 )
 from app.services import fx_service, settings_service
@@ -103,6 +104,17 @@ def convert_currency(
         return fx_service.convert(amount_cents, source, target, settings, refresh=refresh)
     except QuoteUnavailable as exc:
         raise ApiError(503, "rate_unavailable", exc.message) from exc
+
+
+@router.put("/timezone", response_model=BusinessSettingsOut)
+def update_timezone(
+    payload: ReportingTimezoneUpdate,
+    db: Annotated[Session, Depends(get_db)],
+    principal: Annotated[Principal, Depends(authorize(Permission.SETTINGS_MANAGE))],
+) -> BusinessSettingsOut:
+    if principal.user is None or principal.store_id is not None:
+        raise ApiError(403, "forbidden", "Only a business-wide administrator can change the reporting timezone.")
+    return settings_service.change_reporting_timezone(db, principal.user, payload)
 
 
 @router.put("/appearance", response_model=BusinessSettingsOut)

@@ -1,5 +1,5 @@
 import { businessCodeLabel, businessCodePhrase, PASSWORD_MIN_LENGTH, type TokenResponse, type User } from "@ai-pos/shared-types";
-import { useLocale } from "@ai-pos/ui";
+import { formatDateTime, useLocale } from "@ai-pos/ui";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { ErrorNote, PrimaryButton, TextField } from "../../components/ui/Field";
 import { ProfileAvatar } from "../../components/ui/ProfileAvatar";
@@ -23,7 +23,7 @@ function countryName(code: string | null | undefined): string {
 
 function when(value: string | null | undefined): string {
   if (!value) return "—";
-  return new Date(value).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+  return formatDateTime(value);
 }
 
 export function AccountPage() {

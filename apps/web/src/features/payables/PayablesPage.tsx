@@ -12,7 +12,7 @@ import {
 } from "@ai-pos/shared-types";
 import { Banknote, FileInput, Plus, Trash2, UserPlus } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
-import { PhoneField, Select, actionHoverClass, emailError, phoneError, requiredError } from "@ai-pos/ui";
+import { AxizTabs, PhoneField, Select, actionHoverClass, emailError, formatDate, phoneError, requiredError } from "@ai-pos/ui";
 import { ErrorNote, FilterSelect, GhostButton, PrimaryButton, TextField } from "../../components/ui/Field";
 import { Modal } from "../../components/ui/Modal";
 import { SegmentedControl } from "../../components/ui/SegmentedControl";
@@ -29,8 +29,7 @@ type Tab = "suppliers" | "bills" | "payments" | "receipts";
 type BillFilter = "UNPAID" | "PAID" | "all";
 
 const today = () => new Date().toISOString().slice(0, 10);
-const shortDate = (value: string) =>
-  new Date(`${value.slice(0, 10)}T00:00:00`).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
+const shortDate = (value: string) => formatDate(value.slice(0, 10));
 
 const methodLabels: Record<SupplierPaymentMethod, string> = {
   cash: "Cash",
@@ -158,19 +157,21 @@ export function PayablesPage() {
             </PrimaryButton>
           </div>
         </div>
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-          <SegmentedControl
-            label="View"
-            value={tab}
-            options={[
-              { value: "suppliers", label: "Suppliers" },
-              { value: "bills", label: "Bills" },
-              { value: "payments", label: "Payments" },
-              { value: "receipts", label: `To bill${receipts.length ? ` (${receipts.length})` : ""}` },
-            ]}
-            onChange={setTab}
-          />
-          {tab === "bills" ? (
+        <AxizTabs
+          ariaLabel="View"
+          className="-mx-6"
+          listClassName="px-6"
+          activeTab={tab}
+          onChange={(id) => setTab(id as Tab)}
+          tabs={[
+            { id: "suppliers", label: "Suppliers" },
+            { id: "bills", label: "Bills" },
+            { id: "payments", label: "Payments" },
+            { id: "receipts", label: `To bill${receipts.length ? ` (${receipts.length})` : ""}` },
+          ]}
+        />
+        {tab === "bills" ? (
+          <div className="mb-4">
             <SegmentedControl
               label="Bill status"
               value={billFilter}
@@ -181,8 +182,8 @@ export function PayablesPage() {
               ]}
               onChange={setBillFilter}
             />
-          ) : null}
-        </div>
+          </div>
+        ) : null}
         <ErrorNote message={error} />
 
         {tab === "suppliers" ? (

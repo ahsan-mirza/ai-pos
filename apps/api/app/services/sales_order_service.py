@@ -8,6 +8,7 @@ from collections import defaultdict
 from datetime import UTC, datetime
 
 from sqlalchemy import func, or_, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.capabilities import Capability, has_capability
@@ -22,7 +23,15 @@ from app.models.inventory import InventoryLevel
 from app.models.product import Product
 from app.models.sale import Sale
 from app.models.sale_item import SaleItem
-from app.models.sales_order import DeliveryNote, DeliveryNoteLine, PickList, PickListLine, SalesOrder, SalesOrderLine
+from app.models.sales_order import (
+    DeliveryNote,
+    DeliveryNoteLine,
+    PickList,
+    PickListLine,
+    SalesOrder,
+    SalesOrderEvent,
+    SalesOrderLine,
+)
 from app.models.serial_number import SerialNumber
 from app.models.store import Store
 from app.models.user import User
@@ -41,8 +50,10 @@ from app.schemas.sales_orders import (
     DeliveryNoteLineOut,
     DeliveryNoteOut,
     DispatchIn,
+    FulfillmentBoardOut,
     PickListOut,
     SalesOrderCreate,
+    SalesOrderEventOut,
     SalesOrderLineIn,
     SalesOrderLineOut,
     SalesOrderOut,
@@ -50,6 +61,7 @@ from app.schemas.sales_orders import (
     SalesOrderUpdate,
 )
 from app.services import audit, inventory, price_list_service
+from app.services.business_time import local_day_start, reporting_timezone
 from app.services.numbering import next_server_number
 from app.services.sale_service import held_by_quote, record_sale
 from app.services.tax import TaxPolicy, entered_includes_tax, for_customer, line_tax
@@ -64,6 +76,16 @@ def _now() -> datetime:
 
 def _rejected(exc: SyncRejected) -> ApiError:
     return ApiError(422, "rejected", str(exc))
+
+
+def _event(db: Session, order: SalesOrder, kind: str, summary: str, actor_id: uuid.UUID | None) -> None:
+    db.add(
+        SalesOrderEvent(order_id=order.id, kind=kind, summary=summary[:240], actor_id=actor_id)
+    )
+
+
+def _channel_order(db: Session, source: str, channel_ref: str) -> SalesOrder | None:
+    return db.scalar(select(SalesOrder).where(SalesOrder.source == source, SalesOrder.channel_ref == channel_ref))
 
 
 def _tax_policy(db: Session, customer: Customer | None, store_id: uuid.UUID | None = None) -> TaxPolicy:
@@ -178,6 +200,13 @@ def order_out(db: Session, order: SalesOrder) -> SalesOrderOut:
         channel_ref=order.channel_ref,
         customer_reference=order.customer_reference,
         requested_date=order.requested_date,
+        scheduling_status=order.scheduling_status,
+        promised_on=order.promised_on,
+        window_start=order.window_start,
+        window_end=order.window_end,
+        delivery_zone_id=order.delivery_zone_id,
+        delivery_instructions=order.delivery_instructions,
+        timezone=reporting_timezone(db).key,
         delivery_address=order.delivery_address,
         notes=order.notes,
         subtotal_cents=order.subtotal_cents,
@@ -278,10 +307,81 @@ def list_orders(
                     sum(max(0, line.outstanding - line.quantity_reserved) for line in order.lines) if open_ else 0
                 ),
                 requested_date=order.requested_date,
+                promised_on=order.promised_on,
                 created_at=order.created_at,
             )
         )
     return out, total
+
+
+def events(db: Session, principal: Principal, order_id: uuid.UUID) -> list[SalesOrderEventOut]:
+    order = _order(db, principal, order_id)
+    rows = list(
+        db.scalars(
+            select(SalesOrderEvent).where(SalesOrderEvent.order_id == order.id).order_by(SalesOrderEvent.created_at)
+        ).all()
+    )
+    actor_ids = {row.actor_id for row in rows if row.actor_id is not None}
+    names = (
+        {user.id: user.full_name for user in db.scalars(select(User).where(User.id.in_(actor_ids))).all()}
+        if actor_ids
+        else {}
+    )
+    return [
+        SalesOrderEventOut(
+            id=row.id,
+            kind=row.kind,
+            summary=row.summary,
+            created_at=row.created_at,
+            actor_id=row.actor_id,
+            actor_name=names.get(row.actor_id) if row.actor_id is not None else None,
+        )
+        for row in rows
+    ]
+
+
+def board(db: Session, principal: Principal, store_id: uuid.UUID | None) -> FulfillmentBoardOut:
+    """Live counts for the fulfillment board. Nothing here is estimated."""
+    scope = principal.store_id or store_id
+    if store_id is not None:
+        _scope(principal, store_id)
+    zone = reporting_timezone(db)
+    start = local_day_start(_now(), zone)
+
+    def count_orders(*filters: object) -> int:
+        statement = select(func.count()).select_from(SalesOrder)
+        if scope is not None:
+            statement = statement.where(SalesOrder.store_id == scope)
+        for item in filters:
+            statement = statement.where(item)  # type: ignore[arg-type]
+        return int(db.scalar(statement) or 0)
+
+    def count_notes(*filters: object) -> int:
+        statement = select(func.count()).select_from(DeliveryNote)
+        if scope is not None:
+            statement = statement.where(DeliveryNote.store_id == scope)
+        for item in filters:
+            statement = statement.where(item)  # type: ignore[arg-type]
+        return int(db.scalar(statement) or 0)
+
+    rows, _total = list_orders(
+        db,
+        principal,
+        store_id=store_id,
+        status="OPEN",
+        customer_id=None,
+        query=None,
+        offset=0,
+        limit=20,
+    )
+    return FulfillmentBoardOut(
+        orders_open=count_orders(SalesOrder.status.in_(OPEN_STATUSES)),
+        orders_today=count_orders(SalesOrder.created_at >= start),
+        out_for_delivery=count_notes(DeliveryNote.status == "DISPATCHED"),
+        delivered_today=count_notes(DeliveryNote.status == "DELIVERED", DeliveryNote.delivered_at >= start),
+        timezone=str(zone),
+        rows=rows,
+    )
 
 
 def backorders(db: Session, principal: Principal, store_id: uuid.UUID | None) -> list[BackorderRow]:
@@ -412,6 +512,11 @@ def create_order(db: Session, principal: Principal, data: SalesOrderCreate) -> S
     _scope(principal, data.store_id)
     if data.id is not None and (existing := db.get(SalesOrder, data.id)) is not None:
         return order_out(db, existing)
+    channel_ref = (data.channel_ref or "").strip() or None
+    if channel_ref is not None and (existing := _channel_order(db, data.source, channel_ref)) is not None:
+        if existing.store_id != data.store_id or existing.customer_id != data.customer_id:
+            raise ApiError(409, "channel_order_exists", "This external order is already recorded.")
+        return order_out(db, existing)
     actor = _actor(db, principal, data.user_id, allow_cashier=True)
     store = db.get(Store, data.store_id)
     customer = db.get(Customer, data.customer_id)
@@ -426,30 +531,40 @@ def create_order(db: Session, principal: Principal, data: SalesOrderCreate) -> S
         sale_type=data.sale_type,
         currency=store.currency,
         source=data.source,
-        channel_ref=data.channel_ref,
+        channel_ref=channel_ref,
         customer_reference=(data.customer_reference or "").strip() or None,
         requested_date=data.requested_date,
         delivery_address=(data.delivery_address or customer.address or "").strip() or None,
         notes=(data.notes or "").strip(),
         created_by_id=actor.id,
     )
-    db.add(order)
     price_approver = _approver(db, data.price_approved_by_id, Permission.POS_PRICE_OVERRIDE, "agreed prices")
     _price_lines(db, order, customer, data.lines, price_approver)
-    db.flush()
-    if data.confirm:
-        _confirm(db, order, customer, actor, data.credit_approved_by_id)
-    audit.record(
-        db,
-        action_type="CREATE",
-        action="sales_order.create",
-        target_entity="SalesOrder",
-        target_entity_id=order.id,
-        store_id=order.store_id,
-        user_id=actor.id,
-        new_values={"number": order.number, "total_cents": order.total_cents, "lines": len(order.lines)},
-    )
-    db.commit()
+    db.add(order)
+    try:
+        db.flush()
+        _event(db, order, "created", f"Order {order.number} created.", actor.id)
+        if data.confirm:
+            _confirm(db, order, customer, actor, data.credit_approved_by_id)
+        audit.record(
+            db,
+            action_type="CREATE",
+            action="sales_order.create",
+            target_entity="SalesOrder",
+            target_entity_id=order.id,
+            store_id=order.store_id,
+            user_id=actor.id,
+            new_values={"number": order.number, "total_cents": order.total_cents, "lines": len(order.lines)},
+        )
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        existing = _channel_order(db, data.source, channel_ref) if channel_ref is not None else None
+        if existing is None:
+            raise
+        if existing.store_id != data.store_id or existing.customer_id != data.customer_id:
+            raise ApiError(409, "channel_order_exists", "This external order is already recorded.") from None
+        return order_out(db, existing)
     return order_out(db, order)
 
 
@@ -528,6 +643,7 @@ def _confirm(
     order.status = "CONFIRMED"
     order.confirmed_at = _now()
     _reserve(db, order)
+    _event(db, order, "confirmed", f"Order {order.number} confirmed and stock reserved.", actor.id)
 
 
 def _reserve(db: Session, order: SalesOrder) -> int:
@@ -622,6 +738,7 @@ def pick_list(db: Session, principal: Principal, order_id: uuid.UUID) -> SalesOr
     db.add(pick)
     if order.status == "CONFIRMED":
         order.status = "PICKING"
+    _event(db, order, "picked", f"Pick list {pick.number} prepared.", actor.id)
     db.commit()
     return order_out(db, order)
 
@@ -820,6 +937,7 @@ def dispatch(
         user_id=actor.id,
         details={"delivery": note.number, "invoice": sale.invoice_number, "total_cents": total},
     )
+    _event(db, order, "dispatched", f"Delivery {note.number} left the branch.", actor.id)
     db.commit()
     return order_out(db, order)
 
@@ -870,6 +988,7 @@ def deliver(db: Session, principal: Principal, note_id: uuid.UUID, data: Deliver
         user_id=actor.id,
         details={"delivery": note.number, "receiver": note.receiver_name},
     )
+    _event(db, order, "delivered", f"Delivery {note.number} signed for by {note.receiver_name}.", actor.id)
     db.commit()
     customer = db.get(Customer, order.customer_id)
     return _delivery_out(db, note, order, customer.name if customer else "Customer")
@@ -906,6 +1025,7 @@ def cancel_lines(db: Session, principal: Principal, order_id: uuid.UUID, data: C
             "reason_code": _reason_code(data.reason),
         },
     )
+    _event(db, order, "lines_cancelled", f"Lines cancelled on {order.number}.", actor.id)
     if order.status != "DRAFT":
         _refresh_status(order)
     db.commit()
@@ -939,6 +1059,8 @@ def _finish(db: Session, principal: Principal, order_id: uuid.UUID, reason: str,
         reason_notes=reason,
         details={"reason_code": _reason_code(reason), "status": status},
     )
+    kind = "cancelled" if status == "CANCELLED" else "closed"
+    _event(db, order, kind, f"Order {order.number} {kind}.", actor.id)
     db.commit()
     return order_out(db, order)
 
@@ -1028,6 +1150,8 @@ def from_quote(db: Session, principal: Principal, quote_id: uuid.UUID) -> SalesO
     quote.quote_status = "CONVERTED"
     db.flush()
     _reserve(db, order)
+    _event(db, order, "created", f"Order {order.number} created from a quote.", actor.id)
+    _event(db, order, "confirmed", f"Order {order.number} confirmed and stock reserved.", actor.id)
     audit.record(
         db,
         action_type="CREATE",

@@ -1,5 +1,5 @@
 import uuid
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, timedelta
 
 import pytest
 from sqlalchemy import select
@@ -8,6 +8,10 @@ from app.core import capabilities as catalog
 from app.models.inventory import InventoryLevel
 from app.models.sale import Sale
 from app.models.sale_item import SaleItem
+from app.models.sales_order import DeliveryNote, SalesOrder
+from app.models.store import Store
+from app.models.user import User
+from app.services import sales_order_service
 from wholesale_support import CABLE, CASHIER_ID, PHONE, STORE, admin, create_customer, device, line, seed
 
 SIGNATURE = (
@@ -209,6 +213,10 @@ def test_quote_becomes_order_and_moves_the_hold(client) -> None:
     assert product(client, CABLE)["quantity_reserved"] == 30
     assert client.get(f"/api/v1/quotes/{quote_id}", headers=headers).json()["quote_status"] == "CONVERTED"
     assert client.post(f"/api/v1/sales-orders/from-quote/{quote_id}", headers=headers).status_code == 422
+    timeline = client.get(f"/api/v1/sales-orders/{order['id']}/events", headers=headers)
+    body = timeline.json()
+    assert [row["kind"] for row in body] == ["created", "confirmed"]
+    assert body[1]["summary"] and body[1]["created_at"] and body[1]["actor_name"]
 
 
 def test_cancel_releases_stock_and_agreed_prices_need_approval(client) -> None:
@@ -235,6 +243,19 @@ def test_cancel_releases_stock_and_agreed_prices_need_approval(client) -> None:
     )
     assert cancelled.status_code == 200 and cancelled.json()["status"] == "CANCELLED"
     assert product(client, CABLE)["quantity_reserved"] == 0
+    kinds = [
+        row["kind"]
+        for row in client.get(f"/api/v1/sales-orders/{order['id']}/events", headers=headers).json()
+    ]
+    assert kinds == ["created", "confirmed", "lines_cancelled", "cancelled"]
+    again = client.post(
+        f"/api/v1/sales-orders/{order['id']}/cancel", headers=headers, json={"reason": "Order withdrawn"}
+    )
+    assert again.status_code == 409
+    assert [
+        row["kind"]
+        for row in client.get(f"/api/v1/sales-orders/{order['id']}/events", headers=headers).json()
+    ] == kinds
     listing = client.get("/api/v1/sales-orders", headers=headers, params={"status": "CANCELLED"})
     assert listing.headers["X-Total-Count"] == "1"
 
@@ -323,3 +344,187 @@ def test_module_off_hides_orders(client) -> None:
         json={"business_profile": "electronics_wholesale", "capabilities": chosen},
     )
     assert client.get("/api/v1/sales-orders", headers=headers).status_code == 403
+
+
+def test_repeated_external_order_is_stored_once(client) -> None:
+    seed(client)
+    headers, _user = admin(client)
+    customer = create_customer(client, headers)
+    lines = [{"product_id": CABLE, "quantity": 1}]
+    extra = {"source": "ecommerce", "channel_ref": "SHOP-100"}
+    first = create(client, headers, customer["id"], lines, **extra)
+    second = create(client, headers, customer["id"], [{"product_id": CABLE, "quantity": 4}], **extra)
+    assert first.status_code == 201, first.text
+    assert second.status_code == 201, second.text
+    assert first.json()["id"] == second.json()["id"]
+    assert first.json()["lines"][0]["quantity_ordered"] == 1
+    board = client.get("/api/v1/sales-orders/board", headers=headers)
+    assert board.status_code == 200, board.text
+    body = board.json()
+    assert body["orders_today"] == 1
+    assert body["orders_open"] == 0
+    assert body["out_for_delivery"] == 0
+    assert body["map_configured"] is False
+    timeline = client.get(f"/api/v1/sales-orders/{first.json()['id']}/events", headers=headers)
+    assert timeline.status_code == 200, timeline.text
+    assert [row["kind"] for row in timeline.json()] == ["created"]
+
+
+def test_blank_channel_refs_stay_separate_and_a_mismatch_is_rejected(client) -> None:
+    seed(client)
+    headers, _user = admin(client)
+    first_customer = create_customer(client, headers)
+    second_customer = create_customer(
+        client,
+        headers,
+        name="Other account",
+        company_name="Other account LLC",
+        trn_vat_number="100200300400004",
+    )
+    one = create(client, headers, first_customer["id"], [{"product_id": CABLE, "quantity": 1}])
+    two = create(client, headers, first_customer["id"], [{"product_id": CABLE, "quantity": 1}])
+    assert one.status_code == 201 and two.status_code == 201
+    assert one.json()["id"] != two.json()["id"]
+    kept = create(
+        client,
+        headers,
+        first_customer["id"],
+        [{"product_id": CABLE, "quantity": 2}],
+        source="ecommerce",
+        channel_ref="  SHOP-200  ",
+    )
+    retry = create(
+        client,
+        headers,
+        first_customer["id"],
+        [{"product_id": CABLE, "quantity": 9}],
+        source="ecommerce",
+        channel_ref="SHOP-200",
+    )
+    assert kept.json()["id"] == retry.json()["id"]
+    assert kept.json()["lines"][0]["quantity_ordered"] == 2
+    other_channel = create(
+        client,
+        headers,
+        first_customer["id"],
+        [{"product_id": CABLE, "quantity": 1}],
+        source="b2b",
+        channel_ref="SHOP-200",
+    )
+    assert other_channel.status_code == 201
+    assert other_channel.json()["id"] != kept.json()["id"]
+    clash = create(
+        client,
+        headers,
+        second_customer["id"],
+        [{"product_id": CABLE, "quantity": 1}],
+        source="ecommerce",
+        channel_ref="SHOP-200",
+    )
+    assert clash.status_code == 409
+    assert clash.json()["error"]["code"] == "channel_order_exists"
+
+
+def test_lost_lookup_still_returns_the_original_order(client, monkeypatch) -> None:
+    seed(client)
+    headers, _user = admin(client)
+    customer = create_customer(client, headers)
+    extra = {"source": "ecommerce", "channel_ref": "SHOP-RACE"}
+    first = create(client, headers, customer["id"], [{"product_id": CABLE, "quantity": 3}], **extra)
+    assert first.status_code == 201, first.text
+    real = sales_order_service._channel_order
+    seen = {"n": 0}
+
+    def miss_the_second_lookup(db, source, channel_ref):
+        seen["n"] += 1
+        if seen["n"] == 1:
+            return None
+        return real(db, source, channel_ref)
+
+    monkeypatch.setattr(sales_order_service, "_channel_order", miss_the_second_lookup)
+    second = create(client, headers, customer["id"], [{"product_id": CABLE, "quantity": 8}], **extra)
+    assert second.status_code == 201, second.text
+    assert second.json()["id"] == first.json()["id"]
+    assert second.json()["lines"][0]["quantity_ordered"] == 3
+    listed = client.get("/api/v1/sales-orders", headers=headers)
+    assert listed.status_code == 200
+    assert listed.headers["X-Total-Count"] == "1"
+
+
+def test_board_counts_ignore_yesterday_and_another_branch(client, session) -> None:
+    seed(client)
+    headers, _user = admin(client)
+    customer = create_customer(client, headers, credit_limit_cents=10_000_000)
+    old = create(client, headers, customer["id"], [{"product_id": CABLE, "quantity": 1}], confirm=True)
+    fresh = create(client, headers, customer["id"], [{"product_id": CABLE, "quantity": 1}], confirm=True)
+    assert old.status_code == 201 and fresh.status_code == 201
+    stored = session.get(SalesOrder, uuid.UUID(old.json()["id"]))
+    stored.created_at = datetime.now(UTC) - timedelta(days=2)
+    session.commit()
+    board = client.get("/api/v1/sales-orders/board", headers=headers)
+    assert board.status_code == 200, board.text
+    body = board.json()
+    assert body["orders_today"] == 1
+    assert body["orders_open"] == 2
+    assert {row["id"] for row in body["rows"]} == {old.json()["id"], fresh.json()["id"]}
+
+    other = Store(code="DT-02", name="Other branch", currency="USD")
+    session.add(other)
+    session.commit()
+    user = session.scalar(select(User).where(User.username == "admin"))
+    user.store_id = other.id
+    session.commit()
+    pinned, _user = admin(client)
+    denied = client.get("/api/v1/sales-orders/board", headers=pinned, params={"store_id": STORE})
+    assert denied.status_code == 404
+    own = client.get("/api/v1/sales-orders/board", headers=pinned)
+    assert own.status_code == 200, own.text
+    assert own.json()["orders_open"] == 0
+    assert own.json()["orders_today"] == 0
+    assert own.json()["timezone"] == "Asia/Dubai"
+    hidden = client.get(f"/api/v1/sales-orders/{old.json()['id']}/events", headers=pinned)
+    assert hidden.status_code == 404
+    zone = client.put("/api/v1/settings/timezone", headers=pinned, json={"timezone": "Asia/Tokyo"})
+    assert zone.status_code == 403
+
+
+def test_today_follows_the_tenant_timezone_across_midnight(client, session, monkeypatch) -> None:
+    """20:30 UTC is still the 12th in Los Angeles and already the 13th in Tokyo. Both branches use that one clock."""
+    seed(client)
+    headers, _user = admin(client)
+    customer = create_customer(client, headers, credit_limit_cents=10_000_000)
+    saved = create(client, headers, customer["id"], [{"product_id": CABLE, "quantity": 1}], confirm=True)
+    assert saved.status_code == 201, saved.text
+    stored = session.get(SalesOrder, uuid.UUID(saved.json()["id"]))
+    # 10:00 UTC on the 12th: 02:00 in Los Angeles (still the 12th) and 19:00 in Tokyo (still the 12th,
+    # while Tokyo's "now" below has already moved to the 13th).
+    instant = datetime(2026, 11, 12, 10, 0, tzinfo=UTC)
+    stored.created_at = instant
+    session.add(
+        DeliveryNote(
+            number="DN-TZ-1",
+            order_id=stored.id,
+            store_id=stored.store_id,
+            status="DELIVERED",
+            delivered_at=instant,
+            receiver_name="Noura",
+        )
+    )
+    session.commit()
+    monkeypatch.setattr(sales_order_service, "_now", lambda: datetime(2026, 11, 12, 20, 30, tzinfo=UTC))
+
+    tokyo = client.put("/api/v1/settings/timezone", headers=headers, json={"timezone": "Asia/Tokyo"})
+    assert tokyo.status_code == 200, tokyo.text
+    assert tokyo.json()["timezone"] == "Asia/Tokyo"
+    east = client.get("/api/v1/sales-orders/board", headers=headers)
+    assert east.status_code == 200, east.text
+    assert east.json()["orders_today"] == 0
+    assert east.json()["delivered_today"] == 0
+    assert east.json()["timezone"] == "Asia/Tokyo"
+
+    west = client.put("/api/v1/settings/timezone", headers=headers, json={"timezone": "America/Los_Angeles"})
+    assert west.status_code == 200, west.text
+    pacific = client.get("/api/v1/sales-orders/board", headers=headers).json()
+    assert (pacific["orders_today"], pacific["delivered_today"], pacific["timezone"]) == (1, 1, "America/Los_Angeles")
+    unknown = client.put("/api/v1/settings/timezone", headers=headers, json={"timezone": "Not/Azone"})
+    assert unknown.status_code == 422

@@ -67,6 +67,8 @@ export interface BusinessSettings {
   country?: string | null;
   /** City or area of the business. */
   location?: string | null;
+  /** IANA timezone for business-day reports. Every branch uses it. */
+  timezone?: string;
   supported_currencies: CurrencyCode[];
   updated_at: string;
   updated_by_name: string | null;

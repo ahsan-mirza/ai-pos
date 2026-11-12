@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import calendar
-import re
 import uuid
 from collections import defaultdict
 from datetime import UTC, date, datetime, time, timedelta
@@ -17,7 +15,7 @@ from app.models.return_item import ReturnItem
 from app.models.sale import Sale
 from app.models.sale_item import SaleItem
 from app.models.sale_return import SaleReturn
-from app.models.staff import CommissionRule, EmployeeProfile, PayrollLine, PayrollRun
+from app.models.staff import CommissionRule, PayrollRun
 from app.models.user import User
 from app.schemas.staff import (
     CommissionByRule,
@@ -25,16 +23,18 @@ from app.schemas.staff import (
     CommissionRuleOut,
     CommissionRuleWrite,
     EmployeeOut,
-    EmployeeProfileOut,
     EmployeeProfileWrite,
-    PayrollLineOut,
     PayrollLineWrite,
+    PayrollPaymentOut,
+    PayrollPaymentWrite,
     PayrollRunOut,
     PayrollSettings,
+    PayslipSummary,
+    SalaryVersionOut,
     StaffCommission,
+    WpsValidation,
 )
-from app.services import timesheet_service
-from app.services.settings_service import business_currency, load_settings
+from app.services.settings_service import business_currency
 
 POSTED = ("completed", "partially_refunded", "refunded")
 
@@ -187,301 +187,115 @@ def commissions(db: Session, *, start: date, end: date, store_id: uuid.UUID | No
     )
 
 
-# --- Payroll ----------------------------------------------------------------------------------------------
+# --- Payroll -------------------------------------------------------------------------------------------------
+# The calculation, versions, and WPS file live in payroll_engine. These names stay so existing callers keep working.
+
+
+def _payroll():
+    from app.services import payroll_engine
+
+    return payroll_engine
 
 
 def payroll_settings(db: Session) -> PayrollSettings | None:
-    raw = load_settings(db).payroll
-    return PayrollSettings(**raw) if raw else None
+    return _payroll().payroll_settings(db)
 
 
 def save_payroll_settings(db: Session, data: PayrollSettings) -> PayrollSettings:
-    load_settings(db).payroll = data.model_dump()
-    db.commit()
-    return data
+    return _payroll().save_payroll_settings(db, data)
 
 
-def _profile_out(profile: EmployeeProfile) -> EmployeeProfileOut:
-    return EmployeeProfileOut(
-        employee_code=profile.employee_code,
-        labour_id=profile.labour_id,
-        bank_routing_code=profile.bank_routing_code,
-        iban=profile.iban,
-        job_title=profile.job_title,
-        nationality=profile.nationality,
-        phone=profile.phone,
-        emirates_id=profile.emirates_id,
-        passport_number=profile.passport_number,
-        joined_on=profile.joined_on,
-        date_of_birth=profile.date_of_birth,
-        basic_salary_cents=profile.basic_salary_cents,
-        housing_allowance_cents=profile.housing_allowance_cents,
-        transport_allowance_cents=profile.transport_allowance_cents,
-        other_allowance_cents=profile.other_allowance_cents,
-        overtime_rate_pct=profile.overtime_rate_pct,
-        is_active=profile.is_active,
-    )
+def employees(db: Session, *, reveal_bank: bool = False, home_store_id: uuid.UUID | None = None) -> list[EmployeeOut]:
+    return _payroll().employees(db, reveal_bank=reveal_bank, home_store_id=home_store_id)
 
 
-def _next_employee_code(db: Session) -> str:
-    """The next EMP0001-style code. Codes already saved, including older typed ones, stay as they are."""
-    highest = 0
-    for code in db.scalars(select(EmployeeProfile.employee_code)):
-        match = re.fullmatch(r"EMP(\d+)", code or "")
-        if match:
-            highest = max(highest, int(match.group(1)))
-    return f"EMP{highest + 1:04d}"
+def employee_detail(
+    db: Session, user_id: uuid.UUID, *, reveal_bank: bool, home_store_id: uuid.UUID | None = None
+) -> EmployeeOut:
+    return _payroll().employee_detail(db, user_id, reveal_bank=reveal_bank, home_store_id=home_store_id)
 
 
-def employees(db: Session) -> list[EmployeeOut]:
-    profiles = {row.user_id: row for row in db.scalars(select(EmployeeProfile))}
-    out = []
-    for user in db.scalars(select(User).where(User.is_active.is_(True)).order_by(User.full_name)).unique():
-        profile = profiles.get(user.id)
-        out.append(
-            EmployeeOut(
-                user_id=user.id,
-                name=user.full_name,
-                role_name=user.role.name if user.role else "",
-                store_id=user.store_id,
-                profile=_profile_out(profile) if profile else None,
-            )
-        )
-    return out
+def salary_history(db: Session, user_id: uuid.UUID) -> list[SalaryVersionOut]:
+    return _payroll().salary_history(db, user_id)
 
 
-def save_profile(db: Session, user_id: uuid.UUID, data: EmployeeProfileWrite) -> list[EmployeeOut]:
-    if db.get(User, user_id) is None:
-        raise ApiError(404, "not_found", "That person was not found.")
-    profile = db.scalar(select(EmployeeProfile).where(EmployeeProfile.user_id == user_id))
-    if profile is None:
-        profile = EmployeeProfile(user_id=user_id, employee_code=_next_employee_code(db))
-        db.add(profile)
-    for key, value in data.model_dump().items():
-        setattr(profile, key, value)
-    db.commit()
-    return employees(db)
+def save_profile(
+    db: Session,
+    user_id: uuid.UUID,
+    data: EmployeeProfileWrite,
+    *,
+    actor_id: uuid.UUID | None = None,
+    home_store_id: uuid.UUID | None = None,
+) -> list[EmployeeOut]:
+    return _payroll().save_profile(db, user_id, data, actor_id=actor_id, home_store_id=home_store_id)
 
 
-def _leave_deduction(line: PayrollLine) -> int:
-    return (line.basic_cents + line.allowances_cents) * line.unpaid_leave_days // 30
+def list_runs(db: Session, *, home_store_id: uuid.UUID | None = None) -> list[PayrollRunOut]:
+    return _payroll().list_runs(db, home_store_id=home_store_id)
 
 
-def _net(line: PayrollLine) -> int:
-    return (
-        line.basic_cents
-        + line.allowances_cents
-        + line.overtime_cents
-        + line.commission_cents
-        + line.bonus_cents
-        - line.deductions_cents
-        - _leave_deduction(line)
-    )
+def create_run(
+    db: Session,
+    year: int,
+    month: int,
+    user_id: uuid.UUID | None,
+    store_id: uuid.UUID | None = None,
+    home_store_id: uuid.UUID | None = None,
+) -> PayrollRunOut:
+    return _payroll().create_run(db, year, month, user_id, store_id=store_id, home_store_id=home_store_id)
 
 
-def _run_out(db: Session, run: PayrollRun) -> PayrollRunOut:
-    names = (
-        {
-            user.id: user.full_name
-            for user in db.scalars(select(User).where(User.id.in_([line.user_id for line in run.lines]))).unique()
-        }
-        if run.lines
-        else {}
-    )
-    return PayrollRunOut(
-        id=run.id,
-        year=run.year,
-        month=run.month,
-        status=run.status,  # type: ignore[arg-type]
-        currency=run.currency,
-        finalized_at=run.finalized_at
-        if run.finalized_at is None or run.finalized_at.tzinfo
-        else run.finalized_at.replace(tzinfo=UTC),
-        total_net_cents=sum(line.net_cents for line in run.lines),
-        lines=[
-            PayrollLineOut(
-                id=line.id,
-                user_id=line.user_id,
-                name=names.get(line.user_id, ""),
-                employee_code=line.employee_code,
-                basic_cents=line.basic_cents,
-                allowances_cents=line.allowances_cents,
-                overtime_minutes=line.overtime_minutes,
-                overtime_cents=line.overtime_cents,
-                commission_cents=line.commission_cents,
-                bonus_cents=line.bonus_cents,
-                deductions_cents=line.deductions_cents,
-                unpaid_leave_days=line.unpaid_leave_days,
-                leave_deduction_cents=_leave_deduction(line),
-                note=line.note,
-                net_cents=line.net_cents,
-            )
-            for line in run.lines
-        ],
-    )
-
-
-def _period(run: PayrollRun) -> tuple[date, date]:
-    return date(run.year, run.month, 1), date(run.year, run.month, calendar.monthrange(run.year, run.month)[1])
-
-
-def _fill(db: Session, run: PayrollRun) -> None:
-    """(Re)computes every active employee's line from their profile, approved overtime and commission."""
-    start, end = _period(run)
-    report = commissions(db, start=start, end=end, store_id=None)
-    earned = {row.user_id: row.commission_cents for row in report.staff}
-    existing = {line.user_id: line for line in run.lines}
-    for profile in list(db.scalars(select(EmployeeProfile).where(EmployeeProfile.is_active.is_(True)))):
-        _, overtime_minutes = timesheet_service.approved_minutes(db, user_id=profile.user_id, start=start, end=end)
-        line = existing.get(profile.user_id)
-        if line is None:
-            line = PayrollLine(user_id=profile.user_id, employee_code=profile.employee_code, net_cents=0)
-            run.lines.append(line)
-        line.employee_code = profile.employee_code
-        line.basic_cents = profile.basic_salary_cents
-        line.allowances_cents = (
-            profile.housing_allowance_cents + profile.transport_allowance_cents + profile.other_allowance_cents
-        )
-        line.overtime_minutes = overtime_minutes
-        # Hourly basic rate is a month's basic over 30 days of 8 hours.
-        line.overtime_cents = (
-            profile.basic_salary_cents * overtime_minutes * profile.overtime_rate_pct // (30 * 8 * 60 * 100)
-        )
-        line.commission_cents = earned.get(profile.user_id, 0)
-        line.bonus_cents = line.bonus_cents or 0
-        line.deductions_cents = line.deductions_cents or 0
-        line.unpaid_leave_days = line.unpaid_leave_days or 0
-        line.net_cents = _net(line)
-
-
-def _run(db: Session, run_id: uuid.UUID) -> PayrollRun:
-    run = db.get(PayrollRun, run_id)
-    if run is None:
-        raise ApiError(404, "not_found", "Payroll run was not found.")
-    return run
-
-
-def list_runs(db: Session) -> list[PayrollRunOut]:
-    return [
-        _run_out(db, run)
-        for run in db.scalars(select(PayrollRun).order_by(PayrollRun.year.desc(), PayrollRun.month.desc()))
-    ]
-
-
-def create_run(db: Session, year: int, month: int, user_id: uuid.UUID | None) -> PayrollRunOut:
-    if db.scalar(select(PayrollRun.id).where(PayrollRun.year == year, PayrollRun.month == month)):
-        raise ApiError(409, "run_exists", f"Payroll for {calendar.month_name[month]} {year} already exists.")
-    run = PayrollRun(year=year, month=month, currency=business_currency(db), created_by_id=user_id)
-    db.add(run)
-    db.flush()
-    _fill(db, run)
-    if not run.lines:
-        db.rollback()
-        raise ApiError(422, "no_employees", "Add payroll details for at least one employee first.")
-    db.commit()
-    return _run_out(db, run)
-
-
-def recalculate(db: Session, run_id: uuid.UUID) -> PayrollRunOut:
-    run = _run(db, run_id)
-    if run.status != "DRAFT":
-        raise ApiError(409, "run_final", "A finalized payroll cannot change.")
-    _fill(db, run)
-    db.commit()
-    return _run_out(db, run)
+def recalculate(db: Session, run_id: uuid.UUID, actor_id: uuid.UUID | None = None) -> PayrollRunOut:
+    return _payroll().recalculate(db, run_id, actor_id)
 
 
 def update_line(db: Session, run_id: uuid.UUID, line_id: uuid.UUID, data: PayrollLineWrite) -> PayrollRunOut:
-    run = _run(db, run_id)
-    if run.status != "DRAFT":
-        raise ApiError(409, "run_final", "A finalized payroll cannot change.")
-    line = next((row for row in run.lines if row.id == line_id), None)
-    if line is None:
-        raise ApiError(404, "not_found", "Payroll line was not found.")
-    line.bonus_cents = data.bonus_cents
-    line.deductions_cents = data.deductions_cents
-    line.unpaid_leave_days = data.unpaid_leave_days
-    line.note = data.note.strip()
-    line.net_cents = _net(line)
-    if line.net_cents < 0:
-        db.rollback()
-        raise ApiError(422, "negative_pay", "Deductions cannot exceed the month's pay.")
-    db.commit()
-    return _run_out(db, run)
+    return _payroll().update_line(db, run_id, line_id, data)
+
+
+def submit_run(db: Session, run_id: uuid.UUID, actor_id: uuid.UUID | None) -> PayrollRunOut:
+    return _payroll().submit_run(db, run_id, actor_id)
+
+
+def reject_run(db: Session, run_id: uuid.UUID, actor_id: uuid.UUID | None, note: str) -> PayrollRunOut:
+    return _payroll().reject_run(db, run_id, actor_id, note)
+
+
+def return_run(db: Session, run_id: uuid.UUID, actor_id: uuid.UUID | None, note: str) -> PayrollRunOut:
+    return _payroll().return_run(db, run_id, actor_id, note)
 
 
 def finalize(db: Session, run_id: uuid.UUID, user_id: uuid.UUID | None) -> PayrollRunOut:
-    run = _run(db, run_id)
-    if run.status != "DRAFT":
-        raise ApiError(409, "run_final", "This payroll is already finalized.")
-    run.status = "FINALIZED"
-    run.finalized_by_id = user_id
-    run.finalized_at = datetime.now(UTC)
-    db.commit()
-    return _run_out(db, run)
+    return _payroll().finalize(db, run_id, user_id)
 
 
-def wps_file(db: Session, run_id: uuid.UUID, now: datetime | None = None) -> tuple[str, str]:
-    """The WPS Salary Information File: one EDR line per employee and an SCR control line. Returns (name, body)."""
-    run = _run(db, run_id)
-    if run.status != "FINALIZED":
-        raise ApiError(409, "run_draft", "Finalize the payroll before exporting the WPS file.")
-    employer = payroll_settings(db)
-    if employer is None:
-        raise ApiError(422, "wps_settings", "Enter the employer's MOHRE establishment ID and bank routing code first.")
-    profiles = {row.user_id: row for row in db.scalars(select(EmployeeProfile))}
-    start, end = _period(run)
-    days = (end - start).days + 1
-    rows = []
-    total = 0
-    for line in run.lines:
-        profile = profiles.get(line.user_id)
-        if profile is None or line.net_cents <= 0:
-            continue
-        variable = line.overtime_cents + line.commission_cents + line.bonus_cents
-        fixed = line.net_cents - variable
-        total += line.net_cents
-        rows.append(
-            ",".join(
-                [
-                    "EDR",
-                    profile.labour_id,
-                    profile.bank_routing_code,
-                    profile.iban,
-                    start.isoformat(),
-                    end.isoformat(),
-                    str(days),
-                    f"{fixed / 100:.2f}",
-                    f"{variable / 100:.2f}",
-                    str(line.unpaid_leave_days),
-                ]
-            )
-        )
-    moment = now or datetime.now(UTC)
-    rows.append(
-        ",".join(
-            [
-                "SCR",
-                employer.employer_id,
-                employer.bank_routing_code,
-                moment.strftime("%Y-%m-%d"),
-                moment.strftime("%H%M"),
-                f"{run.month:02d}{run.year}",
-                str(len(rows)),
-                f"{total / 100:.2f}",
-                run.currency,
-                f"SAL{run.year}{run.month:02d}",
-            ]
-        )
-    )
-    return f"{employer.employer_id}{moment:%y%m%d%H%M%S}.SIF", "\r\n".join(rows) + "\r\n"
+def cancel_run(db: Session, run_id: uuid.UUID, actor_id: uuid.UUID | None, note: str = "") -> PayrollRunOut:
+    return _payroll().cancel_run(db, run_id, actor_id, note)
+
+
+def validate_wps(db: Session, run_id: uuid.UUID) -> WpsValidation:
+    return _payroll().validate_wps(db, run_id)
+
+
+def wps_file(
+    db: Session, run_id: uuid.UUID, now: datetime | None = None, actor_id: uuid.UUID | None = None
+) -> tuple[str, str]:
+    return _payroll().wps_file(db, run_id, now=now, actor_id=actor_id)
+
+
+def list_payments(db: Session, run_id: uuid.UUID) -> list[PayrollPaymentOut]:
+    return _payroll().list_payments(db, run_id)
+
+
+def record_payment(
+    db: Session, run_id: uuid.UUID, data: PayrollPaymentWrite, actor_id: uuid.UUID | None
+) -> list[PayrollPaymentOut]:
+    return _payroll().record_payment(db, run_id, data, actor_id)
+
+
+def payslips_for(db: Session, user_id: uuid.UUID) -> list[PayslipSummary]:
+    return _payroll().payslips_for(db, user_id)
 
 
 def finalized_in(db: Session, since: datetime, until: datetime) -> list[PayrollRun]:
-    return list(
-        db.scalars(
-            select(PayrollRun).where(
-                PayrollRun.status == "FINALIZED", PayrollRun.finalized_at >= since, PayrollRun.finalized_at < until
-            )
-        )
-    )
+    return _payroll().finalized_in(db, since, until)

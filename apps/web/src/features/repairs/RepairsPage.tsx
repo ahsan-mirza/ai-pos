@@ -7,7 +7,7 @@ import {
   type RepairDetail,
   type RepairTicket,
 } from "@ai-pos/shared-types";
-import { DataTable, RepairJobsToolbar, actionHoverClass, actionIntentFromLabel, usePagination, type DataTableColumn } from "@ai-pos/ui";
+import { DataTable, RepairJobsToolbar, actionHoverClass, actionIntentFromLabel, formatDateTime, usePagination, type DataTableColumn } from "@ai-pos/ui";
 import { CircleDot, Package, ReceiptText, Trash2, Wrench } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
@@ -279,14 +279,14 @@ export function RepairsPage() {
       id: "received",
       header: "Received",
       className: "whitespace-nowrap text-xs",
-      cell: (row) => new Date(row.created_at).toLocaleDateString(),
+      cell: (row) => formatDateTime(row.created_at).slice(0, 10),
     },
     {
       id: "due",
       header: "Expected",
       className: "hidden whitespace-nowrap text-xs xl:table-cell",
       headerClassName: "hidden xl:table-cell",
-      cell: (row) => (row.promised_at ? new Date(row.promised_at).toLocaleDateString() : "—"),
+      cell: (row) => (row.promised_at ? formatDateTime(row.promised_at).slice(0, 10) : "—"),
     },
     ...(financial
       ? [
@@ -649,7 +649,7 @@ function RepairDrawer({
                       {statusLabel(event.to_status)}
                     </p>
                     <p className="text-xs text-charcoal/60 tabular-nums">
-                      {new Date(event.occurred_at).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })} ·{" "}
+                      {formatDateTime(event.occurred_at)} ·{" "}
                       {event.user_name ?? (event.source === "register" ? "At the register" : "System")}
                     </p>
                     {event.note ? <p className="mt-0.5 text-xs text-charcoal/80">{event.note}</p> : null}

@@ -1,4 +1,5 @@
 import { Permission, formatMoney } from "@ai-pos/shared-types";
+import { AxizTabs } from "@ai-pos/ui";
 import { Clock, X } from "lucide-react";
 import { useCallback, useEffect, useId, useState } from "react";
 import {
@@ -152,33 +153,23 @@ export function ShiftModal({ session, onClose }: { session: CashierSession; onCl
         </div>
 
         {closed === null ? (
-          <div className="mt-5 grid grid-cols-2 gap-1 rounded-full bg-charcoal p-1 sm:grid-cols-4" role="tablist" aria-label="Shift actions">
-            {(
-              [
-                ["sales", "Sales"],
-                ["x", "X report"],
-                ["cash", "Cash"],
-                ["close", "Close"],
-              ] as const
-            ).map(([value, label]) => (
-              <button
-                key={value}
-                type="button"
-                role="tab"
-                aria-selected={tab === value}
-                onClick={() => {
-                  setTab(value);
-                  setError(null);
-                  setNotice(null);
-                }}
-                className={`rounded-full px-3 py-2 text-sm font-semibold transition ${
-                  tab === value ? "bg-primary text-white" : "text-white/70 hover:text-white"
-                }`}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
+          <AxizTabs
+            ariaLabel="Shift actions"
+            className="-mx-6 mt-5 sm:-mx-7"
+            listClassName="px-6 sm:px-7"
+            activeTab={tab}
+            onChange={(id) => {
+              setTab(id as Tab);
+              setError(null);
+              setNotice(null);
+            }}
+            tabs={[
+              { id: "sales", label: "Sales" },
+              { id: "x", label: "X report" },
+              { id: "cash", label: "Cash" },
+              { id: "close", label: "Close" },
+            ]}
+          />
         ) : null}
 
         {tab === "sales" && closed === null ? <ShiftSales session={session} currency={currency} /> : null}

@@ -10,6 +10,7 @@ import {
 import { actionHoverClass } from "@ai-pos/ui";
 import { BookOpen, Plus, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import { useConfirm } from "../../components/ui/ConfirmDialog";
 import { ErrorNote, GhostButton, PrimaryButton, SelectField, TextField } from "../../components/ui/Field";
 import { Modal } from "../../components/ui/Modal";
@@ -353,7 +354,10 @@ export function RecipesPage() {
               </p>
             </div>
           </div>
-          <div className="flex items-end gap-2">
+          <div className="flex flex-wrap items-end gap-2">
+            <Link to="/inventory/recipe-usage" className="mb-2 text-sm font-semibold text-accent">
+              Ingredient usage
+            </Link>
             <SelectField
               label="New recipe for"
               value={newDish}

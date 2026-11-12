@@ -56,6 +56,10 @@ MODULE_ACTIONS: dict[str, tuple[tuple[str, str], ...]] = {
     "cheques": ((Permission.CHEQUES_MANAGE.value, "Edit"),),
     "promotions": ((Permission.PROMOTIONS_MANAGE.value, "Edit"),),
     "sales_orders": ((Permission.SALES_ORDERS.value, "Edit"),),
+    "fleet_dispatch": (
+        (Permission.SALES_ORDERS.value, "Edit"),
+        (Permission.SALES_DISPATCH_OVERRIDE.value, "Edit"),
+    ),
     "gift_cards": ((Permission.GIFT_CARDS_MANAGE.value, "Edit"),),
     "tax_free": ((Permission.TAX_FREE_MANAGE.value, "Export"),),
     "trade_in": ((Permission.POS_TRADE_IN.value, "Create"),),

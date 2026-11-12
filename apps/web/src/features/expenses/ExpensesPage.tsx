@@ -8,7 +8,7 @@ import {
   type PettyCash,
   type TaxCategory,
 } from "@ai-pos/shared-types";
-import { actionHoverClass } from "@ai-pos/ui";
+import { actionHoverClass, formatDate, formatDateTime } from "@ai-pos/ui";
 import { Plus, Wallet } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { ErrorNote, FilterSelect, GhostButton, PrimaryButton, TextField } from "../../components/ui/Field";
@@ -28,8 +28,7 @@ const monthStart = () => {
   const now = new Date();
   return iso(new Date(Date.UTC(now.getFullYear(), now.getMonth(), 1)));
 };
-const shortDate = (value: string) =>
-  new Date(`${value.slice(0, 10)}T00:00:00`).toLocaleDateString(undefined, { day: "numeric", month: "short" });
+const shortDate = (value: string) => formatDate(value.slice(0, 10));
 
 const paidFromLabels: Record<ExpensePaidFrom, string> = { PETTY_CASH: "Petty cash", BANK: "Bank", CARD: "Card" };
 const categories = Object.keys(EXPENSE_CATEGORY_LABELS) as ExpenseCategory[];
@@ -125,8 +124,8 @@ export function ExpensesPage() {
               {user?.store_id ? null : (
                 <FilterSelect label="Branch" value={storeId} options={storeOptions(stores)} onChange={setStoreId} className="w-52" />
               )}
-              <TextField label="From" type="date" value={from} onChange={(event) => setFrom(event.target.value)} />
-              <TextField label="To" type="date" value={to} onChange={(event) => setTo(event.target.value)} />
+              <TextField variant="filter" wrapperClassName="w-48" label="From" type="date" value={from} onChange={(event) => setFrom(event.target.value)} />
+              <TextField variant="filter" wrapperClassName="w-48" label="To" type="date" value={to} onChange={(event) => setTo(event.target.value)} />
               <PrimaryButton onClick={() => setDialog("expense")}>
                 <Plus size={16} aria-hidden="true" className="-ml-1 mr-1.5" /> Record expense
               </PrimaryButton>
@@ -206,7 +205,7 @@ export function ExpensesPage() {
                   <span className="min-w-0">
                     <span className="block truncate">{entry.note || entry.kind.toLowerCase()}</span>
                     <span className="block text-[11px] text-white/50">
-                      {new Date(entry.created_at).toLocaleDateString(undefined, { day: "numeric", month: "short" })}
+                      {formatDateTime(entry.created_at)}
                       {entry.user_name ? ` · ${entry.user_name}` : ""}
                     </span>
                   </span>

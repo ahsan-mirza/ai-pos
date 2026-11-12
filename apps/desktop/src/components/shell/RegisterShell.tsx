@@ -78,6 +78,8 @@ interface PageFrameProps {
   title: string;
   sync: SyncState;
   actions?: ReactNode;
+  /** Left side of the navbar. Checkout uses this for customer search. */
+  leading?: ReactNode;
   /** Persistent right drawer (cart, refund summary). */
   drawer: ReactNode;
   /** Sticky bar under the workspace on small screens (e.g. the open-cart button). */
@@ -86,12 +88,12 @@ interface PageFrameProps {
 }
 
 /** Header spans the workspace; the scrolling canvas and the right drawer sit on the row beneath it. */
-export function PageFrame({ title, sync, actions, drawer, footer, children }: PageFrameProps) {
+export function PageFrame({ title, sync, actions, leading, drawer, footer, children }: PageFrameProps) {
   const locked = useSubscriptionLocked();
   const { t } = useLocale();
   return (
     <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col">
-      <HeaderBar title={title} sync={sync} actions={actions} />
+      <HeaderBar title={title} sync={sync} actions={actions} leading={leading} />
       {locked ? (
         <p className="bg-amber-100 px-4 py-2 text-sm font-medium text-amber-950">
           {t("New sales and returns stay closed until the subscription is verified.")}

@@ -99,7 +99,7 @@ import { invoiceOf, prepareNumberedBatch, submitCharge, submitQuote, type Charge
 import { activeStore, businessTax, customerTax, taxConfigurationRequired, useBusinessCurrency } from "./currency";
 import { RentModal } from "./RentModal";
 import { refreshPricing } from "./customerPricing";
-import { CustomerBar } from "./CustomerBar";
+import { CustomerBar, GuestLookup } from "./CustomerBar";
 import { ServedByPicker } from "./ServedByPicker";
 import { listenForTableEvents } from "../orders/tableSync";
 import { linesBelowFloor, loadFloors, type Floor } from "./floors";
@@ -1087,6 +1087,13 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
       <PageFrame
         title="Checkout"
         sync={sync}
+        leading={
+          <GuestLookup
+            session={session}
+            disabled={charging}
+            onAttach={(customer) => dispatch({ type: "attach_customer", customer })}
+          />
+        }
         actions={
           <>
             {capabilities.enabled.has(Capability.OpenOrders) ? (

@@ -63,6 +63,77 @@ export function maskDateInput(raw: string, withTime = false): string {
   return text;
 }
 
+/** A calendar date, with no clock and no timezone conversion. `null` when the text is empty or not a real date. */
+export function parseDate(value: string): string | null {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const iso = /^(\d{4})-(\d{2})-(\d{2})$/.exec(trimmed);
+  if (iso?.[1] && iso[2] && iso[3]) return calendarIso(iso[3], iso[2], iso[1]);
+  const display = displayToIso(trimmed, false);
+  return display ? display : null;
+}
+
+/** What the user typed. `""` is cleared, `null` is incomplete or impossible. Never reads MM-DD-YYYY. */
+export function parseDateInput(value: string, withTime = false): string | null {
+  return displayToIso(value, withTime);
+}
+
+/** True for a real `YYYY-MM-DD` or `DD-MM-YYYY`. A timestamp is not a date-only value. */
+export function isValidDate(value: string): boolean {
+  return parseDate(value) !== null;
+}
+
+/**
+ * `YYYY-MM-DD` or `DD-MM-YYYY` → `DD-MM-YYYY`.
+ * The calendar date in the string is used as written, so a date-only value cannot shift across midnight.
+ */
+export function formatDate(value: string): string {
+  const trimmed = value.trim();
+  const parsed = parseDate(trimmed);
+  if (parsed) return isoToDisplay(parsed);
+  const prefix = /^(\d{4})-(\d{2})-(\d{2})T/.exec(trimmed);
+  if (prefix?.[1] && prefix[2] && prefix[3] && calendarIso(prefix[3], prefix[2], prefix[1])) {
+    return `${prefix[3]}-${prefix[2]}-${prefix[1]}`;
+  }
+  return "";
+}
+
+/**
+ * An instant → `DD-MM-YYYY HH:mm` in `timeZone`.
+ * Omit `timeZone` to use the viewer's timezone. Date-only strings are not converted.
+ */
+export function formatDateTime(value: string | Date, timeZone?: string): string {
+  if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value.trim())) return formatDate(value);
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(date);
+  const part = (type: Intl.DateTimeFormatPartTypes) => parts.find((item) => item.type === type)?.value ?? "";
+  let hour = part("hour");
+  if (hour === "24") hour = "00";
+  const day = part("day");
+  const month = part("month");
+  const year = part("year");
+  const minute = part("minute");
+  if (!day || !month || !year || !hour || !minute) return "";
+  return `${day}-${month}-${year} ${hour}:${minute}`;
+}
+
+/** `01-11-2026 – 12-11-2026`. Either side may be empty. */
+export function formatDateRange(from: string, to: string): string {
+  const start = formatDate(from);
+  const end = formatDate(to);
+  if (start && end) return `${start} – ${end}`;
+  return start || end;
+}
+
 /** Negative when `iso` is before `bound`. Date-only bounds ignore a clock on the same day. */
 export function compareIso(iso: string, bound: string): number {
   const day = iso.slice(0, 10).localeCompare(bound.slice(0, 10));

@@ -5,7 +5,6 @@ chain. Alembic builds that chain from the config's version_locations. Passing
 version_locations to context.configure() does not add them.
 """
 
-import os
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -14,7 +13,7 @@ REPO_ROOT = API_ROOT.parent.parent
 
 
 def tenant_version_locations() -> list[str]:
-    """Absolute version directories, joined later with os.pathsep for Alembic."""
+    """Absolute version directories. Alembic joins them with a space, matching alembic.ini."""
     locations = [API_ROOT / "alembic" / "versions"]
     reach = REPO_ROOT / "plugins" / "reach" / "backend" / "migrations"
     delivery = REPO_ROOT / "plugins" / "delivery" / "backend" / "migrations"
@@ -25,7 +24,13 @@ def tenant_version_locations() -> list[str]:
 
 
 def version_locations_option() -> str:
-    return os.pathsep.join(tenant_version_locations())
+    """Matches alembic.ini `path_separator = space`. os.pathsep would not split that file on both platforms."""
+    locations = tenant_version_locations()
+    if any(" " in path for path in locations):
+        raise RuntimeError(
+            "Tenant migration folders cannot contain spaces while Alembic splits version_locations on spaces."
+        )
+    return " ".join(locations)
 
 
 def attach_tenant_versions(script) -> None:

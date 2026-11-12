@@ -1,4 +1,5 @@
 import { TRADE_IN_GRADE_LABELS, formatMoney, type TradeIn, type TradeInList } from "@ai-pos/shared-types";
+import { formatDateTime } from "@ai-pos/ui";
 import { useCallback, useEffect, useState } from "react";
 import { ErrorNote, TextField } from "../../components/ui/Field";
 import { apiGet } from "../../lib/api";
@@ -106,7 +107,7 @@ export function TradeInsPage() {
                   <td className="py-3">
                     <span className="block font-mono text-xs font-semibold">{row.number}</span>
                     <span className="block text-xs text-charcoal/50 tabular-nums">
-                      {new Date(row.created_at).toLocaleDateString(undefined, { day: "numeric", month: "short" })} · {row.store_code} ·{" "}
+                      {formatDateTime(row.created_at).slice(0, 10)} · {row.store_code} ·{" "}
                       {row.cashier_name ?? ""}
                     </span>
                   </td>

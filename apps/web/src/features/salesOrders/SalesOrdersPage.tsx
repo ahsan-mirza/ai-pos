@@ -2,7 +2,6 @@ import {
   formatMoney,
   Permission,
   SALES_ORDER_SOURCE_LABELS,
-  SALES_ORDER_STATUS_LABELS,
   type BackorderRow,
   type Customer,
   type ProductSearchHit,
@@ -10,7 +9,7 @@ import {
   type SalesOrderRow,
   type SalesOrderStatus,
 } from "@ai-pos/shared-types";
-import { actionHoverClass } from "@ai-pos/ui";
+import { actionHoverClass, useLocale } from "@ai-pos/ui";
 import { PackageCheck, Plus, Search, Trash2, Truck } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { DataTable, usePagination, type DataTableColumn } from "../../components/ui/DataTable";
@@ -40,6 +39,7 @@ const VIEWS: { value: View; label: string }[] = [
 ];
 
 export function OrderStatusChip({ status }: { status: SalesOrderStatus }) {
+  const { t } = useLocale();
   const tone =
     status === "PARTIALLY_DELIVERED" || status === "PICKING"
       ? "bg-accent text-white"
@@ -50,9 +50,28 @@ export function OrderStatusChip({ status }: { status: SalesOrderStatus }) {
           : "bg-white text-charcoal/50 ring-1 ring-line";
   return (
     <span className={`whitespace-nowrap rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${tone}`}>
-      {SALES_ORDER_STATUS_LABELS[status]}
+      {salesOrderStatusLabel(status, t)}
     </span>
   );
+}
+
+function salesOrderStatusLabel(status: SalesOrderStatus, t: (text: string) => string): string {
+  switch (status) {
+    case "DRAFT":
+      return t("Draft");
+    case "CONFIRMED":
+      return t("Confirmed");
+    case "PICKING":
+      return t("Picking");
+    case "PARTIALLY_DELIVERED":
+      return t("Part delivered");
+    case "DELIVERED":
+      return t("Delivered");
+    case "CLOSED":
+      return t("Closed");
+    case "CANCELLED":
+      return t("Cancelled");
+  }
 }
 
 export function SalesOrdersPage() {

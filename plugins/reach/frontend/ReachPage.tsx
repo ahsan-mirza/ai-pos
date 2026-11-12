@@ -1,5 +1,5 @@
 import { formatMoney, type MessageChannel } from "@ai-pos/shared-types";
-import { BusyButton, useLocale } from "@ai-pos/ui";
+import { AxizTabs, BusyButton, useLocale } from "@ai-pos/ui";
 import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { useSearchParams } from "react-router-dom";
 import { ErrorNote, PrimaryButton, TextField } from "../../../apps/web/src/components/ui/Field";
@@ -273,27 +273,19 @@ export function ReachPage() {
           Receipts, reminders, and marketing campaigns share one connection, one outbox, and one set of provider accounts.
         </p>
       </header>
-      <div className="flex flex-wrap gap-2" role="tablist" aria-label="AxizReach">
-        {tabs.map((item) => (
-          <button
-            key={item.id}
-            type="button"
-            role="tab"
-            aria-selected={tab === item.id}
-            className={`inline-flex h-8 items-center rounded-full px-3 text-sm ${tab === item.id ? "bg-accent text-white" : "border border-line bg-white text-charcoal"}`}
-            onClick={() => {
-              if (tab === "settings" && item.id !== "settings" && settingsDirty) {
-                const leave = window.confirm("You have unsaved settings. Leave without saving?");
-                if (!leave) return;
-                setSettingsDirty(false);
-              }
-              setTab(item.id);
-            }}
-          >
-            {item.label}
-          </button>
-        ))}
-      </div>
+      <AxizTabs
+        ariaLabel="AxizReach"
+        activeTab={tab}
+        onChange={(id) => {
+          if (tab === "settings" && id !== "settings" && settingsDirty) {
+            const leave = window.confirm("You have unsaved settings. Leave without saving?");
+            if (!leave) return;
+            setSettingsDirty(false);
+          }
+          setTab(id as Tab);
+        }}
+        tabs={tabs}
+      />
       <ErrorNote message={error} />
       {notice ? <p className="text-sm text-charcoal/70">{notice}</p> : null}
 

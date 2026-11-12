@@ -136,12 +136,16 @@ export function VatReportPage() {
             {period === "custom" ? (
               <>
                 <TextField
+                  variant="filter"
+                  wrapperClassName="w-48"
                   label="From"
                   type="date"
                   value={range.from}
                   onChange={(event) => setRange((current) => ({ ...current, from: event.target.value }))}
                 />
                 <TextField
+                  variant="filter"
+                  wrapperClassName="w-48"
                   label="To"
                   type="date"
                   value={range.to}

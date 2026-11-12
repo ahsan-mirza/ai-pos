@@ -15,6 +15,7 @@ import {
 import { Armchair, ChefHat, Radar, ShieldAlert, Sparkles, Tags, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
+import { AxizTabs } from "@ai-pos/ui";
 import { AiMark } from "../../components/ui/AiMark";
 import { useConfirm } from "../../components/ui/ConfirmDialog";
 import { ErrorNote, PrimaryButton } from "../../components/ui/Field";
@@ -53,7 +54,7 @@ export function InsightsPage() {
 
   return (
     <section className="space-y-4">
-      <div className="rounded-card border border-line bg-white p-6">
+      <div className="overflow-hidden rounded-card border border-line bg-white px-6 pt-6">
         <div className="flex items-center gap-3">
           <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-accent text-white">
             <Radar size={20} aria-hidden="true" />
@@ -68,23 +69,23 @@ export function InsightsPage() {
             </p>
           </div>
         </div>
-        <div role="tablist" aria-label="Insights" className="mt-5 flex flex-wrap gap-2">
-          {tabs.map((item) => (
-            <button
-              key={item.id}
-              type="button"
-              role="tab"
-              aria-selected={tab === item.id}
-              onClick={() => setParams({ tab: item.id })}
-              className={`inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold transition ${
-                tab === item.id ? "bg-charcoal text-white" : "bg-surface text-charcoal/70 hover:text-charcoal"
-              }`}
-            >
-              <AiMark size={13} className="text-current" />
-              <item.icon size={15} aria-hidden="true" /> {item.label}
-            </button>
-          ))}
-        </div>
+        <AxizTabs
+          ariaLabel="Insights"
+          className="-mx-6 mt-5"
+          listClassName="px-6"
+          activeTab={tab}
+          onChange={(id) => setParams({ tab: id })}
+          tabs={tabs.map((item) => ({
+            id: item.id,
+            label: item.label,
+            icon: (
+              <>
+                <AiMark size={13} className="text-current" />
+                <item.icon size={15} aria-hidden="true" />
+              </>
+            ),
+          }))}
+        />
       </div>
       {tab === "anomalies" ? <AnomaliesTab /> : null}
       {tab === "pricing" ? <PricingTab canApply={can(Permission.PortalInventoryManage)} /> : null}

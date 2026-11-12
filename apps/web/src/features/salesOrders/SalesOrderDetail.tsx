@@ -6,14 +6,15 @@ import {
   type DeliveryNote,
   type PaymentMethod,
   type SalesOrder,
+  type SalesOrderEvent,
 } from "@ai-pos/shared-types";
+import { actionHoverClass, actionIntentFromLabel, useLocale, type ActionIntent } from "@ai-pos/ui";
 import { ArrowLeft, Ban, ClipboardList, FileDown, PackageCheck, PenLine, Smartphone, Truck } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { ErrorNote, GhostButton, PrimaryButton, SelectField, TextField } from "../../components/ui/Field";
 import { Modal } from "../../components/ui/Modal";
 import { Toast } from "../../components/ui/Toast";
-import { actionHoverClass, actionIntentFromLabel, type ActionIntent } from "@ai-pos/ui";
 import { ApiRequestError } from "../../lib/api";
 import { useAuth } from "../../lib/auth";
 import { formatDate } from "../inventory/shared";
@@ -26,7 +27,92 @@ function iconAction(intent: ActionIntent) {
   return `flex h-9 w-9 items-center justify-center rounded-full border border-line disabled:opacity-40 ${actionHoverClass(intent)}`;
 }
 
+const EVENT_LABELS: Record<string, string> = {
+  created: "Created",
+  confirmed: "Confirmed",
+  picked: "Picked",
+  dispatched: "Dispatched",
+  delivered: "Delivered",
+  lines_cancelled: "Lines cancelled",
+  cancelled: "Cancelled",
+  closed: "Closed",
+};
+
+function scheduleEventLabel(kind: string, t: (text: string) => string): string | null {
+  if (kind === "scheduled") return t("Scheduled");
+  if (kind === "rescheduled") return t("Rescheduled");
+  if (kind === "schedule_cancelled") return t("Schedule cancelled");
+  if (kind === "plan_assigned") return t("Added to a plan");
+  if (kind === "plan_removed") return t("Removed from a plan");
+  if (kind === "plan_confirmed") return t("Dispatch confirmed");
+  if (kind === "capacity_override") return t("Capacity override");
+  return null;
+}
+
+function OrderTimeline({ orderId, timeZone }: { orderId: string; timeZone?: string }) {
+  const { t, locale } = useLocale();
+  const [events, setEvents] = useState<SalesOrderEvent[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = useCallback(() => {
+    setError(null);
+    salesOrdersApi
+      .events(orderId)
+      .then((rows) => {
+        setEvents(rows);
+        setError(null);
+      })
+      .catch((caught: unknown) => {
+        setEvents(null);
+        setError(errorMessage(caught, t("The timeline could not be loaded.")));
+      });
+  }, [locale, orderId]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  return (
+    <section className="rounded-card border border-line bg-white p-6" aria-label={t("Order timeline")}>
+      <h3 className="text-lg font-semibold text-charcoal">{t("Timeline")}</h3>
+      {events === null && error === null ? (
+        <p className="mt-4 text-sm text-charcoal/60">{t("Loading the timeline…")}</p>
+      ) : null}
+      {error ? (
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+          <ErrorNote message={error} />
+          <GhostButton onClick={load}>{t("Retry")}</GhostButton>
+        </div>
+      ) : null}
+      {events && events.length === 0 ? (
+        <p className="mt-4 text-sm text-charcoal/60">{t("Nothing has been recorded for this order yet.")}</p>
+      ) : null}
+      {events && events.length > 0 ? (
+        <ol className="mt-4 space-y-4">
+          {events.map((event) => (
+            <li key={event.id} className="border-s border-line ps-4">
+              <p className="text-sm font-semibold text-charcoal">
+                {scheduleEventLabel(event.kind, t) ?? t(EVENT_LABELS[event.kind] ?? event.kind.replace(/_/g, " "))}
+              </p>
+              <p dir="ltr" className="text-xs text-charcoal/55">{formatDate(event.created_at, timeZone)}</p>
+              {event.actor_name ? <p className="text-xs text-charcoal/70">{event.actor_name}</p> : null}
+              {event.kind === "capacity_override" && event.summary ? (
+                <p className="mt-1 text-sm text-charcoal/80">
+                  {t("Reason")}: <span dir="auto">{event.summary}</span>
+                </p>
+              ) : event.summary ? (
+                <p className="mt-1 text-sm text-charcoal/80">{event.summary}</p>
+              ) : null}
+            </li>
+          ))}
+        </ol>
+      ) : null}
+    </section>
+  );
+}
+
 export function SalesOrderDetail({ orderId, onBack }: { orderId: string; onBack: () => void }) {
+  const { t } = useLocale();
   const { user, can } = useAuth();
   const [order, setOrder] = useState<SalesOrder | null>(null);
   const [dispatching, setDispatching] = useState(false);
@@ -125,10 +211,20 @@ export function SalesOrderDetail({ orderId, onBack }: { orderId: string; onBack:
                 </Link>
                 {` · ${SALES_ORDER_SOURCE_LABELS[order.source]}`}
                 {order.customer_reference ? ` · Their ref ${order.customer_reference}` : ""}
-                {order.requested_date ? ` · Wanted by ${formatDate(order.requested_date)}` : ""}
+                {order.requested_date ? (
+                  <>
+                    {` · ${t("Wanted by")} `}
+                    <span dir="ltr" className="whitespace-nowrap">{formatDate(order.requested_date)}</span>
+                  </>
+                ) : null}
               </p>
             ) : null}
             {order?.delivery_address ? <p className="text-xs text-charcoal/50">Deliver to {order.delivery_address}</p> : null}
+            {order?.promised_on ? (
+              <p className="text-xs text-charcoal/50">
+                {t("Promised")} <span dir="ltr" className="whitespace-nowrap">{formatDate(order.promised_on)}</span>
+              </p>
+            ) : null}
           </div>
           {order ? (
             <div className="flex flex-wrap items-center gap-2">
@@ -253,6 +349,8 @@ export function SalesOrderDetail({ orderId, onBack }: { orderId: string; onBack:
         ) : null}
       </div>
 
+      <OrderTimeline orderId={orderId} timeZone={order?.timezone} />
+
       {order && (order.deliveries.length || currentPick) ? (
         <div className="rounded-card border border-line bg-white p-6">
           <h3 className="mb-4 text-lg font-semibold">Deliveries</h3>
@@ -280,7 +378,7 @@ export function SalesOrderDetail({ orderId, onBack }: { orderId: string; onBack:
                   </span>
                   {note.status === "DELIVERED" ? (
                     <span className="block text-xs text-charcoal/60">
-                      Received by {note.receiver_name} {note.delivered_at ? `on ${formatDate(note.delivered_at)}` : ""}
+                      {t("Received by")} {note.receiver_name} {note.delivered_at ? formatDate(note.delivered_at, order?.timezone) : ""}
                     </span>
                   ) : null}
                 </div>

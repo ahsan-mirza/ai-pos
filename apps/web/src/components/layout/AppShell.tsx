@@ -262,7 +262,12 @@ function IndustryGate({
   return <Outlet />;
 }
 
-/** Shared page gutter. Full-bleed workspaces such as Purchase Batches render outside it. */
+/** Pulls a page-level tab bar out of the page padding so the labels sit flush. */
+export const tabBarClass = "-mx-4 -mt-4 md:-mx-6 md:-mt-5";
+/** Full-width tab bar under a page title. Pulls the strip out of the page gutter without lifting it. */
+export const tabBarBleed = "-mx-4 md:-mx-6";
+
+/** Shared page padding. Tab bars use `tabBarClass` so the labels stay flush. */
 export function PageFrame() {
   return (
     <div className="px-4 py-4 md:px-6 md:py-5">

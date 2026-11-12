@@ -112,13 +112,25 @@ def check_migration_graph() -> None:
     """Fail when tenant or control revisions would make `upgrade head` refuse to run."""
     tenant = ScriptDirectory.from_config(_alembic("alembic", "alembic.ini"))
     tenant_head = _one_head(tenant, "Tenant migrations")
-    reach = API_ROOT.parent.parent / "plugins" / "reach" / "backend" / "migrations"
+    repo = API_ROOT.parent.parent
+    reach = repo / "plugins" / "reach" / "backend" / "migrations"
+    delivery = repo / "plugins" / "delivery" / "backend" / "migrations"
     plugin_revisions = [
         revision.revision for revision in tenant.walk_revisions() if reach in Path(revision.path).parents
     ]
+    delivery_revisions = [
+        revision.revision for revision in tenant.walk_revisions() if delivery in Path(revision.path).parents
+    ]
     if not plugin_revisions:
         sys.exit(f"No Reach migrations found under {reach}. Production would leave those tables missing.")
-    print(f"Tenant migrations: 1 head ({tenant_head}), including {len(plugin_revisions)} Reach revision(s).")
+    if "20261105_0099" not in plugin_revisions:
+        sys.exit("Reach revision 20261105_0099 is not on the tenant graph.")
+    if "20261105_0098" not in delivery_revisions:
+        sys.exit(f"No Delivery migration 20261105_0098 under {delivery}.")
+    print(
+        f"Tenant migrations: 1 head ({tenant_head}), including {len(plugin_revisions)} Reach revision(s) "
+        f"and {len(delivery_revisions)} Delivery revision(s)."
+    )
     control = ScriptDirectory.from_config(_alembic("alembic_control", "alembic_control.ini"))
     control_head = _one_head(control, "Control migrations")
     print(f"Control migrations: 1 head ({control_head}).")

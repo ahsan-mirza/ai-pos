@@ -1,4 +1,5 @@
 import { formatMoney, type ProductUpsert } from "@ai-pos/shared-types";
+import { AxizDatePicker } from "@ai-pos/ui";
 import { useState } from "react";
 import { ui } from "../../components/shell/tokens";
 import { retailCall, RetailRequestError } from "../../lib/retailClient";
@@ -113,8 +114,8 @@ export function RentModal({
         <h2 className="text-lg font-semibold">Rent {product.name}</h2>
         <p className="mt-1 text-sm text-zinc-500">The server confirms the dates. A deposit is held apart from the rental charge.</p>
         <div className="mt-4 grid gap-3 sm:grid-cols-2">
-          <label className="text-sm">Start<input className={field} type="date" value={start} onChange={(event) => setStart(event.target.value)} /></label>
-          <label className="text-sm">Return<input className={field} type="date" value={end} onChange={(event) => setEnd(event.target.value)} /></label>
+          <label className="text-sm">Start<AxizDatePicker leading aria-label="Start" className={field} value={start} onChange={(event) => setStart(event.target.value)} /></label>
+          <label className="text-sm">Return<AxizDatePicker leading aria-label="Return" className={field} value={end} onChange={(event) => setEnd(event.target.value)} /></label>
         </div>
         <div className="mt-3 flex gap-2">
           <input className={field} value={query} placeholder="Customer name or phone" onChange={(event) => setQuery(event.target.value)} />

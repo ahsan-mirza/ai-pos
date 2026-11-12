@@ -115,13 +115,13 @@ export function PageSizeSelect({
         aria-label={labelledBy ? undefined : `${label}: ${value}`}
         onClick={() => (open ? setOpen(false) : openMenu())}
         onKeyDown={onTriggerKey}
-        className={`inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg border bg-white pl-3 pr-2 text-[13px] font-semibold tabular-nums text-zinc-900 outline-none transition-colors disabled:cursor-not-allowed disabled:opacity-50 dark:bg-zinc-900 dark:text-zinc-100 ${
+        className={`inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg border bg-white pe-2 ps-3 text-[13px] font-semibold tabular-nums text-zinc-900 outline-none transition-colors disabled:cursor-not-allowed disabled:opacity-50 dark:bg-zinc-900 dark:text-zinc-100 ${
           open
             ? "border-primary ring-2 ring-primary/20"
             : "border-zinc-200 hover:border-zinc-300 focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-primary/20 dark:border-zinc-700 dark:hover:border-zinc-600"
         }`}
       >
-        <span id={`${id}-value`} className="min-w-[1.5rem] text-left">
+        <span id={`${id}-value`} className="min-w-[1.5rem] text-start">
           {value}
         </span>
         <ChevronDown

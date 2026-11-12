@@ -15,15 +15,14 @@ import { ErrorNote, FilterSelect, GhostButton, PrimaryButton, TextField } from "
 import { Modal } from "../../components/ui/Modal";
 import { SegmentedControl } from "../../components/ui/SegmentedControl";
 import { Toast } from "../../components/ui/Toast";
-import { actionHoverClass } from "@ai-pos/ui";
+import { actionHoverClass, formatDate, formatDateTime } from "@ai-pos/ui";
 import { apiGet, apiPost, apiUpload } from "../../lib/api";
 import { useCurrency } from "../../lib/currency";
 import { errorMessage } from "../users/api";
 
 type Tab = BankLineStatus | "OUTSTANDING" | "IMPORTS";
 
-const shortDate = (value: string) =>
-  new Date(`${value.slice(0, 10)}T00:00:00`).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
+const shortDate = (value: string) => formatDate(value.slice(0, 10));
 
 export function BankPage() {
   const { currency } = useCurrency();
@@ -362,7 +361,7 @@ export function BankPage() {
                       {row.lines_skipped ? <span className="block text-xs text-charcoal/50">{row.lines_skipped} duplicates skipped</span> : null}
                     </td>
                     <td className="py-3 pl-6 text-xs text-charcoal/60">
-                      {new Date(row.imported_at).toLocaleString()}
+                      {formatDateTime(row.imported_at)}
                       {row.imported_by_name ? ` · ${row.imported_by_name}` : ""}
                     </td>
                   </tr>

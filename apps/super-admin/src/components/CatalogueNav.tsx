@@ -1,3 +1,4 @@
+import { AxizTabs } from "@ai-pos/ui";
 import { NavLink, useLocation } from "react-router-dom";
 
 const LINKS = [
@@ -19,23 +20,15 @@ export function cataloguePath(pathname: string): boolean {
 /** One row of the product catalogue. Existing routes stay in place. */
 export function CatalogueNav() {
   const { pathname } = useLocation();
+  const active = LINKS.find(([to]) => pathname === to || pathname.startsWith(`${to}/`))?.[0] ?? "";
   return (
-    <nav aria-label="Product catalogue" className="-mx-1 mb-5 flex gap-2 overflow-x-auto px-1 pb-1">
-      {LINKS.map(([to, label]) => {
-        const active = pathname === to || pathname.startsWith(`${to}/`);
-        return (
-          <NavLink
-            key={to}
-            to={to}
-            aria-current={active ? "page" : undefined}
-            className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-semibold ${
-              active ? "bg-accent text-white" : "bg-white text-charcoal/70 ring-1 ring-line hover:text-charcoal"
-            }`}
-          >
-            {label}
-          </NavLink>
-        );
-      })}
-    </nav>
+    <AxizTabs
+      ariaLabel="Product catalogue"
+      inset="page"
+      className="-mx-4 -mt-4 mb-5 md:-mx-6 md:-mt-5"
+      activeTab={active}
+      tabs={LINKS.map(([to, label]) => ({ id: to, label }))}
+      renderTab={({ tab, tabProps }) => <NavLink to={tab.id} {...tabProps} />}
+    />
   );
 }

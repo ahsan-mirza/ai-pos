@@ -1,4 +1,5 @@
 import { PRICE_TIER_LABELS } from "@ai-pos/shared-types";
+import { useLocale } from "@ai-pos/ui";
 import { Plus, Search } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 import { useCapabilities } from "../../lib/capabilities";
@@ -15,6 +16,7 @@ interface CustomerSearchPopoverProps {
 /** Finds a customer by name, phone, code, company or TRN in the register's cache; offers to add one when none match. */
 export function CustomerSearchPopover({ disabled = false, onSelect, onQuickAdd }: CustomerSearchPopoverProps) {
   const { foodAndBeverage } = useCapabilities();
+  const { t } = useLocale();
   const listId = useId();
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
@@ -68,7 +70,7 @@ export function CustomerSearchPopover({ disabled = false, onSelect, onQuickAdd }
   return (
     <div ref={boxRef} className="relative">
       <label htmlFor="customer-search" className="sr-only">
-        {foodAndBeverage ? "Find a guest" : "Attach B2B customer or walk-in"}
+        {foodAndBeverage ? t("Find a guest") : t("Attach B2B Customer / Walk-in")}
       </label>
       <Search
         size={15}
@@ -84,7 +86,7 @@ export function CustomerSearchPopover({ disabled = false, onSelect, onQuickAdd }
         autoComplete="off"
         disabled={disabled}
         value={query}
-        placeholder={foodAndBeverage ? "Find a guest" : "Attach B2B Customer / Walk-in"}
+        placeholder={foodAndBeverage ? t("Find a guest") : t("Attach B2B Customer / Walk-in")}
         onFocus={() => setOpen(true)}
         onChange={(event) => {
           setQuery(event.target.value);
@@ -116,7 +118,9 @@ export function CustomerSearchPopover({ disabled = false, onSelect, onQuickAdd }
         >
           {results.length === 0 ? (
             <li className="px-3 py-2.5 text-sm text-charcoal/60 dark:text-zinc-400">
-              {trimmed === "" ? "No customers cached on this register yet." : `No customer matches "${trimmed}".`}
+              {trimmed === ""
+                ? t("No customers cached on this register yet.")
+                : t("No customer matches {query}.", { query: trimmed })}
             </li>
           ) : null}
           {canAdd ? (
@@ -127,7 +131,7 @@ export function CustomerSearchPopover({ disabled = false, onSelect, onQuickAdd }
                 className="flex w-full items-center gap-2 rounded-xl bg-primary/10 px-3 py-2.5 text-left text-sm font-semibold text-primary transition-colors hover:bg-primary hover:text-white"
               >
                 <Plus size={16} aria-hidden="true" className="shrink-0" />
-                <span className="min-w-0 truncate">Add "{trimmed}" as new customer</span>
+                <span className="min-w-0 truncate">{t("Add {name} as a new customer", { name: trimmed })}</span>
               </button>
             </li>
           ) : null}
@@ -142,7 +146,7 @@ export function CustomerSearchPopover({ disabled = false, onSelect, onQuickAdd }
                 <span className="min-w-0">
                   <span className="block truncate text-sm font-semibold">{row.company_name ?? row.name}</span>
                   <span className="block truncate text-xs tabular-nums text-charcoal/50 dark:text-zinc-400">
-                    {[row.code === "NEW" ? "Not synced yet" : row.code, row.phone].filter(Boolean).join(" · ")}
+                    {[row.code === "NEW" ? t("Not synced yet") : row.code, row.phone].filter(Boolean).join(" · ")}
                   </span>
                 </span>
                 <span
@@ -150,7 +154,7 @@ export function CustomerSearchPopover({ disabled = false, onSelect, onQuickAdd }
                     row.customer_type === "WHOLESALE" ? "bg-primary text-white" : "bg-surface text-charcoal/60"
                   }`}
                 >
-                  {row.customer_type === "WHOLESALE" ? PRICE_TIER_LABELS[row.price_tier] : "Walk-in"}
+                  {row.customer_type === "WHOLESALE" ? PRICE_TIER_LABELS[row.price_tier] : t("Walk-in")}
                 </span>
               </button>
             </li>

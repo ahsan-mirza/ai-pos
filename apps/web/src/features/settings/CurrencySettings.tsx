@@ -5,6 +5,7 @@ import {
   formatMoney,
   type CurrencyCode,
 } from "@ai-pos/shared-types";
+import { formatDateTime } from "@ai-pos/ui";
 import { ArrowLeftRight, Check, Coins, RefreshCw } from "lucide-react";
 import { useEffect, useId, useState } from "react";
 import { ErrorNote, GhostButton, PrimaryButton } from "../../components/ui/Field";
@@ -46,7 +47,7 @@ interface ConvertResult {
 }
 
 function updatedLine(updatedAt: string, by: string | null): string {
-  const when = new Date(updatedAt).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+  const when = formatDateTime(updatedAt);
   return by ? `Last changed ${when} by ${by}` : `Set ${when}`;
 }
 
@@ -54,7 +55,7 @@ function stamp(value: string | null): string {
   if (value === null) return "Unknown time";
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) return "Unknown time";
-  return parsed.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+  return formatDateTime(parsed);
 }
 
 function showRate(rate: string): string {

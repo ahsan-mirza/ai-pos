@@ -1,8 +1,13 @@
+import json
 import uuid
 
+from sqlalchemy import select
+
+from app.models.audit_log import AuditLog
 from app.models.product import Product
+from app.models.staff import EmployeeProfile
 from app.models.user import User
-from wholesale_support import CABLE, CASHIER_ID, PHONE, STORE, admin, event, line, push, sale, seed
+from wholesale_support import CABLE, CASHIER_ID, PHONE, STORE, admin, device, event, line, push, sale, seed
 
 PERIOD = {"from": "2026-10-01", "to": "2026-10-31"}
 
@@ -125,3 +130,191 @@ def test_payroll_run_with_overtime_commission_and_wps_file(client, session) -> N
     assert locked.status_code == 409
     again = client.post("/api/v1/staff/payroll/runs", headers=headers, json={"year": 2026, "month": 10})
     assert again.status_code == 409
+
+
+IBAN = "AE070331234567890123456"
+PROFILE = {
+    "labour_id": "10012345678901",
+    "bank_routing_code": "803320101",
+    "iban": IBAN,
+    "bank_name": "Salary Bank",
+    "account_holder": "Front Cashier",
+    "job_title": "Cashier",
+    "basic_salary_cents": 360_000,
+    "housing_allowance_cents": 100_000,
+    "transport_allowance_cents": 40_000,
+}
+
+
+def _portal(client, headers, username: str, permissions: list[str]) -> dict[str, str]:
+    role = client.post("/api/v1/roles", headers=headers, json={"name": username, "permissions": permissions})
+    assert role.status_code == 201, role.text
+    created = client.post(
+        "/api/v1/users",
+        headers=headers,
+        json={
+            "username": username,
+            "email": f"{username}@example.com",
+            "full_name": username,
+            "role_id": role.json()["id"],
+            "password": "payroll-password-1",
+            "has_portal_access": True,
+        },
+    )
+    assert created.status_code == 201, created.text
+    login = client.post("/api/v1/auth/login-password", json={"username": username, "password": "payroll-password-1"})
+    assert login.status_code == 200, login.text
+    return {"Authorization": f"Bearer {login.json()['access_token']}"}
+
+
+def test_salary_is_versioned_and_an_approved_run_keeps_its_snapshot(client, session) -> None:
+    seed(client)
+    headers, _ = admin(client)
+    saved = client.put(f"/api/v1/staff/employees/{CASHIER_ID}", headers=headers, json=PROFILE)
+    assert saved.status_code == 200, saved.text
+    session.expire_all()
+    stored = session.scalar(select(EmployeeProfile).where(EmployeeProfile.user_id == uuid.UUID(CASHIER_ID)))
+    assert stored is not None
+    assert stored.iban == ""
+    assert stored.iban_last4 == "3456"
+    assert IBAN not in (stored.iban_encrypted or "")
+    audits = list(session.scalars(select(AuditLog).where(AuditLog.action == "payroll.profile")))
+    assert audits
+    trail = json.dumps(
+        [{"details": row.details, "new": row.new_values, "old": row.old_values} for row in audits],
+        default=str,
+    )
+    assert IBAN not in trail
+
+    checksum = client.put(
+        f"/api/v1/staff/employees/{CASHIER_ID}", headers=headers, json={**PROFILE, "iban": "AE000331234567890123456"}
+    )
+    assert checksum.status_code == 422
+
+    run = client.post("/api/v1/staff/payroll/runs", headers=headers, json={"year": 2026, "month": 11})
+    assert run.status_code == 201, run.text
+    original = run.json()["lines"][0]["basic_cents"]
+    assert client.post(f"/api/v1/staff/payroll/runs/{run.json()['id']}/finalize", headers=headers).status_code == 200
+    locked = client.put(
+        f"/api/v1/staff/employees/{CASHIER_ID}",
+        headers=headers,
+        json={**PROFILE, "basic_salary_cents": 400_000},
+    )
+    assert locked.status_code == 409
+    later = client.put(
+        f"/api/v1/staff/employees/{CASHIER_ID}",
+        headers=headers,
+        json={**PROFILE, "basic_salary_cents": 400_000, "effective_from": "2026-12-01"},
+    )
+    assert later.status_code == 200, later.text
+    history = client.get(f"/api/v1/staff/employees/{CASHIER_ID}/salary-history", headers=headers)
+    assert history.status_code == 200
+    assert len(history.json()) == 2
+    kept = client.get("/api/v1/staff/payroll/runs", headers=headers).json()[0]
+    assert kept["lines"][0]["basic_cents"] == original
+
+
+def test_draft_profile_and_unapproved_time_are_reported(client) -> None:
+    seed(client)
+    headers, _ = admin(client)
+    draft = client.put(
+        f"/api/v1/staff/employees/{CASHIER_ID}",
+        headers=headers,
+        json={"profile_status": "DRAFT", "job_title": "Cashier", "basic_salary_cents": 100_000},
+    )
+    assert draft.status_code == 200, draft.text
+    blocked = client.post("/api/v1/staff/payroll/runs", headers=headers, json={"year": 2026, "month": 9})
+    assert blocked.status_code == 422
+    assert "draft" in blocked.text.lower()
+
+    assert client.put(f"/api/v1/staff/employees/{CASHIER_ID}", headers=headers, json=PROFILE).status_code == 200
+    entry = str(uuid.uuid4())
+    shift = {
+        "id": entry,
+        "user_id": CASHIER_ID,
+        "store_id": STORE,
+        "clock_in_at": "2026-09-02T04:00:00Z",
+        "clock_out_at": "2026-09-02T14:00:00Z",
+    }
+    assert push(client, [event("unapproved-clock", "time_entry", shift)]).status_code == 200
+    run = client.post("/api/v1/staff/payroll/runs", headers=headers, json={"year": 2026, "month": 9})
+    assert run.status_code == 201, run.text
+    body = run.json()
+    assert body["lines"][0]["overtime_cents"] == 0
+    assert any(row["code"] == "unapproved_timesheet" for row in body["exceptions"])
+
+
+def test_review_payment_and_payslip_stay_separate_from_the_wps_file(client) -> None:
+    seed(client)
+    headers, actor = admin(client)
+    client.put(f"/api/v1/staff/employees/{CASHIER_ID}", headers=headers, json=PROFILE)
+    reviewer = _portal(client, headers, "payroll.reviewer", ["portal:access", "payroll:manage"])
+    stranger = _portal(client, headers, "payroll.stranger", ["portal:access"])
+    client.put(
+        "/api/v1/staff/payroll/settings",
+        headers=headers,
+        json={
+            "employer_id": "1000000000001",
+            "bank_routing_code": "803320101",
+            "bank_name": "Salary Bank",
+            "segregate_approval": True,
+        },
+    )
+    run = client.post("/api/v1/staff/payroll/runs", headers=headers, json={"year": 2026, "month": 8})
+    assert run.status_code == 201, run.text
+    run_id = run.json()["id"]
+    line_id = run.json()["lines"][0]["id"]
+    net = run.json()["lines"][0]["net_cents"]
+    submitted = client.post(f"/api/v1/staff/payroll/runs/{run_id}/submit", headers=headers)
+    assert submitted.status_code == 200
+    assert submitted.json()["status"] == "UNDER_REVIEW"
+    assert client.post(f"/api/v1/staff/payroll/runs/{run_id}/recalculate", headers=headers).status_code == 409
+    own = client.post(f"/api/v1/staff/payroll/runs/{run_id}/approve", headers=headers)
+    assert own.status_code == 403
+    rejected = client.post(
+        f"/api/v1/staff/payroll/runs/{run_id}/reject",
+        headers=reviewer,
+        json={"note": "Check overtime"},
+    )
+    assert rejected.status_code == 200
+    assert rejected.json()["status"] == "DRAFT"
+    assert client.post(f"/api/v1/staff/payroll/runs/{run_id}/submit", headers=headers).status_code == 200
+    assert client.post(f"/api/v1/staff/payroll/runs/{run_id}/approve", headers=reviewer).status_code == 200
+    assert actor
+    early = client.get(f"/api/v1/staff/payroll/payslips/{line_id}.pdf", headers=headers)
+    # The slip exists only after approval. The request above approved it, so the file is available.
+    assert early.status_code == 200
+    assert early.content.startswith(b"%PDF")
+    blocked = client.get(f"/api/v1/staff/payroll/payslips/{line_id}.pdf", headers=stranger)
+    assert blocked.status_code == 403
+    assert client.get(f"/api/v1/staff/payroll/payslips/{line_id}.pdf", headers=device()).status_code == 403
+    preview = client.post(f"/api/v1/staff/payroll/runs/{run_id}/wps/validate", headers=headers)
+    assert preview.status_code == 200
+    assert preview.json()["ready"] is True
+    assert preview.json()["provider"] == "uae_sif_edr_scr"
+    assert "not a MOHRE submission receipt" in preview.json()["provider_note"]
+    sif = client.get(f"/api/v1/staff/payroll/runs/{run_id}/wps.sif", headers=headers)
+    assert sif.status_code == 200
+    listed = client.get("/api/v1/staff/payroll/runs", headers=headers).json()
+    assert listed[0]["payment_status"] == "GENERATED"
+    paid = client.post(
+        f"/api/v1/staff/payroll/runs/{run_id}/payments",
+        headers=headers,
+        json={"amount_cents": net, "reference": "BANK-1001", "status": "PAID"},
+    )
+    assert paid.status_code == 201, paid.text
+    assert client.get("/api/v1/staff/payroll/runs", headers=headers).json()[0]["payment_status"] == "PAID"
+    duplicate = client.post(
+        f"/api/v1/staff/payroll/runs/{run_id}/payments",
+        headers=headers,
+        json={"amount_cents": net, "reference": "BANK-1001", "status": "PAID"},
+    )
+    assert duplicate.status_code == 409
+
+    cancelled = client.post("/api/v1/staff/payroll/runs", headers=headers, json={"year": 2026, "month": 7})
+    assert cancelled.status_code == 201, cancelled.text
+    assert client.post(
+        f"/api/v1/staff/payroll/runs/{cancelled.json()['id']}/cancel", headers=headers, json={"note": ""}
+    ).status_code == 200
+    replacement = client.post("/api/v1/staff/payroll/runs", headers=headers, json={"year": 2026, "month": 7})
+    assert replacement.status_code == 201, replacement.text

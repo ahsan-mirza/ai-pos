@@ -53,8 +53,26 @@ class BusinessSettingsOut(BaseModel):
     tax_authority: str = "fta"
     # True when this register's branch is tax-registered but its rate has not been confirmed.
     tax_configuration_required: bool = False
+    # IANA timezone for business-day reports. Every branch uses this; it does not change stored UTC instants.
+    timezone: str = "Asia/Dubai"
     module_settings: ModuleSettings = Field(default_factory=ModuleSettings)
     pos_policy: PosPolicy = Field(default_factory=PosPolicy)
+
+
+class ReportingTimezoneUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    timezone: str = Field(min_length=1, max_length=64)
+
+    @field_validator("timezone")
+    @classmethod
+    def known_zone(cls, value: str) -> str:
+        from app.services.business_time import require_timezone
+
+        try:
+            return require_timezone(value)
+        except ValueError as exc:
+            raise ValueError(str(exc)) from exc
 
 
 class ProfileUpdate(BaseModel):

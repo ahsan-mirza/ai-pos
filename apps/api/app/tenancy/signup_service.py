@@ -30,14 +30,14 @@ from app.schemas.signup import (
     SignupStore,
     SlugCheck,
 )
-from app.services import availability, email_brand, messaging_providers
+from app.services import availability, otp_service
+from app.services.messaging_providers import ProviderError
 from app.tenancy import registry
 from app.tenancy.countries import COUNTRY_CURRENCIES, currency_for_country
 from app.tenancy.models import SignupRequest, SignupSlugHold, Tenant
 
 MAX_OTP_ATTEMPTS = 5
 HANDOFF_MINUTES = 5
-CHANNEL_PROVIDERS = {"log": "log", "whatsapp": "whatsapp_cloud", "sms": "http_sms", "email": "smtp"}
 STEPS: tuple[tuple[str, str], ...] = (
     ("database", "Creating your store's own database"),
     ("migrations", "Building the database tables"),
@@ -96,8 +96,8 @@ def _fixed_code_only(settings: Settings) -> bool:
 
 
 def _send_code(settings: Settings, row: SignupRequest) -> str:
-    code = settings.signup_otp_code if _fixed_code_only(settings) else f"{secrets.randbelow(1_000_000):06d}"
-    row.otp_hash = _digest(f"{row.id}:{code}")
+    code = settings.signup_otp_code if _fixed_code_only(settings) else otp_service.new_code()
+    row.otp_hash = otp_service.seal(str(row.id), code)
     row.otp_expires_at = _now() + timedelta(minutes=settings.signup_otp_minutes)
     row.otp_sent_at = _now()
     row.otp_attempts = 0
@@ -105,23 +105,16 @@ def _send_code(settings: Settings, row: SignupRequest) -> str:
         return code
     channel = _otp_channel(settings)
     to = row.email if channel == "email" else row.phone
-    minutes = settings.signup_otp_minutes
-    if channel == "email":
-        plain, html_body = email_brand.verification_parts(
-            code=code, minutes=minutes, support_email=settings.support_email
-        )
-        outgoing = messaging_providers.Outgoing(
-            to=to, subject="Verify your AxizPOS email", body=plain, html=html_body
-        )
-    else:
-        outgoing = messaging_providers.Outgoing(
-            to=to,
-            subject="Your AxizPOS verification code",
-            body=f"Your AxizPOS verification code is {code}. It expires in {minutes} minutes.",
-        )
     try:
-        messaging_providers.deliver(settings, CHANNEL_PROVIDERS[channel], outgoing)
-    except messaging_providers.ProviderError as error:
+        otp_service.send(
+            settings,
+            to=to,
+            purpose="signup",
+            code=code,
+            minutes=settings.signup_otp_minutes,
+            channel=channel,
+        )
+    except ProviderError as error:
         raise ApiError(502, "otp_not_sent", f"We could not send the code: {error}") from error
     return code
 
@@ -255,7 +248,7 @@ def verify(settings: Settings, request_id: uuid.UUID, token: str | None, code: s
             raise ApiError(410, "code_expired", "The code has expired. Ask for a new one.")
         if row.otp_attempts >= MAX_OTP_ATTEMPTS:
             raise ApiError(429, "too_many_attempts", "Too many wrong codes. Ask for a new one.")
-        sent_ok = hmac.compare_digest(row.otp_hash, _digest(f"{row.id}:{code}"))
+        sent_ok = otp_service.matches(row.otp_hash, str(row.id), code)
         optional = (
             settings.app_env == "development"
             and settings.signup_otp_code is not None

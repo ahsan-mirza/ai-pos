@@ -1,4 +1,5 @@
 import { Capability, Permission, capabilitySpec } from "@ai-pos/shared-types";
+import { useLocale } from "@ai-pos/ui";
 import { useCallback, useLayoutEffect, useState, type ReactNode } from "react";
 import { BrowserRouter, Link, Navigate, Route, Routes } from "react-router-dom";
 import { AppShell, PageFrame } from "./components/layout/AppShell";
@@ -80,6 +81,7 @@ import { WarrantyPage } from "./features/warranty/WarrantyPage";
 import { RolesPage } from "./features/roles/RolesPage";
 import { QuotationsPage } from "./features/sales/QuotationsPage";
 import { DeliveryPodPage } from "./features/salesOrders/DeliveryPodPage";
+import { FulfillmentBoardPage } from "./features/salesOrders/FulfillmentBoardPage";
 import { SalesOrdersPage } from "./features/salesOrders/SalesOrdersPage";
 import { ReordersPage } from "./features/reorders/ReordersPage";
 import { AddonAccessPage } from "./features/settings/AddonAccessPage";
@@ -111,11 +113,12 @@ function RequirePermission({
   children: ReactNode;
 }) {
   const { can, user } = useAuth();
+  const { t } = useLocale();
   if (!can(permission) || (businessWide && user?.store_id !== null)) {
     return (
       <section className={`rounded-card border border-line bg-white p-6 ${framed ? "m-4 md:m-6" : ""}`}>
-        <h2 className="text-2xl font-semibold">Not available</h2>
-        <p className="mt-2 text-sm text-charcoal/60">Your role does not include access to this page.</p>
+        <h2 className="text-2xl font-semibold">{t("Not available")}</h2>
+        <p className="mt-2 text-sm text-charcoal/60">{t("Your role does not include access to this page.")}</p>
       </section>
     );
   }
@@ -246,14 +249,7 @@ function Portal() {
               <Route path="counts" element={<StockCountsPage />} />
               <Route path="expiring" element={<RequireCapability capability={Capability.Fefo}><ExpiringStockPage /></RequireCapability>} />
               <Route path="waste" element={<RequireCapability capability={Capability.Fefo}><WastePage /></RequireCapability>} />
-              <Route path="modifiers" element={<RequireCapability capability={Capability.MenuModifiers}><ModifiersPage /></RequireCapability>} />
               <Route path="meals" element={<RequireCapability capability={Capability.MenuModifiers}><MealsPage /></RequireCapability>} />
-              <Route path="floor-plan" element={<RequireCapability capability={Capability.Tables}><FloorPlanPage /></RequireCapability>} />
-              <Route path="reservations" element={<RequireCapability capability={Capability.Tables}><ReservationsPage /></RequireCapability>} />
-              <Route path="kitchen" element={<RequireCapability capability={Capability.Kds}><KitchenStationsPage /></RequireCapability>} />
-              <Route path="recipes" element={<RequireCapability capability={Capability.Recipes}><RecipesPage /></RequireCapability>} />
-              <Route path="kitchen-agent" element={<RequireCapability capability={Capability.Recipes}><KitchenAgentPage /></RequireCapability>} />
-              <Route path="recipe-usage" element={<RequireCapability capability={Capability.Recipes}><RecipeUsagePage /></RequireCapability>} />
               <Route path="transfers" element={<TransfersPage />} />
               <Route path="serials" element={<RequireCapability capability={Capability.SerialTracking}><SerialTrackerPage /></RequireCapability>} />
             </Route>
@@ -267,6 +263,13 @@ function Portal() {
             />
           </Route>
           <Route element={<PageFrame />}>
+          <Route path="inventory/modifiers" element={<RequireCapability capability={Capability.MenuModifiers}><ModifiersPage /></RequireCapability>} />
+          <Route path="inventory/floor-plan" element={<RequireCapability capability={Capability.Tables}><FloorPlanPage /></RequireCapability>} />
+          <Route path="inventory/reservations" element={<RequireCapability capability={Capability.Tables}><ReservationsPage /></RequireCapability>} />
+          <Route path="inventory/kitchen" element={<RequireCapability capability={Capability.Kds}><KitchenStationsPage /></RequireCapability>} />
+          <Route path="inventory/recipes" element={<RequireCapability capability={Capability.Recipes}><RecipesPage /></RequireCapability>} />
+          <Route path="inventory/kitchen-agent" element={<RequireCapability capability={Capability.Recipes}><KitchenAgentPage /></RequireCapability>} />
+          <Route path="inventory/recipe-usage" element={<RequireCapability capability={Capability.Recipes}><RecipeUsagePage /></RequireCapability>} />
           <Route index element={<DashboardRoute />} />
           <Route path="dashboard" element={<DashboardRoute />} />
           <Route path="account" element={<AccountPage />} />
@@ -300,6 +303,14 @@ function Portal() {
             element={
               <RequirePermission permission={Permission.PortalReportsRead}>
                 <RequireCapability capability={Capability.QuotesLayaway}><QuotationsPage /></RequireCapability>
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="fulfillment"
+            element={
+              <RequirePermission permission={Permission.SalesOrders}>
+                <RequireCapability capability={Capability.SalesOrders}><FulfillmentBoardPage /></RequireCapability>
               </RequirePermission>
             }
           />
@@ -389,14 +400,7 @@ function Portal() {
               </RequirePermission>
             }
           />
-          <Route
-            path="staff"
-            element={
-              <RequirePermission permission={Permission.StaffManage}>
-                <StaffPage />
-              </RequirePermission>
-            }
-          />
+          <Route path="staff" element={<StaffPage />} />
           <Route
             path="assistant"
             element={

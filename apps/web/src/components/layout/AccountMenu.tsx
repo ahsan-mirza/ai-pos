@@ -1,4 +1,5 @@
 import { formatMoney } from "@ai-pos/shared-types";
+import { formatDateTime, useLocale } from "@ai-pos/ui";
 import { ArrowRight, Building2, CreditCard, Download, LogOut, UserRound } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 import { Link } from "react-router-dom";
@@ -41,9 +42,8 @@ export function invalidateAccountSubscription(): void {
 
 function day(value: string | null): string | null {
   if (!value) return null;
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) return null;
-  return parsed.toLocaleDateString(undefined, { day: "numeric", month: "long", year: "numeric" });
+  const shown = formatDateTime(value).slice(0, 10);
+  return shown || null;
 }
 
 function statusOf(access: AccountAccess): { label: string; tone: string; when: string | null } {
@@ -79,9 +79,10 @@ function statusOf(access: AccountAccess): { label: string; tone: string; when: s
 }
 
 const itemClass =
-  "flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-[13px] font-medium text-charcoal outline-none transition-colors hover:bg-charcoal/[0.04] focus-visible:ring-2 focus-visible:ring-accent/40";
+  "flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-start text-[13px] font-medium text-charcoal outline-none transition-colors hover:bg-charcoal/[0.04] focus-visible:ring-2 focus-visible:ring-accent/40";
 
 export function AccountMenu() {
+  const { t } = useLocale();
   const { user, logout } = useAuth();
   const pwa = usePwa();
   const canBill = useCanManageSettings();
@@ -138,7 +139,7 @@ export function AccountMenu() {
     <div ref={panel} className="relative">
       <button
         type="button"
-        aria-label={`Account menu for ${user.full_name}`}
+        aria-label={t("Account menu for {name}", { name: user.full_name })}
         aria-haspopup="menu"
         aria-expanded={open}
         aria-controls={open ? menuId : undefined}
@@ -152,7 +153,7 @@ export function AccountMenu() {
           id={menuId}
           role="menu"
           aria-label="Account"
-          className="absolute right-0 top-11 z-40 max-h-[min(32rem,calc(100dvh-5rem))] w-[min(340px,calc(100vw-1.5rem))] overflow-y-auto rounded-2xl border border-line bg-white p-2 shadow-xl"
+          className="absolute end-0 top-11 z-40 max-h-[min(32rem,calc(100dvh-5rem))] w-[min(340px,calc(100vw-1.5rem))] overflow-y-auto rounded-2xl border border-line bg-white p-2 shadow-xl"
         >
           <div className="flex items-center gap-3 rounded-xl bg-[#f8fafc] px-3 py-3">
             <ProfileAvatar name={user.full_name} url={user.avatar_url} className="h-11 w-11" />
@@ -165,7 +166,7 @@ export function AccountMenu() {
 
           {canBill ? (
             <div className="mt-2 rounded-xl border border-line px-3 py-3">
-              <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-charcoal/45">Your subscription</p>
+              <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-charcoal/45">{t("Your subscription")}</p>
               {phase === "loading" ? (
                 <div className="mt-3 space-y-2" aria-hidden="true">
                   <div className="h-4 w-2/3 animate-pulse rounded bg-charcoal/10" />
@@ -174,7 +175,7 @@ export function AccountMenu() {
                 </div>
               ) : null}
               {phase === "unavailable" ? (
-                <p className="mt-2 text-sm text-charcoal/70">Subscription details are unavailable.</p>
+                <p className="mt-2 text-sm text-charcoal/70">{t("Subscription details are unavailable.")}</p>
               ) : null}
               {phase === "ready" && !showPlan ? (
                 <>
@@ -186,7 +187,7 @@ export function AccountMenu() {
                     onClick={() => setOpen(false)}
                     className="mt-3 inline-flex items-center gap-1 text-sm font-semibold text-accent hover:underline"
                   >
-                    View plans <ArrowRight size={14} aria-hidden="true" />
+                    {t("View plans")} <ArrowRight size={14} aria-hidden="true" />
                   </Link>
                 </>
               ) : null}
@@ -242,7 +243,7 @@ export function AccountMenu() {
                     onClick={() => setOpen(false)}
                     className="mt-3 inline-flex items-center gap-1 text-sm font-semibold text-accent hover:underline"
                   >
-                    Manage subscription <ArrowRight size={14} aria-hidden="true" />
+                    {t("Manage subscription")} <ArrowRight size={14} aria-hidden="true" />
                   </Link>
                 </>
               ) : null}
@@ -252,7 +253,7 @@ export function AccountMenu() {
           <div className="mt-2 space-y-0.5">
             <Link to="/account" role="menuitem" onClick={() => setOpen(false)} className={itemClass}>
               <UserRound size={16} strokeWidth={1.75} aria-hidden="true" />
-              My account
+              {t("My account")}
             </Link>
             {pwa.menu === "install" ? (
               <button
@@ -265,7 +266,7 @@ export function AccountMenu() {
                 }}
               >
                 <Download size={16} strokeWidth={1.75} aria-hidden="true" />
-                Install Business Pro
+                {t("Install Business Pro")}
               </button>
             ) : null}
             {pwa.menu === "ios" ? (
@@ -279,19 +280,19 @@ export function AccountMenu() {
                 }}
               >
                 <Download size={16} strokeWidth={1.75} aria-hidden="true" />
-                Add to Home Screen
+                {t("Add to Home Screen")}
               </button>
             ) : null}
             {canBill ? (
               <Link to="/settings" role="menuitem" onClick={() => setOpen(false)} className={itemClass}>
                 <Building2 size={16} strokeWidth={1.75} aria-hidden="true" />
-                Business settings
+                {t("Business settings")}
               </Link>
             ) : null}
             {canBill ? (
               <Link to="/subscription" role="menuitem" onClick={() => setOpen(false)} className={itemClass}>
                 <CreditCard size={16} strokeWidth={1.75} aria-hidden="true" />
-                Subscription & billing
+                {t("Subscription & billing")}
               </Link>
             ) : null}
           </div>
@@ -306,7 +307,7 @@ export function AccountMenu() {
               className={`${itemClass} text-charcoal/80`}
             >
               <LogOut size={16} strokeWidth={1.75} aria-hidden="true" />
-              Sign out
+              {t("Sign out")}
             </button>
           </div>
         </div>

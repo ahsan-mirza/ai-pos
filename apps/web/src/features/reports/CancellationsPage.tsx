@@ -97,9 +97,9 @@ export function CancellationsPage() {
             counted on their own and are not treated as completed sales.
           </p>
         </div>
-        <div className="flex flex-wrap gap-2">
-          <TextField label="From" type="date" value={range.from} onChange={(event) => setRange({ ...range, from: event.target.value })} />
-          <TextField label="To" type="date" value={range.to} onChange={(event) => setRange({ ...range, to: event.target.value })} />
+        <div className="flex flex-wrap items-end gap-3">
+          <TextField variant="filter" wrapperClassName="w-48" label="From" type="date" value={range.from} onChange={(event) => setRange({ ...range, from: event.target.value })} />
+          <TextField variant="filter" wrapperClassName="w-48" label="To" type="date" value={range.to} onChange={(event) => setRange({ ...range, to: event.target.value })} />
           {user?.store_id ? null : (
             <FilterSelect
               label="Branch"

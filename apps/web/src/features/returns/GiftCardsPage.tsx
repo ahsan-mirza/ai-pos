@@ -1,4 +1,4 @@
-import { actionHoverClass } from "@ai-pos/ui";
+import { actionHoverClass, formatDate, formatDateTime } from "@ai-pos/ui";
 import { Permission, formatMoney, type GiftCardIssue, type StoreCreditList, type StoreCreditVoucher } from "@ai-pos/shared-types";
 import { Gift, Plus } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
@@ -17,8 +17,7 @@ const filters = [
   { value: "all", label: "All" },
 ] as const;
 
-const shortDate = (value: string) =>
-  new Date(value).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
+const shortDate = (value: string) => (/^\d{4}-\d{2}-\d{2}$/.test(value) ? formatDate(value) : formatDateTime(value).slice(0, 10));
 
 function cardStatus(card: StoreCreditVoucher): { label: string; tone: string } {
   if (card.voided_at) return { label: "Voided", tone: "bg-gray-100 text-charcoal/50" };

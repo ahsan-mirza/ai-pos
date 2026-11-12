@@ -1,3 +1,4 @@
+import { formatDate, formatDateTime } from "@ai-pos/ui";
 import {
   Permission,
   formatMoney,
@@ -23,7 +24,7 @@ import { errorMessage } from "../users/api";
 
 type View = "all" | "expiring";
 
-const day = (value: string) => new Date(value).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
+const day = (value: string) => (/^\d{4}-\d{2}-\d{2}$/.test(value) ? formatDate(value) : formatDateTime(value).slice(0, 10));
 
 function CoverageChip({ row }: { row: WarrantyRegistration }) {
   const label =

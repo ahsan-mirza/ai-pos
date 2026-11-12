@@ -12,6 +12,7 @@ import {
   type ProductPurchaseHistory,
   type SerialStatus,
 } from "@ai-pos/shared-types";
+import { AxizTabs } from "@ai-pos/ui";
 import { Download, MapPin, Pencil, ScanLine, X } from "lucide-react";
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
@@ -428,7 +429,7 @@ export function ProductDetailDrawer({
         data-state={closing ? "closing" : "open"}
         className="drawer-panel fixed inset-y-0 right-0 z-40 flex w-full flex-col overflow-hidden bg-white shadow-2xl outline-none sm:max-w-xl md:max-w-2xl split-drawer-h lg:sticky lg:top-5 lg:z-auto lg:w-auto lg:min-w-0 lg:max-w-none lg:basis-1/2 lg:self-start lg:rounded-card lg:border lg:border-line lg:shadow-none"
       >
-        <header className="sticky top-0 z-20 flex-none border-b border-line bg-white px-5 pb-4 pt-5 sm:px-6">
+        <header className="sticky top-0 z-20 flex-none bg-white px-5 pt-5 sm:px-6">
           <div className="flex items-start justify-between gap-3">
             <div className="flex min-w-0 flex-wrap items-center gap-1.5">
               <Tag className="bg-charcoal font-mono text-white">{product.sku}</Tag>
@@ -488,35 +489,23 @@ export function ProductDetailDrawer({
               </HeaderButton>
             </div>
           </div>
-          <nav
-            className="mt-4 flex gap-1 overflow-x-auto rounded-full bg-charcoal p-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-            role="tablist"
-            aria-label="Product sections"
-          >
-            {tabs.map((item) => (
-              <button
-                key={item.id}
-                type="button"
-                role="tab"
-                aria-selected={active === item.id}
-                onClick={(event) => {
-                  setTab(item.id);
-                  event.currentTarget.scrollIntoView({ block: "nearest", inline: "nearest", behavior: "smooth" });
-                }}
-                className={`shrink-0 rounded-full px-3.5 py-2 text-[13px] font-semibold transition ${
-                  active === item.id ? "bg-accent text-white" : "text-white/70 hover:bg-white/10 hover:text-white"
-                } ${item.locked ? "opacity-50" : ""}`}
-              >
-                {item.label}
-              </button>
-            ))}
-          </nav>
+          <AxizTabs
+            ariaLabel="Product sections"
+            idPrefix="product-sections"
+            controls="product-section-panel"
+            className="-mx-5 mt-4 sm:-mx-6"
+            listClassName="px-5 sm:px-6"
+            activeTab={active}
+            onChange={(id) => setTab(id as TabId)}
+            tabs={tabs.map((item) => ({ id: item.id, label: item.label, dimmed: item.locked }))}
+          />
         </header>
 
         <div
           className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-5 sm:px-6"
+          id="product-section-panel"
           role="tabpanel"
-          aria-label={tabs.find((item) => item.id === active)?.label}
+          aria-labelledby={`product-sections-tab-${active}`}
         >
           {detail.product.state === "error" ? (
             <p className="mb-4 rounded-2xl bg-danger/10 px-4 py-3 text-sm text-danger" role="alert">

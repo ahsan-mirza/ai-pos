@@ -376,7 +376,7 @@ export function InventoryPage() {
         <DataTable
           aria-label="Product catalog"
           variant="flush"
-          className="-mx-4 -mb-4 border-t border-line sm:-mx-6 sm:-mb-6"
+          className="border-t border-line"
           minWidth={open ? undefined : "860px"}
           columns={columns}
           data={hits}

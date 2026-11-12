@@ -59,6 +59,15 @@
   --table-out-fill: #fef2f2;
   --table-out-line: #dc2626;
   --table-out-ink: #991b1b;
+  /* Navigation tabs. The underline is the brand accent; text stays charcoal on white. */
+  --tab-bg: var(--color-card);
+  --tab-text: var(--color-charcoal);
+  --tab-text-muted: rgb(34 32 38 / 0.55);
+  --tab-text-disabled: rgb(34 32 38 / 0.3);
+  --tab-line: var(--color-border);
+  --tab-underline: var(--color-accent);
+  --tab-hover: var(--color-charcoal);
+  --tab-focus: var(--color-accent);
 }
 
 .dark,
@@ -97,6 +106,27 @@
   --table-out-fill: #450a0a;
   --table-out-line: #f87171;
   --table-out-ink: #fecaca;
+  --tab-bg: #1c1b1f;
+  --tab-text: #f4f4f5;
+  --tab-text-muted: rgb(244 244 245 / 0.55);
+  --tab-text-disabled: rgb(244 244 245 / 0.3);
+  --tab-line: #3f3f46;
+  --tab-hover: #f4f4f5;
+  --tab-underline: var(--color-accent);
+  --tab-focus: var(--color-accent);
+}
+
+@media (prefers-color-scheme: dark) {
+  [data-theme="system"] {
+    --tab-bg: #1c1b1f;
+    --tab-text: #f4f4f5;
+    --tab-text-muted: rgb(244 244 245 / 0.55);
+    --tab-text-disabled: rgb(244 244 245 / 0.3);
+    --tab-line: #3f3f46;
+    --tab-hover: #f4f4f5;
+    --tab-underline: var(--color-accent);
+    --tab-focus: var(--color-accent);
+  }
 }
 
 html,

@@ -69,7 +69,15 @@ from app.models.sale_tender import SaleTender
 from app.models.sales_order import DeliveryNote, DeliveryNoteLine, PickList, PickListLine, SalesOrder, SalesOrderLine
 from app.models.serial_number import SerialNumber
 from app.models.shift import CashMovement, RegisterShift
-from app.models.staff import EmployeeProfile, PayrollLine, PayrollRun
+from app.models.staff import (
+    EmployeeProfile,
+    EmployeeSalaryVersion,
+    PayrollApproval,
+    PayrollLine,
+    PayrollPayment,
+    PayrollRun,
+    PayrollWpsExport,
+)
 from app.models.stock_count import StockCount, StockCountLine
 from app.models.store import Store
 from app.models.store_credit import StoreCredit, StoreCreditRedemption
@@ -475,6 +483,9 @@ def _delete_operational_history(db: Session) -> None:
         RepairLine,
         RepairTicket,
         TradeIn,
+        PayrollPayment,
+        PayrollWpsExport,
+        PayrollApproval,
         PayrollLine,
         PayrollRun,
         TimeEntry,
@@ -673,6 +684,8 @@ def _delete_configuration(db: Session, keeper_id: uuid.UUID) -> None:
     if settings is not None and settings.updated_by_id != keeper_id:
         settings.updated_by_id = keeper_id
     db.flush()
+    removed_profiles = select(EmployeeProfile.id).where(EmployeeProfile.user_id != keeper_id)
+    db.execute(delete(EmployeeSalaryVersion).where(EmployeeSalaryVersion.profile_id.in_(removed_profiles)))
     db.execute(delete(EmployeeProfile).where(EmployeeProfile.user_id != keeper_id))
     referenced = set(db.scalars(select(AuditLog.user_id).where(AuditLog.user_id.is_not(None))))
     referenced.update(id for id in db.scalars(select(AuditLog.approver_id).where(AuditLog.approver_id.is_not(None))))

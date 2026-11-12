@@ -1,4 +1,4 @@
-from datetime import date, datetime
+from datetime import date, datetime, time
 from typing import Literal
 from uuid import UUID
 
@@ -165,6 +165,13 @@ class SalesOrderOut(ApiModel):
     channel_ref: str | None
     customer_reference: str | None
     requested_date: date | None
+    scheduling_status: str = "UNSCHEDULED"
+    promised_on: date | None = None
+    window_start: time | None = None
+    window_end: time | None = None
+    delivery_zone_id: UUID | None = None
+    delivery_instructions: str = ""
+    timezone: str = "UTC"
     delivery_address: str | None
     notes: str
     subtotal_cents: int
@@ -191,7 +198,30 @@ class SalesOrderRow(ApiModel):
     outstanding_units: int
     backordered_units: int
     requested_date: date | None
+    promised_on: date | None = None
     created_at: datetime
+
+
+class SalesOrderEventOut(ApiModel):
+    id: UUID
+    kind: str
+    summary: str
+    created_at: datetime
+    actor_id: UUID | None = None
+    actor_name: str | None = None
+
+
+class FulfillmentBoardOut(ApiModel):
+    """Counts from sales orders and delivery notes. map_configured stays false until a map provider is set."""
+
+    orders_open: int
+    orders_today: int
+    out_for_delivery: int
+    delivered_today: int
+    # IANA zone used for orders_today and delivered_today. The same zone applies to every branch.
+    timezone: str = "Asia/Dubai"
+    map_configured: bool = False
+    rows: list[SalesOrderRow]
 
 
 class BackorderRow(ApiModel):

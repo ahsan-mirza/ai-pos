@@ -3,7 +3,7 @@ from collections.abc import Iterator
 from sqlalchemy import create_engine, event
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
-from sqlalchemy.pool import StaticPool
+from sqlalchemy.pool import NullPool, StaticPool
 
 from app.core.config import get_settings
 
@@ -11,12 +11,28 @@ _engine: Engine | None = None
 _session_factory: sessionmaker[Session] | None = None
 
 
+def _sqlite_memory(database_url: str) -> bool:
+    """True when a new connection would open a different empty database.
+
+    `sqlite://` and `sqlite:///:memory:` are per connection. A file URL (`sqlite:///path`) is not.
+    """
+    if ":memory:" in database_url:
+        return True
+    return database_url.rstrip("/") in {"sqlite:", "sqlite://"}
+
+
 def build_engine(database_url: str) -> Engine:
     if database_url.startswith("sqlite"):
+        # Requests run on worker threads, so sqlite's same-thread check has to be off.
+        # StaticPool is one connection for every thread. sqlite3 then raises InterfaceError
+        # ("bad parameter or other API misuse") or returns torn rows when the portal fires
+        # parallel requests. In-memory databases cannot be shared any other way, and the test
+        # suite uses them one request at a time. A file database gets its own connection per
+        # checkout, which is what a server needs.
         engine = create_engine(
             database_url,
             connect_args={"check_same_thread": False},
-            poolclass=StaticPool,
+            poolclass=StaticPool if _sqlite_memory(database_url) else NullPool,
         )
 
         @event.listens_for(engine, "connect")

@@ -16,8 +16,10 @@ from app.schemas.sales_orders import (
     DeliverIn,
     DeliveryNoteOut,
     DispatchIn,
+    FulfillmentBoardOut,
     ReasonIn,
     SalesOrderCreate,
+    SalesOrderEventOut,
     SalesOrderOut,
     SalesOrderRow,
     SalesOrderUpdate,
@@ -79,6 +81,11 @@ def backorders(db: Db, principal: CanFulfil, store_id: uuid.UUID | None = None) 
     return sales_order_service.backorders(db, principal, store_id)
 
 
+@router.get("/board", response_model=FulfillmentBoardOut)
+def board(db: Db, principal: CanFulfil, store_id: uuid.UUID | None = None) -> FulfillmentBoardOut:
+    return sales_order_service.board(db, principal, store_id)
+
+
 @router.post("/from-quote/{quote_id}", response_model=SalesOrderOut, status_code=201)
 def from_quote(quote_id: uuid.UUID, db: Db, principal: CanFulfil) -> SalesOrderOut:
     return sales_order_service.from_quote(db, principal, quote_id)
@@ -102,6 +109,11 @@ def delivery_pdf(note_id: uuid.UUID, db: Db, principal: CanFulfil) -> Response:
 @router.get("/pick-lists/{pick_id}/pdf", response_class=Response)
 def pick_list_pdf(pick_id: uuid.UUID, db: Db, principal: CanFulfil) -> Response:
     return _pdf(*sales_order_pdf.render_pick_list(db, principal, pick_id))
+
+
+@router.get("/{order_id}/events", response_model=list[SalesOrderEventOut])
+def order_events(order_id: uuid.UUID, db: Db, principal: AtRegister) -> list[SalesOrderEventOut]:
+    return sales_order_service.events(db, principal, order_id)
 
 
 @router.get("/{order_id}", response_model=SalesOrderOut)

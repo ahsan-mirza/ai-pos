@@ -27,6 +27,7 @@ SERVER_SUFFIX = {
     "SO": "SO",
     "PCK": "PCK",
     "DN": "DN",
+    "DSP": "DSP",
 }
 DEVICE_SUFFIX = {"INV": "", "CN": "-CN", "Z": "-Z", "QUO": "-QUO", "PDC": "-PDC"}
 NUMBER = re.compile(r"^(?P<prefix>[A-Z0-9][A-Z0-9-]{0,38}?)-(?P<value>\d{1,9})$")

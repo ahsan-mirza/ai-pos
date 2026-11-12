@@ -1,4 +1,5 @@
 import { BATCH_STATUS_LABELS, type BatchStatus } from "@ai-pos/shared-types";
+import { formatDate, formatDateTime } from "@ai-pos/ui";
 
 const statusStyles: Record<BatchStatus, { pill: string; dot: string }> = {
   ACTIVE: { pill: "bg-emerald-50 text-emerald-700 ring-emerald-600/20", dot: "bg-emerald-500" },
@@ -55,7 +56,7 @@ export function SoldMeter({
 }
 
 export function formatDay(value: string): string {
-  return new Date(value).toLocaleDateString(undefined, { day: "2-digit", month: "short", year: "numeric" });
+  return /^\d{4}-\d{2}-\d{2}$/.test(value) ? formatDate(value) : formatDateTime(value).slice(0, 10);
 }
 
 export function formatTime(value: string): string {

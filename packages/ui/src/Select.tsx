@@ -288,14 +288,14 @@ export function Select<T extends string>({
         aria-label={labelledBy ? undefined : ariaLabel}
         onClick={() => (open ? close(false) : openMenu())}
         onKeyDown={onTriggerKey}
-        className={`flex w-full items-center border text-left font-medium tracking-normal text-charcoal normal-case transition focus:outline-none focus:ring-2 focus:ring-orange-500 disabled:cursor-not-allowed disabled:opacity-50 dark:text-zinc-100 ${
+        className={`flex w-full items-center border text-start font-medium tracking-normal text-charcoal normal-case transition focus:outline-none focus:ring-2 focus:ring-orange-500 disabled:cursor-not-allowed disabled:opacity-50 dark:text-zinc-100 ${
           invalid
             ? "border-rose-500 bg-rose-50/20 dark:border-rose-500 dark:bg-rose-500/10"
             : "border-gray-200 bg-gray-50 hover:border-gray-300 dark:border-zinc-700 dark:bg-zinc-900"
         } ${
           size === "sm"
-            ? `h-9 rounded-xl pr-8 text-[13px] ${Icon ? "pl-9" : "pl-3"}`
-            : `h-11 rounded-2xl pr-10 text-sm ${Icon ? "pl-11" : "pl-4"}`
+            ? `h-9 rounded-xl pe-8 text-[13px] ${Icon ? "ps-9" : "ps-3"}`
+            : `h-11 rounded-2xl pe-10 text-sm ${Icon ? "ps-11" : "ps-4"}`
         } ${open ? "border-orange-500 ring-2 ring-orange-500" : "hover:border-gray-300"}`}
       >
         <span id={valueId} className={`flex min-w-0 flex-1 items-center gap-2 ${selected ? "" : "text-gray-400"}`}>
@@ -308,7 +308,7 @@ export function Select<T extends string>({
           aria-hidden="true"
           strokeWidth={1.75}
           className={`pointer-events-none absolute top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500 ${
-            size === "sm" ? "left-3" : "left-4"
+            size === "sm" ? "start-3" : "start-4"
           }`}
         />
       ) : null}
@@ -316,7 +316,7 @@ export function Select<T extends string>({
         aria-hidden="true"
         strokeWidth={2}
         className={`pointer-events-none absolute top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500 transition-transform duration-200 ${
-          size === "sm" ? "right-2.5" : "right-3"
+          size === "sm" ? "end-2.5" : "end-3"
         } ${open ? "rotate-180" : ""}`}
       />
       {open && placement
@@ -340,7 +340,7 @@ export function Select<T extends string>({
                   <Search
                     size={15}
                     aria-hidden="true"
-                    className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+                    className="pointer-events-none absolute start-3 top-1/2 -translate-y-1/2 text-gray-400"
                   />
                   <input
                     ref={searchRef}
@@ -356,7 +356,7 @@ export function Select<T extends string>({
                       setQuery(event.target.value);
                       setActive(step(matching(options, event.target.value), -1, 1));
                     }}
-                    className="h-10 w-full rounded-xl border border-gray-200 bg-gray-50 pl-9 pr-3 text-sm text-charcoal placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-orange-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100"
+                    className="h-10 w-full rounded-xl border border-gray-200 bg-gray-50 pe-3 ps-9 text-sm text-charcoal placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-orange-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100"
                   />
                 </div>
               ) : null}
@@ -366,7 +366,7 @@ export function Select<T extends string>({
                 ) : (
                   <button
                     type="button"
-                    className="mb-1.5 flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left text-sm font-semibold text-orange-600 hover:bg-orange-50 dark:hover:bg-orange-500/10"
+                    className="mb-1.5 flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-start text-sm font-semibold text-orange-600 hover:bg-orange-50 dark:hover:bg-orange-500/10"
                     onMouseDown={(event) => event.preventDefault()}
                     onClick={createNamed}
                   >

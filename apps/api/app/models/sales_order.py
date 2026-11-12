@@ -4,9 +4,9 @@
 from __future__ import annotations
 
 import uuid
-from datetime import date, datetime
+from datetime import date, datetime, time
 
-from sqlalchemy import JSON, CheckConstraint, Date, DateTime, ForeignKey, Integer, String, Text, Uuid
+from sqlalchemy import JSON, CheckConstraint, Date, DateTime, ForeignKey, Integer, String, Text, Time, Uuid
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, TenantScoped, TimestampMixin, tenant_unique, utcnow
@@ -19,6 +19,12 @@ class SalesOrder(TenantScoped, TimestampMixin, Base):
     __tablename__ = "sales_orders"
     __table_args__ = (
         tenant_unique("number", name="uq_sales_orders_number"),
+        # One external order, even when the channel retries. Manual orders leave channel_ref empty.
+        tenant_unique("source", "channel_ref", name="uq_sales_orders_channel"),
+        CheckConstraint(
+            "scheduling_status IN ('UNSCHEDULED', 'SCHEDULED', 'CANCELLED')",
+            name="ck_sales_orders_scheduling_status",
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -35,6 +41,17 @@ class SalesOrder(TenantScoped, TimestampMixin, Base):
     channel_ref: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
     customer_reference: Mapped[str | None] = mapped_column(String(64), nullable=True)
     requested_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    # Customer's request. promised_on is the commitment and is never copied from created_at.
+    scheduling_status: Mapped[str] = mapped_column(
+        String(16), default="UNSCHEDULED", server_default="UNSCHEDULED", index=True
+    )
+    promised_on: Mapped[date | None] = mapped_column(Date, nullable=True)
+    window_start: Mapped[time | None] = mapped_column(Time, nullable=True)
+    window_end: Mapped[time | None] = mapped_column(Time, nullable=True)
+    delivery_zone_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("delivery_zones.id", ondelete="SET NULL"), nullable=True
+    )
+    delivery_instructions: Mapped[str] = mapped_column(String(500), default="", server_default="")
     delivery_address: Mapped[str | None] = mapped_column(String(255), nullable=True)
     notes: Mapped[str] = mapped_column(Text, default="")
     # At the order's prices; each delivery invoices its own share.
@@ -163,3 +180,18 @@ class DeliveryNoteLine(TenantScoped, Base):
     # Last digits of the IMEIs / serials delivered (the full values are on the sale's serial records).
     serial_suffixes: Mapped[list | None] = mapped_column(JSON, nullable=True)
     position: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class SalesOrderEvent(TenantScoped, Base):
+    """What happened to an order. Delivery and payment stay on their own records."""
+
+    __tablename__ = "sales_order_events"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    order_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("sales_orders.id", ondelete="CASCADE"), index=True
+    )
+    kind: Mapped[str] = mapped_column(String(24))
+    summary: Mapped[str] = mapped_column(String(240))
+    actor_id: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)

@@ -14,9 +14,9 @@ import {
 } from "@ai-pos/shared-types";
 import { CheckCircle2, CircleAlert, CreditCard, RotateCw } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
+import { AxizTabs, formatDateTime } from "@ai-pos/ui";
 import { ErrorNote, FilterSelect, GhostButton, PrimaryButton, SelectField, TextField } from "../../components/ui/Field";
 import { Modal } from "../../components/ui/Modal";
-import { SegmentedControl } from "../../components/ui/SegmentedControl";
 import { Toast } from "../../components/ui/Toast";
 import { apiGet, apiPatch, apiPost } from "../../lib/api";
 import { useAuth } from "../../lib/auth";
@@ -32,7 +32,7 @@ type StatusFilter = PaymentIntentStatus | "all";
 const CHANNEL_LABELS: Record<PaymentChannel, string> = { QR: "QR", CARD: "Card terminal", BNPL: "Pay later" };
 
 function when(value: string): string {
-  return new Date(value).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+  return formatDateTime(value);
 }
 
 function StatusChip({ status }: { status: string }) {
@@ -253,23 +253,23 @@ export function PaymentsPage() {
         </article>
       </div>
 
-      <div className="rounded-card border border-line bg-white p-6">
-        <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
-          <div>
-            <h2 className="text-xl font-semibold">Card, QR and pay-later payments</h2>
-            <p className="text-sm text-charcoal/60">Every payment a provider collected at the till, and every refund sent back through it.</p>
-          </div>
-          <SegmentedControl
-            label="View"
-            value={tab}
-            options={[
-              { value: "payments", label: "Payments" },
-              { value: "refunds", label: `Refunds${failed.length ? ` (${failed.length})` : ""}` },
-              ...(canTerminals ? [{ value: "terminals" as const, label: "Terminals" }] : []),
-            ]}
-            onChange={setTab}
-          />
+      <div className="overflow-hidden rounded-card border border-line bg-white">
+        <div className="px-6 pt-6">
+          <h2 className="text-xl font-semibold">Card, QR and pay-later payments</h2>
+          <p className="text-sm text-charcoal/60">Every payment a provider collected at the till, and every refund sent back through it.</p>
         </div>
+        <AxizTabs
+          ariaLabel="View"
+          className="mt-4"
+          activeTab={tab}
+          onChange={(id) => setTab(id as Tab)}
+          tabs={[
+            { id: "payments", label: "Payments" },
+            { id: "refunds", label: `Refunds${failed.length ? ` (${failed.length})` : ""}` },
+            ...(canTerminals ? [{ id: "terminals", label: "Terminals" }] : []),
+          ]}
+        />
+        <div className="p-6">
         <ErrorNote message={error} />
 
         {tab === "payments" ? (
@@ -431,6 +431,7 @@ export function PaymentsPage() {
             {terminals.length === 0 ? <p className="py-6 text-center text-sm text-charcoal/50">No card terminals yet. Card sales are entered by hand.</p> : null}
           </div>
         ) : null}
+        </div>
       </div>
 
       {editing ? (

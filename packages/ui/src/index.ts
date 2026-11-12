@@ -21,13 +21,20 @@ export { downloadCsv, toCsv } from "./csv";
 export { BrandLogo } from "./BrandLogo";
 export { AsyncButton, BusyButton, type BusyButtonProps } from "./BusyButton";
 export { DateInput, type DateInputProps } from "./DateInput";
+export { AxizDatePicker, AxizDateRange, type AxizDatePickerProps, type AxizDateRangeProps, type AxizDatePickerVariant } from "./AxizDatePicker";
 export {
   DATE_PLACEHOLDER,
   DATETIME_PLACEHOLDER,
   compareIso,
   displayToIso,
+  formatDate,
+  formatDateRange,
+  formatDateTime,
   isoToDisplay,
+  isValidDate,
   maskDateInput,
+  parseDate,
+  parseDateInput,
 } from "./dateFormat";
 export { inputLeadingIcon, type InputIconHints } from "./inputIcon";
 export { PageSizeSelect } from "./PageSizeSelect";
@@ -104,4 +111,12 @@ export {
 } from "./pagination";
 export { usePagination, type PaginationState } from "./usePagination";
 export { LanguageSwitch, useLocale } from "./LocaleSwitch";
+export {
+  AxizTabs,
+  nextTabId,
+  type AxizTabDefinition,
+  type AxizTabProps,
+  type AxizTabRenderArgs,
+  type AxizTabsProps,
+} from "./AxizTabs";
 export { applyDocumentLocale, localize, readLocale, setLocale, type Locale } from "./locale";

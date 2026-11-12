@@ -6,6 +6,7 @@ import {
   type ChequeList,
   type ChequeStatus,
 } from "@ai-pos/shared-types";
+import { formatDate } from "@ai-pos/ui";
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { ErrorNote, GhostButton, PrimaryButton, TextField } from "../../components/ui/Field";
@@ -158,7 +159,7 @@ export function ChequesPage() {
                       )}
                     </td>
                     <td className={`py-3 tabular-nums ${cheque.status === "RECEIVED" && days <= 0 ? "font-semibold text-accent" : ""}`}>
-                      {new Date(`${cheque.cheque_date}T00:00:00`).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" })}
+                      {formatDate(cheque.cheque_date)}
                       {cheque.status === "RECEIVED" ? (
                         <span className="block text-xs font-normal text-charcoal/50">
                           {days > 0 ? `in ${days} day${days === 1 ? "" : "s"}` : days === 0 ? "today" : `${-days} days ago`}

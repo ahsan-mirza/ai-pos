@@ -1,4 +1,5 @@
 import { formatMoney, type ProductSearchHit, type Promotion, type PromotionKind } from "@ai-pos/shared-types";
+import { formatDateTime } from "@ai-pos/ui";
 import { Plus, Tag, X } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { ErrorNote, FilterSelect, GhostButton, PrimaryButton, TextField } from "../../components/ui/Field";
@@ -38,7 +39,7 @@ function summary(promo: Promotion, currency: string): string {
 }
 
 function schedule(promo: Promotion): string {
-  const day = (value: string) => new Date(value).toLocaleDateString(undefined, { day: "numeric", month: "short" });
+  const day = (value: string) => formatDateTime(value).slice(0, 10);
   if (promo.starts_at && promo.ends_at) return `${day(promo.starts_at)} – ${day(promo.ends_at)}`;
   if (promo.ends_at) return `Until ${day(promo.ends_at)}`;
   if (promo.starts_at) return `From ${day(promo.starts_at)}`;

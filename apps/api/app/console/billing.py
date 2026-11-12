@@ -152,8 +152,8 @@ _UAE_PRICES = {"FREE": 0, "GROWTH": 12_900, "PRO_AI": 29_900}
 # First publish for a plan row that does not exist yet. A later console edit is stored on the row and is not
 # rewritten here. Empty means the plan adds no modules of its own. Plugins stay on add-ons, not on these lists.
 _STARTER_PLAN_MODULES: dict[str, list[str]] = {
-    "GROWTH": ["sales_insights"],
-    "PRO_AI": ["sales_insights", "ai_insights", "deep_analytics"],
+    "GROWTH": ["sales_insights", "fleet_dispatch"],
+    "PRO_AI": ["sales_insights", "ai_insights", "deep_analytics", "fleet_dispatch"],
 }
 
 _ADDONS = (
@@ -268,6 +268,7 @@ _MODULE_DESCRIPTIONS: dict[str, str] = {
         "Live orders still use Delivery channels. Providers stay unavailable until partner access is approved."
     ),
     "sales_orders": "Wholesale orders picked, delivered in parts with proof of delivery, and invoiced per delivery.",
+    "fleet_dispatch": "Delivery dates, zones, vehicles, drivers, and a manual dispatch plan with capacity checks.",
     "card_terminals": (
         "Send the amount to the card machine and confirm the payment automatically; refunds go back to the card."
     ),

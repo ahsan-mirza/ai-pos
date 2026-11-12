@@ -48,7 +48,9 @@ function useVisibleGroups(): VisibleGroup[] {
           tenant.allows(item.profiles) &&
           (locked || item.capability === undefined || capabilities.has(item.capability)) &&
           (!item.superAdminOnly || superAdmin) &&
-          (item.settingsOnly ? canManageSettings : can(item.permission));
+          (item.settingsOnly
+            ? canManageSettings
+            : can(item.permission) || (item.anyOf?.some((permission) => can(permission)) ?? false));
         return visible ? [{ ...item, label: t(labelOf(item, capabilities)), locked }] : [];
       }),
     }))

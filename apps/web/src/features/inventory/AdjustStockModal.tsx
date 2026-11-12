@@ -14,7 +14,7 @@ import {
   type StockRow,
   type StoreSerial,
 } from "@ai-pos/shared-types";
-import { actionHoverClass } from "@ai-pos/ui";
+import { AxizDatePicker, actionHoverClass, formatDate } from "@ai-pos/ui";
 import { Minus, Plus, ScanLine, Search, X } from "lucide-react";
 import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { ErrorNote, GhostButton, PrimaryButton, SelectField } from "../../components/ui/Field";
@@ -429,12 +429,12 @@ export function AdjustStockModal({
             </label>
             <label className="block text-sm font-medium">
               Stock receipt date
-              <input
-                type="date"
-                value={receiptDate}
+              <AxizDatePicker
+                leading
                 aria-label="Stock receipt date"
+                value={receiptDate}
                 onChange={(event) => setReceiptDate(event.target.value)}
-                className="mt-1.5 h-11 w-full rounded-xl border border-transparent bg-surface px-4 text-sm font-normal focus:border-accent focus:bg-white focus:outline-none"
+                className="mt-1.5 h-11 w-full rounded-xl border border-transparent bg-surface text-sm font-normal focus:border-accent focus:bg-white focus:outline-none"
               />
             </label>
             {trackLots ? (
@@ -451,12 +451,12 @@ export function AdjustStockModal({
                 </label>
                 <label className="block text-sm font-medium">
                   Expiry date
-                  <input
-                    type="date"
-                    value={expiry}
+                  <AxizDatePicker
+                    leading
                     aria-label="Expiry date"
+                    value={expiry}
                     onChange={(event) => setExpiry(event.target.value)}
-                    className="mt-1.5 h-11 w-full rounded-xl border border-transparent bg-surface px-4 text-sm font-normal focus:border-accent focus:bg-white focus:outline-none"
+                    className="mt-1.5 h-11 w-full rounded-xl border border-transparent bg-surface text-sm font-normal focus:border-accent focus:bg-white focus:outline-none"
                   />
                 </label>
               </div>
@@ -675,7 +675,7 @@ function CostSummary({
         </div>
         <div className="col-span-2">
           <dt className="text-charcoal/50">Most recent acquisition</dt>
-          <dd className="font-medium">{lastDate ? new Date(lastDate).toLocaleDateString() : "Not recorded"}</dd>
+          <dd className="font-medium">{lastDate ? formatDate(lastDate.slice(0, 10)) : "Not recorded"}</dd>
         </div>
       </dl>
       {historyOpen ? (
@@ -697,7 +697,7 @@ function CostSummary({
               <tbody>
                 {layers.map((layer) => (
                   <tr key={layer.batch_item_id} className="border-t border-line">
-                    <td className="py-1.5 pr-2 tabular-nums">{new Date(layer.receipt_date).toLocaleDateString()}</td>
+                    <td className="py-1.5 pr-2 tabular-nums">{formatDate(layer.receipt_date.slice(0, 10))}</td>
                     <td className="py-1.5 pr-2 capitalize">{layer.source ?? "import"}</td>
                     <td className="py-1.5 pr-2 font-mono">{layer.batch_number}</td>
                     <td className="py-1.5 pr-2 text-right tabular-nums">{layer.original_quantity}</td>

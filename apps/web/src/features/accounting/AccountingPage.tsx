@@ -16,10 +16,9 @@ import {
 } from "@ai-pos/shared-types";
 import { BookOpen, Lock, Plus, RefreshCw, Trash2, Undo2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
-import { Select, actionHoverClass } from "@ai-pos/ui";
+import { AxizTabs, Select, actionHoverClass, formatDate } from "@ai-pos/ui";
 import { ErrorNote, FilterSelect, GhostButton, PrimaryButton, TextField } from "../../components/ui/Field";
 import { Modal } from "../../components/ui/Modal";
-import { SegmentedControl } from "../../components/ui/SegmentedControl";
 import { Toast } from "../../components/ui/Toast";
 import { apiGet, apiPost, apiPut } from "../../lib/api";
 import { useCurrency } from "../../lib/currency";
@@ -30,8 +29,7 @@ type Tab = "pnl" | "balance" | "trial" | "journals" | "accounts" | "close";
 
 const today = () => new Date().toISOString().slice(0, 10);
 const monthStart = () => `${today().slice(0, 8)}01`;
-const shortDate = (value: string) =>
-  new Date(`${value.slice(0, 10)}T00:00:00`).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
+const shortDate = (value: string) => formatDate(value.slice(0, 10));
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 
 export function AccountingPage() {
@@ -122,26 +120,26 @@ export function AccountingPage() {
         </div>
       ) : null}
 
-      <div className="rounded-card border border-line bg-white p-6">
-        <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
-          <div>
-            <h2 className="text-xl font-semibold">General ledger</h2>
-            <p className="text-sm text-charcoal/60">Every sale, bill, payment, expense and stock movement posts here automatically every 15 minutes.</p>
-          </div>
-          <SegmentedControl
-            label="View"
-            value={tab}
-            options={[
-              { value: "pnl", label: "Profit & loss" },
-              { value: "balance", label: "Balance sheet" },
-              { value: "trial", label: "Trial balance" },
-              { value: "journals", label: "Journals" },
-              { value: "accounts", label: "Accounts" },
-              { value: "close", label: "Close & tax" },
-            ]}
-            onChange={setTab}
-          />
+      <div className="overflow-hidden rounded-card border border-line bg-white">
+        <div className="px-6 pt-6">
+          <h2 className="text-xl font-semibold">General ledger</h2>
+          <p className="text-sm text-charcoal/60">Every sale, bill, payment, expense and stock movement posts here automatically every 15 minutes.</p>
         </div>
+        <AxizTabs
+          ariaLabel="View"
+          className="mt-4"
+          activeTab={tab}
+          onChange={(id) => setTab(id as Tab)}
+          tabs={[
+            { id: "pnl", label: "Profit & loss" },
+            { id: "balance", label: "Balance sheet" },
+            { id: "trial", label: "Trial balance" },
+            { id: "journals", label: "Journals" },
+            { id: "accounts", label: "Accounts" },
+            { id: "close", label: "Close & tax" },
+          ]}
+        />
+        <div className="p-6">
         <ErrorNote message={error} />
         {tab === "pnl" ? <IncomeView from={from} to={to} picker={periodPicker} money={money} onOpen={setLedgerFor} /> : null}
         {tab === "balance" ? <BalanceView money={money} onOpen={setLedgerFor} /> : null}
@@ -149,6 +147,7 @@ export function AccountingPage() {
         {tab === "journals" ? <JournalsView money={money} onChanged={notify} /> : null}
         {tab === "accounts" ? <AccountsView money={money} onOpen={setLedgerFor} onChanged={notify} /> : null}
         {tab === "close" && settings ? <CloseView settings={settings} money={money} onChanged={notify} /> : null}
+        </div>
       </div>
 
       {ledgerFor ? <LedgerModal accountId={ledgerFor} from={from} to={to} money={money} onClose={() => setLedgerFor(null)} /> : null}

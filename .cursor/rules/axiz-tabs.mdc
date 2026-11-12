@@ -1,0 +1,27 @@
+---
+description: AxizPOS navigation tabs use AxizTabs with an orange underline
+globs: **/*.tsx
+alwaysApply: false
+---
+
+# AxizPOS navigation tabs
+
+Navigation tabs always use `AxizTabs` from `@ai-pos/ui`. The active tab is charcoal text with the AxizPOS orange underline. Inactive tabs are neutral text on a transparent background, with a bottom border under the row.
+
+Do not introduce pill-style navigation tabs, rounded tab buttons, or a filled background behind the active tab.
+
+Pills and `SegmentedControl` stay for filters, status selections, date ranges, sort controls, view-mode switches, and other controls whose behavior calls for them.
+
+Keep permission and entitlement checks in the page. Hide a tab with `hidden`, or mark it `disabled`. Do not fetch data inside `AxizTabs`.
+
+```tsx
+<AxizTabs
+  ariaLabel="Inventory sections"
+  tabs={[
+    { id: "stock", label: "Stock" },
+    { id: "products", label: "Products" },
+  ]}
+  activeTab={activeTab}
+  onChange={setActiveTab}
+/>
+```

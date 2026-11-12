@@ -19,6 +19,8 @@ export function TextField({
   error,
   required = false,
   className = "",
+  wrapperClassName = "",
+  variant = "form",
   type,
   autoComplete,
   endAdornment,
@@ -33,6 +35,9 @@ export function TextField({
   endAdornment?: ReactNode;
   /** Names the show/hide control, for example "confirm password". */
   toggleLabel?: string;
+  /** `filter` matches FilterSelect: small-caps label and an h-11 control, so a mixed row shares one baseline. */
+  variant?: "form" | "filter";
+  wrapperClassName?: string;
 }) {
   const { t } = useLocale();
   const id = useId();
@@ -53,26 +58,46 @@ export function TextField({
   });
   const multiline = isDescriptionLabel(label);
   const isDate = type === "date" || type === "datetime-local";
+  const filter = variant === "filter";
+  const showIcon = true;
   const endPad = isPassword ? "pr-12" : endAdornment ? "pr-11" : "pr-4";
-  const controlClass = `${control} pl-10 ${
+  const shell = filter
+    ? "h-11 w-full rounded-2xl border bg-gray-50 py-0 text-sm font-medium text-charcoal transition placeholder:font-normal placeholder:text-charcoal/40 focus:bg-white focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+    : control;
+  const controlClass = `${shell} ${showIcon ? "pl-10" : "ps-4"} ${
     error
       ? `border-danger bg-danger/10 focus:border-danger focus:ring-2 focus:ring-danger ${endPad}`
-      : `border-transparent focus:border-orange-500 focus:ring-2 focus:ring-orange-500 ${endPad}`
+      : filter
+        ? `border-gray-200 focus:border-orange-500 focus:ring-2 focus:ring-orange-500 ${endPad}`
+        : `border-transparent focus:border-orange-500 focus:ring-2 focus:ring-orange-500 ${endPad}`
   } ${className}`;
+  const { defaultValue: rawDefault, ...dateProps } = props;
+  const requiredMark = required ? (
+    <span className="text-danger" aria-hidden="true">
+      {" "}
+      *
+    </span>
+  ) : null;
   return (
-    <label htmlFor={multiline ? undefined : fieldId} className="block text-sm font-medium">
-      {label}
-      {required ? (
-        <span className="text-danger" aria-hidden="true">
-          {" "}
-          *
+    <label htmlFor={multiline ? undefined : fieldId} className={`${filter ? "block" : "block text-sm font-medium"} ${wrapperClassName}`}>
+      {filter ? (
+        <span className={filterLabel}>
+          {label}
+          {requiredMark}
         </span>
-      ) : null}
-      <span className="relative mt-1.5 block">
-        <Icon
-          className={`pointer-events-none absolute left-3 z-10 h-5 w-5 text-gray-400 ${multiline ? "top-3.5" : "top-1/2 -translate-y-1/2"}`}
-          aria-hidden="true"
-        />
+      ) : (
+        <>
+          {label}
+          {requiredMark}
+        </>
+      )}
+      <span className={filter ? "relative block" : "relative mt-1.5 block"}>
+        {showIcon ? (
+          <Icon
+            className={`pointer-events-none absolute left-3 z-10 h-5 w-5 text-gray-400 ${multiline ? "top-3.5" : "top-1/2 -translate-y-1/2"}`}
+            aria-hidden="true"
+          />
+        ) : null}
         {multiline ? (
           <textarea
             {...(props as TextareaHTMLAttributes<HTMLTextAreaElement>)}
@@ -87,7 +112,8 @@ export function TextField({
           />
         ) : isDate ? (
           <DateInput
-            {...props}
+            {...dateProps}
+            defaultValue={typeof rawDefault === "string" ? rawDefault : undefined}
             id={fieldId}
             withTime={type === "datetime-local"}
             value={typeof props.value === "string" ? props.value : ""}

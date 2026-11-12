@@ -55,6 +55,7 @@ class Capability(StrEnum):
     AXIZ_REACH = "axiz_reach"
     UAE_EINVOICING = "uae_einvoicing"
     DELIVERY_INTEGRATIONS = "delivery_integrations"
+    FLEET_DISPATCH = "fleet_dispatch"
 
 
 C = Capability
@@ -106,6 +107,7 @@ SPECS: dict[Capability, CapabilitySpec] = {
     C.AXIZ_REACH: CapabilitySpec("AxizReach — Customer Engagement", True),
     C.UAE_EINVOICING: CapabilitySpec("UAE e-Invoicing", True),
     C.DELIVERY_INTEGRATIONS: CapabilitySpec("Delivery Integrations", True),
+    C.FLEET_DISPATCH: CapabilitySpec("Fleet dispatch", True, (C.SALES_ORDERS,)),
 }
 ORDER: tuple[Capability, ...] = tuple(SPECS)
 BUILT_TODAY: tuple[Capability, ...] = tuple(capability for capability in ORDER if SPECS[capability].available)
@@ -234,13 +236,32 @@ _FOOD_CORE = (
 )
 COMPATIBLE: dict[str, frozenset[Capability]] = {
     "electronics_wholesale": frozenset(
-        (*_RETAIL_CORE, C.SERIAL_TRACKING, C.VARIANTS_MATRIX, C.CONSIGNMENT, C.REPAIRS, C.WARRANTY, C.TRADE_IN)
+        (
+            *_RETAIL_CORE,
+            C.SERIAL_TRACKING,
+            C.VARIANTS_MATRIX,
+            C.CONSIGNMENT,
+            C.REPAIRS,
+            C.WARRANTY,
+            C.TRADE_IN,
+            C.FLEET_DISPATCH,
+        )
     ),
-    "wholesale_retail": frozenset((*_RETAIL_CORE, C.CUSTOMER_REORDERS, C.REPAIRS)),
+    "wholesale_retail": frozenset((*_RETAIL_CORE, C.CUSTOMER_REORDERS, C.REPAIRS, C.FLEET_DISPATCH)),
     "retail_fashion": frozenset(
-        (*_RETAIL_CORE, C.VARIANTS_MATRIX, C.CONSIGNMENT, C.SERIAL_TRACKING, C.ALTERATIONS, C.FASHION_RENTAL)
+        (
+            *_RETAIL_CORE,
+            C.VARIANTS_MATRIX,
+            C.CONSIGNMENT,
+            C.SERIAL_TRACKING,
+            C.ALTERATIONS,
+            C.FASHION_RENTAL,
+            C.FLEET_DISPATCH,
+        )
     ),
-    "grocery": frozenset((*_RETAIL_CORE, C.WEIGHED_ITEMS, C.FEFO, C.CONSIGNMENT, C.VARIANTS_MATRIX)),
+    "grocery": frozenset(
+        (*_RETAIL_CORE, C.WEIGHED_ITEMS, C.FEFO, C.CONSIGNMENT, C.VARIANTS_MATRIX, C.FLEET_DISPATCH)
+    ),
     "restaurant": frozenset(_FOOD_CORE),
     "cafe": frozenset(_FOOD_CORE),
     "quick_service": frozenset(_FOOD_CORE),

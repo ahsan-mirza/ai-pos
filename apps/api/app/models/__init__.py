@@ -21,6 +21,14 @@ from app.models.device import Device, DeviceActivation
 from app.models.document_sequence import DocumentSequence
 from app.models.einvoice import EInvoice, EInvoiceChain, TaxAuthorityCredential
 from app.models.expense import Expense, PettyCashEntry
+from app.models.fleet import (
+    DeliveryZone,
+    DeliveryZoneSlot,
+    DispatchAssignment,
+    DispatchPlan,
+    DriverProfile,
+    FleetVehicle,
+)
 from app.models.inventory import InventoryLevel, StockMovement
 from app.models.kitchen import KitchenStation, KitchenTicket, KitchenTicketItem
 from app.models.loyalty import LoyaltyEntry
@@ -84,7 +92,15 @@ from app.models.sale import Sale
 from app.models.sale_item import SaleItem
 from app.models.sale_return import SaleReturn
 from app.models.sale_tender import SaleTender
-from app.models.sales_order import DeliveryNote, DeliveryNoteLine, PickList, PickListLine, SalesOrder, SalesOrderLine
+from app.models.sales_order import (
+    DeliveryNote,
+    DeliveryNoteLine,
+    PickList,
+    PickListLine,
+    SalesOrder,
+    SalesOrderEvent,
+    SalesOrderLine,
+)
 from app.models.scheduled_job import ScheduledJob
 from app.models.serial_number import SerialNumber
 from app.models.shift import CashMovement, RegisterShift
@@ -238,10 +254,17 @@ __all__ = [
     "SaleReturn",
     "SaleTender",
     "SalesOrder",
+    "SalesOrderEvent",
     "SalesOrderLine",
     "PickList",
     "PickListLine",
     "DeliveryNote",
+    "DeliveryZone",
+    "DeliveryZoneSlot",
+    "DispatchAssignment",
+    "DispatchPlan",
+    "DriverProfile",
+    "FleetVehicle",
     "DeliveryNoteLine",
     "ScheduledJob",
     "SeasonalEvent",

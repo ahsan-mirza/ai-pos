@@ -1,0 +1,27 @@
+---
+description: AxizPOS dates always display and accept DD-MM-YYYY
+globs: "**/*.{ts,tsx}"
+alwaysApply: false
+---
+
+# AxizPOS dates
+
+All date inputs and date displays use `DD-MM-YYYY`. A page must not introduce another numeric date format.
+
+Use `AxizDatePicker` from `@ai-pos/ui` for every date field. `DateInput` and `TextField type="date"` are the same picker. Use `AxizDateRange` for a From/To pair. Use `withTime` or `variant="datetime"` when the value includes a time, and show that as `DD-MM-YYYY HH:mm`.
+
+Do not use `<input type="date">` or `<input type="datetime-local">`. The browser's own date control changes its visible format with the operating system.
+
+Store date-only values as `YYYY-MM-DD`. Do not parse them with `new Date("YYYY-MM-DD")` and do not format them with `toLocaleDateString`. Use `formatDate`, `parseDate`, and `formatDateTime` from `@ai-pos/ui`.
+
+`formatDate` prints the calendar date written in the string. `formatDateTime` prints an instant in a timezone. A time-only control may stay `<input type="time">`.
+
+Month names in a calendar, and a month-year period heading, may stay localized. The number in the field stays `DD-MM-YYYY` in English and Arabic.
+
+```tsx
+<AxizDatePicker
+  aria-label="Date"
+  value={spentOn}
+  onChange={(event) => setSpentOn(event.target.value)}
+/>
+```

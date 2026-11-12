@@ -15,10 +15,9 @@ import {
 import { Download } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { Select } from "@ai-pos/ui";
+import { AxizTabs, Select } from "@ai-pos/ui";
 import { useConfirm } from "../../components/ui/ConfirmDialog";
 import { ErrorNote, FilterSelect, GhostButton, PrimaryButton, TextField } from "../../components/ui/Field";
-import { SegmentedControl } from "../../components/ui/SegmentedControl";
 import { apiBlob, apiGet, apiPatch } from "../../lib/api";
 import { useAuth } from "../../lib/auth";
 import { useCurrency } from "../../lib/currency";
@@ -159,7 +158,7 @@ export function ManagementReportsPage() {
 
   return (
     <section className="space-y-4">
-      <div className="rounded-card border border-line bg-white p-6">
+      <div className="overflow-hidden rounded-card border border-line bg-white px-6 pt-6">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
             <h2 className="text-xl font-semibold">Management reports</h2>
@@ -177,8 +176,8 @@ export function ManagementReportsPage() {
             )}
             {dated ? (
               <>
-                <TextField label="From" type="date" value={from} onChange={(event) => setFrom(event.target.value)} />
-                <TextField label="To" type="date" value={to} onChange={(event) => setTo(event.target.value)} />
+                <TextField variant="filter" wrapperClassName="w-48" label="From" type="date" value={from} onChange={(event) => setFrom(event.target.value)} />
+                <TextField variant="filter" wrapperClassName="w-48" label="To" type="date" value={to} onChange={(event) => setTo(event.target.value)} />
               </>
             ) : null}
             <GhostButton onClick={() => void download()}>
@@ -186,20 +185,20 @@ export function ManagementReportsPage() {
             </GhostButton>
           </div>
         </div>
-        <div className="mt-5">
-          <SegmentedControl
-            label="Report"
-            value={tab}
-            options={[
-              { value: "pnl", label: "Profit & loss" },
-              { value: "valuation", label: "Stock value" },
-              { value: "aged-stock", label: "Slow & dead stock" },
-              { value: "staff", label: "Sales by staff" },
-              { value: "discounts", label: "Discounts" },
-            ]}
-            onChange={setTab}
-          />
-        </div>
+        <AxizTabs
+          ariaLabel="Report"
+          className="-mx-6 mt-5"
+          listClassName="px-6"
+          activeTab={tab}
+          onChange={(id) => setTab(id as Tab)}
+          tabs={[
+            { id: "pnl", label: "Profit & loss" },
+            { id: "valuation", label: "Stock value" },
+            { id: "aged-stock", label: "Slow & dead stock" },
+            { id: "staff", label: "Sales by staff" },
+            { id: "discounts", label: "Discounts" },
+          ]}
+        />
       </div>
       <ErrorNote message={error} />
 

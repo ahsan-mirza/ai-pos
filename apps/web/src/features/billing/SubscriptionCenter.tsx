@@ -8,7 +8,7 @@ import {
   type MarketplaceCatalog,
   type MarketplaceItem,
 } from "@ai-pos/shared-types";
-import { useLocale } from "@ai-pos/ui";
+import { AxizTabs, useLocale } from "@ai-pos/ui";
 import { useReducedMotion } from "framer-motion";
 import { Check, Minus, Puzzle } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
@@ -54,6 +54,35 @@ const ATTENTION_LABEL: Record<PaymentAttention["kind"], string> = {
   rejected: "Payment rejected",
   revoked: "Subscription access was updated",
 };
+
+const SUBSCRIPTION_SECTIONS = [
+  ["#overview", "Current subscription"],
+  ["#plans", "Plans"],
+  ["#compare", "Feature comparison"],
+  ["#plugins", "Plugins"],
+  ["#billing", "Billing"],
+] as const;
+
+/** In-page links. Every section stays on the page; the underline marks the one in the address. */
+function SubscriptionSections() {
+  const { t } = useLocale();
+  const [section, setSection] = useState(() => (typeof window === "undefined" ? "#overview" : window.location.hash || "#overview"));
+  useEffect(() => {
+    const sync = () => setSection(window.location.hash || "#overview");
+    sync();
+    window.addEventListener("hashchange", sync);
+    return () => window.removeEventListener("hashchange", sync);
+  }, []);
+  const active = SUBSCRIPTION_SECTIONS.some(([href]) => href === section) ? section : "#overview";
+  return (
+    <AxizTabs
+      ariaLabel={t("Subscription sections")}
+      activeTab={active}
+      onChange={setSection}
+      tabs={SUBSCRIPTION_SECTIONS.map(([href, label]) => ({ id: href, label: t(label), href }))}
+    />
+  );
+}
 
 export function SubscriptionCenter({
   subscription,
@@ -186,21 +215,7 @@ export function SubscriptionCenter({
         </a>
       </header>
 
-      <nav aria-label={t("Subscription sections")} className="flex flex-wrap gap-2 text-sm">
-        {(
-          [
-            ["#overview", "Current subscription"],
-            ["#plans", "Plans"],
-            ["#compare", "Feature comparison"],
-            ["#plugins", "Plugins"],
-            ["#billing", "Billing"],
-          ] as const
-        ).map(([href, label]) => (
-          <a key={href} href={href} className="rounded-full border border-line bg-white px-3 py-1.5 font-medium text-charcoal/80 dark:bg-zinc-900 dark:text-white/80">
-            {t(label)}
-          </a>
-        ))}
-      </nav>
+      <SubscriptionSections />
 
       <ErrorNote message={error} />
 

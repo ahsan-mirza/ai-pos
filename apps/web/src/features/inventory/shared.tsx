@@ -1,5 +1,6 @@
 import type { Brand, Category, ProductModel, StockStatus, Store } from "@ai-pos/shared-types";
 import { stockStatusLabel } from "@ai-pos/shared-types";
+import { formatDate as formatAxizDate, formatDateTime } from "@ai-pos/ui";
 import { useCallback, useEffect, useState } from "react";
 import { FilterSelect } from "../../components/ui/Field";
 import type { SelectOption } from "../../components/ui/Select";
@@ -242,7 +243,8 @@ export function statusLabel(status: string): string {
   return words.charAt(0).toUpperCase() + words.slice(1);
 }
 
-export function formatDate(value: string | null): string {
-  if (value === null) return "—";
-  return new Date(value).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+export function formatDate(value: string | null, timeZone?: string): string {
+  if (value === null || value === "") return "—";
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return formatAxizDate(value);
+  return formatDateTime(value, timeZone) || "—";
 }

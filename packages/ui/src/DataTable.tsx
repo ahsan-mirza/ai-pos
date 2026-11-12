@@ -10,6 +10,7 @@ import {
   type MouseEvent,
   type ReactNode,
 } from "react";
+import { useLocale } from "./LocaleSwitch";
 import { PageSizeSelect } from "./PageSizeSelect";
 import { DEFAULT_PAGE_SIZE, PAGE_SIZE_OPTIONS, clampPage, pageCount, pageRange, pageWindow } from "./pagination";
 
@@ -103,7 +104,7 @@ export interface DataTableProps<T> {
   skeletonRows?: number;
 }
 
-const alignClass: Record<ColumnAlign, string> = { left: "text-left", center: "text-center", right: "text-right" };
+const alignClass: Record<ColumnAlign, string> = { left: "text-start", center: "text-center", right: "text-end" };
 const INTERACTIVE = "a,button,input,select,textarea,label,summary,[role='button'],[role='checkbox'],[role='switch']";
 
 function columnKey<T>(column: DataTableColumn<T>, index: number): string {
@@ -212,8 +213,9 @@ export function DataTable<T>({
     if (pagination.mode === "client") pagination.onPageChange?.(1);
   };
 
+  const { t } = useLocale();
   const pad = density === "compact" ? "py-2" : "py-3";
-  const cellX = "px-3 first:pl-4 last:pr-4 sm:first:pl-5 sm:last:pr-5";
+  const cellX = "px-3 first:ps-4 last:pe-4 sm:first:ps-5 sm:last:pe-5";
   const skeletonCount = skeletonRows ?? Math.min(Math.max(view.rows.length, 5), Math.min(view.pageSize || 8, 10));
 
   const onRowKey = (event: KeyboardEvent<HTMLTableRowElement>, row: T, index: number) => {
@@ -245,8 +247,8 @@ export function DataTable<T>({
         <table
           aria-label={ariaLabel}
           aria-busy={isLoading || isFetching}
-          className="w-full border-collapse text-left text-sm tabular-nums text-charcoal dark:text-zinc-100"
-          style={minWidth ? { minWidth } : undefined}
+          className="w-full border-collapse text-start text-sm tabular-nums text-charcoal dark:text-zinc-100"
+          style={minWidth && view.rows.length > 0 ? { minWidth } : undefined}
         >
           <thead className={stickyHeader ? "sticky top-0 z-10" : undefined}>
             <tr className="bg-surface/70 text-[11px] font-semibold uppercase tracking-wider text-[#6B7280] shadow-[inset_0_-1px_0_#DBDBDB] backdrop-blur dark:bg-zinc-900/90 dark:text-zinc-400 dark:shadow-[inset_0_-1px_0_#27272a]">
@@ -300,7 +302,7 @@ export function DataTable<T>({
                         <div
                           className={`h-4 animate-pulse rounded-full ${
                             index === 0 ? "w-3/4 bg-primary/20" : "bg-charcoal/[0.07] dark:bg-white/[0.07]"
-                          } ${column.align === "right" ? "ml-auto w-2/3" : index === 0 ? "" : "w-full"}`}
+                          } ${column.align === "right" ? "ms-auto w-2/3" : index === 0 ? "" : "w-full"}`}
                           style={{ animationDelay: `${(rowIndex * 60 + index * 25) % 600}ms` }}
                         />
                       </td>
@@ -312,7 +314,7 @@ export function DataTable<T>({
               <tr>
                 <td colSpan={columns.length} className="px-6 py-14 text-center">
                   <div className="mx-auto flex max-w-sm flex-col items-center">
-                    <p className="text-sm font-semibold">Could not load this list</p>
+                    <p className="text-sm font-semibold">{t("Could not load this list")}</p>
                     <p className="mt-1 text-sm text-charcoal/50 dark:text-zinc-400">{error}</p>
                     {onRetry ? (
                       <button
@@ -320,7 +322,7 @@ export function DataTable<T>({
                         onClick={onRetry}
                         className="mt-4 rounded-full border border-line px-4 py-2 text-sm font-semibold outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
                       >
-                        Try again
+                        {t("Try again")}
                       </button>
                     ) : null}
                   </div>
@@ -329,8 +331,10 @@ export function DataTable<T>({
             ) : null}
             {!isLoading && !error && view.rows.length === 0 ? (
               <tr>
-                <td colSpan={columns.length} className="px-6 py-14 text-center">
-                  {isEmptyState(emptyState) ? <EmptyState {...emptyState} /> : emptyState}
+                <td colSpan={columns.length} className="whitespace-normal px-6 py-14 text-center">
+                  <div className="mx-auto max-w-sm whitespace-normal">
+                    {isEmptyState(emptyState) ? <EmptyState {...emptyState} /> : emptyState}
+                  </div>
                 </td>
               </tr>
             ) : null}
@@ -439,6 +443,7 @@ export function PaginationFooter({
   onPageSizeChange,
 }: PaginationFooterProps) {
   const labelId = useId();
+  const { t } = useLocale();
   const { from, to } = pageRange(page, pageSize, totalRecords);
   const first = page <= 1 || disabled;
   const last = page >= totalPages || disabled;
@@ -447,20 +452,22 @@ export function PaginationFooter({
 
   return (
     <nav
-      aria-label="Pagination"
+      aria-label={t("Pagination")}
       className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3 border-t border-zinc-200 bg-white px-6 py-3.5 text-[13px] text-zinc-500 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-400"
     >
       <p className="whitespace-nowrap tabular-nums" aria-live="polite">
-        Showing <span className={strong}>{from.toLocaleString()}</span> to{" "}
-        <span className={strong}>{to.toLocaleString()}</span> of{" "}
-        <span className={strong}>{totalRecords.toLocaleString()}</span> {totalRecords === 1 ? "entry" : "entries"}
+        {t("Showing {from} to {to} of {count} entries", {
+          from: from.toLocaleString(),
+          to: to.toLocaleString(),
+          count: totalRecords.toLocaleString(),
+        })}
       </p>
 
       <div className="flex flex-wrap items-center gap-6">
         {hidePageSize ? null : (
           <div className="flex items-center gap-2">
             <span id={labelId} className="whitespace-nowrap">
-              Rows per page
+              {t("Rows per page")}
             </span>
             <PageSizeSelect
               value={pageSize}
@@ -474,8 +481,8 @@ export function PaginationFooter({
 
         <div className="flex items-center gap-1">
           <button type="button" className={`${navButton} ${idleButton}`} disabled={first} onClick={() => onPageChange(1)}>
-            <ChevronsLeft size={15} aria-hidden="true" />
-            <span className="hidden md:inline">First</span>
+            <ChevronsLeft size={15} aria-hidden="true" className="rtl:-scale-x-100" />
+            <span className="hidden md:inline">{t("First")}</span>
           </button>
           <button
             type="button"
@@ -483,8 +490,8 @@ export function PaginationFooter({
             disabled={first}
             onClick={() => onPageChange(page - 1)}
           >
-            <ChevronLeft size={15} aria-hidden="true" />
-            <span className="hidden md:inline">Previous</span>
+            <ChevronLeft size={15} aria-hidden="true" className="rtl:-scale-x-100" />
+            <span className="hidden md:inline">{t("Previous")}</span>
           </button>
           <ul className="flex items-center gap-1">
             {pageWindow(page, totalPages).map((item) =>
@@ -492,7 +499,7 @@ export function PaginationFooter({
                 <li key={item}>
                   <button
                     type="button"
-                    aria-label={`Page ${item}`}
+                    aria-label={t("Page {page}", { page: item })}
                     aria-current={item === page ? "page" : undefined}
                     disabled={disabled}
                     onClick={() => onPageChange(item)}
@@ -518,8 +525,8 @@ export function PaginationFooter({
             disabled={last}
             onClick={() => onPageChange(page + 1)}
           >
-            <span className="hidden md:inline">Next</span>
-            <ChevronRight size={15} aria-hidden="true" />
+            <span className="hidden md:inline">{t("Next")}</span>
+            <ChevronRight size={15} aria-hidden="true" className="rtl:-scale-x-100" />
           </button>
           <button
             type="button"
@@ -527,8 +534,8 @@ export function PaginationFooter({
             disabled={last}
             onClick={() => onPageChange(totalPages)}
           >
-            <span className="hidden md:inline">Last</span>
-            <ChevronsRight size={15} aria-hidden="true" />
+            <span className="hidden md:inline">{t("Last")}</span>
+            <ChevronsRight size={15} aria-hidden="true" className="rtl:-scale-x-100" />
           </button>
         </div>
       </div>

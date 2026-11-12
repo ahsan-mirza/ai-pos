@@ -5,10 +5,33 @@ from sqlalchemy import MetaData, UniqueConstraint
 from sqlalchemy.orm import DeclarativeBase, Mapped, declared_attr, mapped_column
 from sqlalchemy.types import DateTime, Uuid
 
+
+def _check_constraint_token(constraint, table) -> str:
+    """Suffix for ``ck_<table>_<suffix>``.
+
+    Historical revisions passed names that already started with ``ck_<table>_``.
+    The old template prefixed that string again, so PostgreSQL stored names such as
+    ``ck_delivery_zone_slots_ck_delivery_zone_slots_weekday``. A name is reduced to
+    its suffix before the template adds the prefix once. Databases already upgraded
+    keep the doubled names; this does not rename or drop them.
+    """
+    given = getattr(constraint, "name", None)
+    if not given:
+        raise ValueError("A check constraint needs an explicit name.")
+    text = str(given)
+    prefix = f"ck_{table.name}_"
+    while text.startswith(prefix):
+        text = text[len(prefix) :]
+    if not text:
+        raise ValueError("A check constraint name cannot be only the table prefix.")
+    return text
+
+
 NAMING_CONVENTION = {
     "ix": "ix_%(column_0_label)s",
     "uq": "uq_%(table_name)s_%(column_0_name)s",
     "ck": "ck_%(table_name)s_%(constraint_name)s",
+    "constraint_name": _check_constraint_token,
     "fk": "fk_%(table_name)s_%(column_0_name)s_%(referred_table_name)s",
     "pk": "pk_%(table_name)s",
 }

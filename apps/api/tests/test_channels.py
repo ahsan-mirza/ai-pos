@@ -3,6 +3,7 @@ import uuid
 from datetime import UTC, datetime
 
 from sqlalchemy.orm import Session
+from tests.test_delivery_cod import add_rider
 from tests.test_menu import enable
 from tests.test_orders import settle
 from tests.test_returns import CASHIER_ID, STORE_ID, admin_token, bearer, device, push, seed_catalog
@@ -74,8 +75,15 @@ def test_webhook_orders_are_signed_deduplicated_accepted_and_settled(client, ses
     sale["tenders"] = [{"method": "channel", "amount_cents": sale["total_cents"], "reference": "talabat"}]
     assert push(client, "sale", sale).status_code == 200
     session.expire_all()
-    settled = session.get(OpenOrder, uuid.UUID(order["id"]))
-    assert (settled.status, settled.channel_status) == ("SETTLED", "COMPLETED")
+    paid = session.get(OpenOrder, uuid.UUID(order["id"]))
+    # The channel has been paid. The ticket stays open until the delivery itself is finished.
+    assert (paid.status, paid.channel_status, paid.payment_arrangement) == ("OPEN", "ACCEPTED", "PAID_NOW")
+    refused = client.post(
+        f"/api/v1/orders/{order['id']}/delivery/delivered",
+        headers=device(),
+        json={"revision": paid.revision, "user_id": CASHIER_ID},
+    )
+    assert refused.status_code == 409
 
     walk_in = settle(order, [order["items"][0]["id"]])
     walk_in.pop("order_id")
@@ -101,6 +109,32 @@ def test_webhook_orders_are_signed_deduplicated_accepted_and_settled(client, ses
     assert paid.status_code == 201, paid.text
     after = client.get("/api/v1/channels/settlement", headers=bearer(token), params={"from": "2026-10-01", "to": today})
     assert after.json()["rows"][0]["outstanding_cents"] == 0
+    backwards = client.get(
+        "/api/v1/channels/settlement", headers=bearer(token), params={"from": today, "to": "2026-10-01"}
+    )
+    assert backwards.status_code == 422
+
+    rider = add_rider(session)
+    current = client.get(f"/api/v1/orders/{order['id']}", headers=device()).json()
+    assigned = client.post(
+        f"/api/v1/orders/{order['id']}/delivery/assign",
+        headers=device(),
+        json={"revision": current["revision"], "user_id": CASHIER_ID, "rider_id": str(rider.id)},
+    )
+    assert assigned.status_code == 200, assigned.text
+    started = client.post(
+        f"/api/v1/orders/{order['id']}/delivery/start",
+        headers=device(),
+        json={"revision": assigned.json()["revision"], "user_id": CASHIER_ID},
+    )
+    assert started.status_code == 200, started.text
+    delivered = client.post(
+        f"/api/v1/orders/{order['id']}/delivery/delivered",
+        headers=device(),
+        json={"revision": started.json()["revision"], "user_id": CASHIER_ID},
+    )
+    assert delivered.status_code == 200, delivered.text
+    assert (delivered.json()["status"], delivered.json()["channel_status"]) == ("SETTLED", "COMPLETED")
 
 
 def test_rejecting_and_keying_in_delivery_orders(client) -> None:
@@ -147,3 +181,38 @@ def test_auto_accept_sends_straight_to_the_kitchen(client) -> None:
     order = client.get(f"/api/v1/orders/{result.json()['order_id']}", headers=device()).json()
     assert order["prep_minutes"] == 25 and order["items"][0]["sent_at"] is not None
     assert order["items"][0]["unit_price_cents"] == 1500
+
+
+def test_a_failed_delivery_keeps_the_channel_ticket_open(client, session: Session) -> None:
+    """The sale still settles with the channel. A trip that never arrives does not complete the ticket."""
+    seed_catalog(client)
+    token = admin_token(client)
+    enable(client, token, *MODULES)
+    _talabat, secret = channel(client, token, code="careem", name="Careem")
+    created = deliver(client, "careem", secret, incoming("C-1"))
+    assert created.status_code == 200, created.text
+    order = client.get(f"/api/v1/orders/{created.json()['order_id']}", headers=device()).json()
+    sale = settle(order, [order["items"][0]["id"]])
+    sale["payment_method"] = "channel"
+    sale["tenders"] = [{"method": "channel", "amount_cents": sale["total_cents"], "reference": "careem"}]
+    assert push(client, "sale", sale).status_code == 200
+    current = client.get(f"/api/v1/orders/{order['id']}", headers=device()).json()
+    failed = client.post(
+        f"/api/v1/orders/{order['id']}/delivery/outcome",
+        headers=device(),
+        json={"revision": current["revision"], "user_id": CASHIER_ID, "status": "FAILED", "reason": "No rider"},
+    )
+    assert failed.status_code == 200, failed.text
+    assert failed.json()["channel_status"] != "COMPLETED"
+    assert (failed.json()["status"], failed.json()["channel_status"], failed.json()["delivery_status"]) == (
+        "OPEN",
+        "PENDING",
+        "FAILED",
+    )
+    today = datetime.now(UTC).date().isoformat()
+    report = client.get(
+        "/api/v1/channels/settlement", headers=bearer(token), params={"from": "2026-10-01", "to": today}
+    )
+    assert report.status_code == 200, report.text
+    assert report.json()["rows"][0]["orders"] == 1
+    assert report.json()["rows"][0]["gross_cents"] == sale["total_cents"]

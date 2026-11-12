@@ -8,11 +8,10 @@ the tenant record is not a membership.
 import hashlib
 import hmac
 import logging
-import secrets
 import uuid
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -22,7 +21,8 @@ from app.core.config import Settings
 from app.core.errors import ApiError
 from app.models.store import Store
 from app.models.user import User
-from app.services.email_brand import store_code_parts, store_code_result_parts
+from app.services import otp_service
+from app.services.email_brand import store_code_result_parts
 from app.services.messaging_providers import Outgoing, ProviderError
 from app.tenancy import registry
 from app.tenancy.models import OperatorAuditLog, RecoveryChallenge, Tenant
@@ -50,8 +50,8 @@ def _aware(value: datetime | None) -> datetime | None:
     return value if value.tzinfo is not None else value.replace(tzinfo=UTC)
 
 
-def _digest(challenge_id: uuid.UUID, code: str) -> str:
-    return hashlib.sha256(f"{challenge_id}:{code}".encode()).hexdigest()
+def _address(email: str) -> str:
+    return email.strip().lower()
 
 
 def _dummy(email: str) -> None:
@@ -71,6 +71,7 @@ class RecoveredStore:
 
 def memberships(settings: Settings, email: str) -> list[RecoveredStore]:
     """Active sign-in codes for this email. Suspended tenants and inactive users are omitted."""
+    email = _address(email)
     if not settings.tenancy_enabled:
         _dummy(email)
         return []
@@ -92,7 +93,7 @@ def memberships(settings: Settings, email: str) -> list[RecoveredStore]:
 
 def _member(settings: Settings, tenant: Tenant, email: str) -> RecoveredStore | None:
     with tenant_session(tenant, settings) as db:
-        user = db.scalar(select(User).where(User.email == email, User.is_active.is_(True)))
+        user = db.scalar(select(User).where(func.lower(User.email) == email, User.is_active.is_(True)))
         if user is None or not (user.has_portal_access or user.has_pos_access):
             return None
         if user.hashed_password is None and user.hashed_pin is None:
@@ -111,13 +112,14 @@ def _branch(db: Session, user: User) -> str | None:
 
 
 def request_code(settings: Settings, email: str, ip: str | None) -> str:
+    email = _address(email)
     if mail.platform_link(settings) is None:
         logger.warning("store code recovery skipped: mailbox is not configured")
         return SENT
     matches = memberships(settings, email)
     if not matches:
         return SENT
-    code = f"{secrets.randbelow(1_000_000):06d}"
+    code = otp_service.new_code()
     with registry.control_session(settings) as db:
         row = db.scalar(
             select(RecoveryChallenge)
@@ -138,7 +140,7 @@ def request_code(settings: Settings, email: str, ip: str | None) -> str:
             )
             db.add(row)
             db.flush()
-        row.code_hash = _digest(row.id, code)
+        row.code_hash = otp_service.seal(str(row.id), code)
         row.expires_at = _now() + timedelta(minutes=CODE_MINUTES)
         row.sent_at = _now()
         row.attempts = 0
@@ -156,12 +158,8 @@ def request_code(settings: Settings, email: str, ip: str | None) -> str:
             db.rollback()
             return SENT
         challenge_id = row.id
-    plain, html_body = store_code_parts(code=code, minutes=CODE_MINUTES, support_email=settings.support_email)
     try:
-        mail.send(
-            settings,
-            Outgoing(to=email, subject="Your AxizPOS store code verification", body=plain, html=html_body),
-        )
+        otp_service.send(settings, to=email, purpose="store_code", code=code, minutes=CODE_MINUTES)
     except ProviderError as error:
         _clear(settings, challenge_id)
         logger.warning("store code recovery email failed")
@@ -181,6 +179,7 @@ def _clear(settings: Settings, challenge_id: uuid.UUID) -> None:
 
 
 def verify(settings: Settings, email: str, code: str, ip: str | None) -> tuple[list[RecoveredStore], str]:
+    email = _address(email)
     with registry.control_session(settings) as db:
         row = db.scalar(
             select(RecoveryChallenge)
@@ -193,7 +192,7 @@ def verify(settings: Settings, email: str, code: str, ip: str | None) -> tuple[l
         expires = _aware(row.expires_at)
         if expires is None or expires <= _now() or row.attempts >= MAX_ATTEMPTS:
             raise _refused()
-        if not hmac.compare_digest(row.code_hash, _digest(row.id, code.strip())):
+        if not otp_service.matches(row.code_hash, str(row.id), code):
             row.attempts += 1
             db.commit()
             raise _refused()

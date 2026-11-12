@@ -1,4 +1,5 @@
 import type { DownloadsList, InstallerFile } from "@ai-pos/shared-types";
+import { formatDateTime } from "@ai-pos/ui";
 import { Download, KeyRound } from "lucide-react";
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
@@ -12,7 +13,7 @@ function formatSize(bytes: number): string {
 }
 
 function formatDay(value: string): string {
-  return new Date(value).toLocaleDateString(undefined, { dateStyle: "medium" });
+  return formatDateTime(value).slice(0, 10);
 }
 
 const STEPS = [

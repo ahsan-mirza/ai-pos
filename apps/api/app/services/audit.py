@@ -50,7 +50,10 @@ AUDITED_TABLES: dict[str, str] = {
 # Columns that change as a side effect of normal use and would only add noise to a diff.
 IGNORED_COLUMNS = frozenset({"created_at", "updated_at", "last_login_at", "failed_login_attempts", "locked_until"})
 REDACTED = "[redacted]"
-_SECRET = re.compile(r"(password|hashed|_hash|secret|encrypted|pin$|token)", re.IGNORECASE)
+_SECRET = re.compile(
+    r"(password|hashed|_hash|secret|encrypted|pin$|token|iban|routing_code|account_holder)",
+    re.IGNORECASE,
+)
 
 PATH_ENTITIES: dict[str, str] = {
     "products": "Product",

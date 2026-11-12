@@ -18,6 +18,7 @@ import {
   Landmark,
   LayoutDashboard,
   LayoutGrid,
+  MapPinned,
   Percent,
   Radar,
   ReceiptText,
@@ -53,6 +54,8 @@ export interface NavItem {
   label: string | ((ctx: NavContext) => string);
   icon: LucideIcon;
   permission: Permission;
+  /** Other permissions that also show this item. */
+  anyOf?: Permission[];
   /** Hidden while this module is switched off for the business. */
   capability?: Capability;
   /** Published plan or plugin check. A locked item stays visible and opens the upgrade modal. */
@@ -246,6 +249,14 @@ export const navGroups: NavGroup[] = [
         permission: Permission.SalesOrders,
         capability: Capability.SalesOrders,
         isActive: under("/sales-orders"),
+      },
+      {
+        to: "/fulfillment",
+        label: "Fulfillment",
+        icon: MapPinned,
+        permission: Permission.SalesOrders,
+        capability: Capability.SalesOrders,
+        isActive: under("/fulfillment"),
       },
       {
         to: "/reorders",
@@ -449,7 +460,20 @@ export const navGroups: NavGroup[] = [
         isActive: under("/subscription"),
       },
       { to: "/users", label: "Users", icon: UserCog, permission: Permission.UsersRead, isActive: under("/users") },
-      { to: "/staff", label: "Staff & payroll", icon: Timer, permission: Permission.StaffManage, isActive: under("/staff") },
+      {
+        to: "/staff",
+        label: "Staff & payroll",
+        icon: Timer,
+        permission: Permission.StaffManage,
+        anyOf: [
+          Permission.PayrollManage,
+          Permission.PayrollView,
+          Permission.PayrollManageProfiles,
+          Permission.PayrollCalculate,
+          Permission.PayrollApprove,
+        ],
+        isActive: under("/staff"),
+      },
       {
         to: "/settings",
         label: settingsLabel,
@@ -508,6 +532,7 @@ const singlePages: Record<string, Crumb[]> = {
   "/shifts": [{ label: "Sales" }, { label: "Shifts & cash drawers" }],
   "/sales/quotations": [{ label: "Wholesale & credit" }, { label: "Wholesale quotations" }],
   "/sales-orders": [{ label: "Wholesale & credit" }, { label: "Sales orders & deliveries" }],
+  "/fulfillment": [{ label: "Wholesale & credit" }, { label: "Fulfillment" }],
   "/cheques": [{ label: "Wholesale & credit" }, { label: "Cheques & PDCs" }],
   "/consignment": [{ label: "Wholesale & credit" }, { label: "Consignment stock" }],
   "/repairs": [{ label: "Service" }, { label: "Repairs" }],

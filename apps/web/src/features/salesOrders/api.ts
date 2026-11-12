@@ -1,5 +1,7 @@
 import type {
   BackorderRow,
+  FulfillmentBoard,
+  SalesOrderEvent,
   DeliverInput,
   DeliveryNote,
   DispatchInput,
@@ -38,6 +40,8 @@ export const salesOrdersApi = {
   fromQuote: (quoteId: string) => apiPost<SalesOrder>(`${BASE}/from-quote/${quoteId}`, {}),
   backorders: (storeId: string | null) =>
     apiGet<BackorderRow[]>(`${BASE}/backorders${storeId ? `?store_id=${storeId}` : ""}`),
+  board: (storeId: string | null) => apiGet<FulfillmentBoard>(`${BASE}/board${storeId ? `?store_id=${storeId}` : ""}`),
+  events: (id: string) => apiGet<SalesOrderEvent[]>(`${BASE}/${id}/events`),
   delivery: (noteId: string) => apiGet<DeliveryNote>(`${BASE}/deliveries/${noteId}`),
   deliver: (noteId: string, body: DeliverInput) => apiPost<DeliveryNote>(`${BASE}/deliveries/${noteId}/deliver`, body),
   orderPdf: (id: string) => openPdf(`${BASE}/${id}/pdf`),

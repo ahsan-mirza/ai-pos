@@ -1,4 +1,5 @@
 import { formatMoney } from "@ai-pos/shared-types";
+import { AxizDatePicker } from "@ai-pos/ui";
 import { useEffect, useState } from "react";
 import { invalidateAccountSubscription } from "../../components/layout/AccountMenu";
 import { ErrorNote, PrimaryButton } from "../../components/ui/Field";
@@ -312,7 +313,7 @@ function PaymentProof({
           </p>
           <label className="grid gap-1 text-sm">
             Payment date
-            <input type="date" required value={date} onChange={(event) => onDate(event.target.value)} className="h-10 rounded-xl border border-line px-3" />
+            <AxizDatePicker required leading aria-label="Payment date" value={date} onChange={(event) => onDate(event.target.value)} className="h-10 w-full rounded-xl border border-line bg-white text-sm" />
           </label>
           <label className="grid gap-1 text-sm">
             Transfer reference

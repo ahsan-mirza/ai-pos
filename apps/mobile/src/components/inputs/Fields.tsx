@@ -27,7 +27,7 @@ export function DateField(props: { label: string; value: string; onChange: (valu
     <View>
       <Pressable accessibilityRole="button" accessibilityLabel={props.label} onPress={() => setOpen(true)}>
         <View pointerEvents="none">
-          <Input variant="date" label={props.label} value={props.value} />
+          <Input variant="date" label={props.label} value={props.value.replace(/^(\d{4})-(\d{2})-(\d{2})$/, "$3-$2-$1")} />
         </View>
       </Pressable>
       {open ? (

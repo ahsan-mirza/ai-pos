@@ -9,7 +9,7 @@ import {
   type StoreSubscription,
   type TenantDetail,
 } from "@ai-pos/shared-types";
-import { Select, billingCycleOption } from "@ai-pos/ui";
+import { AxizTabs, Select, billingCycleOption } from "@ai-pos/ui";
 import { ArrowRightLeft, RefreshCw, ShieldAlert, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate, useOutletContext, useParams } from "react-router-dom";
@@ -582,21 +582,18 @@ export function TenantDrawer() {
               </p>
               <PackageAssign tenantId={tenant.id} onSaved={changed} />
 
-              <div className="mt-6 inline-flex rounded-full bg-surface p-1" role="tablist" aria-label="Tenant sections">
-                {(["modules", "requests", "audit", "customers"] as const).map((value) => (
-                  <button
-                    key={value}
-                    type="button"
-                    role="tab"
-                    aria-selected={tab === value}
-                    onClick={() => setTab(value)}
-                    className={`h-9 rounded-full px-4 text-sm font-semibold capitalize ${tab === value ? "bg-charcoal text-white" : "text-charcoal/60"}`}
-                  >
-                    {value}
-                    {value === "requests" && tenant.pending_requests > 0 ? ` (${tenant.pending_requests})` : ""}
-                  </button>
-                ))}
-              </div>
+              <AxizTabs
+                ariaLabel="Tenant sections"
+                className="mt-6"
+                activeTab={tab}
+                onChange={(id) => setTab(id as Tab)}
+                tabs={[
+                  { id: "modules", label: "Modules" },
+                  { id: "requests", label: `Requests${tenant.pending_requests > 0 ? ` (${tenant.pending_requests})` : ""}` },
+                  { id: "audit", label: "Audit" },
+                  { id: "customers", label: "Customers" },
+                ]}
+              />
               <div className="mt-4">
                 {tab === "modules" ? <ModulesTab detail={detail} onSaved={changed} /> : null}
                 {tab === "requests" ? (

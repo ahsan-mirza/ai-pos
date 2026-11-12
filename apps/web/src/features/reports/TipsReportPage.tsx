@@ -79,8 +79,8 @@ export function TipsReportPage() {
             </div>
           </div>
           <div className="flex flex-wrap items-end gap-3">
-            <TextField label="From" type="date" value={range.from} onChange={(event) => setRange((current) => ({ ...current, from: event.target.value }))} />
-            <TextField label="To" type="date" value={range.to} onChange={(event) => setRange((current) => ({ ...current, to: event.target.value }))} />
+            <TextField variant="filter" wrapperClassName="w-48" label="From" type="date" value={range.from} onChange={(event) => setRange((current) => ({ ...current, from: event.target.value }))} />
+            <TextField variant="filter" wrapperClassName="w-48" label="To" type="date" value={range.to} onChange={(event) => setRange((current) => ({ ...current, to: event.target.value }))} />
             {user?.store_id ? null : (
               <FilterSelect
                 label="Branch"

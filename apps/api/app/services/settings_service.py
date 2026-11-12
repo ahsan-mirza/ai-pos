@@ -24,7 +24,13 @@ from app.schemas.governance import TenantModulesOut
 from app.schemas.module_settings import ModuleSettings, resolve_module_settings
 from app.schemas.pos_policy import PosPolicy, resolve_pos_policy
 from app.schemas.receipt import ReceiptProfileOut, ReceiptSettings, ReceiptStore, resolve_receipt_settings
-from app.schemas.settings import AppearanceUpdate, BusinessSettingsOut, ProfileUpdate, TaxSettingsUpdate
+from app.schemas.settings import (
+    AppearanceUpdate,
+    BusinessSettingsOut,
+    ProfileUpdate,
+    ReportingTimezoneUpdate,
+    TaxSettingsUpdate,
+)
 from app.services import audit, race
 from app.tenancy.scoping import DEFAULT_TENANT_ID, REQUEST_SESSION, active_tenant_id, include_all_tenants
 
@@ -74,6 +80,7 @@ class SettingsSnapshot:
     promotional_capabilities: tuple[str, ...] = ()
     promotional_until: datetime | None = None
     country: str | None = None
+    timezone: str = "Asia/Dubai"
 
 
 class _SettingsCache:
@@ -303,6 +310,7 @@ def snapshot_of(row: BusinessSettings) -> SettingsSnapshot:
         id=row.id,
         currency=row.currency,
         country=row.country,
+        timezone=(row.timezone or "Asia/Dubai").strip() or "Asia/Dubai",
         location=row.location,
         vat_registered=bool(row.vat_registered),
         trn=row.trn,
@@ -373,6 +381,7 @@ def settings_out(settings: BusinessSettings | SettingsSnapshot) -> BusinessSetti
         store_code=tenant.slug if tenant is not None else "",
         country=snapshot.country,
         location=snapshot.location,
+        timezone=snapshot.timezone,
         supported_currencies=list(SUPPORTED_CURRENCIES),
         updated_at=snapshot.updated_at,
         updated_by_name=snapshot.updated_by_name,
@@ -426,6 +435,29 @@ def change_pos_policy(db: Session, actor: User, data: PosPolicy) -> BusinessSett
         user=actor,
         old_values=before,
         new_values=after,
+    )
+    db.commit()
+    db.refresh(row)
+    return settings_out(row)
+
+
+def change_reporting_timezone(db: Session, actor: User, data: ReportingTimezoneUpdate) -> BusinessSettingsOut:
+    """One clock for every branch. Stored sale and delivery instants stay UTC."""
+    row = load_settings(db, lock=True)
+    previous = row.timezone
+    if previous == data.timezone:
+        return settings_out(row)
+    row.timezone = data.timezone
+    row.updated_by_id = actor.id
+    audit.record(
+        db,
+        action_type="UPDATE",
+        action="settings.timezone",
+        target_entity="Settings",
+        target_entity_id=row.id,
+        user=actor,
+        old_values={"timezone": previous},
+        new_values={"timezone": data.timezone},
     )
     db.commit()
     db.refresh(row)

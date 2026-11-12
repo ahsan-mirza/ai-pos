@@ -25,6 +25,10 @@ class BusinessSettings(TenantScoped, TimestampMixin, Base):
     # Bumped when the row changes so cached copies can tell they are stale.
     cache_generation: Mapped[int] = mapped_column(Integer, default=1)
     currency: Mapped[str] = mapped_column(String(3))
+    # IANA name for business-day boundaries. Every branch reports on this clock. Instants stay UTC.
+    timezone: Mapped[str] = mapped_column(String(64), default="Asia/Dubai")
+    # Missing weight or volume never counts as zero or as unlimited. block is the only shipped policy.
+    fleet_capacity_policy: Mapped[str] = mapped_column(String(16), default="block", server_default="block")
     # FIFO or WEIGHTED_AVERAGE. Historical sale costs stay as posted when this changes.
     inventory_costing: Mapped[str] = mapped_column(String(20), default="FIFO")
     # VAT. While vat_registered is false the API keeps the register's line tax as sent (legacy behaviour).

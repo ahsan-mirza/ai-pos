@@ -1,6 +1,7 @@
 import { formatMoney, formatWeight, type UsageVarianceReport, type UsageVarianceRow } from "@ai-pos/shared-types";
 import { Scale } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import { ErrorNote, FilterSelect, TextField } from "../../components/ui/Field";
 import { apiGet } from "../../lib/api";
 import { useAuth } from "../../lib/auth";
@@ -58,6 +59,9 @@ export function RecipeUsagePage() {
           </span>
           <div>
             <h2 className="text-xl font-semibold">Ingredient usage</h2>
+            <Link to="/inventory/recipes" className="text-sm font-semibold text-accent">
+              Recipes
+            </Link>
             <p className="text-sm text-charcoal/60">
               Theoretical (recipes × dishes sold) against actual (drawn, corrected by stock counts and waste).
               {report && lost > 0 ? ` Over-use this period: ${formatMoney(lost, currency)}.` : ""}
@@ -65,8 +69,8 @@ export function RecipeUsagePage() {
           </div>
         </div>
         <div className="flex flex-wrap items-end gap-3">
-          <TextField label="From" type="date" value={range.from} onChange={(event) => setRange((current) => ({ ...current, from: event.target.value }))} />
-          <TextField label="To" type="date" value={range.to} onChange={(event) => setRange((current) => ({ ...current, to: event.target.value }))} />
+          <TextField variant="filter" wrapperClassName="w-48" label="From" type="date" value={range.from} onChange={(event) => setRange((current) => ({ ...current, from: event.target.value }))} />
+          <TextField variant="filter" wrapperClassName="w-48" label="To" type="date" value={range.to} onChange={(event) => setRange((current) => ({ ...current, to: event.target.value }))} />
           {user?.store_id ? null : (
             <FilterSelect label="Branch" value={storeId} options={[{ value: "", label: "All branches" }, ...storeOptions(stores)]} onChange={setStoreId} className="w-56" />
           )}

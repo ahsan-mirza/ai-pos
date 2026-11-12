@@ -73,7 +73,17 @@ function ThemeToggle() {
  * One-row workspace header shared by every register page. Checkout actions stay on the right, after
  * connection, language, and theme. The signed-in cashier stays in the sidebar.
  */
-export function HeaderBar({ sync, actions }: { title: string; sync: SyncState; actions?: ReactNode }) {
+export function HeaderBar({
+  sync,
+  actions,
+  leading,
+}: {
+  title: string;
+  sync: SyncState;
+  actions?: ReactNode;
+  /** Checkout customer search. Sits in the open space before sync and language. */
+  leading?: ReactNode;
+}) {
   const { t } = useLocale();
   const { practice } = useCapabilities();
   const reduced = useReducedMotion() === true;
@@ -93,7 +103,8 @@ export function HeaderBar({ sync, actions }: { title: string; sync: SyncState; a
   }, [more]);
 
   return (
-    <header className="flex h-14 shrink-0 items-center justify-end gap-2 border-b border-zinc-200 bg-white px-3 dark:border-zinc-800 dark:bg-zinc-900 min-[1280px]:gap-3 min-[1280px]:px-4">
+    <header className="relative z-30 flex h-14 shrink-0 items-center gap-2 border-b border-zinc-200 bg-white px-3 dark:border-zinc-800 dark:bg-zinc-900 min-[1280px]:gap-3 min-[1280px]:px-4">
+      <div className="min-w-0 flex-1">{leading ? <div className="w-full max-w-md">{leading}</div> : null}</div>
       <div className="flex shrink-0 items-center gap-1.5 min-[1366px]:gap-2">
         {practice ? (
           <span

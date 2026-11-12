@@ -11,7 +11,7 @@ import type {
   OpeningStockChoice,
 } from "@ai-pos/shared-types";
 import { formatMoney } from "@ai-pos/shared-types";
-import { useLocale } from "@ai-pos/ui";
+import { AxizDatePicker, useLocale } from "@ai-pos/ui";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { Minus, Plus, Rocket, ShieldCheck } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -398,11 +398,12 @@ export function GoLiveModal({
           <div className="mt-4 grid gap-3">
             <label className="grid gap-1 text-sm">
               Transfer date
-              <input
-                type="date"
+              <AxizDatePicker
+                leading
+                aria-label="Transfer date"
                 value={transferDate}
                 onChange={(event) => setTransferDate(event.target.value)}
-                className="h-10 rounded-xl border border-line px-3"
+                className="h-10 w-full rounded-xl border border-line bg-white text-sm"
               />
             </label>
             <label className="grid gap-1 text-sm">

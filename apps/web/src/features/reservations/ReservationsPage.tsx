@@ -2,6 +2,9 @@ import type { Floor } from "@ai-pos/shared-types";
 import { CalendarRange } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
+import { AxizTabs } from "@ai-pos/ui";
+
+import { tabBarBleed } from "../../components/layout/AppShell";
 import { ErrorNote, GhostButton, PrimaryButton, SelectField, TextField } from "../../components/ui/Field";
 import { useTenant } from "../../context/TenantContext";
 import { apiGet, apiPost, apiPut, getAccessToken } from "../../lib/api";
@@ -269,7 +272,7 @@ export function ReservationsPage() {
   });
 
   return (
-    <section className="space-y-4 p-4 md:p-6">
+    <section className="space-y-4">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div className="flex items-center gap-3">
           <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-charcoal text-white">
@@ -287,20 +290,13 @@ export function ReservationsPage() {
       </div>
       <ErrorNote message={error} />
       {notice ? <p className="text-sm text-emerald-800">{notice}</p> : null}
-      <div className="flex gap-1 overflow-x-auto" role="tablist" aria-label="Reservation sections">
-        {TABS.map((item) => (
-          <button
-            key={item.id}
-            type="button"
-            role="tab"
-            aria-selected={tab === item.id}
-            className={`shrink-0 rounded-full px-3 py-1.5 text-sm ${tab === item.id ? "bg-charcoal text-white" : "text-charcoal/70"}`}
-            onClick={() => setTab(item.id)}
-          >
-            {item.label}
-          </button>
-        ))}
-      </div>
+      <AxizTabs
+        ariaLabel="Reservation sections"
+        className={tabBarBleed}
+        activeTab={tab}
+        onChange={(id) => setTab(id as Tab)}
+        tabs={TABS}
+      />
 
       {creating ? (
         <form

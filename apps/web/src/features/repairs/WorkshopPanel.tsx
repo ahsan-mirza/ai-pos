@@ -1,4 +1,5 @@
 import { formatMoney, type RepairDetail } from "@ai-pos/shared-types";
+import { formatDateTime } from "@ai-pos/ui";
 import { useState } from "react";
 import { GhostButton, PrimaryButton, TextField } from "../../components/ui/Field";
 import { apiBlob, apiGet, apiPost, apiUpload } from "../../lib/api";
@@ -213,7 +214,7 @@ export function WorkshopPanel({
       ) : null}
       {ticket.repair_warranty ? (
         <p className="text-xs text-charcoal/70">
-          Repair warranty until {new Date(ticket.repair_warranty.expires_at).toLocaleDateString()}.
+          Repair warranty until {formatDateTime(ticket.repair_warranty.expires_at).slice(0, 10)}.
         </p>
       ) : null}
       {canUpdate && ticket.status === "ready" && ticket.sale_id === null && ticket.total_cents === 0 ? (

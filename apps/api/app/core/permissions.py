@@ -39,12 +39,22 @@ class Permission(StrEnum):
     PROMOTIONS_MANAGE = "promotions:manage"
     STAFF_MANAGE = "staff:manage"
     PAYROLL_MANAGE = "payroll:manage"
+    PAYROLL_VIEW = "payroll:view"
+    PAYROLL_MANAGE_PROFILES = "payroll:manage_profiles"
+    PAYROLL_CALCULATE = "payroll:calculate"
+    PAYROLL_SUBMIT = "payroll:submit"
+    PAYROLL_APPROVE = "payroll:approve"
+    PAYROLL_GENERATE_WPS = "payroll:generate_wps"
+    PAYROLL_RECORD_PAYMENT = "payroll:record_payment"
+    PAYROLL_EXPORT = "payroll:export"
+    PAYROLL_VIEW_SENSITIVE = "payroll:view_sensitive_data"
     BANKING_MANAGE = "banking:manage"
     ACCOUNTING_MANAGE = "accounting:manage"
     POS_ORDERS = "pos:orders"
     POS_VOID_SENT_ITEM = "pos:void_sent_item"
     KDS_OPERATE = "kds:operate"
     SALES_ORDERS = "sales:orders"
+    SALES_DISPATCH_OVERRIDE = "sales:dispatch_override"
     GIFT_CARDS_MANAGE = "gift_cards:manage"
     TAX_FREE_MANAGE = "tax_free:manage"
     ONLINE_ORDERS = "online_orders:manage"
@@ -113,7 +123,7 @@ RESTAURANT_CASHIER_PERMISSIONS = (
 )
 
 # Wholesale fulfilment, granted to Store Managers by migration 20261021_0058.
-FULFILMENT_MANAGER_PERMISSIONS = ("sales:orders",)
+FULFILMENT_MANAGER_PERMISSIONS = ("sales:orders", "sales:dispatch_override")
 
 # Retail and fashion back office, granted to Store Managers by migration 20261021_0059.
 RETAIL_MANAGER_PERMISSIONS = ("gift_cards:manage", "tax_free:manage", "online_orders:manage")
@@ -158,7 +168,16 @@ PERMISSION_GROUPS: dict[str, list[tuple[Permission, str]]] = {
     "Marketing": [(Permission.PROMOTIONS_MANAGE, "Create promotions, bundles and coupon codes")],
     "Staff": [
         (Permission.STAFF_MANAGE, "Approve timesheets and set sales commissions"),
-        (Permission.PAYROLL_MANAGE, "See salaries, run payroll and export the WPS file"),
+        (Permission.PAYROLL_MANAGE, "Full payroll access: salaries, approval, WPS and payment"),
+        (Permission.PAYROLL_VIEW, "View payroll runs and salary profiles"),
+        (Permission.PAYROLL_MANAGE_PROFILES, "Edit employee salary profiles"),
+        (Permission.PAYROLL_CALCULATE, "Create and recalculate a draft payroll"),
+        (Permission.PAYROLL_SUBMIT, "Submit a payroll for review"),
+        (Permission.PAYROLL_APPROVE, "Approve or return a payroll"),
+        (Permission.PAYROLL_GENERATE_WPS, "Validate and download the WPS file"),
+        (Permission.PAYROLL_RECORD_PAYMENT, "Record salary payment status"),
+        (Permission.PAYROLL_EXPORT, "Download payslips and payroll exports"),
+        (Permission.PAYROLL_VIEW_SENSITIVE, "See full bank details on a salary profile"),
     ],
     "Operations": [
         (Permission.DEVICES_MANAGE, "Register and revoke POS registers"),
@@ -178,6 +197,7 @@ PERMISSION_GROUPS: dict[str, list[tuple[Permission, str]]] = {
     "Customers": [
         (Permission.CUSTOMERS_MANAGE, "Manage customer accounts, credit, and payments"),
         (Permission.SALES_ORDERS, "Take sales orders, pick, dispatch and invoice deliveries"),
+        (Permission.SALES_DISPATCH_OVERRIDE, "Confirm a dispatch that is over capacity or missing weight or volume"),
         (Permission.ONLINE_ORDERS, "Fulfil online-store orders and manage store connections"),
     ],
     "Repairs": [

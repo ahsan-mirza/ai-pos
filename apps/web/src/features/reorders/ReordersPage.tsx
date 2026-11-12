@@ -185,9 +185,9 @@ export function ReordersPage() {
       {error ? <ErrorNote message={error} /> : null}
       {notice ? <p className="text-sm font-medium text-emerald-700">{notice}</p> : null}
 
-      <div className="flex flex-wrap gap-3">
+      <div className="flex flex-wrap items-end gap-3">
         <SearchField className="min-w-[240px] flex-1" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Customer, product, plan, salesperson, order" />
-        <select value={status} onChange={(event) => setStatus(event.target.value)} className="h-10 rounded-full border border-line bg-white px-4 text-sm" aria-label="Plan status">
+        <select value={status} onChange={(event) => setStatus(event.target.value)} className="h-11 shrink-0 rounded-full border border-line bg-white px-4 text-sm" aria-label="Plan status">
           <option value="">All plans</option>
           <option value="ACTIVE">Active</option>
           <option value="PAUSED">Paused</option>

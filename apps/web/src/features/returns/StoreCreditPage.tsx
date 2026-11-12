@@ -1,4 +1,5 @@
 import { formatMoney, type StoreCreditList } from "@ai-pos/shared-types";
+import { formatDate, formatDateTime } from "@ai-pos/ui";
 import { useCallback, useEffect, useState } from "react";
 import { ErrorNote } from "../../components/ui/Field";
 import { SegmentedControl } from "../../components/ui/SegmentedControl";
@@ -11,8 +12,7 @@ const filters = [
   { value: "all", label: "All" },
 ] as const;
 
-const shortDate = (value: string) =>
-  new Date(value).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
+const shortDate = (value: string) => (/^\d{4}-\d{2}-\d{2}$/.test(value) ? formatDate(value) : formatDateTime(value).slice(0, 10));
 
 export function StoreCreditPage() {
   const { currency } = useCurrency();
