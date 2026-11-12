@@ -53,6 +53,7 @@ export function Field({
   const fieldClass = `w-full rounded-xl border bg-surface py-3 pl-10 text-sm font-normal text-charcoal transition placeholder:text-charcoal/40 focus:bg-white focus:outline-none focus:ring-2 disabled:cursor-not-allowed disabled:text-charcoal/50 ${
     error ? "border-danger bg-danger/10 focus:border-danger focus:ring-danger" : "border-transparent focus:border-orange-500 focus:ring-orange-500"
   } ${isPassword ? "pr-12" : "pr-4"}`;
+  const { defaultValue: rawDefault, ...dateProps } = props;
   const Icon = inputLeadingIcon({
     type,
     autoComplete: typeof autoComplete === "string" ? autoComplete : undefined,
@@ -93,7 +94,8 @@ export function Field({
             id={id}
             withTime={type === "datetime-local"}
             autoComplete={autoComplete}
-            {...props}
+            {...dateProps}
+            defaultValue={typeof rawDefault === "string" ? rawDefault : undefined}
             value={typeof props.value === "string" ? props.value : ""}
             aria-required={required || undefined}
             aria-invalid={error ? true : undefined}
