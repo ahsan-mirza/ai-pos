@@ -448,7 +448,6 @@ export function PaginationFooter({
   const first = page <= 1 || disabled;
   const last = page >= totalPages || disabled;
   const sizes = pageSizeOptions.includes(pageSize) ? pageSizeOptions : [...pageSizeOptions, pageSize].sort((a, b) => a - b);
-  const strong = "font-semibold text-zinc-900 dark:text-zinc-100";
 
   return (
     <nav
