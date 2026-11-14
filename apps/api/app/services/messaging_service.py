@@ -75,6 +75,38 @@ def marketing_consented(customer: Customer, channel: str) -> bool:
 
 
 MARKETING_KEYS = frozenset({"campaign", "coupon_issued"})
+# Lower number wins. Promotional keys are the only low-priority class.
+# Anything the server does not recognise stays transactional, so a caller cannot demote a receipt
+# or promote a campaign by inventing a template name.
+_OPERATIONAL_KEYS = frozenset(
+    {"overdue_reminder", "warranty_expiry", "layaway_reminder", "reorder_due", "ai_agent"}
+)
+
+
+def priority_for(template_key: str | None) -> int:
+    """Trusted classification. There is no argument for a client-supplied priority."""
+    if template_key in MARKETING_KEYS:
+        return 3
+    if template_key in _OPERATIONAL_KEYS:
+        return 2
+    return 1
+
+
+def choose_next(candidates: list[tuple[str, int, datetime]], *, allow_marketing: bool) -> int | None:
+    """Index of the next queued message.
+
+    The choice is made between sends. A provider call that has already started is not a candidate,
+    so it is never cancelled. Lower priority number wins. At the same priority the older message
+    wins, which keeps one tenant's campaign from sitting in front of another's.
+    """
+    best: tuple[tuple[int, datetime, str], int] | None = None
+    for index, (tenant, priority, created) in enumerate(candidates):
+        if not allow_marketing and priority >= 3:
+            continue
+        key = (priority, created, tenant)
+        if best is None or key < best[0]:
+            best = (key, index)
+    return None if best is None else best[1]
 
 
 def preferred_channel(customer: Customer, db: Session | None = None) -> str | None:
@@ -125,6 +157,7 @@ def enqueue(
         to_address=address or "",
         customer_id=customer.id,
         template_key=template_key,
+        priority=priority_for(template_key),
         subject=render(template.subject, full),
         body=render(template.body, full),
         status=status,
@@ -166,28 +199,85 @@ def _delivery(db: Session, settings: Settings, channel: str) -> tuple[str, dict]
     return channel_credentials(db, settings, channel)
 
 
-def dispatch_due(db: Session, settings: Settings, limit: int = 50, template_key: str | None = None) -> dict[str, int]:
-    """Sends queued messages whose time has come. Transient failures back off exponentially."""
+def _ready_clause(now: datetime, reach_on: bool):
+    ready = OutboundMessage.next_attempt_at <= now
+    if not reach_on:
+        return ready
+    return or_(
+        ready,
+        and_(
+            OutboundMessage.template_key.in_(("campaign", "ai_agent")),
+            OutboundMessage.last_error.like("AxizReach is off%"),
+        ),
+    )
+
+
+def _next_message(
+    db: Session,
+    now: datetime,
+    *,
+    reach_on: bool,
+    template_key: str | None,
+    allow_marketing: bool,
+) -> OutboundMessage | None:
+    """The next queued row for this tenant. Re-read each time so a receipt queued mid-batch jumps ahead."""
+    waiting = select(OutboundMessage).where(OutboundMessage.status == "QUEUED", _ready_clause(now, reach_on))
+    if template_key is not None:
+        waiting = waiting.where(OutboundMessage.template_key == template_key)
+    if not allow_marketing:
+        waiting = waiting.where(OutboundMessage.priority < 3)
+    return db.scalars(
+        waiting.order_by(OutboundMessage.priority, OutboundMessage.created_at, OutboundMessage.id).limit(1)
+    ).first()
+
+
+def dispatch_due(
+    db: Session,
+    settings: Settings,
+    limit: int = 50,
+    template_key: str | None = None,
+    allow_marketing: bool | None = None,
+) -> dict[str, int]:
+    """Sends queued messages whose time has come. Transient failures back off exponentially.
+
+    Each pass picks one row. A receipt that lands while a campaign is going out is selected
+    before the next promotional row. The provider call already in progress is left to finish.
+    """
     from app.core.capabilities import Capability, has_capability
 
     now = datetime.now(UTC)
+    try:
+        from reach.prepare import recover_leases
+
+        recover_leases(db)
+    except Exception:  # noqa: BLE001 - preparation recovery must not stop other mail
+        logger.exception("expired send leases were not recovered")
     reach_on = has_capability(db, Capability.AXIZ_REACH)
-    ready = OutboundMessage.next_attempt_at <= now
-    if reach_on:
-        ready = or_(
-            ready,
-            and_(
-                OutboundMessage.template_key.in_(("campaign", "ai_agent")),
-                OutboundMessage.last_error.like("AxizReach is off%"),
-            ),
-        )
-    waiting = select(OutboundMessage).where(OutboundMessage.status == "QUEUED", ready)
-    if template_key is not None:
-        waiting = waiting.where(OutboundMessage.template_key == template_key)
-    due = list(db.scalars(waiting.order_by(OutboundMessage.next_attempt_at).limit(limit)))
+    if allow_marketing is True:
+        marketing_cap = limit
+    elif allow_marketing is False:
+        marketing_cap = 0
+    else:
+        reserve = min(settings.reach_transactional_reserve, limit)
+        marketing_cap = max(0, limit - reserve)
     counts = {"sent": 0, "failed": 0, "retry": 0}
     evolution_sent = 0
-    for message in due:
+    marketing_sent = 0
+    for _ in range(limit):
+        # The gap is between provider calls. The next row is chosen after it, so a receipt
+        # that arrived during the gap goes out before the next promotional message.
+        if evolution_sent and settings.reach_send_interval_seconds:
+            time.sleep(settings.reach_send_interval_seconds)
+        db.flush()
+        message = _next_message(
+            db,
+            now,
+            reach_on=reach_on,
+            template_key=template_key,
+            allow_marketing=marketing_sent < marketing_cap,
+        )
+        if message is None:
+            break
         if message.template_key == "campaign" and not reach_on:
             message.next_attempt_at = now + timedelta(hours=6)
             message.last_error = "AxizReach is off. This campaign stays queued until the add-on is on."
@@ -226,8 +316,6 @@ def dispatch_due(db: Session, settings: Settings, limit: int = 50, template_key:
             message.next_attempt_at = now + timedelta(seconds=max(settings.reach_send_interval_seconds, 1))
             counts["retry"] += 1
             continue
-        if provider == "evolution" and evolution_sent and settings.reach_send_interval_seconds:
-            time.sleep(settings.reach_send_interval_seconds)
         if message.template_key == "ai_agent":
             try:
                 from reach.ai_agent.hold import release_if_stale
@@ -237,6 +325,22 @@ def dispatch_due(db: Session, settings: Settings, limit: int = 50, template_key:
                 continue
         message.provider = provider
         message.attempts += 1
+        try:
+            from reach.prepare import lease_recipient
+
+            lease_recipient(db, message)
+            db.commit()
+        except Exception:  # noqa: BLE001 - a missing plugin must not stop the send
+            logger.exception("message %s was not marked in progress", message.id)
+        if message.template_key == "campaign" and message.customer_id is not None:
+            person = db.get(Customer, message.customer_id)
+            if person is None or not marketing_consented(person, message.channel):
+                message.status = "SKIPPED"
+                message.last_error = "Marketing consent was withdrawn before sending."
+                from app.services.reach_bridge import after_skipped
+
+                after_skipped(db, message)
+                continue
         if message.template_key == "ai_agent":
             logger.info(
                 "[AXIZREACH_AI] stage=outbound_dispatch_started message_id=%s retry_count=%s",
@@ -276,7 +380,18 @@ def dispatch_due(db: Session, settings: Settings, limit: int = 50, template_key:
             counts["sent"] += 1
             if provider == "evolution":
                 evolution_sent += 1
+            if message.template_key in MARKETING_KEYS:
+                marketing_sent += 1
         except ProviderError as exc:
+            if getattr(exc, "ambiguous", False):
+                message.status = "FAILED"
+                message.last_error = "Ambiguous provider timeout."
+                message.context = {**(message.context or {}), "ambiguous_timeout": "1"}
+                from app.services.reach_bridge import after_failed
+
+                after_failed(db, message)
+                counts["failed"] += 1
+                continue
             message.last_error = str(exc)[:500]
             if message.template_key == "ai_agent":
                 logger.info(
@@ -298,8 +413,186 @@ def dispatch_due(db: Session, settings: Settings, limit: int = 50, template_key:
             message.last_error = str(exc)[:500]
             message.next_attempt_at = now + timedelta(minutes=2**message.attempts)
             counts["retry"] += 1
+        if message.template_key in MARKETING_KEYS and message.status == "QUEUED":
+            marketing_sent += 1
+        db.flush()
     db.commit()
+    note_backlog(db, settings)
     return counts
+
+
+def note_backlog(db: Session, settings: Settings) -> None:
+    """Log when transactional mail is waiting too long, or a campaign queue is deep. Counts stay inside this store."""
+    metrics = queue_metrics(db)
+    wait = metrics["oldest_transactional_seconds"]
+    if wait is not None and wait > settings.reach_alert_transactional_wait_seconds:
+        logger.warning("transactional messages have been queued for %ss", wait)
+    if metrics["campaign_queued"] >= settings.reach_alert_campaign_backlog:
+        logger.warning("promotional queue depth is %s", metrics["campaign_queued"])
+
+
+def queue_metrics(db: Session) -> dict[str, object]:
+    now = datetime.now(UTC)
+    rows = db.execute(
+        select(OutboundMessage.priority, func.count(), func.min(OutboundMessage.created_at)).where(
+            OutboundMessage.status == "QUEUED"
+        ).group_by(OutboundMessage.priority)
+    ).all()
+    by_priority = {1: 0, 2: 0, 3: 0}
+    oldest: datetime | None = None
+    oldest_by_priority: dict[int, datetime | None] = {1: None, 2: None, 3: None}
+    for priority, count, created in rows:
+        by_priority[int(priority)] = int(count)
+        if created is not None and (oldest is None or created < oldest):
+            oldest = created
+        if int(priority) in oldest_by_priority and created is not None:
+            oldest_by_priority[int(priority)] = created
+
+    def age(value: datetime | None) -> int | None:
+        if value is None:
+            return None
+        if value.tzinfo is None:
+            value = value.replace(tzinfo=UTC)
+        return max(0, int((now - value).total_seconds()))
+
+    return {
+        "queued": sum(by_priority.values()),
+        "by_priority": by_priority,
+        "transactional_queued": by_priority[1],
+        "operational_queued": by_priority[2],
+        "campaign_queued": by_priority[3],
+        "oldest_queued_seconds": age(oldest),
+        "oldest_transactional_seconds": age(oldest_by_priority[1]),
+        "oldest_operational_seconds": age(oldest_by_priority[2]),
+        "oldest_promotional_seconds": age(oldest_by_priority[3]),
+    }
+
+
+def dispatch_across_tenants(settings: Settings) -> dict[str, int]:
+    """One shared pass over every open tenant.
+
+    Each step peeks one due row per tenant and sends only the winner. A receipt in one store
+    is sent before a promotional row in another. Rows are still read inside that store's
+    tenant scope, so one store never loads another's messages.
+    """
+    from app.core.database import get_session_factory
+    from app.jobs.runner import note_result
+    from app.tenancy.context import use_tenant
+    from app.tenancy.registry import active_tenants
+
+    tenants = list(active_tenants(settings))
+    totals = {"sent": 0, "failed": 0, "retry": 0}
+    if not tenants:
+        return totals
+    if not _hold_dispatch_lock(tenants[0]):
+        return totals
+    per_tenant: dict[str, dict[str, int]] = {
+        tenant.id: {"sent": 0, "failed": 0, "retry": 0} for tenant in tenants
+    }
+    try:
+        budget = settings.reach_send_batch
+        reserve = min(settings.reach_transactional_reserve, budget)
+        marketing_cap = max(0, budget - reserve)
+        marketing_sent = 0
+        pace = False
+        for _ in range(budget):
+            if pace and settings.reach_send_interval_seconds:
+                time.sleep(settings.reach_send_interval_seconds)
+            allow_marketing = marketing_sent < marketing_cap
+            candidates: list[tuple[object, object, int, datetime, str]] = []
+            for tenant in tenants:
+                with use_tenant(tenant), get_session_factory()() as db:
+                    now = datetime.now(UTC)
+                    from app.core.capabilities import Capability, has_capability
+
+                    message = _next_message(
+                        db,
+                        now,
+                        reach_on=has_capability(db, Capability.AXIZ_REACH),
+                        template_key=None,
+                        allow_marketing=allow_marketing,
+                    )
+                    if message is None:
+                        continue
+                    created = message.created_at or datetime.now(UTC)
+                    candidates.append((tenant, message.id, message.priority, created, message.channel))
+            if not candidates:
+                break
+            picked = choose_next(
+                [
+                    (str(tenant.slug), priority, created)
+                    for tenant, _message_id, priority, created, _channel in candidates
+                ],
+                allow_marketing=allow_marketing,
+            )
+            if picked is None:
+                break
+            tenant, _message_id, priority, _created, channel = candidates[picked]
+            with use_tenant(tenant), get_session_factory()() as db:
+                counts = dispatch_due(db, settings, limit=1, allow_marketing=allow_marketing)
+            for key in totals:
+                totals[key] += counts[key]
+                per_tenant[tenant.id][key] += counts[key]
+            pace = channel == "whatsapp" and counts["sent"] > 0
+            if priority >= 3 and counts["sent"]:
+                marketing_sent += 1
+            elif counts["sent"] == 0 and counts["failed"] == 0 and counts["retry"] == 0:
+                break
+    except Exception:
+        logger.exception("fair dispatch failed")
+    finally:
+        _release_dispatch_lock()
+    summary = ", ".join(f"{value} {key}" for key, value in totals.items())
+    for tenant in tenants:
+        counts = per_tenant[tenant.id]
+        line = ", ".join(f"{value} {key}" for key, value in counts.items())
+        try:
+            with use_tenant(tenant), get_session_factory()() as db:
+                note_result(db, "dispatch_messages", "ok", f"{line} (shared {summary})")
+        except Exception:  # noqa: BLE001 - a jobs-page note must not undo a send
+            logger.exception("dispatch result was not recorded for %s", tenant.slug)
+    return totals
+
+
+_LOCK_SESSION: Session | None = None
+
+
+def _hold_dispatch_lock(tenant: object) -> bool:
+    """One API process drains a shared database. The connection stays open so the lock stays held."""
+    global _LOCK_SESSION
+    from sqlalchemy import text
+
+    from app.core.database import get_session_factory
+    from app.tenancy.context import use_tenant
+
+    with use_tenant(tenant):
+        db = get_session_factory()()
+        try:
+            if db.get_bind().dialect.name != "postgresql":
+                return True
+            if not db.execute(text("SELECT pg_try_advisory_lock(48291017)")).scalar():
+                return False
+            _LOCK_SESSION = db
+            db = None
+            return True
+        finally:
+            if db is not None:
+                db.close()
+
+
+def _release_dispatch_lock() -> None:
+    global _LOCK_SESSION
+    from sqlalchemy import text
+
+    db = _LOCK_SESSION
+    _LOCK_SESSION = None
+    if db is None:
+        return
+    try:
+        db.execute(text("SELECT pg_advisory_unlock(48291017)"))
+        db.commit()
+    finally:
+        db.close()
 
 
 # --- Portal ----------------------------------------------------------------------------------------

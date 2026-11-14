@@ -16,6 +16,7 @@ import { TenantChannelCards } from "../../../apps/web/src/features/messaging/Ten
 import { apiDelete, apiGet, apiPost, apiPut } from "../../../apps/web/src/lib/api";
 import { useCurrency } from "../../../apps/web/src/lib/currency";
 import { AgentPanel, ActionsPanel, ConversationsPanel } from "./AiCare";
+import { CampaignRunHistory } from "./CampaignProgress";
 import { errorMessage } from "../../../apps/web/src/features/users/api";
 
 type Tab = "overview" | "connections" | "campaigns" | "agent" | "conversations" | "templates" | "automations" | "actions" | "history" | "analytics" | "credits" | "settings";
@@ -353,6 +354,8 @@ export function ReachPage() {
         </div>
       ) : null}
       {tab === "campaigns" ? (
+        <div className="grid gap-4">
+          <CampaignRunHistory focus={params.get("run")} />
         <CampaignsPanel
           campaigns={campaigns}
           channels={channels}
@@ -380,6 +383,7 @@ export function ReachPage() {
             }, "The campaign was not updated.")
           }
         />
+        </div>
       ) : null}
       {tab === "agent" ? <AgentPanel /> : null}
       {tab === "conversations" ? <ConversationsPanel /> : null}

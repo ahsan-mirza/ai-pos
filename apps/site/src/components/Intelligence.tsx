@@ -31,8 +31,8 @@ export function Intelligence() {
   return (
     <section id="intelligence" className="border-t border-line bg-surface">
       <div className="mx-auto max-w-page px-4 py-16 sm:px-6 lg:px-8 lg:py-20">
-        <SectionHeading kicker="AI" title="Ask the store. It answers from the records.">
-          The assistant, AI insights, and the kitchen agent read the sales, stock, shifts, and audit trail this business already has. A module appears only when that profile includes it.
+        <SectionHeading kicker="AI" title="Axiz AI Business Copilot">
+          The Axiz AI Business Copilot, AI insights, and the kitchen agent read the sales, stock, shifts, and audit trail this business already has. Answers are in English or Arabic, and they come from that store. A module appears only when that profile includes it.
         </SectionHeading>
         <div className="ai-features-layout mt-10">
           <AskDemo />

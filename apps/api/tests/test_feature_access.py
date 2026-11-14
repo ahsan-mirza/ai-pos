@@ -23,6 +23,10 @@ def _subscribe(db: Session, code: str, slug: str) -> Tenant:
     db.add(tenant)
     db.flush()
     plan = db.scalar(select(BillingPlan).where(BillingPlan.code == code))
+    if plan is None and code in {"LITE", "STANDARD", "PRO"}:
+        plan = BillingPlan(code=code, name=code, included_modules=[], active=False, updated_at=datetime.now(UTC))
+        db.add(plan)
+        db.flush()
     cycle = db.scalar(select(BillingCycle).where(BillingCycle.code == "MONTHLY"))
     assert plan is not None and cycle is not None
     end = None if code == "FREE" else datetime.now(UTC) + timedelta(days=30)
@@ -47,11 +51,15 @@ def test_free_keeps_the_cafe_preset_and_asks_for_the_published_plan() -> None:
     with _db() as db:
         tenant = _subscribe(db, "FREE", "bayrut")
         rows = explain(db, tenant, profile="cafe", purchased=[], promotional=[], managed={}, country="AE")
-        assert _state(rows, "loyalty") == "INCLUDED"
+        loyalty = next(row for row in rows if row.feature_key == "loyalty")
+        assert loyalty.state == "INCLUDED"
+        assert loyalty.baseline is True
+        assert loyalty.grandfathered is False
         assert _state(rows, "recipes") == "INCLUDED"
         assert _state(rows, "tables") == "SWITCHED_OFF"
         sales = next(row for row in rows if row.feature_key == "sales_insights")
         assert sales.state == "UPGRADE_REQUIRED"
+        assert sales.baseline is False
         assert sales.required_plan == "GROWTH"
         assert sales.price_published is True
         assert sales.price_fils == 12_900
@@ -100,7 +108,10 @@ def test_legacy_standard_keeps_the_pages_it_already_had() -> None:
     with _db() as db:
         tenant = _subscribe(db, "STANDARD", "standard")
         rows = explain(db, tenant, profile="cafe", purchased=[], promotional=[], managed={}, country="AE")
-        assert _state(rows, "ai_insights") == "INCLUDED"
+        insights = next(row for row in rows if row.feature_key == "ai_insights")
+        assert insights.state == "INCLUDED"
+        assert insights.grandfathered is True
+        assert insights.baseline is False
         assert _state(rows, "sales_insights") == "INCLUDED"
         assert _state(rows, "loyalty") == "INCLUDED"
 

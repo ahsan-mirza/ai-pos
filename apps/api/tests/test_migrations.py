@@ -147,6 +147,37 @@ def test_upgrade_and_downgrade_from_the_supported_baseline(tmp_path) -> None:
     assert "timezone" in columns
 
 
+def test_order_list_index_is_created_when_the_columns_exist(tmp_path) -> None:
+    path = tmp_path / "orders.db"
+    engine = create_engine(f"sqlite:///{path.as_posix()}")
+    with engine.begin() as connection:
+        connection.exec_driver_sql(
+            """CREATE TABLE sales_orders (
+                id CHAR(32) PRIMARY KEY,
+                store_id CHAR(32) NOT NULL,
+                status VARCHAR(20) NOT NULL,
+                created_at DATETIME NOT NULL
+            )"""
+        )
+    engine.dispose()
+    config = _sqlite_config(path)
+    command.stamp(config, "20261112_0108")
+    command.upgrade(config, "20261113_0109")
+    engine = create_engine(config.get_main_option("sqlalchemy.url"))
+    with engine.connect() as connection:
+        names = {item["name"] for item in inspect(connection).get_indexes("sales_orders")}
+    engine.dispose()
+    assert "ix_sales_orders_store_status_created" in names
+    command.downgrade(config, "20261112_0108")
+    engine = create_engine(config.get_main_option("sqlalchemy.url"))
+    with engine.connect() as connection:
+        names = {item["name"] for item in inspect(connection).get_indexes("sales_orders")}
+        version = connection.exec_driver_sql("SELECT version_num FROM alembic_version").scalar()
+    engine.dispose()
+    assert "ix_sales_orders_store_status_created" not in names
+    assert version == "20261112_0108"
+
+
 def test_pending_upgrade_applies_only_revisions_after_the_stamp() -> None:
     script = _tenant_script()
     head = script.get_heads()[0]

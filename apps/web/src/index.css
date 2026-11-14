@@ -16,6 +16,23 @@ html {
   overflow-x: clip;
 }
 
+html.dark .bg-white {
+  background-color: var(--color-card);
+}
+
+html.dark .bg-surface {
+  background-color: #3f3f46;
+  color: #f4f4f5;
+}
+
+html.dark .bg-charcoal {
+  background-color: #18181b;
+}
+
+html.dark .bg-\[\#f8fafc\] {
+  background-color: #18181b;
+}
+
 html[lang="ar"] {
   line-height: 1.8;
 }

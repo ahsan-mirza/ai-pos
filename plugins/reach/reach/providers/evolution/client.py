@@ -15,8 +15,8 @@ Handler = Callable[[str, str, dict | None], dict]
 class EvolutionError(ProviderError):
     """Evolution rejected the call or is not configured."""
 
-    def __init__(self, message: str, *, permanent: bool = False, code: str = "unreachable") -> None:
-        super().__init__(message, permanent=permanent)
+    def __init__(self, message: str, *, permanent: bool = False, code: str = "unreachable", ambiguous: bool = False) -> None:
+        super().__init__(message, permanent=permanent, ambiguous=ambiguous)
         self.code = code
 
 
@@ -114,7 +114,13 @@ class EvolutionClient:
                 timeout=timeout,
             )
         except httpx.HTTPError as exc:
-            raise EvolutionError("Evolution API could not be reached.", permanent=False, code="unreachable") from exc
+            timed_out = isinstance(exc, httpx.TimeoutException)
+            raise EvolutionError(
+                "Evolution API could not be reached.",
+                permanent=False,
+                code="timeout" if timed_out else "unreachable",
+                ambiguous=timed_out,
+            ) from exc
         if response.status_code in {401, 403}:
             raise EvolutionError("Evolution API rejected the server key.", permanent=True, code="authentication_error")
         if response.status_code >= 400:

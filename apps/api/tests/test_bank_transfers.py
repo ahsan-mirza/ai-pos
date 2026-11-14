@@ -21,6 +21,12 @@ from app.tenancy.models import (
 PNG = b"\x89PNG\r\n\x1a\n" + b"\x00" * 16
 
 
+def _retired_lite(db) -> None:
+    """An already-issued invoice can name Lite. The row stays on file and is not for sale."""
+    if db.query(BillingPlan).filter(BillingPlan.code == "LITE").one_or_none() is None:
+        db.add(BillingPlan(code="LITE", name="Lite", monthly_fils=14_900, active=False, updated_at=datetime.now(UTC)))
+
+
 def _package(db, invoice: BillingInvoice) -> None:
     db.flush()
     db.add(
@@ -40,6 +46,7 @@ def _pending_invoice(host, slug: str = "alpha") -> str:
     tenant_id = uuid.UUID(host.tenant_id(slug))
     with host.control() as db:
         ensure_catalog(db)
+        _retired_lite(db)
         invoice = BillingInvoice(
             tenant_id=tenant_id,
             status="pending",
@@ -150,7 +157,7 @@ def test_a_submitted_receipt_locks_even_if_the_subscription_row_says_active(plat
     _submit(platform, invoice_id, "active-row-transfer")
     with platform.control() as db:
         tenant_id = uuid.UUID(platform.tenant_id("alpha"))
-        plan = db.query(BillingPlan).filter(BillingPlan.code == "LITE").one()
+        plan = db.query(BillingPlan).filter(BillingPlan.code == "GROWTH").one()
         cycle = db.query(BillingCycle).filter(BillingCycle.code == "MONTHLY").one()
         db.add(
             Subscription(
@@ -201,6 +208,7 @@ def test_receipt_does_not_pay_until_an_admin_approves(platform) -> None:  # noqa
     tenant_id = uuid.UUID(platform.tenant_id("alpha"))
     with platform.control() as db:
         ensure_catalog(db)
+        _retired_lite(db)
         invoice = BillingInvoice(
             tenant_id=tenant_id,
             status="pending",
@@ -325,7 +333,7 @@ def test_transfer_checkout_does_not_mark_the_invoice_paid(platform) -> None:  # 
         "/api/v1/billing/checkout",
         headers=platform.headers("alpha"),
         json={
-            "plan_code": "LITE",
+            "plan_code": "GROWTH",
             "cycle_code": "MONTHLY",
             "mode": "keep",
             "opening_stock": "keep",
@@ -350,6 +358,7 @@ def test_a_wrong_amount_is_refused_and_review_can_be_reopened_or_revoked(platfor
     tenant_id = uuid.UUID(platform.tenant_id("alpha"))
     with platform.control() as db:
         ensure_catalog(db)
+        _retired_lite(db)
         invoice = BillingInvoice(
             tenant_id=tenant_id,
             status="pending",

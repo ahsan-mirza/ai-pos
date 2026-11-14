@@ -99,6 +99,8 @@ export interface PaymentsConfig {
   card_terminal_required: boolean;
   default_terminal_id: string | null;
   simulator_controls: boolean;
+  /** Live acquirer acceptance. False while the provider is a simulator or no protocol is validated. */
+  production_card_ready: boolean;
 }
 
 export const PAYMENT_PROVIDER_LABELS: Record<string, string> = {

@@ -4,6 +4,6 @@ import type { Config } from "tailwindcss";
 export default {
   presets: [preset as Config],
   content: ["./index.html", "./src/**/*.{ts,tsx}", "../../packages/ui/src/**/*.{ts,tsx}"],
-  // The portal is light-only; shared @ai-pos/ui components carry `dark:` variants for the register, which never apply here.
+  // `dark` is toggled on <html> by the portal theme switch. The register sets data-theme on its own shell.
   darkMode: "class",
 } satisfies Config;

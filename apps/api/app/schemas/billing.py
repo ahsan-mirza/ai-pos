@@ -310,6 +310,14 @@ class QuoteIn(ApiModel):
     cycle_code: str = Field(min_length=1, max_length=32)
     addons: list[AddonQty] = Field(default_factory=list, max_length=20)
     hardware: list[HardwarePick] = Field(default_factory=list, max_length=100)
+    # The browser may ask for the catalog onboarding fee. It cannot send the amount.
+    onboarding: bool = False
+
+
+class EcOrderIn(ApiModel):
+    """A terminal purchase. Prices are ignored if the browser sends them; the catalogue is read again."""
+
+    hardware: list[HardwarePick] = Field(min_length=1, max_length=20)
 
 
 class CheckoutIn(QuoteIn):
@@ -525,6 +533,7 @@ MarketplaceState = Literal[
     "expired",
     "unavailable",
     "unpriced",
+    "custom",
 ]
 
 
@@ -585,7 +594,126 @@ class FeatureAccess(ApiModel):
     plugin_code: str | None = None
     plugin_name: str | None = None
     benefits: list[str] = Field(default_factory=list)
+    # True when this business type includes the capability and no published plan claims it.
+    baseline: bool = False
+    # True on a legacy plan for a page that plan already opened before modules were named.
+    grandfathered: bool = False
 
 
 class FeatureAccessList(ApiModel):
     features: list[FeatureAccess]
+
+
+class PaymentMethodOut(ApiModel):
+    code: str
+    display_name: str
+    category: str
+    available: bool
+    is_enabled: bool
+    reason: str
+    sort_order: int
+    instructions: str
+    test_mode: bool = False
+
+
+class CashCollectionIn(ApiModel):
+    reference: str = Field(min_length=3, max_length=40)
+
+
+class CommercialPaymentIn(ApiModel):
+    purpose_type: Literal["PLUGIN_PURCHASE", "ADDON_PURCHASE"]
+    purpose_ref: str = Field(min_length=1, max_length=64)
+    method_code: str = Field(min_length=1, max_length=32)
+    idempotency_key: str = Field(min_length=8, max_length=80)
+    scenario: str = Field(default="", max_length=40)
+
+
+class SandboxScenarioIn(ApiModel):
+    scenario: str = Field(min_length=3, max_length=40)
+
+
+class CommercialPaymentOut(ApiModel):
+    id: UUID
+    invoice_id: UUID | None
+    method_code: str
+    purpose_type: str
+    purpose_ref: str
+    amount_fils: int
+    currency: str
+    status: str
+    reference: str
+    environment: str = "live"
+    scenario: str = ""
+    test_mode: bool = False
+    provider_reference: str = ""
+    failure_reason: str | None = None
+    bank: dict[str, str] | None = None
+
+
+UsageStatus = Literal["available", "near_limit", "limit_reached", "unlimited", "unconfigured", "unavailable"]
+
+
+class UsageMetricOut(ApiModel):
+    """One resource. `used` is null only when the count could not be read. A missing cap is not unlimited."""
+
+    label: str
+    used: int | None = None
+    limit: int | None = None
+    available: int | None = None
+    percentage: int | None = None
+    status: UsageStatus
+    usage_available: bool
+    exceeded: bool = False
+
+
+class UsageOut(ApiModel):
+    """Counts from the authenticated tenant. Limits come from the same plan resolution as the live caps."""
+
+    plan_code: str | None = None
+    measured_at: datetime
+    metrics: dict[str, UsageMetricOut]
+
+
+class ChangeCreateIn(ApiModel):
+    """The plan and cycle the store wants. Prices are not accepted; the server quotes them."""
+
+    plan_code: str = Field(min_length=1, max_length=32)
+    cycle_code: str = Field(min_length=1, max_length=32)
+    onboarding: bool = False
+
+
+class ChangeEventOut(ApiModel):
+    previous_status: str | None
+    status: str
+    actor_type: str
+    created_at: datetime
+    reason: str | None = None
+
+
+class ChangeOut(ApiModel):
+    id: UUID
+    reference: str
+    current_plan_code: str
+    requested_plan_code: str
+    requested_cycle_code: str
+    status: str
+    quote: QuoteOut
+    invoice_id: UUID | None = None
+    rejection_reason: str | None = None
+    created_at: datetime
+    updated_at: datetime
+    expires_at: datetime | None = None
+    payment_submitted_at: datetime | None = None
+    completed_at: datetime | None = None
+    cancelled_at: datetime | None = None
+    events: list[ChangeEventOut] = Field(default_factory=list)
+
+
+class ChangePage(ApiModel):
+    items: list[ChangeOut]
+    total: int
+
+
+class ChangeCheckoutOut(ApiModel):
+    request: ChangeOut
+    checkout: CheckoutOut

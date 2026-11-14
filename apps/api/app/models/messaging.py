@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Integer, String, Text, Uuid
+from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Integer, SmallInteger, String, Text, Uuid
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base, TenantScoped, TimestampMixin, tenant_unique, utcnow
@@ -40,6 +40,8 @@ class OutboundMessage(TenantScoped, Base):
         Uuid(as_uuid=True), ForeignKey("customers.id"), nullable=True, index=True
     )
     template_key: Mapped[str | None] = mapped_column(String(48), nullable=True)
+    # 1 transactional, 2 operational, 3 promotional. The server assigns this. Callers cannot.
+    priority: Mapped[int] = mapped_column(SmallInteger, default=1, index=True)
     subject: Mapped[str] = mapped_column(String(200), default="")
     body: Mapped[str] = mapped_column(Text)
     # QUEUED -> SENT | FAILED (after retries) | SKIPPED (no consent or no address)

@@ -12,6 +12,7 @@ from app.core import capabilities as capability_catalog
 from app.schemas.billing import AddonBenefit, AddonFaq, AddonListing, MarketplaceItem, MarketplaceOut
 from app.tenancy.models import (
     BillingAddon,
+    BillingPlan,
     BillingInvoice,
     BillingInvoiceLine,
     BillingTransfer,
@@ -298,12 +299,17 @@ def marketplace_for(db: Session, settings: object, tenant: Tenant) -> Marketplac
 
     billing_mod.ensure_catalog(db)
     billing_mod.ensure_module_addons(db)
+    from app.console.commercial_manifest import CUSTOM_ADDON_CODES, apply_commercial_catalog
+
+    apply_commercial_catalog(db)
     fill_listings(db)
     profile = billing_mod._business_profile(settings, tenant)  # noqa: SLF001
     catalogue = capability_catalog.catalogue(profile)
     preset = {item.value for item in catalogue.base}
     optional = {item.value for item in catalogue.optional}
     subscription = db.scalar(select(Subscription).where(Subscription.tenant_id == tenant.id))
+    plan = db.get(BillingPlan, subscription.plan_id) if subscription is not None else None
+    plan_keys = set(plan.included_modules or []) if plan is not None else set()
     owned: dict[str, int] = {}
     status = ""
     if subscription is not None:
@@ -337,7 +343,8 @@ def marketplace_for(db: Session, settings: object, tenant: Tenant) -> Marketplac
         state = "available"
         reason = ""
         invoice_id = None
-        if module and code in preset:
+        module_keys = set(row.module_keys or [])
+        if module and (code in preset or code in plan_keys or (module_keys and module_keys <= plan_keys)):
             state = "included"
             reason = "Included in your plan"
         elif code in owned and status == "canceled":
@@ -353,6 +360,9 @@ def marketplace_for(db: Session, settings: object, tenant: Tenant) -> Marketplac
             reason = "Not available for this business type."
         elif not row.active:
             continue
+        elif code in CUSTOM_ADDON_CODES and int(row.monthly_fils or 0) <= 0 and int(row.one_time_fils or 0) <= 0:
+            state = "custom"
+            reason = "Contact sales. This add-on is priced on a contract."
         elif module and int(row.monthly_fils or 0) <= 0 and int(row.one_time_fils or 0) <= 0:
             state = "unpriced"
             reason = "Price is set in the console."

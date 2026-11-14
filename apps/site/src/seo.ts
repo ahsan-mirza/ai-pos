@@ -59,12 +59,12 @@ export const SEO_PAGES: readonly SeoPage[] = [
   {
     id: "home",
     path: "/",
-    title: "POS Software for Retail & Restaurants | AxizPOS",
+    title: "POS Software for Restaurants, Retail & Wholesale | AxizPOS",
     description:
-      "Manage sales, inventory, customers and operations with AxizPOS, an AI-powered POS system for restaurants, cafés, supermarkets, retail and wholesale businesses.",
-    h1: "Smart POS Software for Restaurants, Retail & Growing Businesses",
+      "POS software for restaurants, cafés, supermarkets, retail, and wholesale businesses in the UAE and GCC. The Axiz AI Business Copilot answers in English or Arabic from the store's records.",
+    h1: "Smart POS software for restaurants, cafés, supermarkets, retail, and wholesale",
     kicker: "AI-powered POS",
-    lead: "",
+    lead: "AxizPOS runs sales, inventory, and customers for restaurants, cafés, supermarkets, retail, and wholesale businesses in the UAE and GCC. The Axiz AI Business Copilot answers in English or Arabic from that store's records.",
     sections: [],
     points: [],
     image: TERMINAL,
@@ -158,10 +158,10 @@ export const SEO_PAGES: readonly SeoPage[] = [
   {
     id: "grocery-pos",
     path: "/grocery-pos",
-    title: "Grocery POS Software | AxizPOS",
+    title: "Supermarket & Grocery POS Software | AxizPOS",
     description:
-      "Grocery POS for catalog checkout, weighed items, expiry-first stock, loyalty points, and promotions. On-account credit stays off until the shop turns it on.",
-    h1: "Grocery POS software for weight, expiry, and the counter",
+      "Supermarket and grocery POS for catalog checkout, weighed items, expiry-first stock, loyalty, and promotions. A supermarket adds lanes, gift cards, and foreign-currency cash. On-account credit stays off until the shop turns it on.",
+    h1: "Supermarket and grocery POS software for weight, expiry, and checkout",
     kicker: "Grocery",
     lead: "The grocery profile sells from the same register as other shops, then adds weight and expiry. It is not a generic retail preset with restaurant tables switched on.",
     sections: [
@@ -425,6 +425,44 @@ export function canonicalUrl(page: SeoPage): string {
   return page.path === "/" ? `${SITE_ORIGIN}/` : `${SITE_ORIGIN}${page.path}`;
 }
 
+/** Paths that must 301 to a canonical URL. Section hashes resolve to the homepage. */
+export function marketingRedirects(): ReadonlyMap<string, string> {
+  const map = new Map<string, string>();
+  for (const page of SEO_PAGES) {
+    if (page.path === "/") continue;
+    map.set(`${page.path}/`, page.path);
+    map.set(`${page.path}/index.html`, page.path);
+  }
+  for (const section of ["solutions", "features", "industries", "pricing", "contact"]) {
+    map.set(`/${section}`, `/#${section}`);
+    map.set(`/${section}/`, `/#${section}`);
+  }
+  map.set("/supermarket-pos", "/grocery-pos");
+  map.set("/supermarket-pos/", "/grocery-pos");
+  map.set("/ai", "/#intelligence");
+  map.set("/ai/", "/#intelligence");
+  map.set("/copilot", "/#intelligence");
+  map.set("/copilot/", "/#intelligence");
+  return map;
+}
+
+/** Crawlable copy placed in the HTML response. React replaces `#root` after it loads. */
+export function staticArticle(page: SeoPage): string {
+  const sections = page.sections
+    .map(
+      (section) =>
+        `<section><h2>${escapeHtml(section.heading)}</h2>${section.paragraphs
+          .map((paragraph) => `<p>${escapeHtml(paragraph)}</p>`)
+          .join("")}</section>`,
+    )
+    .join("");
+  const points =
+    page.points.length > 0 ? `<ul>${page.points.map((point) => `<li>${escapeHtml(point)}</li>`).join("")}</ul>` : "";
+  const lead = page.lead ? `<p>${escapeHtml(page.lead)}</p>` : "";
+  const image = `<figure><img src="${page.image.src}" alt="${escapeHtml(page.image.alt)}" width="${page.image.width}" height="${page.image.height}" /></figure>`;
+  return `<article data-seo-static=""><h1>${escapeHtml(page.h1)}</h1>${lead}${sections}${points}${image}</article>`;
+}
+
 export function sitemapXml(): string {
   const urls = SEO_PAGES.map((page) => `  <url><loc>${canonicalUrl(page)}</loc></url>`).join("\n");
   return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls}\n</urlset>\n`;
@@ -435,7 +473,8 @@ export function robotsTxt(): string {
     "User-agent: *",
     "Allow: /",
     "",
-    "# The marketing pages stay crawlable. The console and API are not public content.",
+    "# Marketing pages stay crawlable. Sign-in and the portal shell send noindex themselves.",
+    "# The console and API are not public content.",
     "Disallow: /admin74246/",
     "Disallow: /api/",
     "",
@@ -452,6 +491,7 @@ function jsonLd(page: SeoPage): string {
       name: "AxizPOS",
       url: `${SITE_ORIGIN}/`,
       logo: `${SITE_ORIGIN}/brand/logo.svg`,
+      areaServed: ["AE", "BH", "KW", "OM", "QA", "SA"],
     },
     {
       "@type": "WebSite",
@@ -468,6 +508,12 @@ function jsonLd(page: SeoPage): string {
       operatingSystem: "Web, Windows",
       url: `${SITE_ORIGIN}/`,
       description: page.description,
+      featureList: [
+        "Register checkout",
+        "Inventory, purchase orders, and stock",
+        "Axiz AI Business Copilot in English and Arabic",
+        "VAT report from recorded sales",
+      ],
     });
   } else {
     graph.push({

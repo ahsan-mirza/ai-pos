@@ -1,4 +1,5 @@
 import uuid
+from datetime import date
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query, Response
@@ -60,6 +61,8 @@ def list_orders(
     status: str | None = Query(default=None, max_length=24),
     customer_id: uuid.UUID | None = None,
     q: str | None = Query(default=None, max_length=80),
+    date_from: date | None = None,
+    date_to: date | None = None,
     limit: Annotated[int, Query(ge=1, le=500)] = 100,
 ) -> list[SalesOrderRow]:
     rows, total = sales_order_service.list_orders(
@@ -71,6 +74,8 @@ def list_orders(
         query=q,
         offset=offset,
         limit=limit,
+        date_from=date_from,
+        date_to=date_to,
     )
     set_total(response, total)
     return rows
@@ -82,8 +87,28 @@ def backorders(db: Db, principal: CanFulfil, store_id: uuid.UUID | None = None) 
 
 
 @router.get("/board", response_model=FulfillmentBoardOut)
-def board(db: Db, principal: CanFulfil, store_id: uuid.UUID | None = None) -> FulfillmentBoardOut:
-    return sales_order_service.board(db, principal, store_id)
+def board(
+    db: Db,
+    principal: CanFulfil,
+    store_id: uuid.UUID | None = None,
+    status: str | None = Query(default="OPEN", max_length=24),
+    q: str | None = Query(default=None, max_length=80),
+    date_from: date | None = None,
+    date_to: date | None = None,
+    page: Annotated[int, Query(ge=1, le=10_000)] = 1,
+    page_size: Annotated[int, Query(ge=1, le=100)] = 25,
+) -> FulfillmentBoardOut:
+    return sales_order_service.board(
+        db,
+        principal,
+        store_id,
+        status=status,
+        query=q,
+        date_from=date_from,
+        date_to=date_to,
+        page=page,
+        page_size=page_size,
+    )
 
 
 @router.post("/from-quote/{quote_id}", response_model=SalesOrderOut, status_code=201)

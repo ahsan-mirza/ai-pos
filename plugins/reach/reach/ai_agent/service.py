@@ -982,6 +982,7 @@ def _queue_reply(
         to_address=conversation.phone,
         customer_id=conversation.customer_id,
         template_key="ai_agent",
+        priority=2,
         body=text,
         status="QUEUED",
         dedupe_key=None if reply_to is None else f"ai-reply:{reply_to}",

@@ -23,6 +23,7 @@ from reach import credits as credit_book
 from reach.models import (
     MessagingChannel,
     ReachCampaign,
+    ReachCampaignRun,
     ReachConnection,
     ReachCreditTransaction,
     ReachRecipient,
@@ -268,9 +269,9 @@ def _audience(db: Session, audience: dict, store_id: uuid.UUID | None) -> list[C
     query = select(Customer).where(Customer.is_active.is_(True))
     chosen_ids = audience.get("customer_ids")
     if chosen_ids:
-        query = query.where(Customer.id.in_(chosen_ids))
+        query = query.where(Customer.id.in_([uuid.UUID(str(item)) for item in chosen_ids]))
     if audience.get("group_id"):
-        query = query.where(Customer.group_id == audience["group_id"])
+        query = query.where(Customer.group_id == uuid.UUID(str(audience["group_id"])))
     location = (audience.get("location") or "").strip()
     if location:
         query = query.where(Customer.address.ilike(f"%{location}%"))
@@ -282,7 +283,7 @@ def _audience(db: Session, audience: dict, store_id: uuid.UUID | None) -> list[C
 
         buyers = select(Sale.customer_id).join(SaleItem, SaleItem.sale_id == Sale.id)
         if product_id:
-            buyers = buyers.where(SaleItem.product_id == product_id)
+            buyers = buyers.where(SaleItem.product_id == uuid.UUID(str(product_id)))
         if category_name:
             buyers = buyers.join(Product, Product.id == SaleItem.product_id).where(Product.category.ilike(category_name))
         query = query.where(Customer.id.in_(buyers))
@@ -434,7 +435,8 @@ def preview(db: Session, data: dict) -> dict:
 def launch(db: Session, actor_id: uuid.UUID | None, data: dict) -> ReachCampaign:
     require_reach(db)
     resume_id = data.get("resume_campaign_id")
-    if resume_id is None:
+    another_id = data.get("another_run_id")
+    if resume_id is None and another_id is None:
         existing = db.scalar(select(ReachCampaign).where(ReachCampaign.idempotency_key == data["idempotency_key"]))
         if existing is not None:
             return existing
@@ -482,17 +484,9 @@ def launch(db: Session, actor_id: uuid.UUID | None, data: dict) -> ReachCampaign
     unknown = _unknown_variables(*texts)
     if unknown:
         raise ApiError(422, "invalid_variable", f"Unknown variable: {', '.join(unknown)}.")
-    people = _audience(db, audience, data.get("store_id"))
-    if len(people) > AUDIENCE_CAP:
-        raise ApiError(
-            422,
-            "audience_too_large",
-            f"This audience has more than {AUDIENCE_CAP} customers. Remove some or narrow the filters.",
-        )
-    settings = load_settings(db)
-    business = settings.legal_name or "AxizPOS"
-    store_name = business
-    if resume_id is not None:
+    if another_id is not None:
+        campaign = get_campaign(db, uuid.UUID(str(another_id)))
+    elif resume_id is not None:
         campaign = get_campaign(db, uuid.UUID(str(resume_id)))
         if campaign.status not in {"draft", "pending_approval", "rejected"}:
             return campaign
@@ -527,98 +521,22 @@ def launch(db: Session, actor_id: uuid.UUID | None, data: dict) -> ReachCampaign
         db.refresh(campaign)
         return campaign
     _require_media(db, content, channels)
-    evolution = _channel_provider(db, "whatsapp") == "evolution"
-    connection_id = None
-    if evolution:
-        connection_id = db.scalar(select(ReachConnection.id).where(ReachConnection.status == "open").limit(1))
-    eligible = suppressed = credit_units = 0
-    seen: set[str] = set()
-    when = data.get("scheduled_at") or datetime.now(UTC)
-    for customer in people:
-        for channel in channels:
-            address = customer.email if channel == "email" else customer.phone
-            piece = content.get(channel) or {}
-            body = _render(piece.get("body") or "", customer, business, store_name)
-            subject = _render(piece.get("subject") or campaign.name, customer, business, store_name)
-            error = _gate(customer, channel, seen)
-            allowed = error is None
-            status = "QUEUED" if allowed else "SKIPPED"
-            charged = allowed and evolution and channel == "whatsapp"
-            if allowed:
-                eligible += 1
-            else:
-                suppressed += 1
-            if charged:
-                credit_units += 1
-            context = {"campaign_id": str(campaign.id), "customer_name": customer.name}
-            if charged:
-                context["reach_credit"] = "1"
-            message = OutboundMessage(
-                channel=channel,
-                to_address=address or "",
-                customer_id=customer.id,
-                template_key="campaign",
-                subject=subject[:200],
-                body=body,
-                status=status,
-                last_error=error,
-                dedupe_key=f"campaign:{campaign.id}:{customer.id}:{channel}",
-                context=context,
-                next_attempt_at=when,
-                attachment_kind=(piece.get("media_kind") if piece.get("media_id") and channel == "whatsapp" else None),
-                attachment_ref=(str(piece.get("media_id")) if piece.get("media_id") and channel == "whatsapp" else None),
-            )
-            db.add(message)
-            db.flush()
-            db.add(
-                ReachRecipient(
-                    campaign_id=campaign.id,
-                    customer_id=customer.id,
-                    outbound_message_id=message.id,
-                    connection_id=connection_id if channel == "whatsapp" else None,
-                    phone=(_phone_digits(address) or address or "") if channel == "whatsapp" else (address or ""),
-                    body=body,
-                    status="queued" if allowed else "cancelled",
-                    failure_reason=error,
-                )
-            )
-    if credit_units:
-        start = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
-        already = int(
-            db.scalar(
-                select(func.count())
-                .select_from(OutboundMessage)
-                .where(
-                    OutboundMessage.channel == "whatsapp",
-                    OutboundMessage.template_key == "campaign",
-                    OutboundMessage.status.in_(("QUEUED", "SENT")),
-                    OutboundMessage.created_at >= start,
-                )
-            )
-            or 0
-        )
-        if already + credit_units > get_settings().reach_daily_recipient_limit:
-            db.rollback()
-            raise ApiError(
-                422,
-                "daily_limit",
-                "This campaign would pass today's WhatsApp recipient limit. Send a smaller audience or wait until tomorrow.",
-            )
-        try:
-            credit_book.reserve(db, campaign.id, credit_units)
-        except ApiError:
-            db.rollback()
-            raise
-    campaign.eligible_count = len(people)
-    campaign.suppressed_count = suppressed
-    campaign.queued_count = eligible
-    later = data.get("scheduled_at") is not None and data["scheduled_at"] > datetime.now(UTC)
-    if eligible == 0:
-        campaign.status = "completed"
-    elif later:
-        campaign.status = "scheduled"
-    else:
-        campaign.status = "processing"
+    from reach.runs import begin_run
+
+    run = begin_run(
+        db,
+        campaign,
+        actor_id,
+        _json_audience(audience),
+        channels,
+        0,
+        preparing=True,
+    )
+    run.content_snapshot = _json_content(content)
+    campaign.eligible_count = 0
+    campaign.suppressed_count = 0
+    campaign.queued_count = 0
+    campaign.status = "preparing"
     try:
         db.commit()
     except IntegrityError:
@@ -629,6 +547,30 @@ def launch(db: Session, actor_id: uuid.UUID | None, data: dict) -> ReachCampaign
         raise
     db.refresh(campaign)
     return campaign
+
+
+def start_another(db: Session, actor_id: uuid.UUID | None, campaign_id: uuid.UUID) -> ReachCampaign:
+    """Queues another execution of a campaign that has already been sent. The earlier run stays."""
+    campaign = get_campaign(db, campaign_id)
+    if campaign.status in {"draft", "pending_approval", "rejected"}:
+        raise ApiError(422, "invalid_status", "Approve the campaign before sending it again.")
+    return launch(
+        db,
+        actor_id,
+        {
+            "another_run_id": campaign.id,
+            "idempotency_key": str(uuid.uuid4()),
+            "name": campaign.name,
+            "description": campaign.description,
+            "objective": campaign.objective,
+            "channels": list(campaign.channels or []),
+            "audience": campaign.audience or {},
+            "content": campaign.content or {},
+            "store_id": campaign.store_id,
+            "mode": "send",
+            "origin": "manual",
+        },
+    )
 
 
 def approve_and_send(db: Session, actor_id: uuid.UUID | None, campaign_id: uuid.UUID) -> ReachCampaign:
@@ -724,6 +666,17 @@ def cancel(db: Session, campaign_id: uuid.UUID) -> ReachCampaign:
         if recipient is not None and recipient.status in {"pending", "queued"}:
             recipient.status = "cancelled"
             recipient.failure_reason = message.last_error
+    now = datetime.now(UTC)
+    for run in db.scalars(
+        select(ReachCampaignRun).where(
+            ReachCampaignRun.campaign_id == campaign.id,
+            ReachCampaignRun.status.in_(("queued", "processing", "scheduled", "building")),
+        )
+    ):
+        run.status = "cancelled"
+        run.completed_at = now
+        if run.report_built_at is None:
+            run.report_built_at = now
     db.commit()
     db.refresh(campaign)
     return campaign
@@ -910,6 +863,9 @@ def after_sent(db: Session, message: OutboundMessage) -> None:
         recipient.provider_message_id = message.provider_message_id
         recipient.submitted_at = datetime.now(UTC)
         recipient.failure_reason = None
+    from reach.runs import touch_message
+
+    touch_message(db, message)
     if (message.context or {}).get("reach_credit") == "1":
         credit_book.consume(db, message.id, _campaign_id(message))
 
@@ -919,6 +875,9 @@ def after_skipped(db: Session, message: OutboundMessage) -> None:
     if recipient is not None and recipient.status not in {"delivered", "read", "sent", "failed"}:
         recipient.status = "cancelled"
         recipient.failure_reason = message.last_error
+    from reach.runs import touch_message
+
+    touch_message(db, message)
     _release_message(db, message)
 
 
@@ -927,6 +886,9 @@ def after_failed(db: Session, message: OutboundMessage) -> None:
     if recipient is not None and recipient.status not in {"delivered", "read", "cancelled"}:
         recipient.status = "failed"
         recipient.failure_reason = message.last_error
+    from reach.runs import touch_message
+
+    touch_message(db, message)
     _release_message(db, message)
 
 

@@ -44,7 +44,7 @@ def test_seeding_module_addons_keeps_a_console_price_and_records_dependencies() 
     assert tables is not None
     assert tables.module_keys == addon_module_keys(catalog.Capability.TABLES)
     assert "open_orders" in tables.module_keys
-    assert tables.monthly_fils == 0
+    assert tables.monthly_fils == 3_900
     tables.monthly_fils = 2_500
     tables.name = "Floor plan"
     tables.module_keys = ["tables"]
@@ -64,15 +64,17 @@ def test_an_unpriced_add_on_and_the_wrong_business_type_are_refused(monkeypatch)
     tenant = Tenant(slug="demo", name="Demo", database_url_encrypted="x")
     db.add(tenant)
     db.commit()
+    db.add(BillingAddon(code="sample_extra", name="Sample", monthly_fils=0, one_time_fils=0, updated_at=datetime.now(UTC)))
+    db.commit()
     try:
-        quote_addon(db, SimpleNamespace(), tenant, "sales_orders")  # type: ignore[arg-type]
+        quote_addon(db, SimpleNamespace(), tenant, "sample_extra")  # type: ignore[arg-type]
     except ApiError as error:
         assert error.code == "price_not_set"
     else:
         raise AssertionError("a zero-price add-on was quoted")
 
     sales = db.scalar(select(BillingAddon).where(BillingAddon.code == "sales_orders"))
-    assert sales is not None
+    assert sales is not None and sales.monthly_fils == 3_900
     sales.monthly_fils = 1_000
     db.commit()
     try:
@@ -91,7 +93,7 @@ def test_an_unpriced_add_on_and_the_wrong_business_type_are_refused(monkeypatch)
     try:
         quote_addon(db, SimpleNamespace(), tenant, "tables")  # type: ignore[arg-type]
     except ApiError as error:
-        assert error.code == "price_not_set"
+        assert error.code == "module_not_optional"
     tables = db.scalar(select(BillingAddon).where(BillingAddon.code == "tables"))
     assert tables is not None
     tables.monthly_fils = 1_000
@@ -252,7 +254,8 @@ def test_a_price_change_is_remembered_and_a_second_checkout_reuses_the_invoice(m
     priced = db.scalar(select(BillingAddon).where(BillingAddon.code == "uae_einvoicing"))
     assert priced is not None
     assert priced.monthly_fils == 2_000
-    assert priced.price_history[-1]["monthly_fils"] == 0
+    assert priced.price_history[0]["monthly_fils"] == 0
+    assert priced.price_history[-1]["monthly_fils"] == 4_900
     monkeypatch.setattr("app.console.billing._business_profile", lambda _settings, _tenant: "electronics_wholesale")
     monkeypatch.setattr("app.console.transfers.active_bank_snapshot", lambda _db: {"holder": "Axiz"})
     first = create_addon_checkout(db, SimpleNamespace(), tenant, tenant.id, "uae_einvoicing")

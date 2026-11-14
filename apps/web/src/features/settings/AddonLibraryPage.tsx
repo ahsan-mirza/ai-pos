@@ -1,95 +1,21 @@
-import {
-  filterMarketplace,
-  formatMoney,
-  type MarketplaceCatalog,
-  type MarketplaceItem,
-  type MarketplaceSort,
-} from "@ai-pos/shared-types";
-import {
-  CreditCard,
-  Hash,
-  Landmark,
-  Layers,
-  Monitor,
-  Puzzle,
-  Receipt,
-  Shield,
-  Truck,
-  type LucideIcon,
-} from "lucide-react";
+import { filterMarketplace, formatMoney, type MarketplaceCatalog, type MarketplaceItem, type MarketplaceSort } from "@ai-pos/shared-types";
+import { useLocale } from "@ai-pos/ui";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { ErrorNote, GhostButton, PrimaryButton, SearchField } from "../../components/ui/Field";
-import { moduleDestination } from "../../components/layout/navigation";
-import { apiGet, apiPost } from "../../lib/api";
+import { ErrorNote, GhostButton, SearchField } from "../../components/ui/Field";
+import { PluginCheckout } from "../billing/PluginCheckout";
+import { AddonActions, AddonCard, AddonGlyph } from "../billing/subscription/AddonCard";
+import { addonPriceView } from "../billing/subscription/display";
+import { PriceDisplay } from "../billing/subscription/PriceDisplay";
+import { MarketplaceStatus } from "../billing/subscription/SubscriptionStatus";
+import { EmptyState, ErrorState, LoadingCards } from "../billing/subscription/States";
+import { apiGet } from "../../lib/api";
 import { errorMessage } from "../users/api";
 
-const ICONS: Record<string, LucideIcon> = {
-  monitor: Monitor,
-  hash: Hash,
-  layers: Layers,
-  landmark: Landmark,
-  truck: Truck,
-  "credit-card": CreditCard,
-  receipt: Receipt,
-  shield: Shield,
-  puzzle: Puzzle,
-};
-
-const STATE_LABEL: Record<MarketplaceItem["state"], string> = {
-  included: "Included",
-  available: "Available",
-  activated: "Activated",
-  pending_payment: "Pending payment",
-  pending_activation: "Pending activation",
-  expired: "Expired",
-  unavailable: "Unavailable",
-  unpriced: "Available",
-};
-
-function AddonMark({ item }: { item: MarketplaceItem }) {
-  const listing = item.addon.listing;
-  const [broken, setBroken] = useState(false);
-  const Icon = ICONS[listing?.icon ?? ""] ?? Puzzle;
-  if (listing?.image_url && !broken) {
-    return (
-      <img
-        src={listing.image_url}
-        alt=""
-        className="h-11 w-11 rounded-xl border border-line object-cover"
-        onError={() => setBroken(true)}
-      />
-    );
-  }
-  return (
-    <span className="flex h-11 w-11 items-center justify-center rounded-xl border border-line bg-surface text-charcoal/70">
-      <Icon className="h-5 w-5" aria-hidden="true" />
-    </span>
-  );
-}
-
-function priceLabel(item: MarketplaceItem): string {
-  const addon = item.addon;
-  if (item.state === "unpriced") return "Price configured by administrator.";
-  const parts: string[] = [];
-  if (addon.monthly_fils > 0) parts.push(`${formatMoney(addon.monthly_fils, "AED")} / month`);
-  if (addon.one_time_fils > 0) {
-    parts.push(
-      addon.refundable
-        ? `${formatMoney(addon.one_time_fils, "AED")} refundable deposit`
-        : `${formatMoney(addon.one_time_fils, "AED")} one-time`,
-    );
-  }
-  return parts.join(" · ") || "No extra charge";
-}
-
-function canPurchase(item: MarketplaceItem): boolean {
-  return item.state === "available" && item.addon.module_keys.length > 0 && item.addon.monthly_fils > 0;
-}
-
 export function AddonLibraryPage() {
-  const navigate = useNavigate();
+  const { t } = useLocale();
   const [catalog, setCatalog] = useState<MarketplaceCatalog | null>(null);
+  const [checkout, setCheckout] = useState<MarketplaceItem | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [deferred, setDeferred] = useState("");
@@ -97,13 +23,22 @@ export function AddonLibraryPage() {
   const [category, setCategory] = useState("");
   const [pricing, setPricing] = useState("");
   const [sort, setSort] = useState<MarketplaceSort>("recommended");
-  const [busyCode, setBusyCode] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     const timer = window.setTimeout(() => setDeferred(query), 250);
     return () => window.clearTimeout(timer);
   }, [query]);
+
+  const load = () => {
+    setCatalog(null);
+    setLoadError(null);
+    apiGet<MarketplaceCatalog>("/api/v1/billing/marketplace")
+      .then((next) => {
+        setCatalog(next);
+        setLoadError(null);
+      })
+      .catch((caught: unknown) => setLoadError(errorMessage(caught, "Could not load add-ons.")));
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -115,7 +50,7 @@ export function AddonLibraryPage() {
         }
       })
       .catch((caught: unknown) => {
-        if (!cancelled) setLoadError(errorMessage(caught, "The add-on marketplace could not be loaded."));
+        if (!cancelled) setLoadError(errorMessage(caught, "Could not load add-ons."));
       });
     return () => {
       cancelled = true;
@@ -135,169 +70,104 @@ export function AddonLibraryPage() {
     [catalog, deferred, state, category, pricing, sort],
   );
 
-  const purchase = async (item: MarketplaceItem) => {
-    if (!canPurchase(item) || busyCode !== null) return;
-    setBusyCode(item.addon.code);
-    setError(null);
-    try {
-      await apiPost(`/api/v1/billing/addons/${item.addon.code}/checkout`, {});
-      navigate("/subscription");
-    } catch (caught) {
-      setError(errorMessage(caught, `Could not start the invoice for ${item.addon.name}.`));
-      setBusyCode(null);
-    }
-  };
-
   return (
     <div className="flex w-full flex-col gap-5">
       <header>
-        <h1 className="text-xl font-semibold">Discover Add-ons</h1>
-        <p className="mt-1 max-w-2xl text-sm text-charcoal/60">
-          Extend your AxizPOS capabilities with powerful tools designed for your business.
+        <h1 className="text-xl font-semibold text-charcoal dark:text-white">{t("Discover Add-ons")}</h1>
+        <p className="mt-1 max-w-2xl text-sm text-charcoal/60 dark:text-white/60">
+          {t("Extend your AxizPOS capabilities with powerful tools designed for your business.")}
         </p>
         {catalog ? (
-          <p className="mt-3 text-sm text-charcoal/70">
-            {catalog.available} available · {catalog.activated} activated · {catalog.pending} pending
-            {catalog.recurring_fils > 0 ? ` · ${formatMoney(catalog.recurring_fils, catalog.currency)} / month` : ""}
+          <p className="mt-3 text-sm text-charcoal/70 dark:text-white/70">
+            {t("{count} available", { count: catalog.available })} · {t("{count} activated", { count: catalog.activated })} ·{" "}
+            {t("{count} pending", { count: catalog.pending })}
+            {catalog.recurring_fils > 0 ? (
+              <>
+                {" "}
+                · <span dir="ltr">{formatMoney(catalog.recurring_fils, catalog.currency)}</span> {t("per month")}
+              </>
+            ) : null}
           </p>
         ) : null}
       </header>
       <SearchField
-        label="Search add-ons"
-        placeholder="Search add-ons by name, feature or description..."
+        label={t("Search add-ons")}
+        placeholder={t("Search add-ons by name, feature or description...")}
         value={query}
         onChange={(event) => setQuery(event.target.value)}
       />
       <div className="flex flex-wrap gap-2">
         <FilterSelect
-          label="Status"
+          label={t("Status")}
           value={state}
           onChange={setState}
           options={[
-            ["", "All add-ons"],
-            ["available", "Available"],
-            ["included", "Included in package"],
-            ["activated", "Activated"],
-            ["pending_payment", "Pending payment"],
-            ["pending_activation", "Pending activation"],
+            ["", t("All add-ons")],
+            ["available", t("Available")],
+            ["included", t("Included in package")],
+            ["activated", t("Activated")],
+            ["pending_payment", t("Pending payment")],
+            ["pending_activation", t("Pending activation")],
           ]}
         />
         <FilterSelect
-          label="Category"
+          label={t("Category")}
           value={category}
           onChange={setCategory}
-          options={[["", "All categories"], ...categories.map((name) => [name, name] as [string, string])]}
+          options={[["", t("All categories")], ...categories.map((name) => [name, name] as [string, string])]}
         />
         <FilterSelect
-          label="Pricing"
+          label={t("Pricing")}
           value={pricing}
           onChange={setPricing}
           options={[
-            ["", "Any price"],
-            ["monthly", "Monthly"],
-            ["once", "One-time"],
-            ["deposit", "Refundable deposit"],
-            ["unpriced", "Price not set"],
+            ["", t("Any price")],
+            ["monthly", t("Monthly")],
+            ["once", t("One-time")],
+            ["deposit", t("Refundable deposit")],
+            ["unpriced", t("Price not set")],
           ]}
         />
         <FilterSelect
-          label="Sort"
+          label={t("Sort")}
           value={sort}
           onChange={(value) => setSort(value as MarketplaceSort)}
           options={[
-            ["recommended", "Recommended"],
-            ["name", "Name A–Z"],
-            ["price_asc", "Lowest price"],
-            ["price_desc", "Highest price"],
-            ["recent", "Recently updated"],
+            ["recommended", t("Recommended")],
+            ["name", t("Name A–Z")],
+            ["price_asc", t("Lowest price")],
+            ["price_desc", t("Highest price")],
+            ["recent", t("Recently updated")],
           ]}
         />
       </div>
-      <ErrorNote message={loadError ?? error} />
-      {catalog === null && loadError === null ? (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
-          {Array.from({ length: 6 }, (_, index) => (
-            <div key={index} className="h-56 animate-pulse rounded-2xl border border-line bg-white" />
-          ))}
-        </div>
-      ) : null}
+      {loadError ? <ErrorState message={t(loadError)} onRetry={load} /> : null}
+      {catalog === null && loadError === null ? <LoadingCards count={6} tall /> : null}
       {catalog && items.length === 0 ? (
-        <p className="rounded-2xl border border-dashed border-line bg-white px-4 py-10 text-center text-sm text-charcoal/60">
-          {deferred.trim() ? "No add-ons match that search." : "No add-ons are published for this view."}
-        </p>
+        <EmptyState title={deferred.trim() ? t("No add-ons match that search.") : t("No add-ons are published for this view.")} />
       ) : null}
       <ul className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
         {items.map((item) => (
           <li key={item.addon.id} className="min-w-0">
-            <article className="flex h-full flex-col rounded-2xl border border-line bg-white p-4 shadow-sm transition hover:border-charcoal/20">
-              <div className="flex items-start gap-3">
-                <AddonMark item={item} />
-                <div className="min-w-0">
-                  <h2 className="text-sm font-semibold">{item.addon.name}</h2>
-                  <p className="mt-1 text-xs font-medium uppercase tracking-wide text-accent">{STATE_LABEL[item.state]}</p>
-                </div>
-              </div>
-              <p className="mt-3 line-clamp-3 flex-1 text-sm text-charcoal/70">
-                {item.addon.listing?.short_description || item.addon.description || "No description."}
-              </p>
-              {item.compatible_labels.length > 0 ? (
-                <p className="mt-3 text-xs text-charcoal/50">Available for: {item.compatible_labels.join(" · ")}</p>
-              ) : null}
-              <p className="mt-2 text-sm font-medium">{priceLabel(item)}</p>
-              <div className="mt-4 flex flex-wrap gap-2">
-                <Link
-                  to={`/settings/addons/${item.addon.code}`}
-                  className="rounded-xl border border-line px-3 py-2 text-sm font-medium hover:bg-surface focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
-                >
-                  View details
-                </Link>
-                <CardAction item={item} busy={busyCode === item.addon.code} onPurchase={() => void purchase(item)} />
-              </div>
-            </article>
+            <AddonCard item={item} currency={catalog?.currency || "AED"} onPurchase={() => setCheckout(item)} />
           </li>
         ))}
       </ul>
+      {checkout ? (
+        <PluginCheckout
+          item={checkout}
+          onClose={() => setCheckout(null)}
+          onDone={() => {
+            setCheckout(null);
+            setCatalog(null);
+            apiGet<MarketplaceCatalog>("/api/v1/billing/marketplace")
+              .then(setCatalog)
+              .catch(() => setCheckout(null));
+          }}
+        />
+      ) : null}
     </div>
   );
-}
-
-function CardAction({ item, busy, onPurchase }: { item: MarketplaceItem; busy: boolean; onPurchase: () => void }) {
-  if (item.state === "included") return <span className="px-1 py-2 text-sm text-charcoal/60">Included in your plan</span>;
-  if (item.state === "activated") {
-    const destination = moduleDestination(item.addon.code);
-    return destination ? (
-      <Link to={destination} className="px-1 py-2 text-sm font-medium text-accent">
-        Open
-      </Link>
-    ) : (
-      <span className="px-1 py-2 text-sm text-charcoal/60">Activated</span>
-    );
-  }
-  if (item.state === "pending_payment") {
-    return (
-      <Link to="/subscription" className="px-1 py-2 text-sm font-medium text-accent">
-        View invoice
-      </Link>
-    );
-  }
-  if (item.state === "pending_activation") return <span className="px-1 py-2 text-sm text-charcoal/60">Payment verification in progress</span>;
-  if (item.state === "expired") {
-    return (
-      <Link to="/subscription" className="px-1 py-2 text-sm font-medium text-accent">
-        Review subscription
-      </Link>
-    );
-  }
-  if (canPurchase(item)) {
-    return (
-      <PrimaryButton disabled={busy} onClick={onPurchase}>
-        {busy ? "Starting…" : "Purchase"}
-      </PrimaryButton>
-    );
-  }
-  if (item.state === "unpriced") return <span className="px-1 py-2 text-sm text-charcoal/60">Contact administrator</span>;
-  if (item.state === "unavailable") return <span className="px-1 py-2 text-sm text-charcoal/60">{item.reason}</span>;
-  return <span className="px-1 py-2 text-sm text-charcoal/60">Added on the package invoice</span>;
 }
 
 function FilterSelect({
@@ -312,10 +182,10 @@ function FilterSelect({
   options: readonly (readonly [string, string])[];
 }) {
   return (
-    <label className="text-xs font-medium text-charcoal/60">
+    <label className="text-xs font-medium text-charcoal/60 dark:text-white/60">
       {label}
       <select
-        className="mt-1 block rounded-xl border border-line bg-white px-3 py-2 text-sm text-charcoal focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+        className="mt-1 block rounded-xl border border-line bg-white px-3 py-2 text-sm text-charcoal focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent dark:border-zinc-600 dark:bg-zinc-900 dark:text-zinc-100"
         value={value}
         aria-label={label}
         onChange={(event) => onChange(event.target.value)}
@@ -331,11 +201,12 @@ function FilterSelect({
 }
 
 export function AddonDetailPage() {
+  const { t } = useLocale();
   const { code } = useParams();
   const navigate = useNavigate();
   const [catalog, setCatalog] = useState<MarketplaceCatalog | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
+  const [checkoutOpen, setCheckoutOpen] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -344,7 +215,7 @@ export function AddonDetailPage() {
         if (!cancelled) setCatalog(next);
       })
       .catch((caught: unknown) => {
-        if (!cancelled) setError(errorMessage(caught, "The add-on could not be loaded."));
+        if (!cancelled) setError(errorMessage(caught, "Could not load add-ons."));
       });
     return () => {
       cancelled = true;
@@ -354,86 +225,79 @@ export function AddonDetailPage() {
   const item = catalog?.items.find((row) => row.addon.code === code) ?? null;
   const listing = item?.addon.listing;
 
-  const purchase = async () => {
-    if (item === null || !canPurchase(item)) return;
-    setBusy(true);
-    setError(null);
-    try {
-      await apiPost(`/api/v1/billing/addons/${item.addon.code}/checkout`, {});
-      navigate("/subscription");
-    } catch (caught) {
-      setError(errorMessage(caught, "Could not start the invoice."));
-      setBusy(false);
-    }
-  };
-
-  if (error && catalog === null) return <ErrorNote message={error} />;
-  if (catalog === null) return <div className="h-64 animate-pulse rounded-2xl border border-line bg-white" />;
+  if (error && catalog === null) return <ErrorState message={error} />;
+  if (catalog === null) return <LoadingCards count={1} tall />;
   if (item === null) {
     return (
-      <div className="rounded-2xl border border-dashed border-line bg-white px-4 py-10 text-center text-sm text-charcoal/60">
-        This add-on is not available.
-        <div className="mt-4">
-          <Link to="/settings/addons" className="text-sm font-medium text-accent">
-            Back to add-ons
-          </Link>
-        </div>
+      <div className="grid gap-3">
+        <EmptyState title={t("This add-on is not available.")} />
+        <Link to="/settings/addons" className="text-sm font-medium text-accent">
+          {t("Back to add-ons")}
+        </Link>
       </div>
     );
   }
 
   return (
-    <div className="flex w-full flex-col gap-6">
+    <div className="flex w-full flex-col gap-6 text-charcoal dark:text-zinc-100">
       <Link to="/settings/addons" className="text-sm font-medium text-accent">
-        All add-ons
+        {t("All add-ons")}
       </Link>
       <header className="flex flex-wrap items-start gap-4">
-        <AddonMark item={item} />
+        <AddonGlyph item={item} />
         <div className="min-w-0 flex-1">
           <h1 className="text-xl font-semibold">{item.addon.name}</h1>
-          <p className="mt-1 text-sm text-charcoal/70">{listing?.short_description || item.addon.description}</p>
-          <p className="mt-2 text-xs font-medium uppercase tracking-wide text-accent">
-            {listing?.category ?? "operations"} · {STATE_LABEL[item.state]}
-          </p>
-          <p className="mt-2 text-sm font-medium">{priceLabel(item)}</p>
+          <p className="mt-1 text-sm text-charcoal/70 dark:text-zinc-300" dir="auto">{listing?.short_description || item.addon.description}</p>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            {listing?.category ? <p className="text-xs font-medium uppercase tracking-wide text-charcoal/50">{listing.category}</p> : null}
+            <MarketplaceStatus state={item.state} />
+          </div>
+          <div className="mt-2">
+            <PriceDisplay view={addonPriceView(item, catalog.currency)} />
+          </div>
         </div>
       </header>
       <ErrorNote message={error} />
-      <Section title="Overview">
-        <p className="text-sm text-charcoal/80">{listing?.overview || item.addon.description || "No overview yet."}</p>
+      <Section title={t("Overview")}>
+        <p className="text-sm text-charcoal/80 dark:text-zinc-300">{listing?.overview || item.addon.description || t("No overview yet.")}</p>
       </Section>
-      <PointList title="Benefits" rows={listing?.benefits ?? []} />
-      <PointList title="Features" rows={listing?.features ?? []} />
-      <PointList title="How it works" rows={listing?.steps ?? []} />
-      <Section title="Compatibility">
-        <p className="text-sm text-charcoal/80">
-          {item.compatible_labels.length > 0 ? item.compatible_labels.join(" · ") : "Available with the current packages."}
+      <PointList title={t("Benefits")} rows={listing?.benefits ?? []} />
+      <PointList title={t("Features")} rows={listing?.features ?? []} />
+      <PointList title={t("How it works")} rows={listing?.steps ?? []} />
+      <Section title={t("Compatibility")}>
+        <p className="text-sm text-charcoal/80 dark:text-zinc-300">
+          {item.compatible_labels.length > 0 ? item.compatible_labels.join(" · ") : t("Available with the current packages.")}
         </p>
       </Section>
-      <Section title="Pricing">
-        <p className="text-sm text-charcoal/80">{priceLabel(item)}. Amounts are the catalogue prices in AED.</p>
-        {item.invoice_id ? <p className="mt-2 text-sm text-charcoal/60">Invoice {item.invoice_id}</p> : null}
+      <Section title={t("Pricing")}>
+        <PriceDisplay view={addonPriceView(item, catalog.currency)} />
+        <p className="mt-2 text-sm text-charcoal/60">{t("Amounts are the catalogue prices.")}</p>
+        {item.invoice_id ? (
+          <p className="mt-2 text-sm text-charcoal/60">
+            {t("Invoice")} <span dir="ltr">{item.invoice_id}</span>
+          </p>
+        ) : null}
       </Section>
       {(listing?.requirements.length ?? 0) > 0 ? (
-        <Section title="Requirements">
-          <ul className="list-disc space-y-1 pl-5 text-sm text-charcoal/80">
+        <Section title={t("Requirements")}>
+          <ul className="list-disc space-y-1 ps-5 text-sm text-charcoal/80 dark:text-zinc-300">
             {listing?.requirements.map((row) => (
               <li key={row}>{row}</li>
             ))}
           </ul>
         </Section>
       ) : null}
-      <Section title="Support">
-        <div className="space-y-2 text-sm text-charcoal/80">
-          {listing?.support ? <p>{listing.support}</p> : <p>Use the existing AxizPOS support contact.</p>}
+      <Section title={t("Support")}>
+        <div className="space-y-2 text-sm text-charcoal/80 dark:text-zinc-300">
+          {listing?.support ? <p>{listing.support}</p> : <p>{t("Use the existing AxizPOS support contact.")}</p>}
           {listing?.documentation_url ? (
             <a className="block text-accent" href={listing.documentation_url} rel="noreferrer">
-              Documentation
+              {t("Documentation")}
             </a>
           ) : null}
           {listing?.video_url ? (
             <a className="block text-accent" href={listing.video_url} rel="noreferrer">
-              Video
+              {t("Video")}
             </a>
           ) : null}
         </div>
@@ -442,16 +306,26 @@ export function AddonDetailPage() {
             {listing?.faqs.map((faq) => (
               <div key={faq.question}>
                 <dt className="text-sm font-medium">{faq.question}</dt>
-                <dd className="text-sm text-charcoal/70">{faq.answer}</dd>
+                <dd className="text-sm text-charcoal/70 dark:text-zinc-300">{faq.answer}</dd>
               </div>
             ))}
           </dl>
         ) : null}
       </Section>
-      <div className="sticky bottom-0 flex flex-wrap items-center gap-3 rounded-2xl border border-line bg-white p-4">
-        <CardAction item={item} busy={busy} onPurchase={() => void purchase()} />
-        <GhostButton onClick={() => navigate("/settings/addons")}>Close</GhostButton>
+      <div className="sticky bottom-0 flex flex-wrap items-center gap-3 rounded-2xl border border-line bg-white p-4 dark:border-zinc-600 dark:bg-zinc-900">
+        <AddonActions item={item} onPurchase={() => setCheckoutOpen(true)} />
+        <GhostButton onClick={() => navigate("/settings/addons")}>{t("Close")}</GhostButton>
       </div>
+      {checkoutOpen ? (
+        <PluginCheckout
+          item={item}
+          onClose={() => setCheckoutOpen(false)}
+          onDone={() => {
+            setCheckoutOpen(false);
+            navigate("/subscription");
+          }}
+        />
+      ) : null}
     </div>
   );
 }
@@ -471,9 +345,9 @@ function PointList({ title, rows }: { title: string; rows: readonly { title: str
     <Section title={title}>
       <ul className="grid gap-3 sm:grid-cols-2">
         {rows.map((row) => (
-          <li key={`${row.title}-${row.description}`} className="rounded-2xl border border-line bg-white p-3">
+          <li key={`${row.title}-${row.description}`} className="rounded-2xl border border-line bg-white p-3 dark:border-zinc-800 dark:bg-zinc-900">
             <p className="text-sm font-medium">{row.title}</p>
-            {row.description ? <p className="mt-1 text-sm text-charcoal/70">{row.description}</p> : null}
+            {row.description ? <p className="mt-1 text-sm text-charcoal/70 dark:text-zinc-300">{row.description}</p> : null}
           </li>
         ))}
       </ul>

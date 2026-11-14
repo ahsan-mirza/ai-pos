@@ -1,4 +1,4 @@
-import { apiDelete, apiGet, apiPost } from "../../lib/api";
+import { apiDelete, apiGet, apiGetPage, apiPost } from "../../lib/api";
 
 const BASE = "/api/v1/fleet";
 
@@ -124,7 +124,11 @@ function query(params: Record<string, string | null | undefined>): string {
 
 export const fleetApi = {
   orders: (filters: { view: string; store_id?: string | null; promised_on?: string | null; zone_id?: string | null }) =>
-    apiGet<FleetOrderRow[]>(`${BASE}/orders${query(filters)}`),
+    apiGet<FleetOrderRow[]>(`${BASE}/orders${query({ ...filters, limit: "100" })}`),
+  orderPage: (
+    filters: { view: string; store_id?: string | null; promised_on?: string | null; zone_id?: string | null },
+    page: { offset: number; limit: number },
+  ) => apiGetPage<FleetOrderRow>(`${BASE}/orders${query(filters)}`, page),
   schedule: (orderId: string, body: Record<string, string | null>) =>
     apiPost<unknown>(`${BASE}/orders/${orderId}/schedule`, body),
   cancelSchedule: (orderId: string) => apiPost<unknown>(`${BASE}/orders/${orderId}/cancel-schedule`, {}),

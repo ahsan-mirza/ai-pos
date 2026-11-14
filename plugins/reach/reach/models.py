@@ -55,6 +55,66 @@ class ReachCampaign(TenantScoped, TimestampMixin, Base):
     queued_count: Mapped[int] = mapped_column(Integer, default=0)
 
 
+class ReachCampaignRun(TenantScoped, TimestampMixin, Base):
+    """One execution of a campaign. A later send gets a new run and does not replace this one."""
+
+    __tablename__ = "reach_campaign_runs"
+    __table_args__ = (tenant_unique("campaign_id", "run_number", name="uq_reach_campaign_runs_number"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    campaign_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("reach_campaigns.id"), index=True)
+    run_number: Mapped[int] = mapped_column(Integer)
+    status: Mapped[str] = mapped_column(String(32), default="processing", index=True)
+    channel: Mapped[str] = mapped_column(String(40), default="")
+    audience_type: Mapped[str] = mapped_column(String(24), default="filter")
+    audience_snapshot: Mapped[dict] = mapped_column(JSON, default=dict)
+    total_recipients: Mapped[int] = mapped_column(Integer, default=0)
+    eligible_recipients: Mapped[int] = mapped_column(Integer, default=0)
+    excluded_recipients: Mapped[int] = mapped_column(Integer, default=0)
+    queued_count: Mapped[int] = mapped_column(Integer, default=0)
+    processing_count: Mapped[int] = mapped_column(Integer, default=0)
+    sent_count: Mapped[int] = mapped_column(Integer, default=0)
+    delivered_count: Mapped[int] = mapped_column(Integer, default=0)
+    read_count: Mapped[int] = mapped_column(Integer, default=0)
+    failed_count: Mapped[int] = mapped_column(Integer, default=0)
+    skipped_count: Mapped[int] = mapped_column(Integer, default=0)
+    cancelled_count: Mapped[int] = mapped_column(Integer, default=0)
+    initiated_by_id: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    retry_of_run_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("reach_campaign_runs.id"), nullable=True
+    )
+    report_built_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    delivery_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    prepare_after_id: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True), nullable=True)
+    content_snapshot: Mapped[dict] = mapped_column(JSON, default=dict)
+    total_candidates: Mapped[int] = mapped_column(Integer, default=0)
+    invalid_contact_count: Mapped[int] = mapped_column(Integer, default=0)
+    no_consent_count: Mapped[int] = mapped_column(Integer, default=0)
+    duplicate_count: Mapped[int] = mapped_column(Integer, default=0)
+    report_version: Mapped[int] = mapped_column(Integer, default=0)
+    report_dirty: Mapped[bool] = mapped_column(Boolean, default=False)
+
+
+class ReachReportArtifact(TenantScoped, Base):
+    """One stored report file for one run version. A later delivery update writes the next version."""
+
+    __tablename__ = "reach_report_artifacts"
+    __table_args__ = (tenant_unique("run_id", "version", "kind", name="uq_reach_report_artifact"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    run_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("reach_campaign_runs.id"), index=True)
+    version: Mapped[int] = mapped_column(Integer)
+    kind: Mapped[str] = mapped_column(String(8))
+    storage_key: Mapped[str] = mapped_column(String(240))
+    file_name: Mapped[str] = mapped_column(String(120))
+    content_type: Mapped[str] = mapped_column(String(80))
+    size_bytes: Mapped[int] = mapped_column(Integer, default=0)
+    checksum: Mapped[str] = mapped_column(String(64), default="")
+    generated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
 class ReachUsage(TenantScoped, Base):
     """One billable unit per outbound message. The unique message id stops a retry from charging twice."""
 
@@ -101,6 +161,9 @@ class ReachRecipient(TenantScoped, TimestampMixin, Base):
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
     campaign_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("reach_campaigns.id"), index=True)
+    campaign_run_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("reach_campaign_runs.id"), nullable=True, index=True
+    )
     customer_id: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True), ForeignKey("customers.id"), nullable=True)
     outbound_message_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid(as_uuid=True), ForeignKey("outbound_messages.id"), nullable=True
@@ -116,6 +179,8 @@ class ReachRecipient(TenantScoped, TimestampMixin, Base):
     submitted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     delivered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    processing_started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    lease_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class ReachTemplate(TenantScoped, TimestampMixin, Base):

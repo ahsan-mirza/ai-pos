@@ -74,7 +74,7 @@ def test_lease_and_deposit_are_separate_and_optional():
     with _session() as db:
         ensure_catalog(db)
         db.commit()
-        empty = quote_for(db, "STANDARD", "MONTHLY", [])
+        empty = quote_for(db, "PRO_AI", "MONTHLY", [])
         assert empty.hardware_monthly_fils == 0
         assert empty.deposit_fils == 0
         assert all(not line.code.startswith("h") for line in empty.lines)
@@ -91,7 +91,7 @@ def test_lease_and_deposit_are_separate_and_optional():
             HardwarePick(item_id=terminal, quantity=1, store_id=store_b),
             HardwarePick(item_id=printer, quantity=1, store_id=store_b),
         ]
-        priced = quote_for(db, "STANDARD", "MONTHLY", [], picks, stores)
+        priced = quote_for(db, "PRO_AI", "MONTHLY", [], picks, stores)
         assert priced.hardware_monthly_fils == 21_000
         assert priced.deposit_fils == 150_000
         deposit_lines = [line for line in priced.lines if line.refundable]
@@ -111,7 +111,7 @@ def test_the_example_does_not_treat_the_deposit_as_rent():
             HardwarePick(item_id=terminal, quantity=2, store_label="Store A"),
             HardwarePick(item_id=printer, quantity=2, store_label="Store A"),
         ]
-        priced = quote_for(db, "STANDARD", "MONTHLY", [], picks, {})
+        priced = quote_for(db, "PRO_AI", "MONTHLY", [], picks, {})
         assert priced.hardware_monthly_fils == 14_000
         assert priced.deposit_fils == 100_000
         assert priced.recurring_fils == 29_900 + 14_000
@@ -128,7 +128,7 @@ def test_register_limit_and_store_ownership_and_unavailable_items():
         try:
             quote_for(
                 db,
-                "STANDARD",
++-                "GROWTH",
                 "MONTHLY",
                 [],
                 [HardwarePick(item_id=terminal, quantity=4, store_id=mine)],
@@ -140,7 +140,7 @@ def test_register_limit_and_store_ownership_and_unavailable_items():
         try:
             quote_for(
                 db,
-                "STANDARD",
+                "GROWTH",
                 "MONTHLY",
                 [],
                 [HardwarePick(item_id=terminal, quantity=1, store_id=uuid.uuid4())],
@@ -154,7 +154,7 @@ def test_register_limit_and_store_ownership_and_unavailable_items():
         row.archived = True
         db.commit()
         try:
-            quote_for(db, "STANDARD", "MONTHLY", [], [HardwarePick(item_id=terminal, quantity=1, store_label="A")], {})
+            quote_for(db, "GROWTH", "MONTHLY", [], [HardwarePick(item_id=terminal, quantity=1, store_label="A")], {})
             raise AssertionError("expected an unavailable item")
         except ApiError as exc:
             assert exc.code == "hardware_unavailable"
@@ -168,7 +168,7 @@ def test_a_catalogue_edit_does_not_rewrite_the_order_and_payment_is_not_delivery
         tenant = _tenant(db)
         terminal = _item(db, operator, sku="TERM-1", name="Terminal", monthly=5_000, deposit=50_000, stock=2)
         invoice = BillingInvoice(
-            tenant_id=tenant.id, plan_code="STANDARD", cycle_code="MONTHLY", confirm_name="Hardware Shop"
+            tenant_id=tenant.id, plan_code="GROWTH", cycle_code="MONTHLY", confirm_name="Hardware Shop"
         )
         db.add(invoice)
         db.commit()
@@ -220,7 +220,7 @@ def test_a_catalogue_edit_does_not_rewrite_the_order_and_payment_is_not_delivery
         assert item.stock_qty == 1
         assert assignment.delivered_at is not None
         other = BillingInvoice(
-            tenant_id=tenant.id, plan_code="STANDARD", cycle_code="MONTHLY", confirm_name="Hardware Shop"
+            tenant_id=tenant.id, plan_code="GROWTH", cycle_code="MONTHLY", confirm_name="Hardware Shop"
         )
         db.add(other)
         db.commit()

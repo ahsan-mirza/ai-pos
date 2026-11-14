@@ -111,6 +111,11 @@ class Settings(BaseSettings):
     # POS-company billing. Empty uses the recorded-payment simulator for go-live checkout.
     stripe_secret_key: str | None = None
     stripe_webhook_secret: str | None = None
+    # Commercial card sandbox. Development can run the internal test adapter. Production cannot.
+    # Live card stays off until a certified provider exists. This flag cannot turn that on.
+    payment_sandbox_enabled: bool = False
+    payment_live_card_enabled: bool = False
+    payment_sandbox_webhook_secret: str | None = None
 
     # Messaging provider credentials. Which provider each channel uses is chosen in Settings > Messaging.
     whatsapp_token: str | None = None
@@ -132,6 +137,12 @@ class Settings(BaseSettings):
     # Pause between Evolution sends in one dispatch run. Zero disables the pause in tests.
     reach_send_interval_seconds: int = Field(default=3, ge=0, le=30)
     reach_send_batch: int = Field(default=20, ge=1, le=50)
+    # Slots left unused at the end of a tick so a new receipt is not stuck behind a full marketing batch.
+    reach_transactional_reserve: int = Field(default=1, ge=0, le=20)
+    # Warn when a priority-1 message has been queued longer than this, or the campaign queue exceeds this depth.
+    reach_alert_transactional_wait_seconds: int = Field(default=120, ge=0, le=86400)
+    reach_alert_campaign_backlog: int = Field(default=5000, ge=1, le=1_000_000)
+    reach_prepare_batch: int = Field(default=200, ge=1, le=1000)
     reach_daily_recipient_limit: int = Field(default=1000, ge=1, le=5000)
     reach_inactive_days: int = Field(default=60, ge=7, le=3650)
     reach_media_max_image_bytes: int = Field(default=5_000_000, ge=50_000, le=20_000_000)
@@ -271,11 +282,21 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def production_is_configured(self) -> "Settings":
+        if self.payment_live_card_enabled:
+            raise ValueError("PAYMENT_LIVE_CARD_ENABLED cannot be turned on until a card provider is certified.")
         if self.app_env != "production":
             return self
-        problems = [
-            name.upper() for name, value in self.model_dump().items() if isinstance(value, str) and "change-me" in value
-        ]
+        if self.payment_sandbox_enabled:
+            problems = ["PAYMENT_SANDBOX_ENABLED (sandbox payments are refused in production)"]
+        else:
+            problems = []
+        problems.extend(
+            [
+                name.upper()
+                for name, value in self.model_dump().items()
+                if isinstance(value, str) and "change-me" in value
+            ]
+        )
         if not self.tenancy_enabled:
             problems.append("CONTROL_DATABASE_URL (required: production is multi-tenant)")
         if self.default_tenant:

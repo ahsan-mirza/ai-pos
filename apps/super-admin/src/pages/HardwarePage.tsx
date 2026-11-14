@@ -92,6 +92,10 @@ function blankItem(categoryId: string): HardwareItem & { reason: string } {
     stock_qty: null,
     counts_as_register: false,
     compatibility: "",
+    device_type: "",
+    warranty_months: 0,
+    specifications: {},
+    installation_fils: 0,
     active: true,
     archived: false,
     available: false,
@@ -399,6 +403,7 @@ function ItemEditor({
   const [fee, setFee] = useState((item.fee_fils / 100).toFixed(2));
   const [purchase, setPurchase] = useState(item.purchase_fils == null ? "" : (item.purchase_fils / 100).toFixed(2));
   const [delivery, setDelivery] = useState((item.delivery_fils / 100).toFixed(2));
+  const [installation, setInstallation] = useState(((item.installation_fils ?? 0) / 100).toFixed(2));
   const [stock, setStock] = useState(item.stock_qty == null ? "" : String(item.stock_qty));
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -421,6 +426,8 @@ function ItemEditor({
               fee_fils: filsOf(fee),
               purchase_fils: purchase.trim() === "" ? null : filsOf(purchase),
               delivery_fils: filsOf(delivery),
+              installation_fils: filsOf(installation),
+              specifications: draft.specifications ?? {},
               stock_qty: stock.trim() === "" ? null : Number(stock),
               currency: "AED",
             };
@@ -463,10 +470,28 @@ function ItemEditor({
         <Field label="Refundable deposit (AED)" value={deposit} onChange={(event) => setDeposit(event.target.value)} />
         <Field label="Non-refundable fee (AED)" value={fee} onChange={(event) => setFee(event.target.value)} />
         <Field label="Purchase price (AED)" value={purchase} onChange={(event) => setPurchase(event.target.value)} />
-        <Field label="Delivery or installation (AED)" value={delivery} onChange={(event) => setDelivery(event.target.value)} />
+        <Field label="Delivery (AED)" value={delivery} onChange={(event) => setDelivery(event.target.value)} />
+        <Field label="Installation (AED)" value={installation} onChange={(event) => setInstallation(event.target.value)} />
         <Field label="Minimum quantity" value={String(draft.min_qty)} onChange={(event) => set({ min_qty: Number(event.target.value) || 1 })} />
         <Field label="Maximum quantity" value={String(draft.max_qty)} onChange={(event) => set({ max_qty: Number(event.target.value) || 1 })} />
         <Field label="Stock (blank if untracked)" value={stock} onChange={(event) => setStock(event.target.value)} />
+        <label className="text-sm">
+          EC machine
+          <select
+            className="mt-1 w-full rounded-xl border border-line bg-white px-3 py-2"
+            value={draft.device_type ?? ""}
+            onChange={(event) => set({ device_type: event.target.value as HardwareItem["device_type"] })}
+          >
+            <option value="">Not an EC machine</option>
+            <option value="WIRED">Wired EC machine</option>
+            <option value="ANDROID">Android EC machine</option>
+          </select>
+        </label>
+        <Field
+          label="Warranty months"
+          value={String(draft.warranty_months ?? 0)}
+          onChange={(event) => set({ warranty_months: Number(event.target.value) || 0 })}
+        />
         <Field label="Compatibility" value={draft.compatibility} onChange={(event) => set({ compatibility: event.target.value })} />
         <Field label="Internal notes" value={draft.internal_notes ?? ""} onChange={(event) => set({ internal_notes: event.target.value })} />
         <Field label="Reason" required value={draft.reason} onChange={(event) => set({ reason: event.target.value })} />

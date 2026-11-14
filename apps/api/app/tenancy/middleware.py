@@ -36,6 +36,7 @@ OPEN_PATHS = (
     "/api/v1/billing/public-catalog",
     "/api/v1/site/contact",
     "/api/v1/billing/stripe-webhook",
+    "/api/v1/billing/sandbox-events",
     "/api/v1/reach/webhooks/",
     "/api/v1/billing/checkout/return",
     "/api/v1/downloads/latest.json",

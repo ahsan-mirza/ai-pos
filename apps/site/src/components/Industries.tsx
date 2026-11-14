@@ -33,11 +33,11 @@ const INDUSTRIES: { title: string; href: string; link: string; icon: MarkName; p
     points: ["Counter checkout and menu modifiers.", "Kitchen display, recipes, and delivery-channel orders.", "No tables and no credit account."],
   },
   {
-    title: "Grocery POS",
+    title: "Supermarket & grocery POS",
     href: "/grocery-pos",
-    link: "Grocery POS software",
+    link: "Supermarket and grocery POS",
     icon: "package",
-    points: ["Weighed items and expiry-first stock.", "Buying history and loyalty points from the start.", "On-account credit stays off until the shop turns it on."],
+    points: ["Neighborhood grocery, supermarket lanes, or cash and carry.", "Weighed items and expiry-first stock.", "On-account credit stays off until the shop turns it on."],
   },
   {
     title: "Wholesale POS",

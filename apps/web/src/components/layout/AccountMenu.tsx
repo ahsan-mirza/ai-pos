@@ -159,7 +159,7 @@ export function AccountMenu() {
             <ProfileAvatar name={user.full_name} url={user.avatar_url} className="h-11 w-11" />
             <div className="min-w-0">
               <p className="truncate text-sm font-semibold">{user.full_name}</p>
-              <p className="truncate text-xs text-charcoal/60">{user.role.name}</p>
+              <p className="truncate text-xs text-charcoal/60">{t(user.role.name)}</p>
               <p className="truncate text-xs text-charcoal/45">{user.email}</p>
             </div>
           </div>

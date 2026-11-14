@@ -7,11 +7,17 @@ export function planFamily(plan: BillingPlan): "current" | "legacy" {
   return CURRENT_CODES.has(plan.code) ? "current" : "legacy";
 }
 
-/** Current catalog, plus a legacy plan only when this store is already on it. */
-export function visiblePlans(plans: readonly BillingPlan[], currentCode: string | null): BillingPlan[] {
+const LEGACY_CODES = new Set(["LITE", "STANDARD", "PRO"]);
+
+/** Lite, Standard, and Pro. Pro AI is not one of these. */
+export function isLegacyPlanCode(code: string | null | undefined): boolean {
+  return code != null && LEGACY_CODES.has(code);
+}
+
+/** The four packages that can be selected. A retired plan is never offered, even when the store is still on it. */
+export function visiblePlans(plans: readonly BillingPlan[], _currentCode: string | null = null): BillingPlan[] {
   return plans
-    .filter((plan) => plan.active)
-    .filter((plan) => planFamily(plan) === "current" || plan.code === currentCode)
+    .filter((plan) => plan.active && planFamily(plan) === "current" && !isLegacyPlanCode(plan.code))
     .sort((left, right) => left.sort_order - right.sort_order || left.name.localeCompare(right.name));
 }
 

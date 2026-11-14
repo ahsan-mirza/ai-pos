@@ -8,11 +8,11 @@ import uuid
 from datetime import UTC, timedelta
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
+from fastapi import APIRouter, Depends, File, Form, Query, Request, UploadFile
 from fastapi.responses import HTMLResponse, Response
 from sqlalchemy import select
 
-from app.console import billing, transfers
+from app.console import billing, commercial_payments, subscription_changes, transfers
 from app.core.config import Settings, get_settings
 from app.core.deps import Principal, authorize, get_principal
 from app.core.errors import ApiError
@@ -21,15 +21,25 @@ from app.schemas.billing import (
     AccessOut,
     AccessSubscription,
     CatalogOut,
+    ChangeCheckoutOut,
+    ChangeCreateIn,
+    ChangeOut,
+    ChangePage,
     CheckoutIn,
     CheckoutOut,
     CheckoutStatus,
+    CommercialPaymentIn,
+    CommercialPaymentOut,
+    EcOrderIn,
     FeatureAccessList,
     MarketplaceOut,
+    PaymentMethodOut,
     PromotionalTrialOut,
     QuoteIn,
     QuoteOut,
+    UsageOut,
 )
+from app.schemas.hardware import EcAssignIn, EcRegisterIn
 from app.tenancy import registry
 from app.tenancy.context import current_tenant
 from app.tenancy.models import Subscription, Tenant
@@ -122,7 +132,176 @@ def catalog(
     with registry.control_session(settings) as db:
         found = billing.catalog(db)
         db.commit()
-        return found
+        return found.model_copy(update={"plans": [row for row in found.plans if row.active]})
+
+
+@router.get("/ec-machines")
+def ec_machines(
+    _: Annotated[Principal, Depends(authorize(Permission.SETTINGS_MANAGE))], settings: Config
+) -> list:
+    _tenant_id(settings)
+    with registry.control_session(settings) as db:
+        return hardware_items(db)
+
+
+def hardware_items(db):
+    from app.console import hardware as hardware_catalog
+
+    return hardware_catalog.list_ec_items(db)
+
+
+@router.post("/ec-quote", response_model=QuoteOut)
+def ec_quote(
+    payload: EcOrderIn,
+    _: Annotated[Principal, Depends(authorize(Permission.SETTINGS_MANAGE))],
+    settings: Config,
+) -> QuoteOut:
+    tenant_id = _tenant_id(settings)
+    with registry.control_session(settings) as db:
+        tenant = db.get(Tenant, tenant_id)
+        if tenant is None:
+            raise ApiError(404, "tenant_not_found", "This store is not registered.")
+        return billing.quote_ec_machines(db, tenant, payload.hardware, _stores(settings, tenant_id))
+
+
+@router.post("/ec-checkout", response_model=CheckoutOut)
+def ec_checkout(
+    payload: EcOrderIn,
+    principal: Annotated[Principal, Depends(authorize(Permission.SETTINGS_MANAGE))],
+    settings: Config,
+) -> CheckoutOut:
+    if principal.user is None:
+        raise ApiError(403, "business_wide_only", "Only a business-wide admin can buy a terminal.")
+    tenant_id = _tenant_id(settings)
+    with registry.control_session(settings) as db:
+        tenant = db.get(Tenant, tenant_id)
+        if tenant is None:
+            raise ApiError(404, "tenant_not_found", "This store is not registered.")
+        return billing.create_ec_checkout(
+            db, tenant, principal.user.id, payload.hardware, _stores(settings, tenant_id)
+        )
+
+
+@router.get("/ec-orders")
+def ec_orders(
+    _: Annotated[Principal, Depends(authorize(Permission.SETTINGS_MANAGE))], settings: Config
+) -> list:
+    tenant_id = _tenant_id(settings)
+    with registry.control_session(settings) as db:
+        from app.console import hardware as hardware_catalog
+
+        return hardware_catalog.orders_for_tenant(db, tenant_id)
+
+
+def _register_rows(settings: Settings, tenant_id: uuid.UUID) -> list[dict[str, object]]:
+    from app.console.entitlements import tenant_session
+    from app.models.device import Device
+
+    with registry.control_session(settings) as db:
+        tenant = db.get(Tenant, tenant_id)
+        if tenant is None:
+            return []
+    with tenant_session(tenant, settings) as store_db:
+        return [
+            {
+                "id": row.id,
+                "name": row.name,
+                "code": row.code,
+                "store_id": row.store_id,
+                "active": row.revoked_at is None,
+            }
+            for row in store_db.scalars(select(Device))
+        ]
+
+
+def _registers(settings: Settings, tenant_id: uuid.UUID) -> dict[uuid.UUID, tuple[uuid.UUID, bool]]:
+    return {row["id"]: (row["store_id"], bool(row["active"])) for row in _register_rows(settings, tenant_id)}  # type: ignore[misc]
+
+
+@router.get("/ec-registers")
+def ec_registers(
+    _: Annotated[Principal, Depends(authorize(Permission.SETTINGS_MANAGE))], settings: Config
+) -> list[dict[str, object]]:
+    return _register_rows(settings, _tenant_id(settings))
+
+
+@router.get("/ec-devices")
+def ec_devices(
+    _: Annotated[Principal, Depends(authorize(Permission.SETTINGS_MANAGE))], settings: Config
+) -> list:
+    tenant_id = _tenant_id(settings)
+    with registry.control_session(settings) as db:
+        from app.console import hardware as hardware_catalog
+
+        return hardware_catalog.ec_devices_for_tenant(db, tenant_id)
+
+
+@router.post("/ec-devices/{assignment_id}/register")
+def ec_register(
+    assignment_id: uuid.UUID,
+    payload: EcRegisterIn,
+    principal: Annotated[Principal, Depends(authorize(Permission.SETTINGS_MANAGE))],
+    settings: Config,
+):
+    if principal.user is None:
+        raise ApiError(403, "business_wide_only", "Only a business-wide admin can register a terminal.")
+    tenant_id = _tenant_id(settings)
+    with registry.control_session(settings) as db:
+        from app.console import hardware as hardware_catalog
+
+        return hardware_catalog.confirm_ec_registration(db, tenant_id, assignment_id, payload, principal.user.id)
+
+
+@router.put("/ec-devices/{assignment_id}/assignment")
+def ec_assign(
+    assignment_id: uuid.UUID,
+    payload: EcAssignIn,
+    principal: Annotated[Principal, Depends(authorize(Permission.SETTINGS_MANAGE))],
+    settings: Config,
+):
+    if principal.user is None:
+        raise ApiError(403, "business_wide_only", "Only a business-wide admin can assign a terminal.")
+    tenant_id = _tenant_id(settings)
+    with registry.control_session(settings) as db:
+        from app.console import hardware as hardware_catalog
+
+        return hardware_catalog.assign_ec_register(
+            db,
+            tenant_id,
+            assignment_id,
+            payload,
+            stores=_stores(settings, tenant_id),
+            registers=_registers(settings, tenant_id),
+            actor_id=principal.user.id,
+        )
+
+
+@router.delete("/ec-devices/{assignment_id}/assignment")
+def ec_unassign(
+    assignment_id: uuid.UUID,
+    principal: Annotated[Principal, Depends(authorize(Permission.SETTINGS_MANAGE))],
+    settings: Config,
+):
+    if principal.user is None:
+        raise ApiError(403, "business_wide_only", "Only a business-wide admin can unassign a terminal.")
+    tenant_id = _tenant_id(settings)
+    with registry.control_session(settings) as db:
+        from app.console import hardware as hardware_catalog
+
+        return hardware_catalog.unassign_ec_register(db, tenant_id, assignment_id, principal.user.id)
+
+
+@router.get("/ec-devices/{assignment_id}/readiness")
+def ec_device_readiness(
+    assignment_id: uuid.UUID,
+    _: Annotated[Principal, Depends(authorize(Permission.SETTINGS_MANAGE))],
+    settings: Config,
+):
+    tenant_id = _tenant_id(settings)
+    with registry.control_session(settings) as db:
+        from app.console import hardware as hardware_catalog
+
+        return hardware_catalog.ec_readiness(db, tenant_id, assignment_id)
 
 
 @router.post("/quote", response_model=QuoteOut)
@@ -142,7 +321,101 @@ def quote(
             payload.hardware,
             stores,
             country=billing._store_country(settings, tenant),
+            onboarding=payload.onboarding,
+            tenant_id=tenant.id,
         )
+
+
+@router.get("/payment-methods", response_model=list[PaymentMethodOut])
+def payment_methods(
+    _: Annotated[Principal, Depends(authorize(Permission.SETTINGS_MANAGE))],
+    settings: Config,
+    purpose: str = "PLUGIN_PURCHASE",
+) -> list[PaymentMethodOut]:
+    with registry.control_session(settings) as db:
+        return [
+            PaymentMethodOut(**row)
+            for row in commercial_payments.list_methods(
+                db, purpose, sandbox_card=commercial_payments.sandbox_card_allowed(settings)
+            )
+        ]
+
+
+@router.get("/addons/{code}/quote", response_model=QuoteOut)
+def addon_quote(
+    code: str,
+    _: Annotated[Principal, Depends(authorize(Permission.SETTINGS_MANAGE))],
+    settings: Config,
+) -> QuoteOut:
+    tenant_id = _tenant_id(settings)
+    with registry.control_session(settings) as db:
+        tenant = db.get(Tenant, tenant_id)
+        assert tenant is not None
+        return billing.quote_addon(db, settings, tenant, code)
+
+
+@router.post("/payments", response_model=CommercialPaymentOut)
+def start_payment(
+    payload: CommercialPaymentIn,
+    principal: Annotated[Principal, Depends(authorize(Permission.SETTINGS_MANAGE))],
+    settings: Config,
+) -> CommercialPaymentOut:
+    if principal.user is None:
+        raise ApiError(403, "business_wide_only", "Only a business-wide admin can buy an add-on.")
+    tenant_id = _tenant_id(settings)
+    with registry.control_session(settings) as db:
+        tenant = db.get(Tenant, tenant_id)
+        assert tenant is not None
+        found = commercial_payments.start_plugin_payment(
+            db,
+            settings,
+            tenant,
+            principal.user.id,
+            purpose_type=payload.purpose_type,
+            addon_code=payload.purpose_ref,
+            method_code=payload.method_code,
+            idempotency_key=payload.idempotency_key,
+            scenario=payload.scenario,
+        )
+        return CommercialPaymentOut(**found)
+
+
+@router.get("/payment-environment")
+def payment_environment(
+    _: Annotated[Principal, Depends(authorize(Permission.SETTINGS_MANAGE))],
+    settings: Config,
+) -> dict[str, object]:
+    sandbox = commercial_payments.sandbox_card_allowed(settings)
+    return {
+        "sandbox": sandbox,
+        "live_card": False,
+        "banner": "Test payments only. No real money will be charged." if sandbox else "",
+    }
+
+
+@router.post("/sandbox-events", response_model=CommercialPaymentOut)
+async def sandbox_event(request: Request, settings: Config) -> CommercialPaymentOut:
+    body = await request.body()
+    with registry.control_session(settings) as db:
+        found = commercial_payments.accept_sandbox_event(
+            db,
+            settings,
+            body,
+            request.headers.get("x-axiz-sandbox-signature"),
+            request.headers.get("x-axiz-sandbox-timestamp"),
+        )
+        return CommercialPaymentOut(**found)
+
+
+@router.get("/payments/{payment_id}", response_model=CommercialPaymentOut)
+def payment_status(
+    payment_id: uuid.UUID,
+    _: Annotated[Principal, Depends(authorize(Permission.SETTINGS_MANAGE))],
+    settings: Config,
+) -> CommercialPaymentOut:
+    tenant_id = _tenant_id(settings)
+    with registry.control_session(settings) as db:
+        return CommercialPaymentOut(**commercial_payments.payment_for_tenant(db, tenant_id, payment_id))
 
 
 @router.post("/addons/{code}/checkout", response_model=CheckoutOut)
@@ -173,6 +446,104 @@ def checkout(
         row = db.get(Tenant, tenant_id)
         assert row is not None
         return billing.create_checkout(db, settings, row, principal.user.id, payload, _stores(settings, tenant_id))
+
+
+def _business_wide(principal: Principal) -> None:
+    if principal.user is None or principal.store_id is not None:
+        raise ApiError(403, "business_wide_only", "Only a business-wide admin can change the subscription.")
+
+
+@router.post("/subscription-changes", response_model=ChangeOut)
+def create_subscription_change(
+    payload: ChangeCreateIn,
+    principal: Annotated[Principal, Depends(authorize(Permission.SETTINGS_MANAGE))],
+    settings: Config,
+) -> ChangeOut:
+    _business_wide(principal)
+    assert principal.user is not None
+    tenant_id = _tenant_id(settings)
+    stores = _stores(settings, tenant_id)
+    with registry.control_session(settings) as db:
+        tenant = db.get(Tenant, tenant_id)
+        assert tenant is not None
+        row = subscription_changes.create_request(
+            db,
+            tenant,
+            payload.plan_code,
+            payload.cycle_code,
+            principal.user.id,
+            stores=stores,
+            country=billing._store_country(settings, tenant),
+            onboarding=payload.onboarding,
+        )
+        return subscription_changes.present(db, row)
+
+
+@router.get("/subscription-changes", response_model=ChangePage)
+def list_subscription_changes(
+    principal: Annotated[Principal, Depends(authorize(Permission.SETTINGS_MANAGE))],
+    settings: Config,
+    status: Annotated[str | None, Query(max_length=32)] = None,
+    limit: Annotated[int, Query(ge=1, le=50)] = 20,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> ChangePage:
+    _business_wide(principal)
+    with registry.control_session(settings) as db:
+        rows, total = subscription_changes.list_requests(
+            db, _tenant_id(settings), status=status, limit=limit, offset=offset
+        )
+        return ChangePage(items=[subscription_changes.present(db, row) for row in rows], total=total)
+
+
+@router.get("/subscription-changes/{request_id}", response_model=ChangeOut)
+def get_subscription_change(
+    request_id: uuid.UUID,
+    principal: Annotated[Principal, Depends(authorize(Permission.SETTINGS_MANAGE))],
+    settings: Config,
+) -> ChangeOut:
+    _business_wide(principal)
+    with registry.control_session(settings) as db:
+        return subscription_changes.present(db, subscription_changes.get_request(db, _tenant_id(settings), request_id))
+
+
+@router.post("/subscription-changes/{request_id}/cancel", response_model=ChangeOut)
+def cancel_subscription_change(
+    request_id: uuid.UUID,
+    principal: Annotated[Principal, Depends(authorize(Permission.SETTINGS_MANAGE))],
+    settings: Config,
+) -> ChangeOut:
+    _business_wide(principal)
+    assert principal.user is not None
+    with registry.control_session(settings) as db:
+        row = subscription_changes.cancel_request(db, _tenant_id(settings), request_id, principal.user.id)
+        return subscription_changes.present(db, row)
+
+
+@router.post("/subscription-changes/{request_id}/checkout", response_model=ChangeCheckoutOut)
+def checkout_subscription_change(
+    request_id: uuid.UUID,
+    payload: CheckoutIn,
+    principal: Annotated[Principal, Depends(authorize(Permission.SETTINGS_MANAGE))],
+    settings: Config,
+) -> ChangeCheckoutOut:
+    _business_wide(principal)
+    assert principal.user is not None
+    tenant_id = _tenant_id(settings)
+    stores = _stores(settings, tenant_id)
+    with registry.control_session(settings) as db:
+        tenant = db.get(Tenant, tenant_id)
+        assert tenant is not None
+        row, checkout = subscription_changes.issue_invoice(
+            db,
+            settings,
+            tenant,
+            principal.user.id,
+            request_id,
+            payload,
+            stores,
+            billing._store_country(settings, tenant),
+        )
+        return ChangeCheckoutOut(request=subscription_changes.present(db, row), checkout=checkout)
 
 
 @router.get("/checkout/return", response_class=HTMLResponse)
@@ -242,6 +613,22 @@ def feature_access(
                 country=country,
             )
         )
+
+
+@router.get("/usage", response_model=UsageOut)
+def usage_status(principal: Annotated[Principal, Depends(get_principal)], settings: Config) -> UsageOut:
+    """Actual resource counts for this store. A tenant id in the query string is ignored."""
+    del principal
+    tenant_id = _tenant_id(settings)
+    from app.console.entitlements import tenant_session
+    from app.console.usage import usage_for
+
+    with registry.control_session(settings) as control:
+        tenant = control.get(Tenant, tenant_id)
+        if tenant is None:
+            raise ApiError(404, "tenant_not_found", "This store is not registered.")
+        with tenant_session(tenant, settings) as store:
+            return usage_for(control, tenant_id, store)
 
 
 @router.get("/access", response_model=AccessOut)

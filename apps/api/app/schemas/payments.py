@@ -136,6 +136,14 @@ class ProviderOut(ApiModel):
     missing: list[str]
 
 
+class CardReadiness(ApiModel):
+    state: str
+    production_ready: bool
+    capability: bool
+    reason: str
+    blockers: list[str] = Field(default_factory=list)
+
+
 class PaymentsConfig(ApiModel):
     """What a till needs: whether card amounts go to a terminal, which terminal, and the BNPL choices."""
 
@@ -147,3 +155,6 @@ class PaymentsConfig(ApiModel):
     default_terminal_id: UUID | None
     # Approve/decline buttons for simulated providers (never in live production).
     simulator_controls: bool
+    # True only when the package, a registered terminal, and a validated acquirer all pass.
+    # The simulator never sets this. Cash does not depend on it.
+    production_card_ready: bool = False

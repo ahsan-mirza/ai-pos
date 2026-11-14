@@ -71,28 +71,18 @@ from app.tenancy.models import (
     TenantStats,
 )
 
-_PLANS = (
-    ("LITE", "Lite", 1, ["promotions", "loyalty"], 14_900, 14, 1),
-    ("STANDARD", "Standard", 3, ["promotions", "loyalty", "card_terminals", "quotes_layaway"], 29_900, 14, 2),
-    (
-        "PRO",
-        "Pro",
-        8,
-        ["promotions", "loyalty", "card_terminals", "bnpl", "gift_cards", "kds", "tables"],
-        49_900,
-        30,
-        3,
-    ),
-)
+# Retired commercial codes. Rows may remain so subscriptions and invoices keep their foreign keys.
+# They are not inserted for a new catalog and cannot be quoted or reactivated.
+LEGACY_PLAN_CODES = frozenset({"LITE", "STANDARD", "PRO"})
 _CYCLES = (
     ("MONTHLY", "Monthly", 1, 0, 1),
     ("QUARTERLY", "Quarterly", 3, 500, 2),
     ("HALF_YEARLY", "Half-Yearly", 6, 1_200, 3),
     ("ANNUAL", "Annual", 12, 2_500, 4),
 )
-# New commercial catalog. These codes sit beside Lite, Standard, and Pro. They do not replace them.
+# The only packages a new subscription, quote, or plan change may target.
 NEW_PLAN_CODES = frozenset({"FREE", "GROWTH", "PRO_AI", "ENTERPRISE"})
-# 20 percent. The shared Annual cycle stays at 25 percent for Lite, Standard, and Pro.
+# 20 percent. The shared Annual cycle row stays at 25 percent for any historical plan row.
 NEW_ANNUAL_DISCOUNT_BPS = 2_000
 # Countries the price table can hold later. Only AE is inserted. No rate is invented for the others.
 PREPARED_MARKETS = (
@@ -152,6 +142,12 @@ _UAE_PRICES = {"FREE": 0, "GROWTH": 12_900, "PRO_AI": 29_900}
 # First publish for a plan row that does not exist yet. A later console edit is stored on the row and is not
 # rewritten here. Empty means the plan adds no modules of its own. Plugins stay on add-ons, not on these lists.
 _STARTER_PLAN_MODULES: dict[str, list[str]] = {
+    "GROWTH": ["sales_insights", "fleet_dispatch", "card_terminals"],
+    "PRO_AI": ["sales_insights", "ai_insights", "deep_analytics", "fleet_dispatch", "card_terminals"],
+}
+# Plans whose published seed did not yet include Pay by Card. A console edit is left alone.
+# Retired packages are not in this map, so catalog startup does not rewrite their module lists.
+_CARD_SEED_BEFORE = {
     "GROWTH": ["sales_insights", "fleet_dispatch"],
     "PRO_AI": ["sales_insights", "ai_insights", "deep_analytics", "fleet_dispatch"],
 }
@@ -332,6 +328,27 @@ def ensure_module_addons(db: Session) -> None:
     db.flush()
 
 
+def grant_card_terminals_where_seed_unchanged(db: Session) -> int:
+    """Adds Pay by Card only where the package list is still the previous seed.
+
+    Free stays without it. Enterprise stays configurable. A list an administrator already changed is not rewritten,
+    and tenant subscription rows are not updated here.
+    """
+    from sqlalchemy.orm.attributes import flag_modified
+
+    granted = 0
+    for code, previous in _CARD_SEED_BEFORE.items():
+        row = db.scalar(select(BillingPlan).where(BillingPlan.code == code))
+        if row is None or list(row.included_modules or []) != previous:
+            continue
+        row.included_modules = [*previous, "card_terminals"]
+        flag_modified(row, "included_modules")
+        granted += 1
+    if granted:
+        db.flush()
+    return granted
+
+
 def ensure_freemium_catalog(db: Session) -> bool:
     """Inserts Free, Growth, Pro AI, and Enterprise, and the UAE price rows, when they are missing.
 
@@ -378,27 +395,41 @@ def ensure_freemium_catalog(db: Session) -> bool:
     return changed
 
 
+def retire_legacy_plans(db: Session) -> None:
+    """Keeps Lite, Standard, and Pro on file and removes them from sale.
+
+    Prices, modules, subscriptions, and invoices are not rewritten. A later catalog
+    init does not insert these codes again.
+    """
+    rows = list(
+        db.scalars(
+            select(BillingPlan).where(BillingPlan.code.in_(LEGACY_PLAN_CODES), BillingPlan.active.is_(True))
+        ).all()
+    )
+    for row in rows:
+        row.active = False
+    if rows:
+        db.flush()
+
+
 def ensure_catalog(db: Session) -> bool:
-    """Inserts the starting catalog once. Later edits in the console are left alone."""
+    """Inserts the starting catalog once. Later edits in the console are left alone.
+
+    Lite, Standard, and Pro are not part of that catalog. An existing row for one of
+    those codes is marked inactive and is not recreated.
+    """
     created = False
     if db.scalar(select(BillingPlan.id).limit(1)) is None:
         created = True
     if not created:
-        return ensure_freemium_catalog(db)
+        changed = ensure_freemium_catalog(db)
+        retire_legacy_plans(db)
+        from app.console.commercial_manifest import apply_commercial_catalog
+
+        if apply_commercial_catalog(db):
+            changed = True
+        return changed
     now = datetime.now(UTC)
-    for code, name, registers, modules, monthly, trial, order in _PLANS:
-        db.add(
-            BillingPlan(
-                code=code,
-                name=name,
-                included_registers=registers,
-                included_modules=modules,
-                monthly_fils=monthly,
-                trial_days=trial,
-                sort_order=order,
-                updated_at=now,
-            )
-        )
     for code, name, months, discount, order in _CYCLES:
         db.add(
             BillingCycle(
@@ -421,34 +452,21 @@ def ensure_catalog(db: Session) -> bool:
     db.add(BillingFee(code="onboarding", name="Onboarding", amount_fils=25_000, updated_at=now))
     db.flush()
     ensure_freemium_catalog(db)
+    retire_legacy_plans(db)
+    from app.console.commercial_manifest import apply_commercial_catalog
+
+    apply_commercial_catalog(db)
     return True
 
 
 def start_trial(db: Session, tenant: Tenant) -> None:
-    """Gives a new store the Standard monthly trial. No-op when a subscription already exists.
+    """Attaches Free when the store has no subscription.
 
-    This is the legacy onboarding trial. It is not the Pro AI promotion, and it does not change a store
-    that already has a subscription.
+    Lite, Standard, and Pro are not assigned to a new store. A store that already has a
+    subscription, including a historical legacy plan, stays on that plan. This is not the
+    Pro AI promotion.
     """
-    ensure_catalog(db)
-    if db.scalar(select(Subscription.id).where(Subscription.tenant_id == tenant.id)) is not None:
-        return
-    plan = db.scalar(select(BillingPlan).where(BillingPlan.code == "STANDARD"))
-    cycle = db.scalar(select(BillingCycle).where(BillingCycle.code == "MONTHLY"))
-    if plan is None or cycle is None:
-        return
-    db.add(
-        Subscription(
-            tenant_id=tenant.id,
-            plan_id=plan.id,
-            cycle_id=cycle.id,
-            status="trialing",
-            trial_ends_at=datetime.now(UTC) + timedelta(days=plan.trial_days),
-        )
-    )
-    tenant.plan = plan.code
-    tenant.practice_mode = True
-    db.flush()
+    assign_free(db, tenant)
 
 
 def assign_free(db: Session, tenant: Tenant) -> Subscription:
@@ -521,6 +539,40 @@ def _cycles(db: Session) -> list[BillingCycle]:
 
 def _addons(db: Session) -> list[BillingAddon]:
     return list(db.scalars(select(BillingAddon).order_by(BillingAddon.sort_order, BillingAddon.code)))
+
+
+def _onboarding_line(db: Session, tenant_id: uuid.UUID | None) -> QuoteLine:
+    """The catalog onboarding fee, once. The amount is not taken from the caller and is not discounted."""
+    if tenant_id is not None and _onboarding_already_paid(db, tenant_id):
+        raise ApiError(409, "onboarding_already_purchased", "Onboarding assistance is already on a paid invoice.")
+    fee = db.scalar(select(BillingFee).where(BillingFee.code == "onboarding", BillingFee.active.is_(True)))
+    if fee is None or int(fee.amount_fils or 0) <= 0:
+        raise ApiError(422, "price_not_set", "Onboarding assistance has no price.")
+    amount = int(fee.amount_fils)
+    return QuoteLine(
+        code="onboarding",
+        label="Onboarding assistance",
+        quantity=1,
+        unit_fils=amount,
+        amount_fils=amount,
+        recurring=False,
+        refundable=False,
+    )
+
+
+def _onboarding_already_paid(db: Session, tenant_id: uuid.UUID) -> bool:
+    found = db.scalar(
+        select(BillingInvoiceLine.id)
+        .join(BillingInvoice, BillingInvoice.id == BillingInvoiceLine.invoice_id)
+        .where(
+            BillingInvoice.tenant_id == tenant_id,
+            BillingInvoice.status == "paid",
+            BillingInvoiceLine.code == "onboarding",
+            BillingInvoiceLine.amount_fils > 0,
+        )
+        .limit(1)
+    )
+    return found is not None
 
 
 def _fees(db: Session) -> list[BillingFee]:
@@ -681,6 +733,8 @@ def update_plan(db: Session, operator: OperatorPrincipal, plan_id: uuid.UUID, da
     row = db.get(BillingPlan, plan_id)
     if row is None:
         raise ApiError(404, "not_found", "Package was not found.")
+    if row.code in LEGACY_PLAN_CODES and data.active:
+        raise ApiError(422, "plan_not_selectable", "This plan cannot be selected.")
     before = plan_out(row).model_dump(mode="json")
     row.name = data.name.strip()
     row.included_registers = data.included_registers
@@ -949,7 +1003,10 @@ def update_fee(db: Session, operator: OperatorPrincipal, fee_id: uuid.UUID, data
 
 
 def _active_plan(db: Session, code: str) -> BillingPlan:
-    row = db.scalar(select(BillingPlan).where(BillingPlan.code == code.strip().upper(), BillingPlan.active.is_(True)))
+    normalized = code.strip().upper()
+    if normalized in LEGACY_PLAN_CODES:
+        raise ApiError(422, "plan_not_selectable", "This plan cannot be selected.")
+    row = db.scalar(select(BillingPlan).where(BillingPlan.code == normalized, BillingPlan.active.is_(True)))
     if row is None:
         raise ApiError(422, "unknown_plan", "Choose an active package.")
     return row
@@ -972,6 +1029,9 @@ def quote_for(
     hardware: list | None = None,
     stores: dict | None = None,
     country: str | None = None,
+    *,
+    onboarding: bool = False,
+    tenant_id: uuid.UUID | None = None,
 ) -> QuoteOut:
     ensure_catalog(db)
     plan = _active_plan(db, plan_code)
@@ -1004,6 +1064,8 @@ def quote_for(
         addon = by_code.get(item.code)
         if addon is None:
             raise ApiError(422, "unknown_addon", f"{item.code} is not an active add-on.")
+        if item.code in set(plan.included_modules or []):
+            raise ApiError(422, "already_included", "This module is already included in the current package.")
         if addon.monthly_fils:
             unit = cycle_amount(addon.monthly_fils, cycle.months, cycle.discount_bps)
             lines.append(
@@ -1029,20 +1091,8 @@ def quote_for(
                     refundable=addon.refundable,
                 )
             )
-    if plan.code != "FREE":
-        for fee in _fees(db):
-            if fee.active and fee.amount_fils:
-                lines.append(
-                    QuoteLine(
-                        code=fee.code,
-                        label=fee.name,
-                        quantity=1,
-                        unit_fils=fee.amount_fils,
-                        amount_fils=fee.amount_fils,
-                        recurring=False,
-                        refundable=False,
-                    )
-                )
+    if onboarding and plan.code != "FREE":
+        lines.append(_onboarding_line(db, tenant_id))
     from app.console import hardware as hardware_catalog
 
     hardware_lines, hardware_monthly, deposit = hardware_catalog.price_selection(
@@ -1072,6 +1122,88 @@ def quote_for(
         hardware_monthly_fils=hardware_monthly,
         deposit_fils=deposit,
     )
+
+
+def quote_ec_machines(db: Session, tenant: Tenant, picks: list, stores: dict | None) -> QuoteOut:
+    """Prices terminals only. The package line is not included and the subscription is not changed."""
+    ensure_catalog(db)
+    subscription = db.scalar(select(Subscription).where(Subscription.tenant_id == tenant.id))
+    if subscription is None:
+        raise ApiError(409, "no_subscription", "Choose a package before buying a terminal.")
+    plan = db.get(BillingPlan, subscription.plan_id)
+    cycle = db.get(BillingCycle, subscription.cycle_id)
+    if plan is None or cycle is None:
+        raise ApiError(422, "catalog_missing", "The current package is missing.")
+    if not picks:
+        raise ApiError(422, "empty_order", "Choose a terminal.")
+    from app.console import hardware as hardware_catalog
+
+    offered = {row.id for row in hardware_catalog.list_ec_items(db)}
+    for pick in picks:
+        if pick.mode != "purchase" or pick.item_id not in offered:
+            raise ApiError(422, "not_ec", "Choose a wired or Android terminal offered for purchase.")
+    lines, monthly, deposit = hardware_catalog.price_selection(
+        db,
+        list(picks),
+        months=1,
+        discount_bps=0,
+        included_registers=plan.included_registers,
+        stores=stores,
+    )
+    once = sum(line.amount_fils for line in lines if not line.recurring)
+    return QuoteOut(
+        currency="AED",
+        plan_code=plan.code,
+        plan_name=plan.name,
+        cycle_code=cycle.code,
+        cycle_name=cycle.name,
+        months=1,
+        discount_bps=0,
+        included_registers=plan.included_registers,
+        lines=lines,
+        recurring_fils=0,
+        one_time_fils=once,
+        total_fils=once,
+        hardware_monthly_fils=monthly,
+        deposit_fils=deposit,
+    )
+
+
+def create_ec_checkout(
+    db: Session,
+    tenant: Tenant,
+    actor_id: uuid.UUID,
+    picks: list,
+    stores: dict | None,
+) -> CheckoutOut:
+    """A pending hardware invoice. Paying it does not change the package."""
+    priced = quote_ec_machines(db, tenant, picks, stores)
+    invoice = BillingInvoice(
+        tenant_id=tenant.id,
+        status="pending",
+        currency=priced.currency,
+        plan_code=priced.plan_code,
+        cycle_code=priced.cycle_code,
+        recurring_fils=0,
+        one_time_fils=priced.one_time_fils,
+        total_fils=priced.total_fils,
+        purge="keep",
+        opening_stock="keep",
+        actor_user_id=actor_id,
+        confirm_name="EC terminal order",
+    )
+    db.add(invoice)
+    db.flush()
+    _snapshot_lines(db, invoice.id, priced)
+    from app.console import hardware as hardware_catalog
+    from app.console import transfers
+
+    hardware_catalog.open_order(db, tenant_id=tenant.id, invoice_id=invoice.id, picks=list(picks), stores=stores)
+    invoice.bank_snapshot = transfers.active_bank_snapshot(db)
+    if invoice.bank_snapshot is None:
+        raise ApiError(422, "bank_not_configured", "Bank transfer details have not been published yet.")
+    db.commit()
+    return CheckoutOut(checkout_id=invoice.id, mode="transfer", url=None, quote=priced, bank=invoice.bank_snapshot)
 
 
 def subscription_out(db: Session, tenant: Tenant) -> SubscriptionOut | None:
@@ -1317,10 +1449,17 @@ def quote_addon(db: Session, settings: Settings, tenant: Tenant, code: str) -> Q
     """The current cycle's price for one module add-on. No package line and no onboarding fee."""
     ensure_catalog(db)
     ensure_module_addons(db)
+    from app.console.commercial_manifest import CUSTOM_ADDON_CODES, apply_commercial_catalog
+
+    apply_commercial_catalog(db)
     addon = db.scalar(select(BillingAddon).where(BillingAddon.code == code, BillingAddon.active.is_(True)))
-    if addon is None or not (addon.module_keys or []):
-        raise ApiError(422, "unknown_addon", "Choose a module add-on.")
-    if int(addon.monthly_fils or 0) <= 0:
+    if addon is None:
+        raise ApiError(422, "unknown_addon", "Choose an add-on.")
+    monthly = int(addon.monthly_fils or 0)
+    deposit = int(addon.one_time_fils or 0)
+    if addon.code in CUSTOM_ADDON_CODES and monthly <= 0 and deposit <= 0:
+        raise ApiError(422, "custom_pricing", "This add-on is arranged with sales.")
+    if monthly <= 0 and deposit <= 0:
         raise ApiError(422, "price_not_set", "This add-on does not have a price yet.")
     subscription = db.scalar(select(Subscription).where(Subscription.tenant_id == tenant.id))
     if subscription is None:
@@ -1329,12 +1468,41 @@ def quote_addon(db: Session, settings: Settings, tenant: Tenant, code: str) -> Q
     cycle = db.get(BillingCycle, subscription.cycle_id)
     if plan is None or cycle is None:
         raise ApiError(422, "catalog_missing", "The current package is missing.")
-    profile = _business_profile(settings, tenant)
-    optional = {capability.value for capability in capability_catalog.catalogue(profile).optional}
-    if code not in optional:
-        raise ApiError(422, "module_not_optional", "This module is not an add-on for this business type.")
-    unit = cycle_amount(addon.monthly_fils, cycle.months, cycle.discount_bps)
-    if unit <= 0:
+    included = set(plan.included_modules or [])
+    if addon.code in included or (addon.module_keys and set(addon.module_keys) <= included):
+        raise ApiError(422, "already_included", "This module is already included in the current package.")
+    if addon.module_keys:
+        profile = _business_profile(settings, tenant)
+        optional = {capability.value for capability in capability_catalog.catalogue(profile).optional}
+        if code not in optional:
+            raise ApiError(422, "module_not_optional", "This module is not an add-on for this business type.")
+    unit = cycle_amount(monthly, cycle.months, cycle.discount_bps) if monthly > 0 else 0
+    lines: list[QuoteLine] = []
+    if unit > 0:
+        lines.append(
+            QuoteLine(
+                code=addon.code,
+                label=addon.name,
+                quantity=1,
+                unit_fils=unit,
+                amount_fils=unit,
+                recurring=True,
+                refundable=False,
+            )
+        )
+    if deposit > 0:
+        lines.append(
+            QuoteLine(
+                code=addon.code if unit <= 0 else f"{addon.code}:once",
+                label=f"{addon.name} deposit" if addon.refundable else addon.name,
+                quantity=1,
+                unit_fils=deposit,
+                amount_fils=deposit,
+                recurring=False,
+                refundable=bool(addon.refundable),
+            )
+        )
+    if not lines:
         raise ApiError(422, "price_not_set", "This add-on does not have a price yet.")
     return QuoteOut(
         currency="AED",
@@ -1345,20 +1513,10 @@ def quote_addon(db: Session, settings: Settings, tenant: Tenant, code: str) -> Q
         months=cycle.months,
         discount_bps=cycle.discount_bps,
         included_registers=plan.included_registers,
-        lines=[
-            QuoteLine(
-                code=addon.code,
-                label=addon.name,
-                quantity=1,
-                unit_fils=unit,
-                amount_fils=unit,
-                recurring=True,
-                refundable=False,
-            )
-        ],
+        lines=lines,
         recurring_fils=unit,
-        one_time_fils=0,
-        total_fils=unit,
+        one_time_fils=deposit,
+        total_fils=unit + deposit,
     )
 
 
@@ -1410,7 +1568,7 @@ def _checkout_from_invoice(db: Session, invoice: BillingInvoice) -> CheckoutOut:
 
 
 def create_addon_checkout(
-    db: Session, settings: Settings, tenant: Tenant, actor_id: uuid.UUID, code: str
+    db: Session, settings: Settings, tenant: Tenant, actor_id: uuid.UUID, code: str, *, require_bank: bool = True
 ) -> CheckoutOut:
     """Issues an invoice for one module add-on. Payment uses the same bank-transfer review as a package."""
     existing = _open_addon_invoice(db, tenant.id, code)
@@ -1447,7 +1605,7 @@ def create_addon_checkout(
     from app.console import transfers
 
     invoice.bank_snapshot = transfers.active_bank_snapshot(db)
-    if invoice.bank_snapshot is None:
+    if require_bank and invoice.bank_snapshot is None:
         raise ApiError(422, "bank_not_configured", "Bank transfer details have not been published yet.")
     db.commit()
     return CheckoutOut(checkout_id=invoice.id, mode="transfer", url=None, quote=priced, bank=invoice.bank_snapshot)
@@ -1473,6 +1631,8 @@ def create_checkout(
         data.hardware,
         stores,
         country=_store_country(settings, tenant),
+        onboarding=data.onboarding,
+        tenant_id=tenant.id,
     )
     if priced.recurring_fils <= 0:
         raise ApiError(422, "nothing_to_bill", "The package has no recurring price.")
@@ -1700,6 +1860,8 @@ def _activate(db: Session, tenant: Tenant, invoice: BillingInvoice) -> None:
     row = db.scalar(select(Subscription).where(Subscription.tenant_id == tenant.id))
     # A module purchase has no package line. It is added to the subscription the store already has.
     if not any(line.code == plan.code for line in lines):
+        if row is None and any(line.code.startswith("h") and line.code[1:2].isdigit() for line in lines):
+            return
         if row is None:
             raise ApiError(409, "no_subscription", "Choose a package before buying an add-on.")
         invoice.subscription_id = row.id

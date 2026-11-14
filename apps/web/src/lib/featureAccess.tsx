@@ -39,6 +39,10 @@ export interface FeatureAccess {
   plugin_code: string | null;
   plugin_name: string | null;
   benefits: string[];
+  /** Included for this business type because no published plan claims it. */
+  baseline?: boolean;
+  /** Open on the tenant's legacy plan even though the plan row does not name it. */
+  grandfathered?: boolean;
 }
 
 const BLOCKS = new Set<FeatureAccess["state"]>([

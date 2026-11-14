@@ -29,6 +29,7 @@ const steps = [
   { name: "Admin portal lint + typecheck", cmd: "pnpm", args: ["--filter", "@ai-pos/web", "lint"] },
   { name: "Console lint + typecheck", cmd: "pnpm", args: ["--filter", "@ai-pos/super-admin", "lint"] },
   { name: "Marketing site lint + typecheck", cmd: "pnpm", args: ["--filter", "@ai-pos/site", "lint"] },
+  { name: "Marketing SEO checks", cmd: "node", args: ["scripts/seo-check.mjs"] },
   { name: "POS lint + typecheck", cmd: "pnpm", args: ["--filter", "@ai-pos/desktop", "lint"] },
   // { name: "POS tests (vitest)", cmd: "pnpm", args: ["--filter", "@ai-pos/desktop", "test"] },
   {

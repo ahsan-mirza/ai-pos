@@ -111,6 +111,7 @@ export {
 } from "./pagination";
 export { usePagination, type PaginationState } from "./usePagination";
 export { LanguageSwitch, useLocale } from "./LocaleSwitch";
+export { applyTheme, readTheme, setTheme, ThemeSwitch, type ThemeChoice } from "./ThemeSwitch";
 export {
   AxizTabs,
   nextTabId,

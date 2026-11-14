@@ -130,7 +130,7 @@ export function SettingsLayout() {
           onClosePopover={() => setPopoverAnchor(null)}
         />
       )}
-      <div className="min-h-0 min-w-0 flex-1 overflow-y-auto">
+      <div className="min-h-0 min-w-0 flex-1 overflow-y-auto pb-[var(--floating-guide-space,0px)]">
         {mode === "drawer" ? (
           <div className="px-4 pt-4 md:px-6">
             <button

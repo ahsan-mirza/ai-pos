@@ -1,5 +1,5 @@
 import { formatMoney, type BillingCatalog } from "@ai-pos/shared-types";
-import { useLocale } from "@ai-pos/ui";
+import { formatDateTime, useLocale } from "@ai-pos/ui";
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { ApiRequestError, apiGet, apiPost } from "../../lib/api";
@@ -78,7 +78,7 @@ export function ProAiTrialCard() {
     }
   };
 
-  const expiry = trial.expires_at ? new Date(trial.expires_at).toLocaleString() : "";
+  const expiry = trial.expires_at ? formatDateTime(trial.expires_at) : "";
 
   return (
     <section className="rounded-2xl border border-accent/30 bg-accent/5 px-4 py-3 text-sm">

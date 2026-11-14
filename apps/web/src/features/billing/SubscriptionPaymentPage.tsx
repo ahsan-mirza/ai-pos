@@ -1,5 +1,5 @@
 import { formatMoney } from "@ai-pos/shared-types";
-import { AxizDatePicker } from "@ai-pos/ui";
+import { AxizDatePicker, formatDate, useLocale } from "@ai-pos/ui";
 import { useEffect, useState } from "react";
 import { invalidateAccountSubscription } from "../../components/layout/AccountMenu";
 import { ErrorNote, PrimaryButton } from "../../components/ui/Field";
@@ -25,7 +25,24 @@ interface AccessStatus {
   operational?: boolean;
   attention: PaymentAttention | null;
   subscription?: SubscriptionSummary | null;
-  promotional_trial?: { eligible: boolean; status: string } | null;
+  promotional_trial?: {
+    eligible: boolean;
+    status: string;
+    capabilities?: string[];
+    days_remaining?: number | null;
+    expires_at?: string | null;
+  } | null;
+}
+
+const ATTENTION_STATUS: Record<PaymentAttention["kind"], string> = {
+  awaiting_proof: "Awaiting payment",
+  pending_review: "Under verification",
+  rejected: "Payment rejected",
+  revoked: "Subscription access was updated",
+};
+
+function attentionLabel(kind: PaymentAttention["kind"]): string {
+  return ATTENTION_STATUS[kind];
 }
 
 const copy: Record<PaymentAttention["kind"], { title: string; message: string }> = {
@@ -50,6 +67,7 @@ const copy: Record<PaymentAttention["kind"], { title: string; message: string }>
 };
 
 export function SubscriptionPaymentPage() {
+  const { t } = useLocale();
   const [access, setAccess] = useState<AccessStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -169,10 +187,21 @@ export function SubscriptionPaymentPage() {
           : null
       }
       trialEligible={trial?.eligible === true && trial.status === "not_started"}
+      accessState={access?.state ?? null}
+      trial={
+        trial
+          ? {
+              status: trial.status,
+              capabilities: trial.capabilities ?? [],
+              days_remaining: trial.days_remaining ?? null,
+              expires_at: trial.expires_at ?? null,
+            }
+          : null
+      }
       onInvoiced={load}
       billing={
         <>
-          <ErrorNote message={attention ? null : error} />
+          <ErrorNote message={attention || !error ? null : t(error)} />
           {proof}
         </>
       }
@@ -215,6 +244,7 @@ function PaymentProof({
   onSubmit: () => void;
   onOpenProof: () => void;
 }) {
+  const { t } = useLocale();
   const text = copy[attention.kind];
   const details = attention.bank;
   const canSubmit = attention.kind === "awaiting_proof" || attention.kind === "rejected";
@@ -222,65 +252,65 @@ function PaymentProof({
   return (
     <div className="grid gap-4">
       <header>
-        <h3 className="text-lg font-semibold tracking-tight">{text.title}</h3>
-        <p className="mt-2 text-sm text-charcoal/70">{attention.kind === "rejected" && attention.reason ? attention.reason : text.message}</p>
+        <h3 className="text-lg font-semibold tracking-tight text-charcoal dark:text-white">{t(text.title)}</h3>
+        <p className="mt-2 text-sm text-charcoal/70 dark:text-white/70">{attention.kind === "rejected" && attention.reason ? attention.reason : t(text.message)}</p>
       </header>
-      {notice ? <p className="rounded-2xl bg-accent/10 px-4 py-3 text-sm font-medium">{notice}</p> : null}
-      <ErrorNote message={error} />
-      <article className="rounded-card border border-line bg-zinc-50 p-6 dark:bg-white/5">
-        <h2 className="text-lg font-semibold">Invoice</h2>
+      {notice ? <p className="rounded-2xl bg-accent/10 px-4 py-3 text-sm font-medium text-charcoal dark:text-white">{t(notice)}</p> : null}
+      <ErrorNote message={error ? t(error) : null} />
+      <article className="rounded-2xl border border-line bg-zinc-50 p-5 dark:bg-white/5">
+        <h2 className="text-lg font-semibold text-charcoal dark:text-white">{t("Invoice")}</h2>
         <dl className="mt-4 grid gap-2 text-sm sm:grid-cols-2">
           <div>
-            <dt className="text-charcoal/50">Invoice</dt>
-            <dd className="font-mono font-medium">{attention.invoice_id.slice(0, 8)}</dd>
+            <dt className="text-charcoal/50">{t("Invoice")}</dt>
+            <dd className="font-mono font-medium" dir="ltr">{attention.invoice_id.slice(0, 8)}</dd>
           </div>
           <div>
-            <dt className="text-charcoal/50">Status</dt>
-            <dd className="font-medium">{attention.kind.replace(/_/g, " ")}</dd>
+            <dt className="text-charcoal/50">{t("Status")}</dt>
+            <dd className="font-medium">{t(attentionLabel(attention.kind))}</dd>
           </div>
           <div>
-            <dt className="text-charcoal/50">Plan</dt>
-            <dd className="font-medium">{attention.plan_code}</dd>
+            <dt className="text-charcoal/50">{t("Plan")}</dt>
+            <dd className="font-medium" dir="ltr">{attention.plan_code}</dd>
           </div>
           <div>
-            <dt className="text-charcoal/50">Duration</dt>
-            <dd className="font-medium">{attention.cycle_code}</dd>
+            <dt className="text-charcoal/50">{t("Duration")}</dt>
+            <dd className="font-medium" dir="ltr">{attention.cycle_code}</dd>
           </div>
           <div>
-            <dt className="text-charcoal/50">Amount due</dt>
-            <dd className="font-medium">{formatMoney(attention.total_fils, attention.currency)}</dd>
+            <dt className="text-charcoal/50">{t("Amount due")}</dt>
+            <dd className="font-medium" dir="ltr">{formatMoney(attention.total_fils, attention.currency)}</dd>
           </div>
           <div>
-            <dt className="text-charcoal/50">Issued</dt>
-            <dd className="font-medium">{attention.issued_at.slice(0, 10)}</dd>
+            <dt className="text-charcoal/50">{t("Issued")}</dt>
+            <dd className="font-medium tabular-nums" dir="ltr">{formatDate(attention.issued_at) || attention.issued_at.slice(0, 10)}</dd>
           </div>
         </dl>
         {details ? (
           <dl className="mt-4 grid gap-1 border-t border-line pt-4 text-sm">
             <div>
-              <dt className="inline text-charcoal/50">Account name </dt>
+              <dt className="inline text-charcoal/50">{t("Account name")} </dt>
               <dd className="inline">{details.holder_name}</dd>
             </div>
             <div>
-              <dt className="inline text-charcoal/50">Bank </dt>
+              <dt className="inline text-charcoal/50">{t("Bank")} </dt>
               <dd className="inline">{details.bank_name}</dd>
             </div>
             {details.iban ? (
               <div>
-                <dt className="inline text-charcoal/50">IBAN </dt>
-                <dd className="inline font-mono">{details.iban}</dd>
+                <dt className="inline text-charcoal/50">{t("IBAN")} </dt>
+                <dd className="inline font-mono" dir="ltr">{details.iban}</dd>
               </div>
             ) : null}
             {details.account_number ? (
               <div>
-                <dt className="inline text-charcoal/50">Account number </dt>
-                <dd className="inline font-mono">{details.account_number}</dd>
+                <dt className="inline text-charcoal/50">{t("Account number")} </dt>
+                <dd className="inline font-mono" dir="ltr">{details.account_number}</dd>
               </div>
             ) : null}
             {details.swift ? (
               <div>
-                <dt className="inline text-charcoal/50">SWIFT </dt>
-                <dd className="inline font-mono">{details.swift}</dd>
+                <dt className="inline text-charcoal/50">{t("SWIFT")} </dt>
+                <dd className="inline font-mono" dir="ltr">{details.swift}</dd>
               </div>
             ) : null}
             <p className="text-charcoal/60">
@@ -289,46 +319,46 @@ function PaymentProof({
             </p>
           </dl>
         ) : (
-          <p className="mt-4 text-sm text-charcoal/60">This invoice has no bank instructions copied onto it.</p>
+          <p className="mt-4 text-sm text-charcoal/60">{t("This invoice has no bank instructions copied onto it.")}</p>
         )}
       </article>
 
       {attention.transfer_id && attention.kind !== "awaiting_proof" ? (
-        <button type="button" onClick={onOpenProof} className="text-left text-sm font-semibold text-accent">
-          View submitted proof
+        <button type="button" onClick={onOpenProof} className="text-start text-sm font-semibold text-accent">
+          {t("View submitted proof")}
         </button>
       ) : null}
 
       {canSubmit ? (
         <form
-          className="grid gap-3 rounded-card border border-line bg-white p-6 dark:bg-zinc-900"
+          className="grid gap-3 rounded-2xl border border-line bg-white p-5 dark:bg-zinc-900"
           onSubmit={(event) => {
             event.preventDefault();
             onSubmit();
           }}
         >
-          <h2 className="text-lg font-semibold">{attention.kind === "rejected" ? "Resubmit payment proof" : "Submit payment proof"}</h2>
-          <p className="text-sm text-charcoal/60">
-            The amount is the invoice total. A different amount is not accepted. Uploading proof does not activate the subscription.
+          <h2 className="text-lg font-semibold text-charcoal dark:text-white">{attention.kind === "rejected" ? t("Resubmit payment proof") : t("Submit payment proof")}</h2>
+          <p className="text-sm text-charcoal/60 dark:text-white/60">
+            {t("The amount is the invoice total. A different amount is not accepted. Uploading proof does not activate the subscription.")}
           </p>
           <label className="grid gap-1 text-sm">
-            Payment date
-            <AxizDatePicker required leading aria-label="Payment date" value={date} onChange={(event) => onDate(event.target.value)} className="h-10 w-full rounded-xl border border-line bg-white text-sm" />
+            {t("Payment date")}
+            <AxizDatePicker required leading aria-label={t("Payment date")} value={date} onChange={(event) => onDate(event.target.value)} className="h-10 w-full rounded-xl border border-line bg-white text-sm dark:border-zinc-700 dark:bg-zinc-950 dark:text-white" />
           </label>
           <label className="grid gap-1 text-sm">
-            Transfer reference
-            <input value={reference} onChange={(event) => onReference(event.target.value)} className="h-10 rounded-xl border border-line px-3" />
+            {t("Transfer reference")}
+            <input value={reference} onChange={(event) => onReference(event.target.value)} className="h-10 rounded-xl border border-line bg-white px-3 dark:border-zinc-700 dark:bg-zinc-950 dark:text-white" dir="ltr" />
           </label>
           <label className="grid gap-1 text-sm">
-            Sending bank
-            <input value={bank} onChange={(event) => onBank(event.target.value)} className="h-10 rounded-xl border border-line px-3" />
+            {t("Sending bank")}
+            <input value={bank} onChange={(event) => onBank(event.target.value)} className="h-10 rounded-xl border border-line bg-white px-3 dark:border-zinc-700 dark:bg-zinc-950 dark:text-white" />
           </label>
           <label className="grid gap-1 text-sm">
-            Note
-            <textarea value={note} onChange={(event) => onNote(event.target.value)} className="min-h-20 rounded-xl border border-line px-3 py-2" />
+            {t("Note")}
+            <textarea value={note} onChange={(event) => onNote(event.target.value)} className="min-h-20 rounded-xl border border-line bg-white px-3 py-2 dark:border-zinc-700 dark:bg-zinc-950 dark:text-white" />
           </label>
           <label className="grid gap-1 text-sm">
-            Transaction slip (PNG, JPEG, or PDF, up to 2 MB)
+            {t("Transaction slip (PNG, JPEG, or PDF, up to 2 MB)")}
             <input
               type="file"
               required
@@ -338,7 +368,7 @@ function PaymentProof({
           </label>
           <div>
             <PrimaryButton type="submit" disabled={busy || file === null || date === ""}>
-              {busy ? "Submitting…" : "Submit payment proof"}
+              {busy ? t("Submitting…") : t("Submit payment proof")}
             </PrimaryButton>
           </div>
         </form>

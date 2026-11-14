@@ -34,14 +34,18 @@ def test_deposit_and_onboarding_skip_the_cycle_discount():
     with Session(engine) as db:
         ensure_catalog(db)
         db.commit()
-        priced = quote_for(db, "STANDARD", "ANNUAL", [AddonQty(code="hardware_lease", quantity=1)])
+        plain = quote_for(db, "GROWTH", "ANNUAL", [AddonQty(code="hardware_lease", quantity=1)])
+        assert all(line.code != "onboarding" for line in plain.lines)
+        priced = quote_for(db, "GROWTH", "ANNUAL", [AddonQty(code="hardware_lease", quantity=1)], onboarding=True)
         deposit = next(line for line in priced.lines if line.code == "hardware_lease_once")
         rent = next(line for line in priced.lines if line.code == "hardware_lease")
         onboarding = next(line for line in priced.lines if line.code == "onboarding")
         assert deposit.refundable is True
         assert deposit.amount_fils == 50_000
         assert rent.amount_fils == cycle_amount(15_000, 12, 2_500)
+        assert onboarding.recurring is False
         assert onboarding.amount_fils == 25_000
+        assert priced.recurring_fils == plain.recurring_fils
         assert priced.one_time_fils == 75_000
 
 
@@ -51,13 +55,13 @@ def test_a_price_edit_changes_the_next_quote_only():
     with Session(engine) as db:
         ensure_catalog(db)
         db.commit()
-        first = quote_for(db, "PRO", "MONTHLY", [])
-        plan = db.scalar(select(BillingPlan).where(BillingPlan.code == "PRO"))
+        first = quote_for(db, "GROWTH", "MONTHLY", [])
+        plan = db.scalar(select(BillingPlan).where(BillingPlan.code == "GROWTH"))
         assert plan is not None
         plan.monthly_fils = 99_900
         db.commit()
-        second = quote_for(db, "PRO", "MONTHLY", [])
-        assert first.recurring_fils == 49_900
+        second = quote_for(db, "GROWTH", "MONTHLY", [])
+        assert first.recurring_fils == 12_900
         assert second.recurring_fils == 99_900
 
 
@@ -77,11 +81,8 @@ def test_public_catalog_lists_the_seed_plans_without_a_tenant(tmp_path) -> None:
         assert response.headers["cache-control"] == "public, max-age=60"
         body = response.json()
         codes = [plan["code"] for plan in body["plans"]]
-        assert codes[:3] == ["LITE", "STANDARD", "PRO"]
+        assert codes == ["FREE", "GROWTH", "PRO_AI", "ENTERPRISE"]
         by_code = {plan["code"]: plan for plan in body["plans"]}
-        assert by_code["LITE"]["monthly_fils"] == 14_900
-        assert by_code["STANDARD"]["monthly_fils"] == 29_900
-        assert by_code["PRO"]["monthly_fils"] == 49_900
         assert by_code["FREE"]["monthly_fils"] == 0
         assert by_code["GROWTH"]["monthly_fils"] == 12_900
         assert by_code["PRO_AI"]["monthly_fils"] == 29_900
@@ -89,9 +90,9 @@ def test_public_catalog_lists_the_seed_plans_without_a_tenant(tmp_path) -> None:
         assert by_code["PRO_AI"]["prices"] == [{"country": "AE", "currency": "AED", "monthly_fils": 29_900}]
         assert by_code["FREE"]["prices"] == [{"country": "AE", "currency": "AED", "monthly_fils": 0}]
         assert by_code["ENTERPRISE"]["prices"] == []
-        assert by_code["LITE"]["prices"] == []
-        assert by_code["LITE"]["resource_limits"] is None
-        assert by_code["LITE"]["catalog_family"] == "legacy"
+        assert "LITE" not in by_code
+        assert "STANDARD" not in by_code
+        assert "PRO" not in by_code
         assert by_code["FREE"]["catalog_family"] == "current"
         assert by_code["FREE"]["resource_limits"]["branches"] == 1
         assert by_code["ENTERPRISE"]["custom_pricing"] is True
@@ -104,10 +105,11 @@ def test_public_catalog_lists_the_seed_plans_without_a_tenant(tmp_path) -> None:
         annual = next(cycle for cycle in body["cycles"] if cycle["code"] == "ANNUAL")
         assert annual["discount_bps"] == 2_500
         assert {cycle["code"] for cycle in body["cycles"]} == {"MONTHLY", "QUARTERLY", "HALF_YEARLY", "ANNUAL"}
-        assert all(addon["price_history"] == [] for addon in body["addons"])
+        hardware = [addon for addon in body["addons"] if addon["code"] in {"hardware_lease", "equipment_protection", "extra_register"}]
+        assert hardware and all(addon["price_history"] == [] for addon in hardware)
         addon_codes = {addon["code"] for addon in body["addons"]}
         assert {"hardware_lease", "equipment_protection", "extra_register"} <= addon_codes
-        assert any(addon["code"] == "tables" and addon["monthly_fils"] == 0 for addon in body["addons"])
+        assert any(addon["code"] == "tables" and addon["monthly_fils"] == 3_900 for addon in body["addons"])
         assert any(fee["code"] == "onboarding" and fee["amount_fils"] == 25_000 for fee in body["fees"])
         assert all(
             item["available"] and not item["archived"] and item.get("internal_notes", "") == ""

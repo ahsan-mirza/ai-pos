@@ -81,6 +81,23 @@ def note_skip(db: Session, name: str, reason: str) -> None:
     db.commit()
 
 
+def note_result(db: Session, name: str, status: str, result: str) -> None:
+    """Records a shared dispatch on this tenant's jobs row without sending again."""
+    if _job_row(db, name) is None:
+        db.add(ScheduledJob(name=name, run_count=0))
+        db.commit()
+    row = _job_row(db, name)
+    if row is None:
+        return
+    row.locked_until = None
+    row.locked_by = None
+    row.last_finished_at = datetime.now(UTC)
+    row.last_status = status
+    row.last_result = result[:2000]
+    row.run_count += 1
+    db.commit()
+
+
 def run_job(db: Session, settings: Settings, name: str) -> str:
     """Runs a job now if no other process holds its lease. Returns the job's status."""
     job = JOBS[name]

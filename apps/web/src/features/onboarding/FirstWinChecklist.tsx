@@ -1,6 +1,6 @@
 import type { ChecklistItem } from "@ai-pos/shared-types";
 import { Check, ChevronDown, ChevronUp, Trophy } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { apiPost } from "../../lib/api";
 import { useCanManageSettings } from "../../lib/currency";
@@ -99,6 +99,25 @@ export function FirstWinChecklist() {
   const { practice, checklist, openGoLive, refresh } = usePractice();
   const canManage = useCanManageSettings();
   const [open, setOpen] = useState(readOpen);
+  const panelRef = useRef<HTMLElement>(null);
+
+  useEffect(() => {
+    const node = panelRef.current;
+    if (!node) {
+      document.documentElement.style.removeProperty("--floating-guide-space");
+      return;
+    }
+    const apply = () => {
+      document.documentElement.style.setProperty("--floating-guide-space", `${node.offsetHeight + 32}px`);
+    };
+    apply();
+    const observer = new ResizeObserver(apply);
+    observer.observe(node);
+    return () => {
+      observer.disconnect();
+      document.documentElement.style.removeProperty("--floating-guide-space");
+    };
+  }, [open, checklist, practice]);
 
   if (!practice || !canManage || checklist === null) return null;
 
@@ -117,7 +136,8 @@ export function FirstWinChecklist() {
   return (
     <section
       aria-label="Get your store ready"
-      className="fixed bottom-4 right-4 z-40 w-[min(400px,calc(100vw-2rem))] overflow-hidden rounded-3xl border border-line bg-white shadow-2xl"
+      ref={panelRef}
+      className="fixed bottom-4 end-4 z-30 w-[min(400px,calc(100vw-2rem))] overflow-hidden rounded-3xl border border-line bg-white shadow-2xl dark:border-zinc-500"
     >
       <div className="flex items-start gap-2 bg-charcoal px-4 py-3 text-white">
         <Trophy size={18} aria-hidden="true" className="mt-0.5 shrink-0 text-accent" />

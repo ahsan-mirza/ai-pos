@@ -10,6 +10,7 @@ import {
   ChefHat,
   ClipboardList,
   Clock,
+  Cable,
   CreditCard,
   FileSpreadsheet,
   Gift,
@@ -450,6 +451,14 @@ export const navGroups: NavGroup[] = [
         capability: Capability.AxizReach,
         feature: Capability.AxizReach,
         isActive: under("/reach"),
+      },
+      {
+        to: "/terminals",
+        label: "EC Terminal Marketplace",
+        icon: Cable,
+        permission: Permission.SettingsManage,
+        settingsOnly: true,
+        isActive: under("/terminals"),
       },
       {
         to: "/subscription",

@@ -95,6 +95,7 @@ import { useCapability, useSettingsLabel } from "./lib/capabilities";
 import { TenantProvider } from "./context/TenantContext";
 import { CurrencyProvider, useCanManageSettings } from "./lib/currency";
 import { FeatureAccessGuard } from "./lib/featureAccess";
+import { EcMarketplacePage } from "./features/billing/EcMarketplacePage";
 import { SubscriptionPaymentPage } from "./features/billing/SubscriptionPaymentPage";
 import { OnboardingWizard } from "./features/onboarding/OnboardingWizard";
 import { SignupApp } from "./features/signup/SignupApp";
@@ -278,6 +279,14 @@ function Portal() {
             element={
               <RequirePermission permission={Permission.SettingsManage} businessWide>
                 <SubscriptionPaymentPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="terminals"
+            element={
+              <RequirePermission permission={Permission.SettingsManage} businessWide>
+                <EcMarketplacePage />
               </RequirePermission>
             }
           />

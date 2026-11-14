@@ -62,6 +62,7 @@ from reach.service import (
     save_prices,
     save_template,
     search_customers,
+    start_another,
     submit_for_approval,
     test_channel,
 )
@@ -178,6 +179,142 @@ def revise_route(campaign_id: UUID, payload: ReviseWrite, db: Db, _: CanManage) 
 @router.post("/campaigns/{campaign_id}/approve-and-send", response_model=CampaignOut)
 def approve_send_route(campaign_id: UUID, db: Db, principal: CanManage) -> dict:
     return present_campaign(db, approve_and_send(db, principal.user.id, campaign_id))
+
+
+@router.post("/campaigns/{campaign_id}/runs", response_model=CampaignOut, status_code=201)
+def start_run_route(campaign_id: UUID, db: Db, principal: CanManage) -> dict:
+    return present_campaign(db, start_another(db, principal.user.id, campaign_id))
+
+
+@router.get("/campaign-runs")
+def campaign_runs(
+    db: Db,
+    _: CanManage,
+    campaign_id: UUID | None = None,
+    status: str | None = None,
+    channel: str | None = None,
+    offset: int = 0,
+    limit: int = 50,
+) -> dict:
+    from reach.runs import list_runs, present
+
+    require_reach(db)
+    rows, total = list_runs(db, campaign_id=campaign_id, status=status, channel=channel, offset=offset, limit=limit)
+    return {"rows": [present(db, row) for row in rows], "total": total}
+
+
+@router.get("/campaign-runs/active")
+def active_campaign_runs(db: Db, _: CanManage) -> dict:
+    from reach.runs import active_runs, present
+
+    require_reach(db)
+    return {"rows": [present(db, row) for row in active_runs(db)]}
+
+
+@router.get("/campaign-runs/{run_id}")
+def campaign_run(run_id: UUID, db: Db, _: CanManage) -> dict:
+    from reach.runs import get_run, present
+
+    require_reach(db)
+    return present(db, get_run(db, run_id))
+
+
+@router.get("/campaign-runs/{run_id}/recipients")
+def campaign_run_recipients(
+    run_id: UUID, db: Db, _: CanManage, status: str | None = None, offset: int = 0, limit: int = 50
+) -> dict:
+    from reach.runs import recipients as run_recipients
+
+    require_reach(db)
+    rows, total = run_recipients(db, run_id, status=status, offset=offset, limit=limit)
+    return {"rows": rows, "total": total}
+
+
+@router.post("/campaign-runs/{run_id}/cancel")
+def cancel_campaign_run(run_id: UUID, db: Db, _: CanManage) -> dict:
+    from reach.runs import cancel_run, present
+
+    require_reach(db)
+    return present(db, cancel_run(db, run_id))
+
+
+@router.post("/campaign-runs/{run_id}/retry-failed")
+def retry_campaign_run(run_id: UUID, db: Db, principal: CanManage) -> dict:
+    from reach.runs import present, retry_failed as retry_run
+
+    require_reach(db)
+    return present(db, retry_run(db, principal.user.id, run_id))
+
+
+@router.get("/campaign-runs/{run_id}/report.pdf")
+def campaign_run_pdf(run_id: UUID, db: Db, _: CanManage) -> Response:
+    from reach.report_pdf import render_run
+    from reach.runs import get_run, present, recipients as run_recipients
+
+    require_reach(db)
+    from reach.prepare import read_artifact
+
+    stored = read_artifact(db, run_id, "pdf")
+    if stored is not None:
+        data, content_type = stored
+        return Response(content=data, media_type=content_type, headers={"Content-Disposition": "attachment"})
+    run = get_run(db, run_id)
+    body = present(db, run)
+    people, _total = run_recipients(db, run_id, status=None, offset=0, limit=1000)
+    pdf = render_run(body, people)
+    return Response(content=pdf, media_type="application/pdf", headers={"Content-Disposition": "attachment"})
+
+
+@router.get("/campaign-runs/{run_id}/recipients.csv")
+def campaign_run_csv(run_id: UUID, db: Db, _: CanManage) -> Response:
+    from reach.runs import report_csv
+
+    require_reach(db)
+    from reach.prepare import read_artifact
+
+    stored = read_artifact(db, run_id, "csv")
+    if stored is not None:
+        data, content_type = stored
+        return Response(content=data, media_type=content_type, headers={"Content-Disposition": "attachment"})
+    text = report_csv(db, run_id)
+    return Response(content=text, media_type="text/csv", headers={"Content-Disposition": "attachment"})
+
+
+@router.get("/queue")
+def queue(db: Db, _: CanManage) -> dict:
+    from app.services.messaging_service import queue_metrics
+
+    require_reach(db)
+    from sqlalchemy import func, select
+
+    from reach.models import ReachCampaignRun, ReachRecipient
+
+    body = queue_metrics(db)
+    body["processing"] = int(
+        db.scalar(select(func.count()).select_from(ReachRecipient).where(ReachRecipient.status == "sending")) or 0
+    )
+    body["preparing_runs"] = int(
+        db.scalar(
+            select(func.count()).select_from(ReachCampaignRun).where(ReachCampaignRun.status == "preparing")
+        )
+        or 0
+    )
+    from datetime import UTC, datetime
+
+    from app.models.messaging import OutboundMessage
+
+    now = datetime.now(UTC)
+    body["expired_leases"] = int(
+        db.scalar(
+            select(func.count())
+            .select_from(ReachRecipient)
+            .where(ReachRecipient.status == "sending", ReachRecipient.lease_until.is_not(None), ReachRecipient.lease_until < now)
+        )
+        or 0
+    )
+    failed_contexts = db.scalars(select(OutboundMessage.context).where(OutboundMessage.status == "FAILED")).all()
+    body["ambiguous_timeouts"] = sum(1 for item in failed_contexts if (item or {}).get("ambiguous_timeout") == "1")
+    return body
 
 
 @router.post("/media", response_model=MediaOut, status_code=201)

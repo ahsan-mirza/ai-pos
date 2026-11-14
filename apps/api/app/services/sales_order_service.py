@@ -5,7 +5,7 @@ reserved yet is a backorder, allocated as stock arrives (goods receipts and a da
 
 import uuid
 from collections import defaultdict
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 
 from sqlalchemy import func, or_, select
 from sqlalchemy.exc import IntegrityError
@@ -267,6 +267,8 @@ def list_orders(
     query: str | None,
     offset: int,
     limit: int,
+    date_from: date | None = None,
+    date_to: date | None = None,
 ) -> tuple[list[SalesOrderRow], int]:
     statement = select(SalesOrder, Customer.name).join(Customer, Customer.id == SalesOrder.customer_id)
     scope = principal.store_id or store_id
@@ -274,7 +276,7 @@ def list_orders(
         statement = statement.where(SalesOrder.store_id == scope)
     if status == "OPEN":
         statement = statement.where(SalesOrder.status.in_(OPEN_STATUSES))
-    elif status:
+    elif status and status != "all":
         statement = statement.where(SalesOrder.status == status)
     if customer_id is not None:
         statement = statement.where(SalesOrder.customer_id == customer_id)
@@ -287,8 +289,14 @@ def list_orders(
                 func.lower(func.coalesce(SalesOrder.customer_reference, "")).like(needle),
             )
         )
+    if date_from is not None:
+        statement = statement.where(func.date(SalesOrder.created_at) >= date_from)
+    if date_to is not None:
+        statement = statement.where(func.date(SalesOrder.created_at) <= date_to)
     total = count_rows(db, statement)
-    rows = db.execute(statement.order_by(SalesOrder.created_at.desc()).offset(offset).limit(limit)).all()
+    rows = db.execute(
+        statement.order_by(SalesOrder.created_at.desc(), SalesOrder.id.desc()).offset(offset).limit(limit)
+    ).all()
     out = []
     for order, name in rows:
         open_ = order.status in OPEN_STATUSES
@@ -340,7 +348,18 @@ def events(db: Session, principal: Principal, order_id: uuid.UUID) -> list[Sales
     ]
 
 
-def board(db: Session, principal: Principal, store_id: uuid.UUID | None) -> FulfillmentBoardOut:
+def board(
+    db: Session,
+    principal: Principal,
+    store_id: uuid.UUID | None,
+    *,
+    status: str | None = "OPEN",
+    query: str | None = None,
+    date_from: date | None = None,
+    date_to: date | None = None,
+    page: int = 1,
+    page_size: int = 25,
+) -> FulfillmentBoardOut:
     """Live counts for the fulfillment board. Nothing here is estimated."""
     scope = principal.store_id or store_id
     if store_id is not None:
@@ -364,16 +383,19 @@ def board(db: Session, principal: Principal, store_id: uuid.UUID | None) -> Fulf
             statement = statement.where(item)  # type: ignore[arg-type]
         return int(db.scalar(statement) or 0)
 
-    rows, _total = list_orders(
+    rows, total = list_orders(
         db,
         principal,
         store_id=store_id,
-        status="OPEN",
+        status=status,
         customer_id=None,
-        query=None,
-        offset=0,
-        limit=20,
+        query=query,
+        offset=(page - 1) * page_size,
+        limit=page_size,
+        date_from=date_from,
+        date_to=date_to,
     )
+    pages = (total + page_size - 1) // page_size if total else 0
     return FulfillmentBoardOut(
         orders_open=count_orders(SalesOrder.status.in_(OPEN_STATUSES)),
         orders_today=count_orders(SalesOrder.created_at >= start),
@@ -381,6 +403,12 @@ def board(db: Session, principal: Principal, store_id: uuid.UUID | None) -> Fulf
         delivered_today=count_notes(DeliveryNote.status == "DELIVERED", DeliveryNote.delivered_at >= start),
         timezone=str(zone),
         rows=rows,
+        total=total,
+        page=page,
+        page_size=page_size,
+        total_pages=pages,
+        has_next=page * page_size < total,
+        has_previous=page > 1 and total > 0,
     )
 
 

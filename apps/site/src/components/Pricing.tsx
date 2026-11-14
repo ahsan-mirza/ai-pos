@@ -72,7 +72,7 @@ export function Pricing({
   return (
     <section id="pricing" className="border-t border-line bg-surface">
       <div className="mx-auto max-w-page px-4 py-16 sm:px-6 lg:px-8 lg:py-20">
-        <SectionHeading kicker={t("Pricing")} title={t("Everything your business needs, with a plan that grows with you.")}>
+        <SectionHeading kicker={t("Pricing")} title={t("Pricing and plans")}>
           {status === "ready"
             ? t("Start with essential POS capabilities for free. Upgrade for advanced tools, AI-powered insights, and optional business extensions whenever you need them.")
             : status === "loading"
@@ -580,8 +580,7 @@ function Summary({
   const { t } = useLocale();
   const chargeFees = !isFreePlan(plan) && !isCustomPlan(plan) && price.kind === "priced" ? fees : [];
   const currency = price.currency || "AED";
-  const feeTotal = chargeFees.reduce((sum, fee) => sum + fee.amount_fils, 0);
-  const due = price.kind === "priced" && price.amountFils !== null ? price.amountFils + feeTotal : null;
+  const due = price.kind === "priced" && price.amountFils !== null ? price.amountFils : null;
   const note = summaryNote(plan, cycleName, price, chargeFees, t);
   return (
     <aside className="mt-6 rounded-card border border-line bg-card p-5">
@@ -600,7 +599,11 @@ function Summary({
         <div className="mt-4 space-y-2 text-sm">
           <Row label={t("{name} · {cycle}", { name: plan.name, cycle: t(cycleName) })} value={money(price.amountFils, currency)} />
           {chargeFees.map((fee) => (
-            <Row key={fee.name} label={t("{name} · once", { name: fee.name })} value={money(fee.amount_fils, currency)} />
+            <Row
+              key={fee.name}
+              label={t("Optional onboarding assistance")}
+              value={t("{price} one-time", { price: money(fee.amount_fils, currency) })}
+            />
           ))}
           {due !== null ? <Row label={t("Published total")} value={money(due, currency)} /> : null}
         </div>
@@ -647,7 +650,9 @@ function summaryNote(
   if (price.kind !== "priced" || price.amountFils === null) return t("{plan}: published price is unavailable.", { plan: plan.name });
   const currency = price.currency || "AED";
   const discount = price.discountBps > 0 ? t(" {percent}% off the package.", { percent: price.discountBps / 100 }) : "";
-  const extras = fees.map((fee) => t(" {name} {amount} once.", { name: fee.name, amount: money(fee.amount_fils, currency) })).join("");
+  const extras = fees
+    .map((fee) => t(" Optional onboarding assistance {amount} one-time. It is not included unless selected.", { amount: money(fee.amount_fils, currency) }))
+    .join("");
   return t("{plan}, {cycle}.{discount} Package {amount}.{extras} Plugins are separate. Not an invoice.", {
     plan: plan.name,
     cycle: t(cycleName),

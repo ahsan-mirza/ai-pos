@@ -40,7 +40,26 @@ export const salesOrdersApi = {
   fromQuote: (quoteId: string) => apiPost<SalesOrder>(`${BASE}/from-quote/${quoteId}`, {}),
   backorders: (storeId: string | null) =>
     apiGet<BackorderRow[]>(`${BASE}/backorders${storeId ? `?store_id=${storeId}` : ""}`),
-  board: (storeId: string | null) => apiGet<FulfillmentBoard>(`${BASE}/board${storeId ? `?store_id=${storeId}` : ""}`),
+  board: (filters: {
+    storeId?: string | null;
+    status?: string | null;
+    q?: string | null;
+    dateFrom?: string | null;
+    dateTo?: string | null;
+    page?: number;
+    pageSize?: number;
+  }) =>
+    apiGet<FulfillmentBoard>(
+      `${BASE}/board${query({
+        store_id: filters.storeId,
+        status: filters.status,
+        q: filters.q,
+        date_from: filters.dateFrom,
+        date_to: filters.dateTo,
+        page: filters.page ? String(filters.page) : null,
+        page_size: filters.pageSize ? String(filters.pageSize) : null,
+      })}`,
+    ),
   events: (id: string) => apiGet<SalesOrderEvent[]>(`${BASE}/${id}/events`),
   delivery: (noteId: string) => apiGet<DeliveryNote>(`${BASE}/deliveries/${noteId}`),
   deliver: (noteId: string, body: DeliverInput) => apiPost<DeliveryNote>(`${BASE}/deliveries/${noteId}/deliver`, body),

@@ -9,7 +9,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm.attributes import flag_modified
 from tests.governance_support import platform  # noqa: F401
 
-from app.console.billing import assign_free, ensure_catalog, start_trial
+from app.console.billing import assign_free, ensure_catalog
 from app.console.promotional_trial import (
     TRIAL_DAYS,
     effective_limits,
@@ -21,7 +21,7 @@ from app.console.promotional_trial import (
 from app.core.config import get_settings
 from app.core.errors import ApiError
 from app.models.user import User
-from app.tenancy.models import BillingInvoice, BillingPlan, ControlBase, PromotionalTrial, Subscription, Tenant
+from app.tenancy.models import BillingCycle, BillingInvoice, BillingPlan, ControlBase, PromotionalTrial, Subscription, Tenant
 
 
 def _control():
@@ -74,6 +74,10 @@ def test_free_and_growth_can_start_once_and_other_plans_cannot() -> None:
             start(db, free, None)
         assert consumed.value.code == "trial_consumed"
         assert start(db, growth, None).base_plan_code == "GROWTH"
+        for code in ("STANDARD", "PRO"):
+            if db.scalar(select(BillingPlan).where(BillingPlan.code == code)) is None:
+                db.add(BillingPlan(code=code, name=code, included_modules=[], active=False, updated_at=datetime.now(UTC)))
+        db.flush()
         for code, slug in (("STANDARD", "std"), ("PRO", "pro"), ("ENTERPRISE", "ent")):
             tenant = _tenant(db, slug)
             assign_free(db, tenant)
@@ -86,7 +90,18 @@ def test_free_and_growth_can_start_once_and_other_plans_cannot() -> None:
                 start(db, tenant, None)
             assert denied.value.code == "trial_ineligible"
         legacy = _tenant(db, "legacy")
-        start_trial(db, legacy)
+        historical = db.scalar(select(BillingPlan).where(BillingPlan.code == "STANDARD"))
+        cycle = db.scalar(select(BillingCycle).where(BillingCycle.code == "MONTHLY"))
+        assert historical is not None and cycle is not None
+        db.add(
+            Subscription(
+                tenant_id=legacy.id,
+                plan_id=historical.id,
+                cycle_id=cycle.id,
+                status="active",
+            )
+        )
+        db.flush()
         with pytest.raises(ApiError) as practice:
             start(db, legacy, None)
         assert practice.value.code == "trial_ineligible"

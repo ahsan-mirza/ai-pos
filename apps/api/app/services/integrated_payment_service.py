@@ -120,6 +120,44 @@ def card_terminal_required(db: Session, store_id: uuid.UUID, *, at: datetime | N
     return (db.scalar(select(func.count(PaymentTerminal.id)).where(*filters)) or 0) > 0
 
 
+def card_readiness(db: Session, settings: Settings, store_id: uuid.UUID | None) -> dict[str, object]:
+    """Package, hardware, and acquirer are separate. A missing acquirer never counts as an approval."""
+    entitled = has_capability(db, Capability.CARD_TERMINALS)
+    blockers: list[str] = []
+    if not entitled:
+        blockers.append("PACKAGE_REQUIRED")
+        return {
+            "state": "PACKAGE_REQUIRED",
+            "production_ready": False,
+            "capability": False,
+            "reason": "Pay by Card is not included in this package. Cash payments are unchanged.",
+            "blockers": blockers,
+        }
+    terminals = active_terminals(db, store_id) if store_id is not None else []
+    if not terminals:
+        blockers.append("HARDWARE_NOT_PURCHASED")
+    card = next(info for info in registry.providers(settings) if info.channel == "CARD")
+    blockers.append("CERTIFICATION_REQUIRED")
+    if card.name == "simulator" or card.simulated or not card.configured:
+        blockers.append("INTEGRATION_PENDING")
+        reason = "No acquirer is configured. A card payment is not sent and cannot be marked approved."
+    else:
+        blockers.append("DEVICE_PROTOCOL_UNSUPPORTED")
+        reason = "Acquirer credentials are present, but no EC machine protocol has been validated."
+    state = "HARDWARE_NOT_PURCHASED" if "HARDWARE_NOT_PURCHASED" in blockers else "INTEGRATION_PENDING"
+    return {
+        "state": state,
+        "production_ready": False,
+        "capability": True,
+        "reason": reason,
+        "blockers": blockers,
+    }
+
+
+def production_card_ready(db: Session, settings: Settings, store_id: uuid.UUID | None) -> bool:
+    return bool(card_readiness(db, settings, store_id)["production_ready"])
+
+
 def config(
     db: Session, settings: Settings, *, store_scope: uuid.UUID | None, store_id: uuid.UUID | None, device_id
 ) -> PaymentsConfig:
@@ -139,6 +177,7 @@ def config(
         card_terminal_required=bool(terminals),
         default_terminal_id=default.id if default is not None else None,
         simulator_controls=simulator_controls(db, settings),
+        production_card_ready=production_card_ready(db, settings, resolved),
     )
 
 

@@ -27,8 +27,8 @@ describe("visiblePlans", () => {
     expect(visiblePlans(plans, "FREE").map((row) => row.code)).toEqual(["FREE", "GROWTH"]);
   });
 
-  it("keeps the legacy plan a store is already on", () => {
-    expect(visiblePlans(plans, "LITE").map((row) => row.code)).toEqual(["LITE", "FREE", "GROWTH"]);
+  it("does not offer a retired plan, including to a store already on it", () => {
+    expect(visiblePlans(plans, "LITE").map((row) => row.code)).toEqual(["FREE", "GROWTH"]);
   });
 });
 

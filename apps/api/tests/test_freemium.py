@@ -50,20 +50,18 @@ def test_uae_prices_and_the_new_annual_discount_leave_legacy_prices_alone() -> N
     with _control() as db:
         ensure_catalog(db)
         db.commit()
-        legacy = {row.code: row.monthly_fils for row in db.scalars(select(BillingPlan))}
-        assert legacy["LITE"] == 14_900
-        assert legacy["STANDARD"] == 29_900
-        assert legacy["PRO"] == 49_900
-        assert legacy["FREE"] == 0
-        assert legacy["GROWTH"] == 12_900
-        assert legacy["PRO_AI"] == 29_900
+        stored = {row.code: row.monthly_fils for row in db.scalars(select(BillingPlan))}
+        assert set(stored) == {"FREE", "GROWTH", "PRO_AI", "ENTERPRISE"}
+        assert stored["FREE"] == 0
+        assert stored["GROWTH"] == 12_900
+        assert stored["PRO_AI"] == 29_900
         annual = db.scalar(select(BillingCycle).where(BillingCycle.code == "ANNUAL"))
         assert annual is not None and annual.discount_bps == 2_500
         growth = db.scalar(select(BillingPlan).where(BillingPlan.code == "GROWTH"))
-        standard = db.scalar(select(BillingPlan).where(BillingPlan.code == "STANDARD"))
-        assert growth is not None and standard is not None
+        assert growth is not None
         assert discount_bps_for(growth, annual) == 2_000
-        assert discount_bps_for(standard, annual) == 2_500
+        historical = BillingPlan(code="STANDARD", name="Standard", monthly_fils=29_900, updated_at=datetime.now(UTC))
+        assert discount_bps_for(historical, annual) == 2_500
         priced = quote_for(db, "GROWTH", "ANNUAL", [], country="AE")
         assert priced.currency == "AED"
         assert priced.discount_bps == 2_000
@@ -73,8 +71,15 @@ def test_uae_prices_and_the_new_annual_discount_leave_legacy_prices_alone() -> N
         free = quote_for(db, "FREE", "MONTHLY", [], country="AE")
         assert free.total_fils == 0
         assert all(line.code != "onboarding" for line in free.lines)
-        kept = quote_for(db, "STANDARD", "ANNUAL", [])
-        assert _plan_line(kept, "STANDARD") == cycle_amount(29_900, 12, 2_500)
+        with pytest.raises(ApiError) as retired:
+            quote_for(db, "STANDARD", "ANNUAL", [])
+        assert retired.value.code == "plan_not_selectable"
+        with pytest.raises(ApiError) as lite:
+            quote_for(db, "LITE", "MONTHLY", [])
+        assert lite.value.code == "plan_not_selectable"
+        with pytest.raises(ApiError) as pro:
+            quote_for(db, "PRO", "MONTHLY", [])
+        assert pro.value.code == "plan_not_selectable"
         countries = set(db.scalars(select(BillingPlanPrice.country)))
         assert countries == {"AE"}
         with pytest.raises(ApiError) as missing:
@@ -94,7 +99,7 @@ def test_uae_prices_and_the_new_annual_discount_leave_legacy_prices_alone() -> N
             "sales_history_days": 30,
             "ai_questions_per_month": 10,
         }
-        assert db.scalar(select(BillingPlan).where(BillingPlan.code == "LITE")).resource_limits is None
+        assert db.scalar(select(BillingPlan).where(BillingPlan.code == "LITE")) is None
 
 
 def test_an_issued_invoice_keeps_its_fil_snapshot() -> None:
@@ -122,6 +127,50 @@ def test_an_issued_invoice_keeps_its_fil_snapshot() -> None:
         assert stored.total_fils == 134_100
         assert stored.plan_code == "LITE"
         assert stored.recurring_fils == 134_100
+
+
+def test_a_retired_plan_stays_readable_and_is_not_recreated() -> None:
+    with _control() as db:
+        ensure_catalog(db)
+        now = datetime.now(UTC)
+        tenant = Tenant(slug="still-lite", name="Still Lite", status="active", database_url_encrypted="x", plan="LITE")
+        cycle = db.scalar(select(BillingCycle).where(BillingCycle.code == "MONTHLY"))
+        assert cycle is not None
+        plan = BillingPlan(code="LITE", name="Lite", monthly_fils=14_900, active=True, included_modules=["loyalty"], updated_at=now)
+        db.add_all([tenant, plan])
+        db.flush()
+        db.add(Subscription(tenant_id=tenant.id, plan_id=plan.id, cycle_id=cycle.id, status="active", current_period_end=now + timedelta(days=10)))
+        db.add(
+            BillingInvoice(
+                tenant_id=tenant.id,
+                status="pending",
+                plan_code="LITE",
+                cycle_code="MONTHLY",
+                recurring_fils=14_900,
+                total_fils=14_900,
+                confirm_name="Still Lite",
+            )
+        )
+        db.commit()
+        ensure_catalog(db)
+        ensure_catalog(db)
+        db.commit()
+        kept = db.scalar(select(BillingPlan).where(BillingPlan.code == "LITE"))
+        assert kept is not None
+        assert kept.active is False
+        assert kept.monthly_fils == 14_900
+        assert kept.included_modules == ["loyalty"]
+        assert db.scalar(select(func.count()).select_from(BillingPlan).where(BillingPlan.code == "LITE")) == 1
+        subscription = db.scalar(select(Subscription).where(Subscription.tenant_id == tenant.id))
+        invoice = db.scalar(select(BillingInvoice).where(BillingInvoice.tenant_id == tenant.id))
+        assert subscription is not None and subscription.plan_id == kept.id and subscription.status == "active"
+        assert invoice is not None and invoice.plan_code == "LITE" and invoice.total_fils == 14_900
+        assert {row.code for row in db.scalars(select(BillingPlan).where(BillingPlan.active.is_(True)))} == {
+            "FREE",
+            "GROWTH",
+            "PRO_AI",
+            "ENTERPRISE",
+        }
 
 
 def _domain(slug: str) -> dict[str, str]:
@@ -161,8 +210,17 @@ def test_free_provision_is_operational_and_a_second_call_does_not_add_a_subscrip
         start_trial(db, other)
         assign_free(db, other)
         db.commit()
-        assert access_state(db, other.id) == "trial"
-        assert other.plan == "STANDARD"
+        assert access_state(db, other.id) == "free"
+        assert other.plan == "FREE"
+        growth = db.scalar(select(BillingPlan).where(BillingPlan.code == "GROWTH"))
+        existing = db.scalar(select(Subscription).where(Subscription.tenant_id == other.id))
+        assert growth is not None and existing is not None
+        existing.plan_id = growth.id
+        existing.status = "active"
+        other.plan = "GROWTH"
+        assign_free(db, other)
+        db.commit()
+        assert other.plan == "GROWTH"
         assert db.scalar(select(func.count()).select_from(Subscription).where(Subscription.tenant_id == other.id)) == 1
     store = platform.headers("alpha")
     settings = platform.client.get("/api/v1/settings", headers=store)

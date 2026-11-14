@@ -7,7 +7,7 @@ const control =
   "w-full rounded-xl border bg-surface py-3 text-sm font-normal text-charcoal transition placeholder:text-charcoal/40 focus:bg-white focus:outline-none disabled:cursor-not-allowed disabled:text-charcoal/50";
 
 /** Label above every filter-bar control (store, category, status, search). */
-export const filterLabel = "mb-1.5 block text-[11px] font-semibold uppercase tracking-wider text-[#6B7280]";
+export const filterLabel = "mb-1.5 block text-[11px] font-semibold uppercase tracking-wider text-[#4B5563] dark:text-zinc-300";
 
 function isDescriptionLabel(label: string): boolean {
   return /\bdescription\b/i.test(label);
@@ -188,7 +188,7 @@ export function SearchField({
           {...props}
           id={fieldId}
           type="search"
-          className="h-11 w-full rounded-full border border-line bg-white pl-10 pr-4 text-sm font-medium text-charcoal transition-all placeholder:font-normal placeholder:text-charcoal/40 hover:border-gray-400 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20 [&::-webkit-search-cancel-button]:hidden"
+          className="h-11 w-full rounded-full border border-line bg-white pl-10 pr-4 text-sm font-medium text-charcoal transition-all placeholder:font-normal placeholder:text-charcoal/40 hover:border-gray-400 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/30 dark:border-zinc-600 dark:bg-zinc-900 dark:placeholder:text-zinc-400 [&::-webkit-search-cancel-button]:hidden"
         />
       </span>
     </label>

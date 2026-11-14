@@ -41,6 +41,12 @@ def _credit_risk(db: Session, settings: Settings) -> str:
 
 
 def _dispatch(db: Session, settings: Settings) -> str:
+    try:
+        from reach.prepare import prepare_due
+
+        prepare_due(db, settings)
+    except Exception:  # noqa: BLE001 - audience preparation must not stop receipts
+        logging.getLogger("ai_pos.jobs").exception("campaign audience preparation failed")
     counts = messaging_service.dispatch_due(db, settings)
     return ", ".join(f"{value} {key}" for key, value in counts.items())
 

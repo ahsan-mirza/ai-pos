@@ -770,3 +770,54 @@ def test_invalid_vehicle_capacity_and_empty_plan_are_rejected(client) -> None:
     assert negative.status_code == 422
     empty = client.post("/api/v1/fleet/plans", headers=headers, json={})
     assert empty.status_code == 422
+
+
+def test_doubled_check_names_collapse_to_the_canonical_name() -> None:
+    from app.models.base import canonical_check_name
+
+    assert canonical_check_name("ck_sales_orders_ck_sales_orders_scheduling_status") == (
+        "ck_sales_orders_scheduling_status"
+    )
+    assert canonical_check_name("ck_delivery_zone_slots_ck_delivery_zone_slots_weekday") == (
+        "ck_delivery_zone_slots_weekday"
+    )
+    assert canonical_check_name("ck_sales_orders_scheduling_status") is None
+    assert canonical_check_name("orders_status") is None
+
+
+def test_fleet_order_list_pages_past_the_old_cap(client, session) -> None:
+    seed(client)
+    enable(client)
+    headers, _user_id = admin(client)
+    customer = create_customer(client, headers)
+    created = client.post(
+        "/api/v1/sales-orders",
+        headers=headers,
+        json={"store_id": STORE, "customer_id": customer["id"], "lines": [{"product_id": CABLE, "quantity": 1}]},
+    )
+    assert created.status_code == 201, created.text
+    sample = session.get(SalesOrder, uuid.UUID(created.json()["id"]))
+    assert sample is not None
+    for index in range(40):
+        session.add(
+            SalesOrder(
+                tenant_id=sample.tenant_id,
+                number=f"FLEET-{index:04d}",
+                store_id=sample.store_id,
+                customer_id=sample.customer_id,
+                status="CONFIRMED",
+                currency=sample.currency,
+                source="manual",
+                channel_ref=f"fleet-page-{index}",
+                scheduling_status="UNSCHEDULED",
+            )
+        )
+    session.commit()
+    first = client.get("/api/v1/fleet/orders", headers=headers, params={"view": "unscheduled", "limit": 10})
+    assert first.status_code == 200, first.text
+    assert int(first.headers["x-total-count"]) >= 41
+    assert len(first.json()) == 10
+    second = client.get(
+        "/api/v1/fleet/orders", headers=headers, params={"view": "unscheduled", "limit": 10, "offset": 10}
+    )
+    assert {row["id"] for row in first.json()}.isdisjoint(row["id"] for row in second.json())

@@ -50,6 +50,8 @@ describe("fleet scheduling form", () => {
   it("says when vehicle capacity is unknown", () => {
     const html = renderToStaticMarkup(<DispatchSummary plan={plan} canOverride={false} />);
     expect(html).toContain("Vehicle capacity is unknown.");
+    expect(html).toContain("Weight unknown");
+    expect(html).not.toContain("0 kg");
     expect(html).toContain("An authorised user can override this capacity check.");
   });
 

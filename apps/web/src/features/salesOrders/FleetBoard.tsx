@@ -1,11 +1,11 @@
 import { Permission } from "@ai-pos/shared-types";
-import { DateInput, formatDate, useLocale } from "@ai-pos/ui";
+import { DateInput, formatDate, useLocale, usePagination } from "@ai-pos/ui";
 import { useEffect, useState } from "react";
 import { DataTable, type DataTableColumn } from "../../components/ui/DataTable";
 import { ErrorNote, GhostButton, PrimaryButton } from "../../components/ui/Field";
 import { useAuth } from "../../lib/auth";
 import { errorMessage } from "../users/api";
-import { capacityKey, formatGrams, formatVolume } from "./fleetCapacity";
+import { capacityKey, formatGrams, formatVolume, volumeReadout, weightReadout, type MeasureReadout } from "./fleetCapacity";
 import { dispatchPickerEmpty, measureProblem, overrideProblem, planProblems, scheduleProblems } from "./fleetRules";
 import {
   fleetApi,
@@ -73,6 +73,37 @@ function OrderCards({
   );
 }
 
+function MeasureLine({
+  label,
+  readout,
+  remaining,
+  t,
+}: {
+  label: string;
+  readout: MeasureReadout;
+  remaining: string | null;
+  t: (text: string) => string;
+}) {
+  return (
+    <p className="mt-1 text-charcoal/70">
+      {label}{" "}
+      {readout.state === "unknown" ? (
+        t(readout.note)
+      ) : (
+        <span dir="ltr">{readout.amount}</span>
+      )}
+      {readout.state === "partial" ? (
+        <>
+          {" "}
+          {t("known")} · {t(readout.note)}
+        </>
+      ) : null}
+      {" · "}
+      {t("Remaining")} <span dir="ltr">{remaining ?? "—"}</span>
+    </p>
+  );
+}
+
 function OrderTable({
   rows,
   loading,
@@ -80,6 +111,11 @@ function OrderTable({
   onRetry,
   onOpen,
   empty,
+  page,
+  pageSize,
+  total,
+  onPage,
+  onPageSize,
 }: {
   rows: FleetOrderRow[];
   loading: boolean;
@@ -87,6 +123,11 @@ function OrderTable({
   onRetry: () => void;
   onOpen: (id: string) => void;
   empty: string;
+  page?: number;
+  pageSize?: number;
+  total?: number;
+  onPage?: (page: number) => void;
+  onPageSize?: (size: number) => void;
 }) {
   const { t } = useLocale();
   const columns: DataTableColumn<FleetOrderRow>[] = [
@@ -132,7 +173,11 @@ function OrderTable({
           isLoading={loading}
           error={error}
           onRetry={onRetry}
-          pagination={false}
+          pagination={
+            onPage && onPageSize && page != null && pageSize != null && total != null
+              ? { mode: "server", currentPage: page, pageSize, totalRecords: total, onPageChange: onPage, onPageSizeChange: onPageSize }
+              : false
+          }
           onRowClick={(row) => onOpen(row.id)}
           emptyState={empty}
           minWidth="760px"
@@ -256,14 +301,18 @@ export function DispatchSummary({ plan, canOverride }: { plan: DispatchPlan; can
         {t("Delivery date")} <span dir="ltr" className="whitespace-nowrap">{formatDate(plan.service_date)}</span>
       </p>
       <p className="mt-2 text-charcoal/80">{message}</p>
-      <p className="mt-1 text-charcoal/70">
-        {t("Weight")} <span dir="ltr">{formatGrams(plan.capacity.cargo_weight_grams)}</span> · {t("Remaining")}{" "}
-        <span dir="ltr">{formatGrams(plan.capacity.remaining_weight_grams)}</span>
-      </p>
-      <p className="text-charcoal/70">
-        {t("Volume")} <span dir="ltr">{formatVolume(plan.capacity.cargo_volume_cm3)}</span> · {t("Remaining")}{" "}
-        <span dir="ltr">{formatVolume(plan.capacity.remaining_volume_cm3)}</span>
-      </p>
+      <MeasureLine
+        label={t("Weight")}
+        readout={weightReadout(plan.capacity)}
+        remaining={plan.capacity.remaining_weight_grams == null ? null : formatGrams(plan.capacity.remaining_weight_grams)}
+        t={t}
+      />
+      <MeasureLine
+        label={t("Volume")}
+        readout={volumeReadout(plan.capacity)}
+        remaining={plan.capacity.remaining_volume_cm3 == null ? null : formatVolume(plan.capacity.remaining_volume_cm3)}
+        t={t}
+      />
       {plan.capacity.blocked && !canOverride ? (
         <p className="mt-2 text-charcoal/70">{t("An authorised user can override this capacity check.")}</p>
       ) : null}
@@ -310,6 +359,8 @@ export function FleetBoard({
   const [userId, setUserId] = useState("");
   const [phone, setPhone] = useState("");
   const [reload, setReload] = useState(0);
+  const [orderTotal, setOrderTotal] = useState(0);
+  const pager = usePagination({ resetKeys: [section, storeId] });
 
   useEffect(() => {
     let cancelled = false;
@@ -350,9 +401,13 @@ export function FleetBoard({
           setPickerCounts({ promised: orderRows.length, available: open.length });
           setRows(open);
         } else {
-          const orderRows = await fleetApi.orders({ view: section, store_id: storeId || null });
+          const page = await fleetApi.orderPage(
+            { view: section, store_id: storeId || null },
+            { offset: pager.offset, limit: pager.pageSize },
+          );
           if (cancelled) return;
-          setRows(orderRows);
+          setRows(page.rows);
+          setOrderTotal(page.total);
           if (section === "unscheduled" || section === "scheduled") {
             setZones(await fleetApi.zones(storeId || null));
           }
@@ -367,7 +422,7 @@ export function FleetBoard({
     return () => {
       cancelled = true;
     };
-  }, [section, storeId, serviceDate, reload]);
+  }, [section, storeId, serviceDate, reload, pager.offset, pager.pageSize]);
 
   const fail = (caught: unknown) => setNotice(errorMessage(caught, t("Could not save this.")));
 
@@ -579,6 +634,11 @@ export function FleetBoard({
             onRetry={() => setReload((value) => value + 1)}
             onOpen={onOpen}
             empty={empty}
+            page={pager.page}
+            pageSize={pager.pageSize}
+            total={orderTotal}
+            onPage={pager.setPage}
+            onPageSize={pager.setPageSize}
           />
           {section === "unscheduled" || section === "scheduled" ? (
             <div className="rounded-card border border-line bg-white p-4">

@@ -123,7 +123,7 @@ function DaysPicker({ value, options, onChange }: { value: number; options: numb
           type="button"
           aria-pressed={value === days}
           onClick={() => onChange(days)}
-          className={`rounded-full px-3 py-1.5 ${value === days ? "bg-white shadow-sm" : "text-charcoal/60"}`}
+          className={`rounded-full px-3 py-1.5 ${value === days ? "bg-accent text-white shadow-sm" : "text-charcoal/70 dark:text-zinc-200"}`}
         >
           {days} days
         </button>
@@ -153,7 +153,7 @@ function AnomaliesTab() {
           <DaysPicker value={days} options={[7, 30, 90]} onChange={setDays} />
         </div>
         {data.anomalies.length === 0 ? (
-          <p className="mt-4 rounded-2xl bg-surface px-4 py-3 text-sm">Nothing unusual in the last {data.days} days.</p>
+          <p className="mt-4 rounded-2xl bg-surface px-4 py-3 text-sm text-charcoal dark:text-zinc-100">Nothing unusual in the last {data.days} days.</p>
         ) : (
           <ul className="mt-4 space-y-2">
             {data.anomalies.map((item, index) => (

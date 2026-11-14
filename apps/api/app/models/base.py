@@ -12,8 +12,8 @@ def _check_constraint_token(constraint, table) -> str:
     Historical revisions passed names that already started with ``ck_<table>_``.
     The old template prefixed that string again, so PostgreSQL stored names such as
     ``ck_delivery_zone_slots_ck_delivery_zone_slots_weekday``. A name is reduced to
-    its suffix before the template adds the prefix once. Databases already upgraded
-    keep the doubled names; this does not rename or drop them.
+    its suffix before the template adds the prefix once. Databases upgraded before
+    this change keep the doubled names until revision 20261113_0109 renames them.
     """
     given = getattr(constraint, "name", None)
     if not given:
@@ -25,6 +25,25 @@ def _check_constraint_token(constraint, table) -> str:
     if not text:
         raise ValueError("A check constraint name cannot be only the table prefix.")
     return text
+
+
+def canonical_check_name(name: str) -> str | None:
+    """``ck_<table>_ck_<table>_<suffix>`` becomes ``ck_<table>_<suffix>``.
+
+    Returns None when the name is already canonical or is not a doubled check name.
+    """
+    if not name.startswith("ck_"):
+        return None
+    rest = name[3:]
+    marker = rest.find("_ck_")
+    if marker < 0:
+        return None
+    table = rest[:marker]
+    repeated = rest[marker + 1 :]
+    prefix = f"ck_{table}_"
+    if not repeated.startswith(prefix) or repeated == prefix:
+        return None
+    return repeated
 
 
 NAMING_CONVENTION = {

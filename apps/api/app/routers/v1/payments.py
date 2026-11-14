@@ -14,6 +14,7 @@ from app.core.permissions import Permission
 from app.schemas.payments import (
     BnplIntentCreate,
     CardIntentCreate,
+    CardReadiness,
     IntentCreate,
     IntentOut,
     PaymentList,
@@ -74,6 +75,29 @@ def create_card_intent(payload: CardIntentCreate, db: Db, settings: Config, prin
 def create_bnpl_intent(payload: BnplIntentCreate, db: Db, settings: Config, principal: AtRegister) -> IntentOut:
     """Open a Tabby or Tamara checkout for the customer's phone; poll until it is captured or declined."""
     return integrated_payment_service.create_bnpl(db, settings, payload, principal)
+
+
+@router.get("/card-readiness", response_model=CardReadiness)
+def card_readiness(
+    db: Db,
+    settings: Config,
+    principal: Annotated[Principal, Depends(authorize(Permission.PORTAL_ACCESS))],
+) -> CardReadiness:
+    body = integrated_payment_service.card_readiness(db, settings, principal.store_id)
+    return CardReadiness.model_validate(body)
+
+
+@router.post("/terminal-payments", dependencies=[CardsOn])
+def start_terminal_payment(principal: AtRegister) -> None:
+    """Refuses a live card charge. No acquirer protocol is validated, so nothing is marked approved."""
+    from app.integrations.terminals.base import TerminalNotConfigured, live_adapter
+
+    del principal
+    try:
+        live_adapter("", False).initiate(amount_cents=1, currency="AED", reference="none", idempotency_key="none")
+    except TerminalNotConfigured as exc:
+        raise ApiError(409, "terminal_not_configured", str(exc)) from exc
+    raise ApiError(409, "terminal_not_configured", "No payment terminal provider is configured.")
 
 
 @router.get("/config", response_model=PaymentsConfig)

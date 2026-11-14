@@ -167,7 +167,7 @@ export function GoLiveModal({
 
   useEffect(() => {
     if (!catalog || !accessReady || planTouched.current) return;
-    const active = catalog.plans.filter((row) => row.active);
+    const active = catalog.plans.filter((row) => row.active && planFamily(row) === "current");
     const current = active.find((row) => row.code === currentPlanCode);
     const free = active.find((row) => row.code === "FREE");
     const next = current ?? free ?? active.find((row) => planFamily(row) === "current") ?? active[0];
@@ -767,14 +767,13 @@ function PackageStep({
   onPicks: (next: HardwarePick[]) => void;
 }) {
   const plans = catalog.plans
-    .filter((row) => row.active && (planFamily(row) === "current" || row.code === currentPlanCode))
+    .filter((row) => row.active && planFamily(row) === "current")
     .sort((a, b) => a.sort_order - b.sort_order);
   const cycles = catalog.cycles.filter((row) => row.active).sort((a, b) => a.sort_order - b.sort_order);
   const addons = catalog.addons
     .filter((row) => row.active && row.module_keys.length === 0)
     .sort((a, b) => a.sort_order - b.sort_order);
   const plan = catalog.plans.find((row) => row.code === planCode);
-  const showsLegacy = plans.some((row) => planFamily(row) === "legacy");
 
   return (
     <div className="grid gap-6">
@@ -812,11 +811,6 @@ function PackageStep({
               );
             })}
           </div>
-          {showsLegacy ? (
-            <p className="mt-3 text-sm text-charcoal/60">
-              Lite, Standard, and Pro stay here only because this store is already on one of them.
-            </p>
-          ) : null}
           {isCustom(plan) ? (
             <p className="mt-3 text-sm text-charcoal/70">Choose Free, Growth, or Pro AI to continue. Enterprise is not billed at zero.</p>
           ) : null}

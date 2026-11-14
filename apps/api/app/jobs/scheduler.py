@@ -29,6 +29,12 @@ def _paid_job_blocked(settings: Settings, name: str) -> bool:
 
 def _runner(name: str, settings: Settings):
     def run() -> None:
+        if name == "dispatch_messages" and settings.tenancy_enabled:
+            try:
+                _dispatch_fair(settings, name)
+            except Exception:  # noqa: BLE001 - the next tick retries; one failure must not stop the scheduler
+                logger.exception("fair dispatch failed")
+            return
         if not settings.tenancy_enabled:
             with get_session_factory()() as db:
                 run_job(db, settings, name)
@@ -47,6 +53,31 @@ def _runner(name: str, settings: Settings):
                 logger.exception("job %s failed for tenant %s", name, tenant.slug)
 
     return run
+
+
+def _dispatch_fair(settings: Settings, name: str) -> None:
+    """Pick one message at a time across tenants. A receipt is not left behind a campaign."""
+    from app.services import messaging_service
+
+    if _paid_job_blocked(settings, name):
+        for tenant in active_tenants(settings):
+            try:
+                with use_tenant(tenant), get_session_factory()() as db:
+                    from app.jobs.runner import note_skip
+
+                    note_skip(db, name, "subscription locked")
+            except Exception:  # noqa: BLE001 - one tenant's failure must not stop the others
+                logger.exception("job %s failed for tenant %s", name, tenant.slug)
+        return
+    for tenant in active_tenants(settings):
+        try:
+            with use_tenant(tenant), get_session_factory()() as db:
+                from reach.prepare import prepare_due
+
+                prepare_due(db, settings)
+        except Exception:  # noqa: BLE001 - one store's audience must not stop another store's receipts
+            logger.exception("campaign audience preparation failed for tenant %s", tenant.slug)
+    messaging_service.dispatch_across_tenants(settings)
 
 
 def _grace_seconds(trigger: dict[str, object]) -> int:

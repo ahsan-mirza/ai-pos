@@ -486,6 +486,7 @@ export function AxizDateRange({
   toLabel = "To",
   className = "",
 }: AxizDateRangeProps) {
+  const { t } = useLocale();
   const inverted = Boolean(from && to && compareIso(from, to) > 0);
   return (
     <div className={`flex flex-wrap items-end gap-3 ${className}`}>
@@ -501,7 +502,7 @@ export function AxizDateRange({
           <AxizDatePicker aria-label={toLabel} value={to} min={from || min} max={max} disabled={disabled} onChange={(event) => onToChange(event.target.value)} />
         </span>
       </label>
-      {inverted ? <p role="alert" className="text-xs font-medium text-danger">From is after To.</p> : null}
+      {inverted ? <p role="alert" className="text-xs font-medium text-danger">{t("From is after To.")}</p> : null}
     </div>
   );
 }

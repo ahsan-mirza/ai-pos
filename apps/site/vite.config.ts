@@ -2,7 +2,7 @@ import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import react from "@vitejs/plugin-react";
 import { defineConfig, loadEnv, type Plugin } from "vite";
-import { SEO_PAGES, headTags, robotsTxt, sitemapXml, seoPage } from "./src/seo";
+import { SEO_PAGES, headTags, marketingRedirects, robotsTxt, sitemapXml, seoPage, staticArticle } from "./src/seo";
 
 const root = fileURLToPath(new URL(".", import.meta.url));
 
@@ -37,11 +37,21 @@ function siteSeo(): Plugin {
         const page = seoPage(id);
         if (!page) return html;
         const tags = headTags(page, verification);
-        return html.replace("<!-- site-seo -->", tags);
+        return html
+          .replace("<!-- site-seo -->", tags)
+          .replace('<div id="root"></div>', `<div id="root">${staticArticle(page)}</div>`);
       },
     },
     configureServer(server) {
       server.middlewares.use((req, res, next) => {
+        const path = req.url?.split("?")[0];
+        const target = path ? marketingRedirects().get(path) : undefined;
+        if (target) {
+          res.statusCode = 301;
+          res.setHeader("Location", target);
+          res.end();
+          return;
+        }
         const rewritten = rewritePage(req.url);
         if (rewritten) req.url = rewritten;
         const served = crawlFile(req.url?.split("?")[0]);
@@ -52,6 +62,14 @@ function siteSeo(): Plugin {
     },
     configurePreviewServer(server) {
       server.middlewares.use((req, res, next) => {
+        const path = req.url?.split("?")[0];
+        const target = path ? marketingRedirects().get(path) : undefined;
+        if (target) {
+          res.statusCode = 301;
+          res.setHeader("Location", target);
+          res.end();
+          return;
+        }
         const rewritten = rewritePage(req.url);
         if (rewritten) req.url = rewritten;
         const served = crawlFile(req.url?.split("?")[0]);

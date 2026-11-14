@@ -5,7 +5,7 @@ import {
   type FulfillmentBoard,
   type SalesOrderRow,
 } from "@ai-pos/shared-types";
-import { AxizTabs, pageCount, useLocale } from "@ai-pos/ui";
+import { AxizDateRange, AxizTabs, pageCount, useLocale } from "@ai-pos/ui";
 import { MapPinned, PackageCheck, Search, Truck } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
@@ -77,6 +77,10 @@ export interface FulfillmentBoardViewProps {
   onPageSize: (size: number) => void;
   onRetry: () => void;
   onOpen: (id: string) => void;
+  dateFrom?: string;
+  dateTo?: string;
+  onDateFrom?: (value: string) => void;
+  onDateTo?: (value: string) => void;
 }
 
 export function FulfillmentBoardView({
@@ -102,6 +106,10 @@ export function FulfillmentBoardView({
   onPageSize,
   onRetry,
   onOpen,
+  dateFrom = "",
+  dateTo = "",
+  onDateFrom,
+  onDateTo,
 }: FulfillmentBoardViewProps) {
   const { t, locale } = useLocale();
   const filters = { query: search, storeId, lockedStore };
@@ -313,6 +321,16 @@ export function FulfillmentBoardView({
                 </span>
               </label>
             )}
+            {waiting || !onDateFrom || !onDateTo ? null : (
+              <AxizDateRange
+                from={dateFrom}
+                to={dateTo}
+                onFromChange={onDateFrom}
+                onToChange={onDateTo}
+                fromLabel={t("From")}
+                toLabel={t("To")}
+              />
+            )}
             {lockedStore ? null : (
               <FilterSelect
                 label={t("Branch")}
@@ -475,7 +493,9 @@ export function FulfillmentBoardPage() {
   const [view, setView] = useState<FulfillmentView>("OPEN");
   const [storeId, setStoreId] = useState(user?.store_id ?? "");
   const [search, setSearch] = useState("");
-  const pager = usePagination({ resetKeys: [view, storeId, search] });
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+  const pager = usePagination({ resetKeys: [view, storeId, search, dateFrom, dateTo] });
   const [board, setBoard] = useState<FulfillmentBoard | null>(null);
   const [boardScope, setBoardScope] = useState<string | null>(null);
   const [boardError, setBoardError] = useState<string | null>(null);
@@ -491,55 +511,44 @@ export function FulfillmentBoardPage() {
 
   useEffect(() => {
     let cancelled = false;
-    setBoardError(null);
-    salesOrdersApi
-      .board(scope)
-      .then((next) => {
-        if (cancelled) return;
-        loadedScope.current = scope ?? "";
-        setBoard(next);
-        setBoardScope(scope ?? "");
-        setBoardError(null);
-      })
-      .catch((caught: unknown) => {
-        if (cancelled) return;
-        setBoardError(caught instanceof Error ? caught.message : "The fulfillment board could not be loaded.");
-        if (loadedScope.current !== (scope ?? "")) {
-          setBoard(null);
-          setBoardScope(null);
-        }
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [scope, reloadToken]);
-
-  useEffect(() => {
-    let cancelled = false;
     setLoading(true);
     setListError(null);
+    setBoardError(null);
     setRows(null);
     setBackorders(null);
     setTotal(0);
     const run = async () => {
       try {
+        const snapshot = await salesOrdersApi.board({
+          storeId: scope,
+          status: view === "backorders" ? "OPEN" : view,
+          q: view === "backorders" ? null : search.trim() || null,
+          dateFrom: view === "backorders" ? null : dateFrom || null,
+          dateTo: view === "backorders" ? null : dateTo || null,
+          page: pager.page,
+          pageSize: pager.pageSize,
+        });
+        if (cancelled) return;
+        loadedScope.current = scope ?? "";
+        setBoard(snapshot);
+        setBoardScope(scope ?? "");
+        setBoardError(null);
         if (view === "backorders") {
-          const waiting = await salesOrdersApi.backorders(scope);
-          if (cancelled) return;
-          setBackorders(waiting);
+          setBackorders(await salesOrdersApi.backorders(scope));
         } else {
-          const page = await salesOrdersApi.list(
-            { status: view === "all" ? null : view, store_id: scope, q: search.trim() || null },
-            { offset: pager.offset, limit: pager.pageSize },
-          );
-          if (cancelled) return;
-          setRows(page.rows);
-          setTotal(page.total);
+          setRows(snapshot.rows);
+          setTotal(snapshot.total ?? snapshot.rows.length);
         }
         setListError(null);
       } catch (caught: unknown) {
         if (cancelled) return;
-        setListError(caught instanceof Error ? caught.message : "Could not load this list.");
+        const message = caught instanceof Error ? caught.message : "Could not load this list.";
+        setListError(message);
+        setBoardError(message);
+        if (loadedScope.current !== (scope ?? "")) {
+          setBoard(null);
+          setBoardScope(null);
+        }
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -548,7 +557,7 @@ export function FulfillmentBoardPage() {
     return () => {
       cancelled = true;
     };
-  }, [view, scope, search, pager.offset, pager.pageSize, reloadToken]);
+  }, [view, scope, search, dateFrom, dateTo, pager.page, pager.pageSize, reloadToken]);
 
   if (openId) {
     return (
@@ -592,6 +601,10 @@ export function FulfillmentBoardPage() {
       onPageSize={pager.setPageSize}
       onRetry={() => setReloadToken((token) => token + 1)}
       onOpen={setOpenId}
+      dateFrom={dateFrom}
+      dateTo={dateTo}
+      onDateFrom={setDateFrom}
+      onDateTo={setDateTo}
     />
   );
 

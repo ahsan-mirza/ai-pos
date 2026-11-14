@@ -301,6 +301,12 @@ def submit_transfer(
     from app.console import hardware as hardware_catalog
 
     hardware_catalog.mark_under_review(db, invoice.id)
+    from app.console.commercial_payments import mark_invoice_submitted
+
+    mark_invoice_submitted(db, invoice.id)
+    from app.console.subscription_changes import note_payment_submitted
+
+    note_payment_submitted(db, row.invoice_id, row.tenant_id)
     db.commit()
     db.refresh(row)
     _console_after_submit(db, row)
@@ -393,8 +399,11 @@ def approve(db: Session, operator: OperatorPrincipal, transfer_id: uuid.UUID, se
         found = db.scalar(select(BillingPayment).where(BillingPayment.submission_id == row.id))
         if found is None:
             raise ApiError(409, "payment_missing", "This receipt was approved without a payment record.")
+        from app.console.commercial_payments import mark_invoice_succeeded
         from app.console.entitlements import publish_purchased
 
+        mark_invoice_succeeded(db, row.invoice_id)
+        db.commit()
         publish_purchased(settings, row.tenant_id)
         return found
     if row.status != "pending_review":
@@ -437,6 +446,12 @@ def approve(db: Session, operator: OperatorPrincipal, transfer_id: uuid.UUID, se
         reason="Verified bank credit",
     )
     _console_after_decision(db, row)
+    from app.console.commercial_payments import mark_invoice_succeeded
+
+    mark_invoice_succeeded(db, invoice.id)
+    from app.console.subscription_changes import note_verified
+
+    note_verified(db, invoice.id, row.tenant_id, operator.id)
     db.commit()
     from app.console.entitlements import publish_purchased
 
@@ -477,6 +492,9 @@ def reject(db: Session, operator: OperatorPrincipal, transfer_id: uuid.UUID, rea
         reason=cleaned,
     )
     _console_after_decision(db, row)
+    from app.console.subscription_changes import note_proof_rejected
+
+    note_proof_rejected(db, row.invoice_id, row.tenant_id, cleaned, operator.id)
     db.commit()
     db.refresh(row)
     _notify_owner(

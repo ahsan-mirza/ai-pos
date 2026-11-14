@@ -1,6 +1,7 @@
 import { AnimatePresence, motion, useReducedMotion, type Variants } from "framer-motion";
 import { useEffect, useState } from "react";
 import { portalUrl } from "../env";
+import { seoPage } from "../seo";
 import { AIAnimatedBackground } from "./AIAnimatedBackground";
 import { GET_STARTED_NOTE, GetStartedLink } from "./GetStartedLink";
 import { Mark } from "./icons";
@@ -114,9 +115,7 @@ export function Hero() {
             AI-powered POS
           </motion.p>
           <h1 className="text-4xl font-bold leading-tight tracking-tight text-white sm:text-5xl">
-            <span className="sr-only">
-              Smart POS Software for restaurants, cafés, quick service, grocery, retail, wholesale, fashion, and electronics.
-            </span>
+            <span className="sr-only">{seoPage("home")?.h1}</span>
             <span aria-hidden="true">
               Smart POS Software for
               <RotatingBusiness reduce={reduce} />

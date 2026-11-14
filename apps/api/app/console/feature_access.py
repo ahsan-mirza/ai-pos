@@ -266,6 +266,8 @@ def _one(
     required = offer.plan if state in {"UPGRADE_REQUIRED", "COUNTRY_UNAVAILABLE"} else None
     plugin = plugins.get(key) if state == "PLUGIN_REQUIRED" else None
     plugin_priced = plugin is not None and plugin.monthly_fils > 0
+    baseline = key in preset and key not in claimed and plugins.get(key) is None and key in profile_allowed
+    grandfathered = code not in NEW_PLAN_CODES and key in _GRANDFATHERED
     show_price = state == "UPGRADE_REQUIRED" and not offer.custom_pricing
     return FeatureAccess(
         feature_key=key,
@@ -286,6 +288,8 @@ def _one(
         plugin_code=plugin.code if plugin is not None else None,
         plugin_name=plugin.name if plugin is not None else None,
         benefits=list(offer.benefits) if state == "UPGRADE_REQUIRED" else [],
+        baseline=baseline,
+        grandfathered=grandfathered,
     )
 
 

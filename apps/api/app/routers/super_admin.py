@@ -14,6 +14,7 @@ from pydantic import BaseModel, Field
 from app.console import (
     auth,
     billing,
+    commercial_payments,
     directory,
     entitlements,
     hardware,
@@ -37,7 +38,9 @@ from app.schemas.billing import (
     BankAccountIn,
     BankAccountOut,
     BusinessTypeModules,
+    CashCollectionIn,
     CatalogOut,
+    CommercialPaymentOut,
     ConfigChangeOut,
     CycleIn,
     CycleOut,
@@ -48,6 +51,7 @@ from app.schemas.billing import (
     ModuleCatalogueItem,
     ModuleSummary,
     OverviewOut,
+    PaymentMethodOut,
     PaymentOut,
     PlanImpactOut,
     PlanIn,
@@ -57,6 +61,7 @@ from app.schemas.billing import (
     RejectIn,
     ReviewNotice,
     ReviewSummary,
+    SandboxScenarioIn,
     SubscriptionAssign,
     SubscriptionOut,
     TransferOut,
@@ -652,6 +657,67 @@ async def billing_live(websocket: WebSocket) -> None:
         return
     finally:
         await rooms.leave(websocket)
+
+
+class MethodToggle(BaseModel):
+    is_enabled: bool
+
+
+@router.get("/billing/payment-methods", response_model=list[PaymentMethodOut])
+def console_payment_methods(_: CurrentOperator, settings: Config) -> list[PaymentMethodOut]:
+    with registry.control_session(settings) as db:
+        return [PaymentMethodOut(**row) for row in commercial_payments.list_methods(db, "")]
+
+
+@router.patch("/billing/payment-methods/{code}", response_model=PaymentMethodOut)
+def console_payment_method(code: str, payload: MethodToggle, _: ConsoleAdmin, settings: Config) -> PaymentMethodOut:
+    with registry.control_session(settings) as db:
+        commercial_payments.set_enabled(db, code, payload.is_enabled)
+        rows = commercial_payments.list_methods(db, "")
+        found = next(row for row in rows if row["code"] == code)
+        return PaymentMethodOut(**found)
+
+
+@router.get("/billing/payment-environment")
+def console_payment_environment(_: CurrentOperator, settings: Config) -> dict[str, object]:
+    sandbox = commercial_payments.sandbox_card_allowed(settings)
+    return {"sandbox": sandbox, "live_card": False, "provider": "axizpos_test" if sandbox else ""}
+
+
+@router.get("/billing/sandbox-payments", response_model=list[CommercialPaymentOut])
+def sandbox_payments(_: CurrentOperator, settings: Config) -> list[CommercialPaymentOut]:
+    with registry.control_session(settings) as db:
+        return [CommercialPaymentOut(**row) for row in commercial_payments.list_sandbox_payments(db)]
+
+
+@router.post("/billing/sandbox-payments/{payment_id}/scenario", response_model=CommercialPaymentOut)
+def sandbox_scenario(
+    payment_id: uuid.UUID, payload: SandboxScenarioIn, _: ConsoleAdmin, settings: Config
+) -> CommercialPaymentOut:
+    if not commercial_payments.sandbox_card_allowed(settings):
+        raise ApiError(404, "sandbox_disabled", "Sandbox controls are off on this server.")
+    with registry.control_session(settings) as db:
+        payment = db.get(commercial_payments.CommercialPayment, payment_id)
+        if payment is None:
+            raise ApiError(404, "not_found", "Payment was not found.")
+        commercial_payments.apply_sandbox_scenario(db, payment, payload.scenario)
+        db.commit()
+        return CommercialPaymentOut(**commercial_payments.payment_for_tenant(db, payment.tenant_id, payment.id))
+
+
+@router.get("/billing/commercial-payments", response_model=list[CommercialPaymentOut])
+def commercial_review(_: CurrentOperator, settings: Config) -> list[CommercialPaymentOut]:
+    with registry.control_session(settings) as db:
+        return [CommercialPaymentOut(**row) for row in commercial_payments.list_review_payments(db)]
+
+
+@router.post("/billing/commercial-payments/{payment_id}/cash", response_model=CommercialPaymentOut)
+def collect_cash(
+    payment_id: uuid.UUID, payload: CashCollectionIn, operator: ConsoleAdmin, settings: Config
+) -> CommercialPaymentOut:
+    with registry.control_session(settings) as db:
+        payment = commercial_payments.record_cash(db, settings, payment_id, operator.id, payload.reference)
+        return CommercialPaymentOut(**commercial_payments.payment_for_tenant(db, payment.tenant_id, payment.id))
 
 
 @router.get("/billing/transfers", response_model=list[TransferOut])

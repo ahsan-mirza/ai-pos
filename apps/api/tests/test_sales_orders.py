@@ -528,3 +528,43 @@ def test_today_follows_the_tenant_timezone_across_midnight(client, session, monk
     assert (pacific["orders_today"], pacific["delivered_today"], pacific["timezone"]) == (1, 1, "America/Los_Angeles")
     unknown = client.put("/api/v1/settings/timezone", headers=headers, json={"timezone": "Not/Azone"})
     assert unknown.status_code == 422
+
+
+def test_board_pages_past_three_hundred_without_repeating_a_row(client, session) -> None:
+    seed(client)
+    headers, _ = admin(client)
+    customer = create_customer(client, headers)
+    created = create(client, headers, customer["id"], [{"product_id": CABLE, "quantity": 1}])
+    assert created.status_code == 201, created.text
+    sample = session.get(SalesOrder, uuid.UUID(created.json()["id"]))
+    assert sample is not None
+    for index in range(320):
+        session.add(
+            SalesOrder(
+                tenant_id=sample.tenant_id,
+                number=f"BULK-{index:04d}",
+                store_id=sample.store_id,
+                customer_id=sample.customer_id,
+                status="CONFIRMED",
+                currency=sample.currency,
+                source="manual",
+                channel_ref=f"bulk-{index}",
+            )
+        )
+    session.commit()
+    first = client.get("/api/v1/sales-orders/board", headers=headers, params={"page": 1, "page_size": 100})
+    assert first.status_code == 200, first.text
+    body = first.json()
+    assert body["total"] >= 320
+    assert body["page"] == 1 and body["page_size"] == 100
+    assert len(body["rows"]) == 100
+    assert body["has_next"] is True and body["has_previous"] is False
+    second = client.get("/api/v1/sales-orders/board", headers=headers, params={"page": 2, "page_size": 100}).json()
+    assert set(row["id"] for row in body["rows"]).isdisjoint(row["id"] for row in second["rows"])
+    last_page = (body["total"] + 99) // 100
+    last = client.get(
+        "/api/v1/sales-orders/board", headers=headers, params={"page": last_page, "page_size": 100}
+    ).json()
+    assert last["has_next"] is False and len(last["rows"]) == body["total"] - (last_page - 1) * 100
+    huge = client.get("/api/v1/sales-orders/board", headers=headers, params={"page_size": 500})
+    assert huge.status_code == 422

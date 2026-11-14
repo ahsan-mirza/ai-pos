@@ -90,11 +90,18 @@ def test_campaigns_need_the_addon_consent_and_an_enabled_channel(client, session
     key = str(uuid.uuid4())
     first = client.post("/api/v1/reach/campaigns", headers=headers, json=_campaign("Hello", ["whatsapp"], key))
     assert first.status_code == 201, first.text
-    assert first.json()["queued_count"] == 1
-    assert first.json()["suppressed_count"] >= 1
+    assert first.json()["status"] == "preparing"
+    assert first.json()["queued_count"] == 0
     replay = client.post("/api/v1/reach/campaigns", headers=headers, json=_campaign("Hello", ["whatsapp"], key))
     assert replay.status_code == 201
     assert replay.json()["id"] == first.json()["id"]
+    from reach.prepare import prepare_due
+
+    prepare_due(session, get_settings())
+    prepared = client.get(f"/api/v1/reach/campaigns/{first.json()['id']}", headers=headers)
+    assert prepared.status_code == 200, prepared.text
+    assert prepared.json()["queued_count"] == 1
+    assert prepared.json()["suppressed_count"] >= 1
     queued = client.get("/api/v1/messaging/outbox", headers=headers, params={"status": "QUEUED"}).json()
     assert len([row for row in queued if row["template_key"] == "campaign"]) == 1
     assert all(row["status"] == "QUEUED" for row in queued)
@@ -161,7 +168,10 @@ def test_turning_reach_off_pauses_a_queued_campaign_and_leaves_the_channel(clien
     )
     launched = client.post("/api/v1/reach/campaigns", headers=headers, json=_campaign("Later", ["whatsapp"]))
     assert launched.status_code == 201, launched.text
-    assert launched.json()["queued_count"] == 1
+    assert launched.json()["status"] == "preparing"
+    from reach.prepare import prepare_due
+
+    prepare_due(session, get_settings())
     current = client.get("/api/v1/settings", headers=headers).json()
     without = [item for item in current["capabilities"] if item != "axiz_reach"]
     removed = client.put(

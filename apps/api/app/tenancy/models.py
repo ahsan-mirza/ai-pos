@@ -5,8 +5,10 @@ from sqlalchemy import (
     JSON,
     BigInteger,
     Boolean,
+    CheckConstraint,
     DateTime,
     ForeignKey,
+    Index,
     Integer,
     LargeBinary,
     MetaData,
@@ -14,6 +16,9 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     Uuid,
+    and_,
+    column,
+    text,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
@@ -298,6 +303,15 @@ class BillingAddon(ControlBase):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
 
 
+class CommercialCatalogRelease(ControlBase):
+    """One approved commercial price revision. A later console edit is not overwritten."""
+
+    __tablename__ = "commercial_catalog_releases"
+
+    revision: Mapped[str] = mapped_column(String(64), primary_key=True)
+    applied_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
 class BillingFee(ControlBase):
     """One-time charges such as onboarding. Not discounted by the billing cycle."""
 
@@ -527,6 +541,96 @@ class BillingPayment(ControlBase):
     revoke_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
+SUBSCRIPTION_CHANGE_STATUSES = (
+    "quoted",
+    "pending_payment",
+    "payment_submitted",
+    "completed",
+    "cancelled",
+    "rejected",
+    "expired",
+    "failed",
+)
+OPEN_SUBSCRIPTION_CHANGE_STATUSES = ("quoted", "pending_payment", "payment_submitted")
+
+
+class SubscriptionChangeRequest(ControlBase):
+    """A tenant's request to move plans. The invoice, transfer, and subscription stay authoritative.
+
+    One open request per tenant. Completed and cancelled rows stay so a later change is allowed.
+    """
+
+    __tablename__ = "subscription_change_requests"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('quoted', 'pending_payment', 'payment_submitted', 'completed', 'cancelled', 'rejected', 'expired', 'failed')",
+            name="ck_subscription_changes_status",
+        ),
+        Index("ix_subscription_changes_tenant_created", "tenant_id", "created_at"),
+        Index(
+            "uq_subscription_changes_one_open",
+            "tenant_id",
+            unique=True,
+            sqlite_where=text("status IN ('quoted', 'pending_payment', 'payment_submitted')"),
+            postgresql_where=text("status IN ('quoted', 'pending_payment', 'payment_submitted')"),
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("tenants.id"), index=True)
+    subscription_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("subscriptions.id"), nullable=True
+    )
+    reference: Mapped[str] = mapped_column(String(24))
+    current_plan_code: Mapped[str] = mapped_column(String(32))
+    requested_plan_code: Mapped[str] = mapped_column(String(32))
+    requested_cycle_code: Mapped[str] = mapped_column(String(32))
+    status: Mapped[str] = mapped_column(String(32))
+    quote_snapshot: Mapped[dict] = mapped_column(JSON)
+    invoice_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("billing_invoices.id"), nullable=True, index=True
+    )
+    requested_by: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True), nullable=True)
+    correlation_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), default=uuid.uuid4)
+    rejection_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    issuing_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    payment_submitted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    cancelled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class SubscriptionChangeEvent(ControlBase):
+    """Append-only status history. Payment proof bytes and card data are never stored here."""
+
+    __tablename__ = "subscription_change_events"
+    __table_args__ = (
+        Index("ix_subscription_change_events_request", "request_id", "created_at"),
+        Index(
+            "uq_subscription_change_events_one_completion",
+            "request_id",
+            unique=True,
+            sqlite_where=text("status = 'completed'"),
+            postgresql_where=text("status = 'completed'"),
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    request_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("subscription_change_requests.id"), index=True
+    )
+    previous_status: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    status: Mapped[str] = mapped_column(String(32))
+    actor_type: Mapped[str] = mapped_column(String(16))
+    actor_id: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True), nullable=True)
+    reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    correlation_id: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+
+
 class ConsolePaymentNotice(ControlBase):
     """One console alert per payment proof. Reading it does not review the transfer."""
 
@@ -597,6 +701,11 @@ class HardwareItem(ControlBase):
     stock_qty: Mapped[int | None] = mapped_column(Integer, nullable=True)
     counts_as_register: Mapped[bool] = mapped_column(Boolean, default=False)
     compatibility: Mapped[str] = mapped_column(Text, default="")
+    # Empty for existing hardware. WIRED and ANDROID are EC machines with their own prices.
+    device_type: Mapped[str] = mapped_column(String(16), default="")
+    warranty_months: Mapped[int] = mapped_column(Integer, default=0)
+    specifications: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    installation_fils: Mapped[int] = mapped_column(Integer, default=0)
     active: Mapped[bool] = mapped_column(Boolean, default=True)
     archived: Mapped[bool] = mapped_column(Boolean, default=False)
     effective_from: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -645,6 +754,9 @@ class HardwareOrderLine(ControlBase):
     fee_fils: Mapped[int] = mapped_column(Integer, default=0)
     purchase_fils: Mapped[int] = mapped_column(Integer, default=0)
     delivery_fils: Mapped[int] = mapped_column(Integer, default=0)
+    device_type: Mapped[str] = mapped_column(String(16), default="")
+    warranty_months: Mapped[int] = mapped_column(Integer, default=0)
+    installation_fils: Mapped[int] = mapped_column(Integer, default=0)
     fulfilled_qty: Mapped[int] = mapped_column(Integer, default=0)
     serials: Mapped[list] = mapped_column(JSON, default=list)
 
@@ -653,6 +765,22 @@ class HardwareAssignment(ControlBase):
     """A leased unit after payment. Paying the invoice does not mark it delivered or refund the deposit."""
 
     __tablename__ = "hardware_assignments"
+    __table_args__ = (
+        Index(
+            "uq_hardware_assignments_active_register",
+            "register_id",
+            unique=True,
+            sqlite_where=and_(column("register_id").is_not(None), column("status") == "active"),
+            postgresql_where=and_(column("register_id").is_not(None), column("status") == "active"),
+        ),
+        Index(
+            "uq_hardware_assignments_active_serial",
+            "serial",
+            unique=True,
+            sqlite_where=and_(column("serial") != "", column("status") != "returned"),
+            postgresql_where=and_(column("serial") != "", column("status") != "returned"),
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
     tenant_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("tenants.id"), index=True)
@@ -670,6 +798,15 @@ class HardwareAssignment(ControlBase):
     delivered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     returned_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     condition_note: Mapped[str] = mapped_column(Text, default="")
+    device_type: Mapped[str] = mapped_column(String(16), default="")
+    registration_status: Mapped[str] = mapped_column(String(24), default="pending")
+    warranty_start: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    warranty_end: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    label: Mapped[str] = mapped_column(String(80), default="")
+    register_id: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True), nullable=True, index=True)
+    assigned_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    assigned_by_user_id: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True), nullable=True)
+    assignment_history: Mapped[list | None] = mapped_column(JSON, nullable=True)
     deposit_decision: Mapped[str] = mapped_column(String(24), default="held")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
@@ -686,6 +823,66 @@ class BillingInvoiceLine(ControlBase):
     amount_fils: Mapped[int] = mapped_column(Integer, default=0)
     recurring: Mapped[bool] = mapped_column(Boolean, default=False)
     refundable: Mapped[bool] = mapped_column(Boolean, default=False)
+
+
+class PlatformPaymentMethod(ControlBase):
+    """A commercial payment method the console turns on. Card charges stay with a provider adapter."""
+
+    __tablename__ = "platform_payment_methods"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    code: Mapped[str] = mapped_column(String(32), unique=True)
+    display_name: Mapped[str] = mapped_column(String(80))
+    category: Mapped[str] = mapped_column(String(24))
+    provider_code: Mapped[str] = mapped_column(String(32), default="")
+    is_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    currencies: Mapped[list] = mapped_column(JSON, default=list)
+    purposes: Mapped[list] = mapped_column(JSON, default=list)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    instructions: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
+
+
+class CommercialPayment(ControlBase):
+    """One attempt to pay an invoice. The amount is copied from the invoice and is not taken from the browser."""
+
+    __tablename__ = "commercial_payments"
+    __table_args__ = (UniqueConstraint("tenant_id", "idempotency_key", name="uq_commercial_payments_idempotency"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("tenants.id"), index=True)
+    invoice_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("billing_invoices.id"), nullable=True, index=True
+    )
+    method_code: Mapped[str] = mapped_column(String(32))
+    purpose_type: Mapped[str] = mapped_column(String(32), index=True)
+    purpose_ref: Mapped[str] = mapped_column(String(64), default="")
+    amount_fils: Mapped[int] = mapped_column(Integer)
+    currency: Mapped[str] = mapped_column(String(3), default="AED")
+    status: Mapped[str] = mapped_column(String(24), default="PENDING", index=True)
+    idempotency_key: Mapped[str] = mapped_column(String(80))
+    reference: Mapped[str] = mapped_column(String(40), default="")
+    environment: Mapped[str] = mapped_column(String(16), default="live")
+    scenario: Mapped[str] = mapped_column(String(40), default="")
+    provider_reference: Mapped[str] = mapped_column(String(80), default="")
+    failure_reason: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    initiated_by: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class CommercialPaymentEvent(ControlBase):
+    """A server-recorded step on a commercial payment. The browser cannot insert these."""
+
+    __tablename__ = "commercial_payment_events"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    payment_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("commercial_payments.id"), index=True)
+    event_type: Mapped[str] = mapped_column(String(40))
+    note: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
 
 
 class RecoveryChallenge(ControlBase):

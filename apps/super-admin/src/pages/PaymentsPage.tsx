@@ -23,6 +23,25 @@ interface BankAccount {
   active: boolean;
 }
 
+interface PaymentMethod {
+  code: string;
+  display_name: string;
+  category: string;
+  available: boolean;
+  is_enabled: boolean;
+  reason: string;
+  sort_order: number;
+}
+
+interface CashReview {
+  id: string;
+  purpose_ref: string;
+  amount_fils: number;
+  currency: string;
+  method_code: string;
+  status: string;
+}
+
 interface TransferRow {
   id: string;
   tenant_name: string;
@@ -67,6 +86,9 @@ export function PaymentsPage() {
   const focusId = params.get("transfer");
   const admin = operator?.role === "ADMIN";
   const [accounts, setAccounts] = useState<BankAccount[]>([]);
+  const [methods, setMethods] = useState<PaymentMethod[]>([]);
+  const [cashQueue, setCashQueue] = useState<CashReview[]>([]);
+  const [receipts, setReceipts] = useState<Record<string, string>>({});
   const [grace, setGrace] = useState("5");
   const [draft, setDraft] = useState(emptyAccount);
   const [rows, setRows] = useState<TransferRow[]>([]);
@@ -90,6 +112,11 @@ export function PaymentsPage() {
         setAccounts(foundAccounts);
         setGrace(String(policy.grace_days));
         setRows(foundTransfers);
+        void api.get<PaymentMethod[]>("/billing/payment-methods").then(setMethods).catch(() => setMethods([]));
+        void api
+          .get<CashReview[]>("/billing/commercial-payments")
+          .then((rows) => setCashQueue(rows.filter((row) => row.method_code === "cash")))
+          .catch(() => setCashQueue([]));
         setError(null);
       })
       .catch((caught: unknown) => setError(errorText(caught, "Could not load payments.")))
@@ -264,6 +291,68 @@ export function PaymentsPage() {
         description="A receipt is evidence, not a payment. Approve only after the credit appears on the bank statement. The paid-through date stays inclusive, and the grace period below is counted from the day after it."
       />
       <ErrorNote message={error} />
+      <SandboxPayments />
+
+      <div className="mt-6 rounded-3xl border border-line bg-white p-5">
+        <h2 className="font-semibold">Payment methods</h2>
+        <p className="mt-1 text-sm text-charcoal/60">Card stays off until a provider is chosen. Turning a method on does not invent a successful charge.</p>
+        <ul className="mt-3 grid gap-2 text-sm">
+          {methods.map((method) => (
+            <li key={method.code} className="flex flex-wrap items-center justify-between gap-2">
+              <span>
+                <span className="font-medium">{method.display_name}</span>
+                <span className="text-charcoal/60"> · {method.available ? "Available" : method.reason}</span>
+              </span>
+              {admin && method.category !== "CARD" ? (
+                <GhostButton
+                  onClick={() => {
+                    void api
+                      .patch(`/billing/payment-methods/${method.code}`, { is_enabled: !method.is_enabled })
+                      .then(load)
+                      .catch((caught: unknown) => setError(errorText(caught, "Could not update the payment method.")));
+                  }}
+                >
+                  {method.is_enabled ? "Turn off" : "Turn on"}
+                </GhostButton>
+              ) : null}
+            </li>
+          ))}
+        </ul>
+        {cashQueue.length > 0 ? (
+          <div className="mt-4 grid gap-2 border-t border-line pt-4 text-sm">
+            <h3 className="font-medium">Cash waiting for collection</h3>
+            {cashQueue.map((row) => (
+              <form
+                key={row.id}
+                className="flex flex-wrap items-center gap-2"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  const reference = (receipts[row.id] ?? "").trim();
+                  if (reference.length < 3) {
+                    setError("Enter the cash receipt reference.");
+                    return;
+                  }
+                  void api
+                    .post(`/billing/commercial-payments/${row.id}/cash`, { reference })
+                    .then(load)
+                    .catch((caught: unknown) => setError(errorText(caught, "Could not record the cash collection.")));
+                }}
+              >
+                <span>
+                  {row.purpose_ref} · {money(row.amount_fils, row.currency)}
+                </span>
+                <input
+                  value={receipts[row.id] ?? ""}
+                  onChange={(event) => setReceipts((current) => ({ ...current, [row.id]: event.target.value }))}
+                  placeholder="Receipt reference"
+                  className="h-9 rounded-xl border border-line px-3"
+                />
+                {admin ? <GhostButton type="submit">Record collection</GhostButton> : null}
+              </form>
+            ))}
+          </div>
+        ) : null}
+      </div>
 
       <div className="mt-6 grid gap-4 lg:grid-cols-2">
         <div className="rounded-3xl border border-line bg-white p-5">
@@ -396,5 +485,35 @@ export function PaymentsPage() {
         </div>
       ) : null}
     </section>
+  );
+}
+
+function SandboxPayments() {
+  const [sandbox, setSandbox] = useState(false);
+  const [rows, setRows] = useState<CashReview[]>([]);
+  useEffect(() => {
+    void api
+      .get<{ sandbox: boolean }>("/billing/payment-environment")
+      .then((found) => setSandbox(found.sandbox))
+      .catch(() => setSandbox(false));
+    void api
+      .get<CashReview[]>("/billing/sandbox-payments")
+      .then(setRows)
+      .catch(() => setRows([]));
+  }, []);
+  if (!sandbox && rows.length === 0) return null;
+  return (
+    <div className="mt-6 rounded-3xl border border-amber-300 bg-amber-50 p-5 text-sm">
+      <h2 className="font-semibold">TEST · Sandbox payments</h2>
+      <p className="mt-1 text-charcoal/70">Test payments only. No real money will be charged. These rows are not live settlements.</p>
+      <ul className="mt-3 grid gap-1">
+        {rows.map((row) => (
+          <li key={row.id}>
+            TEST · {row.purpose_ref} · {money(row.amount_fils, row.currency)} · {row.status}
+          </li>
+        ))}
+        {rows.length === 0 ? <li>No sandbox payments yet.</li> : null}
+      </ul>
+    </div>
   );
 }

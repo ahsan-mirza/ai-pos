@@ -6,6 +6,7 @@ from pydantic import Field
 
 from app.schemas.payloads import ApiModel
 
+DeviceType = Literal["", "WIRED", "ANDROID", "OTHER"]
 HardwareMode = Literal["lease", "purchase"]
 PaymentStatus = Literal["awaiting_payment", "under_review", "paid", "canceled"]
 FulfillmentStatus = Literal[
@@ -57,6 +58,10 @@ class HardwareItemOut(ApiModel):
     stock_qty: int | None
     counts_as_register: bool
     compatibility: str
+    device_type: str = ""
+    warranty_months: int = 0
+    specifications: dict = Field(default_factory=dict)
+    installation_fils: int = 0
     active: bool
     archived: bool
     available: bool
@@ -84,6 +89,10 @@ class HardwareItemIn(ApiModel):
     stock_qty: int | None = Field(default=None, ge=0, le=100_000)
     counts_as_register: bool = False
     compatibility: str = Field(default="", max_length=500)
+    device_type: DeviceType = ""
+    warranty_months: int = Field(default=0, ge=0, le=120)
+    specifications: dict = Field(default_factory=dict)
+    installation_fils: int = Field(default=0, ge=0, le=100_000_000)
     active: bool = True
     archived: bool = False
     effective_from: datetime | None = None
@@ -114,6 +123,9 @@ class HardwareLineOut(ApiModel):
     fee_fils: int
     purchase_fils: int
     delivery_fils: int
+    device_type: str = ""
+    warranty_months: int = 0
+    installation_fils: int = 0
     fulfilled_qty: int
     serials: list[str]
 
@@ -131,6 +143,10 @@ class HardwareAssignmentOut(ApiModel):
     delivered_at: datetime | None
     returned_at: datetime | None
     condition_note: str
+    device_type: str = ""
+    registration_status: str = "pending"
+    warranty_start: datetime | None = None
+    warranty_end: datetime | None = None
 
 
 class HardwareOrderOut(ApiModel):
@@ -157,6 +173,60 @@ class FulfillmentIn(ApiModel):
     serials: list[str] = Field(default_factory=list, max_length=100)
     note: str = Field(default="", max_length=500)
     reason: str = Field(min_length=3, max_length=500)
+
+
+class EcDeviceOut(ApiModel):
+    """One purchased terminal. Lifecycle flags stay separate from payment readiness."""
+
+    assignment_id: UUID | None
+    line_id: UUID
+    name: str
+    manufacturer: str
+    model: str
+    device_type: str
+    serial: str
+    label: str
+    order_reference: str
+    payment_status: str
+    fulfillment_status: str
+    delivered_at: datetime | None
+    registration_status: str
+    store_id: UUID | None
+    store_label: str
+    register_id: UUID | None
+    assigned_at: datetime | None
+    warranty_months: int
+    installation_fils: int
+    purchase_fils: int
+    specifications: dict[str, str] = Field(default_factory=dict)
+    history: list[dict] = Field(default_factory=list)
+    payment_verified: bool
+    delivered: bool
+    registered: bool
+    assigned: bool
+    connected: bool = False
+    payment_ready: bool = False
+
+
+class EcRegisterIn(ApiModel):
+    serial: str = Field(min_length=1, max_length=64)
+    label: str = Field(default="", max_length=80)
+    note: str = Field(default="", max_length=500)
+
+
+class EcAssignIn(ApiModel):
+    store_id: UUID
+    register_id: UUID
+
+
+class EcReadinessOut(ApiModel):
+    production_ready: bool = False
+    device_registered: bool
+    device_assigned: bool
+    device_connected: bool = False
+    provider_configured: bool = False
+    integration_validated: bool = False
+    blockers: list[str]
 
 
 class DepositDecisionIn(ApiModel):

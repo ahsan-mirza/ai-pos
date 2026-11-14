@@ -12,6 +12,7 @@ import { SaleReturnLive } from "../../features/returns/saleReturnLive";
 import { StoreScopeProvider } from "../../lib/storeScope";
 import { FeatureAccessProvider } from "../../lib/featureAccess";
 import { AssistantDrawer } from "../../features/assistant/AssistantDrawer";
+import { CampaignProgress } from "@reach/CampaignProgress";
 import { AssistantProvider } from "../../features/assistant/AssistantProvider";
 import { PwaChrome } from "../../pwa/PwaChrome";
 import { Header } from "./Header";
@@ -74,10 +75,11 @@ export function AppShell() {
               <SubscriptionNotice access={access} onAccess={setSubscriptionLocked} onLoaded={setAccess} />
               <Header collapsed={collapsed} onToggleCollapsed={toggleCollapsed} onOpenMobile={() => setMobileOpen(true)} />
               <div className="relative min-h-0 flex-1">
-                <main className="h-full overflow-y-auto overflow-x-hidden">
+                <main className="h-full overflow-y-auto overflow-x-hidden pb-[var(--floating-guide-space,0px)]">
                   <IndustryGate subscriptionLocked={subscriptionLocked} access={access} />
                 </main>
                 <AssistantDrawer />
+                <CampaignProgress />
               </div>
             </div>
           </div>

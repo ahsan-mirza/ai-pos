@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { capacityKey, formatGrams, formatVolume } from "./fleetCapacity";
+import { capacityKey, formatGrams, formatVolume, volumeReadout, weightReadout } from "./fleetCapacity";
 import type { FleetCapacity } from "./fleetApi";
 
 function capacity(overrides: Partial<FleetCapacity> = {}): FleetCapacity {
@@ -37,6 +37,16 @@ describe("fleet capacity", () => {
     expect(capacityKey(capacity({ weight_over: true, blocked: true, remaining_weight_grams: -100 }))).toBe(
       "This plan is over the vehicle capacity.",
     );
+  });
+
+  it("does not present a missing weight as zero kilograms", () => {
+    expect(weightReadout(capacity({ cargo_weight_grams: 0, cargo_weight_incomplete: true }))).toEqual({
+      state: "unknown",
+      note: "Weight unknown",
+    });
+    expect(weightReadout(capacity({ cargo_weight_grams: 125_000, cargo_weight_incomplete: true })).state).toBe("partial");
+    expect(volumeReadout(capacity({ cargo_volume_cm3: 0, cargo_volume_incomplete: true })).note).toBe("Volume unknown");
+    expect(weightReadout(capacity({ cargo_weight_grams: 0, cargo_weight_incomplete: false })).state).toBe("known");
   });
 
   it("shows the remaining load when the figures are complete", () => {

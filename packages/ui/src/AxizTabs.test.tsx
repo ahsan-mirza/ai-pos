@@ -204,7 +204,12 @@ describe("AxizTabs", () => {
     expect(list.className).not.toContain("px-4");
     const tab = screen.getByRole("tab", { name: "Section 1" });
     expect(tab.className).toContain("whitespace-nowrap");
+    expect(tab.className).toContain("flex-1");
     expect(tab.className).toContain("shrink-0");
+    const underline = tab.querySelector("[data-axiz-underline]");
+    expect(underline?.className).toContain("inset-x-0");
+    expect(underline?.parentElement?.className).toContain("inline-flex");
+    expect(underline?.parentElement?.className).toContain("h-full");
     expect(tab.className).toContain("outline-[var(--tab-focus)]");
   });
 });

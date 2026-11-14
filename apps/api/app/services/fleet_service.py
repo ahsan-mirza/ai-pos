@@ -13,12 +13,13 @@ from datetime import UTC, date, datetime, time
 from decimal import ROUND_HALF_UP, Decimal
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import or_, select
+from sqlalchemy import exists, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.deps import Principal
 from app.core.errors import ApiError
+from app.core.pagination import count_rows
 from app.core.permissions import Permission
 from app.models.attribute import ProductAttributeDefinition, ProductAttributeValue
 from app.models.business_settings import BusinessSettings
@@ -1099,6 +1100,23 @@ def cancel_plan(db: Session, principal: Principal, plan_id: uuid.UUID) -> PlanOu
     return payload
 
 
+def _active_plan_exists():
+    return exists(
+        select(DispatchAssignment.id)
+        .join(DispatchPlan, DispatchPlan.id == DispatchAssignment.plan_id)
+        .where(
+            DispatchAssignment.order_id == SalesOrder.id,
+            DispatchPlan.status.in_(_ACTIVE_PLANS),
+        )
+    )
+
+
+def _note_exists(status: str):
+    return exists(
+        select(DeliveryNote.id).where(DeliveryNote.order_id == SalesOrder.id, DeliveryNote.status == status)
+    )
+
+
 def list_board(
     db: Session,
     principal: Principal,
@@ -1107,8 +1125,9 @@ def list_board(
     store_id: uuid.UUID | None,
     promised_on: date | None,
     zone_id: uuid.UUID | None,
+    offset: int,
     limit: int,
-) -> list[FleetOrderRow]:
+) -> tuple[list[FleetOrderRow], int]:
     scope = principal.store_id or store_id
     statement = (
         select(SalesOrder, Customer.name, DeliveryZone.name)
@@ -1125,18 +1144,36 @@ def list_board(
         statement = statement.where(
             SalesOrder.scheduling_status == "UNSCHEDULED", SalesOrder.status.in_(_SCHEDULABLE)
         )
-    elif view in {"scheduled", "unassigned"}:
+    elif view == "scheduled":
         statement = statement.where(
             SalesOrder.scheduling_status == "SCHEDULED",
             SalesOrder.status.notin_(("CANCELLED", "CLOSED")),
         )
+    elif view == "unassigned":
+        statement = statement.where(
+            SalesOrder.scheduling_status == "SCHEDULED",
+            SalesOrder.status.notin_(("CANCELLED", "CLOSED")),
+            ~_active_plan_exists(),
+        )
+    elif view == "assigned":
+        statement = statement.where(
+            _active_plan_exists(),
+            SalesOrder.status.notin_(("DELIVERED", "CLOSED", "CANCELLED")),
+        )
+    elif view == "dispatched":
+        statement = statement.where(_note_exists("DISPATCHED"))
     elif view == "delivered":
-        statement = statement.where(SalesOrder.status.in_(("DELIVERED", "CLOSED")))
+        statement = statement.where(or_(SalesOrder.status.in_(("DELIVERED", "CLOSED")), _note_exists("DELIVERED")))
     elif view == "exceptions":
         statement = statement.where(
             or_(SalesOrder.scheduling_status == "CANCELLED", SalesOrder.scheduling_status == "SCHEDULED")
         )
-    rows = db.execute(statement.order_by(SalesOrder.promised_on, SalesOrder.number).limit(300)).all()
+    ordering = (SalesOrder.promised_on.asc().nulls_last(), SalesOrder.number.asc(), SalesOrder.id.asc())
+    if view == "exceptions":
+        rows = db.execute(statement.order_by(*ordering)).all()
+    else:
+        total_sql = count_rows(db, statement)
+        rows = db.execute(statement.order_by(*ordering).offset(offset).limit(limit)).all()
     order_ids = [order.id for order, _, _ in rows]
     plans: dict[uuid.UUID, DispatchPlan] = {}
     if order_ids:
@@ -1146,26 +1183,11 @@ def list_board(
             .where(DispatchAssignment.order_id.in_(order_ids), DispatchPlan.status.in_(_ACTIVE_PLANS))
         ).all()
         plans = {order_id: plan for order_id, plan in linked}
-    notes: dict[uuid.UUID, set[str]] = {}
-    if order_ids and view in {"assigned", "dispatched", "delivered", "exceptions"}:
-        for order_id, status in db.execute(
-            select(DeliveryNote.order_id, DeliveryNote.status).where(DeliveryNote.order_id.in_(order_ids))
-        ).all():
-            notes.setdefault(order_id, set()).add(status)
     measures = _measures(db, {line.product_id for order, _, _ in rows for line in order.lines})
     found: list[FleetOrderRow] = []
     for order, customer_name, zone_name in rows:
         plan = plans.get(order.id)
         cargo = _cargo(order, measures)
-        note_status = notes.get(order.id, set())
-        if view == "unassigned" and plan is not None:
-            continue
-        if view == "assigned" and (plan is None or order.status in {"DELIVERED", "CLOSED", "CANCELLED"}):
-            continue
-        if view == "dispatched" and "DISPATCHED" not in note_status:
-            continue
-        if view == "delivered" and order.status not in {"DELIVERED", "CLOSED"} and "DELIVERED" not in note_status:
-            continue
         blocked = cargo.weight_incomplete or cargo.volume_incomplete
         if view == "exceptions" and order.scheduling_status != "CANCELLED" and not (plan is not None and blocked):
             continue
@@ -1191,6 +1213,6 @@ def list_board(
                 cargo_volume_incomplete=cargo.volume_incomplete,
             )
         )
-        if len(found) >= limit:
-            break
-    return found
+    if view == "exceptions":
+        return found[offset : offset + limit], len(found)
+    return found, total_sql

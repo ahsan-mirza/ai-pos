@@ -20,6 +20,7 @@ import { useAuth } from "../../lib/auth";
 import { formatDate } from "../inventory/shared";
 import { errorMessage } from "../users/api";
 import { salesOrdersApi } from "./api";
+import { presentEvent } from "./eventCopy";
 import { OrderStatusChip } from "./SalesOrdersPage";
 import { SignaturePad } from "./SignaturePad";
 
@@ -47,6 +48,24 @@ function scheduleEventLabel(kind: string, t: (text: string) => string): string |
   if (kind === "plan_confirmed") return t("Dispatch confirmed");
   if (kind === "capacity_override") return t("Capacity override");
   return null;
+}
+
+function EventSummary({
+  kind,
+  summary,
+  t,
+}: {
+  kind: string;
+  summary: string;
+  t: (text: string, vars?: Record<string, string | number>) => string;
+}) {
+  const presented = presentEvent(kind, summary, (value) => formatDate(value));
+  if (!presented) return <p className="mt-1 text-sm text-charcoal/80">{summary}</p>;
+  return (
+    <p className="mt-1 text-sm text-charcoal/80">
+      {t(presented.text, presented.vars)}
+    </p>
+  );
 }
 
 function OrderTimeline({ orderId, timeZone }: { orderId: string; timeZone?: string }) {
@@ -101,7 +120,7 @@ function OrderTimeline({ orderId, timeZone }: { orderId: string; timeZone?: stri
                   {t("Reason")}: <span dir="auto">{event.summary}</span>
                 </p>
               ) : event.summary ? (
-                <p className="mt-1 text-sm text-charcoal/80">{event.summary}</p>
+                <EventSummary summary={event.summary} kind={event.kind} t={t} />
               ) : null}
             </li>
           ))}
@@ -173,26 +192,26 @@ export function SalesOrderDetail({ orderId, onBack }: { orderId: string; onBack:
   return (
     <section className="space-y-4">
       <button type="button" onClick={onBack} className={`inline-flex items-center gap-1.5 rounded-full px-2 py-1 text-sm font-medium text-charcoal/60 ${actionHoverClass("neutral")}`}>
-        <ArrowLeft size={15} aria-hidden="true" /> All sales orders
+        <ArrowLeft size={15} aria-hidden="true" className="rtl:-scale-x-100" /> {t("All sales orders")}
       </button>
       {order ? (
         <div className="grid gap-4 md:grid-cols-3">
           <article className="rounded-card bg-charcoal p-6 text-white">
-            <p className="text-sm text-white/60">Order value</p>
+            <p className="text-sm text-white/60">{t("Order value")}</p>
             <p className="mt-4 text-4xl font-semibold tabular-nums">{formatMoney(order.total_cents, order.currency)}</p>
             <p className="mt-2 text-xs text-white/50 tabular-nums">
-              {formatMoney(order.delivered_cents, order.currency)} delivered and invoiced
+              {formatMoney(order.delivered_cents, order.currency)} {t("delivered and invoiced")}
             </p>
           </article>
           <article className="rounded-card bg-accent p-6 text-white">
-            <p className="text-sm text-white/80">Ready to deliver</p>
+            <p className="text-sm text-white/80">{t("Ready to deliver")}</p>
             <p className="mt-4 text-4xl font-semibold tabular-nums">{open ? reserved : 0}</p>
-            <p className="mt-2 text-xs text-white/80">Units reserved for this order at the branch</p>
+            <p className="mt-2 text-xs text-white/80">{t("Units reserved for this order at the branch")}</p>
           </article>
           <article className="rounded-card border border-line bg-white p-6">
-            <p className="text-sm text-charcoal/60">Backordered</p>
+            <p className="text-sm text-charcoal/60">{t("Backordered")}</p>
             <p className={`mt-4 text-4xl font-semibold tabular-nums ${backordered ? "text-accent" : ""}`}>{backordered}</p>
-            <p className="mt-2 text-xs text-charcoal/50">{outstanding} units still to deliver in all</p>
+            <p className="mt-2 text-xs text-charcoal/50">{t("{count} units still to deliver in all", { count: outstanding })}</p>
           </article>
         </div>
       ) : null}
@@ -228,7 +247,7 @@ export function SalesOrderDetail({ orderId, onBack }: { orderId: string; onBack:
           </div>
           {order ? (
             <div className="flex flex-wrap items-center gap-2">
-              <button type="button" title="Order confirmation PDF" aria-label="Order PDF" onClick={() => void pdf(() => salesOrdersApi.orderPdf(order.id))} className={iconAction("info")}>
+              <button type="button" title={t("Order confirmation PDF")} aria-label={t("Order PDF")} onClick={() => void pdf(() => salesOrdersApi.orderPdf(order.id))} className={iconAction("info")}>
                 <FileDown size={15} aria-hidden="true" />
               </button>
               {order.status === "DRAFT" ? (
@@ -240,14 +259,14 @@ export function SalesOrderDetail({ orderId, onBack }: { orderId: string; onBack:
                         void run(() => salesOrdersApi.confirm(order.id, user?.id ?? null), (next) => `${next.number} confirmed over the credit limit.`)
                       }
                     >
-                      Approve credit and confirm
+                      {t("Approve credit and confirm")}
                     </GhostButton>
                   ) : null}
                   <PrimaryButton
                     disabled={busy}
                     onClick={() => void run(() => salesOrdersApi.confirm(order.id, null), (next) => `${next.number} confirmed; stock reserved.`)}
                   >
-                    <PackageCheck size={16} aria-hidden="true" className="-ml-1 mr-1.5" /> Confirm order
+                    <PackageCheck size={16} aria-hidden="true" className="-ml-1 mr-1.5 rtl:ml-1.5 rtl:-mr-1" /> {t("Confirm order")}
                   </PrimaryButton>
                 </>
               ) : null}
@@ -263,17 +282,17 @@ export function SalesOrderDetail({ orderId, onBack }: { orderId: string; onBack:
                         )
                       }
                     >
-                      Allocate stock
+                      {t("Allocate stock")}
                     </GhostButton>
                   ) : null}
                   <GhostButton
                     disabled={busy || reserved === 0}
                     onClick={() => void run(() => salesOrdersApi.pick(order.id), (next) => `Pick list ${next.pick_lists.at(-1)?.number ?? ""} ready.`)}
                   >
-                    <ClipboardList size={15} aria-hidden="true" className="-ml-1 mr-1.5" /> Pick list
+                    <ClipboardList size={15} aria-hidden="true" className="-ml-1 mr-1.5 rtl:ml-1.5 rtl:-mr-1" /> {t("Pick list")}
                   </GhostButton>
                   <PrimaryButton disabled={busy || reserved === 0} onClick={() => setDispatching(true)}>
-                    <Truck size={16} aria-hidden="true" className="-ml-1 mr-1.5" /> Dispatch
+                    <Truck size={16} aria-hidden="true" className="-ml-1 mr-1.5 rtl:ml-1.5 rtl:-mr-1" /> {t("Dispatch")}
                   </PrimaryButton>
                 </>
               ) : null}
@@ -281,13 +300,13 @@ export function SalesOrderDetail({ orderId, onBack }: { orderId: string; onBack:
                 <>
                   {outstanding > 0 ? (
                     <GhostButton disabled={busy} onClick={() => setTrimming(true)}>
-                      Cancel lines
+                      {t("Cancel lines")}
                     </GhostButton>
                   ) : null}
                   <button
                     type="button"
-                    title={order.delivered_cents ? "Close (short-ship the rest)" : "Cancel the order"}
-                    aria-label="End order"
+                    title={order.delivered_cents ? t("Close (short-ship the rest)") : t("Cancel the order")}
+                    aria-label={t("End order")}
                     onClick={() => setEnding(order.delivered_cents ? "close" : "cancel")}
                     className={iconAction(actionIntentFromLabel(order.delivered_cents ? "Close" : "Cancel the order"))}
                   >
@@ -438,13 +457,13 @@ export function SalesOrderDetail({ orderId, onBack }: { orderId: string; onBack:
       ) : null}
       {ending && order ? (
         <ReasonModal
-          title={ending === "close" ? `Close ${order.number}?` : `Cancel ${order.number}?`}
+          title={ending === "close" ? t("Close {number}?", { number: order.number }) : t("Cancel {number}?", { number: order.number })}
           subtitle={
             ending === "close"
-              ? "What was delivered stays invoiced; the rest is cancelled and its reserved stock released."
-              : "Nothing was delivered. Every reservation is released."
+              ? t("What was delivered stays invoiced; the rest is cancelled and its reserved stock released.")
+              : t("Nothing was delivered. Every reservation is released.")
           }
-          action={ending === "close" ? "Close order" : "Cancel order"}
+          action={ending === "close" ? t("Close order") : t("Cancel order")}
           busy={busy}
           onClose={() => setEnding(null)}
           onSave={async (reason) => {

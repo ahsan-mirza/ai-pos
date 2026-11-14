@@ -9,7 +9,7 @@ import { useTenant } from "../../context/TenantContext";
 import { portalRouteAllowed } from "../../lib/industry";
 import { AiMark, isAiFeature } from "../ui/AiMark";
 import { useAssistant } from "../../features/assistant/AssistantProvider";
-import { LanguageSwitch, useLocale } from "@ai-pos/ui";
+import { LanguageSwitch, ThemeSwitch, useLocale } from "@ai-pos/ui";
 import { AccountMenu } from "./AccountMenu";
 import { crumbsFor, settingsLabel } from "./navigation";
 import { StoreSwitcher } from "./StoreSwitcher";
@@ -162,11 +162,11 @@ export function Header({
     ? crumbsFor(pathname, capabilities)
     : [{ label: settingsLabel(capabilities) }];
   const settingsName = settingsLabel(capabilities);
-  const badge =
-    "hidden h-7 items-center rounded-md border border-line bg-[#f8fafc] px-2 font-mono text-[11px] font-bold tracking-wider text-charcoal/70 sm:inline-flex";
+const badge =
+  "hidden h-7 items-center rounded-md border border-line bg-[#f8fafc] px-2 font-mono text-[11px] font-bold tracking-wider text-charcoal/70 sm:inline-flex dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-200";
 
   return (
-    <header className="relative z-30 flex h-16 shrink-0 items-center gap-2 border-b border-line bg-white/90 px-4 backdrop-blur supports-[backdrop-filter]:bg-white/75 md:px-6">
+    <header className="relative z-30 flex h-16 shrink-0 items-center gap-2 border-b border-line bg-white/90 px-4 backdrop-blur supports-[backdrop-filter]:bg-white/75 dark:border-zinc-700 dark:bg-zinc-900/95 supports-[backdrop-filter]:dark:bg-zinc-900/85 md:px-6">
       <button
         type="button"
         onClick={onToggleCollapsed}
@@ -220,6 +220,7 @@ export function Header({
       </nav>
 
       <div className="flex shrink-0 items-center gap-1.5 md:gap-2">
+        <ThemeSwitch />
         <LanguageSwitch />
         <StoreSwitcher className="hidden !w-[230px] md:block" />
         {canManageSettings ? (
@@ -245,7 +246,7 @@ export function Header({
             title={t("Ask your business")}
             onClick={assistant.toggle}
             className={`inline-flex h-9 items-center gap-1.5 rounded-full px-2.5 text-[13px] font-semibold outline-none transition-colors focus-visible:ring-2 focus-visible:ring-accent/40 sm:px-3 ${
-              assistant.open ? "bg-accent/10 text-accent" : "bg-[#f8fafc] text-charcoal hover:bg-charcoal/[0.05]"
+              assistant.open ? "bg-accent/10 text-accent" : "bg-[#f8fafc] text-charcoal hover:bg-charcoal/[0.05] dark:bg-zinc-800 dark:text-zinc-100 dark:hover:bg-white/10"
             }`}
           >
             <AiMark size={15} />

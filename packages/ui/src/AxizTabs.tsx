@@ -108,7 +108,7 @@ function domId(prefix: string, id: string): string {
 
 function tabClass(selected: boolean, tab: AxizTabDefinition): string {
   return [
-    "relative inline-flex h-12 shrink-0 items-center gap-1.5 whitespace-nowrap bg-transparent px-3 text-[13px] outline-none transition-colors motion-reduce:transition-none",
+    "relative flex h-12 min-w-max flex-1 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap bg-transparent px-3 text-[13px] outline-none transition-colors motion-reduce:transition-none",
     "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--tab-focus)]",
     selected
       ? "font-semibold text-[var(--tab-text)]"
@@ -232,7 +232,7 @@ export function AxizTabs({
         aria-label={ariaLabel}
         aria-orientation="horizontal"
         onKeyDown={onKeyDown}
-        className={`no-scrollbar flex h-12 w-full min-w-0 flex-nowrap items-stretch gap-1 overflow-x-auto overflow-y-hidden border-b border-[var(--tab-line)] ${gutter} ${listClassName}`}
+        className={`no-scrollbar flex h-12 w-full min-w-0 flex-nowrap items-stretch overflow-x-auto overflow-y-hidden border-b border-[var(--tab-line)] ${gutter} ${listClassName}`}
       >
         <span ref={startRef} className="w-px shrink-0" aria-hidden="true" />
         {visible.map((tab) => {
@@ -257,8 +257,8 @@ export function AxizTabs({
               select(tab.id);
             },
             children: (
-              <>
-                {tab.icon ? <span className="inline-flex shrink-0 items-center gap-1.5">{tab.icon}</span> : null}
+              <span className="relative inline-flex h-full max-w-full items-center gap-1.5">
+                {tab.icon ? <span className="inline-flex shrink-0 items-center">{tab.icon}</span> : null}
                 <span>{tab.label}</span>
                 {tab.badge != null && tab.badge !== false ? (
                   <span className="text-[11px] font-semibold tabular-nums text-[var(--tab-text-muted)]">{tab.badge}</span>
@@ -266,11 +266,11 @@ export function AxizTabs({
                 <span
                   aria-hidden="true"
                   data-axiz-underline=""
-                  className={`pointer-events-none absolute inset-x-3 bottom-0 h-0.5 transition-colors motion-reduce:transition-none ${
+                  className={`pointer-events-none absolute inset-x-0 bottom-0 h-0.5 transition-colors motion-reduce:transition-none ${
                     selected ? "bg-[var(--tab-underline)]" : "bg-transparent"
                   }`}
                 />
-              </>
+              </span>
             ),
           };
           if (renderTab) {

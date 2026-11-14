@@ -124,6 +124,11 @@ def _dispatch(db: Session, connection: ReachConnection, event_type: str, payload
             capture(db, connection, item)
             continue
         _apply_status(recipient, item)
+        if recipient.campaign_run_id is not None:
+            from reach.runs import refresh_run
+
+            mapped = str(item.get("status") or item.get("state") or "").upper()
+            refresh_run(db, recipient.campaign_run_id, delivery=mapped in {"DELIVERY_ACK", "READ", "PLAYED"})
 
 
 def _apply_status(recipient: ReachRecipient, data: dict) -> None:

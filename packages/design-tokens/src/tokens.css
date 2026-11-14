@@ -17,7 +17,8 @@
   --color-neutral: #cbcece;
   --color-canvas: #eaeaea;
   --color-border: #dbdbdb;
-  --color-charcoal: #222026;
+  --charcoal-rgb: 34 32 38;
+  --color-charcoal: rgb(var(--charcoal-rgb));
   --color-card: #ffffff;
   --color-surface: #f3f4f6;
   --font-en: "Inter", "Archivo", sans-serif;
@@ -68,6 +69,85 @@
   --tab-underline: var(--color-accent);
   --tab-hover: var(--color-charcoal);
   --tab-focus: var(--color-accent);
+}
+
+.dark {
+  --charcoal-rgb: 244 244 245;
+  --color-canvas: #121215;
+  --color-border: #52525b;
+  --color-charcoal: rgb(var(--charcoal-rgb));
+  --color-card: #1c1b1f;
+  --color-surface: #27272a;
+  --text-primary: #f4f4f5;
+  --text-secondary: #e4e4e7;
+  --text-muted: #d4d4d8;
+  --text-disabled: #a1a1aa;
+  --surface-elevated: #323036;
+  --input-background: #1c1b1f;
+  --input-border: #52525b;
+  color-scheme: dark;
+}
+
+/*
+  Tailwind prints charcoal utilities from the light-theme channels (34 32 38).
+  Those utilities ignore --charcoal-rgb, so dark text sits on the dark canvas.
+  These rules restore the token. Muted steps are solid colors so a 40% tint
+  cannot fall below the contrast of secondary text.
+*/
+.dark :is(
+  .text-charcoal,
+  .hover\:text-charcoal:hover,
+  .group-hover\:text-charcoal:hover,
+  .group-hover\:text-charcoal\/80:hover
+) {
+  color: var(--text-primary);
+}
+
+.dark :is(
+  .text-charcoal\/70,
+  .text-charcoal\/75,
+  .text-charcoal\/80,
+  .text-charcoal\/90,
+  .text-\[\#6B7280\]
+) {
+  color: var(--text-secondary);
+}
+
+.dark :is(
+  .text-charcoal\/50,
+  .text-charcoal\/55,
+  .text-charcoal\/60,
+  .text-charcoal\/65
+) {
+  color: var(--text-muted);
+}
+
+.dark :is(
+  .text-charcoal\/20,
+  .text-charcoal\/25,
+  .text-charcoal\/30,
+  .text-charcoal\/35,
+  .text-charcoal\/40,
+  .text-charcoal\/45,
+  .disabled\:text-charcoal\/50:disabled
+) {
+  color: var(--text-disabled);
+}
+
+.dark :is(
+  .placeholder\:text-charcoal\/30,
+  .placeholder\:text-charcoal\/40,
+  .placeholder\:text-charcoal\/50
+)::placeholder {
+  color: var(--text-disabled);
+}
+
+.dark :is(.bg-gray-50, .bg-gray-100, .bg-zinc-50, .bg-zinc-100) {
+  background-color: var(--input-background);
+}
+
+.dark :is(.hover\:bg-charcoal\/\[0\.04\]:hover, .hover\:bg-charcoal\/\[0\.05\]:hover, .hover\:bg-charcoal\/5:hover) {
+  background-color: rgb(255 255 255 / 0.08);
 }
 
 .dark,

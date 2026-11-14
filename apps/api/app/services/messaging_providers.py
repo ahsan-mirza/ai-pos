@@ -22,9 +22,10 @@ CHANNEL_PROVIDERS: dict[str, tuple[str, ...]] = {
 class ProviderError(Exception):
     """Delivery failed. `permanent` errors are not retried (bad number, provider not configured)."""
 
-    def __init__(self, message: str, *, permanent: bool = False) -> None:
+    def __init__(self, message: str, *, permanent: bool = False, ambiguous: bool = False) -> None:
         super().__init__(message)
         self.permanent = permanent
+        self.ambiguous = ambiguous
 
 
 @dataclass

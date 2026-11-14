@@ -2,11 +2,12 @@ import uuid
 from datetime import date
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Response
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.core.deps import Principal, authorize
+from app.core.pagination import Offset, set_total
 from app.core.permissions import Permission
 from app.schemas.fleet import (
     AssignIn,
@@ -55,21 +56,26 @@ def update_policy(payload: PolicyUpdate, db: Db, principal: CanPolicy) -> Policy
 def list_orders(
     db: Db,
     principal: CanDispatch,
+    response: Response,
     view: FleetView,
+    offset: Offset,
     store_id: uuid.UUID | None = None,
     promised_on: date | None = None,
     zone_id: uuid.UUID | None = None,
-    limit: Annotated[int, Query(ge=1, le=200)] = 100,
+    limit: Annotated[int, Query(ge=1, le=100)] = 25,
 ) -> list[FleetOrderRow]:
-    return fleet_service.list_board(
+    rows, total = fleet_service.list_board(
         db,
         principal,
         view=view,
         store_id=store_id,
         promised_on=promised_on,
         zone_id=zone_id,
+        offset=offset,
         limit=limit,
     )
+    set_total(response, total)
+    return rows
 
 
 @router.post("/orders/{order_id}/schedule", response_model=SalesOrderOut)

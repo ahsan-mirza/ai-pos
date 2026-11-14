@@ -4,17 +4,24 @@ A tenant chooses quantities per store. Paying the invoice records the order as a
 It does not deliver the hardware or refund the deposit.
 """
 
+import logging
 import uuid
 from datetime import UTC, datetime
 
 from sqlalchemy import func, or_, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
+from sqlalchemy.orm.attributes import flag_modified
 
 from app.console.security import OperatorPrincipal, audit_operator
 from app.core.errors import ApiError
 from app.schemas.billing import QuoteLine
 from app.schemas.hardware import (
     DepositDecisionIn,
+    EcAssignIn,
+    EcDeviceOut,
+    EcReadinessOut,
+    EcRegisterIn,
     FulfillmentIn,
     HardwareAssignmentOut,
     HardwareCategoryIn,
@@ -33,6 +40,8 @@ from app.tenancy.models import (
     HardwareOrderLine,
     Tenant,
 )
+
+log = logging.getLogger(__name__)
 
 _CATEGORIES = (
     "POS terminals",
@@ -98,11 +107,24 @@ def _item_out(
         stock_qty=row.stock_qty,
         counts_as_register=row.counts_as_register,
         compatibility=row.compatibility,
+        device_type=row.device_type or "",
+        warranty_months=row.warranty_months or 0,
+        specifications=dict(row.specifications or {}),
+        installation_fils=row.installation_fils or 0,
         active=row.active,
         archived=row.archived,
         available=available,
         internal_notes=row.internal_notes if include_notes else "",
     )
+
+
+def list_ec_items(db: Session) -> list[HardwareItemOut]:
+    """Published wired and Android terminals. Other hardware stays on the general catalogue."""
+    return [
+        row
+        for row in list_items(db, sellable_only=True)
+        if row.device_type in {"WIRED", "ANDROID"} and row.purchase_available
+    ]
 
 
 def list_items(db: Session, *, sellable_only: bool = False, include_notes: bool = False) -> list[HardwareItemOut]:
@@ -130,6 +152,10 @@ def _check_item(data: HardwareItemIn) -> None:
         raise ApiError(422, "quantity_range", "The maximum quantity cannot be below the minimum.")
     if data.currency.upper() != "AED":
         raise ApiError(422, "currency", "Hardware prices are in AED.")
+    if data.device_type in {"WIRED", "ANDROID"} and not data.purchase_available:
+        raise ApiError(422, "purchase_price", "An EC machine is sold, not bundled into the subscription.")
+    if data.specifications and not isinstance(data.specifications, dict):
+        raise ApiError(422, "specifications", "Specifications must be a set of named values.")
 
 
 def create_item(db: Session, operator: OperatorPrincipal, data: HardwareItemIn) -> HardwareItemOut:
@@ -160,6 +186,10 @@ def create_item(db: Session, operator: OperatorPrincipal, data: HardwareItemIn) 
         stock_qty=data.stock_qty,
         counts_as_register=data.counts_as_register,
         compatibility=data.compatibility.strip(),
+        device_type=data.device_type,
+        warranty_months=data.warranty_months,
+        specifications=dict(data.specifications or {}),
+        installation_fils=data.installation_fils,
         active=data.active,
         archived=data.archived,
         effective_from=data.effective_from,
@@ -198,6 +228,10 @@ def update_item(db: Session, operator: OperatorPrincipal, item_id: uuid.UUID, da
     row.stock_qty = data.stock_qty
     row.counts_as_register = data.counts_as_register
     row.compatibility = data.compatibility.strip()
+    row.device_type = data.device_type
+    row.warranty_months = data.warranty_months
+    row.specifications = dict(data.specifications or {})
+    row.installation_fils = data.installation_fils
     row.active = data.active
     row.archived = data.archived
     row.effective_from = data.effective_from
@@ -375,6 +409,18 @@ def price_selection(
                     refundable=False,
                 )
             )
+        if item.installation_fils:
+            lines.append(
+                QuoteLine(
+                    code=f"h{index}i",
+                    label=f"{item.name} installation{place}",
+                    quantity=pick.quantity,
+                    unit_fils=item.installation_fils,
+                    amount_fils=item.installation_fils * pick.quantity,
+                    recurring=False,
+                    refundable=False,
+                )
+            )
         if item.counts_as_register:
             registers += pick.quantity
     if registers > included_registers:
@@ -459,12 +505,15 @@ def open_order(
                 fee_fils=item.fee_fils,
                 purchase_fils=line_purchase,
                 delivery_fils=item.delivery_fils,
+                device_type=item.device_type or "",
+                warranty_months=item.warranty_months or 0,
+                installation_fils=item.installation_fils or 0,
                 serials=[],
             )
         )
         monthly += line_monthly * pick.quantity
         deposit += line_deposit * pick.quantity
-        once += (item.fee_fils + line_purchase + item.delivery_fils) * pick.quantity
+        once += (item.fee_fils + line_purchase + item.delivery_fils + (item.installation_fils or 0)) * pick.quantity
     row.monthly_fils = monthly
     row.deposit_fils = deposit
     row.one_time_fils = once
@@ -535,6 +584,9 @@ def _line_out(line: HardwareOrderLine) -> HardwareLineOut:
         fee_fils=line.fee_fils,
         purchase_fils=line.purchase_fils,
         delivery_fils=line.delivery_fils,
+        device_type=line.device_type or "",
+        warranty_months=line.warranty_months or 0,
+        installation_fils=line.installation_fils or 0,
         fulfilled_qty=line.fulfilled_qty,
         serials=[str(value) for value in (line.serials or [])],
     )
@@ -562,6 +614,17 @@ def _order_out(db: Session, order: HardwareOrder, *, with_lines: bool) -> Hardwa
         lines=[_line_out(line) for line in lines],
         assignments=_assignments(db, lines) if with_lines else [],
     )
+
+
+def orders_for_tenant(db: Session, tenant_id: uuid.UUID) -> list[HardwareOrderOut]:
+    rows = list(
+        db.scalars(
+            select(HardwareOrder)
+            .where(HardwareOrder.tenant_id == tenant_id)
+            .order_by(HardwareOrder.created_at.desc())
+        )
+    )
+    return [_order_out(db, row, with_lines=True) for row in rows]
 
 
 def list_orders(
@@ -603,6 +666,10 @@ def _assignments(db: Session, lines: list[HardwareOrderLine]) -> list[HardwareAs
             delivered_at=row.delivered_at,
             returned_at=row.returned_at,
             condition_note=row.condition_note,
+            device_type=row.device_type or "",
+            registration_status=row.registration_status or "pending",
+            warranty_start=row.warranty_start,
+            warranty_end=row.warranty_end,
         )
         for row in rows
     ]
@@ -613,6 +680,20 @@ def get_order(db: Session, order_id: uuid.UUID) -> HardwareOrderOut:
     if row is None:
         raise ApiError(404, "not_found", "That hardware order does not exist.")
     return _order_out(db, row, with_lines=True)
+
+
+def _claim_serials(db: Session, serials: list[str], tenant_id: uuid.UUID, keep_line_id: uuid.UUID) -> None:
+    for serial in serials:
+        taken = db.scalar(
+            select(HardwareAssignment).where(
+                HardwareAssignment.serial == serial, HardwareAssignment.status != "returned"
+            )
+        )
+        if taken is None or taken.order_line_id == keep_line_id:
+            continue
+        if taken.tenant_id != tenant_id:
+            raise ApiError(409, "serial_taken", "That serial number is registered to another business.")
+        raise ApiError(409, "duplicate_serial", "That serial number is already registered.")
 
 
 def fulfill(db: Session, operator: OperatorPrincipal, order_id: uuid.UUID, data: FulfillmentIn) -> HardwareOrderOut:
@@ -637,6 +718,7 @@ def fulfill(db: Session, operator: OperatorPrincipal, order_id: uuid.UUID, data:
         item.stock_qty -= delta
     line.fulfilled_qty = data.fulfilled_qty
     line.serials = [value.strip() for value in data.serials if value.strip()]
+    _claim_serials(db, line.serials, order.tenant_id, line.id)
     lines = list(db.scalars(select(HardwareOrderLine).where(HardwareOrderLine.order_id == order.id)))
     if all(item.fulfilled_qty >= item.quantity for item in lines):
         order.fulfillment_status = "fulfilled"
@@ -649,9 +731,23 @@ def fulfill(db: Session, operator: OperatorPrincipal, order_id: uuid.UUID, data:
     order.updated_at = datetime.now(UTC)
     if data.fulfilled_qty > 0:
         assignment = db.scalar(select(HardwareAssignment).where(HardwareAssignment.order_line_id == line.id))
+        if assignment is None and line.mode == "purchase" and (line.device_type or "") in {"WIRED", "ANDROID"}:
+            assignment = HardwareAssignment(
+                tenant_id=order.tenant_id,
+                order_line_id=line.id,
+                item_id=line.item_id,
+                store_id=line.store_id,
+                store_label=line.store_label,
+                quantity=line.quantity,
+                status="active",
+                device_type=line.device_type or "",
+            )
+            db.add(assignment)
+            db.flush()
         if assignment is not None and assignment.delivered_at is None:
             assignment.delivered_at = datetime.now(UTC)
             assignment.serial = line.serials[0] if line.serials else ""
+            assignment.device_type = line.device_type or ""
     audit_operator(
         db,
         operator,
@@ -660,7 +756,7 @@ def fulfill(db: Session, operator: OperatorPrincipal, order_id: uuid.UUID, data:
         reason=data.reason,
         tenant_id=order.tenant_id,
     )
-    db.commit()
+    _commit_or_conflict(db, "duplicate_serial", "That serial number is already registered.")
     return _order_out(db, order, with_lines=True)
 
 
@@ -684,3 +780,299 @@ def decide_deposit(db: Session, operator: OperatorPrincipal, data: DepositDecisi
         tenant_id=row.tenant_id,
     )
     db.commit()
+
+
+def _serial_key(value: str) -> str:
+    return "".join(value.split()).upper()
+
+
+def _commit_or_conflict(db: Session, code: str, message: str) -> None:
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        log.warning("hardware constraint refused code=%s", code)
+        raise ApiError(409, code, message) from None
+
+
+def _remember(row: HardwareAssignment, event: dict) -> None:
+    history = list(row.assignment_history or [])
+    history.append(event)
+    row.assignment_history = history
+    flag_modified(row, "assignment_history")
+
+
+def _apply_registration(db: Session, row: HardwareAssignment) -> None:
+    """Marks a delivered serial registered. Does not approve a card payment or commit."""
+    if row.status != "active" or row.delivered_at is None or not (row.serial or "").strip():
+        raise ApiError(
+            409, "not_delivered", "Register a machine only after it is paid, delivered, and given a serial number."
+        )
+    if (row.device_type or "") not in {"WIRED", "ANDROID"}:
+        raise ApiError(422, "not_ec", "Only a wired or Android EC machine can be registered for card payments.")
+    from app.tenancy.models import BillingPlan, Subscription
+
+    subscription = db.scalar(select(Subscription).where(Subscription.tenant_id == row.tenant_id))
+    plan = None if subscription is None else db.get(BillingPlan, subscription.plan_id)
+    modules = list(plan.included_modules or []) if plan is not None else []
+    entitled = (
+        subscription is not None and subscription.status in {"trialing", "active"} and "card_terminals" in modules
+    )
+    if not entitled:
+        log.warning("ec registration refused assignment=%s code=package_required", row.id)
+        raise ApiError(409, "package_required", "Pay by Card is not included on the current package.")
+    if row.registration_status == "registered":
+        return
+    start = row.delivered_at
+    months = 0
+    line = db.get(HardwareOrderLine, row.order_line_id)
+    if line is not None:
+        months = line.warranty_months or 0
+    row.registration_status = "registered"
+    row.warranty_start = start
+    if months and start is not None:
+        month_index = start.month - 1 + months
+        year = start.year + month_index // 12
+        month = month_index % 12 + 1
+        row.warranty_end = start.replace(year=year, month=month, day=min(start.day, 28))
+
+
+def register_ec_machine(
+    db: Session, operator: OperatorPrincipal, assignment_id: uuid.UUID, reason: str
+) -> HardwareAssignmentOut:
+    """Records a delivered serial as the tenant's EC machine. It does not open a card session."""
+    row = db.get(HardwareAssignment, assignment_id)
+    if row is None:
+        raise ApiError(404, "not_found", "That hardware assignment does not exist.")
+    _apply_registration(db, row)
+    audit_operator(
+        db,
+        operator,
+        "hardware.ec.register",
+        after={"serial": row.serial, "device_type": row.device_type},
+        reason=reason,
+        tenant_id=row.tenant_id,
+    )
+    db.commit()
+    return HardwareAssignmentOut(
+        id=row.id,
+        order_line_id=row.order_line_id,
+        store_label=row.store_label,
+        serial=row.serial,
+        quantity=row.quantity,
+        monthly_fils=row.monthly_fils,
+        deposit_fils=row.deposit_fils,
+        status=row.status,
+        deposit_decision=row.deposit_decision,
+        delivered_at=row.delivered_at,
+        returned_at=row.returned_at,
+        condition_note=row.condition_note,
+        device_type=row.device_type or "",
+        registration_status=row.registration_status,
+        warranty_start=row.warranty_start,
+        warranty_end=row.warranty_end,
+    )
+
+
+def _owned_assignment(db: Session, tenant_id: uuid.UUID, assignment_id: uuid.UUID) -> HardwareAssignment:
+    row = db.get(HardwareAssignment, assignment_id)
+    if row is None or row.tenant_id != tenant_id:
+        log.warning("ec device refused assignment=%s code=not_found", assignment_id)
+        raise ApiError(404, "not_found", "That terminal is not on this business.")
+    return row
+
+
+def ec_devices_for_tenant(db: Session, tenant_id: uuid.UUID) -> list[EcDeviceOut]:
+    orders = list(
+        db.scalars(
+            select(HardwareOrder)
+            .where(HardwareOrder.tenant_id == tenant_id, HardwareOrder.payment_status != "canceled")
+            .order_by(HardwareOrder.created_at.desc())
+        )
+    )
+    found: list[EcDeviceOut] = []
+    for order in orders:
+        lines = list(db.scalars(select(HardwareOrderLine).where(HardwareOrderLine.order_id == order.id)))
+        for line in lines:
+            if (line.device_type or "") not in {"WIRED", "ANDROID"}:
+                continue
+            assignment = db.scalar(select(HardwareAssignment).where(HardwareAssignment.order_line_id == line.id))
+            item = db.get(HardwareItem, line.item_id)
+            delivered = assignment is not None and assignment.delivered_at is not None
+            registered = assignment is not None and assignment.registration_status == "registered"
+            assigned = assignment is not None and assignment.register_id is not None
+            specs = item.specifications if item is not None and isinstance(item.specifications, dict) else {}
+            found.append(
+                EcDeviceOut(
+                    assignment_id=None if assignment is None else assignment.id,
+                    line_id=line.id,
+                    name=line.name,
+                    manufacturer="" if item is None else item.manufacturer,
+                    model="" if item is None else item.model,
+                    device_type=line.device_type or "",
+                    serial="" if assignment is None else assignment.serial,
+                    label="" if assignment is None else (assignment.label or ""),
+                    order_reference=order.reference,
+                    payment_status=order.payment_status,
+                    fulfillment_status=order.fulfillment_status,
+                    delivered_at=None if assignment is None else assignment.delivered_at,
+                    registration_status="pending" if assignment is None else assignment.registration_status,
+                    store_id=line.store_id if assignment is None else assignment.store_id,
+                    store_label=line.store_label if assignment is None else assignment.store_label,
+                    register_id=None if assignment is None else assignment.register_id,
+                    assigned_at=None if assignment is None else assignment.assigned_at,
+                    warranty_months=line.warranty_months or 0,
+                    installation_fils=line.installation_fils or 0,
+                    purchase_fils=line.purchase_fils or 0,
+                    specifications={str(key): str(value) for key, value in specs.items()},
+                    history=[] if assignment is None else list(assignment.assignment_history or []),
+                    payment_verified=order.payment_status == "paid",
+                    delivered=delivered,
+                    registered=registered,
+                    assigned=assigned,
+                )
+            )
+    return found
+
+
+def confirm_ec_registration(
+    db: Session, tenant_id: uuid.UUID, assignment_id: uuid.UUID, data: EcRegisterIn, actor_id: uuid.UUID
+) -> EcDeviceOut:
+    """Confirms the serial Console recorded at delivery. A different serial is refused."""
+    row = _owned_assignment(db, tenant_id, assignment_id)
+    supplied = _serial_key(data.serial)
+    recorded = _serial_key(row.serial or "")
+    if not recorded or supplied != recorded:
+        log.warning("ec registration refused assignment=%s code=serial_mismatch", row.id)
+        raise ApiError(409, "serial_mismatch", "Enter the serial number recorded when this machine was delivered.")
+    _apply_registration(db, row)
+    if data.label.strip():
+        row.label = data.label.strip()
+    _remember(
+        row,
+        {
+            "action": "register",
+            "at": datetime.now(UTC).isoformat(),
+            "by": str(actor_id),
+            "note": data.note.strip(),
+        },
+    )
+    db.commit()
+    devices = ec_devices_for_tenant(db, tenant_id)
+    return next(item for item in devices if item.assignment_id == row.id)
+
+
+def assign_ec_register(
+    db: Session,
+    tenant_id: uuid.UUID,
+    assignment_id: uuid.UUID,
+    data: EcAssignIn,
+    *,
+    stores: dict[uuid.UUID, str],
+    registers: dict[uuid.UUID, tuple[uuid.UUID, bool]],
+    actor_id: uuid.UUID,
+) -> EcDeviceOut:
+    """Points a registered machine at one active register in a branch this business owns."""
+    row = _owned_assignment(db, tenant_id, assignment_id)
+    if row.registration_status != "registered":
+        raise ApiError(409, "not_registered", "Register the machine before assigning it to a register.")
+    if data.store_id not in stores:
+        log.warning("ec assignment refused assignment=%s code=unknown_store", row.id)
+        raise ApiError(422, "unknown_store", "Choose a branch this business owns.")
+    register = registers.get(data.register_id)
+    if register is None or not register[1]:
+        raise ApiError(422, "register_inactive", "Choose an active register.")
+    if register[0] != data.store_id:
+        raise ApiError(422, "register_store", "That register belongs to a different branch.")
+    taken = db.scalar(
+        select(HardwareAssignment.id).where(
+            HardwareAssignment.tenant_id == tenant_id,
+            HardwareAssignment.register_id == data.register_id,
+            HardwareAssignment.id != row.id,
+            HardwareAssignment.status == "active",
+        )
+    )
+    if taken is not None:
+        raise ApiError(409, "register_taken", "That register already has an active terminal.")
+    previous = None if row.register_id is None else str(row.register_id)
+    action = "assign" if previous is None else "reassign"
+    row.store_id = data.store_id
+    row.store_label = stores[data.store_id]
+    row.register_id = data.register_id
+    row.assigned_at = datetime.now(UTC)
+    row.assigned_by_user_id = actor_id
+    _remember(
+        row,
+        {
+            "action": action,
+            "at": row.assigned_at.isoformat(),
+            "by": str(actor_id),
+            "store_id": str(data.store_id),
+            "register_id": str(data.register_id),
+            "previous_register_id": previous,
+        },
+    )
+    _commit_or_conflict(db, "register_taken", "That register already has an active terminal.")
+    devices = ec_devices_for_tenant(db, tenant_id)
+    return next(item for item in devices if item.assignment_id == row.id)
+
+
+def unassign_ec_register(
+    db: Session, tenant_id: uuid.UUID, assignment_id: uuid.UUID, actor_id: uuid.UUID
+) -> EcDeviceOut:
+    row = _owned_assignment(db, tenant_id, assignment_id)
+    if row.register_id is None:
+        raise ApiError(409, "not_assigned", "This machine is not assigned to a register.")
+    previous = str(row.register_id)
+    row.register_id = None
+    row.assigned_at = None
+    _remember(
+        row,
+        {
+            "action": "unassign",
+            "at": datetime.now(UTC).isoformat(),
+            "by": str(actor_id),
+            "previous_register_id": previous,
+        },
+    )
+    db.commit()
+    devices = ec_devices_for_tenant(db, tenant_id)
+    return next(item for item in devices if item.assignment_id == row.id)
+
+
+def ec_readiness(db: Session, tenant_id: uuid.UUID, assignment_id: uuid.UUID) -> EcReadinessOut:
+    """Reports blockers. A registered machine is not a certified card terminal."""
+    row = _owned_assignment(db, tenant_id, assignment_id)
+    from app.tenancy.models import BillingPlan, Subscription
+
+    order_line = db.get(HardwareOrderLine, row.order_line_id)
+    order = None if order_line is None else db.get(HardwareOrder, order_line.order_id)
+    subscription = db.scalar(select(Subscription).where(Subscription.tenant_id == tenant_id))
+    plan = None if subscription is None else db.get(BillingPlan, subscription.plan_id)
+    modules = list(plan.included_modules or []) if plan is not None else []
+    entitled = (
+        subscription is not None and subscription.status in {"trialing", "active"} and "card_terminals" in modules
+    )
+    blockers: list[str] = []
+    if not entitled:
+        blockers.append("PACKAGE_REQUIRED")
+    if order is None or order.payment_status != "paid":
+        blockers.append("PAYMENT_PENDING")
+    if row.delivered_at is None:
+        blockers.append("HARDWARE_NOT_DELIVERED")
+    registered = row.registration_status == "registered"
+    if not registered:
+        blockers.append("DEVICE_NOT_REGISTERED")
+    assigned = row.register_id is not None
+    if not assigned:
+        blockers.append("DEVICE_NOT_ASSIGNED")
+    blockers.extend(["DEVICE_CONNECTION_NOT_VERIFIED", "PROVIDER_NOT_CONFIGURED", "INTEGRATION_NOT_CERTIFIED"])
+    return EcReadinessOut(
+        production_ready=False,
+        device_registered=registered,
+        device_assigned=assigned,
+        device_connected=False,
+        provider_configured=False,
+        integration_validated=False,
+        blockers=blockers,
+    )

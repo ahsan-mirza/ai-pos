@@ -309,7 +309,7 @@ function PlanEditor({ plan, onClose, onSaved }: { plan: BillingPlan; onClose: ()
                   included_modules: modules,
                   monthly_fils: filsOf(price),
                   trial_days: Number(trial) || 0,
-                  active,
+                  active: plan.code === "LITE" || plan.code === "STANDARD" || plan.code === "PRO" ? false : active,
                   sort_order: Number(sortOrder) || 0,
                   resource_limits: Object.fromEntries(
                     LIMIT_FIELDS.map(([key]) => {
@@ -361,7 +361,13 @@ function PlanEditor({ plan, onClose, onSaved }: { plan: BillingPlan; onClose: ()
         </fieldset>
         <Field label="Practice trial days" value={trial} inputMode="numeric" onChange={(event) => setTrial(event.target.value)} hint="Legacy onboarding trial on this package. The Pro AI promotion is under Commercial." />
         <label className="flex items-center gap-2 text-sm">
-          <input type="checkbox" checked={active} onChange={(event) => setActive(event.target.checked)} /> Available for new subscriptions
+          <input
+            type="checkbox"
+            checked={plan.code === "LITE" || plan.code === "STANDARD" || plan.code === "PRO" ? false : active}
+            disabled={plan.code === "LITE" || plan.code === "STANDARD" || plan.code === "PRO"}
+            onChange={(event) => setActive(event.target.checked)}
+          />{" "}
+          Available for new subscriptions
         </label>
         {impact ? <p className="rounded-2xl bg-amber-50 px-3 py-2 text-xs text-amber-900">{impact}</p> : null}
         <Reason value={reason} onChange={setReason} />

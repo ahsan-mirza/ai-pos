@@ -222,6 +222,12 @@ class FulfillmentBoardOut(ApiModel):
     timezone: str = "Asia/Dubai"
     map_configured: bool = False
     rows: list[SalesOrderRow]
+    total: int = 0
+    page: int = 1
+    page_size: int = 25
+    total_pages: int = 0
+    has_next: bool = False
+    has_previous: bool = False
 
 
 class BackorderRow(ApiModel):

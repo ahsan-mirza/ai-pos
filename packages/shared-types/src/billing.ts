@@ -146,7 +146,8 @@ export type MarketplaceState =
   | "pending_activation"
   | "expired"
   | "unavailable"
-  | "unpriced";
+  | "unpriced"
+  | "custom";
 
 export interface MarketplaceItem {
   addon: BillingAddon;
@@ -272,6 +273,10 @@ export interface HardwareItem {
   stock_qty: number | null;
   counts_as_register: boolean;
   compatibility: string;
+  device_type?: "" | "WIRED" | "ANDROID" | "OTHER";
+  warranty_months?: number;
+  specifications?: Record<string, string>;
+  installation_fils?: number;
   active: boolean;
   archived: boolean;
   available: boolean;
