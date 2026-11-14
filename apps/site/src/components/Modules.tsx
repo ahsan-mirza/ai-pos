@@ -1,11 +1,10 @@
-import { PROFILE_PRESETS, capabilitySpec, isCapability, type BusinessProfile, type Capability } from "@ai-pos/shared-types";
+import { PROFILE_PRESETS, capabilitySpec, type BusinessProfile } from "@ai-pos/shared-types";
 import { motion } from "framer-motion";
 import { useState, type ReactNode } from "react";
 import type { PublicCatalog } from "../catalog";
 import { GET_STARTED_NOTE, GetStartedLink } from "./GetStartedLink";
 import {
   BUSINESS_TYPE_ORDER,
-  priceLabel,
   profileModules,
   profilesFor,
   publicModulePrices,
@@ -46,7 +45,6 @@ export function Modules({ catalog }: { catalog: PublicCatalog }) {
   const spec = PROFILE_PRESETS[profile];
   const { included, optional } = profileModules(profile);
   const prices = publicModulePrices(catalog.addons);
-  const priced = catalog.addons.filter((addon) => addon.active && priceLabel(addon));
 
   return (
     <section id="modules" className="border-t border-line bg-surface">
@@ -152,37 +150,6 @@ export function Modules({ catalog }: { catalog: PublicCatalog }) {
           </p>
         </div>
 
-        <div className="mt-10">
-          <h3 id="addon-catalog" className="text-lg font-semibold text-charcoal">
-            Available add-ons
-          </h3>
-          <p className="mt-2 max-w-2xl text-sm leading-6 text-charcoal/70">
-            These are the optional add-ons in the public catalog. Each one is available now. A product module is listed only when that add-on is configured to sell it.
-          </p>
-          <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {priced.map((addon) => {
-              const modules = addon.module_keys.filter(isCapability);
-              const types = businessTypesFor(modules);
-              return (
-                <article key={addon.code} className="flex flex-col rounded-card border border-line bg-card p-5">
-                  <p className="text-xs font-semibold uppercase tracking-[0.14em] text-primary">Optional</p>
-                  <h4 className="mt-2 text-lg font-semibold text-charcoal">{addon.name}</h4>
-                  <p className="mt-2 flex-1 text-sm leading-6 text-charcoal/75">{addon.description}</p>
-                  <p className="mt-3 text-sm font-semibold text-charcoal">{priceLabel(addon)}</p>
-                  {modules.length > 0 ? (
-                    <p className="mt-2 text-sm leading-6 text-charcoal/70">
-                      Includes {modules.map((key) => capabilitySpec(key).label).join(", ")}.
-                      {types ? ` Fits ${types}.` : ""}
-                    </p>
-                  ) : (
-                    <p className="mt-2 text-sm leading-6 text-charcoal/70">Does not add a separate product module.</p>
-                  )}
-                </article>
-              );
-            })}
-          </div>
-        </div>
-
         <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
           <GetStartedLink className="inline-flex h-12 items-center justify-center rounded-2xl bg-primary px-5 text-sm font-semibold text-white hover:bg-primary-hover" />
           <a
@@ -192,10 +159,10 @@ export function Modules({ catalog }: { catalog: PublicCatalog }) {
             Explore features
           </a>
           <a
-            href="#addon-catalog"
+            href="#plugins"
             className="inline-flex h-12 items-center justify-center rounded-2xl border border-line bg-card px-5 text-sm font-semibold text-charcoal"
           >
-            View available modules
+            View plugins
           </a>
           <a
             href="#contact"
@@ -208,14 +175,6 @@ export function Modules({ catalog }: { catalog: PublicCatalog }) {
       </div>
     </section>
   );
-}
-
-function businessTypesFor(keys: Capability[]): string {
-  const names = new Set<string>();
-  for (const key of keys) {
-    for (const profile of profilesFor(key)) names.add(PROFILE_PRESETS[profile].shortLabel);
-  }
-  return [...names].join(", ");
 }
 
 function ModuleColumn({ title, empty, children }: { title: string; empty: string; children: ReactNode }) {
