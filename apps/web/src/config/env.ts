@@ -56,6 +56,14 @@ export function saveStoreCode(code: string): void {
   localStorage.setItem(STORE_CODE_KEY, normalizeStoreCode(code));
 }
 
+/**
+ * "localhost" is often ::1. The API listens on IPv4, so a call that picks IPv6 fails
+ * while the next call, which reached 127.0.0.1, succeeds.
+ */
+function ipv4Loopback(url: string): string {
+  return url.replace(/^(https?:\/\/)localhost(?=[:/]|$)/i, "$1127.0.0.1");
+}
+
 /** "same-origin" follows the address in the browser (http://<vm-public-ip>). "{tenant}" follows a subdomain. */
 function resolveUrl(raw: string): string {
   if (raw === "same-origin") {
@@ -65,7 +73,7 @@ function resolveUrl(raw: string): string {
   if (!/^https?:\/\//.test(value)) {
     throw new Error("VITE_API_BASE_URL must be an absolute http(s) URL or same-origin.");
   }
-  return value;
+  return ipv4Loopback(value);
 }
 
 function requiredUrl(name: keyof ImportMetaEnv): string {
@@ -81,7 +89,7 @@ if (!/^[A-Z]{3}$/.test(defaultCurrency)) {
 function resolveSignupUrl(): string {
   const raw = required("VITE_API_BASE_URL");
   if (raw === "same-origin") return resolveUrl(raw);
-  return raw.replace("{tenant}.", "").replace("{tenant}", "www").replace(/\/$/, "");
+  return ipv4Loopback(raw.replace("{tenant}.", "").replace("{tenant}", "www").replace(/\/$/, ""));
 }
 
 function isIpHost(value: string): boolean {

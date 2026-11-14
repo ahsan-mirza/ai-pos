@@ -16,8 +16,7 @@ from pathlib import Path
 
 from alembic import command
 from alembic.config import Config
-from sqlalchemy import create_engine, func, select, text
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy import create_engine, func, select
 
 NAMES = ("reach_stress_ops", "reach_stress_control")
 
@@ -166,9 +165,10 @@ def _campaign(db, token: str, points: int, kind: str | None = None):
 
 
 def _prepare_until(ref, run_id, settings) -> dict:
-    from app.tenancy.context import use_tenant
     from reach.models import ReachCampaignRun
     from reach.prepare import prepare_due
+
+    from app.tenancy.context import use_tenant
 
     ticks = []
     with use_tenant(ref), _session(ref) as db:
@@ -192,8 +192,9 @@ def _prepare_until(ref, run_id, settings) -> dict:
 
 
 def _count_dupes(ref, run_id) -> int:
-    from app.tenancy.context import use_tenant
     from reach.models import ReachRecipient
+
+    from app.tenancy.context import use_tenant
 
     with use_tenant(ref), _session(ref) as db:
         total = int(
@@ -247,7 +248,6 @@ def main() -> None:
 
 
 def _priority(settings, refs) -> None:
-    from datetime import UTC, datetime, timedelta
 
     from app.models.messaging import OutboundMessage
     from app.services.messaging_service import dispatch_across_tenants, priority_for
@@ -326,7 +326,8 @@ def _priority(settings, refs) -> None:
         with use_tenant(refs["alpha"]), _session(refs["alpha"]) as db:
             reason = db.scalar(select(OutboundMessage.last_error).where(OutboundMessage.template_key == "campaign"))
         raise SystemExit(
-            f"priority failed receipt={receipt.status} reminder={reminder.status} sent={sent} queued={queued} error={reason}"
+            "priority failed "
+            f"receipt={receipt.status} reminder={reminder.status} sent={sent} queued={queued} error={reason}"
         )
     print("PRIORITY", {"first_dispatch_seconds": first, "campaigns_sent": sent, "campaigns_still_queued": queued})
 

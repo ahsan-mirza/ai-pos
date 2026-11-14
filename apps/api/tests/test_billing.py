@@ -105,7 +105,8 @@ def test_public_catalog_lists_the_seed_plans_without_a_tenant(tmp_path) -> None:
         annual = next(cycle for cycle in body["cycles"] if cycle["code"] == "ANNUAL")
         assert annual["discount_bps"] == 2_500
         assert {cycle["code"] for cycle in body["cycles"]} == {"MONTHLY", "QUARTERLY", "HALF_YEARLY", "ANNUAL"}
-        hardware = [addon for addon in body["addons"] if addon["code"] in {"hardware_lease", "equipment_protection", "extra_register"}]
+        hardware_codes = {"hardware_lease", "equipment_protection", "extra_register"}
+        hardware = [addon for addon in body["addons"] if addon["code"] in hardware_codes]
         assert hardware and all(addon["price_history"] == [] for addon in hardware)
         addon_codes = {addon["code"] for addon in body["addons"]}
         assert {"hardware_lease", "equipment_protection", "extra_register"} <= addon_codes

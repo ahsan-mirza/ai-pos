@@ -560,7 +560,7 @@ _LOCK_SESSION: Session | None = None
 def _hold_dispatch_lock(tenant: object) -> bool:
     """One API process drains a shared database. The connection stays open so the lock stays held."""
     global _LOCK_SESSION
-    from sqlalchemy import text
+    from sqlalchemy import text  # noqa: TID251 — a session advisory lock has no ORM equivalent
 
     from app.core.database import get_session_factory
     from app.tenancy.context import use_tenant
@@ -582,7 +582,7 @@ def _hold_dispatch_lock(tenant: object) -> bool:
 
 def _release_dispatch_lock() -> None:
     global _LOCK_SESSION
-    from sqlalchemy import text
+    from sqlalchemy import text  # noqa: TID251 — a session advisory lock has no ORM equivalent
 
     db = _LOCK_SESSION
     _LOCK_SESSION = None

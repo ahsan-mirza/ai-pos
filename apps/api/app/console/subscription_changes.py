@@ -155,7 +155,9 @@ def issue_invoice(
     row = _owned(db, tenant.id, request_id)
     if payload.payment != "transfer":
         raise ApiError(422, "transfer_required", "A plan change from the business portal is paid by bank transfer.")
-    if payload.plan_code.strip().upper() != row.requested_plan_code or payload.cycle_code.strip().upper() != row.requested_cycle_code:
+    same_plan = payload.plan_code.strip().upper() == row.requested_plan_code
+    same_cycle = payload.cycle_code.strip().upper() == row.requested_cycle_code
+    if not same_plan or not same_cycle:
         raise ApiError(422, "quote_mismatch", "The invoice does not match the plan change.")
     if bool(payload.onboarding) != _includes_onboarding(row.quote_snapshot):
         raise ApiError(422, "quote_mismatch", "The invoice does not match the plan change.")
@@ -200,7 +202,8 @@ def issue_invoice(
                 SubscriptionChangeRequest.tenant_id == tenant.id,
                 SubscriptionChangeRequest.status == "pending_payment",
                 SubscriptionChangeRequest.invoice_id.is_(None),
-                (SubscriptionChangeRequest.issuing_at.is_(None)) | (SubscriptionChangeRequest.issuing_at < stale_before),
+                (SubscriptionChangeRequest.issuing_at.is_(None))
+                | (SubscriptionChangeRequest.issuing_at < stale_before),
             )
             .values(issuing_at=now, updated_at=now)
         )
@@ -227,7 +230,12 @@ def issue_invoice(
         tenant_id=tenant.id,
     )
     stored = QuoteOut.model_validate(row.quote_snapshot)
-    if fresh.total_fils != stored.total_fils or fresh.currency != stored.currency or fresh.discount_bps != stored.discount_bps:
+    quote_changed = (
+        fresh.total_fils != stored.total_fils
+        or fresh.currency != stored.currency
+        or fresh.discount_bps != stored.discount_bps
+    )
+    if quote_changed:
         _revert_issue(db, row)
         raise ApiError(409, "quote_changed", "The quote changed. Start the plan change again.")
     try:
@@ -281,7 +289,9 @@ def get_request(db: Session, tenant_id: uuid.UUID, request_id: uuid.UUID) -> Sub
     return _owned(db, tenant_id, request_id)
 
 
-def cancel_request(db: Session, tenant_id: uuid.UUID, request_id: uuid.UUID, actor_id: uuid.UUID) -> SubscriptionChangeRequest:
+def cancel_request(
+    db: Session, tenant_id: uuid.UUID, request_id: uuid.UUID, actor_id: uuid.UUID
+) -> SubscriptionChangeRequest:
     row = _owned(db, tenant_id, request_id)
     if row.status == "completed":
         raise ApiError(409, "change_completed", "A completed plan change cannot be cancelled.")
@@ -327,7 +337,9 @@ def note_verified(db: Session, invoice_id: uuid.UUID, tenant_id: uuid.UUID, acto
     )
 
 
-def note_proof_rejected(db: Session, invoice_id: uuid.UUID, tenant_id: uuid.UUID, reason: str, actor_id: uuid.UUID | None) -> None:
+def note_proof_rejected(
+    db: Session, invoice_id: uuid.UUID, tenant_id: uuid.UUID, reason: str, actor_id: uuid.UUID | None
+) -> None:
     """A rejected receipt does not close the request. The store can send a corrected proof."""
     row = _for_invoice(db, invoice_id, tenant_id)
     if row is None or row.status in TERMINAL or row.status != "payment_submitted":

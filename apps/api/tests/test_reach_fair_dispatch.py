@@ -4,6 +4,9 @@ import os
 from datetime import UTC, datetime, timedelta
 
 import pytest
+from reach.models import ReachCampaign, ReachCampaignRun, ReachRecipient
+from reach.prepare import prepare_due
+from reach.runs import cancel_run
 from sqlalchemy import select
 from sqlalchemy.orm import sessionmaker
 
@@ -17,9 +20,6 @@ from app.services.settings_service import clear_settings_cache, load_settings
 from app.tenancy import registry
 from app.tenancy.context import TenantRef, use_tenant
 from app.tenancy.models import ControlBase, Tenant
-from reach.models import ReachCampaign, ReachCampaignRun, ReachRecipient
-from reach.prepare import prepare_due
-from reach.runs import cancel_run
 
 
 def _open(db) -> None:

@@ -21,7 +21,15 @@ from app.console.promotional_trial import (
 from app.core.config import get_settings
 from app.core.errors import ApiError
 from app.models.user import User
-from app.tenancy.models import BillingCycle, BillingInvoice, BillingPlan, ControlBase, PromotionalTrial, Subscription, Tenant
+from app.tenancy.models import (
+    BillingCycle,
+    BillingInvoice,
+    BillingPlan,
+    ControlBase,
+    PromotionalTrial,
+    Subscription,
+    Tenant,
+)
 
 
 def _control():
@@ -76,7 +84,11 @@ def test_free_and_growth_can_start_once_and_other_plans_cannot() -> None:
         assert start(db, growth, None).base_plan_code == "GROWTH"
         for code in ("STANDARD", "PRO"):
             if db.scalar(select(BillingPlan).where(BillingPlan.code == code)) is None:
-                db.add(BillingPlan(code=code, name=code, included_modules=[], active=False, updated_at=datetime.now(UTC)))
+                db.add(
+                    BillingPlan(
+                        code=code, name=code, included_modules=[], active=False, updated_at=datetime.now(UTC)
+                    )
+                )
         db.flush()
         for code, slug in (("STANDARD", "std"), ("PRO", "pro"), ("ENTERPRISE", "ent")):
             tenant = _tenant(db, slug)

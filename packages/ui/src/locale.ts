@@ -1652,6 +1652,9 @@ const arabic: Record<string, string> = {
   "Could not open the submitted proof.": "تعذر فتح الإثبات المرسل.",
   "1 included module": "وحدة واحدة مشمولة",
   Sort: "الترتيب",
+  "Help Center": "مركز المساعدة",
+  "Hello AxizPOS Support Team, I need assistance with my account.":
+    "مرحباً فريق دعم AxizPOS، أحتاج إلى مساعدة بخصوص حسابي.",
 };
 
 /** Latin tokens that stay unchanged in Arabic mode. The checker allows these exact values. */

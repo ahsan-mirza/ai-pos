@@ -64,7 +64,9 @@ def test_an_unpriced_add_on_and_the_wrong_business_type_are_refused(monkeypatch)
     tenant = Tenant(slug="demo", name="Demo", database_url_encrypted="x")
     db.add(tenant)
     db.commit()
-    db.add(BillingAddon(code="sample_extra", name="Sample", monthly_fils=0, one_time_fils=0, updated_at=datetime.now(UTC)))
+    db.add(
+        BillingAddon(code="sample_extra", name="Sample", monthly_fils=0, one_time_fils=0, updated_at=datetime.now(UTC))
+    )
     db.commit()
     try:
         quote_addon(db, SimpleNamespace(), tenant, "sample_extra")  # type: ignore[arg-type]

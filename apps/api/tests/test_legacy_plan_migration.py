@@ -12,7 +12,7 @@ from pathlib import Path
 import pytest
 from alembic import command
 from alembic.config import Config
-from sqlalchemy import create_engine, select, text
+from sqlalchemy import create_engine, select, text  # noqa: TID251
 from sqlalchemy.engine.url import make_url
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import sessionmaker
@@ -86,11 +86,16 @@ def _legacy_state(url: str) -> list[tuple[str, bool, int]]:
     engine = create_engine(url)
     with engine.connect() as conn:
         rows = conn.execute(
-            text("SELECT code, active, monthly_fils FROM billing_plans WHERE code IN ('LITE', 'STANDARD', 'PRO') ORDER BY code")
+            text(
+                "SELECT code, active, monthly_fils FROM billing_plans "
+                "WHERE code IN ('LITE', 'STANDARD', 'PRO') ORDER BY code"
+            )
         ).all()
         subscription = conn.execute(text("SELECT status FROM subscriptions")).scalar()
         invoice = conn.execute(text("SELECT status, plan_code, total_fils FROM billing_invoices")).one()
-        change = conn.execute(text("SELECT status, current_plan_code, requested_plan_code FROM subscription_change_requests")).one()
+        change = conn.execute(
+            text("SELECT status, current_plan_code, requested_plan_code FROM subscription_change_requests")
+        ).one()
     engine.dispose()
     assert subscription == "active"
     assert invoice == ("pending", "STANDARD", 29_900)

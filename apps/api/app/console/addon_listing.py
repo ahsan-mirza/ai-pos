@@ -12,9 +12,9 @@ from app.core import capabilities as capability_catalog
 from app.schemas.billing import AddonBenefit, AddonFaq, AddonListing, MarketplaceItem, MarketplaceOut
 from app.tenancy.models import (
     BillingAddon,
-    BillingPlan,
     BillingInvoice,
     BillingInvoiceLine,
+    BillingPlan,
     BillingTransfer,
     Subscription,
     SubscriptionItem,

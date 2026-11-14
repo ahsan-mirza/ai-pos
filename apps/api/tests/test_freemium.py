@@ -136,10 +136,25 @@ def test_a_retired_plan_stays_readable_and_is_not_recreated() -> None:
         tenant = Tenant(slug="still-lite", name="Still Lite", status="active", database_url_encrypted="x", plan="LITE")
         cycle = db.scalar(select(BillingCycle).where(BillingCycle.code == "MONTHLY"))
         assert cycle is not None
-        plan = BillingPlan(code="LITE", name="Lite", monthly_fils=14_900, active=True, included_modules=["loyalty"], updated_at=now)
+        plan = BillingPlan(
+            code="LITE",
+            name="Lite",
+            monthly_fils=14_900,
+            active=True,
+            included_modules=["loyalty"],
+            updated_at=now,
+        )
         db.add_all([tenant, plan])
         db.flush()
-        db.add(Subscription(tenant_id=tenant.id, plan_id=plan.id, cycle_id=cycle.id, status="active", current_period_end=now + timedelta(days=10)))
+        db.add(
+            Subscription(
+                tenant_id=tenant.id,
+                plan_id=plan.id,
+                cycle_id=cycle.id,
+                status="active",
+                current_period_end=now + timedelta(days=10),
+            )
+        )
         db.add(
             BillingInvoice(
                 tenant_id=tenant.id,

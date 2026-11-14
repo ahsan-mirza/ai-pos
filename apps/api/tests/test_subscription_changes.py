@@ -189,7 +189,11 @@ def test_plan_change_waits_for_the_existing_verification_path(platform) -> None:
         tenant_id = uuid.UUID(platform.tenant_id("alpha"))
         from app.tenancy.models import BillingInvoice
 
-        assert db.query(BillingInvoice).filter(BillingInvoice.tenant_id == tenant_id, BillingInvoice.plan_code == "GROWTH").count() == 1
+        growth_invoices = db.query(BillingInvoice).filter(
+            BillingInvoice.tenant_id == tenant_id,
+            BillingInvoice.plan_code == "GROWTH",
+        )
+        assert growth_invoices.count() == 1
     cannot = platform.client.post(f"/api/v1/billing/subscription-changes/{request_id}/cancel", headers=admin)
     assert cannot.status_code == 409
 

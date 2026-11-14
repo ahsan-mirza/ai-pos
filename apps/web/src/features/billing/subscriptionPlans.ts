@@ -15,7 +15,9 @@ export function isLegacyPlanCode(code: string | null | undefined): boolean {
 }
 
 /** The four packages that can be selected. A retired plan is never offered, even when the store is still on it. */
-export function visiblePlans(plans: readonly BillingPlan[], _currentCode: string | null = null): BillingPlan[] {
+export function visiblePlans(plans: readonly BillingPlan[], currentCode: string | null = null): BillingPlan[] {
+  // The current plan is not added back. A retired code stays off the list.
+  void currentCode;
   return plans
     .filter((plan) => plan.active && planFamily(plan) === "current" && !isLegacyPlanCode(plan.code))
     .sort((left, right) => left.sort_order - right.sort_order || left.name.localeCompare(right.name));

@@ -8,8 +8,8 @@ from pathlib import Path
 
 from alembic import command
 from alembic.config import Config
-from psycopg.types.json import Json
-from sqlalchemy import create_engine, inspect, text
+from psycopg.types.json import Json  # noqa: TID251
+from sqlalchemy import create_engine, inspect, text  # noqa: TID251
 
 from app.core.config import get_settings
 from app.core.database import create_database

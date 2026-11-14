@@ -18,7 +18,6 @@ from sqlalchemy import (
     Uuid,
     and_,
     column,
-    text,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
@@ -563,7 +562,8 @@ class SubscriptionChangeRequest(ControlBase):
     __tablename__ = "subscription_change_requests"
     __table_args__ = (
         CheckConstraint(
-            "status IN ('quoted', 'pending_payment', 'payment_submitted', 'completed', 'cancelled', 'rejected', 'expired', 'failed')",
+            "status IN ('quoted', 'pending_payment', 'payment_submitted', 'completed', "
+            "'cancelled', 'rejected', 'expired', 'failed')",
             name="ck_subscription_changes_status",
         ),
         Index("ix_subscription_changes_tenant_created", "tenant_id", "created_at"),
@@ -571,8 +571,8 @@ class SubscriptionChangeRequest(ControlBase):
             "uq_subscription_changes_one_open",
             "tenant_id",
             unique=True,
-            sqlite_where=text("status IN ('quoted', 'pending_payment', 'payment_submitted')"),
-            postgresql_where=text("status IN ('quoted', 'pending_payment', 'payment_submitted')"),
+            sqlite_where=column("status").in_(OPEN_SUBSCRIPTION_CHANGE_STATUSES),
+            postgresql_where=column("status").in_(OPEN_SUBSCRIPTION_CHANGE_STATUSES),
         ),
     )
 
@@ -613,8 +613,8 @@ class SubscriptionChangeEvent(ControlBase):
             "uq_subscription_change_events_one_completion",
             "request_id",
             unique=True,
-            sqlite_where=text("status = 'completed'"),
-            postgresql_where=text("status = 'completed'"),
+            sqlite_where=column("status") == "completed",
+            postgresql_where=column("status") == "completed",
         ),
     )
 

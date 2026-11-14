@@ -7,7 +7,7 @@ from datetime import UTC, datetime
 import pytest
 from sqlalchemy import event, func, select
 from sqlalchemy.orm.attributes import flag_modified
-from tests.governance_support import platform  # noqa: F401
+from tests.governance_support import platform as platform_fixture  # noqa: F401
 
 from app.console.billing import assign_free
 from app.console.usage import count_resources, present_metric
@@ -51,7 +51,13 @@ def _product(name: str, *, active: bool = True) -> Product:
 def _seed(platform, slug: str) -> None:
     with platform.session(slug) as db:
         first = Store(code=f"{slug[:1].upper()}1", name=f"{slug} main", currency="AED")
-        warehouse = Store(code=f"{slug[:1].upper()}W", name=f"{slug} warehouse", currency="AED", is_warehouse=True, is_active=False)
+        warehouse = Store(
+            code=f"{slug[:1].upper()}W",
+            name=f"{slug} warehouse",
+            currency="AED",
+            is_warehouse=True,
+            is_active=False,
+        )
         db.add_all([first, warehouse])
         db.flush()
         db.add(Device(store_id=first.id, code="T1", name="Till", key_hash="a" * 64, key_hint="aaaaaa"))

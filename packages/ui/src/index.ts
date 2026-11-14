@@ -42,6 +42,7 @@ export { CountryField } from "./CountryField";
 export { countryOption } from "./countryOptions";
 export { PhoneField } from "./PhoneField";
 export { isValidE164, phoneError, toE164 } from "./phone";
+export { whatsappChatUrl, whatsappClickDigits, whatsappDigits } from "./whatsapp";
 export {
   emailError,
   fieldErrorsFrom,

@@ -1,4 +1,6 @@
-import { isValidE164 } from "@ai-pos/ui";
+import { whatsappChatUrl, whatsappClickDigits, whatsappDigits } from "@ai-pos/ui";
+
+export { whatsappChatUrl, whatsappDigits };
 
 export interface PublicWhatsApp {
   enabled: boolean;
@@ -22,29 +24,15 @@ const MESSAGE_LIMIT = 500;
 const TOOLTIP_LIMIT = 40;
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-export function whatsappDigits(value: string): string {
-  return value.replace(/\D/g, "");
-}
-
 /** Digits for wa.me when an admin published a complete international number. */
 export function publishedWhatsapp(contact: PublicWhatsApp): string | null {
   if (!contact.enabled) return null;
-  const digits = whatsappDigits(contact.number);
-  if (!isValidE164(`+${digits}`)) return null;
-  return digits;
+  return whatsappClickDigits(contact.number);
 }
 
 /** The floating button is shown only when an admin published a usable number. */
 export function whatsappReady(contact: PublicWhatsApp): boolean {
   return publishedWhatsapp(contact) !== null;
-}
-
-/** Standard click-to-chat link. The visitor still has to send the prefilled message. */
-export function whatsappChatUrl(number: string, message: string): string {
-  const digits = whatsappDigits(number);
-  const text = message.trim();
-  const base = `https://wa.me/${digits}`;
-  return text.length > 0 ? `${base}?text=${encodeURIComponent(text)}` : base;
 }
 
 export function parsePublicWhatsApp(body: unknown): PublicWhatsApp {

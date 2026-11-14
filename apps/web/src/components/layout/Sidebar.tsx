@@ -11,7 +11,9 @@ import { useCanManageSettings } from "../../lib/currency";
 import { AiMark } from "../ui/AiMark";
 import { labelOf, navGroups, settingsTabAllowed, settingsTabs, type NavItem } from "./navigation";
 import { revealSection, toggleSection } from "./sidebarSections";
+import { SupportCenter } from "./SupportCenter";
 import { StoreSwitcher } from "./StoreSwitcher";
+import { useSupportWhatsapp } from "./useSupportWhatsapp";
 
 type VisibleItem = NavItem & { label: string; locked: boolean };
 
@@ -266,6 +268,7 @@ export function Sidebar({
   const [tip, setTip] = useState<Tip | null>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
   const sections = useSectionExpansion();
+  const support = useSupportWhatsapp();
 
   useEffect(() => {
     if (!collapsed) setTip(null);
@@ -284,12 +287,13 @@ export function Sidebar({
   return (
     <>
       <aside
-        className={`relative z-20 hidden shrink-0 flex-col border-e border-line bg-white transition-[width] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none lg:flex ${
+        className={`relative z-20 hidden h-full min-h-0 shrink-0 flex-col overflow-x-hidden border-e border-line bg-white transition-[width] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none lg:flex ${
           collapsed ? "w-20" : "w-64"
         }`}
       >
         <SidebarBrand collapsed={collapsed} />
         <SidebarNav instance="rail" collapsed={collapsed} groups={sections.groups} isOpen={sections.isOpen} onToggle={sections.toggle} onTip={setTip} subscriptionLocked={subscriptionLocked} />
+        <SupportCenter collapsed={collapsed} digits={support.digits} pending={!support.ready} onTip={setTip} reload={support.reload} />
       </aside>
 
       {tip ? (
@@ -323,6 +327,7 @@ export function Sidebar({
               <StoreSwitcher />
             </div>
             <SidebarNav instance="drawer" collapsed={false} groups={sections.groups} isOpen={sections.isOpen} onToggle={sections.toggle} onNavigate={onCloseMobile} subscriptionLocked={subscriptionLocked} />
+            <SupportCenter collapsed={false} digits={support.digits} pending={!support.ready} onNavigate={onCloseMobile} reload={support.reload} />
           </div>
         </div>
       ) : null}
