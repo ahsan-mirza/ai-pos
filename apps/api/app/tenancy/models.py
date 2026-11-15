@@ -899,3 +899,71 @@ class RecoveryChallenge(ControlBase):
     sent_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     attempts: Mapped[int] = mapped_column(Integer, default=0)
     consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+DATA_RESET_STATUSES = (
+    "PREVIEWED",
+    "AUTHORIZED",
+    "SNAPSHOTTING",
+    "SNAPSHOT_VERIFIED",
+    "RESETTING",
+    "COMPLETED",
+    "FAILED",
+    "RESTORE_REQUESTED",
+    "RESTORING",
+    "RESTORED",
+    "RESTORE_FAILED",
+)
+
+
+class TenantDataOperation(ControlBase):
+    """One console reset or restore. The snapshot file is private; this row stores only its reference."""
+
+    __tablename__ = "tenant_data_operations"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "idempotency_key", name="uq_tenant_data_operations_idempotency"),
+        CheckConstraint(
+            "status IN ('PREVIEWED', 'AUTHORIZED', 'SNAPSHOTTING', 'SNAPSHOT_VERIFIED', 'RESETTING', "
+            "'COMPLETED', 'FAILED', 'RESTORE_REQUESTED', 'RESTORING', 'RESTORED', 'RESTORE_FAILED')",
+            name="status_known",
+        ),
+        CheckConstraint("scope IN ('store', 'tenant')", name="scope_known"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("tenants.id"), index=True)
+    operator_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("operators.id"), index=True)
+    scope: Mapped[str] = mapped_column(String(16))
+    store_ids: Mapped[list] = mapped_column(JSON)
+    categories: Mapped[list] = mapped_column(JSON)
+    fingerprint: Mapped[str] = mapped_column(String(64))
+    status: Mapped[str] = mapped_column(String(24), default="PREVIEWED", index=True)
+    idempotency_key: Mapped[str] = mapped_column(String(80))
+    preview: Mapped[dict] = mapped_column(JSON, default=dict)
+    authorized_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    restore_authorized_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    snapshot_relpath: Mapped[str | None] = mapped_column(String(240), nullable=True)
+    snapshot_sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    snapshot_records: Mapped[int] = mapped_column(Integer, default=0)
+    records_reset: Mapped[int] = mapped_column(Integer, default=0)
+    records_restored: Mapped[int] = mapped_column(Integer, default=0)
+    conflicts: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    failure: Mapped[str | None] = mapped_column(Text, nullable=True)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    restored_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    restore_operator_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("operators.id"), nullable=True
+    )
+
+
+class ConsoleResetGuard(ControlBase):
+    """Failed reset-password attempts for one console admin. This does not lock ordinary sign-in."""
+
+    __tablename__ = "console_reset_guards"
+
+    operator_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("operators.id"), primary_key=True)
+    failures: Mapped[int] = mapped_column(Integer, default=0)
+    window_started: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

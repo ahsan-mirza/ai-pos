@@ -6,7 +6,7 @@ import threading
 import time
 import uuid
 from collections import defaultdict, deque
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, Query, Request, Response, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel, Field
@@ -15,6 +15,7 @@ from app.console import (
     auth,
     billing,
     commercial_payments,
+    data_reset,
     directory,
     entitlements,
     hardware,
@@ -165,6 +166,99 @@ def update_tenant(
 @router.post("/tenants/{tenant_id}/refresh-stats", response_model=TenantStatsOut)
 def refresh_stats(tenant_id: uuid.UUID, operator: CurrentOperator, settings: Config) -> TenantStatsOut:
     return stats.collect_one(settings, tenant_id)
+
+
+class DataResetPreviewIn(BaseModel):
+    scope: Literal["store", "tenant"]
+    store_id: uuid.UUID | None = None
+    categories: list[str] = Field(min_length=1, max_length=12)
+    idempotency_key: str = Field(min_length=8, max_length=80)
+    acknowledge_dependencies: bool = False
+
+
+class DataResetPasswordIn(BaseModel):
+    password: str = Field(min_length=1, max_length=200)
+
+
+@router.get("/tenants/{tenant_id}/data-reset/catalog")
+def data_reset_catalog(tenant_id: uuid.UUID, operator: CurrentOperator) -> dict:
+    del tenant_id
+    data_reset.require_reset(operator)
+    return data_reset.catalog()
+
+
+@router.get("/tenants/{tenant_id}/data-reset/branches")
+def data_reset_branches(tenant_id: uuid.UUID, operator: CurrentOperator, settings: Config) -> dict:
+    return data_reset.list_branches(settings, operator, tenant_id)
+
+
+@router.get("/tenants/{tenant_id}/data-reset")
+def data_reset_history(tenant_id: uuid.UUID, operator: CurrentOperator, settings: Config) -> list[dict]:
+    return data_reset.history(settings, operator, tenant_id)
+
+
+@router.post("/tenants/{tenant_id}/data-reset/preview")
+def data_reset_preview(
+    tenant_id: uuid.UUID, payload: DataResetPreviewIn, operator: CurrentOperator, settings: Config
+) -> dict:
+    return data_reset.preview(
+        settings,
+        operator,
+        tenant_id,
+        scope=payload.scope,
+        store_id=payload.store_id,
+        categories=payload.categories,
+        idempotency_key=payload.idempotency_key,
+        acknowledge_dependencies=payload.acknowledge_dependencies,
+    )
+
+
+@router.post("/tenants/{tenant_id}/data-reset/{operation_id}/authorize")
+def data_reset_authorize(
+    tenant_id: uuid.UUID,
+    operation_id: uuid.UUID,
+    payload: DataResetPasswordIn,
+    operator: CurrentOperator,
+    settings: Config,
+) -> dict:
+    return data_reset.authorize(settings, operator, tenant_id, operation_id, payload.password)
+
+
+@router.post("/tenants/{tenant_id}/data-reset/{operation_id}/execute")
+def data_reset_execute(
+    tenant_id: uuid.UUID, operation_id: uuid.UUID, operator: CurrentOperator, settings: Config
+) -> dict:
+    return data_reset.execute(settings, operator, tenant_id, operation_id)
+
+
+@router.post("/tenants/{tenant_id}/data-reset/{operation_id}/restore/preview")
+def data_restore_preview(
+    tenant_id: uuid.UUID, operation_id: uuid.UUID, operator: CurrentOperator, settings: Config
+) -> dict:
+    return data_reset.restore_preview(settings, operator, tenant_id, operation_id)
+
+
+@router.post("/tenants/{tenant_id}/data-reset/{operation_id}/restore/authorize")
+def data_restore_authorize(
+    tenant_id: uuid.UUID,
+    operation_id: uuid.UUID,
+    payload: DataResetPasswordIn,
+    operator: CurrentOperator,
+    settings: Config,
+) -> dict:
+    return data_reset.restore_authorize(settings, operator, tenant_id, operation_id, payload.password)
+
+
+@router.post("/tenants/{tenant_id}/data-reset/{operation_id}/restore")
+def data_restore_apply(
+    tenant_id: uuid.UUID, operation_id: uuid.UUID, operator: CurrentOperator, settings: Config
+) -> dict:
+    return data_reset.restore(settings, operator, tenant_id, operation_id)
+
+
+@router.post("/data-resets/purge-expired")
+def data_reset_purge(operator: CurrentOperator, settings: Config) -> dict:
+    return data_reset.purge_expired(settings, operator)
 
 
 @router.get("/tenants/{tenant_id}/customers", response_model=list[CustomerRow])

@@ -231,3 +231,58 @@ html[lang="ar"] {
   outline: 2px solid var(--color-accent);
   outline-offset: 2px;
 }
+
+/* Field widths. Below 640px every size uses the row. From there, the cap follows the control. */
+:root {
+  --field-sm: 13.75rem;
+  --field-date: 16.25rem;
+  --field-phone: 20rem;
+  --field-md: 22.5rem;
+  --field-lg: 26.25rem;
+  --field-file: 35rem;
+  --field-xl: 40rem;
+  --form-sheet: 56rem;
+}
+
+.field-sm,
+.field-date,
+.field-phone,
+.field-md,
+.field-lg,
+.field-file,
+.field-xl,
+.field-fluid,
+.form-sheet {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+}
+
+@media (min-width: 640px) {
+  .field-sm { max-width: var(--field-sm); }
+  .field-date { max-width: var(--field-date); }
+  .field-phone { max-width: var(--field-phone); }
+  .field-md { max-width: var(--field-md); }
+  .field-lg { max-width: var(--field-lg); }
+  .field-file { max-width: var(--field-file); }
+  .field-xl { max-width: var(--field-xl); }
+  .form-sheet { max-width: var(--form-sheet); }
+}
+
+.form-grid {
+  display: grid;
+  gap: 0.75rem 1rem;
+  align-items: start;
+}
+
+@media (min-width: 768px) {
+  .form-grid {
+    grid-template-columns: repeat(2, minmax(0, 26.25rem));
+  }
+
+  .form-grid > .field-xl,
+  .form-grid > .field-file,
+  .form-grid > .form-span {
+    grid-column: 1 / -1;
+  }
+}

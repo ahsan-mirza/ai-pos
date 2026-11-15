@@ -11,6 +11,7 @@ target/
 target-win11/
 apps/desktop/src-tauri/gen/
 apps/api/storage/
+var/console-resets/
 # Published installers (see DOWNLOADS_DIR); CI copies them to the server.
 /downloads/
 *.db

@@ -327,6 +327,33 @@ html.signup-open body {
   }
 }
 
+@keyframes ai-sparkle {
+  0%,
+  100% {
+    transform: rotate(0deg) scale(1);
+    opacity: 1;
+  }
+  40% {
+    transform: rotate(-14deg) scale(1.16);
+    opacity: 0.72;
+  }
+  70% {
+    transform: rotate(10deg) scale(0.92);
+    opacity: 1;
+  }
+}
+
+.ai-sparkle {
+  transform-origin: center;
+  animation: ai-sparkle 2.2s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ai-sparkle {
+    animation: none;
+  }
+}
+
 /* Go Live wizard stepper. Sizes follow the stepper width, not the viewport, so a narrow modal stays compact. */
 .wizard-stepper {
   container-type: inline-size;

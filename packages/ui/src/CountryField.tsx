@@ -90,7 +90,7 @@ export function CountryField({
   };
 
   return (
-    <div ref={rootRef} className="block text-sm font-medium">
+    <div ref={rootRef} className="field-md block text-sm font-medium">
       <label id={inputId}>
         {label}
         {required ? (

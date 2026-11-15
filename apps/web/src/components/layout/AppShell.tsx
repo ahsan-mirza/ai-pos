@@ -146,15 +146,15 @@ function SubscriptionNotice({
         <p className="font-semibold">{title}</p>
         <p className="mt-1">{message}</p>
         <p className="mt-2 flex flex-wrap gap-3">
-          <Link to="/subscription" className="font-semibold underline">
+          <Link to="/subscription#billing" className="font-semibold underline">
             View Invoice
           </Link>
           {attention.kind === "awaiting_proof" || attention.kind === "rejected" ? (
-            <Link to="/subscription" className="font-semibold underline">
+            <Link to="/subscription#billing" className="font-semibold underline">
               {attention.kind === "rejected" ? "Resubmit Payment Proof" : "Submit Payment Proof"}
             </Link>
           ) : (
-            <Link to="/subscription" className="font-semibold underline">
+            <Link to="/subscription#billing" className="font-semibold underline">
               View submission status
             </Link>
           )}
@@ -170,7 +170,7 @@ function SubscriptionNotice({
   return (
     <p className="border-b border-amber-200 bg-amber-50 px-4 py-2 text-sm text-amber-950" role="status">
       {text}{" "}
-      <Link to="/subscription" className="font-semibold underline">
+      <Link to="/subscription#billing" className="font-semibold underline">
         View Invoice
       </Link>
     </p>
@@ -232,11 +232,11 @@ function IndustryGate({
         <h1 className="text-xl font-semibold">{copy.title}</h1>
         <p className="mt-2 text-sm text-charcoal/70">{copy.body}</p>
         <p className="mt-4 flex flex-wrap gap-4 text-sm font-semibold">
-          <Link to="/subscription" className="text-accent">
+          <Link to="/subscription#billing" className="text-accent">
             {t("View Invoice")}
           </Link>
           {rejected || access?.attention?.kind === "awaiting_proof" ? (
-            <Link to="/subscription" className="text-accent">
+            <Link to="/subscription#billing" className="text-accent">
               {t("Submit Payment Receipt")}
             </Link>
           ) : null}

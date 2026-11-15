@@ -383,12 +383,12 @@ export function PaymentsPage() {
                   ["instructions", "Instructions shown on the invoice"],
                 ] as const
               ).map(([key, label]) => (
-                <label key={key} className="grid gap-1 text-xs text-charcoal/60">
+                <label key={key} className="field-lg grid gap-1 text-xs text-charcoal/60">
                   {label}
                   <input
                     value={draft[key]}
                     onChange={(event) => setDraft({ ...draft, [key]: event.target.value })}
-                    className="h-10 rounded-xl border border-line px-3 text-sm text-charcoal"
+                    className="h-10 w-full rounded-xl border border-line px-3 text-sm text-charcoal"
                   />
                 </label>
               ))}
@@ -402,7 +402,7 @@ export function PaymentsPage() {
             After the paid-through date, these extra days stay usable. The next day, protected features stop. Billing and
             receipt upload stay available.
           </p>
-          <label className="mt-4 grid max-w-xs gap-1 text-xs text-charcoal/60">
+          <label className="field-sm mt-4 grid gap-1 text-xs text-charcoal/60">
             Days
             <input
               value={grace}
@@ -473,7 +473,7 @@ export function PaymentsPage() {
           <textarea
             value={reason}
             onChange={(event) => setReason(event.target.value)}
-            className="mt-3 h-24 w-full rounded-xl border border-line px-3 py-2 text-sm"
+            className="field-xl mt-3 h-24 rounded-xl border border-line px-3 py-2 text-sm"
             placeholder="What was missing on the bank statement?"
           />
           <div className="mt-3 flex gap-2">

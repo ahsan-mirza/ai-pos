@@ -18,6 +18,7 @@ from app.core.deps import Principal
 from app.core.errors import ApiError
 from app.models.accounting import JournalEntry, JournalLine
 from app.models.approval import ApprovalRequest
+from app.models.attribute import ProductAttributeValue
 from app.models.audit_log import AuditLog
 from app.models.banking import BankStatement, BankStatementLine
 from app.models.batch import BatchAllocation, BatchItem, ImportMappingTemplate, PurchaseBatch, Supplier
@@ -28,7 +29,7 @@ from app.models.channel import ChannelPayout, DeliveryChannel
 from app.models.cheque import Cheque, ChequeEvent
 from app.models.consignment import ConsignmentSettlement, ConsignmentSettlementLine
 from app.models.currency import ExchangeRate
-from app.models.customer import Customer, CustomerLedgerEntry
+from app.models.customer import Customer, CustomerCoupon, CustomerLedgerEntry
 from app.models.device import Device, DeviceActivation
 from app.models.document_sequence import DocumentSequence
 from app.models.einvoice import EInvoice, EInvoiceChain, TaxAuthorityCredential
@@ -56,10 +57,18 @@ from app.models.promotion import Promotion, PromotionRedemption
 from app.models.purchasing import GoodsReceipt, GoodsReceiptLine, PurchaseOrder, PurchaseOrderLine
 from app.models.quote_payment import QuotePayment
 from app.models.recipe import ModifierIngredient, Recipe, RecipeLine, RecipeUsage
+from app.models.rental import ProductRental, Rental, RentalLine, RentalPayment
+from app.models.reorder import CustomerReorderOccurrence, CustomerReorderPlan, CustomerReorderPlanItem
 from app.models.repair_ticket import RepairAttachment, RepairDeposit, RepairEvent, RepairLine, RepairTicket
 from app.models.replenishment import DemandDaily, ReplenishmentRun, ReplenishmentSuggestion, SeasonalEvent
-from app.models.reservation import SeatingSessionOrder, TableActivityEvent
-from app.models.restaurant import DiningArea, DiningTable, OpenOrder, OpenOrderItem
+from app.models.reservation import (
+    Reservation,
+    ReservationStatusEvent,
+    SeatingSessionOrder,
+    TableActivityEvent,
+    TableSeatingSession,
+)
+from app.models.restaurant import CodHandover, DiningArea, DiningTable, OpenOrder, OpenOrderItem
 from app.models.return_item import ReturnItem
 from app.models.return_tender import ReturnTender
 from app.models.sale import Sale
@@ -451,6 +460,31 @@ def _restore_practice_stock(db: Session, sample_ids: set[uuid.UUID]) -> None:
         batch_ledger.refresh_status(db, batches)
 
 
+def _release_practice_links(db: Session) -> None:
+    """Drop rows that point at practice sales and messages before those parents are removed.
+
+    Coupons and campaign recipients stay. A practice booking does not: it is a document, not the floor plan.
+    """
+    db.execute(delete(CodHandover))
+    db.execute(update(CustomerCoupon).values(sale_id=None))
+    db.execute(update(CustomerReorderOccurrence).values(sales_order_id=None))
+    # History rows refuse an instance delete. A bulk delete is the practice wipe, and it has to run
+    # before the bookings those rows point at.
+    db.execute(delete(TableActivityEvent))
+    db.execute(delete(SeatingSessionOrder))
+    db.execute(delete(ReservationStatusEvent))
+    db.execute(delete(TableSeatingSession))
+    db.execute(delete(Reservation))
+    from app.models.reach import ReachAiMessage, ReachRecipient, ReachUsage
+
+    if ReachUsage is not None:
+        db.execute(delete(ReachUsage))
+    if ReachRecipient is not None:
+        db.execute(update(ReachRecipient).values(outbound_message_id=None))
+    if ReachAiMessage is not None:
+        db.execute(update(ReachAiMessage).values(outbound_message_id=None))
+
+
 def _delete_operational_history(db: Session) -> None:
     """Practice documents that are not master data: orders, bills, counts, repairs, payroll runs, and the rest.
 
@@ -505,6 +539,7 @@ def _delete_operational_history(db: Session) -> None:
 
 def _delete_practice_transactions(db: Session) -> int:
     sales = int(db.scalar(select(func.count()).select_from(Sale)) or 0)
+    _release_practice_links(db)
     _delete_operational_history(db)
     for model in (
         # Restaurant practice: kitchen tickets, ingredient draws and tabs go before the sales that paid them.
@@ -584,6 +619,10 @@ def _delete_sample_menu(db: Session, ids: list[uuid.UUID]) -> None:
 def _delete_samples(db: Session, sample_ids: set[uuid.UUID]) -> tuple[int, int]:
     ids = list(sample_ids)
     if ids:
+        db.execute(delete(RentalLine).where(RentalLine.product_id.in_(ids)))
+        db.execute(delete(ProductRental).where(ProductRental.product_id.in_(ids)))
+        db.execute(delete(CustomerReorderPlanItem).where(CustomerReorderPlanItem.product_id.in_(ids)))
+        db.execute(delete(ProductAttributeValue).where(ProductAttributeValue.product_id.in_(ids)))
         sample_movements = select(StockMovement.id).where(StockMovement.product_id.in_(ids))
         db.execute(delete(BatchAllocation).where(BatchAllocation.stock_movement_id.in_(sample_movements)))
         db.execute(delete(StockMovement).where(StockMovement.product_id.in_(ids)))
@@ -618,6 +657,23 @@ def _delete_samples(db: Session, sample_ids: set[uuid.UUID]) -> tuple[int, int]:
     if customers:
         db.execute(update(RepairTicket).where(RepairTicket.customer_id.in_(customers)).values(customer_id=None))
         db.execute(update(TradeIn).where(TradeIn.customer_id.in_(customers)).values(customer_id=None))
+        db.execute(delete(CustomerCoupon).where(CustomerCoupon.customer_id.in_(customers)))
+        plans = select(CustomerReorderPlan.id).where(CustomerReorderPlan.customer_id.in_(customers))
+        db.execute(delete(CustomerReorderOccurrence).where(CustomerReorderOccurrence.plan_id.in_(plans)))
+        db.execute(delete(CustomerReorderPlanItem).where(CustomerReorderPlanItem.plan_id.in_(plans)))
+        db.execute(delete(CustomerReorderPlan).where(CustomerReorderPlan.customer_id.in_(customers)))
+        rentals = select(Rental.id).where(Rental.customer_id.in_(customers))
+        db.execute(delete(RentalPayment).where(RentalPayment.rental_id.in_(rentals)))
+        db.execute(delete(RentalLine).where(RentalLine.rental_id.in_(rentals)))
+        db.execute(delete(Rental).where(Rental.customer_id.in_(customers)))
+        from app.models.reach import ReachAiConversation, ReachRecipient
+
+        if ReachRecipient is not None:
+            db.execute(update(ReachRecipient).where(ReachRecipient.customer_id.in_(customers)).values(customer_id=None))
+        if ReachAiConversation is not None:
+            db.execute(
+                update(ReachAiConversation).where(ReachAiConversation.customer_id.in_(customers)).values(customer_id=None)
+            )
         db.execute(delete(Customer).where(Customer.id.in_(customers)))
     return len(ids), len(customers)
 

@@ -1,4 +1,4 @@
-import { BusyButton, DateInput, actionButtonClass, actionIntentFromNodes, inputLeadingIcon, useLocale, type ActionIntent } from "@ai-pos/ui";
+import { BusyButton, DateInput, actionButtonClass, actionIntentFromNodes, fieldClass, inferFieldWidth, inputLeadingIcon, useLocale, type ActionIntent, type FieldWidth } from "@ai-pos/ui";
 import { Eye, EyeOff, Search } from "lucide-react";
 import { useId, useState, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type TextareaHTMLAttributes } from "react";
 import { Select, type SelectProps } from "./Select";
@@ -21,6 +21,7 @@ export function TextField({
   className = "",
   wrapperClassName = "",
   variant = "form",
+  width = "auto",
   type,
   autoComplete,
   endAdornment,
@@ -37,6 +38,8 @@ export function TextField({
   toggleLabel?: string;
   /** `filter` matches FilterSelect: small-caps label and an h-11 control, so a mixed row shares one baseline. */
   variant?: "form" | "filter";
+  /** `auto` follows the input type. `fluid` keeps the row, for a filter cell or a field that must span it. */
+  width?: FieldWidth | "auto";
   wrapperClassName?: string;
 }) {
   const { t } = useLocale();
@@ -72,6 +75,9 @@ export function TextField({
         : `border-transparent focus:border-orange-500 focus:ring-2 focus:ring-orange-500 ${endPad}`
   } ${className}`;
   const { defaultValue: rawDefault, ...dateProps } = props;
+  const explicitWidth = /\bfield-/.test(wrapperClassName);
+  const sized = explicitWidth || variant === "filter" ? "" : fieldClass(width === "auto" ? inferFieldWidth({ type, inputMode: props.inputMode, multiline, label }) : width);
+  const filterWidth = variant === "filter" && !explicitWidth ? "field-fluid" : "";
   const requiredMark = required ? (
     <span className="text-danger" aria-hidden="true">
       {" "}
@@ -79,7 +85,7 @@ export function TextField({
     </span>
   ) : null;
   return (
-    <label htmlFor={multiline ? undefined : fieldId} className={`${filter ? "block" : "block text-sm font-medium"} ${wrapperClassName}`}>
+    <label htmlFor={multiline ? undefined : fieldId} className={`${filter ? "block" : "block text-sm font-medium"} ${filterWidth} ${sized} ${wrapperClassName}`}>
       {filter ? (
         <span className={filterLabel}>
           {label}
@@ -179,8 +185,9 @@ export function SearchField({
 }: Omit<InputHTMLAttributes<HTMLInputElement>, "type"> & { label?: string; hideLabel?: boolean }) {
   const id = useId();
   const fieldId = props.id ?? id;
+  const grow = /\b(?:flex-1|grow(?:-\[|\b)|w-full|field-fluid)\b/.test(className);
   return (
-    <label htmlFor={fieldId} className={className}>
+    <label htmlFor={fieldId} className={`${grow ? "field-fluid" : "field-md"} ${className}`}>
       <span className={hideLabel ? "sr-only" : filterLabel}>{label}</span>
       <span className="relative block">
         <Search aria-hidden="true" className="pointer-events-none absolute left-4 top-1/2 z-10 h-4 w-4 -translate-y-1/2 text-charcoal/40" />
@@ -206,7 +213,7 @@ export function SelectField<T extends string>({
 }: LabelledSelectProps<T> & { required?: boolean }) {
   const id = useId();
   return (
-    <div className={`block ${className}`}>
+    <div className={`${/\bfield-/.test(className) ? "" : "field-md"} block ${className}`}>
       <label id={`${id}-label`} htmlFor={id} className="block text-sm font-medium">
         {label}
         {required ? (

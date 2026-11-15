@@ -245,11 +245,13 @@ const badge =
             aria-controls="ai-assistant-drawer"
             title={t("Ask your business")}
             onClick={assistant.toggle}
-            className={`inline-flex h-9 items-center gap-1.5 rounded-full px-2.5 text-[13px] font-semibold outline-none transition-colors focus-visible:ring-2 focus-visible:ring-accent/40 sm:px-3 ${
-              assistant.open ? "bg-accent/10 text-accent" : "bg-[#f8fafc] text-charcoal hover:bg-charcoal/[0.05] dark:bg-zinc-800 dark:text-zinc-100 dark:hover:bg-white/10"
+            className={`inline-flex h-9 items-center gap-1.5 rounded-full border px-3 text-[13px] font-semibold text-white shadow-sm shadow-accent/25 outline-none transition-colors focus-visible:ring-2 focus-visible:ring-accent/40 sm:px-4 ${
+              assistant.open
+                ? "border-accent-hover bg-accent-hover"
+                : "border-accent bg-accent hover:border-accent-hover hover:bg-accent-hover"
             }`}
           >
-            <AiMark size={15} />
+            <AiMark size={15} className="ai-sparkle text-white" />
             <span className="hidden sm:inline">{t("Axiz AI Business Copilot")}</span>
           </button>
         ) : null}

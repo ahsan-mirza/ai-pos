@@ -965,7 +965,7 @@ function AddonEditor({ addon, onClose, onSaved }: { addon: BillingAddon; onClose
         <label className="flex items-center gap-2 text-sm">
           <input type="checkbox" checked={featured} onChange={(event) => setFeatured(event.target.checked)} /> Featured
         </label>
-        <label className="block text-sm">
+        <label className="field-md block text-sm">
           Publication
           <select className="mt-1 block w-full rounded-xl border border-line bg-white px-3 py-2" value={publication} onChange={(event) => setPublication(event.target.value as "published" | "draft" | "archived")}>
             <option value="published">Published</option>

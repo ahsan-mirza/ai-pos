@@ -37,6 +37,7 @@ export {
   parseDateInput,
 } from "./dateFormat";
 export { inputLeadingIcon, type InputIconHints } from "./inputIcon";
+export { FIELD_WIDTHS, fieldClass, inferFieldWidth, type FieldWidth } from "./fieldWidth";
 export { PageSizeSelect } from "./PageSizeSelect";
 export { CountryField } from "./CountryField";
 export { countryOption } from "./countryOptions";

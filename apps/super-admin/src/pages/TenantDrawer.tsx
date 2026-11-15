@@ -17,6 +17,7 @@ import { ErrorNote, Field, GhostButton, Modal, PrimaryButton, Stat, StatusBadge 
 import { api, errorText } from "../lib/api";
 import { bytes, date, money, when } from "../lib/format";
 import { useSession } from "../lib/session";
+import { DataResetSection } from "./DataResetDialog";
 import { MigrationModal } from "./MigrationModal";
 
 type Tab = "modules" | "requests" | "audit" | "customers";
@@ -478,6 +479,7 @@ function PackageAssign({ tenantId, onSaved }: { tenantId: string; onSaved: () =>
 export function TenantDrawer() {
   const { tenantId } = useParams();
   const navigate = useNavigate();
+  const { operator } = useSession();
   const { reload } = useOutletContext<{ reload: () => Promise<void> }>();
   const [detail, setDetail] = useState<TenantDetail | null>(null);
   const [tab, setTab] = useState<Tab>("modules");
@@ -567,6 +569,9 @@ export function TenantDrawer() {
                   <RefreshCw size={14} aria-hidden="true" className={refreshing ? "animate-spin" : ""} /> Refresh stats
                 </GhostButton>
               </div>
+              {operator?.role === "ADMIN" ? (
+                <DataResetSection tenantId={tenant.id} tenantName={tenant.name} onChanged={changed} />
+              ) : null}
               <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
                 <Stat label="Stores" value={tenant.stats.stores} />
                 <Stat label="Registers" value={tenant.stats.registers} />

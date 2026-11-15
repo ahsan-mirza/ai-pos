@@ -108,6 +108,11 @@ class Settings(BaseSettings):
     console_admin_email: str | None = None
     console_admin_name: str = "Ahsan Khalil"
     console_admin_password: str | None = None
+    # Private directory for encrypted tenant-reset snapshots. The API does not serve this path.
+    # Retention is a configurable default for approval against storage capacity and local retention rules.
+    data_reset_dir: str = "var/console-resets"
+    data_reset_retention_days: int = Field(default=30, ge=1, le=3650)
+    data_reset_auth_minutes: int = Field(default=10, ge=1, le=60)
     # POS-company billing. Empty uses the recorded-payment simulator for go-live checkout.
     stripe_secret_key: str | None = None
     stripe_webhook_secret: str | None = None

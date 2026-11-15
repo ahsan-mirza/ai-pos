@@ -449,7 +449,7 @@ function ItemEditor({
       <div className="grid gap-3 sm:grid-cols-2">
         <Field label="Name" required value={draft.name} onChange={(event) => set({ name: event.target.value })} />
         <Field label="SKU" required value={draft.sku} onChange={(event) => set({ sku: event.target.value.toUpperCase() })} />
-        <label className="text-sm">
+        <label className="field-md block text-sm">
           Category
           <select
             className="mt-1 w-full rounded-xl border border-line bg-white px-3 py-2"
@@ -475,7 +475,7 @@ function ItemEditor({
         <Field label="Minimum quantity" value={String(draft.min_qty)} onChange={(event) => set({ min_qty: Number(event.target.value) || 1 })} />
         <Field label="Maximum quantity" value={String(draft.max_qty)} onChange={(event) => set({ max_qty: Number(event.target.value) || 1 })} />
         <Field label="Stock (blank if untracked)" value={stock} onChange={(event) => setStock(event.target.value)} />
-        <label className="text-sm">
+        <label className="field-md block text-sm">
           EC machine
           <select
             className="mt-1 w-full rounded-xl border border-line bg-white px-3 py-2"

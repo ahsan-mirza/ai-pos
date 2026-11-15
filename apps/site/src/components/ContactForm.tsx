@@ -98,7 +98,7 @@ export function ContactForm({
           Tell us about your business and discover how AxizPOS can help you manage sales, inventory, customers, and business operations more efficiently.
         </p>
       </div>
-      <Field id={`${base}-name`} label="Name" error={errors.name}>
+      <Field id={`${base}-name`} label="Name" error={errors.name} width="lg">
         <IconWrap icon={<User size={16} aria-hidden="true" />}>
           <input
             id={`${base}-name`}
@@ -113,7 +113,7 @@ export function ContactForm({
         </IconWrap>
       </Field>
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <Field id={`${base}-email`} label="Email" error={errors.email}>
+        <Field id={`${base}-email`} label="Email" error={errors.email} width="lg">
           <IconWrap icon={<Mail size={16} aria-hidden="true" />}>
             <input
               id={`${base}-email`}
@@ -137,7 +137,7 @@ export function ContactForm({
           defaultCountry="AE"
         />
       </div>
-      <Field id={`${base}-type`} label="Business type">
+      <Field id={`${base}-type`} label="Business type" width="md">
         <IconWrap icon={<Store size={16} aria-hidden="true" />}>
           <select
             id={`${base}-type`}
@@ -152,7 +152,7 @@ export function ContactForm({
           </select>
         </IconWrap>
       </Field>
-      <Field id={`${base}-message`} label="Tell us about your business" error={errors.message}>
+      <Field id={`${base}-message`} label="Tell us about your business" error={errors.message} width="xl">
         <IconWrap icon={<MessageSquare size={16} aria-hidden="true" />} align="start">
           <textarea
             id={`${base}-message`}
@@ -195,7 +195,7 @@ export function ContactForm({
       ) : null}
       <button
         type="submit"
-        className="w-full cursor-pointer rounded-xl bg-gradient-to-r from-[#F26A21] to-amber-500 px-6 py-3.5 text-sm font-semibold text-white shadow-lg shadow-orange-500/25 transition-all hover:brightness-110 active:scale-[0.99] motion-reduce:transform-none sm:text-base"
+        className="w-full cursor-pointer rounded-xl bg-gradient-to-r from-[#F26A21] to-amber-500 px-6 py-3.5 text-sm font-semibold text-white shadow-lg shadow-orange-500/25 transition-all hover:brightness-110 active:scale-[0.99] motion-reduce:transform-none sm:w-auto sm:text-base"
       >
         Send on WhatsApp
       </button>
@@ -231,15 +231,17 @@ function Field({
   id,
   label,
   error,
+  width = "lg",
   children,
 }: {
   id: string;
   label: string;
   error?: string;
+  width?: "md" | "lg" | "xl";
   children: ReactNode;
 }) {
   return (
-    <label htmlFor={id} className="block">
+    <label htmlFor={id} className={`field-${width} block`}>
       <span className="mb-1.5 block text-xs font-semibold text-slate-700">{label}</span>
       {children}
       {error ? (

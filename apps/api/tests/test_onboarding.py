@@ -12,7 +12,9 @@ from app.models.device import Device
 from app.models.document_sequence import DocumentSequence
 from app.models.einvoice import EInvoiceChain, TaxAuthorityCredential
 from app.models.inventory import InventoryLevel, StockMovement
+from app.models.messaging import OutboundMessage
 from app.models.product import Product
+from app.models.reservation import Reservation
 from app.models.sale import Sale
 from app.models.serial_number import SerialNumber
 from app.models.store import Store
@@ -183,6 +185,43 @@ def test_go_live_wipes_practice_and_restores_stock(client, session) -> None:
 
     again = client.post("/api/v1/onboarding/go-live", headers=headers, json=_go("Downtown"))
     assert (again.status_code, again.json()["error"]["code"]) == (409, "already_live")
+
+
+def test_go_live_removes_a_reservation_that_points_at_a_practice_message(client, session) -> None:
+    seed(client)
+    _practice(session)
+    headers, _ = admin(client)
+    customer = session.scalar(select(Customer).where(Customer.is_sample.is_(True)))
+    store = session.scalar(select(Store))
+    assert customer is not None and store is not None
+    message = OutboundMessage(
+        channel="sms",
+        to_address="971500000000",
+        body="Your table is ready",
+        customer_id=customer.id,
+    )
+    session.add(message)
+    session.flush()
+    starts = datetime.now(UTC)
+    session.add(
+        Reservation(
+            store_id=store.id,
+            customer_id=customer.id,
+            reservation_number="R-1",
+            starts_at=starts,
+            ends_at=starts + timedelta(hours=2),
+            blocked_until=starts + timedelta(hours=2, minutes=15),
+            guest_count=2,
+            notification_message_id=message.id,
+        )
+    )
+    session.commit()
+
+    live = client.post("/api/v1/onboarding/go-live", headers=headers, json=_go("Downtown"))
+    assert live.status_code == 200, live.text
+    session.expire_all()
+    assert _count(session, OutboundMessage) == 0
+    assert _count(session, Reservation) == 0
 
 
 def test_stores_created_outside_signup_are_already_live(client) -> None:

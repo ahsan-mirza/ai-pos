@@ -11,7 +11,7 @@ import {
 import { AxizTabs, useLocale } from "@ai-pos/ui";
 import { useReducedMotion } from "framer-motion";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { Link, useLocation, useSearchParams } from "react-router-dom";
 import { tabBarBleed } from "../../components/layout/AppShell";
 import { SearchField } from "../../components/ui/Field";
 import { ApiRequestError, apiGet, apiPost } from "../../lib/api";
@@ -162,6 +162,7 @@ export function SubscriptionCenter({
   billing?: ReactNode;
 }) {
   const { t } = useLocale();
+  const { hash } = useLocation();
   const reduced = useReducedMotion() === true;
   const { settings } = useCurrency();
   const { practice, openGoLive } = usePractice();
@@ -314,6 +315,16 @@ export function SubscriptionCenter({
     if (focusPlan) setSection("#plans");
     else if (focusPlugin) setSection("#plugins");
   }, [focusPlan, focusPlugin]);
+
+  useEffect(() => {
+    const fromHash = sectionFromHash(hash);
+    if (fromHash) setSection(fromHash);
+  }, [hash]);
+
+  const openBilling = () => {
+    setSection("#billing");
+    if (window.location.hash !== "#billing") window.location.hash = "#billing";
+  };
 
   useEffect(() => {
     const hash = window.location.hash;
@@ -535,6 +546,7 @@ export function SubscriptionCenter({
           onDone={() => {
             setCheckout(null);
             onInvoiced();
+            openBilling();
           }}
         />
       ) : null}

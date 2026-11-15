@@ -412,7 +412,7 @@ export function AxizDatePicker({
   );
 
   return (
-    <span ref={rootRef} data-axiz-date-picker="" data-variant={variant} className={variant === "inline" ? "block" : "relative block"}>
+    <span ref={rootRef} data-axiz-date-picker="" data-variant={variant} className={variant === "inline" ? "block" : "field-date relative block"}>
       <span className="relative block">
         {showLeading ? <Calendar className="pointer-events-none absolute left-3 top-1/2 z-10 h-4 w-4 -translate-y-1/2 text-gray-400" aria-hidden="true" /> : null}
         <input
@@ -490,13 +490,13 @@ export function AxizDateRange({
   const inverted = Boolean(from && to && compareIso(from, to) > 0);
   return (
     <div className={`flex flex-wrap items-end gap-3 ${className}`}>
-      <label className="block text-sm font-medium">
+      <label className="field-date block text-sm font-medium">
         {fromLabel}
         <span className="mt-1.5 block">
           <AxizDatePicker aria-label={fromLabel} value={from} min={min} max={to || max} disabled={disabled} onChange={(event) => onFromChange(event.target.value)} />
         </span>
       </label>
-      <label className="block text-sm font-medium">
+      <label className="field-date block text-sm font-medium">
         {toLabel}
         <span className="mt-1.5 block">
           <AxizDatePicker aria-label={toLabel} value={to} min={from || min} max={max} disabled={disabled} onChange={(event) => onToChange(event.target.value)} />

@@ -197,7 +197,7 @@ export function PhoneField({
   const marketing = tone === "marketing";
 
   return (
-    <div ref={rootRef} className={marketing ? "block" : "block text-sm font-medium"}>
+    <div ref={rootRef} className={marketing ? "field-phone block" : "field-phone block text-sm font-medium"}>
       <label htmlFor={inputId} className={marketing ? "mb-1.5 block text-xs font-semibold text-slate-700" : undefined}>
         {label}
         {required ? (

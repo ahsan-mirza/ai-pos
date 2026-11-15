@@ -101,7 +101,10 @@ export function PluginCheckout({
   };
 
   const upload = async () => {
-    if (started?.invoice_id == null || file === null || date === "") return;
+    if (started?.invoice_id == null || file === null || date === "") {
+      onDone();
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
@@ -195,7 +198,7 @@ export function PluginCheckout({
             <p>
               {started.bank.bank_name} · {started.bank.holder_name} · {started.bank.iban || started.bank.account_number}
             </p>
-            <label className="grid gap-1">
+            <label className="field-date grid gap-1">
               {t("Transfer date")}
               <AxizDatePicker
                 required
@@ -205,15 +208,16 @@ export function PluginCheckout({
                 className="h-10 w-full rounded-xl border border-line bg-white text-sm dark:bg-zinc-950"
               />
             </label>
-            <label className="grid gap-1">
+            <label className="field-lg grid gap-1">
               {t("Bank reference")}
-              <input className="rounded-xl border border-line px-3 py-2 dark:bg-zinc-950" value={reference} onChange={(event) => setReference(event.target.value)} />
+              <input className="h-10 w-full rounded-xl border border-line px-3 py-2 dark:bg-zinc-950" value={reference} onChange={(event) => setReference(event.target.value)} />
             </label>
-            <label className="grid gap-1">
+            <label className="field-file grid gap-1">
               {t("Receipt")}
               <input
                 type="file"
                 accept="application/pdf,image/png,image/jpeg"
+                className="w-full text-sm"
                 onChange={(event) => setFile(event.target.files?.[0] ?? null)}
               />
             </label>
@@ -235,7 +239,7 @@ export function PluginCheckout({
               {busy ? t("Please wait…") : t("Buy Now")}
             </PrimaryButton>
           ) : started.method_code === "bank_transfer" ? (
-            <PrimaryButton disabled={busy || file === null || date === ""} onClick={() => void upload()}>
+            <PrimaryButton disabled={busy} onClick={() => void upload()}>
               {busy ? t("Please wait…") : t("Submit proof")}
             </PrimaryButton>
           ) : null}

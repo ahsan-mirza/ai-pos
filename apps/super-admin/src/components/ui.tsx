@@ -1,4 +1,4 @@
-import { BusyButton, DateInput, actionButtonClass, actionIntentFromNodes, inputLeadingIcon, type ActionIntent, type BusyButtonProps } from "@ai-pos/ui";
+import { BusyButton, DateInput, actionButtonClass, actionIntentFromNodes, fieldClass, inferFieldWidth, inputLeadingIcon, type ActionIntent, type BusyButtonProps, type FieldWidth } from "@ai-pos/ui";
 import { Eye, EyeOff, X } from "lucide-react";
 import { useEffect, useId, useState, type InputHTMLAttributes, type ReactNode, type TextareaHTMLAttributes } from "react";
 
@@ -30,6 +30,7 @@ export function Field({
   error,
   required = false,
   className = "",
+  width = "auto",
   type,
   autoComplete,
   multiline = false,
@@ -42,6 +43,7 @@ export function Field({
   required?: boolean;
   multiline?: boolean;
   rows?: number;
+  width?: FieldWidth | "auto";
 }) {
   const id = useId();
   const describedBy =
@@ -50,7 +52,7 @@ export function Field({
   const isPassword = type === "password";
   const isMultiline = multiline || /\bdescription\b/i.test(label);
   const isDate = type === "date" || type === "datetime-local";
-  const fieldClass = `w-full rounded-xl border bg-surface py-3 pl-10 text-sm font-normal text-charcoal transition placeholder:text-charcoal/40 focus:bg-white focus:outline-none focus:ring-2 disabled:cursor-not-allowed disabled:text-charcoal/50 ${
+  const controlClass = `w-full rounded-xl border bg-surface py-3 pl-10 text-sm font-normal text-charcoal transition placeholder:text-charcoal/40 focus:bg-white focus:outline-none focus:ring-2 disabled:cursor-not-allowed disabled:text-charcoal/50 ${
     error ? "border-danger bg-danger/10 focus:border-danger focus:ring-danger" : "border-transparent focus:border-orange-500 focus:ring-orange-500"
   } ${isPassword ? "pr-12" : "pr-4"}`;
   const { defaultValue: rawDefault, ...dateProps } = props;
@@ -63,8 +65,11 @@ export function Field({
     placeholder: typeof props.placeholder === "string" ? props.placeholder : undefined,
     label,
   });
+  const sized = /\bfield-/.test(className)
+    ? ""
+    : fieldClass(width === "auto" ? inferFieldWidth({ type, inputMode: props.inputMode, multiline: isMultiline, label }) : width);
   return (
-    <label htmlFor={id} className={`block text-sm font-medium text-charcoal ${className}`}>
+    <label htmlFor={id} className={`block text-sm font-medium text-charcoal ${sized} ${className}`}>
       {label}
       {required ? (
         <span className="text-danger" aria-hidden="true">
@@ -100,7 +105,7 @@ export function Field({
             aria-required={required || undefined}
             aria-invalid={error ? true : undefined}
             aria-describedby={describedBy}
-            className={fieldClass}
+            className={controlClass}
           />
         ) : (
         <input
@@ -112,7 +117,7 @@ export function Field({
           aria-required={required || undefined}
           aria-invalid={error ? true : undefined}
           aria-describedby={describedBy}
-          className={fieldClass}
+          className={controlClass}
         />
         )}
         {isPassword && !isMultiline ? (

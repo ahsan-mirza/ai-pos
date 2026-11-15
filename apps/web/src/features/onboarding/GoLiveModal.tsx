@@ -395,8 +395,8 @@ export function GoLiveModal({
             The transfer is awaiting verification. The store stays on the unpaid plan until it is approved.
           </p>
         ) : (
-          <div className="mt-4 grid gap-3">
-            <label className="grid gap-1 text-sm">
+          <div className="form-grid mt-4">
+            <label className="field-date grid gap-1 text-sm">
               Transfer date
               <AxizDatePicker
                 leading
@@ -406,19 +406,20 @@ export function GoLiveModal({
                 className="h-10 w-full rounded-xl border border-line bg-white text-sm"
               />
             </label>
-            <label className="grid gap-1 text-sm">
+            <label className="field-lg grid gap-1 text-sm">
               Bank reference
               <input
                 value={transferRef}
                 onChange={(event) => setTransferRef(event.target.value)}
-                className="h-10 rounded-xl border border-line px-3"
+                className="h-10 w-full rounded-xl border border-line px-3"
               />
             </label>
-            <label className="grid gap-1 text-sm">
+            <label className="field-file grid gap-1 text-sm">
               Receipt (PNG, JPEG, or PDF)
               <input
                 type="file"
                 accept="image/png,image/jpeg,application/pdf"
+                className="w-full text-sm"
                 onChange={(event) => setReceiptFile(event.target.files?.[0] ?? null)}
               />
             </label>

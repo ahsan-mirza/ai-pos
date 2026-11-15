@@ -113,6 +113,7 @@ describe("AxizDatePicker", () => {
       </div>,
     );
     fireEvent.click(screen.getByRole("button", { name: "Open calendar" }));
+    expect(document.querySelector("[data-axiz-date-picker]")?.className).toContain("field-date");
     expect(screen.getByRole("dialog").getAttribute("dir")).toBe("rtl");
     act(() => {
       document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));

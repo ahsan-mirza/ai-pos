@@ -331,42 +331,45 @@ function PaymentProof({
 
       {canSubmit ? (
         <form
-          className="grid gap-3 rounded-2xl border border-line bg-white p-5 dark:bg-zinc-900"
+          className="form-sheet form-grid rounded-2xl border border-line bg-white p-5 dark:bg-zinc-900"
           onSubmit={(event) => {
             event.preventDefault();
             onSubmit();
           }}
         >
-          <h2 className="text-lg font-semibold text-charcoal dark:text-white">{attention.kind === "rejected" ? t("Resubmit payment proof") : t("Submit payment proof")}</h2>
-          <p className="text-sm text-charcoal/60 dark:text-white/60">
-            {t("The amount is the invoice total. A different amount is not accepted. Uploading proof does not activate the subscription.")}
-          </p>
-          <label className="grid gap-1 text-sm">
+          <div className="form-span grid gap-2">
+            <h2 className="text-lg font-semibold text-charcoal dark:text-white">{attention.kind === "rejected" ? t("Resubmit payment proof") : t("Submit payment proof")}</h2>
+            <p className="text-sm text-charcoal/60 dark:text-white/60">
+              {t("The amount is the invoice total. A different amount is not accepted. Uploading proof does not activate the subscription.")}
+            </p>
+          </div>
+          <label className="field-date grid gap-1 text-sm">
             {t("Payment date")}
             <AxizDatePicker required leading aria-label={t("Payment date")} value={date} onChange={(event) => onDate(event.target.value)} className="h-10 w-full rounded-xl border border-line bg-white text-sm dark:border-zinc-700 dark:bg-zinc-950 dark:text-white" />
           </label>
-          <label className="grid gap-1 text-sm">
+          <label className="field-lg grid gap-1 text-sm">
             {t("Transfer reference")}
-            <input value={reference} onChange={(event) => onReference(event.target.value)} className="h-10 rounded-xl border border-line bg-white px-3 dark:border-zinc-700 dark:bg-zinc-950 dark:text-white" dir="ltr" />
+            <input value={reference} onChange={(event) => onReference(event.target.value)} className="h-10 w-full rounded-xl border border-line bg-white px-3 dark:border-zinc-700 dark:bg-zinc-950 dark:text-white" dir="ltr" />
           </label>
-          <label className="grid gap-1 text-sm">
+          <label className="field-lg grid gap-1 text-sm">
             {t("Sending bank")}
-            <input value={bank} onChange={(event) => onBank(event.target.value)} className="h-10 rounded-xl border border-line bg-white px-3 dark:border-zinc-700 dark:bg-zinc-950 dark:text-white" />
+            <input value={bank} onChange={(event) => onBank(event.target.value)} className="h-10 w-full rounded-xl border border-line bg-white px-3 dark:border-zinc-700 dark:bg-zinc-950 dark:text-white" />
           </label>
-          <label className="grid gap-1 text-sm">
+          <label className="field-xl grid gap-1 text-sm">
             {t("Note")}
-            <textarea value={note} onChange={(event) => onNote(event.target.value)} className="min-h-20 rounded-xl border border-line bg-white px-3 py-2 dark:border-zinc-700 dark:bg-zinc-950 dark:text-white" />
+            <textarea value={note} onChange={(event) => onNote(event.target.value)} className="min-h-20 w-full rounded-xl border border-line bg-white px-3 py-2 dark:border-zinc-700 dark:bg-zinc-950 dark:text-white" />
           </label>
-          <label className="grid gap-1 text-sm">
+          <label className="field-file grid gap-1 text-sm">
             {t("Transaction slip (PNG, JPEG, or PDF, up to 2 MB)")}
             <input
               type="file"
               required
               accept="image/png,image/jpeg,application/pdf"
               onChange={(event) => onFile(event.target.files?.[0] ?? null)}
+              className="w-full text-sm"
             />
           </label>
-          <div>
+          <div className="form-span">
             <PrimaryButton type="submit" disabled={busy || file === null || date === ""}>
               {busy ? t("Submitting…") : t("Submit payment proof")}
             </PrimaryButton>
