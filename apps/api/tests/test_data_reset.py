@@ -143,6 +143,62 @@ def test_all_branch_reset_removes_only_that_tenants_catalog(platform, tmp_path) 
         assert db.get(Product, ids["bravo_product"]) is not None
 
 
+def test_catalog_reset_clears_demand_and_other_product_references(platform, tmp_path) -> None:  # noqa: F811
+    from datetime import date
+
+    from app.models.product_image import ProductImage
+    from app.models.replenishment import DemandDaily
+
+    _settings(tmp_path)
+    ids = _seed(platform)
+    with platform.session("alpha") as db:
+        db.add(DemandDaily(product_id=ids["product"], store_id=ids["first"], day=date(2026, 11, 1), units=3))
+        db.add(
+            ProductImage(
+                product_id=ids["product"],
+                key="phone.webp",
+                thumb_key="phone-thumb.webp",
+                width=1200,
+                height=800,
+            )
+        )
+        db.commit()
+    with platform.session("bravo") as db:
+        db.add(
+            DemandDaily(
+                product_id=ids["bravo_product"],
+                store_id=ids["bravo_store"],
+                day=date(2026, 11, 1),
+                units=1,
+            )
+        )
+        db.commit()
+    headers = platform.operator(email="reset-demand@axizpos.com")
+    tenant = platform.tenant_id("alpha")
+    preview = _preview(platform, headers, tenant, scope="tenant", categories=["products"])
+    done = _run(platform, headers, tenant, preview)
+    assert done["status"] == "COMPLETED"
+    with platform.session("alpha") as db:
+        assert db.get(Product, ids["product"]) is None
+        assert db.scalar(select(DemandDaily.units)) is None
+        assert db.scalar(select(ProductImage.id)) is None
+    with platform.session("bravo") as db:
+        assert db.get(Product, ids["bravo_product"]) is not None
+        assert db.scalar(select(DemandDaily.units)) == 1
+    platform.client.post(
+        f"/api/v1/super-admin/tenants/{tenant}/data-reset/{done['id']}/restore/authorize",
+        headers=headers,
+        json={"password": OPERATOR_PASSWORD},
+    )
+    restored = platform.client.post(
+        f"/api/v1/super-admin/tenants/{tenant}/data-reset/{done['id']}/restore", headers=headers
+    )
+    assert restored.status_code == 200, restored.text
+    with platform.session("alpha") as db:
+        assert db.get(Product, ids["product"]) is not None
+        assert db.scalar(select(DemandDaily.units)) == 3
+
+
 def test_models_are_removed_before_the_subcategories_they_reference(platform, tmp_path) -> None:  # noqa: F811
     from app.console.data_reset import _selected
     from app.models.brand import Brand, ProductModel

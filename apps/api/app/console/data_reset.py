@@ -19,7 +19,7 @@ from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
-from sqlalchemy import Date, DateTime, delete, func, select
+from sqlalchemy import Date, DateTime, and_, delete, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -47,6 +47,7 @@ from app.models.promotion import Promotion, PromotionRedemption
 from app.models.purchasing import GoodsReceipt, GoodsReceiptLine, PurchaseOrder, PurchaseOrderLine
 from app.models.recipe import Recipe, RecipeLine
 from app.models.repair_ticket import RepairAttachment, RepairDeposit, RepairEvent, RepairLine, RepairTicket
+from app.models.replenishment import DemandDaily, ReplenishmentRun, ReplenishmentSuggestion
 from app.models.reservation import (
     Reservation,
     ReservationSettings,
@@ -75,6 +76,19 @@ log = logging.getLogger("ai_pos.data_reset")
 RESET_PERMISSION = "tenant.data.reset"
 SNAPSHOT_VERSION = 1
 PAGE = 200
+# These stay even when a selected table points at them. The reset fails closed instead of erasing them.
+_KEPT_TABLES = frozenset(
+    {
+        "audit_logs",
+        "business_settings",
+        "stores",
+        "users",
+        "roles",
+        "e_invoices",
+        "e_invoice_chains",
+        "tax_authority_credentials",
+    }
+)
 
 PROTECTED = (
     "Tenant ownership and the owner login (a user with no branch).",
@@ -120,6 +134,9 @@ def _t(
 TARGETS: tuple[Target, ...] = (
     _t(StockMovement, "products", "Stock movements", "store"),
     _t(InventoryLevel, "products", "Stock quantities", "store"),
+    _t(DemandDaily, "products", "Daily demand", "store"),
+    _t(ReplenishmentSuggestion, "products", "Replenishment suggestions", "store"),
+    _t(ReplenishmentRun, "products", "Replenishment runs", "store"),
     _t(SerialNumber, "products", "Serial numbers", "store"),
     _t(ProductPrice, "products", "Price tiers", "tenant", parent_column=None),
     _t(Product, "products", "Products and variants", "tenant", parent_column=None),
@@ -753,6 +770,15 @@ def _load_cell(column, value: object) -> object:
     return value
 
 
+def _single_id(model: type) -> bool:
+    columns = list(model.__table__.primary_key.columns)
+    return len(columns) == 1 and columns[0].key == "id"
+
+
+def _pk_columns(model: type) -> list:
+    return list(model.__table__.primary_key.columns)
+
+
 def _capture(
     session: Session, targets: list[Target], tenant_id: uuid.UUID, store_ids: list[uuid.UUID], scope: str
 ) -> tuple[bytes, dict[str, int]]:
@@ -764,18 +790,32 @@ def _capture(
             continue
         columns = [column for column in target.model.__table__.columns if column.computed is None]
         rows: list[dict] = []
-        last = None
-        while True:
-            query = select(target.model).where(*cond).order_by(target.model.id).limit(PAGE)
-            if last is not None:
-                query = query.where(target.model.id > last)
-            batch = list(session.scalars(query))
-            if not batch:
-                break
-            for item in batch:
-                rows.append({column.key: _dump(getattr(item, column.key)) for column in columns})
-            last = batch[-1].id
-            session.expire_all()
+        pk = _pk_columns(target.model)
+        if _single_id(target.model):
+            last = None
+            while True:
+                query = select(target.model).where(*cond).order_by(target.model.id).limit(PAGE)
+                if last is not None:
+                    query = query.where(target.model.id > last)
+                batch = list(session.scalars(query))
+                if not batch:
+                    break
+                for item in batch:
+                    rows.append({column.key: _dump(getattr(item, column.key)) for column in columns})
+                last = batch[-1].id
+                session.expire_all()
+        else:
+            offset = 0
+            order = [getattr(target.model, column.key) for column in pk]
+            while True:
+                query = select(target.model).where(*cond).order_by(*order).limit(PAGE).offset(offset)
+                batch = list(session.scalars(query))
+                if not batch:
+                    break
+                for item in batch:
+                    rows.append({column.key: _dump(getattr(item, column.key)) for column in columns})
+                offset += PAGE
+                session.expire_all()
         key = target.model.__tablename__
         tables.setdefault(key, [])
         tables[key].extend(rows)
@@ -843,13 +883,132 @@ def _failure_text(exc: Exception) -> str:
     return "The reset stopped after the snapshot was saved. Restore is available."
 
 
+def _metadata_tables():
+    import app.models  # noqa: F401
+    from app.models.base import Base
+
+    return Base.metadata.tables
+
+
+def _unlisted_children(selected: set[str]) -> list[str]:
+    """Tables that are not being reset but still point at one that is. Children come first."""
+    tables = _metadata_tables()
+    children: dict[str, set[str]] = {name: set() for name in tables}
+    parents: dict[str, set[str]] = {name: set() for name in tables}
+    for name, table in tables.items():
+        for foreign_key in table.foreign_keys:
+            parent = foreign_key.column.table.name
+            if parent != name and parent in children:
+                children[parent].add(name)
+                parents[name].add(parent)
+    needed: set[str] = set()
+    stack = [name for name in selected if name in tables]
+    seen = set(selected)
+    while stack:
+        name = stack.pop()
+        for child in children.get(name, ()):
+            if child in seen or child in _KEPT_TABLES or "tenant_id" not in tables[child].c:
+                continue
+            seen.add(child)
+            needed.add(child)
+            stack.append(child)
+    pending = {name: {child for child in children[name] if child in needed} for name in needed}
+    ready = sorted(name for name in needed if not pending[name])
+    ordered: list[str] = []
+    while ready:
+        name = ready.pop(0)
+        ordered.append(name)
+        for parent in parents[name]:
+            if parent not in pending:
+                continue
+            pending[parent].discard(name)
+            if not pending[parent] and parent not in ordered and parent not in ready:
+                ready.append(parent)
+                ready.sort()
+    ordered.extend(name for name in sorted(needed) if name not in ordered)
+    return ordered
+
+
+def _rows_going(
+    table_name: str,
+    selected: dict[str, list[Target]],
+    tenant_id: uuid.UUID,
+    store_ids,
+    scope: str,
+    stack: frozenset[str] = frozenset(),
+):
+    """A SQL condition for rows of `table_name` that reference a row this reset is removing."""
+    if table_name in stack:
+        return None
+    tables = _metadata_tables()
+    table = tables[table_name]
+    parts = []
+    for foreign_key in table.foreign_keys:
+        parent_name = foreign_key.column.table.name
+        if parent_name in selected:
+            for target in selected[parent_name]:
+                cond = _clause(target, tenant_id, store_ids, scope)
+                if cond is None or not _single_id(target.model):
+                    continue
+                parts.append(foreign_key.parent.in_(select(target.model.id).where(*cond)))
+        elif parent_name not in _KEPT_TABLES and parent_name in tables and "id" in tables[parent_name].c:
+            nested = _rows_going(parent_name, selected, tenant_id, store_ids, scope, stack | {table_name})
+            if nested is not None:
+                parent = tables[parent_name]
+                parts.append(
+                    foreign_key.parent.in_(select(parent.c.id).where(parent.c.tenant_id == tenant_id, nested))
+                )
+    if not parts:
+        return None
+    return or_(*parts)
+
+
+def _clear_unlisted_dependents(
+    session: Session, targets: list[Target], tenant_id: uuid.UUID, store_ids: list[uuid.UUID], scope: str
+) -> None:
+    """Remove rows the catalog does not snapshot when they would block a selected delete.
+
+    Protected records (audit, settings, the owner, tax copies) are left in place.
+    """
+    selected: dict[str, list[Target]] = {}
+    for target in targets:
+        selected.setdefault(target.model.__tablename__, []).append(target)
+    tables = _metadata_tables()
+    for name in _unlisted_children(set(selected)):
+        matched = _rows_going(name, selected, tenant_id, store_ids, scope)
+        if matched is None:
+            continue
+        table = tables[name]
+        keys = list(table.primary_key.columns)
+        while keys:
+            found = session.execute(
+                select(*keys).where(table.c.tenant_id == tenant_id, matched).limit(PAGE)
+            ).all()
+            if not found:
+                break
+            if len(keys) == 1:
+                clause = keys[0].in_([row[0] for row in found])
+            else:
+                clause = or_(*[and_(*(column == row[index] for index, column in enumerate(keys))) for row in found])
+            result = session.execute(delete(table).where(table.c.tenant_id == tenant_id, clause))
+            session.commit()
+            if not result.rowcount:
+                break
+
+
 def _delete_targets(
     session: Session, targets: list[Target], tenant_id: uuid.UUID, store_ids: list[uuid.UUID], scope: str
 ) -> int:
+    _clear_unlisted_dependents(session, targets, tenant_id, store_ids, scope)
     removed = 0
     for target in targets:
         cond = _clause(target, tenant_id, store_ids, scope)
         if cond is None:
+            continue
+        if not _single_id(target.model):
+            result = session.execute(delete(target.model).where(*cond))
+            session.commit()
+            removed += int(result.rowcount or 0)
             continue
         last = None
         while True:
@@ -988,6 +1147,21 @@ def _restorable(row: TenantDataOperation) -> None:
         raise ApiError(409, "snapshot_expired", "This recovery snapshot has expired.")
 
 
+def _snapshot_identity(model: type, raw: dict) -> tuple[list, str] | None:
+    """Match a snapshot row to the primary key stored for it. Tables without a single id still round-trip."""
+    if _single_id(model):
+        if not raw.get("id"):
+            return None
+        identifier = uuid.UUID(str(raw["id"]))
+        return [model.id == identifier], str(identifier)
+    columns = _pk_columns(model)
+    if any(column.key not in raw for column in columns):
+        return None
+    values = [_load_cell(column, raw.get(column.key)) for column in columns]
+    cond = [getattr(model, column.key) == value for column, value in zip(columns, values, strict=True)]
+    return cond, "|".join(str(value) for value in values)
+
+
 def restore_preview(
     settings: Settings, operator: OperatorPrincipal, tenant_id: uuid.UUID, operation_id: uuid.UUID
 ) -> dict:
@@ -1004,18 +1178,24 @@ def restore_preview(
                 table_rows = body.get("tables", {}).get(target.model.__tablename__, [])
                 if not table_rows:
                     continue
-                ids = [uuid.UUID(item["id"]) for item in table_rows if item.get("id")]
-                existing = set(
-                    session.scalars(
-                        select(target.model.id).where(
-                            target.model.tenant_id == tenant.id, target.model.id.in_(ids[:500])
+                found = 0
+                for raw in table_rows[:500]:
+                    identity = _snapshot_identity(target.model, raw)
+                    if identity is None:
+                        continue
+                    cond, label = identity
+                    current = session.scalar(
+                        select(func.count())
+                        .select_from(target.model)
+                        .where(target.model.tenant_id == tenant.id, *cond)
+                    )
+                    if current:
+                        conflicts.append(
+                            {"table": target.model.__tablename__, "id": label, "resolution": "left unchanged"}
                         )
-                    )
-                )
-                for found in list(existing)[:20]:
-                    conflicts.append(
-                        {"table": target.model.__tablename__, "id": str(found), "resolution": "left unchanged"}
-                    )
+                        found += 1
+                        if found >= 20:
+                            break
         return {
             **_public(row),
             "records_to_restore": sum(len(rows) for rows in body.get("tables", {}).values()),
@@ -1078,14 +1258,17 @@ def restore(settings: Settings, operator: OperatorPrincipal, tenant_id: uuid.UUI
                     for raw in table_rows:
                         if str(raw.get("tenant_id")) != str(tenant.id):
                             raise ApiError(409, "snapshot_corrupt", "The snapshot contains a row for another tenant.")
-                        identifier = uuid.UUID(str(raw["id"]))
+                        identity = _snapshot_identity(target.model, raw)
+                        if identity is None:
+                            raise ApiError(409, "snapshot_corrupt", "The snapshot is missing a primary key.")
+                        cond, label = identity
                         current = session.scalar(
-                            select(target.model.id).where(
-                                target.model.tenant_id == tenant.id, target.model.id == identifier
-                            )
+                            select(func.count())
+                            .select_from(target.model)
+                            .where(target.model.tenant_id == tenant.id, *cond)
                         )
-                        if current is not None:
-                            conflicts.append({"table": key, "id": str(identifier), "resolution": "left unchanged"})
+                        if current:
+                            conflicts.append({"table": key, "id": label, "resolution": "left unchanged"})
                             continue
                         values = {
                             column.key: _load_cell(column, raw.get(column.key))
@@ -1099,9 +1282,7 @@ def restore(settings: Settings, operator: OperatorPrincipal, tenant_id: uuid.UUI
                             restored += 1
                         except IntegrityError:
                             session.rollback()
-                            conflicts.append(
-                                {"table": key, "id": str(identifier), "resolution": "kept the newer record"}
-                            )
+                            conflicts.append({"table": key, "id": label, "resolution": "kept the newer record"})
         except ApiError:
             row.status = "RESTORE_FAILED"
             row.failure = "The snapshot failed its tenant check. No further rows were written."
