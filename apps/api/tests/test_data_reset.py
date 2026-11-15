@@ -143,6 +143,82 @@ def test_all_branch_reset_removes_only_that_tenants_catalog(platform, tmp_path) 
         assert db.get(Product, ids["bravo_product"]) is not None
 
 
+def test_models_are_removed_before_the_subcategories_they_reference(platform, tmp_path) -> None:  # noqa: F811
+    from app.console.data_reset import _selected
+    from app.models.brand import Brand, ProductModel
+    from app.models.category import Category, SubCategory
+
+    order = [target.model.__tablename__ for target in _selected(["products"], "tenant")]
+    assert order.index("product_models") < order.index("sub_categories")
+    assert order.index("product_models") < order.index("brands")
+    assert order.index("sub_categories") < order.index("categories")
+    _settings(tmp_path)
+    ids = _seed(platform)
+    with platform.session("alpha") as db:
+        category = Category(name="Phones", code="PHONES")
+        sub = SubCategory(category=category, name="Handsets", code="HANDSETS")
+        brand = Brand(name="Acme", code="ACME")
+        model = ProductModel(brand=brand, sub_category=sub, name="Acme One")
+        db.add_all([category, sub, brand, model])
+        db.commit()
+        model_id, sub_id, brand_id = model.id, sub.id, brand.id
+    headers = platform.operator(email="reset-models@axizpos.com")
+    tenant = platform.tenant_id("alpha")
+    preview = _preview(platform, headers, tenant, scope="tenant", categories=["products"])
+    done = _run(platform, headers, tenant, preview)
+    assert done["status"] == "COMPLETED"
+    with platform.session("alpha") as db:
+        assert db.get(ProductModel, model_id) is None
+        assert db.get(SubCategory, sub_id) is None
+        assert db.get(Brand, brand_id) is None
+    with platform.session("bravo") as db:
+        assert db.get(Product, ids["bravo_product"]) is not None
+
+
+def test_a_failed_reset_can_finish_from_the_saved_snapshot(platform, tmp_path, monkeypatch) -> None:  # noqa: F811
+    import app.console.data_reset as data_reset
+
+    _settings(tmp_path)
+    ids = _seed(platform)
+    calls = {"n": 0}
+    real_delete = data_reset._delete_targets
+
+    def fail_once(*args, **kwargs):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise RuntimeError("fk")
+        return real_delete(*args, **kwargs)
+
+    monkeypatch.setattr(data_reset, "_delete_targets", fail_once)
+    headers = platform.operator(email="reset-retry@axizpos.com")
+    tenant = platform.tenant_id("alpha")
+    preview = _preview(platform, headers, tenant, store_id=str(ids["first"]))
+    operation = preview.json()["id"]
+    platform.client.post(
+        f"/api/v1/super-admin/tenants/{tenant}/data-reset/{operation}/authorize",
+        headers=headers,
+        json={"password": OPERATOR_PASSWORD},
+    )
+    failed = platform.client.post(
+        f"/api/v1/super-admin/tenants/{tenant}/data-reset/{operation}/execute", headers=headers
+    )
+    assert failed.status_code == 409
+    assert failed.json()["error"]["code"] == "reset_failed"
+    captured = preview.json()["preview"]["total_records"]
+    again = platform.client.post(
+        f"/api/v1/super-admin/tenants/{tenant}/data-reset/{operation}/authorize",
+        headers=headers,
+        json={"password": OPERATOR_PASSWORD},
+    )
+    assert again.status_code == 200, again.text
+    finished = platform.client.post(
+        f"/api/v1/super-admin/tenants/{tenant}/data-reset/{operation}/execute", headers=headers
+    )
+    assert finished.status_code == 200, finished.text
+    assert finished.json()["status"] == "COMPLETED"
+    assert finished.json()["snapshot_records"] == captured
+
+
 def test_cross_tenant_branch_is_rejected(platform, tmp_path) -> None:  # noqa: F811
     _settings(tmp_path)
     ids = _seed(platform)

@@ -364,7 +364,39 @@ def _clause(target: Target, tenant_id: uuid.UUID, store_ids: list[uuid.UUID], sc
 
 
 def _selected(categories: list[str], scope: str) -> list[Target]:
-    return [target for target in TARGETS if target.category in categories and _applies(target, scope)]
+    chosen = [target for target in TARGETS if target.category in categories and _applies(target, scope)]
+    return _deletion_order(chosen)
+
+
+def _deletion_order(targets: list[Target]) -> list[Target]:
+    """Delete rows that point at other selected tables first. Foreign keys stay enabled."""
+    index = {target.model.__tablename__: position for position, target in enumerate(targets)}
+    names = list(dict.fromkeys(target.model.__tablename__ for target in targets))
+    models = {target.model.__tablename__: target.model for target in targets}
+    parents_of: dict[str, set[str]] = {name: set() for name in names}
+    children_of: dict[str, set[str]] = {name: set() for name in names}
+    for name, model in models.items():
+        for foreign_key in model.__table__.foreign_keys:
+            parent = foreign_key.column.table.name
+            if parent in parents_of and parent != name:
+                parents_of[name].add(parent)
+                children_of[parent].add(name)
+    pending = {name: set(children_of[name]) for name in names}
+    ready = sorted((name for name in names if not pending[name]), key=lambda name: index[name])
+    ordered: list[str] = []
+    while ready:
+        name = ready.pop(0)
+        ordered.append(name)
+        for parent in parents_of[name]:
+            pending[parent].discard(name)
+            if not pending[parent] and parent not in ordered and parent not in ready:
+                ready.append(parent)
+                ready.sort(key=lambda item: index[item])
+    ordered.extend(name for name in names if name not in ordered)
+    grouped: dict[str, list[Target]] = {}
+    for target in targets:
+        grouped.setdefault(target.model.__tablename__, []).append(target)
+    return [target for name in ordered for target in grouped[name]]
 
 
 def _count(
@@ -650,6 +682,20 @@ def authorize(
             raise ApiError(409, "dependencies", "Confirm the dependent categories before authorizing this reset.")
         if row.status == "COMPLETED":
             return _public(row)
+        if row.status == "FAILED" and row.snapshot_sha256:
+            _verify_password(control, operator, settings, tenant_id, password)
+            row.status = "SNAPSHOT_VERIFIED"
+            row.authorized_until = datetime.now(UTC) + timedelta(minutes=settings.data_reset_auth_minutes)
+            row.failure = None
+            audit_operator(
+                control,
+                operator,
+                "console.data_reset_authorized",
+                tenant_id=tenant_id,
+                after={"operation_id": str(row.id), "retry": True},
+            )
+            control.commit()
+            return _public(row)
         if row.status not in {"PREVIEWED", "AUTHORIZED"}:
             raise ApiError(409, "reset_closed", "This reset can no longer be authorized.")
         _verify_password(control, operator, settings, tenant_id, password)
@@ -783,6 +829,20 @@ def _read_snapshot(settings: Settings, path: Path, expected_sha: str, tenant_id:
     return body
 
 
+def _failure_text(exc: Exception) -> str:
+    """A short reason the administrator can read. It does not include row values or the password."""
+    original = getattr(exc, "orig", None)
+    diagnosis = getattr(original, "diag", None)
+    constraint = getattr(diagnosis, "constraint_name", None) if diagnosis is not None else None
+    table = getattr(diagnosis, "table_name", None) if diagnosis is not None else None
+    if constraint and table:
+        return (
+            f"The reset stopped after the snapshot was saved because {table} is still referenced ({constraint}). "
+            "Restore is available."
+        )
+    return "The reset stopped after the snapshot was saved. Restore is available."
+
+
 def _delete_targets(
     session: Session, targets: list[Target], tenant_id: uuid.UUID, store_ids: list[uuid.UUID], scope: str
 ) -> int:
@@ -812,7 +872,7 @@ def execute(settings: Settings, operator: OperatorPrincipal, tenant_id: uuid.UUI
         row = _load_operation(control, tenant_id, operation_id)
         if row.status in {"COMPLETED", "RESTORED"}:
             return _public(row)
-        if row.status not in {"AUTHORIZED", "SNAPSHOTTING", "SNAPSHOT_VERIFIED", "RESETTING"}:
+        if row.status not in {"AUTHORIZED", "SNAPSHOTTING", "SNAPSHOT_VERIFIED", "RESETTING", "FAILED"}:
             raise ApiError(409, "not_authorized", "Authorize this reset with your console password before it runs.")
         authorized_until = _aware(row.authorized_until)
         if row.status == "AUTHORIZED" and (authorized_until is None or authorized_until < datetime.now(UTC)):
@@ -876,7 +936,7 @@ def execute(settings: Settings, operator: OperatorPrincipal, tenant_id: uuid.UUI
         except Exception as exc:
             log.warning("data reset failed after snapshot %s: %s", row.id, type(exc).__name__)
             row.status = "FAILED"
-            row.failure = "The reset stopped after the snapshot was saved. Restore is available."
+            row.failure = _failure_text(exc)
             control.commit()
             raise ApiError(409, "reset_failed", row.failure) from exc
         row.status = "COMPLETED"
