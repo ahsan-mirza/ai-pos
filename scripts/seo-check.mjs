@@ -86,7 +86,7 @@ const locs = [...sitemap.matchAll(/<loc>([^<]+)<\/loc>/g)].map((match) => match[
 check(
   "sitemap lists only the canonical landing pages",
   locs.length === SEO_PAGES.length + 1 &&
-    locs.includes(`${SITE_ORIGIN}/home-2`) &&
+    locs.includes(`${SITE_ORIGIN}/home-3`) &&
     SEO_PAGES.every((page) => locs.includes(canonicalUrl(page))),
 );
 check("sitemap has no redirected or private URLs", locs.every((loc) => !redirects.has(loc.replace(SITE_ORIGIN, "")) && !loc.includes("?")));
@@ -159,7 +159,7 @@ for (const { file, href } of hrefs) {
     href.startsWith("/pos/") ||
     href.startsWith("/portal/") ||
     href.startsWith("/images/") ||
-    path === "/home-2";
+    path === "/home-3";
   check(`${file} link ${href} is not a redirect`, !redirects.has(path) && !redirects.has(href));
   check(`${file} link ${href} resolves`, known);
 }
