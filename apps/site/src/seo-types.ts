@@ -71,3 +71,52 @@ export const PORTAL: SeoImage = {
   width: 1466,
   height: 924,
 };
+
+export const CAFE: SeoImage = {
+  src: "/images/home-2/cafe.png",
+  alt: "Cafe counter with a coffee grinder, AxizPOS receipt printer, sales terminal and branded cup.",
+  width: 1752,
+  height: 897,
+};
+
+export const RESTAURANT: SeoImage = {
+  src: "/images/home-2/restaurant.png",
+  alt: "Restaurant counter with an AxizPOS terminal, receipt printer and table marker.",
+  width: 1774,
+  height: 887,
+};
+
+export const SUPERMARKET: SeoImage = {
+  src: "/images/home-2/supermarket.png",
+  alt: "Supermarket checkout with an AxizPOS terminal, barcode scanner, receipt printer and grocery basket.",
+  width: 1774,
+  height: 887,
+};
+
+export const ELECTRONICS: SeoImage = {
+  src: "/images/home-2/electronics.png",
+  alt: "Electronics counter with an AxizPOS terminal, barcode scanner, receipt printer and boxed devices.",
+  width: 1774,
+  height: 887,
+};
+
+export const FASHION: SeoImage = {
+  src: "/images/home-2/fashion.png",
+  alt: "Fashion counter with an AxizPOS terminal, barcode scanner, receipt printer and shopping bags.",
+  width: 1774,
+  height: 887,
+};
+
+export const WHOLESALE: SeoImage = {
+  src: "/images/home-2/wholesale.png",
+  alt: "Wholesale counter with an AxizPOS terminal, barcode scanner, receipt printer and warehouse stock.",
+  width: 1774,
+  height: 887,
+};
+
+export const QUICK_SERVICE: SeoImage = {
+  src: "/images/home-3/quick-service.jpg",
+  alt: "Quick service meal with a burger and fries.",
+  width: 1400,
+  height: 933,
+};

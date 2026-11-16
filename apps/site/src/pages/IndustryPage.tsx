@@ -2,6 +2,7 @@ import { PROFILE_PRESETS, SIGNUP_BUSINESS_CARDS, capabilitySpec, type Capability
 import { useEffect } from "react";
 import { GetStartedSection } from "../components/GetStartedSection";
 import { GET_STARTED_NOTE, GetStartedLink } from "../components/GetStartedLink";
+import { CapabilityIcon } from "../capabilityIcon";
 import type { PublicCatalog } from "../catalog";
 import { profileModules, publicModulePrices } from "../modules";
 import { relatedPages, type SeoPage } from "../seo";
@@ -43,7 +44,7 @@ const COPY = {
   },
 } as const;
 
-export function IndustryPage({ page, catalog }: { page: SeoPage; catalog: PublicCatalog }) {
+export function IndustryPage({ page, catalog, onContact }: { page: SeoPage; catalog: PublicCatalog; onContact?: (note: string) => void }) {
   const locale = page.locale === "ar" ? "ar" : "en";
   const copy = COPY[locale];
   const homePath = locale === "ar" ? "/ar" : "/";
@@ -154,11 +155,19 @@ export function IndustryPage({ page, catalog }: { page: SeoPage; catalog: Public
             <div className="mt-6 grid gap-4 lg:grid-cols-3">
               {card.subTypes.map((subType) => (
                 <article key={subType.id} className="flex flex-col rounded-card border border-line bg-card p-5">
-                  <h3 className="text-lg font-semibold text-charcoal">{subType.label}</h3>
+                  <span className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                    <CapabilityIcon id={subType.modules[0] ?? "loyalty"} />
+                  </span>
+                  <h3 className="mt-3 text-lg font-semibold text-charcoal">{subType.label}</h3>
                   <p className="mt-2 text-sm leading-6 text-charcoal/75">{subType.description}</p>
                   <ul className="mt-4 space-y-2 text-sm leading-6 text-charcoal/75">
                     {subType.modules.map((id) => (
-                      <li key={id}>{capabilitySpec(id).label}</li>
+                      <li key={id} className="flex items-start gap-2">
+                        <span className="mt-0.5 text-primary">
+                          <CapabilityIcon id={id} size={16} />
+                        </span>
+                        {capabilitySpec(id).label}
+                      </li>
                     ))}
                   </ul>
                 </article>
@@ -180,7 +189,10 @@ export function IndustryPage({ page, catalog }: { page: SeoPage; catalog: Public
                 const listed = prices[id];
                 return (
                   <li key={id} className="rounded-card border border-line bg-card p-5">
-                    <h3 className="text-base font-semibold text-charcoal">{spec.label}</h3>
+                    <span className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                      <CapabilityIcon id={id} />
+                    </span>
+                    <h3 className="mt-3 text-base font-semibold text-charcoal">{spec.label}</h3>
                     <p className="mt-2 text-sm leading-6 text-charcoal/75">{spec.description}</p>
                     {listed && listed.length > 0 ? (
                       <p className="mt-2 text-sm font-medium text-charcoal">{listed.map((price) => `${price.addonName}: ${price.label}`).join(" · ")}</p>
@@ -214,14 +226,24 @@ export function IndustryPage({ page, catalog }: { page: SeoPage; catalog: Public
           <h2 className="text-2xl font-semibold tracking-tight text-charcoal">{copy.related}</h2>
           <ul className="mt-4 flex flex-wrap gap-2">
             <li>
-              <a href={locale === "ar" ? "/ar/inventory-management" : "/#features"} className="inline-flex h-10 items-center rounded-full border border-line bg-card px-4 text-sm font-semibold text-charcoal">
+              <a href={locale === "ar" ? "/ar/inventory-management" : "/inventory-management"} className="inline-flex h-10 items-center rounded-full border border-line bg-card px-4 text-sm font-semibold text-charcoal">
                 {copy.features}
               </a>
             </li>
             <li>
-              <a href="/#contact" className="inline-flex h-10 items-center rounded-full border border-line bg-card px-4 text-sm font-semibold text-charcoal">
-                {copy.contact}
-              </a>
+              {onContact ? (
+                <button
+                  type="button"
+                  onClick={() => onContact("Contact sales. This page does not create an invoice.")}
+                  className="inline-flex h-10 items-center rounded-full border border-line bg-card px-4 text-sm font-semibold text-charcoal"
+                >
+                  {copy.contact}
+                </button>
+              ) : (
+                <a href="/#pricing" className="inline-flex h-10 items-center rounded-full border border-line bg-card px-4 text-sm font-semibold text-charcoal">
+                  {copy.contact}
+                </a>
+              )}
             </li>
             {links.map((item) => (
               <li key={item.id}>

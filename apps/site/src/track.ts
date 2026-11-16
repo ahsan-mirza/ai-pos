@@ -5,7 +5,12 @@ export type SiteEvent =
   | "whatsapp_click"
   | "contact_form_submit"
   | "view_industry_page"
-  | "view_page";
+  | "view_page"
+  | "click_book_demo"
+  | "click_explore_plans"
+  | "click_contact_sales"
+  | "click_billing_period"
+  | "click_solution";
 
 export function track(name: SiteEvent, detail?: Record<string, string>): void {
   if (typeof window === "undefined") return;

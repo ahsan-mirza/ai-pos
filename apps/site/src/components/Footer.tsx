@@ -15,14 +15,11 @@ const SOLUTIONS = [
 ] as const;
 
 const PRODUCT = [
-  ["AI", "#intelligence"],
-  ["Features", "#features"],
-  ["How it works", "#how"],
-  ["Pricing", "#pricing"],
-  ["Contact", "#contact"],
+  ["Overview", "/#platform"],
+  ["Pricing", "/#pricing"],
 ] as const;
 
-export function Footer({ atHome = true, contact }: { atHome?: boolean; contact: PublicWhatsApp }) {
+export function Footer({ contact }: { contact: PublicWhatsApp }) {
   const year = new Date().getFullYear();
   const ready = whatsappReady(contact);
   const arabic = document.documentElement.lang === "ar";
@@ -82,7 +79,7 @@ export function Footer({ atHome = true, contact }: { atHome?: boolean; contact: 
             ) : (
               PRODUCT.map(([label, href]) => (
                 <li key={label}>
-                  <a href={atHome ? href : `/${href}`} className="text-charcoal/75 hover:text-charcoal">
+                  <a href={href} className="text-charcoal/75 hover:text-charcoal">
                     {label}
                   </a>
                 </li>

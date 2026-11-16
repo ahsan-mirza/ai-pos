@@ -1,6 +1,6 @@
 import { ARABIC_PAGES } from "./seo-ar.ts";
 import { ARTICLE_PAGES, CORE_EXTRAS, FEATURE_PAGES } from "./seo-extra.ts";
-import { PORTAL, SITE_ORIGIN, SURFACE, TERMINAL, type SeoPage } from "./seo-types.ts";
+import { CAFE, ELECTRONICS, FASHION, PORTAL, QUICK_SERVICE, RESTAURANT, SITE_ORIGIN, SUPERMARKET, TERMINAL, WHOLESALE, type SeoPage } from "./seo-types.ts";
 
 export { SITE_ORIGIN };
 export type { SeoFaq, SeoImage, SeoKind, SeoLocale, SeoPage, SeoSection } from "./seo-types";
@@ -9,10 +9,10 @@ const CORE_PAGES: SeoPage[] = [
   {
     id: "home",
     path: "/",
-    title: "POS Software UAE | POS System Dubai | AxizPOS",
+    title: "AxizPOS | AI-Powered POS for Retail and Restaurants",
     description:
-      "POS software for restaurants, cafés, supermarkets, retail, and wholesale in the UAE, including Dubai. The assistant answers in English or Arabic from that store's records.",
-    h1: "POS software for restaurants, cafés, supermarkets, retail, and wholesale in the UAE",
+      "Manage sales, inventory, billing, and customers with AxizPOS, an AI-powered POS for cafés, restaurants, supermarkets, electronics, fashion, and wholesale.",
+    h1: "Run Your Business Better with AxizPOS",
     kicker: "AI-powered POS",
     lead: "AxizPOS runs sales, inventory, and customers for restaurants, cafés, supermarkets, retail, and wholesale businesses in the UAE and GCC. The Axiz AI Business Copilot answers in English or Arabic from that store's records.",
     sections: [],
@@ -60,7 +60,7 @@ const CORE_PAGES: SeoPage[] = [
       "Buying history and loyalty points, not a credit account",
       "Dashboard, shift close, and VAT report",
     ],
-    image: SURFACE,
+    image: RESTAURANT,
     crumb: "Restaurant POS",
     profile: "restaurant",
   },
@@ -137,7 +137,7 @@ const CORE_PAGES: SeoPage[] = [
       "Buying history and loyalty points",
       "Credit starts on for cash and carry",
     ],
-    image: PORTAL,
+    image: SUPERMARKET,
     crumb: "Grocery POS",
     profile: "grocery",
   },
@@ -173,7 +173,7 @@ const CORE_PAGES: SeoPage[] = [
       "Recipes that deduct ingredients",
       "Buying history and loyalty points, with no credit account",
     ],
-    image: SURFACE,
+    image: CAFE,
     crumb: "Café POS",
     profile: "cafe",
   },
@@ -209,7 +209,7 @@ const CORE_PAGES: SeoPage[] = [
       "Delivery-channel orders on the delivery start",
       "Buying history and loyalty points, with no credit account",
     ],
-    image: SURFACE,
+    image: QUICK_SERVICE,
     crumb: "Quick Service POS",
     profile: "quick_service",
   },
@@ -247,7 +247,7 @@ const CORE_PAGES: SeoPage[] = [
       "Scheduled customer reorders",
       "A retail counter starts without tier pricing or a credit statement",
     ],
-    image: PORTAL,
+    image: WHOLESALE,
     crumb: "Wholesale POS",
     profile: "wholesale_retail",
   },
@@ -283,7 +283,7 @@ const CORE_PAGES: SeoPage[] = [
       "Buying history and loyalty points; credit is off until switched on",
       "Dashboard and VAT report for that store",
     ],
-    image: PORTAL,
+    image: FASHION,
     crumb: "Fashion POS",
     profile: "retail_fashion",
   },
@@ -320,7 +320,7 @@ const CORE_PAGES: SeoPage[] = [
       "Tier pricing and credit on the wholesale and both starts",
       "Card terminals and Tabby or Tamara on this profile",
     ],
-    image: PORTAL,
+    image: ELECTRONICS,
     crumb: "Electronics POS",
     profile: "electronics_wholesale",
   },
@@ -424,6 +424,9 @@ export function marketingRedirects(): ReadonlyMap<string, string> {
   }
   map.set("/supermarket-pos", "/grocery-pos");
   map.set("/supermarket-pos/", "/grocery-pos");
+  map.set("/home-2", "/");
+  map.set("/home-2/", "/");
+  map.set("/home-2/index.html", "/");
   map.set("/ai", "/#intelligence");
   map.set("/ai/", "/#intelligence");
   map.set("/copilot", "/#intelligence");
@@ -471,7 +474,8 @@ export function sitemapXml(): string {
       : "";
     return `  <url><loc>${canonicalUrl(page)}</loc>${alternates}\n  </url>`;
   }).join("\n");
-  return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">\n${urls}\n</urlset>\n`;
+  const extra = ["home-3"].map((slug) => `  <url><loc>${SITE_ORIGIN}/${slug}</loc>\n  </url>`).join("\n");
+  return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">\n${urls}\n${extra}\n</urlset>\n`;
 }
 
 export function robotsTxt(): string {
@@ -585,7 +589,7 @@ export function publicWorkerBoot(): string {
     || window.matchMedia("(display-mode: fullscreen)").matches
     || window.navigator.standalone === true;
   if (installed) {
-    if (path === "/index.html" || marketing.indexOf(path) !== -1 || sections[path]) location.replace("/login");
+    if (path === "/index.html" || path === "/home-2" || path === "/home-3" || marketing.indexOf(path) !== -1 || sections[path]) location.replace("/login");
     return;
   }
   if (sections[path]) location.replace("/#" + sections[path]);

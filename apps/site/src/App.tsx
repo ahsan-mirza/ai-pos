@@ -9,7 +9,8 @@ import { HowItWorks } from "./components/HowItWorks";
 import { Industries } from "./components/Industries";
 import { Modules } from "./components/Modules";
 import { Intelligence } from "./components/Intelligence";
-import { Navbar } from "./components/Navbar";
+import { SiteHeader } from "./home2/SiteHeader";
+import "./home2/home2.css";
 import { HardwareShelf } from "./components/HardwareShelf";
 import { Pricing } from "./components/Pricing";
 import { Showcase } from "./components/Showcase";
@@ -17,14 +18,12 @@ import { WhatsAppButton } from "./components/WhatsAppButton";
 import { apiBaseUrl } from "./env";
 import { GetStartedSection } from "./components/GetStartedSection";
 import { QuoteDialog } from "./components/QuoteDialog";
-import { useSiteTheme } from "./theme";
 import { IndustryPage } from "./pages/IndustryPage";
 import { seoPage } from "./seo";
 import { track } from "./track";
 import { EMPTY_WHATSAPP, parsePublicWhatsApp, type PublicWhatsApp } from "./whatsapp";
 
 export function App() {
-  const { theme, toggle } = useSiteTheme();
   const [catalog, setCatalog] = useState<PublicCatalog>(EMPTY_CATALOG);
   const [live, setLive] = useState(false);
   const [catalogStatus, setCatalogStatus] = useState<"loading" | "ready" | "unavailable">("loading");
@@ -77,15 +76,20 @@ export function App() {
       <a href="#content" className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:rounded-2xl focus:bg-card focus:px-4 focus:py-2">
         Skip to content
       </a>
-      <Navbar
+      <SiteHeader
         atHome={atHome}
-        theme={theme}
-        onToggleTheme={toggle}
-        showHardware={live && catalog.hardware.length > 0}
+        onDemo={() => {
+          track("click_book_demo", { page_path: window.location.pathname });
+          setQuoteDraft("Book a demo. This page does not create an invoice.");
+        }}
       />
       <main id="content">
         {industry && industry.id !== "home" ? (
-          <IndustryPage page={industry} catalog={catalog} />
+          <IndustryPage
+            page={industry}
+            catalog={catalog}
+            onContact={(note) => setQuoteDraft(note)}
+          />
         ) : (
           <>
         <Hero />
@@ -117,7 +121,7 @@ export function App() {
           </>
         )}
       </main>
-      <Footer atHome={atHome} contact={contact} />
+      <Footer contact={contact} />
       <WhatsAppButton contact={contact} />
       {quoteDraft ? (
         <QuoteDialog

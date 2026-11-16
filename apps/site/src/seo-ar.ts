@@ -1,4 +1,4 @@
-import { PORTAL, SURFACE, TERMINAL, type SeoPage } from "./seo-types.ts";
+import { CAFE, ELECTRONICS, FASHION, PORTAL, QUICK_SERVICE, RESTAURANT, SUPERMARKET, SURFACE, TERMINAL, WHOLESALE, type SeoPage } from "./seo-types.ts";
 
 const PUBLISHED = "2026-11-16";
 
@@ -67,7 +67,7 @@ export const ARABIC_PAGES: SeoPage[] = [
       },
     ],
     related: ["/ar/cafe-pos", "/ar/quick-service-pos", "/ar/kitchen-display", "/ar/blog/restaurant-pos-features-uae"],
-    image: SURFACE,
+    image: RESTAURANT,
     crumb: "نقاط بيع المطاعم",
   }),
   ar({
@@ -128,7 +128,7 @@ export const ARABIC_PAGES: SeoPage[] = [
       },
     ],
     related: ["/ar/inventory-management", "/ar/loyalty-promotions", "/ar/blog/supermarket-pos-barcode-inventory"],
-    image: PORTAL,
+    image: SUPERMARKET,
     crumb: "سوبرماركت",
   }),
   ar({
@@ -159,7 +159,7 @@ export const ARABIC_PAGES: SeoPage[] = [
       },
     ],
     related: ["/ar/restaurant-pos", "/ar/kitchen-display", "/ar/blog/cafe-pos-dubai"],
-    image: SURFACE,
+    image: CAFE,
     crumb: "نقاط بيع المقاهي",
   }),
   ar({
@@ -190,7 +190,7 @@ export const ARABIC_PAGES: SeoPage[] = [
       },
     ],
     related: ["/ar/cafe-pos", "/ar/restaurant-pos", "/ar/kitchen-display"],
-    image: SURFACE,
+    image: QUICK_SERVICE,
     crumb: "خدمة سريعة",
   }),
   ar({
@@ -221,7 +221,7 @@ export const ARABIC_PAGES: SeoPage[] = [
       },
     ],
     related: ["/ar/multi-branch-pos", "/ar/inventory-management", "/ar/electronics-pos"],
-    image: PORTAL,
+    image: WHOLESALE,
     crumb: "جملة",
   }),
   ar({
@@ -252,7 +252,7 @@ export const ARABIC_PAGES: SeoPage[] = [
       },
     ],
     related: ["/ar/retail-pos", "/ar/inventory-management", "/ar/loyalty-promotions", "/ar/multi-branch-pos"],
-    image: PORTAL,
+    image: FASHION,
     crumb: "أزياء وتجزئة",
   }),
   ar({
@@ -283,7 +283,7 @@ export const ARABIC_PAGES: SeoPage[] = [
       },
     ],
     related: ["/ar/imei-serial-tracking", "/ar/wholesale-pos", "/ar/blog/electronics-pos-imei"],
-    image: PORTAL,
+    image: ELECTRONICS,
     crumb: "إلكترونيات",
   }),
   ar({
