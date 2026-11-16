@@ -20,6 +20,7 @@ import { QuoteDialog } from "./components/QuoteDialog";
 import { useSiteTheme } from "./theme";
 import { IndustryPage } from "./pages/IndustryPage";
 import { seoPage } from "./seo";
+import { track } from "./track";
 import { EMPTY_WHATSAPP, parsePublicWhatsApp, type PublicWhatsApp } from "./whatsapp";
 
 export function App() {
@@ -30,6 +31,15 @@ export function App() {
   const [quoteDraft, setQuoteDraft] = useState<string | null>(null);
   const [contact, setContact] = useState<PublicWhatsApp>(EMPTY_WHATSAPP);
   const [contactStatus, setContactStatus] = useState<"loading" | "ready" | "unavailable">("loading");
+
+  useEffect(() => {
+    const page = seoPage(document.documentElement.dataset.page ?? "home");
+    track("view_page", {
+      page_path: page?.path ?? "/",
+      content_group: page?.kind ?? "home",
+      locale: page?.locale ?? "en",
+    });
+  }, []);
 
   useEffect(() => {
     let cancelled = false;

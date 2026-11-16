@@ -128,7 +128,7 @@ export function Hero() {
             {...reveal(0.3)}
             className="mb-8 max-w-[620px] text-[15px] leading-[1.7] text-slate-300 sm:text-[17px] lg:text-[18px]"
           >
-            <span className="font-semibold text-white">Run your business smarter with AxizPOS.</span> Manage sales,
+            <span className="font-semibold text-white">Run your business smarter with AxizPOS.</span> For restaurants, retail, and wholesale in the UAE, including Dubai, manage sales,
             inventory, customers, and daily operations from one intelligent platform. From faster checkout to{" "}
             <span className="hero-accent font-medium">AI-powered forecasts</span>,{" "}
             <span className="hero-accent font-medium">actionable insights</span>, and smart alerts, AxizPOS gives you

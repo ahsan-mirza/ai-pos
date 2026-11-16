@@ -1,68 +1,18 @@
-import type { BusinessProfile } from "@ai-pos/shared-types";
+import { ARABIC_PAGES } from "./seo-ar.ts";
+import { ARTICLE_PAGES, CORE_EXTRAS, FEATURE_PAGES } from "./seo-extra.ts";
+import { PORTAL, SITE_ORIGIN, SURFACE, TERMINAL, type SeoPage } from "./seo-types.ts";
 
-/** Public marketing metadata. The Vite plugin injects this into each HTML entry. */
+export { SITE_ORIGIN };
+export type { SeoFaq, SeoImage, SeoKind, SeoLocale, SeoPage, SeoSection } from "./seo-types";
 
-export const SITE_ORIGIN = "https://axizpos.com";
-
-export interface SeoImage {
-  src: string;
-  alt: string;
-  width: number;
-  height: number;
-}
-
-export interface SeoSection {
-  heading: string;
-  paragraphs: string[];
-}
-
-export interface SeoPage {
-  id: string;
-  /** Path without a trailing slash. The homepage is `/`. */
-  path: string;
-  title: string;
-  description: string;
-  h1: string;
-  kicker: string;
-  lead: string;
-  sections: SeoSection[];
-  points: string[];
-  image: SeoImage;
-  /** Visible breadcrumb label for this page. */
-  crumb: string;
-  /** The business-type preset this page describes. Retail and the UAE page cover more than one. */
-  profile?: BusinessProfile;
-}
-
-const TERMINAL: SeoImage = {
-  src: "/pos/terminal.png",
-  alt: "AxizPOS on a register with a customer display, receipt printer, phone, and barcode scanner.",
-  width: 819,
-  height: 782,
-};
-
-const SURFACE: SeoImage = {
-  src: "/pos/surface.png",
-  alt: "The AxizPOS register on a tablet, with dine-in tables and checkout.",
-  width: 949,
-  height: 706,
-};
-
-const PORTAL: SeoImage = {
-  src: "/portal/macbook.png",
-  alt: "The AxizPOS admin portal on a laptop, with sales figures and categories from one store.",
-  width: 1466,
-  height: 924,
-};
-
-export const SEO_PAGES: readonly SeoPage[] = [
+const CORE_PAGES: SeoPage[] = [
   {
     id: "home",
     path: "/",
-    title: "POS Software for Restaurants, Retail & Wholesale | AxizPOS",
+    title: "POS Software UAE | POS System Dubai | AxizPOS",
     description:
-      "POS software for restaurants, cafés, supermarkets, retail, and wholesale businesses in the UAE and GCC. The Axiz AI Business Copilot answers in English or Arabic from the store's records.",
-    h1: "Smart POS software for restaurants, cafés, supermarkets, retail, and wholesale",
+      "POS software for restaurants, cafés, supermarkets, retail, and wholesale in the UAE, including Dubai. The assistant answers in English or Arabic from that store's records.",
+    h1: "POS software for restaurants, cafés, supermarkets, retail, and wholesale in the UAE",
     kicker: "AI-powered POS",
     lead: "AxizPOS runs sales, inventory, and customers for restaurants, cafés, supermarkets, retail, and wholesale businesses in the UAE and GCC. The Axiz AI Business Copilot answers in English or Arabic from that store's records.",
     sections: [],
@@ -73,10 +23,10 @@ export const SEO_PAGES: readonly SeoPage[] = [
   {
     id: "restaurant-pos",
     path: "/restaurant-pos",
-    title: "Restaurant POS System | AxizPOS",
+    title: "Restaurant POS System UAE | AxizPOS",
     description:
-      "AxizPOS restaurant POS covers tables, open orders, kitchen tickets, menu modifiers, split bills, and the sales the store has already recorded.",
-    h1: "Restaurant POS system for tables, kitchen, and checkout",
+      "Restaurant POS for UAE dining rooms: tables, open orders, kitchen tickets, menu modifiers, split bills, and the sales that store has already recorded.",
+    h1: "Restaurant POS system for tables, kitchen, and checkout in the UAE",
     kicker: "Restaurant",
     lead: "A restaurant profile in AxizPOS starts from the floor, not from a generic till. Guests are seated, orders stay open, and the kitchen sees the ticket before the bill is closed.",
     sections: [
@@ -117,10 +67,10 @@ export const SEO_PAGES: readonly SeoPage[] = [
   {
     id: "retail-pos",
     path: "/retail-pos",
-    title: "Retail POS System | AxizPOS",
+    title: "Barcode Checkout and Stock | AxizPOS",
     description:
-      "The shared AxizPOS register: catalog checkout, barcodes, stock, purchase orders, and the VAT report. Grocery and fashion each have their own profile.",
-    h1: "Retail POS system for checkout, barcodes, and stock",
+      "The shared AxizPOS register: catalog checkout, barcodes, stock, purchase orders, and the VAT report. Supermarket and fashion profiles have their own pages.",
+    h1: "Barcode checkout and stock on the shared AxizPOS register",
     kicker: "Retail",
     lead: "Every AxizPOS store sells from a product catalog on the register. This page is that shared checkout. Grocery and fashion are separate profiles with their own pages.",
     sections: [
@@ -158,10 +108,10 @@ export const SEO_PAGES: readonly SeoPage[] = [
   {
     id: "grocery-pos",
     path: "/grocery-pos",
-    title: "Supermarket & Grocery POS Software | AxizPOS",
+    title: "Supermarket POS System UAE | AxizPOS",
     description:
-      "Supermarket and grocery POS for catalog checkout, weighed items, expiry-first stock, loyalty, and promotions. A supermarket adds lanes, gift cards, and foreign-currency cash. On-account credit stays off until the shop turns it on.",
-    h1: "Supermarket and grocery POS software for weight, expiry, and checkout",
+      "Supermarket and grocery POS in the UAE: barcode checkout, weighed items, expiry-first stock, loyalty, and promotions. A supermarket adds lanes, gift cards, and foreign-currency cash.",
+    h1: "Supermarket POS system for barcode checkout, weight, and expiry",
     kicker: "Grocery",
     lead: "The grocery profile sells from the same register as other shops, then adds weight and expiry. It is not a generic retail preset with restaurant tables switched on.",
     sections: [
@@ -194,18 +144,18 @@ export const SEO_PAGES: readonly SeoPage[] = [
   {
     id: "cafe-pos",
     path: "/cafe-pos",
-    title: "Café POS Software | AxizPOS",
+    title: "Café POS System UAE | AxizPOS",
     kicker: "Café",
     description:
       "Café POS software for counter sales, drink modifiers, open tabs, and a kitchen display. Recipes deduct ingredients from the sales the register records.",
-    h1: "Café POS software for the counter, modifiers, and tabs",
+    h1: "Café POS system for the counter, modifiers, and tabs in the UAE",
     lead: "The café profile is built for the counter: a drink with a size and an add-on, a tab that stays open, and a ticket on the barista screen.",
     sections: [
       {
         heading: "Counter service is not a dining room",
         paragraphs: [
           "Café orders are short, custom, and often paid later. A till that only knows a flat menu price misses the oat milk and the extra shot, and the bar never sees the ticket.",
-          "AxizPOS prices modifiers on the item, keeps the order open, and routes it to the kitchen display. The café preset does not turn on tables, split bills, or service charge. Those belong to the restaurant profile. It also does not keep a credit ledger or take on-account sales, and a café cannot turn that on.",
+          "AxizPOS prices modifiers on the item, keeps the order open, and routes it to the kitchen display. A counter, bakery, quick-service, or delivery cafe start does not include tables. Sit-down cafe and all-in-one cafe do, with split bills and tips or service charge. A café does not keep a credit ledger, and it cannot turn on-account sales on.",
         ],
       },
       {
@@ -266,10 +216,10 @@ export const SEO_PAGES: readonly SeoPage[] = [
   {
     id: "wholesale-pos",
     path: "/wholesale-pos",
-    title: "Wholesale POS Software | AxizPOS",
+    title: "Wholesale POS UAE | AxizPOS",
     description:
-      "Wholesale and retail POS for tier pricing, on-account credit, statements, and sales orders delivered in parts. Serial numbers and repairs are on the electronics profile.",
-    h1: "Wholesale POS software for tiers, credit, and deliveries",
+      "Wholesale POS for the UAE: tier pricing, on-account credit, statements, and sales orders delivered in parts. Serial numbers and repairs stay on the electronics profile.",
+    h1: "Wholesale POS for tier prices, credit, and partial deliveries",
     kicker: "Wholesale & Retail",
     lead: "Wholesale & Retail is its own profile. Distribution starts with account customers and orders that leave in more than one delivery. A retail counter on the same profile starts smaller. Device serials and repair tickets are on the electronics page.",
     sections: [
@@ -304,10 +254,10 @@ export const SEO_PAGES: readonly SeoPage[] = [
   {
     id: "fashion-pos",
     path: "/fashion-pos",
-    title: "Fashion Store POS System | AxizPOS",
+    title: "Fashion and Retail POS UAE | AxizPOS",
     description:
-      "A fashion store POS for size and colour grids, variant stock, consignment, loyalty, and the same checkout and sales reports as other AxizPOS stores.",
-    h1: "Fashion store POS system for size, colour, and stock",
+      "Fashion and apparel retail POS in the UAE: size and colour grids, variant stock, consignment, loyalty, and the same checkout and sales reports as other AxizPOS stores.",
+    h1: "Fashion and retail POS for size, colour, and variant stock",
     kicker: "Fashion",
     lead: "The fashion profile sells a grid, not a single barcode with no size. Staff see which variants are in stock and check out on the same register other stores use.",
     sections: [
@@ -340,10 +290,10 @@ export const SEO_PAGES: readonly SeoPage[] = [
   {
     id: "electronics-pos",
     path: "/electronics-pos",
-    title: "Electronics Store POS Software | AxizPOS",
+    title: "Electronics POS System UAE | AxizPOS",
     description:
-      "Electronics store POS software for catalogs, IMEI and serial numbers, warranties, repair tickets, and trade-ins, with checkout and the VAT report.",
-    h1: "Electronics store POS software for serials, warranties, and repairs",
+      "Electronics POS for UAE shops: catalogs, IMEI and serial numbers, warranties, repair tickets, and trade-ins, with checkout and the VAT report.",
+    h1: "Electronics POS for IMEI, serial numbers, warranties, and repairs",
     kicker: "Electronics",
     lead: "An electronics sale is a specific unit. AxizPOS keeps the catalog, the serial or IMEI, and the later warranty or repair on the Electronics profile.",
     sections: [
@@ -377,10 +327,10 @@ export const SEO_PAGES: readonly SeoPage[] = [
   {
     id: "pos-software-uae",
     path: "/pos-software-uae",
-    title: "POS Software UAE | AxizPOS",
+    title: "UAE POS Setup: AED Pricing and VAT Report | AxizPOS",
     description:
-      "POS software for UAE restaurants, cafés, retailers, and wholesalers. AxizPOS prices packages in AED, includes a VAT report, and answers in English or Arabic.",
-    h1: "POS software for businesses selling in the UAE",
+      "How AxizPOS is set up for selling in the UAE: package prices in AED, a VAT report from recorded sales, and an assistant that answers in English or Arabic.",
+    h1: "What AxizPOS includes for businesses selling in the UAE",
     kicker: "United Arab Emirates",
     lead: "AxizPOS is prepared for businesses selling in the UAE, including Dubai and Abu Dhabi. This page describes what the product actually includes for that work. It does not list offices or a street address.",
     sections: [
@@ -413,12 +363,47 @@ export const SEO_PAGES: readonly SeoPage[] = [
       "Profiles for restaurants, cafés, quick service, grocery, fashion, wholesale, and electronics",
     ],
     image: PORTAL,
-    crumb: "POS software UAE",
+    crumb: "UAE setup",
   },
+];
+
+function finish(page: SeoPage): SeoPage {
+  const extra = CORE_EXTRAS[page.id];
+  return {
+    locale: "en",
+    kind: page.path === "/" ? "home" : "industry",
+    faqs: [],
+    related: [],
+    ...page,
+    ...extra,
+  };
+}
+
+export const SEO_PAGES: readonly SeoPage[] = [
+  ...CORE_PAGES.map(finish),
+  ...FEATURE_PAGES,
+  ...ARTICLE_PAGES,
+  ...ARABIC_PAGES,
 ];
 
 export function seoPage(id: string): SeoPage | undefined {
   return SEO_PAGES.find((page) => page.id === id);
+}
+
+export function pageByPath(path: string): SeoPage | undefined {
+  const normalized = path.length > 1 ? path.replace(/\/+$/, "") : path;
+  return SEO_PAGES.find((page) => page.path === normalized);
+}
+
+export function translationOf(page: SeoPage): SeoPage | undefined {
+  if (page.locale === "ar" && page.translationOf) return seoPage(page.translationOf);
+  return SEO_PAGES.find((item) => item.translationOf === page.id);
+}
+
+export function relatedPages(page: SeoPage): SeoPage[] {
+  return (page.related ?? [])
+    .map((path) => pageByPath(path))
+    .filter((item): item is SeoPage => item !== undefined && item.locale === (page.locale ?? "en"));
 }
 
 export function canonicalUrl(page: SeoPage): string {
@@ -459,13 +444,34 @@ export function staticArticle(page: SeoPage): string {
   const points =
     page.points.length > 0 ? `<ul>${page.points.map((point) => `<li>${escapeHtml(point)}</li>`).join("")}</ul>` : "";
   const lead = page.lead ? `<p>${escapeHtml(page.lead)}</p>` : "";
+  const published = page.published ? `<p><time datetime="${page.published}">${escapeHtml(page.published)}</time></p>` : "";
+  const faqs =
+    page.faqs && page.faqs.length > 0
+      ? `<section><h2>${page.locale === "ar" ? "أسئلة" : "Questions"}</h2>${page.faqs
+          .map(
+            (faq) =>
+              `<h3>${escapeHtml(faq.question)}</h3><p>${escapeHtml(faq.answer)}</p>`,
+          )
+          .join("")}</section>`
+      : "";
+  const links = relatedPages(page);
+  const related =
+    links.length > 0
+      ? `<nav>${links.map((item) => `<a href="${item.path}">${escapeHtml(item.crumb)}</a>`).join("")}</nav>`
+      : "";
   const image = `<figure><img src="${page.image.src}" alt="${escapeHtml(page.image.alt)}" width="${page.image.width}" height="${page.image.height}" /></figure>`;
-  return `<article data-seo-static=""><h1>${escapeHtml(page.h1)}</h1>${lead}${sections}${points}${image}</article>`;
+  return `<article data-seo-static=""><h1>${escapeHtml(page.h1)}</h1>${published}${lead}${sections}${points}${faqs}${related}${image}</article>`;
 }
 
 export function sitemapXml(): string {
-  const urls = SEO_PAGES.map((page) => `  <url><loc>${canonicalUrl(page)}</loc></url>`).join("\n");
-  return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls}\n</urlset>\n`;
+  const urls = SEO_PAGES.map((page) => {
+    const other = translationOf(page);
+    const alternates = other
+      ? `\n    <xhtml:link rel="alternate" hreflang="${page.locale ?? "en"}" href="${canonicalUrl(page)}" />\n    <xhtml:link rel="alternate" hreflang="${other.locale ?? "en"}" href="${canonicalUrl(other)}" />\n    <xhtml:link rel="alternate" hreflang="x-default" href="${canonicalUrl(page.locale === "ar" ? other : page)}" />`
+      : "";
+    return `  <url><loc>${canonicalUrl(page)}</loc>${alternates}\n  </url>`;
+  }).join("\n");
+  return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">\n${urls}\n</urlset>\n`;
 }
 
 export function robotsTxt(): string {
@@ -473,10 +479,15 @@ export function robotsTxt(): string {
     "User-agent: *",
     "Allow: /",
     "",
-    "# Marketing pages stay crawlable. Sign-in and the portal shell send noindex themselves.",
-    "# The console and API are not public content.",
+    "# Marketing pages stay crawlable. The portal shell sends noindex itself.",
+    "# Sign-in, the console, and the API are not public content.",
     "Disallow: /admin74246/",
     "Disallow: /api/",
+    "Disallow: /login",
+    "Disallow: /signup",
+    "Disallow: /forgot-password",
+    "Disallow: /recover-store-code",
+    "Disallow: /dashboard",
     "",
     `Sitemap: ${SITE_ORIGIN}/sitemap.xml`,
     "",
@@ -497,17 +508,20 @@ function jsonLd(page: SeoPage): string {
       "@type": "WebSite",
       name: "AxizPOS",
       url: `${SITE_ORIGIN}/`,
-      inLanguage: "en",
+      inLanguage: page.locale === "ar" ? "ar" : "en",
     },
   ];
-  if (page.id === "home") {
+  const homeUrl = page.locale === "ar" ? `${SITE_ORIGIN}/ar` : `${SITE_ORIGIN}/`;
+  const homeName = page.locale === "ar" ? "الرئيسية" : "Home";
+  if (page.kind === "home" || page.id === "home") {
     graph.push({
       "@type": "SoftwareApplication",
       name: "AxizPOS",
       applicationCategory: "BusinessApplication",
       operatingSystem: "Web, Windows",
-      url: `${SITE_ORIGIN}/`,
+      url: homeUrl,
       description: page.description,
+      inLanguage: page.locale === "ar" ? "ar" : "en",
       featureList: [
         "Register checkout",
         "Inventory, purchase orders, and stock",
@@ -515,13 +529,39 @@ function jsonLd(page: SeoPage): string {
         "VAT report from recorded sales",
       ],
     });
-  } else {
+  }
+  if (page.id !== "home" && page.kind !== "home") {
+    const crumbs = [
+      { "@type": "ListItem", position: 1, name: homeName, item: homeUrl },
+    ];
+    if (page.kind === "article") {
+      const blog = SEO_PAGES.find((item) => item.kind === "blog" && item.locale === page.locale);
+      if (blog) crumbs.push({ "@type": "ListItem", position: 2, name: blog.crumb, item: canonicalUrl(blog) });
+    }
+    crumbs.push({ "@type": "ListItem", position: crumbs.length + 1, name: page.crumb, item: url });
+    graph.push({ "@type": "BreadcrumbList", itemListElement: crumbs });
+  }
+  if (page.faqs && page.faqs.length > 0) {
     graph.push({
-      "@type": "BreadcrumbList",
-      itemListElement: [
-        { "@type": "ListItem", position: 1, name: "Home", item: `${SITE_ORIGIN}/` },
-        { "@type": "ListItem", position: 2, name: page.crumb, item: url },
-      ],
+      "@type": "FAQPage",
+      mainEntity: page.faqs.map((faq) => ({
+        "@type": "Question",
+        name: faq.question,
+        acceptedAnswer: { "@type": "Answer", text: faq.answer },
+      })),
+    });
+  }
+  if (page.kind === "article" && page.published) {
+    graph.push({
+      "@type": "Article",
+      headline: page.h1,
+      datePublished: page.published,
+      dateModified: page.published,
+      inLanguage: page.locale === "ar" ? "ar" : "en",
+      mainEntityOfPage: url,
+      author: { "@type": "Organization", name: "AxizPOS", url: `${SITE_ORIGIN}/` },
+      publisher: { "@type": "Organization", name: "AxizPOS", url: `${SITE_ORIGIN}/` },
+      image: `${SITE_ORIGIN}${page.image.src}`,
     });
   }
   const payload = { "@context": "https://schema.org", "@graph": graph };
@@ -538,13 +578,14 @@ export function publicWorkerBoot(): string {
 (function () {
   var path = location.pathname.replace(/\\/+$/, "") || "/";
   var sections = { "/solutions": "solutions", "/features": "features", "/industries": "industries", "/pricing": "pricing", "/contact": "contact" };
+  var marketing = ${JSON.stringify(SEO_PAGES.map((page) => page.path))};
   var installed = window.matchMedia("(display-mode: standalone)").matches
     || window.matchMedia("(display-mode: window-controls-overlay)").matches
     || window.matchMedia("(display-mode: minimal-ui)").matches
     || window.matchMedia("(display-mode: fullscreen)").matches
     || window.navigator.standalone === true;
   if (installed) {
-    if (path === "/" || path === "/index.html" || path.indexOf("-pos") !== -1 || path === "/pos-software-uae" || sections[path]) location.replace("/login");
+    if (path === "/index.html" || marketing.indexOf(path) !== -1 || sections[path]) location.replace("/login");
     return;
   }
   if (sections[path]) location.replace("/#" + sections[path]);
@@ -553,19 +594,42 @@ export function publicWorkerBoot(): string {
 }
 
 /** Head tags for one public page. Injected once, in place of the site-seo comment. */
-export function headTags(page: SeoPage, verification: string | undefined): string {
+export function measurementSnippet(measurementId: string | undefined): string {
+  const id = measurementId?.trim() ?? "";
+  if (!/^G-[A-Z0-9]+$/.test(id)) return "";
+  return [
+    `<script async src="https://www.googletagmanager.com/gtag/js?id=${id}"></script>`,
+    `<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','${id}',{send_page_view:true});</script>`,
+  ].join("\n    ");
+}
+
+export function headTags(page: SeoPage, verification: string | undefined, measurementId?: string): string {
   const url = canonicalUrl(page);
   const image = `${SITE_ORIGIN}${page.image.src}`;
   const token = verification?.trim() ?? "";
   const verificationTag =
     /^[A-Za-z0-9_-]{8,128}$/.test(token) ? `<meta name="google-site-verification" content="${token}" />` : "";
+  const other = translationOf(page);
+  const english = page.locale === "ar" ? other : page;
+  const arabic = page.locale === "ar" ? page : other;
+  const alternates =
+    english && arabic
+      ? [
+          `<link rel="alternate" hreflang="en" href="${canonicalUrl(english)}" />`,
+          `<link rel="alternate" hreflang="ar" href="${canonicalUrl(arabic)}" />`,
+          `<link rel="alternate" hreflang="x-default" href="${canonicalUrl(english)}" />`,
+        ]
+      : [];
   return [
     `<title>${escapeHtml(page.title)}</title>`,
     `<meta name="description" content="${escapeHtml(page.description)}" />`,
     `<link rel="canonical" href="${url}" />`,
+    ...alternates,
     `<meta name="robots" content="index, follow" />`,
     `<meta property="og:site_name" content="AxizPOS" />`,
-    `<meta property="og:locale" content="en_AE" />`,
+    `<meta property="og:locale" content="${page.locale === "ar" ? "ar_AE" : "en_AE"}" />`,
+    other ? `<meta property="og:locale:alternate" content="${page.locale === "ar" ? "en_AE" : "ar_AE"}" />` : "",
+    measurementSnippet(measurementId),
     `<meta property="og:title" content="${escapeHtml(page.title)}" />`,
     `<meta property="og:description" content="${escapeHtml(page.description)}" />`,
     `<meta property="og:type" content="website" />`,
@@ -585,6 +649,26 @@ export function headTags(page: SeoPage, verification: string | undefined): strin
   ]
     .filter(Boolean)
     .join("\n    ");
+}
+
+export function notFoundHtml(): string {
+  return `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="robots" content="noindex" />
+    <title>Page not found | AxizPOS</title>
+  </head>
+  <body>
+    <main>
+      <h1>This page is not on the marketing site.</h1>
+      <p><a href="/">AxizPOS home</a></p>
+      <p><a href="/ar">العربية</a></p>
+    </main>
+  </body>
+</html>
+`;
 }
 
 function escapeHtml(value: string): string {

@@ -8,9 +8,11 @@ import {
   canonicalUrl,
   headTags,
   marketingRedirects,
+  notFoundHtml,
   robotsTxt,
   sitemapXml,
   staticArticle,
+  translationOf,
 } from "../apps/site/src/seo.ts";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -62,10 +64,21 @@ for (const page of SEO_PAGES) {
   const types = graph.map((node) => node["@type"]);
   check(`${page.path} JSON-LD parses`, graph.length > 0 && (jsonMatch?.[1] ?? "").includes('"@context":"https://schema.org"'));
   check(`${page.path} JSON-LD has no ratings, reviews, or a street address`, !/aggregateRating|review|LocalBusiness|streetAddress/i.test(jsonMatch?.[1] ?? ""));
+  const homePage = page.kind === "home" || page.id === "home";
   check(
     `${page.path} JSON-LD types`,
-    types.includes("Organization") && types.includes("WebSite") && (page.id === "home" ? types.includes("SoftwareApplication") : types.includes("BreadcrumbList")),
+    types.includes("Organization") && types.includes("WebSite") && (homePage ? types.includes("SoftwareApplication") : types.includes("BreadcrumbList")),
   );
+  const other = translationOf(page);
+  check(`${page.path} has one reciprocal translation`, other !== undefined && translationOf(other)?.id === page.id);
+  if (other) {
+    check(`${page.path} hreflang is reciprocal`, head.includes(`hreflang="en" href="${canonicalUrl(page.locale === "ar" ? other : page)}"`) && head.includes(`hreflang="ar" href="${canonicalUrl(page.locale === "ar" ? page : other)}"`) && head.includes(`hreflang="x-default"`));
+  }
+  if (page.kind === "industry" || page.kind === "feature") {
+    check(`${page.path} has questions`, (page.faqs ?? []).length > 0 && article.includes("<h3>"));
+  }
+  const prose = `${page.title} ${page.description} ${page.h1} ${page.lead} ${page.sections.map((section) => section.paragraphs.join(" ")).join(" ")}`;
+  check(`${page.path} does not invent a certificate or testimonial`, !/certified|testimonial|thousands of customers|guaranteed ranking/i.test(prose));
 }
 
 const sitemap = sitemapXml();
@@ -96,11 +109,12 @@ const nginx = Object.values(nginxFiles).join("\n");
 check("www HTTPS redirects to the apex", nginxFiles["ai-pos.https.conf"].includes("server_name www.axizpos.com;") && nginxFiles["ai-pos.https.conf"].includes("return 301 https://axizpos.com$request_uri;"));
 check("www HTTP stays on HTTP", nginxFiles["ai-pos.conf"].includes("return 301 http://axizpos.com$request_uri;"));
 check("port 80 does not force HTTPS", !nginxFiles["ai-pos.conf"].includes("return 301 https://"));
-const slugs = SEO_PAGES.filter((page) => page.path !== "/").map((page) => page.path.slice(1));
+const slugs = SEO_PAGES.filter((page) => page.path !== "/" && !page.path.slice(1).includes("/")).map((page) => page.path.slice(1));
 check(
-  "nginx redirects trailing slashes and index.html for every landing page",
+  "nginx redirects trailing slashes and index.html for every single-segment landing page",
   slugs.every((slug) => nginx.includes(slug)) && nginx.includes("/index\\.html$") && nginx.includes("return 301 $scheme://axizpos.com/$1$is_args$args;"),
 );
+check("nginx serves the blog and Arabic trees", nginx.includes("location ^~ /blog/") && nginx.includes("location ^~ /ar/") && nginx.includes("location = /ar {"));
 for (const section of ["solutions", "features", "industries", "pricing", "contact"]) {
   check(`nginx redirects /${section}`, nginx.includes(section) && nginx.includes("return 301 $scheme://axizpos.com/#$1;"));
 }
@@ -111,9 +125,10 @@ for (const [source, target] of [
 ]) {
   check(`nginx redirects ${source}`, nginx.includes(`location = ${source}`) && nginx.includes(`return 301 $scheme://axizpos.com${target};`));
 }
-for (const missing of ["/blog", "/home"]) {
-  check(`nginx returns 404 for ${missing}`, nginx.includes(`location = ${missing} { return 404; }`));
-}
+check("nginx returns 404 for /home", nginx.includes("location = /home { return 404; }"));
+check("nginx does not 404 /blog", !nginx.includes("location = /blog { return 404; }"));
+const missingPage = notFoundHtml();
+check("marketing 404 is noindex and absent from the sitemap", missingPage.includes('content="noindex"') && !sitemap.includes("/404.html"));
 
 function walk(dir, files = []) {
   for (const entry of readdirSync(dir)) {
@@ -147,6 +162,16 @@ for (const { file, href } of hrefs) {
 
 const home = readFileSync(join(root, "apps/site/index.html"), "utf8");
 check("marketing HTML sets a mobile viewport", home.includes('name="viewport"'));
+for (const page of SEO_PAGES) {
+  const file = join(root, "apps/site", page.path === "/" ? "index.html" : `${page.path.slice(1)}/index.html`);
+  let html = "";
+  try {
+    html = readFileSync(file, "utf8");
+  } catch {
+    html = "";
+  }
+  check(`${page.path} HTML entry exists`, html.includes(`data-page="${page.id}"`) && html.includes(`lang="${page.locale ?? "en"}"`));
+}
 
 if (failures.length > 0) {
   console.error(`\n${failures.length} SEO check${failures.length === 1 ? "" : "s"} failed.`);

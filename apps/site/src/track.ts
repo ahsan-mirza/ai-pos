@@ -4,7 +4,8 @@ export type SiteEvent =
   | "click_get_started"
   | "whatsapp_click"
   | "contact_form_submit"
-  | "view_industry_page";
+  | "view_industry_page"
+  | "view_page";
 
 export function track(name: SiteEvent, detail?: Record<string, string>): void {
   if (typeof window === "undefined") return;

@@ -2,15 +2,16 @@ import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import react from "@vitejs/plugin-react";
 import { defineConfig, loadEnv, type Plugin } from "vite";
-import { SEO_PAGES, headTags, marketingRedirects, robotsTxt, sitemapXml, seoPage, staticArticle } from "./src/seo";
+import { SEO_PAGES, headTags, marketingRedirects, notFoundHtml, robotsTxt, sitemapXml, seoPage, staticArticle } from "./src/seo";
 
 const root = fileURLToPath(new URL(".", import.meta.url));
 
 function siteSeo(): Plugin {
   const entries = Object.fromEntries(
-    SEO_PAGES.map((page) => [page.id, resolve(root, page.id === "home" ? "index.html" : `${page.id}/index.html`)]),
+    SEO_PAGES.map((page) => [page.id, resolve(root, page.path === "/" ? "index.html" : `${page.path.slice(1)}/index.html`)]),
   );
   let verification: string | undefined;
+  let measurementId: string | undefined;
   const rewritePage = (url: string | undefined): string | undefined => {
     const path = url?.split("?")[0];
     if (!path || !SEO_PAGES.some((page) => page.path === path)) return undefined;
@@ -26,7 +27,9 @@ function siteSeo(): Plugin {
   return {
     name: "site-seo",
     config(_config, { mode }) {
-      verification = loadEnv(mode, resolve(root, "../.."), "VITE_").VITE_GOOGLE_SITE_VERIFICATION;
+      const env = loadEnv(mode, resolve(root, "../.."), "VITE_");
+      verification = env.VITE_GOOGLE_SITE_VERIFICATION;
+      measurementId = env.VITE_GA_MEASUREMENT_ID;
       return { build: { rollupOptions: { input: entries } } };
     },
     transformIndexHtml: {
@@ -36,7 +39,7 @@ function siteSeo(): Plugin {
         const id = html.match(/data-page="([^"]+)"/)?.[1] ?? "home";
         const page = seoPage(id);
         if (!page) return html;
-        const tags = headTags(page, verification);
+        const tags = headTags(page, verification, measurementId);
         return html
           .replace("<!-- site-seo -->", tags)
           .replace('<div id="root"></div>', `<div id="root">${staticArticle(page)}</div>`);
@@ -81,6 +84,7 @@ function siteSeo(): Plugin {
     generateBundle() {
       this.emitFile({ type: "asset", fileName: "sitemap.xml", source: sitemapXml() });
       this.emitFile({ type: "asset", fileName: "robots.txt", source: robotsTxt() });
+      this.emitFile({ type: "asset", fileName: "404.html", source: notFoundHtml() });
     },
   };
 }

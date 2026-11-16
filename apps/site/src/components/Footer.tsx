@@ -1,4 +1,5 @@
 import { portalUrl, signupUrl } from "../env";
+import { SEO_PAGES } from "../seo";
 import { whatsappChatUrl, whatsappDigits, whatsappReady, type PublicWhatsApp } from "../whatsapp";
 
 const SOLUTIONS = [
@@ -24,6 +25,14 @@ const PRODUCT = [
 export function Footer({ atHome = true, contact }: { atHome?: boolean; contact: PublicWhatsApp }) {
   const year = new Date().getFullYear();
   const ready = whatsappReady(contact);
+  const arabic = document.documentElement.lang === "ar";
+  const solutions = arabic
+    ? SEO_PAGES.filter((page) => page.locale === "ar" && page.kind === "industry").map((page) => [page.crumb, page.path] as const)
+    : SOLUTIONS;
+  const features = SEO_PAGES.filter((page) => page.locale === (arabic ? "ar" : "en") && page.kind === "feature").map(
+    (page) => [page.crumb, page.path] as const,
+  );
+  const guides = arabic ? "/ar/blog" : "/blog";
 
   return (
     <footer className="border-t border-line bg-card">
@@ -32,13 +41,15 @@ export function Footer({ atHome = true, contact }: { atHome?: boolean; contact: 
           <img src="/brand/logo.svg" alt="AxizPOS" width={137} height={32} className="h-8 w-auto dark:hidden" />
           <img src="/brand/logo-white.svg" alt="" width={137} height={32} className="hidden h-8 w-auto dark:block" />
           <p className="mt-3 max-w-xs text-sm leading-6 text-charcoal/70">
-            POS software for restaurants, retail, and wholesale businesses in the UAE and GCC. Ask the store in English or Arabic, then sell from the same records.
+            {arabic
+              ? "برنامج نقاط بيع للمطاعم والتجزئة والجملة في الإمارات والخليج. اسأل المتجر بالعربية أو الإنجليزية، ثم بيع من السجلات نفسها."
+              : "POS software for restaurants, retail, and wholesale businesses in the UAE and GCC. Ask the store in English or Arabic, then sell from the same records."}
           </p>
         </div>
         <div>
-          <h2 className="text-sm font-semibold text-charcoal">Solutions</h2>
+          <h2 className="text-sm font-semibold text-charcoal">{arabic ? "الحلول" : "Solutions"}</h2>
           <ul className="mt-3 space-y-2 text-sm">
-            {SOLUTIONS.map(([label, href]) => (
+            {solutions.map(([label, href]) => (
               <li key={label}>
                 <a href={href} className="text-charcoal/75 hover:text-charcoal">
                   {label}
@@ -48,29 +59,49 @@ export function Footer({ atHome = true, contact }: { atHome?: boolean; contact: 
           </ul>
         </div>
         <div>
-          <h2 className="text-sm font-semibold text-charcoal">Product</h2>
+          <h2 className="text-sm font-semibold text-charcoal">{arabic ? "المنتج" : "Product"}</h2>
           <ul className="mt-3 space-y-2 text-sm">
-            {PRODUCT.map(([label, href]) => (
+            {features.map(([label, href]) => (
               <li key={label}>
-                <a href={atHome ? href : `/${href}`} className="text-charcoal/75 hover:text-charcoal">
+                <a href={href} className="text-charcoal/75 hover:text-charcoal">
                   {label}
                 </a>
               </li>
             ))}
             <li>
+              <a href={guides} className="text-charcoal/75 hover:text-charcoal">
+                {arabic ? "الأدلة" : "Guides"}
+              </a>
+            </li>
+            {arabic ? (
+              <li>
+                <a href="/#pricing" className="text-charcoal/75 hover:text-charcoal">
+                  الأسعار
+                </a>
+              </li>
+            ) : (
+              PRODUCT.map(([label, href]) => (
+                <li key={label}>
+                  <a href={atHome ? href : `/${href}`} className="text-charcoal/75 hover:text-charcoal">
+                    {label}
+                  </a>
+                </li>
+              ))
+            )}
+            <li>
               <a href={portalUrl} className="text-charcoal/75 hover:text-charcoal">
-                Sign In
+                {arabic ? "دخول" : "Sign In"}
               </a>
             </li>
             <li>
               <a href={signupUrl} className="text-charcoal/75 hover:text-charcoal">
-                Get Started Free
+                {arabic ? "ابدأ مجاناً" : "Get Started Free"}
               </a>
             </li>
           </ul>
         </div>
         <div>
-          <h2 className="text-sm font-semibold text-charcoal">Contact</h2>
+          <h2 className="text-sm font-semibold text-charcoal">{arabic ? "التواصل" : "Contact"}</h2>
           {ready || contact.email ? (
             <ul className="mt-3 space-y-2 text-sm">
               {ready ? (
@@ -94,7 +125,9 @@ export function Footer({ atHome = true, contact }: { atHome?: boolean; contact: 
               ) : null}
             </ul>
           ) : (
-            <p className="mt-3 text-sm leading-6 text-charcoal/70">Sales contact is published from the console.</p>
+            <p className="mt-3 text-sm leading-6 text-charcoal/70">
+              {arabic ? "بيانات المبيعات تُنشر من لوحة التحكم." : "Sales contact is published from the console."}
+            </p>
           )}
         </div>
       </div>

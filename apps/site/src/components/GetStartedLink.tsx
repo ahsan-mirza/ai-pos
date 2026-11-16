@@ -15,10 +15,11 @@ export const GET_STARTED_NOTE =
 
 export function GetStartedLink({ className, children }: { className: string; children?: ReactNode }) {
   const { t } = useLocale();
+  const arabic = typeof document !== "undefined" && document.documentElement.lang === "ar";
   return (
-    <a href={signupUrl} className={className} onClick={() => track("click_get_started")}>
+    <a href={signupUrl} className={className} onClick={() => track("click_get_started", { page_path: window.location.pathname })}>
       {children}
-      {t(GET_STARTED_LABEL)}
+      {arabic ? "ابدأ مجاناً" : t(GET_STARTED_LABEL)}
     </a>
   );
 }

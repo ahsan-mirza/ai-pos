@@ -1,7 +1,7 @@
-import { LanguageSwitch } from "@ai-pos/ui";
 import { LogIn, Menu, Moon, Sparkles, Sun, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { portalUrl } from "../env";
+import { pageByPath, translationOf } from "../seo";
 import { GetStartedLink } from "./GetStartedLink";
 import type { SiteTheme } from "../theme";
 
@@ -36,7 +36,18 @@ export function Navbar({
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState("top");
   const dark = theme === "dark";
-  const links = LINKS.filter((link) => link.id !== "hardware" || showHardware);
+  const arabic = document.documentElement.lang === "ar";
+  const links = arabic
+    ? [
+        { href: "/ar", label: "الرئيسية", id: "top" },
+        { href: "/ar/restaurant-pos", label: "المطاعم", id: "restaurants" },
+        { href: "/ar/grocery-pos", label: "السوبرماركت", id: "grocery" },
+        { href: "/ar/blog", label: "الأدلة", id: "guides" },
+        { href: "/#pricing", label: "الأسعار", id: "pricing" },
+        { href: "/#contact", label: "تواصل", id: "contact" },
+      ]
+    : LINKS.filter((link) => link.id !== "hardware" || showHardware);
+  const hrefFor = (href: string) => (href.startsWith("/") ? href : atHome ? href : `/${href}`);
 
   useEffect(() => {
     const nodes = links.map((link) => document.getElementById(link.id)).filter((node) => node !== null);
@@ -82,11 +93,11 @@ export function Navbar({
         <nav aria-label="Page" className="hidden items-center gap-6 text-sm font-medium lg:flex xl:gap-8">
           {links.map((link) =>
             link.id === "intelligence" ? (
-              <a key={link.href} href={atHome ? link.href : `/${link.href}`} aria-current={atHome && active === link.id ? "true" : undefined} className="whitespace-nowrap">
+              <a key={link.href} href={hrefFor(link.href)} aria-current={atHome && active === link.id ? "true" : undefined} className="whitespace-nowrap">
                 <AiBadge current={atHome && active === link.id} />
               </a>
             ) : (
-              <a key={link.href} href={atHome ? link.href : `/${link.href}`} aria-current={atHome && active === link.id ? "true" : undefined} className={linkClass(atHome && active === link.id)}>
+              <a key={link.href} href={hrefFor(link.href)} aria-current={atHome && active === link.id ? "true" : undefined} className={linkClass(atHome && active === link.id)}>
                 {link.label}
               </a>
             ),
@@ -95,7 +106,7 @@ export function Navbar({
 
         <div className="flex items-center gap-1 sm:gap-2">
           <span className="hidden sm:inline-flex">
-            <LanguageSwitch compact />
+            <SiteLanguage />
           </span>
           <button
             type="button"
@@ -110,7 +121,7 @@ export function Navbar({
             href={portalUrl}
             className="hidden px-3 py-2 text-sm font-medium text-slate-600 transition-colors hover:text-slate-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-orange-500 dark:text-slate-300 dark:hover:text-white lg:inline-flex"
           >
-            Sign In
+            {arabic ? "دخول" : "Sign In"}
           </a>
           <GetStartedLink className="inline-flex cursor-pointer items-center whitespace-nowrap rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 px-3 py-2.5 text-sm font-semibold text-white shadow-lg shadow-orange-500/20 transition-all hover:from-orange-600 hover:to-amber-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-orange-500 motion-safe:hover:scale-[1.02] motion-safe:active:scale-[0.98] sm:px-5" />
           <button
@@ -132,7 +143,7 @@ export function Navbar({
             {links.map((link) => (
               <li key={link.href}>
                 <a
-                  href={atHome ? link.href : `/${link.href}`}
+                  href={hrefFor(link.href)}
                   onClick={() => setOpen(false)}
                   aria-current={atHome && active === link.id ? "true" : undefined}
                   className="flex h-11 items-center rounded-xl px-3 text-sm font-medium text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800"
@@ -144,11 +155,11 @@ export function Navbar({
             <li>
               <a href={portalUrl} className="flex h-11 items-center gap-2 rounded-xl px-3 text-sm font-medium text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800">
                 <LogIn className="h-4 w-4" aria-hidden="true" />
-                Sign In
+                {arabic ? "دخول" : "Sign In"}
               </a>
             </li>
             <li className="px-3 py-2 sm:hidden">
-              <LanguageSwitch />
+              <SiteLanguage />
             </li>
             <li>
               <button
@@ -165,6 +176,34 @@ export function Navbar({
         </nav>
       ) : null}
     </header>
+  );
+}
+
+function SiteLanguage() {
+  const path = window.location.pathname.replace(/\/+$/, "") || "/";
+  const page = pageByPath(path);
+  const other = page ? translationOf(page) : pageByPath(path === "/" ? "/ar" : "/");
+  const english = page?.locale === "ar" ? other : page ?? pageByPath("/");
+  const arabic = page?.locale === "ar" ? page : other ?? pageByPath("/ar");
+  const item = (href: string | undefined, label: string, current: boolean) =>
+    href ? (
+      <a
+        href={href}
+        hrefLang={label === "EN" ? "en" : "ar"}
+        aria-current={current ? "page" : undefined}
+        className={`inline-flex h-8 items-center rounded-full px-2 text-xs font-semibold ${
+          current ? "bg-white text-charcoal shadow-sm dark:bg-zinc-700 dark:text-white" : "text-charcoal/60 dark:text-zinc-400"
+        }`}
+      >
+        {label}
+      </a>
+    ) : null;
+  return (
+    <div role="group" aria-label="Language" dir="ltr" className="inline-flex h-10 items-center gap-0.5 rounded-full bg-charcoal/[0.04] p-0.5 dark:bg-zinc-800">
+      {item(english?.path, "EN", page?.locale !== "ar")}
+      <span aria-hidden="true" className="text-charcoal/25 dark:text-zinc-600">|</span>
+      {item(arabic?.path, "AR", page?.locale === "ar")}
+    </div>
   );
 }
 
