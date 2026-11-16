@@ -6,6 +6,7 @@ import { IndustryBanner } from "./IndustryBanner";
 import { SiteHeader } from "./SiteHeader";
 import { Home2Pricing } from "./Home2Pricing";
 import { QuoteDialog } from "../components/QuoteDialog";
+import { WhatsAppButton } from "../components/WhatsAppButton";
 import { apiBaseUrl } from "../env";
 import { EMPTY_WHATSAPP, parsePublicWhatsApp, type PublicWhatsApp } from "../whatsapp";
 
@@ -95,6 +96,7 @@ export function Home2Page() {
   }, []);
 
   return (
+    <>
     <div className="home2">
       <a className="h2-skip" href="#h2-main">
         Skip to content
@@ -111,6 +113,8 @@ export function Home2Page() {
       <Footer onDemo={(note) => ask(note)} />
       {quote !== null ? <QuoteDialog contact={contact} contactStatus={contactStatus} draft={quote} onClose={() => setQuote(null)} /> : null}
     </div>
+    <WhatsAppButton contact={contact} />
+    </>
   );
 }
 

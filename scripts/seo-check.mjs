@@ -117,6 +117,7 @@ check(
   slugs.every((slug) => nginx.includes(slug)) && nginx.includes("/index\\.html$") && nginx.includes("return 301 $scheme://axizpos.com/$1$is_args$args;"),
 );
 check("nginx serves the blog and Arabic trees", nginx.includes("location ^~ /blog/") && nginx.includes("location ^~ /ar/") && nginx.includes("location = /ar {"));
+check("nginx serves marketing images", nginxFiles["ai-pos.apex.conf"].includes("location /images/"));
 for (const section of ["solutions", "features", "industries", "pricing", "contact"]) {
   check(`nginx redirects /${section}`, nginx.includes(section) && nginx.includes("return 301 $scheme://axizpos.com/#$1;"));
 }

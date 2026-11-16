@@ -51,6 +51,9 @@ jobs:
           test -f apps/site/dist/index.html
           test -d apps/site/dist/site-assets
           test -f apps/site/dist/pos/register.jpg
+          test -f apps/site/dist/images/home-2/cafe.png
+          test -f apps/site/dist/images/home-2/isometric-city.png
+          test -f apps/site/dist/images/home-3/cafe.jpg
           test -f apps/site/dist/sitemap.xml
           test -f apps/site/dist/robots.txt
           test -f apps/site/dist/restaurant-pos/index.html
