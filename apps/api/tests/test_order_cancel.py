@@ -8,6 +8,7 @@ from tests.test_kds import stations, status
 from tests.test_menu import enable
 from tests.test_orders import line, open_order, settle, setup
 from tests.test_returns import CASHIER_ID, STORE_ID, admin_id, device, push
+from tests.wsutil import authed
 
 from app.models import AuditLog, OpenOrder, Sale
 
@@ -139,7 +140,7 @@ def test_dispatched_order_waits_for_a_return_and_a_manager(client, session: Sess
 def test_completed_sale_is_a_refund_not_a_void(client, session: Session) -> None:
     _token, table = setup(client)
     order = open_order(client, table, line())
-    paid = push(client, "sale", settle(order, [order["items"][0]["id"]]))
+    paid = push(client, "sale", settle(order, [order["items"][0]["id"]]), occurred_at="2026-11-18T08:00:00Z")
     assert paid.status_code == 200, paid.text
     session.expire_all()
     closed = session.get(OpenOrder, uuid.UUID(order["id"]))
@@ -185,11 +186,11 @@ def test_a_stale_revision_does_not_cancel_twice(client, session: Session) -> Non
 
 
 def test_customer_event_omits_the_reason(client) -> None:
-    from tests.test_returns import API_KEY
+    from tests.test_returns import API_KEY, STORE_ID
 
     _token, table = setup(client)
     order = open_order(client, table, line())
-    with client.websocket_connect(f"/api/v1/ws/stores/{STORE_ID}/tables?token={API_KEY}") as socket:
+    with authed(client, f"/api/v1/ws/stores/{STORE_ID}/tables?role=customer", API_KEY, "customer") as socket:
         cancelled = _void(client, order, reason="[price] Incorrect pricing.")
         assert cancelled.status_code == 200, cancelled.text
         event = socket.receive_json()

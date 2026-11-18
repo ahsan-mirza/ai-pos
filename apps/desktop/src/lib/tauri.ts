@@ -98,6 +98,25 @@ export function currentSession(): Promise<CashierSession | null> {
   return invoke<CashierSession | null>("current_session");
 }
 
+/** Exchanges one connection file. The app restarts onto the server-verified demo tenant. */
+export function enrollDemoFile(path: string): Promise<TerminalStatus> {
+  return invoke<TerminalStatus>("enroll_demo_file", { path });
+}
+
+export function takeDemoNotice(): Promise<string | null> {
+  return invoke<string | null>("take_demo_notice");
+}
+
+/** Server-issued demo POS session. Production registers keep the cashier PIN. */
+export function openDemoSession(): Promise<CashierSession> {
+  return invoke<CashierSession>("open_demo_session");
+}
+
+/** Clears this PC's demo token and local demo database. Shared server data stays. */
+export function exitDemo(): Promise<void> {
+  return invoke("exit_demo");
+}
+
 export function lockSession(): Promise<void> {
   return invoke("lock_session");
 }
@@ -133,6 +152,7 @@ export interface TerminalStatus {
   register_id: string;
   register_code: string;
   register_name: string;
+  demo?: boolean;
 }
 
 export function terminalStatus(): Promise<TerminalStatus> {
@@ -247,7 +267,7 @@ export function cacheTableEvent(storeId: string, payload: string): Promise<void>
 
 async function invoke<T>(command: string, args?: Record<string, unknown>): Promise<T> {
   if (bridge() === null) {
-    throw new Error("This action only works in the AI POS desktop window.");
+    throw new Error("This action only works in the AxizPOS POS Register window.");
   }
   const core = await import("@tauri-apps/api/core");
   return core.invoke<T>(command, args);

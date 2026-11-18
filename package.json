@@ -24,7 +24,7 @@
     "build:console:prod": "pnpm --filter @ai-pos/super-admin build",
     "build:site:prod": "pnpm --filter @ai-pos/site build",
     "build:pos:dev": "pnpm --filter @ai-pos/desktop tauri:build:dev",
-    "build:pos:prod": "pnpm --filter @ai-pos/desktop tauri:build",
+    "build:pos:prod": "pnpm --filter @ai-pos/desktop build:win",
     "build:win": "pnpm --filter @ai-pos/desktop build:win",
     "build": "turbo run build",
     "lint": "turbo run lint",

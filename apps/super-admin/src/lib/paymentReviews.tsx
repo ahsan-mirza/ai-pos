@@ -1,7 +1,7 @@
 import { Bell } from "lucide-react";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
-import { api, reviewSocketUrl } from "./api";
+import { api, reviewSocketAuth, reviewSocketUrl } from "./api";
 import { money, when } from "./format";
 import {
   markNoticeRead,
@@ -75,6 +75,8 @@ export function PaymentReviewProvider({ children }: { children: ReactNode }) {
       const current = new WebSocket(url);
       socket = current;
       current.onopen = () => {
+        const frame = reviewSocketAuth();
+        if (frame) current.send(frame);
         attempt = 0;
         stopPoll();
         void refresh();

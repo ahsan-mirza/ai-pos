@@ -38,6 +38,8 @@ const STORE_EXAMPLES: Record<string, string> = {
   counter_cafe: "Al Noor Cafe",
   sit_down_cafe: "Al Noor Cafe",
   quick_service: "Al Noor Burger",
+  pharmacy: "Al Noor Pharmacy",
+  community_pharmacy: "Al Noor Pharmacy",
   qsr_counter: "Al Noor Burger",
   qsr_delivery: "Al Noor Wraps",
 };

@@ -1,4 +1,4 @@
-import { normalizeStoreCode } from "@ai-pos/shared-types";
+import { normalizeStoreCode, STORE_CODE_STORAGE_KEY } from "@ai-pos/shared-types";
 
 function required(name: keyof ImportMetaEnv): string {
   const value = import.meta.env[name];
@@ -8,7 +8,7 @@ function required(name: keyof ImportMetaEnv): string {
   return value.trim();
 }
 
-const STORE_CODE_KEY = "ai-pos.store-code";
+const STORE_CODE_KEY = STORE_CODE_STORAGE_KEY;
 
 const TENANT_BASE_DOMAINS = (import.meta.env.VITE_TENANT_BASE_DOMAINS ?? "axizpos.com,localhost")
   .split(",")
@@ -54,6 +54,10 @@ function needsStoreCode(): boolean {
 
 export function saveStoreCode(code: string): void {
   localStorage.setItem(STORE_CODE_KEY, normalizeStoreCode(code));
+}
+
+export function clearStoreCode(): void {
+  localStorage.removeItem(STORE_CODE_KEY);
 }
 
 /**

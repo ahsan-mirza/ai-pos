@@ -12,6 +12,8 @@ import { EInvoicingPage } from "./features/einvoicing/EInvoicingPage";
 import { AuditPage } from "./features/audit/AuditPage";
 import { AccountPage } from "./features/account/AccountPage";
 import { LoginPage } from "./features/auth/LoginPage";
+import { DemoEntry } from "./features/demo/DemoEntry";
+import { consumeDemoExit } from "./features/demo/returnTo";
 import { signedInLanding, signedOutLocation } from "./lib/entry";
 import { portalHomePath } from "./lib/portal-home";
 import { CustomersPage } from "./features/customers/CustomersPage";
@@ -183,6 +185,11 @@ function Portal() {
   const welcomed = useCallback(() => setWelcoming(false), []);
   useLayoutEffect(() => {
     if (status !== "signed-out") return;
+    const exit = consumeDemoExit();
+    if (exit) {
+      window.location.replace(exit);
+      return;
+    }
     const target = signedOutLocation(window.location.pathname, window.location.search, window.location.hostname);
     if (target === null) return;
     const current = `${window.location.pathname}${window.location.search}`;
@@ -190,6 +197,7 @@ function Portal() {
     window.history.replaceState(null, "", target);
   }, [status]);
   if (welcoming) return <WelcomeHandoff onDone={welcomed} />;
+  if (window.location.pathname === "/demo" || window.location.pathname.startsWith("/demo/")) return <DemoEntry />;
   if (status === "checking") {
     return (
       <div className="flex min-h-screen items-center justify-center bg-canvas px-6 text-center text-sm text-charcoal/60">

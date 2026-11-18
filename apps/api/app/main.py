@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import re
 import uuid
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -27,6 +28,7 @@ from app.core.errors import (
 from app.core.pagination import TOTAL_COUNT_HEADER
 from app.jobs import scheduler
 from app.routers.media import router as media_router
+from app.routers.public_catalog import router as public_catalog_router
 from app.routers.repair_public import router as repair_public_router
 from app.routers.signup import router as signup_router
 from app.routers.super_admin import router as super_admin_router
@@ -39,10 +41,33 @@ from app.websockets.table_sync import bind_loop
 
 logger = logging.getLogger("ai_pos")
 
+_SECRET_QUERY = re.compile(r"(?i)(token|access_token|authorization|password|api_key)=([^&\s]+)")
+_BEARER = re.compile(r"(?i)(Bearer\s+)[A-Za-z0-9._\-]+")
+
+
+def _redact_text(value: str) -> str:
+    return _BEARER.sub(r"\1redacted", _SECRET_QUERY.sub(r"\1=redacted", value))
+
+
+class _RedactSecrets(logging.Filter):
+    def filter(self, record: logging.LogRecord) -> bool:
+        if isinstance(record.msg, str):
+            record.msg = _redact_text(record.msg)
+        if isinstance(record.args, tuple):
+            record.args = tuple(_redact_text(item) if isinstance(item, str) else item for item in record.args)
+        elif isinstance(record.args, dict):
+            record.args = {
+                key: _redact_text(item) if isinstance(item, str) else item for key, item in record.args.items()
+            }
+        return True
+
 
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s %(message)s")
+    redact = _RedactSecrets()
+    for name in ("ai_pos", "uvicorn", "uvicorn.access", "uvicorn.error"):
+        logging.getLogger(name).addFilter(redact)
     settings = get_settings()
     for name in ("jwt_secret", "pin_salt", "encryption_secret", "api_key", "admin_password"):
         if str(getattr(settings, name)).startswith("change-me"):
@@ -196,6 +221,7 @@ def create_app() -> FastAPI:
         return latest_windows_file(settings)
 
     app.include_router(api_router, prefix="/api/v1")
+    app.include_router(public_catalog_router, prefix="/api/v1/public")
     app.include_router(repair_public_router)
     app.include_router(media_router)
     app.include_router(signup_router, prefix="/api/v1/signup", tags=["signup"])

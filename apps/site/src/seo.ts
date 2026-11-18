@@ -21,6 +21,48 @@ const CORE_PAGES: SeoPage[] = [
     crumb: "Home",
   },
   {
+    id: "explore",
+    path: "/explore",
+    title: "Explore AxizPOS | Live demos for restaurant, grocery, electronics and fashion",
+    description:
+      "Choose a business and open a shared AxizPOS demo. Explore billing, inventory, sales and day-to-day management without creating an account.",
+    h1: "Experience AxizPOS in Action",
+    kicker: "Live demos",
+    lead: "Choose your business and explore how AxizPOS simplifies billing, inventory, sales and business management.",
+    sections: [
+      {
+        heading: "Four shared businesses",
+        paragraphs: [
+          "Restaurant & Café, Supermarket & Grocery, Electronics & Wholesale, and Fashion & Retail each open the real AxizPOS portal. Every visitor of a business sees the same demonstration data, and that data is reset from time to time.",
+        ],
+      },
+    ],
+    points: ["No registration", "No password", "Restricted demo access"],
+    image: TERMINAL,
+    crumb: "Explore",
+  },
+  {
+    id: "hardware",
+    path: "/hardware",
+    title: "POS Hardware UAE | Terminals, Printers and Packages | AxizPOS",
+    description:
+      "Browse published AxizPOS POS hardware, specifications, and packages. Request a quotation for terminals, printers, scanners, and software plans.",
+    h1: "POS hardware for the counter you already run",
+    kicker: "Hardware",
+    lead: "Published terminals, printers, scanners, and packages. A public price is shown only when AxizPOS has set one.",
+    sections: [
+      {
+        heading: "Published hardware",
+        paragraphs: [
+          "The hardware page lists products and packages an AxizPOS operator has published. Draft products stay off this page. An enquiry records a quotation request and does not open a store.",
+        ],
+      },
+    ],
+    points: ["Categories and specifications", "Packages with existing software plans", "Quotation request with a reference"],
+    image: TERMINAL,
+    crumb: "Hardware",
+  },
+  {
     id: "restaurant-pos",
     path: "/restaurant-pos",
     title: "Restaurant POS System UAE | AxizPOS",

@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, Uuid
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Uuid, false
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base, TenantScoped, TimestampMixin, tenant_unique
@@ -28,6 +28,8 @@ class Device(TenantScoped, TimestampMixin, Base):
     entitlement_revision: Mapped[int | None] = mapped_column(Integer, nullable=True)
     entitlement_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Set only by demo enrollment. A client request cannot turn a production register into a demo register.
+    is_demo: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=false())
     created_by_id: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True), ForeignKey("users.id"), nullable=True)
 
 
@@ -48,3 +50,20 @@ class DeviceActivation(TenantScoped, TimestampMixin, Base):
     used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     used_by_machine: Mapped[str | None] = mapped_column(String(120), nullable=True)
     created_by_id: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True), ForeignKey("users.id"), nullable=True)
+
+
+class DemoPosTicket(TenantScoped, TimestampMixin, Base):
+    """Single-use demo enrollment ticket. Only the SHA-256 of the ticket is stored."""
+
+    __tablename__ = "demo_pos_tickets"
+    __table_args__ = (tenant_unique("code_hash", name="uq_demo_pos_tickets_code_hash"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    device_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("devices.id", ondelete="CASCADE"), index=True
+    )
+    code_hash: Mapped[str] = mapped_column(String(64))
+    application_scope: Mapped[str] = mapped_column(String(16), default="pos")
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    used_by_machine: Mapped[str | None] = mapped_column(String(120), nullable=True)

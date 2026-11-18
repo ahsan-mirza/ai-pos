@@ -5,6 +5,14 @@ import { SessionProvider, useSession } from "./lib/session";
 import { AddonsPage, BillingPage, PackagesPage, SubscriptionsPage } from "./pages/CommercialPage";
 import { CommercialControlsPage } from "./pages/CommercialControlsPage";
 import { HardwarePage } from "./pages/HardwarePage";
+import { HardwareCatalogLayout } from "./pages/hardwareCatalog/Layout";
+import { HardwareCategoriesPage } from "./pages/hardwareCatalog/CategoriesPage";
+import { HardwareEnquiriesPage } from "./pages/hardwareCatalog/EnquiriesPage";
+import { HardwareOverviewPage } from "./pages/hardwareCatalog/OverviewPage";
+import { HardwarePackageEditor } from "./pages/hardwareCatalog/PackageEditor";
+import { HardwarePackagesPage } from "./pages/hardwareCatalog/PackagesPage";
+import { HardwareProductEditor } from "./pages/hardwareCatalog/ProductEditor";
+import { HardwareProductsPage } from "./pages/hardwareCatalog/ProductsPage";
 import { PaymentsPage } from "./pages/PaymentsPage";
 import { MailPage } from "./pages/MailPage";
 import { BusinessTypesPage } from "./pages/BusinessTypesPage";
@@ -45,6 +53,15 @@ function Console() {
           <Route path="modules" element={<ModulesPage />} />
           <Route path="business-types" element={<BusinessTypesPage />} />
           <Route path="hardware" element={<HardwarePage />} />
+          <Route path="hardware-catalog" element={<HardwareCatalogLayout />}>
+            <Route index element={<HardwareOverviewPage />} />
+            <Route path="categories" element={<HardwareCategoriesPage />} />
+            <Route path="products" element={<HardwareProductsPage />} />
+            <Route path="products/:productId" element={<HardwareProductEditor />} />
+            <Route path="packages" element={<HardwarePackagesPage />} />
+            <Route path="packages/:packageId" element={<HardwarePackageEditor />} />
+            <Route path="enquiries" element={<HardwareEnquiriesPage />} />
+          </Route>
           <Route path="subscriptions" element={<SubscriptionsPage />} />
           <Route path="payments" element={<PaymentsPage />} />
           <Route path="settings" element={<SettingsPage />}>

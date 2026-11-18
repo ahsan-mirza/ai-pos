@@ -30,6 +30,8 @@ export const Permission = {
   MessagingManage: "messaging:manage",
   DeliveryView: "delivery:view",
   DeliveryManage: "delivery:manage",
+  PharmacyConfigure: "pharmacy:configure",
+  PharmacyCatalogue: "pharmacy:catalogue",
   CurrenciesManage: "currencies:manage",
   PayablesManage: "payables:manage",
   ExpensesManage: "expenses:manage",
@@ -148,6 +150,10 @@ export interface TokenResponse {
   scope: TokenScope;
   expires_in: number;
   user: User;
+  /** Present only on a demo exchange. A normal login omits it. */
+  demo?: boolean;
+  business_code?: string;
+  business_name?: string;
 }
 
 export interface UserCreate {

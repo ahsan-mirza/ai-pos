@@ -42,6 +42,23 @@ class ActivationKeyOut(ApiModel):
     tenant_domain: str
 
 
+class PosEnrollRequest(ApiModel):
+    """A public demo code. Tenant and register identity are chosen by the server."""
+
+    business_code: str = Field(min_length=1, max_length=32)
+
+
+class PosEnrollResponse(ApiModel):
+    enrollment_ticket: str
+    expires_in: int
+    business_code: str
+
+
+class PosExchangeRequest(ApiModel):
+    enrollment_ticket: str = Field(min_length=12, max_length=180)
+    machine_name: str = Field(default="", max_length=120)
+
+
 class TerminalActivate(ApiModel):
     activation_key: str = Field(min_length=8, max_length=32)
     machine_name: str = Field(default="", max_length=120)

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import ForeignKey, String, Uuid
+from sqlalchemy import JSON, Boolean, ForeignKey, Integer, String, Uuid
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, TenantScoped, TimestampMixin, tenant_unique
@@ -19,11 +19,16 @@ class Category(TenantScoped, TimestampMixin, Base):
     name: Mapped[str] = mapped_column(String(80))
     code: Mapped[str] = mapped_column(String(32))
     description: Mapped[str] = mapped_column(String(255), default="")
+    display_order: Mapped[int] = mapped_column(Integer, default=0)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    image_key: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    product_kinds: Mapped[list[str]] = mapped_column(JSON, default=list)
+    form_policy: Mapped[str] = mapped_column(String(16), default="")
     sub_categories: Mapped[list[SubCategory]] = relationship(
         "SubCategory",
         back_populates="category",
         cascade="all, delete-orphan",
-        order_by="SubCategory.name",
+        order_by=lambda: (SubCategory.display_order, SubCategory.name),
         lazy="selectin",
     )
 
@@ -44,4 +49,6 @@ class SubCategory(TenantScoped, TimestampMixin, Base):
     name: Mapped[str] = mapped_column(String(80))
     code: Mapped[str] = mapped_column(String(32))
     description: Mapped[str] = mapped_column(String(255), default="")
+    display_order: Mapped[int] = mapped_column(Integer, default=0)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     category: Mapped[Category] = relationship("Category", back_populates="sub_categories")

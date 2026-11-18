@@ -7,6 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from app.schemas.catalogue import FashionAttributes, FashionAttributesOut
 from app.schemas.payloads import Emirate, SerialKind, SerialStatus, TaxCategory, UnitType
+from app.schemas.pharmacy import PharmacyWrite
 
 MovementType = Literal[
     "PURCHASE_IN",
@@ -58,6 +59,8 @@ class SubCategoryOut(ApiModel):
     code: str
     description: str
     product_count: int
+    display_order: int = 0
+    is_active: bool = True
 
 
 class CategoryOut(ApiModel):
@@ -67,6 +70,11 @@ class CategoryOut(ApiModel):
     description: str
     product_count: int
     created_at: datetime
+    display_order: int = 0
+    is_active: bool = True
+    image_key: str | None = None
+    product_kinds: list[str] = []
+    form_policy: str = ""
     sub_categories: list[SubCategoryOut]
 
 
@@ -74,6 +82,8 @@ class CategoryWrite(ApiModel):
     name: str = Field(min_length=2, max_length=80)
     code: str | None = Field(default=None, max_length=32)
     description: str = Field(default="", max_length=255)
+    display_order: int = Field(default=0, ge=0, le=9999)
+    is_active: bool = True
 
     @field_validator("name")
     @classmethod
@@ -90,6 +100,8 @@ class CategoryUpdate(ApiModel):
     name: str | None = Field(default=None, min_length=2, max_length=80)
     code: str | None = Field(default=None, max_length=32)
     description: str | None = Field(default=None, max_length=255)
+    display_order: int | None = Field(default=None, ge=0, le=9999)
+    is_active: bool | None = None
 
     @field_validator("name")
     @classmethod
@@ -704,6 +716,7 @@ class ProductCreate(FashionAttributes):
     opening_store_id: UUID | None = None
     opening_quantity: int = Field(default=0, ge=0, le=1_000_000_000)
     min_reorder_level: int = Field(default=0, ge=0, le=1_000_000)
+    pharmacy: PharmacyWrite | None = None
 
     @field_validator("price_cents")
     @classmethod
@@ -759,6 +772,7 @@ class ProductUpdate(FashionAttributes):
     item_type: ItemType | None = None
     sellable_units: list[UnitType] | None = Field(default=None, max_length=8)
     is_active: bool | None = None
+    pharmacy: PharmacyWrite | None = None
 
     @field_validator("price_cents")
     @classmethod

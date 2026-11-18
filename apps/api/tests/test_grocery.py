@@ -1,6 +1,7 @@
 """Grocery till rules: age checks, bag fees, produce waste, and co-purchase suggestions."""
 
 import uuid
+from datetime import UTC, datetime
 
 from sqlalchemy.orm import Session
 from tests.test_batches import cable_batch, on_hand
@@ -89,7 +90,7 @@ def sell(client, product_id: str, price: int, *, age_check: dict | None = None, 
         "client_sale_id": sale_id,
         "items": [item],
     }
-    return push(client, "sale", payload)
+    return push(client, "sale", payload, occurred_at=datetime.now(UTC).isoformat())
 
 
 def test_restricted_products_need_an_age_check(client) -> None:
@@ -228,7 +229,7 @@ def test_suggestions_are_grocery_only_and_need_three_shared_sales(client) -> Non
                 },
             ],
         }
-        response = push(client, "sale", payload)
+        response = push(client, "sale", payload, occurred_at=datetime.now(UTC).isoformat())
         assert response.status_code == 200, response.text
 
     together()

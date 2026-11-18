@@ -12,9 +12,10 @@
     "test": "vitest run",
     "sync-version": "node ../../scripts/sync-pos-version.mjs",
     "tauri:dev": "pnpm sync-version && tauri dev",
-    "tauri:build": "pnpm sync-version && cross-env POS_ENV=production tauri build",
-    "build:win": "pnpm sync-version && cross-env POS_ENV=production tauri build --bundles nsis --target x86_64-pc-windows-msvc && node ../../scripts/stage-pos-setup.mjs",
-    "tauri:build:dev": "pnpm sync-version && cross-env POS_ENV=dev tauri build --config src-tauri/tauri.dev.conf.json"
+    "tauri:build": "pnpm sync-version && node ../../scripts/require-pos-signing.mjs && cross-env POS_ENV=production tauri build --bundles nsis",
+    "build:win": "pnpm sync-version && node ../../scripts/require-pos-signing.mjs && cross-env POS_ENV=production tauri build --bundles nsis --target x86_64-pc-windows-msvc && node ../../scripts/verify-pos-installer.mjs && node ../../scripts/stage-pos-setup.mjs",
+    "build:win:unsigned": "pnpm sync-version && cross-env POS_ENV=production tauri build --no-sign --bundles nsis --target x86_64-pc-windows-msvc",
+    "tauri:build:dev": "pnpm sync-version && cross-env POS_ENV=dev tauri build --no-sign --config src-tauri/tauri.dev.conf.json"
   },
   "dependencies": {
     "@ai-pos/catalog": "workspace:*",
@@ -25,6 +26,7 @@
     "@fontsource/inter": "5.2.8",
     "@fontsource/noto-naskh-arabic": "5.2.8",
     "@tauri-apps/api": "^2.5.0",
+    "@tauri-apps/plugin-dialog": "^2.2.0",
     "framer-motion": "^12.23.12",
     "lucide-react": "^0.511.0",
     "qrcode": "^1.5.4",

@@ -2,6 +2,7 @@ import ipaddress
 import logging
 import os
 import re
+from datetime import UTC, datetime
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal
@@ -84,12 +85,26 @@ class Settings(BaseSettings):
     api_host: str = "0.0.0.0"
     api_port: int = Field(default=8000, ge=1, le=65535)
     cors_origins: str
+    # Public website origins. These stay explicit so a stale CORS_ORIGINS list cannot drop the marketing site.
+    public_web_origins: str = "https://axizpos.com,https://www.axizpos.com"
     access_token_expire_minutes: int = Field(default=30, ge=1, le=24 * 60)
+    # Public demo exchange. One visitor, and one business code, cannot mint unlimited sessions.
+    demo_exchange_ip_limit: int = Field(default=20, ge=1, le=1000)
+    demo_exchange_code_limit: int = Field(default=120, ge=1, le=5000)
+    demo_exchange_window_seconds: int = Field(default=600, ge=60, le=3600)
+    demo_pos_ticket_ttl_seconds: int = Field(default=600, ge=60, le=3600)
+    demo_pos_enroll_ip_limit: int = Field(default=20, ge=1, le=1000)
+    demo_pos_enroll_code_limit: int = Field(default=60, ge=1, le=5000)
+    demo_pos_exchange_ip_limit: int = Field(default=30, ge=1, le=1000)
+    demo_pos_exchange_code_limit: int = Field(default=60, ge=1, le=5000)
     sync_max_batch_size: int = Field(default=100, ge=1, le=1000)
     login_max_attempts: int = Field(default=5, ge=1, le=50)
     login_lockout_minutes: int = Field(default=15, ge=1, le=24 * 60)
     # Offline sales older than this are refused and need a manual entry.
     sale_max_age_days: int = Field(default=30, ge=1, le=365)
+    # Empty refuses a WebSocket token in the URL. A future UTC timestamp keeps installed registers working
+    # until that moment, then refusal is automatic.
+    ws_query_token_until: str = ""
     credit_hold_overdue_days: int = Field(default=30, ge=1, le=365)
     # Production sets this false so only per-device keys (devices table) authenticate registers.
     allow_shared_api_key: bool = True
@@ -279,6 +294,15 @@ class Settings(BaseSettings):
                 raise ValueError(f"CORS origin is invalid: {origin}")
         return ",".join(origins)
 
+    @field_validator("public_web_origins")
+    @classmethod
+    def public_web_origins_list(cls, value: str) -> str:
+        origins = [item.strip() for item in value.split(",") if item.strip()]
+        for origin in origins:
+            if origin == "*" or not re.fullmatch(r"https://[a-z0-9.-]+", origin):
+                raise ValueError("A public web origin must be an explicit https host.")
+        return ",".join(origins)
+
     @model_validator(mode="after")
     def console_secret_is_its_own(self) -> "Settings":
         if self.console_jwt_secret is not None and self.console_jwt_secret == self.jwt_secret:
@@ -318,9 +342,24 @@ class Settings(BaseSettings):
         return self
 
     @property
+    def query_token_allowed(self) -> bool:
+        text = self.ws_query_token_until.strip()
+        if text == "":
+            return False
+        try:
+            until = datetime.fromisoformat(text.replace("Z", "+00:00"))
+        except ValueError:
+            return False
+        if until.tzinfo is None:
+            until = until.replace(tzinfo=UTC)
+        return datetime.now(UTC) < until
+
+    @property
     def cors_origin_list(self) -> list[str]:
         origins = [item.strip() for item in self.cors_origins.split(",") if item.strip()]
+        origins.extend(item.strip() for item in self.public_web_origins.split(",") if item.strip())
         origins.extend(item.strip() for item in self.console_origins.split(",") if item.strip())
+        origins = list(dict.fromkeys(origins))
         if self.app_env == "production":
             return origins
         # localhost and 127.0.0.1 are different browser origins. Dev pages use both.

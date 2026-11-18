@@ -20,6 +20,8 @@ describe("sign-in return path", () => {
     expect(signedOutLocation("/admin74246/overview", "", apex)).toBeNull();
     expect(signedOutLocation("/signup", "", apex)).toBeNull();
     expect(signedOutLocation("/welcome", "?handoff=once", apex)).toBeNull();
+    expect(signedOutLocation("/demo/restaurant", "", apex)).toBeNull();
+    expect(signedOutLocation("/explore", "", apex)).toBeNull();
     expect(signedOutLocation("/kds", "", store)).toBeNull();
     expect(signedOutLocation("/table/4", "", store)).toBeNull();
   });

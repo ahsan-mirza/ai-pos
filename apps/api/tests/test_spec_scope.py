@@ -14,6 +14,7 @@ def test_every_profile_rejects_another_types_attributes() -> None:
         "restaurant",
         "cafe",
         "quick_service",
+        "pharmacy",
     }
     assert "services" not in PROFILE_LABELS
     cases = {
@@ -24,6 +25,7 @@ def test_every_profile_rejects_another_types_attributes() -> None:
         "retail_fashion": ["battery", "patty_type", "milk_type", "net_weight"],
         "electronics_wholesale": ["patty_type", "milk_type", "fabric", "net_weight"],
         "wholesale_retail": ["battery", "patty_type", "fabric", "milk_type", "net_weight"],
+        "pharmacy": ["battery", "patty_type", "fabric", "milk_type", "net_weight"],
     }
     categories = {
         "restaurant": "Burgers",
@@ -33,6 +35,7 @@ def test_every_profile_rejects_another_types_attributes() -> None:
         "retail_fashion": "Dresses",
         "electronics_wholesale": "Smartphones",
         "wholesale_retail": "General",
+        "pharmacy": "Prescription Medicines",
     }
     for profile, foreign in cases.items():
         assert foreign_specification_keys(profile, foreign, category=categories[profile]) == foreign

@@ -73,6 +73,29 @@ CAFE = frozenset(
     }
 )
 GROCERY = frozenset({"net_weight", "storage_temperature", "packaging", "grade", "origin"})
+PHARMACY = frozenset(
+    {
+        "device_model",
+        "compatibility",
+        "warranty_months",
+        "power_source",
+        "sterile",
+        "supply_material",
+        "size_label",
+        "supplement_serving",
+        "nutritional_notes",
+        "shade",
+        "scent",
+        "skin_type",
+        "volume",
+        "age_stage",
+        "dietary_label",
+        "species",
+        "withdrawal_note",
+        "accessory_size",
+        "accessory_material",
+    }
+)
 
 OWNED: dict[str, frozenset[str]] = {
     "electronics_wholesale": ELECTRONICS,
@@ -82,6 +105,7 @@ OWNED: dict[str, frozenset[str]] = {
     "cafe": CAFE,
     "quick_service": RESTAURANT,
     "wholesale_retail": frozenset(),
+    "pharmacy": PHARMACY,
 }
 
 _ALL = frozenset().union(*OWNED.values())
@@ -147,6 +171,8 @@ _GROCERY_ITEM = frozenset({"net_weight", "storage_temperature", "packaging", "gr
 
 def template_keys(profile: str | None, category: str, sub_category: str = "", product_name: str = "") -> frozenset[str]:
     """Field keys for this business type and category. Empty when nothing matches."""
+    if profile == "pharmacy":
+        return PHARMACY
     both = " ".join(_text(part) for part in (category, sub_category, product_name) if part).strip()
     if both == "" or not profile:
         return frozenset()

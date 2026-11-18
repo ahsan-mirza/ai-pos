@@ -36,7 +36,7 @@ const L = (en: string, ar: string): Localized => ({ en, ar });
 const reports = Permission.PortalReportsRead;
 const portal = Permission.PortalAccess;
 
-export const RETAIL_PROFILES = ["electronics_wholesale", "wholesale_retail", "retail_fashion", "grocery"] as const;
+export const RETAIL_PROFILES = ["electronics_wholesale", "wholesale_retail", "retail_fashion", "grocery", "pharmacy"] as const;
 export const FNB_PROFILES = ["restaurant", "cafe", "quick_service"] as const;
 export const FASHION_PROFILES = ["retail_fashion"] as const;
 export const MODEL_PROFILES = ["electronics_wholesale", "retail_fashion"] as const;

@@ -80,10 +80,18 @@ pub struct PinUnlock {
 }
 
 #[derive(Deserialize)]
-struct TokenResponse {
+pub(crate) struct TokenResponse {
     #[serde(default)]
     access_token: String,
+    #[serde(default)]
+    scope: String,
     user: RemoteUser,
+}
+
+impl TokenResponse {
+    pub(crate) fn is_pos_scope(&self) -> bool {
+        self.scope == "pos"
+    }
 }
 
 #[derive(Deserialize)]
@@ -149,6 +157,40 @@ pub fn unlock_by_id(db: &Db, config: &DesktopConfig, user_id: &str, pin: &str) -
         Remote::Accepted(response) => accept_remote(db, response, pin),
         Remote::Refused { message, .. } => Err(message),
         Remote::Unreachable => offline_login_id(db, config, user_id, pin),
+    }
+}
+
+/// A server-issued demo POS session. No PIN is hashed or stored, so this cannot unlock a production cashier.
+pub fn accept_demo_session(response: TokenResponse) -> Result<PinUnlock, String> {
+    if !response.user.permissions.iter().any(|item| item == POS_ACCESS) {
+        return Err("This account cannot unlock a register.".into());
+    }
+    if response.access_token.is_empty() {
+        return Err("The demo session was empty.".into());
+    }
+    let now = now_secs();
+    Ok(PinUnlock {
+        session: Session {
+            user: profile_from(&response, now),
+            mode: "online",
+            unlocked_at: now,
+        },
+        access_token: Some(response.access_token),
+    })
+}
+
+fn profile_from(response: &TokenResponse, now: i64) -> CashierProfile {
+    CashierProfile {
+        id: response.user.id.clone(),
+        username: response.user.username.clone(),
+        full_name: response.user.full_name.clone(),
+        store_id: response.user.store_id.clone(),
+        role_name: response.user.role.name.clone(),
+        permissions: response.user.permissions.clone(),
+        max_discount_bps: response.user.role.max_discount_bps,
+        addon_modules: response.user.addon_modules.clone(),
+        addon_synced_at: now,
+        avatar_url: response.user.avatar_url.clone(),
     }
 }
 

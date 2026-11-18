@@ -10,7 +10,12 @@ export type SiteEvent =
   | "click_explore_plans"
   | "click_contact_sales"
   | "click_billing_period"
-  | "click_solution";
+  | "click_solution"
+  | "click_demo_card"
+  | "click_explore_demo"
+  | "click_pos_download"
+  | "click_pos_connect"
+  | "demo_entered";
 
 export function track(name: SiteEvent, detail?: Record<string, string>): void {
   if (typeof window === "undefined") return;

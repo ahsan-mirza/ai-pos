@@ -1074,5 +1074,218 @@
         ]
       }
     ]
+  },
+  "pharmacy": {
+    "categories": [
+      {
+        "name": "Prescription Medicines",
+        "code": "RX",
+        "description": "Medicines that carry an explicit dispensing class. The category does not set that class.",
+        "display_order": 1,
+        "is_active": true,
+        "form_policy": "medicine",
+        "product_kinds": ["MEDICINE"],
+        "sub_categories": [
+          {"name": "Antibiotics", "code": "RX-ANTI"},
+          {"name": "Cardiovascular medicines", "code": "RX-CARD"},
+          {"name": "Diabetes medicines", "code": "RX-DIAB"},
+          {"name": "Respiratory medicines", "code": "RX-RESP"},
+          {"name": "Gastrointestinal medicines", "code": "RX-GI"},
+          {"name": "Dermatology medicines", "code": "RX-DERM"},
+          {"name": "Neurological medicines", "code": "RX-NEUR"},
+          {"name": "Pain management", "code": "RX-PAIN"},
+          {"name": "Hormonal medicines", "code": "RX-HORM"},
+          {"name": "Ophthalmic medicines", "code": "RX-OPH"},
+          {"name": "ENT medicines", "code": "RX-ENT"},
+          {"name": "Urological medicines", "code": "RX-URO"},
+          {"name": "Women's health", "code": "RX-WOMEN"},
+          {"name": "Men's health", "code": "RX-MEN"},
+          {"name": "Other prescription medicines", "code": "RX-OTHER"}
+        ]
+      },
+      {
+        "name": "Over-the-Counter Medicines",
+        "code": "OTC",
+        "description": "A merchandising group. A product here is not OTC unless its dispensing class says so.",
+        "display_order": 2,
+        "is_active": true,
+        "form_policy": "medicine",
+        "product_kinds": ["MEDICINE"],
+        "sub_categories": [
+          {"name": "Pain relief", "code": "OTC-PAIN"},
+          {"name": "Fever relief", "code": "OTC-FEVER"},
+          {"name": "Cold and flu", "code": "OTC-COLD"},
+          {"name": "Cough and throat", "code": "OTC-COUGH"},
+          {"name": "Allergy relief", "code": "OTC-ALLERGY"},
+          {"name": "Digestive health", "code": "OTC-DIG"},
+          {"name": "Antacids", "code": "OTC-ANT"},
+          {"name": "Oral rehydration", "code": "OTC-ORS"},
+          {"name": "First aid", "code": "OTC-AID"},
+          {"name": "Topical treatments", "code": "OTC-TOP"}
+        ]
+      },
+      {
+        "name": "Vitamins and Supplements",
+        "code": "VIT",
+        "description": "Vitamins and supplements.",
+        "display_order": 3,
+        "is_active": true,
+        "form_policy": "supplement",
+        "product_kinds": ["SUPPLEMENT"],
+        "sub_categories": [
+          {"name": "Multivitamins", "code": "VIT-MULTI"},
+          {"name": "Vitamin C", "code": "VIT-C"},
+          {"name": "Vitamin D", "code": "VIT-D"},
+          {"name": "Vitamin B complex", "code": "VIT-B"},
+          {"name": "Calcium", "code": "VIT-CA"},
+          {"name": "Iron", "code": "VIT-FE"},
+          {"name": "Magnesium", "code": "VIT-MG"},
+          {"name": "Zinc", "code": "VIT-ZN"},
+          {"name": "Omega-3", "code": "VIT-OMEGA"},
+          {"name": "Probiotics", "code": "VIT-PRO"},
+          {"name": "Sports nutrition", "code": "VIT-SPORT"},
+          {"name": "Other supplements", "code": "VIT-OTHER"}
+        ]
+      },
+      {
+        "name": "Medical Devices",
+        "code": "DEV",
+        "description": "Devices sold from the pharmacy.",
+        "display_order": 4,
+        "is_active": true,
+        "form_policy": "device",
+        "product_kinds": ["DEVICE"],
+        "sub_categories": [
+          {"name": "Blood glucose meters", "code": "DEV-BGM"},
+          {"name": "Glucose test strips", "code": "DEV-STRIPS"},
+          {"name": "Blood pressure monitors", "code": "DEV-BP"},
+          {"name": "Thermometers", "code": "DEV-TEMP"},
+          {"name": "Nebulizers", "code": "DEV-NEB"},
+          {"name": "Pulse oximeters", "code": "DEV-OX"},
+          {"name": "Mobility aids", "code": "DEV-MOB"},
+          {"name": "Medical monitoring devices", "code": "DEV-MON"}
+        ]
+      },
+      {
+        "name": "Medical Supplies",
+        "code": "SUP",
+        "description": "Consumable medical supplies.",
+        "display_order": 5,
+        "is_active": true,
+        "form_policy": "general",
+        "product_kinds": ["SUPPLY"],
+        "sub_categories": [
+          {"name": "Bandages", "code": "SUP-BAND"},
+          {"name": "Dressings", "code": "SUP-DRESS"},
+          {"name": "Gauze", "code": "SUP-GAUZE"},
+          {"name": "Syringes", "code": "SUP-SYR"},
+          {"name": "Needles", "code": "SUP-NEEDLE"},
+          {"name": "Gloves", "code": "SUP-GLOVE"},
+          {"name": "Masks", "code": "SUP-MASK"},
+          {"name": "Medical tapes", "code": "SUP-TAPE"},
+          {"name": "Wound care", "code": "SUP-WOUND"},
+          {"name": "Disposable supplies", "code": "SUP-DISP"}
+        ]
+      },
+      {
+        "name": "Mother and Baby",
+        "code": "BABY",
+        "description": "Mother and baby products.",
+        "display_order": 6,
+        "is_active": true,
+        "form_policy": "general",
+        "product_kinds": ["NUTRITION", "PERSONAL_CARE", "ACCESSORY"],
+        "sub_categories": [
+          {"name": "Infant formula", "code": "BABY-FORMULA"},
+          {"name": "Baby food", "code": "BABY-FOOD"},
+          {"name": "Baby skincare", "code": "BABY-SKIN"},
+          {"name": "Baby hygiene", "code": "BABY-HYG"},
+          {"name": "Diapers", "code": "BABY-DIAPER"},
+          {"name": "Maternity care", "code": "BABY-MAT"},
+          {"name": "Breastfeeding accessories", "code": "BABY-FEED"}
+        ]
+      },
+      {
+        "name": "Personal Care",
+        "code": "CARE",
+        "description": "Personal care.",
+        "display_order": 7,
+        "is_active": true,
+        "form_policy": "general",
+        "product_kinds": ["PERSONAL_CARE"],
+        "sub_categories": [
+          {"name": "Skin care", "code": "CARE-SKIN"},
+          {"name": "Hair care", "code": "CARE-HAIR"},
+          {"name": "Oral hygiene", "code": "CARE-ORAL"},
+          {"name": "Dental products", "code": "CARE-DENT"},
+          {"name": "Feminine hygiene", "code": "CARE-FEM"},
+          {"name": "Men's grooming", "code": "CARE-MEN"},
+          {"name": "Personal hygiene", "code": "CARE-HYG"}
+        ]
+      },
+      {
+        "name": "Cosmetics and Dermatological Skincare",
+        "code": "COS",
+        "description": "Cosmetics and dermatological skincare.",
+        "display_order": 8,
+        "is_active": true,
+        "form_policy": "cosmetic",
+        "product_kinds": ["COSMETIC"],
+        "sub_categories": [
+          {"name": "Sunscreen", "code": "COS-SUN"},
+          {"name": "Moisturizers", "code": "COS-MOIST"},
+          {"name": "Dermatological skincare", "code": "COS-DERM"},
+          {"name": "Beauty products", "code": "COS-BEAUTY"},
+          {"name": "Fragrances", "code": "COS-FRAG"},
+          {"name": "Cosmetic accessories", "code": "COS-ACC"}
+        ]
+      },
+      {
+        "name": "Nutrition and Wellness",
+        "code": "NUT",
+        "description": "Nutrition and wellness.",
+        "display_order": 9,
+        "is_active": true,
+        "form_policy": "supplement",
+        "product_kinds": ["NUTRITION"],
+        "sub_categories": [
+          {"name": "Medical nutrition", "code": "NUT-MED"},
+          {"name": "Dietary products", "code": "NUT-DIET"},
+          {"name": "Special nutrition", "code": "NUT-SPEC"},
+          {"name": "Health foods", "code": "NUT-FOOD"}
+        ]
+      },
+      {
+        "name": "Veterinary Products",
+        "code": "VET",
+        "description": "Inactive until a veterinary licence exists. Not offered for sale.",
+        "display_order": 10,
+        "is_active": false,
+        "form_policy": "medicine",
+        "product_kinds": ["VETERINARY"],
+        "sub_categories": [
+          {"name": "Veterinary medicines", "code": "VET-MED"},
+          {"name": "Animal supplements", "code": "VET-SUP"},
+          {"name": "Veterinary supplies", "code": "VET-SUPPLY"}
+        ]
+      },
+      {
+        "name": "Pharmacy Accessories",
+        "code": "ACC",
+        "description": "Pharmacy accessories.",
+        "display_order": 11,
+        "is_active": true,
+        "form_policy": "general",
+        "product_kinds": ["ACCESSORY"],
+        "sub_categories": [
+          {"name": "Pill organizers", "code": "ACC-ORG"},
+          {"name": "Medicine dispensers", "code": "ACC-DISP"},
+          {"name": "First-aid kits", "code": "ACC-KIT"},
+          {"name": "Hot and cold packs", "code": "ACC-PACK"},
+          {"name": "Mobility accessories", "code": "ACC-MOB"},
+          {"name": "Other pharmacy accessories", "code": "ACC-OTHER"}
+        ]
+      }
+    ]
   }
 }

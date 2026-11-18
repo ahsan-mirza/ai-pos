@@ -1,11 +1,13 @@
 import { PROFILE_PRESETS, SIGNUP_BUSINESS_CARDS, capabilitySpec, type Capability } from "@ai-pos/shared-types";
 import { useEffect } from "react";
 import { GetStartedSection } from "../components/GetStartedSection";
+import { ExploreDemoButton } from "../components/ExploreDemoButton";
 import { GET_STARTED_NOTE, GetStartedLink } from "../components/GetStartedLink";
 import { CapabilityIcon } from "../capabilityIcon";
 import type { PublicCatalog } from "../catalog";
 import { profileModules, publicModulePrices } from "../modules";
 import { relatedPages, type SeoPage } from "../seo";
+import { EXPLORE_DEMO_LABEL, EXPLORE_DEMO_LABEL_AR, EXPLORE_DEMO_NOTE, EXPLORE_DEMO_NOTE_AR, solutionDemoCode } from "../solutionDemo";
 import { track } from "../track";
 
 const COPY = {
@@ -57,6 +59,7 @@ export function IndustryPage({ page, catalog, onContact }: { page: SeoPage; cata
     page.profile === undefined
       ? []
       : [...profileModules(page.profile).included, ...profileModules(page.profile).optional].filter((id) => !started.has(id));
+  const demoCode = solutionDemoCode(page);
 
   useEffect(() => {
     track("view_industry_page", { page: page.path });
@@ -93,14 +96,17 @@ export function IndustryPage({ page, catalog, onContact }: { page: SeoPage; cata
           <p className="mt-6 text-xs font-semibold uppercase tracking-[0.14em] text-primary">{page.kicker}</p>
           <h1 className="mt-2 max-w-3xl text-4xl font-semibold tracking-tight text-charcoal sm:text-5xl">{page.h1}</h1>
           <p className="mt-4 max-w-2xl text-base leading-7 text-charcoal/75">{page.lead}</p>
-          <div className="mt-6 flex flex-wrap items-center gap-3">
-            <GetStartedLink className="inline-flex h-12 items-center justify-center rounded-2xl bg-primary px-5 text-sm font-semibold text-white hover:bg-primary-hover" />
+          <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
+            <GetStartedLink className="inline-flex h-12 w-full items-center justify-center rounded-2xl bg-primary px-5 text-sm font-semibold text-white hover:bg-primary-hover sm:w-auto" />
             <a
               href="/#pricing"
-              className="inline-flex h-12 items-center justify-center rounded-2xl border border-line px-5 text-sm font-semibold text-charcoal"
+              className="inline-flex h-12 w-full items-center justify-center rounded-2xl border border-line px-5 text-sm font-semibold text-charcoal sm:w-auto"
             >
               {copy.pricing}
             </a>
+            {demoCode ? (
+              <ExploreDemoButton businessCode={demoCode} label={locale === "ar" ? EXPLORE_DEMO_LABEL_AR : EXPLORE_DEMO_LABEL} />
+            ) : null}
           </div>
           <p className="mt-3 max-w-xl text-sm leading-6 text-charcoal/70">
             {copy.note}{" "}
@@ -108,6 +114,11 @@ export function IndustryPage({ page, catalog, onContact }: { page: SeoPage; cata
               ? "يفتح التسجيل. المتجر الجديد يبدأ على الخطة المجانية. الخطط المدفوعة والتجربة الترويجية تستخدم الأسعار المنشورة في قسم الأسعار."
               : GET_STARTED_NOTE}
           </p>
+          {demoCode ? (
+            <p id="explore-demo-note" className="mt-2 max-w-xl text-sm leading-6 text-charcoal/70">
+              {locale === "ar" ? EXPLORE_DEMO_NOTE_AR : EXPLORE_DEMO_NOTE}
+            </p>
+          ) : null}
         </div>
       </section>
       <section className="mx-auto grid max-w-page gap-10 px-4 py-14 sm:px-6 lg:grid-cols-[minmax(0,1fr)_minmax(18rem,24rem)] lg:px-8 lg:py-16">

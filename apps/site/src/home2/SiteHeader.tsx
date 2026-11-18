@@ -71,6 +71,12 @@ export function SiteHeader({ atHome, onDemo }: { atHome: boolean; onDemo: () => 
           <img src="/brand/logo.svg" alt="" width="132" height="32" />
         </a>
         <nav className={open ? "h2-links is-open" : "h2-links"} aria-label="Primary" onClick={() => setOpen(false)}>
+          <a className={pathMatches("/explore") ? "is-current" : undefined} href="/explore">
+            Explore AxizPOS
+          </a>
+          <a className={window.location.pathname.startsWith("/hardware") ? "is-current" : undefined} href="/hardware">
+            Hardware
+          </a>
           <Drop label="Product" links={productLinks} atHome={atHome} current={productOn} />
           <Drop label="Solutions" links={solutionLinks} atHome={atHome} current={solutionsOn} />
           <a className={pricingOn ? "is-current" : undefined} href={here("/#pricing", atHome)}>

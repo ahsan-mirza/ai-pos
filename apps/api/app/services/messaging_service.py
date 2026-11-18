@@ -478,9 +478,14 @@ def dispatch_across_tenants(settings: Settings) -> dict[str, int]:
     from app.core.database import get_session_factory
     from app.jobs.runner import note_result
     from app.tenancy.context import use_tenant
-    from app.tenancy.registry import active_tenants
+    from app.tenancy.demo_policy import commercial_tenant
+    from app.tenancy.models import Tenant
+    from app.tenancy.registry import active_tenants, control_session
 
     tenants = list(active_tenants(settings))
+    with control_session(settings) as control:
+        allowed = {str(row) for row in control.scalars(select(Tenant.id).where(commercial_tenant()))}
+    tenants = [tenant for tenant in tenants if tenant.id in allowed]
     totals = {"sent": 0, "failed": 0, "retry": 0}
     if not tenants:
         return totals

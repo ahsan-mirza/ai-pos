@@ -17,12 +17,11 @@ export interface TableEvent {
   updated_at?: string;
 }
 
-/** Browser sockets cannot set headers, so the tenant and device token travel in the query. */
-export function tableSocketUrl(storeId: string, token: string, role?: "customer" | "pos"): string {
+/** The tenant stays in the query. The credential is sent after the socket opens. */
+export function tableSocketUrl(storeId: string, role?: "customer" | "pos"): string {
   const base = env.apiBaseUrl.replace(/^http/, "ws");
   const tenant = env.tenantDomain ? `&tenant=${encodeURIComponent(env.tenantDomain)}` : "";
-  const staff = role === "pos" ? "&role=pos" : "";
-  return `${base}/api/v1/ws/stores/${storeId}/tables?token=${encodeURIComponent(token)}${staff}${tenant}`;
+  return `${base}/api/v1/ws/stores/${storeId}/tables?role=${role === "pos" ? "pos" : "customer"}${tenant}`;
 }
 
 const openSockets = new Map<string, WebSocket>();
@@ -66,8 +65,11 @@ export function listenForTableEvents(
 
   const open = () => {
     if (stopped) return;
-    socket = new WebSocket(tableSocketUrl(storeId, token, role));
+    socket = new WebSocket(tableSocketUrl(storeId, role));
     openSockets.set(key, socket);
+    socket.onopen = () => {
+      socket?.send(JSON.stringify({ type: "auth", token, role: role === "pos" ? "pos" : "customer" }));
+    };
     socket.onmessage = (message) => {
       try {
         onEvent(JSON.parse(String(message.data)) as TableEvent);

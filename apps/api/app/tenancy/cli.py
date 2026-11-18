@@ -5,12 +5,22 @@ python -m app.tenancy.cli create client1 --name "Client One"    # new database q
 python -m app.tenancy.cli create cafe1 --name "Cafe" --profile cafe   # same, with the cafe module preset
 python -m app.tenancy.cli adopt demo --name "Demo" --database ai_pos   # register an existing database
 python -m app.tenancy.cli migration-check                       # one head, including Reach revisions
+python -m app.tenancy.cli migration-preflight                   # read every database; change nothing
+python -m app.tenancy.cli migrate-approved                      # preflight, then the approved step only
 python -m app.tenancy.cli migrate-all                           # upgrade every database that is behind head
 python -m app.tenancy.cli list
 python -m app.tenancy.cli set-status client1 suspended
 python -m app.tenancy.cli create-operator --email it@axizpos.com --name "IT Support" --role ADMIN   # console staff
 python -m app.tenancy.cli collect-stats                         # refresh the console directory (run daily)
 python -m app.tenancy.cli demo                                  # one demo store per business type, with registers
+python -m app.tenancy.cli create-demo-tenants                   # the four production demo tenants
+python -m app.tenancy.cli seed-demo-data --business-code restaurant
+python -m app.tenancy.cli reset-demo-data --business-code restaurant --dry-run
+python -m app.tenancy.cli reset-demo-data --all --confirm-production
+python -m app.tenancy.cli validate-demo-data --business-code supermarket
+python -m app.tenancy.cli deactivate-demo-accounts --business-code fashion
+python -m app.tenancy.cli reactivate-demo-accounts --business-code fashion
+python -m app.tenancy.cli set-demo-access --business-code restaurant --enabled --confirm-production
 """
 
 import argparse
@@ -79,11 +89,19 @@ def _database_state(
 
 
 def _upgrade_to_head(
-    config: Config, url: str, label: str, *, version_table: str, marker_tables: frozenset[str]
+    config: Config,
+    url: str,
+    label: str,
+    *,
+    version_table: str,
+    marker_tables: frozenset[str],
+    destination: str | None = None,
 ) -> None:
     """Apply revisions strictly after the stamp. Never downgrades and never replays history over existing tables."""
     script = ScriptDirectory.from_config(config)
-    head = _one_head(script, label)
+    head = destination if destination is not None else _one_head(script, label)
+    if destination is not None and script.get_revision(destination) is None:
+        sys.exit(f"{label} target {destination} is not in this release.")
     current, has_tables = _database_state(url, version_table=version_table, marker_tables=marker_tables)
     name = _database_name(url)
     described = f"{label} ({name})"
@@ -95,12 +113,14 @@ def _upgrade_to_head(
         print(f"{described} is at {head}. Existing rows were left in place.")
         return
     if plan.from_base:
+        if destination is not None:
+            sys.exit(f"{described} has no stamp. Refusing to create it during an approved migration.")
         print(f"{described} has no tables. Creating the schema from the first revision.")
     else:
         joined = ", ".join(plan.revisions)
         print(f"{described} is at {current[0]}. Applying {len(plan.revisions)} new revision(s) only: {joined}.")
-    # upgrade moves forward to head. The plan above is what that command is allowed to run.
-    command.upgrade(config, "head")
+    # upgrade moves forward to the selected revision. The plan above is what that command is allowed to run.
+    command.upgrade(config, head)
     after, _has_tables = _database_state(url, version_table=version_table, marker_tables=marker_tables)
     if after != (head,):
         found = ", ".join(after) if after else "base"
@@ -136,7 +156,7 @@ def check_migration_graph() -> None:
     print(f"Control migrations: 1 head ({control_head}).")
 
 
-def upgrade_control(settings: Settings) -> None:
+def upgrade_control(settings: Settings, *, destination: str | None = None) -> None:
     if not settings.control_database_url:
         sys.exit(f"Set CONTROL_DATABASE_URL in {env_file_name(settings.app_env)} at the repo root first.")
     url = registry.control_url(settings)
@@ -149,10 +169,11 @@ def upgrade_control(settings: Settings) -> None:
         "Control database",
         version_table=registry.control_version_table(url, settings.database_url),
         marker_tables=_CONTROL_MARKERS,
+        destination=destination,
     )
 
 
-def upgrade_tenant(url: str, tenant_id: str | None = None) -> None:
+def upgrade_tenant(url: str, tenant_id: str | None = None, *, destination: str | None = None) -> None:
     previous = os.environ.get("ALEMBIC_TENANT_ID")
     if tenant_id:
         os.environ["ALEMBIC_TENANT_ID"] = str(tenant_id)
@@ -165,6 +186,7 @@ def upgrade_tenant(url: str, tenant_id: str | None = None) -> None:
             "Tenant database",
             version_table="alembic_version",
             marker_tables=_TENANT_MARKERS,
+            destination=destination,
         )
     finally:
         if previous is None:
@@ -336,6 +358,49 @@ def migrate_all(_: argparse.Namespace, settings: Settings) -> None:
     print(f"Migrations finished. {len(shared)} shared tenant(s), {legacy} legacy database(s).")
 
 
+def migration_preflight(_: argparse.Namespace, settings: Settings) -> None:
+    """Print every discovered database and exit if any history is outside the approved window."""
+    from app.tenancy.preflight import collect_reports, load_tenant_rows
+
+    with registry.control_session(settings) as db:
+        rows = load_tenant_rows(db)
+    reports = collect_reports(settings, tenant_rows=rows)
+    if not reports:
+        sys.exit("No databases were discovered.")
+    failed = False
+    for report in reports:
+        print(report.line())
+        if report.role != "shared-tenants" and report.safe != "yes":
+            failed = True
+    if failed:
+        sys.exit("Migration preflight refused. No database was changed.")
+    print("Migration preflight passed. No database was changed.")
+
+
+def migrate_approved(args: argparse.Namespace, settings: Settings) -> None:
+    """Apply only 20261118_0113 and control_0040 after the read-only preflight passes."""
+    from app.tenancy.preflight import CONTROL_TARGET, OPERATIONAL_TARGET
+
+    migration_preflight(args, settings)
+    upgrade_control(settings, destination=CONTROL_TARGET)
+    with registry.control_session(settings) as db:
+        slugs = [row.slug for row in db.scalars(select(Tenant).order_by(Tenant.slug)).all()]
+    seen: set[str] = set()
+    for slug in slugs:
+        tenant = registry.lookup(slug, settings).tenant
+        if tenant is None or tenant.data_plane == "shared":
+            continue
+        if tenant.database_url in seen:
+            continue
+        seen.add(tenant.database_url)
+        print(f"Checking legacy {slug} ({_database_name(tenant.database_url)})...")
+        upgrade_tenant(tenant.database_url, tenant.id, destination=OPERATIONAL_TARGET)
+    if settings.database_url not in seen:
+        print(f"Checking the shared operational database ({_database_name(settings.database_url)})...")
+        upgrade_tenant(settings.database_url, destination=OPERATIONAL_TARGET)
+    print("Approved migration finished.")
+
+
 def list_tenants(_: argparse.Namespace, settings: Settings) -> None:
     with registry.control_session(settings) as db:
         for row in db.scalars(select(Tenant).order_by(Tenant.slug)):
@@ -400,11 +465,159 @@ def demo_stores(args: argparse.Namespace, settings: Settings) -> None:
     report(provision_all(settings, set(args.only) if args.only else None))
 
 
+def _demo_codes(args: argparse.Namespace) -> list[str]:
+    from app.services.demo_catalog import demo_tenants
+
+    if bool(args.all) == bool(args.business_code):
+        sys.exit("Pass either --business-code or --all.")
+    if args.all:
+        return [spec["code"] for spec in demo_tenants()]
+    return [args.business_code]
+
+
+def _confirm_production(args: argparse.Namespace, settings: Settings) -> None:
+    if settings.app_env == "production" and not args.confirm_production:
+        sys.exit(2)
+
+
+def _print_json(payload: object, *, ok: bool = True) -> None:
+    import json
+
+    print(json.dumps(payload, indent=2, default=str))
+    if not ok:
+        sys.exit(1)
+
+
+def _add_demo_target(parser: argparse.ArgumentParser, *, confirm: bool) -> None:
+    from app.services.demo_catalog import demo_tenants
+
+    parser.add_argument("--business-code", choices=[spec["code"] for spec in demo_tenants()])
+    parser.add_argument("--all", action="store_true", help="every configured production demo, and no other tenant")
+    if confirm:
+        parser.add_argument("--confirm-production", action="store_true")
+
+
+def create_demo_tenants(args: argparse.Namespace, settings: Settings) -> None:
+    from app.services.demo_catalog import DemoSeedError, seed_production_demos
+
+    _confirm_production(args, settings)
+    try:
+        reports = seed_production_demos(settings)
+    except DemoSeedError as exc:
+        sys.exit(str(exc))
+    _print_json({"command": "create-demo-tenants", "ok": True, "codes": [report["code"] for report in reports]})
+
+
+def seed_demo_data(args: argparse.Namespace, settings: Settings) -> None:
+    from app.services.demo_catalog import DemoSeedError, seed_production_demos
+
+    _confirm_production(args, settings)
+    codes = _demo_codes(args)
+    print("Targets: " + ", ".join(codes))
+    try:
+        reports = seed_production_demos(settings, codes)
+    except DemoSeedError as exc:
+        sys.exit(str(exc))
+    _print_json({"command": "seed-demo-data", "ok": all(report["ok"] for report in reports), "reports": reports})
+
+
+def reset_demo_data(args: argparse.Namespace, settings: Settings) -> None:
+    from app.services.demo_reset import (
+        DemoResetError,
+        recover_interrupted_reset,
+        reset_all_demo_tenants,
+        reset_demo_tenant,
+    )
+
+    codes = _demo_codes(args)
+    if args.dry_run and args.recover:
+        sys.exit("Pass either --dry-run or --recover.")
+    if not args.dry_run:
+        _confirm_production(args, settings)
+    print(("Dry run. No data will be changed." if args.dry_run else "Reset targets") + ": " + ", ".join(codes))
+    try:
+        if args.recover:
+            payload = recover_interrupted_reset(settings, codes[0] if not args.all else None)
+        elif args.all:
+            payload = reset_all_demo_tenants(settings, dry_run=args.dry_run)
+        else:
+            payload = reset_demo_tenant(settings, codes[0], dry_run=args.dry_run)
+    except DemoResetError as exc:
+        sys.exit(str(exc))
+    _print_json({"command": "reset-demo-data", "targets": codes, "result": payload})
+
+
+def validate_demo_data(args: argparse.Namespace, settings: Settings) -> None:
+    from app.services.demo_reset import DemoResetError
+    from app.services.demo_reset import validate_demo_data as run_validation
+
+    codes = _demo_codes(args)
+    try:
+        reports = run_validation(settings, codes)
+    except DemoResetError as exc:
+        sys.exit(str(exc))
+    _print_json({"command": "validate-demo-data", "reports": reports}, ok=all(report["ok"] for report in reports))
+
+
+def deactivate_demo_accounts(args: argparse.Namespace, settings: Settings) -> None:
+    from app.services.demo_reset import DemoResetError, deactivate_demo_account
+
+    _confirm_production(args, settings)
+    codes = _demo_codes(args)
+    print("Deactivate targets: " + ", ".join(codes))
+    operator = None
+    if args.operator:
+        try:
+            import uuid
+
+            operator = uuid.UUID(args.operator)
+        except ValueError:
+            sys.exit("Pass an operator id.")
+    results = []
+    try:
+        for code in codes:
+            results.append(deactivate_demo_account(settings, code, operator_id=operator))
+    except DemoResetError as exc:
+        sys.exit(str(exc))
+    _print_json({"command": "deactivate-demo-accounts", "results": results})
+
+
+def set_demo_access(args: argparse.Namespace, settings: Settings) -> None:
+    from app.core.errors import ApiError
+    from app.services.demo_access import set_demo_access as apply_access
+
+    if bool(args.enabled) == bool(args.disabled):
+        sys.exit("Pass either --enabled or --disabled.")
+    _confirm_production(args, settings)
+    try:
+        result = apply_access(settings, args.business_code, enabled=bool(args.enabled))
+    except ApiError as exc:
+        sys.exit(exc.message)
+    _print_json({"command": "set-demo-access", "result": result})
+
+
+def reactivate_demo_accounts(args: argparse.Namespace, settings: Settings) -> None:
+    from app.services.demo_reset import DemoResetError, reactivate_demo_account
+
+    _confirm_production(args, settings)
+    codes = _demo_codes(args)
+    print("Reactivate targets: " + ", ".join(codes))
+    results = []
+    try:
+        for code in codes:
+            results.append(reactivate_demo_account(settings, code))
+    except DemoResetError as exc:
+        sys.exit(str(exc))
+    _print_json({"command": "reactivate-demo-accounts", "results": results})
+
+
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(prog="python -m app.tenancy.cli", description="Manage tenants.")
     sub = parser.add_subparsers(dest="command", required=True)
     sub.add_parser("init", help="create or upgrade the control database")
     sub.add_parser("migration-check", help="fail unless tenant and control revisions each have one head")
+    sub.add_parser("migration-preflight", help="read every database and refuse an unapproved revision")
+    sub.add_parser("migrate-approved", help="apply only the approved operational and registry revisions")
     made = sub.add_parser("create", help="provision a new tenant database")
     made.add_argument("slug")
     made.add_argument("--name", required=True)
@@ -431,6 +644,31 @@ def main(argv: list[str] | None = None) -> None:
     merge.add_argument("--commit", action="store_true", help="write rows and switch the tenant when checks pass")
     demo = sub.add_parser("demo", help="create or refresh one demo store per business type, with POS registers")
     demo.add_argument("--only", nargs="*", help="subdomains to include (default: all in demo-businesses.json)")
+    created = sub.add_parser("create-demo-tenants", help="create the four production demo tenants")
+    created.add_argument("--confirm-production", action="store_true")
+    seeded = sub.add_parser("seed-demo-data", help="seed catalog and history for one demo or all four")
+    _add_demo_target(seeded, confirm=True)
+    reset = sub.add_parser("reset-demo-data", help="restore one demo, or all four, to the seeded baseline")
+    _add_demo_target(reset, confirm=True)
+    reset.add_argument("--dry-run", action="store_true")
+    reset.add_argument("--recover", action="store_true", help="resume a demo left in resetting or reset_failed")
+    checked = sub.add_parser("validate-demo-data", help="reconcile one demo or all four")
+    _add_demo_target(checked, confirm=False)
+    disabled = sub.add_parser("deactivate-demo-accounts", help="disable demo access without deleting data")
+    _add_demo_target(disabled, confirm=True)
+    disabled.add_argument("--operator", help="operator id recorded on the audit row")
+    enabled = sub.add_parser("reactivate-demo-accounts", help="mark a deactivated demo active; public access stays off")
+    _add_demo_target(enabled, confirm=True)
+    access = sub.add_parser("set-demo-access", help="open or close the public demo door for one business")
+    access.add_argument(
+        "--business-code",
+        required=True,
+        choices=["restaurant", "supermarket", "electronics", "fashion"],
+    )
+    door = access.add_mutually_exclusive_group(required=True)
+    door.add_argument("--enabled", action="store_true")
+    door.add_argument("--disabled", action="store_true")
+    access.add_argument("--confirm-production", action="store_true")
 
     args = parser.parse_args(argv)
     if args.command == "migration-check":
@@ -455,6 +693,8 @@ def main(argv: list[str] | None = None) -> None:
     {
         "create": create,
         "adopt": adopt,
+        "migration-preflight": migration_preflight,
+        "migrate-approved": migrate_approved,
         "migrate-all": migrate_all,
         "list": list_tenants,
         "set-status": set_status,
@@ -462,6 +702,13 @@ def main(argv: list[str] | None = None) -> None:
         "collect-stats": collect_stats,
         "merge-shared": merge_shared,
         "demo": demo_stores,
+        "create-demo-tenants": create_demo_tenants,
+        "seed-demo-data": seed_demo_data,
+        "reset-demo-data": reset_demo_data,
+        "validate-demo-data": validate_demo_data,
+        "deactivate-demo-accounts": deactivate_demo_accounts,
+        "reactivate-demo-accounts": reactivate_demo_accounts,
+        "set-demo-access": set_demo_access,
     }[args.command](args, settings)
 
 

@@ -52,8 +52,11 @@ def customer_presence(presence_key: str) -> tuple[int, datetime | None]:
     return _customers.get(presence_key, 0), _last_customer.get(presence_key)
 
 
-async def connect(store_id: uuid.UUID, socket: WebSocket, presence_key: str, role: str) -> None:
-    await socket.accept()
+async def connect(
+    store_id: uuid.UUID, socket: WebSocket, presence_key: str, role: str, *, accepted: bool = False
+) -> None:
+    if not accepted:
+        await socket.accept()
     assert _lock is not None
     async with _lock:
         _rooms[str(store_id)].add(socket)

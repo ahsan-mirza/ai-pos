@@ -7,8 +7,10 @@ import {
   GENDER_LABELS,
   ItemType,
   Permission,
+  emptyPharmacyDraft,
   specSchemaFor,
   titleFromSpecs,
+  type PharmacyDraft,
   variantCombinations,
   variantDraftKey,
   type Gender,
@@ -35,6 +37,7 @@ import { useTenant } from "../../context/TenantContext";
 import { brandsApi, categoriesApi, inventoryApi, message, modelsApi } from "./api";
 import { barcodeError, randomCode128, randomEan13, skuFromParts } from "./barcodeDraft";
 import { FashionVariantComposer } from "./FashionVariantComposer";
+import { PharmacyFields } from "./PharmacyFields";
 import { SpecFields } from "./SpecFields";
 import { fieldErrors, useInvalidFocus, type FieldErrors } from "./formErrors";
 import { BarcodePrintFlow } from "./BarcodePrintFlow";
@@ -47,6 +50,56 @@ function toCents(value: string): number | null {
   const trimmed = value.trim();
   if (!/^\d+(\.\d{1,2})?$/.test(trimmed)) return null;
   return Math.round(Number(trimmed) * 100);
+}
+
+function optionalAmount(value: string): string | null {
+  const trimmed = value.trim();
+  return trimmed === "" ? null : trimmed;
+}
+
+function pharmacyBody(draft: PharmacyDraft) {
+  const official = (value: string) => (draft.price_control === "NONE" || value.trim() === "" ? null : toCents(value));
+  return {
+    product_kind: draft.product_kind,
+    dispensing_class: draft.dispensing_class,
+    generic_name: draft.generic_name.trim(),
+    manufacturer: draft.manufacturer.trim(),
+    marketing_authorization_holder: draft.marketing_authorization_holder.trim(),
+    country_of_origin: draft.country_of_origin.trim(),
+    description: draft.description.trim(),
+    gtin: draft.gtin.trim(),
+    manufacturer_product_ref: draft.manufacturer_product_ref.trim(),
+    dosage_form: draft.dosage_form.trim(),
+    route: draft.route.trim(),
+    strength_amount: optionalAmount(draft.strength_amount),
+    strength_unit: draft.strength_unit.trim(),
+    concentration: draft.concentration.trim(),
+    pack_size_label: draft.pack_size_label.trim(),
+    units_per_pack: Number(draft.units_per_pack) || 1,
+    base_unit_code: draft.base_unit_code.trim() || "PIECE",
+    selling_unit_code: draft.selling_unit_code.trim() || "PIECE",
+    storage_condition: draft.storage_condition.trim(),
+    temp_min_c: optionalAmount(draft.temp_min_c),
+    temp_max_c: optionalAmount(draft.temp_max_c),
+    cold_chain: draft.cold_chain,
+    handling_instructions: draft.handling_instructions.trim(),
+    warnings_text: draft.warnings_text.trim(),
+    registration_number: draft.registration_number.trim() || null,
+    registration_authority: draft.registration_authority.trim() || null,
+    price_control: draft.price_control,
+    min_price_cents: official(draft.min_price_cents),
+    max_price_cents: official(draft.max_price_cents),
+    offline_policy: draft.offline_policy,
+    ingredients: draft.ingredients
+      .filter((row) => row.name.trim() !== "")
+      .map((row) => ({
+        name: row.name.trim(),
+        strength_amount: optionalAmount(row.strength_amount),
+        strength_unit: row.strength_unit.trim(),
+        is_active_ingredient: row.is_active_ingredient,
+      })),
+    documents: draft.documents.filter((row) => row.title.trim() !== ""),
+  };
 }
 
 /** Pre-selected place in the catalog tree, e.g. when adding a variant from a model. */
@@ -96,7 +149,10 @@ export function ProductFormModal({
   const { user, can } = useAuth();
   const catalogAdmin = can(Permission.PortalInventoryManage) && user?.store_id === null;
   const { isFnB } = useTenant();
-  const { categories, reload: reloadCategories } = useCategories();
+  const { has, profile } = useCapabilities();
+  const pharmacyOn = has(Capability.PharmacyCatalog);
+  const { categories, reload: reloadCategories } = useCategories(pharmacyOn ? { activeOnly: true } : undefined);
+  const [pharmacyDraft, setPharmacyDraft] = useState<PharmacyDraft>(() => emptyPharmacyDraft());
   const { stores } = useStores();
   const editing = product !== null;
   const [barcode, setBarcode] = useState(product?.barcode ?? "");
@@ -133,7 +189,6 @@ export function ProductFormModal({
   const [taxCategory, setTaxCategory] = useState<TaxCategory>(product?.tax_category ?? "STANDARD");
   const [includesTax, setIncludesTax] = useState(product?.price_includes_tax ?? Boolean(settings?.prices_include_vat));
   const [openPrice, setOpenPrice] = useState(product?.is_open_price ?? false);
-  const { has, profile } = useCapabilities();
   const weighing = has(Capability.WeighedItems);
   const [byWeight, setByWeight] = useState(product?.sold_by_weight ?? false);
   const [plu, setPlu] = useState(product?.plu_code ?? "");
@@ -648,6 +703,7 @@ export function ProductFormModal({
           ...fashion,
           sellable_units,
           is_active: active,
+          ...(pharmacyOn ? { pharmacy: pharmacyBody(pharmacyDraft) } : {}),
         });
       } else {
         // Weighed stock is entered in kg and stored in grams.
@@ -689,6 +745,7 @@ export function ProductFormModal({
           opening_store_id: storeId || null,
           opening_quantity: openingQuantity,
           min_reorder_level: Number(reorder) || 0,
+          ...(pharmacyOn ? { pharmacy: pharmacyBody(pharmacyDraft) } : {}),
         });
         id = created.id;
         setPersistedId(created.id);
@@ -910,6 +967,10 @@ export function ProductFormModal({
         />
       </div>
 
+      {pharmacyOn ? (
+        <PharmacyFields productId={persistedId} value={pharmacyDraft} onChange={setPharmacyDraft} />
+      ) : null}
+      {!pharmacyOn ? (
       <div id="product-section-specs" className="mt-6 scroll-mt-4">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
           <div>
@@ -974,6 +1035,7 @@ export function ProductFormModal({
           />
         ) : null}
       </div>
+      ) : null}
 
       <h3 id="product-section-product" className="mb-3 mt-6 scroll-mt-4 text-sm font-semibold">
         Product

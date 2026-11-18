@@ -9,11 +9,11 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.console.billing import _addons, _plans
-from app.console.payment_notices import pending_count
 from app.core import capabilities as catalog
 from app.schemas.billing import BusinessTypeModules, EntitlementLine, ModuleCatalogueItem, ModuleSummary
 from app.schemas.console import ModuleState
-from app.tenancy.models import Subscription, SubscriptionItem
+from app.tenancy.demo_policy import commercial_tenant
+from app.tenancy.models import BillingTransfer, Subscription, SubscriptionItem, Tenant
 
 
 def catalogue(db: Session) -> list[ModuleCatalogueItem]:
@@ -60,13 +60,20 @@ def summary(db: Session) -> ModuleSummary:
 
     ensure_module_addons(db)
     addons = _addons(db)
+    commercial_ids = select(Tenant.id).where(commercial_tenant())
     counts = dict(
-        db.execute(select(Subscription.status, func.count()).group_by(Subscription.status)).all()
+        db.execute(
+            select(Subscription.status, func.count())
+            .where(Subscription.tenant_id.in_(commercial_ids))
+            .group_by(Subscription.status)
+        ).all()
     )
     items = list(db.scalars(select(SubscriptionItem)))
     active_ids = {
         row.id
-        for row in db.scalars(select(Subscription).where(Subscription.status == "active"))
+        for row in db.scalars(
+            select(Subscription).where(Subscription.status == "active", Subscription.tenant_id.in_(commercial_ids))
+        )
     }
     by_code = {row.code: row for row in addons}
     addon_mrr = 0
@@ -74,7 +81,12 @@ def summary(db: Session) -> ModuleSummary:
         addon = by_code.get(item.addon_code)
         if item.subscription_id in active_ids and addon is not None and addon.active:
             addon_mrr += addon.monthly_fils * item.quantity
-    pending = pending_count(db)
+    pending = db.scalar(
+        select(func.count())
+        .select_from(BillingTransfer)
+        .join(Tenant, Tenant.id == BillingTransfer.tenant_id)
+        .where(BillingTransfer.status == "pending_review", commercial_tenant())
+    )
     implemented = sum(1 for capability in catalog.ORDER if catalog.SPECS[capability].available)
     return ModuleSummary(
         catalogue_total=len(catalog.ORDER),

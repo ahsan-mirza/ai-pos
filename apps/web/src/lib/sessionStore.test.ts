@@ -57,6 +57,20 @@ describe("portal session restoration", () => {
     expect(legacy.dump()[PORTAL_SESSION_KEY]).toBeUndefined();
   });
 
+  it("keeps a demo marker beside the token and drops it with the session", () => {
+    const persistent = bucket();
+    const session: StoredSession = {
+      token: "demo-token",
+      expiresAt: now + 60_000,
+      demo: { businessCode: "supermarket", businessName: "Noon Market" },
+    };
+    writeStoredSession(persistent, session);
+    expect(readStoredSession(persistent, bucket())).toEqual(session);
+    expect(persistent.dump()[PORTAL_SESSION_KEY]).not.toContain("password");
+    clearStoredSession(persistent, bucket());
+    expect(persistent.dump()[PORTAL_SESSION_KEY]).toBeUndefined();
+  });
+
   it("drops a stored password and clears both stores on logout", () => {
     const poisoned = bucket({
       [PORTAL_SESSION_KEY]: JSON.stringify({ token: "access-4", expiresAt: now + 1, password: "secret" }),

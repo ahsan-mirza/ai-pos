@@ -14,6 +14,7 @@ import {
   PanelLeftOpen,
   Puzzle,
   Receipt,
+  Boxes,
   Landmark,
   Settings,
   X,
@@ -57,6 +58,10 @@ const groups: { label: string; items: NavItem[] }[] = [
       { to: "/subscriptions", label: "Subscriptions", icon: CreditCard },
       { to: "/payments", label: "Payments", icon: Landmark },
     ],
+  },
+  {
+    label: "Hardware Catalog",
+    items: [{ to: "/hardware-catalog", label: "Hardware Catalog", icon: Boxes }],
   },
   {
     label: "Settings",

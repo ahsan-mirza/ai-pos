@@ -25,6 +25,7 @@ from app.routers.v1.currencies import router as currencies_router
 from app.routers.v1.customers import router as customers_router
 from app.routers.v1.deep_analytics import router as deep_analytics_router
 from app.routers.v1.delivery import router as delivery_router
+from app.routers.v1.demo_access import router as demo_access_router
 from app.routers.v1.devices import router as devices_router
 from app.routers.v1.dining import router as dining_router
 from app.routers.v1.downloads import router as downloads_router
@@ -36,6 +37,7 @@ from app.routers.v1.fnb_table_orders import router as fnb_table_orders_router
 from app.routers.v1.fnb_table_orders import ws_router as fnb_table_ws_router
 from app.routers.v1.gift_cards import router as gift_cards_router
 from app.routers.v1.grocery import router as grocery_router
+from app.routers.v1.pharmacy import router as pharmacy_router
 from app.routers.v1.insights import router as insights_router
 from app.routers.v1.integrations import router as integrations_router
 from app.routers.v1.inventory import router as inventory_router
@@ -119,6 +121,7 @@ api_router = APIRouter()
 api_router.include_router(tenant_router, prefix="/tenant", tags=["tenancy"])
 api_router.include_router(terminals_router, prefix="/terminals", tags=["tenancy"])
 api_router.include_router(auth_router, prefix="/auth", tags=["auth"])
+api_router.include_router(demo_access_router, prefix="/demo-access", tags=["demo access"])
 api_router.include_router(addon_access_router, prefix="/addon-access", tags=["addon access"])
 api_router.include_router(users_router, prefix="/users", tags=["users"])
 api_router.include_router(roles_router, prefix="/roles", tags=["roles"])
@@ -135,6 +138,12 @@ api_router.include_router(register_router, prefix="/inventory", tags=["inventory
 api_router.include_router(batches_router, prefix="/inventory", tags=["purchase batches"])
 api_router.include_router(expiry_router, prefix="/inventory", tags=["expiry"], dependencies=module(Capability.FEFO))
 api_router.include_router(grocery_router, prefix="/grocery", tags=["grocery"])
+api_router.include_router(
+    pharmacy_router,
+    prefix="/pharmacy",
+    tags=["pharmacy"],
+    dependencies=module(Capability.PHARMACY_CATALOG),
+)
 api_router.include_router(
     pricing_router, prefix="/pricing", tags=["pricing"], dependencies=module(Capability.WHOLESALE_PRICING)
 )

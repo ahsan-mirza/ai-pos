@@ -18,6 +18,8 @@ import { WhatsAppButton } from "./components/WhatsAppButton";
 import { apiBaseUrl } from "./env";
 import { GetStartedSection } from "./components/GetStartedSection";
 import { QuoteDialog } from "./components/QuoteDialog";
+import { HardwarePage } from "./hardware/HardwarePage";
+import { ExplorePage } from "./pages/ExplorePage";
 import { IndustryPage } from "./pages/IndustryPage";
 import { seoPage } from "./seo";
 import { track } from "./track";
@@ -84,7 +86,11 @@ export function App() {
         }}
       />
       <main id="content">
-        {industry && industry.id !== "home" ? (
+        {industry?.id === "hardware" ? (
+          <HardwarePage contact={contact} />
+        ) : industry?.id === "explore" ? (
+          <ExplorePage />
+        ) : industry && industry.id !== "home" ? (
           <IndustryPage
             page={industry}
             catalog={catalog}

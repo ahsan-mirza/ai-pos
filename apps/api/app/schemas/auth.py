@@ -177,6 +177,20 @@ class TokenResponse(ApiModel):
     user: UserOut
 
 
+class DemoExchangeRequest(ApiModel):
+    """A public demo code. Tenant, user, and role are not accepted."""
+
+    business_code: str = Field(min_length=1, max_length=32)
+
+
+class DemoAccessResponse(TokenResponse):
+    """The portal token for the restricted demo user, plus the business the server selected."""
+
+    demo: Literal[True] = True
+    business_code: str
+    business_name: str
+
+
 class UserCreate(ApiModel):
     username: str
     email: str

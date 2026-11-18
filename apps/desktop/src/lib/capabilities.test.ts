@@ -12,7 +12,7 @@ import { applyProfile, applySignedInAddons, registerCapabilities } from "./capab
 describe("business profiles", () => {
   it("ships the seven presets in two groups", () => {
     expect(Object.keys(PROFILE_PRESETS).sort()).toEqual(
-      ["cafe", "electronics_wholesale", "grocery", "quick_service", "restaurant", "retail_fashion", "wholesale_retail"].sort(),
+      ["cafe", "electronics_wholesale", "grocery", "pharmacy", "quick_service", "restaurant", "retail_fashion", "wholesale_retail"].sort(),
     );
     const groups = Object.values(PROFILE_PRESETS).map((profile) => profile.group);
     expect(groups.filter((group) => group === "food_beverage")).toHaveLength(3);

@@ -5,6 +5,7 @@ import { useConfirm } from "../../components/ui/ConfirmDialog";
 import { DataTable, type DataTableColumn } from "../../components/ui/DataTable";
 import { ErrorNote, GhostButton, PrimaryButton, TextField } from "../../components/ui/Field";
 import { Modal } from "../../components/ui/Modal";
+import { Toggle } from "../../components/ui/Toggle";
 import { useAuth } from "../../lib/auth";
 import { useAutoCode } from "../../lib/codes";
 import { categoriesApi, message } from "./api";
@@ -152,6 +153,7 @@ export function CategoriesPage() {
                   </span>
                   <span className={`mt-1 block text-xs tabular-nums ${active ? "text-white/80" : "text-white/50"}`}>
                     {category.sub_categories.length} sub-categories · {category.product_count} products
+                    {category.is_active === false ? " · Inactive" : ""}
                   </span>
                 </button>
               </li>
@@ -230,6 +232,7 @@ function CategoryModal({
   const [name, setName] = useState(current?.name ?? "");
   const { code, setCode } = useAutoCode(name, current?.code ?? "");
   const [description, setDescription] = useState(current?.description ?? "");
+  const [active, setActive] = useState(current?.is_active !== false);
   const [fields, setFields] = useState<FieldErrors>({});
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -257,7 +260,12 @@ function CategoryModal({
       return;
     }
     setBusy(true);
-    const body = { name: name.trim(), code: code.replace(/-$/, "") || null, description: description.trim() };
+    const body = {
+      name: name.trim(),
+      code: code.replace(/-$/, "") || null,
+      description: description.trim(),
+      is_active: active,
+    };
     try {
       if (editing.kind === "category") {
         onSaved(editing.category ? await categoriesApi.update(editing.category.id, body) : await categoriesApi.create(body));
@@ -322,6 +330,7 @@ function CategoryModal({
           }}
         />
         <TextField label="Description" value={description} onChange={(event) => setDescription(event.target.value)} />
+        <Toggle checked={active} onChange={setActive} label="Active" description="Inactive groups stay out of the product picker." />
       </div>
       <ErrorNote message={error} />
     </Modal>

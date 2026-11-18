@@ -1,4 +1,5 @@
 import uuid
+from datetime import UTC, datetime
 
 API_KEY = "test-api-key-value"
 STORE_ID = "00000000-0000-4000-8000-000000000001"
@@ -17,7 +18,7 @@ def event(key: str, entity: str, payload: dict) -> dict:
         "entity_type": entity,
         "operation": "upsert",
         "payload": payload,
-        "occurred_at": "2026-10-19T08:00:00Z",
+        "occurred_at": datetime.now(UTC).isoformat(),
     }
 
 

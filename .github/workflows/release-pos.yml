@@ -1,9 +1,12 @@
 name: Release POS
 
 on:
-  push:
-    tags: ["v*.*.*"]
   workflow_dispatch:
+    inputs:
+      publish_installer:
+        description: Upload the signed installer to the server. A build alone does not publish.
+        type: boolean
+        default: false
 
 concurrency:
   group: release-pos-${{ github.ref }}
@@ -24,16 +27,6 @@ jobs:
       - name: Sync POS version
         run: node scripts/sync-pos-version.mjs
 
-      - name: Check tag matches app version
-        if: startsWith(github.ref, 'refs/tags/')
-        run: |
-          app_version=$(node scripts/sync-pos-version.mjs --print)
-          tag_version="${GITHUB_REF_NAME#v}"
-          if [ "$app_version" != "$tag_version" ]; then
-            echo "::error::Tag $GITHUB_REF_NAME does not match apps/desktop/VERSION ($app_version)"
-            exit 1
-          fi
-
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
@@ -53,33 +46,25 @@ jobs:
       - name: Production build env
         run: test -f .env.production || cp deploy/portal.production.env .env.production
 
-      - name: Build installers
-        run: pnpm build:pos:prod
+      - name: Build the signed NSIS installer
+        env:
+          AXIZPOS_SIGN_THUMBPRINT: ${{ secrets.AXIZPOS_SIGN_THUMBPRINT }}
+          TAURI_WINDOWS_SIGNTOOL_PATH: ${{ secrets.TAURI_WINDOWS_SIGNTOOL_PATH }}
+        run: pnpm --filter @ai-pos/desktop build:win
 
       - name: Upload workflow artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ai-pos-windows-${{ github.run_number }}
+          name: axizpos-windows-${{ github.run_number }}
           path: |
-            apps/desktop/src-tauri/target/release/bundle/nsis/*.exe
-            apps/desktop/src-tauri/target/release/bundle/msi/*.msi
+            dist/POS-Setup-*.exe
+            dist/POS-Setup-*.exe.sha256
           if-no-files-found: error
 
-      - name: Publish GitHub Release
-        if: startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v2
-        with:
-          name: AI POS ${{ github.ref_name }}
-          generate_release_notes: true
-          fail_on_unmatched_files: true
-          files: |
-            apps/desktop/src-tauri/target/release/bundle/nsis/*.exe
-            apps/desktop/src-tauri/target/release/bundle/msi/*.msi
-
-  # Copies the installers to the server, where Super Admins download them from the portal (Downloads page).
+  # Copies the signed installer to the server. A tag push does not start this workflow.
   publish:
     needs: windows
-    if: startsWith(github.ref, 'refs/tags/')
+    if: ${{ inputs.publish_installer }}
     runs-on: ubuntu-latest
     environment: production
     env:
@@ -87,31 +72,43 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with:
-          name: ai-pos-windows-${{ github.run_number }}
+          name: axizpos-windows-${{ github.run_number }}
           path: artifact
 
       - name: Stage installers and manifest
         run: |
-          version="${GITHUB_REF_NAME#v}"
+          version=$(python3 - <<'PY'
+          import pathlib, re
+          names = [path.name for path in pathlib.Path("artifact").iterdir() if path.suffix.lower() == ".exe"]
+          if len(names) != 1:
+              raise SystemExit("The artifact must contain one signed exe.")
+          match = re.fullmatch(r"POS-Setup-(.+)\.exe", names[0])
+          if match is None:
+              raise SystemExit("The installer name is not POS-Setup-<version>.exe.")
+          print(match.group(1))
+          PY
+          )
           mkdir -p "release/$version"
-          find artifact -type f \( -name '*.exe' -o -name '*.msi' \) -exec cp {} "release/$version/" \;
+          find artifact -type f -name 'POS-Setup-*.exe' -exec cp {} "release/$version/" \;
+          find artifact -type f -name 'POS-Setup-*.exe.sha256' -exec cp {} "release/$version/" \;
           python3 - "release/$version" "$version" <<'EOF'
           import hashlib, json, pathlib, sys
           from datetime import datetime, timezone
 
           folder, version = pathlib.Path(sys.argv[1]), sys.argv[2]
-          files = [
-              {"name": path.name, "sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
-              for path in sorted(folder.iterdir())
-              if path.suffix.lower() in {".exe", ".msi"}
-          ]
-          if not files:
-              sys.exit("No installers in the build artifact.")
+          exe_files = sorted(folder.glob("POS-Setup-*.exe"))
+          if len(exe_files) != 1:
+              sys.exit("One signed exe is required before a manifest is written.")
+          exe = exe_files[0]
+          digest = hashlib.sha256(exe.read_bytes()).hexdigest()
+          recorded = folder / f"{exe.name}.sha256"
+          if not recorded.is_file() or digest not in recorded.read_text(encoding="utf-8"):
+              sys.exit("The checksum file does not match the signed exe. The manifest was not written.")
           manifest = {
               "version": version,
               "published_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
               "notes": None,
-              "files": files,
+              "files": [{"name": exe.name, "sha256": digest}],
           }
           (folder / "manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
           print(json.dumps(manifest, indent=2))

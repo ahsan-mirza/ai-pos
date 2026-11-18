@@ -1,11 +1,22 @@
 name: Deploy
 
+# Manual only. A green CI run does not deploy and does not migrate.
+# Approve the production environment on each job that connects to the server.
 on:
-  workflow_run:
-    workflows: [CI]
-    types: [completed]
-    branches: [main]
   workflow_dispatch:
+    inputs:
+      run_migrations:
+        description: Apply the approved database migration. Leave this off for an ordinary deploy.
+        type: boolean
+        default: false
+      deploy_applications:
+        description: Deploy the API, portal, console, and marketing site.
+        type: boolean
+        default: false
+      rollback:
+        description: Restore the previous API, sites, and Nginx. Leave migrations and deploy off.
+        type: boolean
+        default: false
 
 concurrency:
   group: deploy-production
@@ -15,21 +26,30 @@ permissions:
   contents: read
 
 jobs:
-  # API, the static admin portal, and the console at /admin74246/. System packages are installed once by deploy/server-setup.sh.
-  # The Windows register is release-pos.yml; this job does not build a desktop app.
-  deploy:
-    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+  choose:
+    if: ${{ !inputs.run_migrations && !inputs.deploy_applications && !inputs.rollback }}
     runs-on: ubuntu-latest
-    environment: production
-    env:
-      APP_DIR: /opt/ai-pos
-      WEB_DIR: /var/www/ai-pos-admin
-      CONSOLE_DIR: /var/www/ai-pos-console
-      SITE_DIR: /var/www/ai-pos-site
+    steps:
+      - name: Require an explicit action
+        run: |
+          echo "Select run_migrations, deploy_applications, rollback, or migrations plus deploy."
+          echo "This workflow does not start from CI."
+          exit 1
+
+  conflict:
+    if: ${{ inputs.rollback && (inputs.run_migrations || inputs.deploy_applications) }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Keep rollback separate
+        run: |
+          echo "Rollback restores the previous files. Run it without migrations or a deploy."
+          exit 1
+
+  build:
+    if: ${{ inputs.run_migrations || inputs.deploy_applications }}
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
 
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
@@ -50,16 +70,32 @@ jobs:
           test -f apps/super-admin/dist/index.html
           test -f apps/site/dist/index.html
           test -d apps/site/dist/site-assets
-          test -f apps/site/dist/pos/register.jpg
-          test -f apps/site/dist/images/home-2/cafe.png
-          test -f apps/site/dist/images/home-2/isometric-city.png
-          test -f apps/site/dist/images/home-3/cafe.jpg
-          test -f apps/site/dist/sitemap.xml
-          test -f apps/site/dist/robots.txt
+          test -f apps/site/dist/explore/index.html
+          test -f apps/site/dist/hardware/index.html
           test -f apps/site/dist/restaurant-pos/index.html
-          test -f apps/site/dist/pos-software-uae/index.html
           grep -q 'rel="canonical" href="https://axizpos.com/"' apps/site/dist/index.html
           grep -q 'Restaurant POS System' apps/site/dist/restaurant-pos/index.html
+
+      - name: Upload frontend builds
+        uses: actions/upload-artifact@v4
+        with:
+          name: production-frontend
+          path: |
+            apps/web/dist
+            apps/super-admin/dist
+            apps/site/dist
+          if-no-files-found: error
+          retention-days: 5
+
+  migrate:
+    needs: [choose, build, conflict]
+    if: ${{ always() && inputs.run_migrations && !inputs.rollback && needs.build.result == 'success' && (needs.choose.result == 'skipped' || needs.choose.result == 'success') && needs.conflict.result == 'skipped' }}
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      APP_DIR: /opt/ai-pos
+    steps:
+      - uses: actions/checkout@v4
 
       - name: Configure SSH
         env:
@@ -82,22 +118,20 @@ jobs:
           EOF
           ssh server 'echo connected to $(hostname)'
 
-      - name: Prepare the server
+      - name: Require the existing production env
         run: |
-          rsync -az deploy/ server:ai-pos-deploy/
-          ssh server "sudo -n bash ~/ai-pos-deploy/server-setup.sh"
+          ssh server "test -f $APP_DIR/.env.production"
+          echo "The server env file is present and was not replaced."
 
-      - name: Upload API and catalog
+      - name: Upload API source without restarting it
         run: |
-          ssh server "mkdir -p $APP_DIR/apps/api $APP_DIR/packages/catalog $APP_DIR/plugins/einvoicing $APP_DIR/plugins/reach $APP_DIR/plugins/delivery $WEB_DIR $CONSOLE_DIR $SITE_DIR"
+          ssh server "mkdir -p $APP_DIR/apps/api $APP_DIR/packages/catalog $APP_DIR/plugins/einvoicing $APP_DIR/plugins/reach $APP_DIR/plugins/delivery"
           rsync -az --delete \
             --exclude '.venv/' --exclude '.env*' --exclude 'storage/' \
             --exclude '__pycache__/' --exclude 'tests/' --exclude '*.db' \
             --exclude '.pytest_cache/' --exclude '.ruff_cache/' \
             apps/api/ server:$APP_DIR/apps/api/
           rsync -az --delete packages/catalog/ server:$APP_DIR/packages/catalog/
-          # The API adds plugin folders to sys.path at startup.
-          # The portal build includes the Reach and Delivery pages. That does not deploy these backend packages.
           rsync -az --delete \
             --exclude '__pycache__/' --exclude '.pytest_cache/' --exclude '.env*' --exclude 'tests/' \
             plugins/einvoicing/ server:$APP_DIR/plugins/einvoicing/
@@ -107,36 +141,12 @@ jobs:
           rsync -az --delete \
             --exclude '__pycache__/' --exclude '.pytest_cache/' --exclude '.env*' --exclude 'backend/tests/' \
             plugins/delivery/ server:$APP_DIR/plugins/delivery/
-          ssh server "test -f $APP_DIR/plugins/reach/reach/__init__.py && test -f $APP_DIR/plugins/delivery/delivery/__init__.py"
 
-      - name: Ensure production env
-        env:
-          ENV_PRODUCTION: ${{ secrets.ENV_PRODUCTION }}
-        run: |
-          if ssh server "test -f $APP_DIR/.env.production"; then
-            echo "Using the env file already on the server."
-          else
-            if [ -z "$ENV_PRODUCTION" ]; then
-              echo "Missing $APP_DIR/.env.production."
-              echo "Add the contents of the local .env.production file as the ENV_PRODUCTION secret on the production environment."
-              exit 1
-            fi
-            tmp=$(mktemp)
-            printf '%s\n' "$ENV_PRODUCTION" > "$tmp"
-            scp -q "$tmp" "server:$APP_DIR/.env.production"
-            rm -f "$tmp"
-            ssh server "chmod 600 $APP_DIR/.env.production"
-          fi
-          ssh server "grep -q '^REDIS_URL=' $APP_DIR/.env.production || printf '\nREDIS_URL=redis://127.0.0.1:6379/0\n' >> $APP_DIR/.env.production"
-
-      - name: Grant database creation
-        run: ssh server "sudo -n bash ~/ai-pos-deploy/ensure-postgres.sh"
-
-      - name: Install and apply pending migrations
+      - name: Apply the approved migration
         run: |
           ssh server "APP_DIR=$APP_DIR bash -s" <<'EOF'
           set -euo pipefail
-          test -f "$APP_DIR/.env.production" || { echo "Missing $APP_DIR/.env.production"; exit 1; }
+          test -f "$APP_DIR/.env.production"
           cd "$APP_DIR/apps/api"
           if [ ! -x .venv/bin/pip ]; then
             python3 -m venv .venv
@@ -144,29 +154,203 @@ jobs:
           fi
           .venv/bin/pip install -q -r requirements.txt
           export APP_ENV=production
-          # Fail before touching a database when the revision graph has more than one head.
-          # init and migrate-all upgrade a database only from its stamped revision to head.
-          # A database that already has tables and no stamp is refused, so production rows are not rebuilt.
-          # PM2 reloads in a later step, so a failed migration leaves the running API on the previous release.
           .venv/bin/python -m app.tenancy.cli migration-check
-          .venv/bin/python -m app.tenancy.cli init
-          .venv/bin/python -m app.tenancy.cli migrate-all
+          .venv/bin/python -m app.tenancy.cli migrate-approved
           EOF
 
-      - name: Upload admin portal, console, and landing page
+  deploy:
+    needs: [choose, build, migrate, conflict]
+    if: ${{ always() && inputs.deploy_applications && !inputs.rollback && needs.build.result == 'success' && (needs.migrate.result == 'success' || needs.migrate.result == 'skipped') && (needs.choose.result == 'skipped' || needs.choose.result == 'success') && needs.conflict.result == 'skipped' }}
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      APP_DIR: /opt/ai-pos
+      WEB_DIR: /var/www/ai-pos-admin
+      CONSOLE_DIR: /var/www/ai-pos-console
+      SITE_DIR: /var/www/ai-pos-site
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download frontend builds
+        uses: actions/download-artifact@v4
+        with:
+          name: production-frontend
+          path: apps
+
+      - name: Confirm the downloaded builds
         run: |
-          ssh server "mkdir -p $WEB_DIR $CONSOLE_DIR $SITE_DIR"
+          test -f apps/web/dist/index.html
+          test -f apps/super-admin/dist/index.html
+          test -f apps/site/dist/explore/index.html
+          test -f apps/site/dist/hardware/index.html
+
+      - name: Configure SSH
+        env:
+          SSH_KEY: ${{ secrets.SSH_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.SSH_KNOWN_HOSTS }}
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy
+          chmod 600 ~/.ssh/deploy
+          printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          cat > ~/.ssh/config <<EOF
+          Host server
+            HostName $SSH_HOST
+            User $SSH_USER
+            IdentityFile ~/.ssh/deploy
+            IdentitiesOnly yes
+            ServerAliveInterval 30
+          EOF
+          ssh server 'echo connected to $(hostname)'
+
+      - name: Keep the existing production env
+        run: |
+          ssh server "test -f $APP_DIR/.env.production"
+          echo "The server env file was not replaced."
+
+      - name: Save the previous release
+        run: |
+          ssh server "bash -s" <<EOF
+          set -euo pipefail
+          stamp=\$(date -u +%Y%m%dT%H%M%SZ)
+          dest=/var/backups/ai-pos/\$stamp
+          mkdir -p "\$dest/nginx"
+          cp -a /etc/nginx/sites-available/ai-pos.conf "\$dest/nginx/" || true
+          cp -a /etc/nginx/snippets/ai-pos.shared.conf "\$dest/nginx/" || true
+          cp -a /etc/nginx/snippets/ai-pos.apex.conf "\$dest/nginx/" || true
+          cp -a /etc/nginx/snippets/ai-pos.https.conf "\$dest/nginx/" || true
+          tar -C /opt/ai-pos -czf "\$dest/api-source.tgz" --exclude apps/api/.venv --exclude apps/api/storage apps/api packages/catalog plugins
+          tar -C /var/www -czf "\$dest/portal.tgz" ai-pos-admin
+          tar -C /var/www -czf "\$dest/console.tgz" ai-pos-console
+          tar -C /var/www -czf "\$dest/site.tgz" ai-pos-site
+          cp -a "$APP_DIR/.env.production" "\$dest/env.production"
+          chmod 600 "\$dest/env.production"
+          printf '%s\n' "\$dest" > /var/backups/ai-pos/LATEST
+          echo "Saved \$dest"
+          EOF
+
+      - name: Upload API, catalog, and plugins
+        run: |
+          ssh server "mkdir -p $APP_DIR/apps/api $APP_DIR/packages/catalog $APP_DIR/plugins/einvoicing $APP_DIR/plugins/reach $APP_DIR/plugins/delivery $WEB_DIR $CONSOLE_DIR $SITE_DIR"
+          rsync -az --delete \
+            --exclude '.venv/' --exclude '.env*' --exclude 'storage/' \
+            --exclude '__pycache__/' --exclude 'tests/' --exclude '*.db' \
+            --exclude '.pytest_cache/' --exclude '.ruff_cache/' \
+            apps/api/ server:$APP_DIR/apps/api/
+          rsync -az --delete packages/catalog/ server:$APP_DIR/packages/catalog/
+          rsync -az --delete \
+            --exclude '__pycache__/' --exclude '.pytest_cache/' --exclude '.env*' --exclude 'tests/' \
+            plugins/einvoicing/ server:$APP_DIR/plugins/einvoicing/
+          rsync -az --delete \
+            --exclude '__pycache__/' --exclude '.pytest_cache/' --exclude '.env*' --exclude 'backend/tests/' \
+            plugins/reach/ server:$APP_DIR/plugins/reach/
+          rsync -az --delete \
+            --exclude '__pycache__/' --exclude '.pytest_cache/' --exclude '.env*' --exclude 'backend/tests/' \
+            plugins/delivery/ server:$APP_DIR/plugins/delivery/
+
+      - name: Install Nginx and static builds
+        run: |
+          rsync -az deploy/ server:ai-pos-deploy/
+          ssh server "sudo -n bash ~/ai-pos-deploy/server-setup.sh"
           rsync -az --delete apps/web/dist/ server:$WEB_DIR/
           rsync -az --delete apps/super-admin/dist/ server:$CONSOLE_DIR/
           rsync -az --delete apps/site/dist/ server:$SITE_DIR/
 
-      - name: Start PM2
+      - name: Reload the API
         run: |
           ssh server "bash -s" <<'EOF'
           set -euo pipefail
           test -f "$HOME/ai-pos-deploy/ecosystem.config.cjs"
           pm2 startOrReload "$HOME/ai-pos-deploy/ecosystem.config.cjs"
           pm2 save
+          EOF
+
+  rollback:
+    needs: [choose, conflict]
+    if: ${{ always() && inputs.rollback && !inputs.run_migrations && !inputs.deploy_applications && needs.choose.result == 'skipped' && needs.conflict.result == 'skipped' }}
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      APP_DIR: /opt/ai-pos
+    steps:
+      - name: Configure SSH
+        env:
+          SSH_KEY: ${{ secrets.SSH_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.SSH_KNOWN_HOSTS }}
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy
+          chmod 600 ~/.ssh/deploy
+          printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          cat > ~/.ssh/config <<EOF
+          Host server
+            HostName $SSH_HOST
+            User $SSH_USER
+            IdentityFile ~/.ssh/deploy
+            IdentitiesOnly yes
+            ServerAliveInterval 30
+          EOF
+          ssh server 'echo connected to $(hostname)'
+
+      - name: Restore the previous release
+        run: |
+          ssh server "bash -s" <<'EOF'
+          set -euo pipefail
+          test -f /var/backups/ai-pos/LATEST
+          dest=$(cat /var/backups/ai-pos/LATEST)
+          test -f "$dest/api-source.tgz"
+          test -f "$dest/portal.tgz"
+          test -f "$dest/console.tgz"
+          test -f "$dest/site.tgz"
+          test -f "$dest/nginx/ai-pos.conf"
+          tar -C /opt/ai-pos -xzf "$dest/api-source.tgz"
+          tar -C /var/www -xzf "$dest/portal.tgz"
+          tar -C /var/www -xzf "$dest/console.tgz"
+          tar -C /var/www -xzf "$dest/site.tgz"
+          mkdir -p "$HOME/ai-pos-deploy/nginx"
+          cp -a "$dest/nginx/." "$HOME/ai-pos-deploy/nginx/"
+          sudo -n bash "$HOME/ai-pos-deploy/server-setup.sh"
+          pm2 startOrReload "$HOME/ai-pos-deploy/ecosystem.config.cjs"
+          pm2 save
+          curl -fsS http://127.0.0.1:8000/health
+          echo
+          echo "Restored $dest"
+          EOF
+
+  health:
+    needs: deploy
+    if: ${{ needs.deploy.result == 'success' }}
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Configure SSH
+        env:
+          SSH_KEY: ${{ secrets.SSH_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.SSH_KNOWN_HOSTS }}
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy
+          chmod 600 ~/.ssh/deploy
+          printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          cat > ~/.ssh/config <<EOF
+          Host server
+            HostName $SSH_HOST
+            User $SSH_USER
+            IdentityFile ~/.ssh/deploy
+            IdentitiesOnly yes
+            ServerAliveInterval 30
+          EOF
+
+      - name: Wait for the local health check
+        run: |
+          ssh server "bash -s" <<'EOF'
+          set -euo pipefail
           for attempt in $(seq 1 15); do
             if curl -fsS http://127.0.0.1:8000/health; then
               echo
@@ -179,8 +363,54 @@ jobs:
           pm2 logs ai-pos-api --lines 80 --nostream || true
           exit 1
           EOF
-          ssh server "sudo -n systemctl reload nginx"
 
-      - name: Summary
+  smoke:
+    needs: health
+    if: ${{ needs.health.result == 'success' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check public routes and CORS
         run: |
-          echo "Deployed ${{ github.event.workflow_run.head_sha || github.sha }}" >> "$GITHUB_STEP_SUMMARY"
+          python3 - <<'PY'
+          import urllib.error
+          import urllib.request
+          origin = "https://axizpos.com"
+
+          def get(path):
+              with urllib.request.urlopen(origin + path, timeout=20) as response:
+                  body = response.read().decode("utf-8", "replace")
+                  portal = "AxizPOS Business Pro" in body
+                  print(path, response.status, "portal" if portal else "marketing", len(body))
+                  return portal
+
+          if get("/"):
+              raise SystemExit("homepage is the portal shell")
+          if get("/explore"):
+              raise SystemExit("explore is the portal shell")
+          if get("/hardware"):
+              raise SystemExit("hardware is the portal shell")
+          if get("/restaurant-pos"):
+              raise SystemExit("restaurant page is the portal shell")
+
+          def options(source):
+              request = urllib.request.Request(
+                  origin + "/api/v1/demo-access/exchange",
+                  method="OPTIONS",
+                  headers={"Origin": source, "Access-Control-Request-Method": "GET"},
+              )
+              try:
+                  with urllib.request.urlopen(request, timeout=20) as response:
+                      status, headers, body = response.status, response.headers, response.read()
+              except urllib.error.HTTPError as error:
+                  status, headers, body = error.code, error.headers, error.read()
+              allow = headers.get("access-control-allow-origin")
+              print("OPTIONS", source, status, allow or "none")
+              return status, allow, body
+
+          status, allow, _ = options(origin)
+          if allow != origin:
+              raise SystemExit("marketing origin was not allowed")
+          status, allow, body = options("https://evil.example")
+          if allow is not None or b"Disallowed CORS origin" not in body:
+              raise SystemExit("external origin was not rejected")
+          PY

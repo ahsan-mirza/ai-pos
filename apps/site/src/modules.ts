@@ -21,6 +21,7 @@ export const BUSINESS_TYPE_ORDER = [
   "restaurant",
   "cafe",
   "quick_service",
+  "pharmacy",
 ] as const satisfies readonly BusinessProfile[];
 
 export function moduleLabel(id: string): string {

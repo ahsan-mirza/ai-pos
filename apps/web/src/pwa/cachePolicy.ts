@@ -15,6 +15,7 @@ export const PUBLIC_MARKETING_PATHS = [
   "/fashion-pos",
   "/electronics-pos",
   "/pos-software-uae",
+  "/explore",
 ];
 
 const PUBLIC_PREFIXES = ["/site-assets/", "/pos/", "/brand/", "/portal/"];

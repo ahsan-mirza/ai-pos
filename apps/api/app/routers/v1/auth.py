@@ -1,6 +1,6 @@
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, File, Request, UploadFile
+from fastapi import APIRouter, Depends, File, Header, Request, UploadFile
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -9,6 +9,7 @@ from app.core.database import get_db
 from app.core.deps import Principal, current_user, renewable_session, require_device
 from app.core.errors import ApiError
 from app.core.rate_limit import check_identity
+from app.core.security import decode_access_token
 from app.models.user import User
 from app.schemas.auth import (
     AccountPasswordChange,
@@ -173,13 +174,22 @@ def refresh_session(
     session: Annotated[tuple[User, Literal["portal", "pos"]], Depends(renewable_session)],
     db: Annotated[Session, Depends(get_db)],
     settings: Annotated[Settings, Depends(get_settings)],
+    authorization: Annotated[str | None, Header()] = None,
 ) -> TokenResponse:
     """Reissues the same kind of access token while this one is still accepted.
 
     A token a couple of minutes past exp can still renew. Revoked and disabled sessions cannot.
+    A public demo session keeps its server-set demo claim. A normal session does not gain one.
     """
     user, scope = session
-    return rbac_service.renew_session(db, settings, user, scope)
+    demo = False
+    token = (authorization or "").partition(" ")[2].strip()
+    if token:
+        try:
+            demo = decode_access_token(token, settings=settings).get("demo") is True
+        except Exception:  # noqa: BLE001 - a claim copy must not replace the checks already made
+            demo = False
+    return rbac_service.renew_session(db, settings, user, scope, demo=demo)
 
 
 @router.get("/me", response_model=UserOut)

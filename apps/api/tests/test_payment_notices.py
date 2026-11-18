@@ -6,6 +6,7 @@ import pytest
 from starlette.websockets import WebSocketDisconnect
 from tests.governance_support import platform  # noqa: F401
 from tests.test_bank_transfers import PNG, _pending_invoice, _submit
+from tests.wsutil import authed
 
 from app.tenancy.models import BillingTransfer, ConsolePaymentNotice
 
@@ -98,7 +99,7 @@ def test_live_count_is_pushed_and_restored_on_reconnect(platform) -> None:  # no
         admin = platform.operator(email="live-admin@axizpos.com")
         other = platform.operator(email="live-other@axizpos.com")
         token = admin["Authorization"].split(" ", 1)[1]
-        with platform.client.websocket_connect(f"/api/v1/super-admin/billing/live?token={token}") as socket:
+        with authed(platform.client, "/api/v1/super-admin/billing/live", token) as socket:
             hello = socket.receive_json()
             assert hello == {"type": "payment.pending_count", "pending": 0}
             invoice_id = _pending_invoice(platform)
@@ -111,17 +112,17 @@ def test_live_count_is_pushed_and_restored_on_reconnect(platform) -> None:  # no
             assert event["status"] == "pending_review"
             assert "bank_reference" not in event
             assert _summary(platform, other) == 1
-        with platform.client.websocket_connect(f"/api/v1/super-admin/billing/live?token={token}") as socket:
+        with authed(platform.client, "/api/v1/super-admin/billing/live", token) as socket:
             restored = socket.receive_json()
             assert restored["pending"] == 1
         other_token = other["Authorization"].split(" ", 1)[1]
-        with platform.client.websocket_connect(f"/api/v1/super-admin/billing/live?token={other_token}") as socket:
+        with authed(platform.client, "/api/v1/super-admin/billing/live", other_token) as socket:
             shared = socket.receive_json()
             assert shared == {"type": "payment.pending_count", "pending": 1}
         store = platform.headers("alpha")["Authorization"].split(" ", 1)[1]
         with pytest.raises(WebSocketDisconnect):
-            with platform.client.websocket_connect(f"/api/v1/super-admin/billing/live?token={store}"):
-                pass
+            with authed(platform.client, "/api/v1/super-admin/billing/live", store) as socket:
+                socket.receive_text()
 
 
 def _submit_for(host, slug: str, invoice_id: str, key: str) -> dict:

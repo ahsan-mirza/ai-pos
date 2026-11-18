@@ -18,6 +18,7 @@ from app.models.kitchen import KitchenStation, KitchenTicket
 from app.routers.v1.fnb_table_orders import _socket_principal, _socket_session
 from app.services import kitchen_service, returns_service
 from app.websockets import rooms
+from app.websockets.handshake import read_socket_credentials
 
 router = APIRouter()
 
@@ -74,11 +75,10 @@ def _apply_status(
 
 @router.websocket("/live")
 async def live_events(websocket: WebSocket) -> None:
-    token = websocket.query_params.get("token") or ""
-    role = websocket.query_params.get("role") or ""
-    if not token or role not in _ROLES:
-        await websocket.close(code=1008)
+    found = await read_socket_credentials(websocket, roles=_ROLES)
+    if found is None:
         return
+    token, role, frame, accepted = found
     station_id: uuid.UUID | None = None
     terminal_id: uuid.UUID | None = None
     notify_room = ""
@@ -92,7 +92,7 @@ async def live_events(websocket: WebSocket) -> None:
             return
         if role == "kds":
             try:
-                station_id = uuid.UUID(websocket.query_params.get("station_id") or "")
+                station_id = uuid.UUID(frame.get("station_id") or websocket.query_params.get("station_id") or "")
             except ValueError:
                 await websocket.close(code=1008)
                 return
@@ -105,7 +105,7 @@ async def live_events(websocket: WebSocket) -> None:
             room = rooms.kitchen_room(station_id)
         elif role == "portal":
             try:
-                store_id = uuid.UUID(websocket.query_params.get("store_id") or "")
+                store_id = uuid.UUID(frame.get("store_id") or websocket.query_params.get("store_id") or "")
             except ValueError:
                 await websocket.close(code=1008)
                 return
@@ -120,7 +120,7 @@ async def live_events(websocket: WebSocket) -> None:
             catch_up = returns_service.recent_return_events(db, store_id)
         else:
             try:
-                terminal_id = uuid.UUID(websocket.query_params.get("terminal_id") or "")
+                terminal_id = uuid.UUID(frame.get("terminal_id") or websocket.query_params.get("terminal_id") or "")
             except ValueError:
                 await websocket.close(code=1008)
                 return
@@ -139,7 +139,8 @@ async def live_events(websocket: WebSocket) -> None:
     finally:
         sessions.close()
 
-    await websocket.accept()
+    if not accepted:
+        await websocket.accept()
     await rooms.join(websocket, room)
     if role == "pos" and notify_room:
         await rooms.join(websocket, notify_room)

@@ -4,7 +4,7 @@ import { ConfirmProvider } from "./components/ConfirmDialog";
 import { useRegisterLayout, type CatalogDensity } from "./components/RegisterLayout";
 import { RegisterShell } from "./components/shell/RegisterShell";
 import type { RegisterView } from "./components/shell/ShellContext";
-import { needsActivation } from "./config/terminal";
+import { needsActivation, terminal } from "./config/terminal";
 import { ActivationScreen } from "./features/activation/ActivationScreen";
 import { PinUnlock } from "./features/auth/PinUnlock";
 import { acceptStoredSession, lock, restore, type CashierSession } from "./features/auth/session";
@@ -22,7 +22,7 @@ import { UpdatePrompt } from "./features/updates/UpdatePrompt";
 import { VirtualKeyboardProvider } from "./hooks/useVirtualKeyboard";
 import { env } from "./config/env";
 import { CatalogSkeleton } from "./features/checkout/CatalogSkeleton";
-import { inTauri } from "./lib/tauri";
+import { inTauri, openDemoSession, takeDemoNotice } from "./lib/tauri";
 
 const customerDisplay = new URLSearchParams(window.location.search).get("display") === "1";
 
@@ -44,6 +44,20 @@ function BootCatalog({ density, framed = false }: { density: CatalogDensity; fra
   );
 }
 
+function DemoWait({ message }: { message: string | null }) {
+  return (
+    <div className="flex h-screen items-center justify-center bg-slate-50 p-6 text-zinc-900 dark:bg-zinc-950 dark:text-zinc-100">
+      <div className="max-w-md rounded-3xl border border-orange-200 bg-white p-8 shadow-xl dark:border-orange-500/30 dark:bg-zinc-900">
+        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-orange-600">Demo mode</p>
+        <h1 className="mt-2 text-2xl font-semibold">Waiting for the demo session</h1>
+        <p className="mt-3 text-sm text-zinc-500 dark:text-zinc-400">
+          {message ?? "The register is asking the server for this demo. A cashier PIN is not used for a demo session."}
+        </p>
+      </div>
+    </div>
+  );
+}
+
 export function App() {
   if (customerDisplay) return <CustomerDisplay />;
   return <RegisterApp />;
@@ -59,6 +73,7 @@ function RegisterApp() {
   const [session, setSession] = useState<CashierSession | null>(remembered);
   const [ready, setReady] = useState(remembered !== null);
   const [activating, setActivating] = useState(false);
+  const [demoNotice, setDemoNotice] = useState<string | null>(null);
   const [view, setView] = useState<RegisterView>("checkout");
   const shiftState = useShift();
   const { foodAndBeverage, enabled } = useCapabilities();
@@ -72,13 +87,26 @@ function RegisterApp() {
   }, [enabled, foodAndBeverage, view]);
 
   useEffect(() => {
+    if (!inTauri()) return;
+    void takeDemoNotice().then((message) => {
+      if (message) window.alert(message);
+    });
+  }, []);
+
+  useEffect(() => {
     let cancelled = false;
-    void restore()
+    const opening = terminal()?.demo === true ? openDemoSession() : restore();
+    void opening
       .then((next) => {
         if (!cancelled) setSession(next);
       })
-      .catch(() => {
-        if (!cancelled) setSession(null);
+      .catch((error: unknown) => {
+        if (!cancelled) {
+          setSession(null);
+          if (terminal()?.demo === true) {
+            setDemoNotice(error instanceof Error ? error.message : "The demo session could not be opened.");
+          }
+        }
       })
       .finally(() => {
         if (!cancelled) setReady(true);
@@ -108,12 +136,12 @@ function RegisterApp() {
   let screen: ReactNode;
   if (needsActivation() || activating) {
     screen = <ActivationScreen onCancel={needsActivation() ? undefined : () => setActivating(false)} />;
-  } else if (!ready || session === null) {
-    screen = !ready ? (
-      <BootCatalog density={density} />
-    ) : (
-      <PinUnlock onUnlocked={setSession} onActivate={() => setActivating(true)} />
-    );
+  } else if (!ready) {
+    screen = <BootCatalog density={density} />;
+  } else if (session === null && terminal()?.demo === true) {
+    screen = <DemoWait message={demoNotice} />;
+  } else if (session === null) {
+    screen = <PinUnlock onUnlocked={setSession} onActivate={() => setActivating(true)} />;
   } else if (inTauri() && !shiftState.loaded) {
     screen = (
       <ConfirmProvider>

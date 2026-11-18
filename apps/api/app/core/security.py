@@ -71,6 +71,7 @@ def create_access_token(
     settings: Settings,
     expires_in: timedelta | None = None,
     tenant_id: str | None = None,
+    demo: bool = False,
 ) -> tuple[str, int]:
     lifetime = expires_in if expires_in is not None else timedelta(minutes=settings.access_token_expire_minutes)
     now = datetime.now(UTC)
@@ -84,6 +85,9 @@ def create_access_token(
     if tenant_id is not None:
         # Every tenant signs with the same secret; the claim keeps a token from opening another store.
         claims["tid"] = tenant_id
+    if demo:
+        # Server marker for a public demo session. Callers cannot set it.
+        claims["demo"] = True
     token = jwt.encode(claims, settings.jwt_secret, algorithm="HS256")
     if isinstance(token, bytes):
         token = token.decode("utf-8")

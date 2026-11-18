@@ -43,6 +43,9 @@ importers:
       '@tauri-apps/api':
         specifier: ^2.5.0
         version: 2.12.4
+      '@tauri-apps/plugin-dialog':
+        specifier: ^2.2.0
+        version: 2.8.4
       framer-motion:
         specifier: ^12.23.12
         version: 12.43.0(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
@@ -277,6 +280,9 @@ importers:
       '@eslint/js':
         specifier: ^9.27.0
         version: 9.39.5
+      '@testing-library/react':
+        specifier: ^16.3.3
+        version: 16.3.3(@testing-library/dom@10.4.2)(@types/react-dom@19.3.0(@types/react@19.3.0))(@types/react@19.3.0)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)
       '@types/react':
         specifier: ^19.1.6
         version: 19.3.0
@@ -292,6 +298,9 @@ importers:
       eslint:
         specifier: ^9.27.0
         version: 9.39.5(jiti@1.21.7)
+      happy-dom:
+        specifier: ^21.0.4
+        version: 21.0.4
       postcss:
         specifier: ^8.5.3
         version: 8.5.31
@@ -307,6 +316,9 @@ importers:
       vite:
         specifier: ^6.3.5
         version: 6.4.4(@types/node@26.6.5)(jiti@1.21.7)(lightningcss@1.33.0)(terser@5.51.2)
+      vitest:
+        specifier: ^3.2.7
+        version: 3.2.7(@types/node@26.6.5)(happy-dom@21.0.4)(jiti@1.21.7)(jsdom@26.1.0)(lightningcss@1.33.0)(terser@5.51.2)
 
   apps/super-admin:
     dependencies:
@@ -3033,6 +3045,9 @@ packages:
     resolution: {integrity: sha512-f7/LsY74SVb1ChmOPw1ajOpxii0GSzDAgmWHRci8JUYuuai04rXsSbFobpmB0sP2DdlvMD/B5ZotEn8GOGMRUg==}
     engines: {node: '>= 10'}
     hasBin: true
+
+  '@tauri-apps/plugin-dialog@2.8.4':
+    resolution: {integrity: sha512-+6ZOiXenOaxXwb8qCbBPdT2jX2cFPaVVHGIskrpmJLpmWj+qKRTD6X/z9x7hTdSQn7NedcoXCkWGej4a7dC4lw==}
 
   '@testing-library/dom@10.4.2':
     resolution: {integrity: sha512-yzr2S9HyAIdhz2/6qHgbs665Q7PKVcDF05vsOlHPxG1mo36gKVesdYVeDLnXgfjJ03CrKRk08knc6+E/9m8v2Q==}
@@ -9860,6 +9875,10 @@ snapshots:
       '@tauri-apps/cli-win32-arm64-msvc': 2.12.3
       '@tauri-apps/cli-win32-ia32-msvc': 2.12.3
       '@tauri-apps/cli-win32-x64-msvc': 2.12.3
+
+  '@tauri-apps/plugin-dialog@2.8.4':
+    dependencies:
+      '@tauri-apps/api': 2.12.4
 
   '@testing-library/dom@10.4.2':
     dependencies:

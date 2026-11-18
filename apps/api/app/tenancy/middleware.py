@@ -30,11 +30,17 @@ OPEN_PATHS = (
     "/redoc",
     "/openapi.json",
     "/api/v1/signup",
+    # The business code picks the demo. A header or host on this path must not select a tenant.
+    "/api/v1/demo-access/exchange",
+    # The business code, then the ticket, selects the demo. A header must not select the tenant.
+    "/api/v1/demo-access/pos/enroll",
+    "/api/v1/demo-access/pos/exchange",
     "/api/v1/auth/recover-store-code",
     "/api/v1/super-admin",
     "/media/",
     "/api/v1/billing/public-catalog",
     "/api/v1/site/contact",
+    "/api/v1/public/hardware",
     "/api/v1/billing/stripe-webhook",
     "/api/v1/billing/sandbox-events",
     "/api/v1/reach/webhooks/",

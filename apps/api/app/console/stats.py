@@ -24,6 +24,7 @@ from app.models.user import User
 from app.schemas.console import TenantStatsOut
 from app.services.settings_service import load_settings, snapshot_of
 from app.tenancy import registry
+from app.tenancy.demo_policy import commercial_tenant
 from app.tenancy.models import Tenant, TenantStats
 
 logger = logging.getLogger("ai_pos.console.stats")
@@ -118,7 +119,7 @@ def collect_all(settings: Settings) -> tuple[int, int]:
     """(measured, failed). A store whose database is unreachable is logged and skipped."""
     done = failed = 0
     with registry.control_session(settings) as control:
-        tenants = list(control.scalars(select(Tenant).order_by(Tenant.slug)))
+        tenants = list(control.scalars(select(Tenant).where(commercial_tenant()).order_by(Tenant.slug)))
         for tenant in tenants:
             try:
                 collect(control, tenant, settings)

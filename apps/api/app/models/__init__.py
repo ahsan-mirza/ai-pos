@@ -17,7 +17,7 @@ from app.models.consignment import ConsignmentSettlement, ConsignmentSettlementL
 from app.models.currency import AcceptedCurrency, ExchangeRate
 from app.models.customer import Customer, CustomerCoupon, CustomerLedgerEntry
 from app.models.delivery import DeliveryConnection
-from app.models.device import Device, DeviceActivation
+from app.models.device import DemoPosTicket, Device, DeviceActivation
 from app.models.document_sequence import DocumentSequence
 from app.models.einvoice import EInvoice, EInvoiceChain, TaxAuthorityCredential
 from app.models.expense import Expense, PettyCashEntry
@@ -37,6 +37,7 @@ from app.models.markdown import MarkdownEvent, PriceChange
 from app.models.menu import ComboSlot, ComboSlotOption, ModifierGroup, ModifierOption, ProductModifierGroup
 from app.models.messaging import MessageTemplate, OutboundMessage
 from app.models.payables import SupplierBill, SupplierBillLine, SupplierPayment, SupplierPaymentAllocation
+from app.models.pharmacy import PharmacyProductDetails, ProductDocument, ProductIngredient, SubstitutionGroup
 from app.models.payment_intent import PaymentIntent, PaymentRefund, PaymentTerminal
 from app.models.price_list import (
     CustomerGroup,
@@ -150,6 +151,7 @@ __all__ = [
     "CustomerCoupon",
     "CustomerLedgerEntry",
     "DemandDaily",
+    "DemoPosTicket",
     "Device",
     "DeviceActivation",
     "DocumentSequence",

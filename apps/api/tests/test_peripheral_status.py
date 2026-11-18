@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 from tests.test_kds import floor_table, stations
 from tests.test_menu import enable
 from tests.test_returns import API_KEY, STORE_ID, admin_token, bearer, device, seed_catalog
+from tests.wsutil import authed
 
 from app.models import PaymentTerminal, Store
 from app.services.peripheral_status import (
@@ -93,22 +94,30 @@ def test_snapshot_uses_the_register_branch_and_live_sockets(client, session: Ses
     assert f"SIM-{suffix}" not in idle.text
     assert "customer_display" not in lights
 
-    with client.websocket_connect(
-        f"/api/v1/ws/live?token={created.json()['key']}&role=kds&station_id={bar['id']}"
+    with authed(
+        client,
+        f"/api/v1/ws/live?role=kds&station_id={bar['id']}",
+        created.json()["key"],
+        "kds",
+        station_id=bar["id"],
     ):
         live = _by_kind(client.get("/api/v1/peripherals", headers=register).json())
         assert live["kds"]["light"] == "amber"
         assert live["kds"]["connected"] == 1
 
-    with client.websocket_connect(f"/api/v1/ws/stores/{STORE_ID}/tables?token={API_KEY}"):
+    with authed(client, f"/api/v1/ws/stores/{STORE_ID}/tables?role=customer", API_KEY, "customer"):
         connected = _by_kind(client.get("/api/v1/peripherals", headers=register).json())
         assert connected["table_apps"]["light"] == "green"
         assert connected["table_apps"]["connected"] >= 1
     dropped = _by_kind(client.get("/api/v1/peripherals", headers=register).json())
     assert dropped["table_apps"]["light"] == "red"
 
-    with client.websocket_connect(
-        f"/api/v1/ws/live?token={created.json()['key']}&role=customer-display&terminal_id={register_id}"
+    with authed(
+        client,
+        f"/api/v1/ws/live?role=customer-display&terminal_id={register_id}",
+        created.json()["key"],
+        "customer-display",
+        terminal_id=register_id,
     ):
         paired = _by_kind(client.get("/api/v1/peripherals", headers=register).json())
         assert paired["customer_display"]["light"] == "green"

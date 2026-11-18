@@ -16,6 +16,7 @@ const SOLUTIONS = [
 
 const PRODUCT = [
   ["Overview", "/#platform"],
+  ["Hardware", "/hardware"],
   ["Pricing", "/#pricing"],
 ] as const;
 

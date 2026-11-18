@@ -1,3 +1,5 @@
+import { isDemoBusinessCode, PORTAL_SESSION_STORAGE_KEY, type DemoMarker } from "@ai-pos/shared-types";
+
 /**
  * The portal session kept on this device.
  * The API has no separate refresh-token cookie. It reissues the bearer access token
@@ -5,13 +7,15 @@
  * 120 second grace in app/core/deps.py. Passwords are never written here.
  */
 
-export const PORTAL_SESSION_KEY = "ai-pos.portal-session";
+export const PORTAL_SESSION_KEY = PORTAL_SESSION_STORAGE_KEY;
 /** Keep this aligned with RENEWAL_GRACE_SECONDS in the API. */
 export const RENEWAL_GRACE_MS = 120_000;
 
 export interface StoredSession {
   token: string;
   expiresAt: number;
+  /** Set only when this browser entered through the public demo exchange. */
+  demo?: DemoMarker;
 }
 
 export interface SessionBucket {
@@ -42,7 +46,8 @@ function parseSession(raw: string | null): StoredSession | null {
     if (typeof parsed.token !== "string" || parsed.token === "") return null;
     if (typeof parsed.expiresAt !== "number" || !Number.isFinite(parsed.expiresAt)) return null;
     if ("password" in parsed) return null;
-    return { token: parsed.token, expiresAt: parsed.expiresAt };
+    const demo = parseDemo(parsed.demo);
+    return demo === null ? { token: parsed.token, expiresAt: parsed.expiresAt } : { token: parsed.token, expiresAt: parsed.expiresAt, demo };
   } catch {
     return null;
   }
@@ -88,8 +93,18 @@ export function readStoredSession(persistent: SessionBucket, legacy?: SessionBuc
   return previous;
 }
 
+function parseDemo(value: unknown): DemoMarker | null {
+  if (value === undefined || value === null || typeof value !== "object") return null;
+  const row = value as Record<string, unknown>;
+  if (typeof row.businessCode !== "string" || !isDemoBusinessCode(row.businessCode)) return null;
+  if (typeof row.businessName !== "string" || row.businessName.trim() === "") return null;
+  return { businessCode: row.businessCode, businessName: row.businessName };
+}
+
 export function writeStoredSession(persistent: SessionBucket, session: StoredSession): void {
-  persistent.setItem(PORTAL_SESSION_KEY, JSON.stringify({ token: session.token, expiresAt: session.expiresAt }));
+  const body = JSON.parse(JSON.stringify({ token: session.token, expiresAt: session.expiresAt })) as StoredSession;
+  if (session.demo) body.demo = { businessCode: session.demo.businessCode, businessName: session.demo.businessName };
+  persistent.setItem(PORTAL_SESSION_KEY, JSON.stringify(body));
 }
 
 export function clearStoredSession(persistent: SessionBucket, legacy?: SessionBucket | null): void {

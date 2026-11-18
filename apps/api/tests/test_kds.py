@@ -18,6 +18,7 @@ from tests.test_returns import (
     push,
     seed_catalog,
 )
+from tests.wsutil import authed
 
 from app.models import AuditLog, KitchenTicket, Product
 
@@ -93,7 +94,7 @@ def test_sending_fires_tickets_per_station_and_tracks_progress(client, session: 
     assert board(client, bar, bar_board["server_time"])["tickets"] == []
 
     assert change_profile(client, bearer(token), "restaurant").status_code == 200
-    with client.websocket_connect(f"/api/v1/ws/stores/{STORE_ID}/tables?token={API_KEY}") as socket:
+    with authed(client, f"/api/v1/ws/stores/{STORE_ID}/tables?role=customer", API_KEY, "customer") as socket:
         assert status(client, ticket["id"], "READY").status_code == 200
         progress = socket.receive_json()
         assert progress["type"] == "ORDER_STATUS_CHANGED"
@@ -193,7 +194,7 @@ def test_one_ready_item_does_not_finish_the_ticket_or_the_order(client, session:
     )
     assert early.status_code == 422 and early.json()["error"]["code"] == "nothing_ready"
 
-    with client.websocket_connect(f"/api/v1/ws/stores/{STORE_ID}/tables?token={API_KEY}") as socket:
+    with authed(client, f"/api/v1/ws/stores/{STORE_ID}/tables?role=customer", API_KEY, "customer") as socket:
         marked = client.post(
             f"/api/v1/kds/tickets/{ticket['id']}/items/{ticket['items'][0]['id']}/ready", headers=device()
         )

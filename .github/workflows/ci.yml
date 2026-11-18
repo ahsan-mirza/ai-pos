@@ -4,7 +4,7 @@ on:
   push:
   pull_request:
 
-# Deploy listens for this workflow by name ("CI"); keep it in step with deploy.yml.
+# Production deploy is manual. See deploy.yml. This workflow only verifies the branch.
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true

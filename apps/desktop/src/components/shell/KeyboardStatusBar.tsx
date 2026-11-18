@@ -23,7 +23,7 @@ import { loadScaleConfig } from "../../features/settings/scaleConfig";
 import { useVirtualKeyboard } from "../../hooks/useVirtualKeyboard";
 import { ApiRejectedError, ApiUnavailableError, checkCardTerminal, peripheralSnapshot } from "../../lib/api";
 import { useCapabilities } from "../../lib/capabilities";
-import { inTauri, openCashDrawer, probePrinter, readScale, type PrinterProbe } from "../../lib/tauri";
+import { exitDemo, inTauri, openCashDrawer, probePrinter, readScale, type PrinterProbe } from "../../lib/tauri";
 import { VirtualKeyboard } from "../common/VirtualKeyboard";
 import { useShell } from "./ShellContext";
 import {
@@ -273,9 +273,29 @@ export function KeyboardStatusBar() {
       <footer className="relative flex h-9 shrink-0 flex-nowrap items-center justify-between gap-3 border-t border-slate-800 bg-slate-900 px-3">
         <p
           className="min-w-0 max-w-[34%] shrink truncate text-xs text-slate-300"
-          title={`${restaurantName} · ${spec.label} · ${store.code} · ${store.name}${activation?.register_code ? ` · ${activation.register_code}` : ""}`}
+          title={
+            activation?.demo
+              ? `DEMO MODE — ${restaurantName}. Session active. ${catalogSummary ?? ""}`
+              : `${restaurantName} · ${spec.label} · ${store.code} · ${store.name}${activation?.register_code ? ` · ${activation.register_code}` : ""}`
+          }
         >
-          <span className="font-semibold text-slate-100">{restaurantName}</span>
+          {activation?.demo ? (
+            <button
+              type="button"
+              className="me-2 rounded bg-orange-500 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white"
+              onClick={() => {
+                if (!window.confirm("Leave this demo on this register? The demo token and this PC's demo data will be cleared.")) return;
+                void exitDemo().catch((error: unknown) => {
+                  setNotice(error instanceof Error ? error.message : "The demo could not be closed.");
+                });
+              }}
+            >
+              Exit Demo
+            </button>
+          ) : null}
+          <span className="font-semibold text-slate-100">
+            {activation?.demo ? `DEMO MODE — ${restaurantName}` : restaurantName}
+          </span>
           <span className="text-slate-500"> · </span>
           <span>{spec.shortLabel}</span>
         </p>

@@ -16,10 +16,10 @@ export type PosAlertMessage =
 
 let posSocket: WebSocket | null = null;
 
-function socketUrl(storeId: string, token: string): string {
+function socketUrl(storeId: string): string {
   const base = env.apiBaseUrl.replace(/^http/, "ws");
   const tenant = env.tenantDomain ? `&tenant=${encodeURIComponent(env.tenantDomain)}` : "";
-  return `${base}/api/v1/ws/stores/${storeId}/tables?token=${encodeURIComponent(token)}&role=pos${tenant}`;
+  return `${base}/api/v1/ws/stores/${storeId}/tables?role=pos${tenant}`;
 }
 
 function readAlert(raw: unknown): PosAlertMessage | null {
@@ -56,7 +56,10 @@ export function listenForPosAlerts(storeId: string, onEvent: (event: PosAlertMes
 
   const open = (token: string) => {
     if (stopped) return;
-    socket = new WebSocket(socketUrl(storeId, token));
+    socket = new WebSocket(socketUrl(storeId));
+    socket.onopen = () => {
+      socket?.send(JSON.stringify({ type: "auth", token, role: "pos" }));
+    };
     posSocket = socket;
     socket.onmessage = (message) => {
       try {

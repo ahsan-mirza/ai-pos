@@ -1,6 +1,8 @@
 """POS-company console API (no tenant): operator sign-in, tenant directory, module overrides and business-type
 migrations. Every route needs an operator token except sign-in."""
 
+import asyncio
+import json
 import logging
 import threading
 import time
@@ -31,6 +33,7 @@ from app.console.security import ConsoleAdmin, CurrentOperator
 from app.core.config import Settings, get_settings
 from app.core.errors import ApiError
 from app.core.pagination import Offset, set_total
+from app.routers.hardware_catalog_admin import router as hardware_catalog_router
 from app.schemas.addon_access import ConsoleAddonAccessOut
 from app.schemas.billing import (
     AddonIn,
@@ -97,6 +100,7 @@ from app.tenancy.models import Operator
 
 logger = logging.getLogger("ai_pos.console")
 router = APIRouter()
+router.include_router(hardware_catalog_router)
 Config = Annotated[Settings, Depends(get_settings)]
 
 WINDOW_SECONDS = 600
@@ -735,11 +739,28 @@ async def billing_live(websocket: WebSocket) -> None:
     from app.websockets import rooms
 
     settings = get_settings()
-    operator = operator_from_token(websocket.query_params.get("token") or "", settings)
-    if operator is None:
+    presented_query = websocket.query_params.get("token") or ""
+    if presented_query and not settings.query_token_allowed:
         await websocket.close(code=1008)
         return
     await websocket.accept()
+    if presented_query:
+        operator = operator_from_token(presented_query, settings)
+    else:
+        try:
+            raw = await asyncio.wait_for(websocket.receive_text(), timeout=5)
+            message = json.loads(raw)
+        except (TimeoutError, json.JSONDecodeError, TypeError, ValueError, WebSocketDisconnect):
+            await websocket.close(code=1008)
+            return
+        if not isinstance(message, dict) or message.get("type") != "auth":
+            await websocket.close(code=1008)
+            return
+        presented = message.get("token")
+        operator = operator_from_token(presented if isinstance(presented, str) else "", settings)
+    if operator is None:
+        await websocket.close(code=1008)
+        return
     await rooms.join(websocket, payment_notices.ROOM)
     try:
         with registry.control_session(settings) as db:

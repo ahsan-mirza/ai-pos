@@ -10,6 +10,8 @@ interface ImportMetaEnv {
   readonly VITE_SHOW_DEMO_ACCOUNTS?: string;
   readonly VITE_DEMO_ADMIN_USERNAME?: string;
   readonly VITE_DEMO_ADMIN_PASSWORD?: string;
+  /** Marketing site origin, for example https://axizpos.com. Exit Demo returns to /explore on this origin. */
+  readonly VITE_MARKETING_URL?: string;
 }
 
 interface ImportMeta {

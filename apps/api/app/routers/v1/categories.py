@@ -32,8 +32,8 @@ CanManage = Annotated[Principal, Depends(require_catalog_admin)]
 
 
 @router.get("", response_model=list[CategoryOut])
-def list_categories(db: Db, _: CanRead) -> list[CategoryOut]:
-    return category_service.list_categories(db)
+def list_categories(db: Db, _: CanRead, active_only: bool = False) -> list[CategoryOut]:
+    return category_service.list_categories(db, active_only=active_only)
 
 
 @router.post("", response_model=CategoryOut, status_code=201)

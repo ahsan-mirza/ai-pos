@@ -169,7 +169,12 @@ export const navGroups: NavGroup[] = [
       { to: "/sales-insights", label: "Sales Insights", icon: ChartColumn, permission: Permission.PortalReportsRead, feature: Capability.SalesInsights, isActive: under("/sales-insights") },
       {
         to: "/inventory",
-        label: (ctx) => (profileSpec(ctx.profile).group === "food_beverage" ? "Inventory" : "Inventory & Batches"),
+        label: (ctx) =>
+          ctx.profile === "pharmacy"
+            ? "Medicine catalogue"
+            : profileSpec(ctx.profile).group === "food_beverage"
+              ? "Inventory"
+              : "Inventory & Batches",
         icon: Boxes,
         permission: Permission.PortalAccess,
         isActive: inventoryOwn,

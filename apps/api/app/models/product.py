@@ -42,6 +42,8 @@ def search_haystack(
     brand: Column[str],
     season: Column[str],
     collection: Column[str],
+    generic_name: Column[str],
+    gtin: Column[str],
 ) -> ColumnElement[str]:
     """Every searchable field, space separated, then model / SKU / barcode without separators ("ga05843us")."""
     model = func.coalesce(model_number, "")
@@ -57,6 +59,9 @@ def search_haystack(
         _compact(model),
         _compact(sku),
         _compact(barcode),
+        func.coalesce(generic_name, ""),
+        func.coalesce(gtin, ""),
+        _compact(func.coalesce(gtin, "")),
     ]
     joined = parts[0]
     for part in parts[1:]:
@@ -72,6 +77,7 @@ class Product(TenantScoped, TimestampMixin, Base):
         tenant_unique("sku", name="uq_products_sku"),
         tenant_unique("barcode", name="uq_products_barcode"),
         tenant_unique("plu_code", name="uq_products_plu_code"),
+        tenant_unique("gtin", name="uq_products_gtin"),
         # Null signature (a product that is not a variant) is allowed many times. A real combination is not.
         tenant_unique("product_model_id", "variant_signature", name="uq_products_model_variant"),
         CheckConstraint("price_cents >= 0", name="price_nonnegative"),
@@ -114,6 +120,9 @@ class Product(TenantScoped, TimestampMixin, Base):
     name: Mapped[str] = mapped_column(String(200))
     model_number: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
     brand: Mapped[str | None] = mapped_column(String(80), nullable=True, index=True)
+    # Copies of the pharmacy extension, kept for the generated search column. Null on every other profile.
+    generic_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    gtin: Mapped[str | None] = mapped_column(String(14), nullable=True)
     # Denormalized category name for search and reporting; kept in step with category_id by the catalog services.
     category: Mapped[str] = mapped_column(String(80), index=True)
     # Fashion attributes, copied from the model (see fashion_attributes.copy_from_model) or set on a standalone item.
@@ -136,6 +145,8 @@ class Product(TenantScoped, TimestampMixin, Base):
                 brand.column,
                 season.column,
                 collection.column,
+                generic_name.column,
+                gtin.column,
             ),
             persisted=True,
         ),

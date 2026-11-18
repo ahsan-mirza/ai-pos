@@ -30,6 +30,8 @@ export function signedOutLocation(pathname: string, search: string, hostname: st
   if (
     pathname === "/login" ||
     pathname === "/welcome" ||
+    pathname === "/demo" ||
+    pathname.startsWith("/demo/") ||
     pathname.startsWith("/signup") ||
     pathname.startsWith("/kds") ||
     pathname === "/table" ||

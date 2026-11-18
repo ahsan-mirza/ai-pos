@@ -56,6 +56,7 @@ class Capability(StrEnum):
     UAE_EINVOICING = "uae_einvoicing"
     DELIVERY_INTEGRATIONS = "delivery_integrations"
     FLEET_DISPATCH = "fleet_dispatch"
+    PHARMACY_CATALOG = "pharmacy_catalog"
 
 
 C = Capability
@@ -108,6 +109,7 @@ SPECS: dict[Capability, CapabilitySpec] = {
     C.UAE_EINVOICING: CapabilitySpec("UAE e-Invoicing", True),
     C.DELIVERY_INTEGRATIONS: CapabilitySpec("Delivery Integrations", True),
     C.FLEET_DISPATCH: CapabilitySpec("Fleet dispatch", True, (C.SALES_ORDERS,)),
+    C.PHARMACY_CATALOG: CapabilitySpec("Pharmacy catalogue", True),
 }
 ORDER: tuple[Capability, ...] = tuple(SPECS)
 BUILT_TODAY: tuple[Capability, ...] = tuple(capability for capability in ORDER if SPECS[capability].available)
@@ -179,6 +181,7 @@ PROFILES: dict[str, tuple[Capability, ...]] = {
         C.RECIPES,
         C.DELIVERY_CHANNELS,
     ),
+    "pharmacy": (C.LOYALTY, C.PROMOTIONS, C.FEFO, C.CARD_TERMINALS, C.PHARMACY_CATALOG),
 }
 FOOD_AND_BEVERAGE = frozenset({"restaurant", "cafe", "quick_service"})
 PROFILE_LABELS: dict[str, str] = {
@@ -189,6 +192,7 @@ PROFILE_LABELS: dict[str, str] = {
     "restaurant": "Restaurant",
     "cafe": "Cafe",
     "quick_service": "Quick Service",
+    "pharmacy": "Medical Pharmacy",
 }
 
 # What a business of each type may switch on by itself once onboarding is done. Anything else needs IT support
@@ -265,6 +269,24 @@ COMPATIBLE: dict[str, frozenset[Capability]] = {
     "restaurant": frozenset(_FOOD_CORE),
     "cafe": frozenset(_FOOD_CORE),
     "quick_service": frozenset(_FOOD_CORE),
+    "pharmacy": frozenset(
+        (
+            C.LOYALTY,
+            C.PROMOTIONS,
+            C.FEFO,
+            C.CARD_TERMINALS,
+            C.PHARMACY_CATALOG,
+            C.B2B_CREDIT,
+            C.SALES_ORDERS,
+            C.GIFT_CARDS,
+            C.MULTI_CURRENCY,
+            C.DEEP_ANALYTICS,
+            C.AI_INSIGHTS,
+            C.SALES_INSIGHTS,
+            C.AXIZ_REACH,
+            C.UAE_EINVOICING,
+        )
+    ),
 }
 
 
@@ -462,6 +484,9 @@ SUB_TYPES: dict[str, dict[str, tuple[Capability, ...]]] = {
         ),
         "qsr_delivery": _QSR_DELIVERY,
         "qsr_all": _QSR_DELIVERY,
+    },
+    "pharmacy": {
+        "community_pharmacy": PROFILES["pharmacy"],
     },
 }
 

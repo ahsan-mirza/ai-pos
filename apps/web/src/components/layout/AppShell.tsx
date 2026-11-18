@@ -5,6 +5,7 @@ import { Link, Outlet, useLocation } from "react-router-dom";
 import { apiGet } from "../../lib/api";
 import { useTenant } from "../../context/TenantContext";
 import { FirstWinChecklist } from "../../features/onboarding/FirstWinChecklist";
+import { DemoBanner } from "../../features/demo/DemoBanner";
 import { PracticeBanner, PracticeProvider, TaxPortalBanner } from "../../features/onboarding/practice";
 import { portalRouteAllowed } from "../../lib/industry";
 import { portalHomePath } from "../../lib/portal-home";
@@ -70,6 +71,7 @@ export function AppShell() {
             />
             <div className="flex min-w-0 flex-1 flex-col">
               <PwaChrome />
+              <DemoBanner />
               <PracticeBanner />
               <TaxPortalBanner />
               <SubscriptionNotice access={access} onAccess={setSubscriptionLocked} onLoaded={setAccess} />

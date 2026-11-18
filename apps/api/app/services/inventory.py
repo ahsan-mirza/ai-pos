@@ -1317,6 +1317,13 @@ def create_product(db: Session, principal: Principal, data: ProductCreate, curre
     )
     db.add(product)
     db.flush()
+    if product.category_id is not None:
+        from app.services import category_service
+
+        category_service.assert_assignable(db, product.category_id, product.sub_category_id)
+    from app.services.pharmacy_catalog import apply as apply_pharmacy
+
+    apply_pharmacy(db, product, data.pharmacy, creating=True)
     if store is not None:
         level = level_for(db, product.id, store.id)
         level.min_reorder_level = data.min_reorder_level
@@ -1525,6 +1532,14 @@ def update_product(
         if model_id is not None and "product_model_id" in fields and not category_change and not brand_change:
             category_id, sub_id, brand = None, None, None
         _classify(db, product, model_id=model_id, category_id=category_id, sub_category_id=sub_id, brand=brand)
+        if product.category_id is not None:
+            from app.services import category_service
+
+            category_service.assert_assignable(db, product.category_id, product.sub_category_id)
+    if "pharmacy" in fields and data.pharmacy is not None:
+        from app.services.pharmacy_catalog import apply as apply_pharmacy
+
+        apply_pharmacy(db, product, data.pharmacy, creating=False)
     if product.product_model_id is None:
         fashion_attributes.apply(product, data, only_sent=True)
     apply_signature(product)

@@ -14,10 +14,10 @@ export interface TableEvent {
   updated_at?: string;
 }
 
-function socketUrl(storeId: string, token: string): string {
+function socketUrl(storeId: string): string {
   const base = env.apiBaseUrl.replace(/^http/, "ws");
   const tenant = env.tenantDomain ? `&tenant=${encodeURIComponent(env.tenantDomain)}` : "";
-  return `${base}/api/v1/ws/stores/${storeId}/tables?token=${encodeURIComponent(token)}&role=pos${tenant}`;
+  return `${base}/api/v1/ws/stores/${storeId}/tables?role=pos${tenant}`;
 }
 
 /**
@@ -31,7 +31,10 @@ export function listenForTableEvents(storeId: string, onEvent: (event: TableEven
 
   const open = (token: string) => {
     if (stopped) return;
-    socket = new WebSocket(socketUrl(storeId, token));
+    socket = new WebSocket(socketUrl(storeId));
+    socket.onopen = () => {
+      socket?.send(JSON.stringify({ type: "auth", token, role: "pos" }));
+    };
     socket.onmessage = (message) => {
       const raw = String(message.data);
       if (inTauri()) void cacheTableEvent(storeId, raw).catch(() => undefined);

@@ -154,7 +154,7 @@ function Hero() {
           <span className="h2-h1-brand">with AxizPOS</span>
         </motion.h1>
         <IndustryRotator />
-        <motion.a className="h2-btn" href="#platform" initial={reduce ? false : { opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.45, delay: 0.24 }}>
+        <motion.a className="h2-btn" href="/explore" initial={reduce ? false : { opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.45, delay: 0.24 }}>
           Explore AxizPOS <span aria-hidden="true">→</span>
         </motion.a>
       </div>

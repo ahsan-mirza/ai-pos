@@ -1,7 +1,9 @@
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import react from "@vitejs/plugin-react";
-import { defineConfig, loadEnv, type Plugin } from "vite";
+import type { Plugin } from "vite";
+import { loadEnv } from "vite";
+import { defineConfig } from "vitest/config";
 import { SEO_PAGES, headTags, marketingRedirects, measurementSnippet, notFoundHtml, publicWorkerBoot, robotsTxt, sitemapXml, seoPage, staticArticle } from "./src/seo";
 
 const root = fileURLToPath(new URL(".", import.meta.url));
@@ -24,6 +26,10 @@ function siteSeo(): Plugin {
     const preview = previewPath(url);
     if (preview) return preview;
     const path = url?.split("?")[0];
+    if (path === "/hardware" || (path?.startsWith("/hardware/") && !path.includes("."))) {
+      const query = url?.includes("?") ? url.slice(url.indexOf("?")) : "";
+      return `/hardware/index.html${query}`;
+    }
     if (!path || !SEO_PAGES.some((page) => page.path === path)) return undefined;
     const query = url?.includes("?") ? url.slice(url.indexOf("?")) : "";
     return `${path}/index.html${query}`;
@@ -116,4 +122,8 @@ export default defineConfig({
   appType: "mpa",
   server: { port: 5175, strictPort: true },
   build: { assetsDir: "site-assets" },
+  test: {
+    environment: "happy-dom",
+    include: ["src/**/*.test.ts", "src/**/*.test.tsx"],
+  },
 });

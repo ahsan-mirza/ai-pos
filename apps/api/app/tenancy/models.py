@@ -18,6 +18,7 @@ from sqlalchemy import (
     Uuid,
     and_,
     column,
+    false,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
@@ -46,6 +47,19 @@ class ControlBase(DeclarativeBase):
 
 class Tenant(ControlBase):
     __tablename__ = "tenants"
+    __table_args__ = (
+        Index("ix_tenants_is_demo_demo_status", "is_demo", "demo_status"),
+        Index("ix_tenants_demo_expires_at", "demo_expires_at"),
+        CheckConstraint(
+            "demo_status IS NULL OR demo_status IN ('active', 'disabled', 'resetting', 'reset_failed')",
+            name="ck_tenants_demo_status_known",
+        ),
+        CheckConstraint(
+            "demo_business_type IS NULL OR demo_business_type IN "
+            "('restaurant', 'supermarket', 'electronics', 'fashion')",
+            name="ck_tenants_demo_business_type_known",
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
     slug: Mapped[str] = mapped_column(String(32), unique=True)
@@ -62,6 +76,21 @@ class Tenant(ControlBase):
     plan: Mapped[str] = mapped_column(String(32), default="standard")
     # Copy of the store's live_at being unset, so the directory does not open every store database.
     practice_mode: Mapped[bool] = mapped_column(Boolean, default=True)
+    # Production showroom. Commercial totals skip these rows. The store itself stays active.
+    is_demo: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=false())
+    # Public exchange code: restaurant, supermarket, electronics, or fashion. Not a profile key.
+    demo_business_type: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    demo_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    demo_status: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    demo_seed_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    demo_last_reset_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Durable reset cursor. Separate from the operational database, so a crash can resume this phase.
+    demo_reset_operation_id: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True), nullable=True)
+    demo_reset_phase: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    demo_access_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=false())
+    demo_created_by: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("operators.id", name="fk_tenants_demo_created_by_operators"), nullable=True
+    )
     owner_email: Mapped[str | None] = mapped_column(String(254), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(UTC))
     updated_at: Mapped[datetime] = mapped_column(
@@ -637,9 +666,7 @@ class ConsolePaymentNotice(ControlBase):
     __tablename__ = "console_payment_notices"
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    transfer_id: Mapped[uuid.UUID] = mapped_column(
-        Uuid(as_uuid=True), ForeignKey("billing_transfers.id"), unique=True
-    )
+    transfer_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("billing_transfers.id"), unique=True)
     tenant_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("tenants.id"), index=True)
     tenant_name: Mapped[str] = mapped_column(String(120), default="")
     invoice_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True))
@@ -967,3 +994,7 @@ class ConsoleResetGuard(ControlBase):
     failures: Mapped[int] = mapped_column(Integer, default=0)
     window_started: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+# Registers public catalogue tables on ControlBase.metadata. Imported last to avoid a cycle.
+from app.tenancy import public_hardware as public_hardware  # noqa: E402,F401

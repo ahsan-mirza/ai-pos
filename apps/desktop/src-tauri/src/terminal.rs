@@ -26,6 +26,9 @@ pub struct TerminalConfig {
     pub register_name: String,
     pub device_token: String,
     pub activated_at: i64,
+    /// True only after a demo enrollment exchange. Existing files without the field stay production registers.
+    #[serde(default)]
+    pub demo: bool,
 }
 
 /// What the UI may see: everything except the device token.
@@ -44,6 +47,8 @@ pub struct TerminalStatus {
     pub register_id: String,
     pub register_code: String,
     pub register_name: String,
+    #[serde(default)]
+    pub demo: bool,
 }
 
 impl TerminalStatus {
@@ -68,6 +73,7 @@ impl TerminalStatus {
             register_id: config.register_id.clone(),
             register_code: config.register_code.clone(),
             register_name: config.register_name.clone(),
+            demo: config.demo,
         }
     }
 }
@@ -276,6 +282,7 @@ pub fn activate(subdomain: &str, activation_key: &str) -> Result<TerminalConfig,
         register_name: activated.register_name,
         device_token: activated.device_token,
         activated_at: crate::auth::now_secs(),
+        demo: false,
     })
 }
 

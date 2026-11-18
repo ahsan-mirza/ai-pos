@@ -7,6 +7,7 @@ import {
   Croissant,
   Laptop,
   MailCheck,
+  Pill,
   Sandwich,
   Shirt,
   ShoppingBag,
@@ -39,6 +40,7 @@ const ICONS: Record<string, LucideIcon> = {
   restaurant: UtensilsCrossed,
   cafe: Coffee,
   quick_service: Sandwich,
+  pharmacy: Pill,
 };
 
 const MODEL_ICONS: Record<string, LucideIcon> = {

@@ -1,4 +1,4 @@
-; Guided NSIS pages for the production AI POS installer.
+; Guided NSIS pages for the AxizPOS POS Register installer.
 ; Included by Tauri before its own pages, so this radio page is shown first.
 ;
 ; An existing register is detected from HKCU\Software\QuantumPOS, from Tauri's
@@ -17,7 +17,8 @@ ManifestSupportedOS {8e0f7a12-bfb3-4fe8-b9a5-48fd50a15a9a}
 
 !define POS_REG_KEY "Software\QuantumPOS"
 !define POS_BUNDLE_ID "com.aipos.desktop"
-!define POS_UNINST_KEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\AI POS"
+!define POS_UNINST_CURRENT "Software\Microsoft\Windows\CurrentVersion\Uninstall\AxizPOS POS Register"
+!define POS_UNINST_PREVIOUS "Software\Microsoft\Windows\CurrentVersion\Uninstall\AI POS"
 
 Var PosInstallChoice
 Var PosResetRadio
@@ -25,11 +26,12 @@ Var PosRecoverRadio
 Var PosSavedUninstallDefault
 Var PosSavedUninstallString
 Var PosHidUninstallKey
+Var PosUninstKey
 
 !define MUI_CUSTOMFUNCTION_GUIINIT PosGuiInit
 Function PosGuiInit
   ${IfNot} ${AtLeastWin10}
-    MessageBox MB_ICONSTOP "AI POS supports Windows 10 and Windows 11."
+    MessageBox MB_ICONSTOP "AxizPOS POS Register supports Windows 10 and Windows 11."
     Quit
   ${EndIf}
 FunctionEnd
@@ -46,7 +48,11 @@ Function PosExistingInstallPage
   ${If} $1 != ""
     StrCpy $0 "1"
   ${EndIf}
-  ReadRegStr $1 SHCTX "${POS_UNINST_KEY}" "UninstallString"
+  ReadRegStr $1 SHCTX "${POS_UNINST_CURRENT}" "UninstallString"
+  ${If} $1 != ""
+    StrCpy $0 "1"
+  ${EndIf}
+  ReadRegStr $1 SHCTX "${POS_UNINST_PREVIOUS}" "UninstallString"
   ${If} $1 != ""
     StrCpy $0 "1"
   ${EndIf}
@@ -60,7 +66,7 @@ Function PosExistingInstallPage
     Abort
   ${EndIf}
 
-  !insertmacro MUI_HEADER_TEXT "AI POS is already installed" "Reset the register, or keep its files"
+  !insertmacro MUI_HEADER_TEXT "AxizPOS POS Register is already installed" "Reset the register, or keep its files"
 
   nsDialogs::Create 1018
   Pop $0
@@ -98,11 +104,16 @@ Function PosExistingInstallLeave
 
   ; Tauri also asks whether to uninstall. Hiding its uninstall entry skips that
   ; page; .onInit has already pointed $INSTDIR at the existing folder.
-  ReadRegStr $PosSavedUninstallDefault SHCTX "${POS_UNINST_KEY}" ""
-  ReadRegStr $PosSavedUninstallString SHCTX "${POS_UNINST_KEY}" "UninstallString"
+  StrCpy $PosUninstKey "${POS_UNINST_CURRENT}"
+  ReadRegStr $PosSavedUninstallString SHCTX "${POS_UNINST_CURRENT}" "UninstallString"
+  ${If} $PosSavedUninstallString == ""
+    StrCpy $PosUninstKey "${POS_UNINST_PREVIOUS}"
+    ReadRegStr $PosSavedUninstallString SHCTX "${POS_UNINST_PREVIOUS}" "UninstallString"
+  ${EndIf}
+  ReadRegStr $PosSavedUninstallDefault SHCTX "$PosUninstKey" ""
   ${If} $PosSavedUninstallString != ""
-    DeleteRegValue SHCTX "${POS_UNINST_KEY}" ""
-    DeleteRegValue SHCTX "${POS_UNINST_KEY}" "UninstallString"
+    DeleteRegValue SHCTX "$PosUninstKey" ""
+    DeleteRegValue SHCTX "$PosUninstKey" "UninstallString"
     StrCpy $PosHidUninstallKey "1"
   ${EndIf}
 FunctionEnd
@@ -112,8 +123,8 @@ Page custom PosExistingInstallPage PosExistingInstallLeave
 !define MUI_CUSTOMFUNCTION_ABORT PosUserAbort
 Function PosUserAbort
   ${If} $PosHidUninstallKey == "1"
-    WriteRegStr SHCTX "${POS_UNINST_KEY}" "" $PosSavedUninstallDefault
-    WriteRegStr SHCTX "${POS_UNINST_KEY}" "UninstallString" $PosSavedUninstallString
+    WriteRegStr SHCTX "$PosUninstKey" "" $PosSavedUninstallDefault
+    WriteRegStr SHCTX "$PosUninstKey" "UninstallString" $PosSavedUninstallString
     StrCpy $PosHidUninstallKey "0"
   ${EndIf}
 FunctionEnd
@@ -123,7 +134,9 @@ FunctionEnd
   ${If} $PosInstallChoice == "reset"
     ; Only the product folder. Never remove a parent such as the user profile.
     StrCpy $1 $INSTDIR "" -6
+    StrCpy $2 $INSTDIR "" -20
     ${If} $1 == "AI POS"
+    ${OrIf} $2 == "AxizPOS POS Register"
       RMDir /r "$INSTDIR"
       CreateDirectory "$INSTDIR"
     ${Else}

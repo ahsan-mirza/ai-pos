@@ -48,7 +48,12 @@ export function reviewSocketUrl(): string | null {
   if (!token) return null;
   const http = apiBase() || (typeof window === "undefined" ? "" : window.location.origin);
   const ws = http.replace(/^http/, "ws");
-  return `${ws}${PREFIX}/billing/live?token=${encodeURIComponent(token)}`;
+  return `${ws}${PREFIX}/billing/live`;
+}
+
+export function reviewSocketAuth(): string | null {
+  if (!token) return null;
+  return JSON.stringify({ type: "auth", token });
 }
 
 export function onSignOut(handler: (() => void) | null): void {
@@ -96,6 +101,7 @@ async function exchange<T>(method: string, path: string, body?: unknown): Promis
     }
     throw new ConsoleError(message, response.status, code, details, api);
   }
+  if (response.status === 204) return { data: undefined as T, headers: response.headers };
   return { data: (await response.json()) as T, headers: response.headers };
 }
 
@@ -109,11 +115,34 @@ export async function consoleBlob(path: string): Promise<Blob> {
   return response.blob();
 }
 
+export async function consoleUpload<T>(path: string, file: File, fields: Record<string, string>): Promise<T> {
+  const body = new FormData();
+  body.append("file", file);
+  for (const [key, value] of Object.entries(fields)) body.append(key, value);
+  const headers: Record<string, string> = {};
+  if (token) headers.Authorization = `Bearer ${token}`;
+  const response = await fetch(`${apiBase()}${PREFIX}${path}`, { method: "POST", headers, body });
+  if (!response.ok) {
+    let message = `Request failed (${response.status}).`;
+    try {
+      const parsed = (await response.json()) as { error?: { message?: string } };
+      message = parsed.error?.message ?? message;
+    } catch {
+      // Not JSON.
+    }
+    throw new ConsoleError(message, response.status, null);
+  }
+  return (await response.json()) as T;
+}
+
 export const api = {
   get: async <T>(path: string) => (await exchange<T>("GET", path)).data,
   post: async <T>(path: string, body: unknown) => (await exchange<T>("POST", path, body)).data,
   put: async <T>(path: string, body: unknown) => (await exchange<T>("PUT", path, body)).data,
   patch: async <T>(path: string, body: unknown) => (await exchange<T>("PATCH", path, body)).data,
+  del: async (path: string) => {
+    await exchange<undefined>("DELETE", path);
+  },
   page: async <T>(path: string): Promise<Page<T>> => {
     const { data, headers } = await exchange<T[]>("GET", path);
     const total = Number(headers.get("X-Total-Count"));

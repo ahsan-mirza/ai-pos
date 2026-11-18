@@ -86,13 +86,13 @@ def imei(seed: str = "49015420323751") -> str:
     return next(f"{seed}{digit}" for digit in range(10) if is_valid_imei(f"{seed}{digit}"))
 
 
-def push(client, entity: str, payload: dict, key: str | None = None):
+def push(client, entity: str, payload: dict, key: str | None = None, occurred_at: str = "2026-10-19T08:00:00Z"):
     event = {
         "idempotency_key": key or f"{entity}-{uuid.uuid4()}",
         "entity_type": entity,
         "operation": "upsert",
         "payload": payload,
-        "occurred_at": "2026-10-19T08:00:00Z",
+        "occurred_at": occurred_at,
     }
     return client.post("/api/v1/sync/push", headers=device(), json={"device_id": "register-1", "events": [event]})
 

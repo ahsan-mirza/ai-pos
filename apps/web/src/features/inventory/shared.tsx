@@ -23,17 +23,18 @@ export function useStores() {
   return { stores, error, reload };
 }
 
-export function useCategories() {
+export function useCategories(options?: { activeOnly?: boolean }) {
+  const activeOnly = options?.activeOnly === true;
   const [categories, setCategories] = useState<Category[]>([]);
   const [error, setError] = useState<string | null>(null);
   const reload = useCallback(async () => {
     try {
-      setCategories(await categoriesApi.list());
+      setCategories(await categoriesApi.list(activeOnly ? { active_only: true } : undefined));
       setError(null);
     } catch (caught) {
       setError(message(caught, "Could not load categories."));
     }
-  }, []);
+  }, [activeOnly]);
   useEffect(() => {
     void reload();
   }, [reload]);

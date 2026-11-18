@@ -94,6 +94,47 @@ export type {
   TenderInput,
 } from "./quote.js";
 export { PASSWORD_MIN_LENGTH, PIN_PATTERN, Permission, SystemRoleId, hasPermission } from "./auth.js";
+export {
+  BUSINESS_SETTINGS_STORAGE_KEY,
+  DEMO_BUSINESSES,
+  DemoOpenError,
+  PORTAL_SESSION_STORAGE_KEY,
+  STORE_CODE_STORAGE_KEY,
+  claimDemoClick,
+  demoBusiness,
+  demoCodeFromPath,
+  demoExchangeBody,
+  demoMarkerFrom,
+  exchangeDemo,
+  friendlyDemoError,
+  isDemoBusinessCode,
+  planDemoOpen,
+  portalDemoEntry,
+  readDemoExchange,
+  storedDemoSession,
+  tokenSaysDemo,
+  visibleDemo,
+} from "./demoAccess.js";
+export type { DemoBusiness, DemoBusinessCode, DemoExchangeResult, DemoMarker, DemoOpenPlan, StoredDemoSession } from "./demoAccess.js";
+export {
+  POS_DEMO_BUSINESS_STORAGE_KEY,
+  POS_DEMO_ENROLL_PATH,
+  POS_DEMO_HANDOFF_FILENAME,
+  POS_INSTALLER_DOWNLOAD_PATH,
+  POS_INSTALLER_FEED_PATH,
+  POS_INSTALLER_FILENAME,
+  PosInstallerError,
+  formatInstallerSize,
+  installerDigestMatches,
+  loadPosInstallerRelease,
+  posDemoHandoffDocument,
+  posInstallerMessage,
+  readPosInstallerBytes,
+  readPosInstallerRelease,
+  rememberPosDemoBusiness,
+  requestPosDemoHandoff,
+} from "./posInstaller.js";
+export type { PosInstallerFailure, PosInstallerRelease } from "./posInstaller.js";
 export type {
   PasswordLoginRequest,
   PermissionGroup,
@@ -200,6 +241,25 @@ export {
   profileSpec,
   resolveCapabilities,
 } from "./capabilities.js";
+export {
+  DISPENSING_CLASS_LABELS,
+  DISPENSING_CLASSES,
+  DOSAGE_FORMS,
+  PHARMACY_KIND_LABELS,
+  PHARMACY_PRODUCT_KINDS,
+  PRICE_CONTROL_LABELS,
+  PRICE_CONTROLS,
+  STRENGTH_UNITS,
+  emptyPharmacyDraft,
+} from "./pharmacy.js";
+export type {
+  PharmacyDocumentDetail,
+  PharmacyDocumentDraft,
+  PharmacyDraft,
+  PharmacyIngredient,
+  PharmacyIngredientDetail,
+  PharmacyProductDetail,
+} from "./pharmacy.js";
 export type {
   CapabilityGroup,
   CapabilitySpec,

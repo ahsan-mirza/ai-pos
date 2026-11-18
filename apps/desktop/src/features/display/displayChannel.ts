@@ -61,7 +61,11 @@ async function terminalLink(): Promise<TerminalLink | null> {
 function liveUrl(role: "pos" | "customer-display", link: TerminalLink): string {
   const base = env.apiBaseUrl.replace(/^http/, "ws");
   const tenant = link.tenant ? `&tenant=${encodeURIComponent(link.tenant)}` : "";
-  return `${base}/api/v1/ws/live?token=${encodeURIComponent(link.token)}&role=${role}&terminal_id=${encodeURIComponent(link.terminalId)}${tenant}`;
+  return `${base}/api/v1/ws/live?role=${role}&terminal_id=${encodeURIComponent(link.terminalId)}${tenant}`;
+}
+
+function authFrame(role: "pos" | "customer-display", link: TerminalLink): string {
+  return JSON.stringify({ type: "auth", token: link.token, role, terminal_id: link.terminalId });
 }
 
 let posSocket: WebSocket | null = null;
@@ -113,6 +117,7 @@ function ensurePosSocket(): Promise<void> {
     const socket = new WebSocket(liveUrl("pos", link));
     posSocket = socket;
     socket.onopen = () => {
+      socket.send(authFrame("pos", link));
       if (last) socket.send(JSON.stringify({ type: "customer-display:cart", state: last }));
     };
     socket.onmessage = (message) => {
@@ -151,6 +156,9 @@ function subscribeRoom(onState: (state: DisplayState) => void): () => void {
     const link = await terminalLink();
     if (!link || stopped) return;
     socket = new WebSocket(liveUrl("customer-display", link));
+    socket.onopen = () => {
+      socket?.send(authFrame("customer-display", link));
+    };
     socket.onmessage = (message) => {
       try {
         const event = JSON.parse(String(message.data)) as { type?: string; state?: DisplayState };

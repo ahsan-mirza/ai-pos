@@ -108,7 +108,8 @@ export const inventoryApi = {
 };
 
 export const categoriesApi = {
-  list: () => apiGet<Category[]>("/api/v1/categories"),
+  list: (params?: { active_only?: boolean }) =>
+    apiGet<Category[]>(`/api/v1/categories${params?.active_only ? "?active_only=true" : ""}`),
   create: (body: CategoryWrite) => apiPost<Category>("/api/v1/categories", body),
   update: (id: string, body: Partial<CategoryWrite>) => apiPatch<Category>(`/api/v1/categories/${id}`, body),
   remove: (id: string) => apiDelete(`/api/v1/categories/${id}`),

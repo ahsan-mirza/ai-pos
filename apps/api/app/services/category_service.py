@@ -80,7 +80,16 @@ def _counts(db: Session) -> tuple[dict[uuid.UUID, int], dict[uuid.UUID, int]]:
     return by_category, by_sub  # type: ignore[return-value]
 
 
-def _out(category: Category, by_category: dict[uuid.UUID, int], by_sub: dict[uuid.UUID, int]) -> CategoryOut:
+def _out(
+    category: Category,
+    by_category: dict[uuid.UUID, int],
+    by_sub: dict[uuid.UUID, int],
+    *,
+    active_only: bool = False,
+) -> CategoryOut:
+    subs = category.sub_categories
+    if active_only:
+        subs = [sub for sub in subs if sub.is_active]
     return CategoryOut(
         id=category.id,
         name=category.name,
@@ -88,6 +97,11 @@ def _out(category: Category, by_category: dict[uuid.UUID, int], by_sub: dict[uui
         description=category.description,
         product_count=by_category.get(category.id, 0),
         created_at=category.created_at,
+        display_order=category.display_order,
+        is_active=category.is_active,
+        image_key=category.image_key,
+        product_kinds=list(category.product_kinds or []),
+        form_policy=category.form_policy or "",
         sub_categories=[
             SubCategoryOut(
                 id=sub.id,
@@ -96,15 +110,20 @@ def _out(category: Category, by_category: dict[uuid.UUID, int], by_sub: dict[uui
                 code=sub.code,
                 description=sub.description,
                 product_count=by_sub.get(sub.id, 0),
+                display_order=sub.display_order,
+                is_active=sub.is_active,
             )
-            for sub in category.sub_categories
+            for sub in subs
         ],
     )
 
 
-def list_categories(db: Session) -> list[CategoryOut]:
+def list_categories(db: Session, *, active_only: bool = False) -> list[CategoryOut]:
     by_category, by_sub = _counts(db)
-    return [_out(row, by_category, by_sub) for row in db.scalars(select(Category).order_by(Category.name)).all()]
+    rows = db.scalars(select(Category).order_by(Category.display_order, Category.name)).all()
+    if active_only:
+        rows = [row for row in rows if row.is_active]
+    return [_out(row, by_category, by_sub, active_only=active_only) for row in rows]
 
 
 def _one(db: Session, category: Category) -> CategoryOut:
@@ -136,14 +155,45 @@ def _sub(db: Session, sub_id: uuid.UUID) -> SubCategory:
     return sub
 
 
+def _veterinary_locked(code: str, kinds: list[str], active: bool) -> None:
+    """Stage 2 has no veterinary licence, so that category cannot be switched on."""
+    veterinary = code == "VET" or (kinds == ["VETERINARY"] and bool(kinds))
+    if veterinary and active:
+        raise ApiError(
+            422,
+            "veterinary_not_licensed",
+            "Veterinary products stay off until a later licence allows them.",
+        )
+
+
+def assert_assignable(db: Session, category_id: uuid.UUID | None, sub_category_id: uuid.UUID | None) -> None:
+    """A product cannot be filed under a category or subcategory that is switched off."""
+    if category_id is not None:
+        category = db.get(Category, category_id)
+        if category is None:
+            raise ApiError(422, "category_inactive", "Choose an active category.")
+        if not category.is_active:
+            raise ApiError(422, "category_inactive", "That category is inactive.")
+    if sub_category_id is not None:
+        sub = db.get(SubCategory, sub_category_id)
+        if sub is None or not sub.is_active:
+            raise ApiError(422, "category_inactive", "That sub-category is inactive.")
+        if category_id is not None and sub.category_id != category_id:
+            raise ApiError(422, "category_inactive", "That sub-category does not belong to the category.")
+
+
 def create_category(db: Session, data: CategoryWrite) -> CategoryOut:
     if db.scalar(select(Category.id).where(func.lower(Category.name) == data.name.lower())) is not None:
         message = "A category with this name already exists."
         raise field_conflict(message, name=message)
+    code = data.code or _unique_code(db, _code_from(data.name))
+    _veterinary_locked(code, [], data.is_active)
     category = Category(
         name=data.name,
-        code=data.code or _unique_code(db, _code_from(data.name)),
+        code=code,
         description=data.description.strip(),
+        display_order=data.display_order,
+        is_active=data.is_active,
     )
     db.add(category)
     _commit(db)
@@ -165,6 +215,13 @@ def update_category(db: Session, category_id: uuid.UUID, data: CategoryUpdate) -
         category.code = data.code
     if data.description is not None:
         category.description = data.description.strip()
+    if data.display_order is not None:
+        category.display_order = data.display_order
+    next_active = category.is_active if data.is_active is None else data.is_active
+    next_code = category.code if data.code is None else data.code
+    _veterinary_locked(next_code, list(category.product_kinds or []), next_active)
+    if data.is_active is not None:
+        category.is_active = data.is_active
     _commit(db)
     return _one(db, category)
 
@@ -179,6 +236,8 @@ def delete_category(db: Session, category_id: uuid.UUID) -> None:
 
 def create_sub_category(db: Session, category_id: uuid.UUID, data: CategoryWrite) -> CategoryOut:
     category = _category(db, category_id)
+    if not category.is_active:
+        raise ApiError(422, "category_inactive", "Activate the category before adding a sub-category.")
     clash = db.scalar(
         select(SubCategory.id).where(
             SubCategory.category_id == category.id, func.lower(SubCategory.name) == data.name.lower()
@@ -193,6 +252,8 @@ def create_sub_category(db: Session, category_id: uuid.UUID, data: CategoryWrite
             name=data.name,
             code=data.code or _unique_code(db, _code_from(data.name), category_id=category.id),
             description=data.description.strip(),
+            display_order=data.display_order,
+            is_active=data.is_active,
         )
     )
     _commit(db)
@@ -207,6 +268,10 @@ def update_sub_category(db: Session, sub_id: uuid.UUID, data: CategoryUpdate) ->
         sub.code = data.code
     if data.description is not None:
         sub.description = data.description.strip()
+    if data.display_order is not None:
+        sub.display_order = data.display_order
+    if data.is_active is not None:
+        sub.is_active = data.is_active
     _commit(db)
     return _one(db, _category(db, sub.category_id))
 

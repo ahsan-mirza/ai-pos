@@ -1,4 +1,4 @@
-import { Permission, acceptBusinessSettings, isSupportedCurrency, type BusinessSettings, type CurrencyCode } from "@ai-pos/shared-types";
+import { BUSINESS_SETTINGS_STORAGE_KEY, Permission, acceptBusinessSettings, isSupportedCurrency, type BusinessSettings, type CurrencyCode } from "@ai-pos/shared-types";
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { env } from "../config/env";
 import { apiGet, apiPut } from "./api";
@@ -16,7 +16,7 @@ interface CurrencyContextValue {
 
 const CurrencyContext = createContext<CurrencyContextValue | null>(null);
 const fallback: CurrencyCode = isSupportedCurrency(env.defaultCurrency) ? env.defaultCurrency : "USD";
-const CACHE_KEY = "ai-pos.business-settings";
+const CACHE_KEY = BUSINESS_SETTINGS_STORAGE_KEY;
 
 function readCached(): BusinessSettings | null {
   try {

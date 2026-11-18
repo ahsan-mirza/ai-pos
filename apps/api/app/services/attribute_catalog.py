@@ -22,6 +22,7 @@ FASHION = ("retail_fashion",)
 GROCERY = ("grocery",)
 RETAIL = ("wholesale_retail",)
 FOOD = ("restaurant", "cafe", "quick_service")
+PHARMACY = ("pharmacy",)
 
 
 @dataclass(frozen=True)
@@ -194,6 +195,25 @@ TEMPLATES: tuple[TemplateAttr, ...] = (
         aliases=("preparation", "preptype"),
         sort_order=210,
     ),
+    TemplateAttr("device_model", "Device model", "text", profiles=PHARMACY, sort_order=300),
+    TemplateAttr("compatibility", "Compatibility", "text", profiles=PHARMACY, sort_order=301),
+    TemplateAttr("warranty_months", "Warranty months", "number", profiles=PHARMACY, sort_order=302),
+    TemplateAttr("power_source", "Power source", "text", profiles=PHARMACY, sort_order=303),
+    TemplateAttr("sterile", "Sterile", "boolean", profiles=PHARMACY, sort_order=310),
+    TemplateAttr("supply_material", "Material", "text", profiles=PHARMACY, sort_order=311),
+    TemplateAttr("size_label", "Size", "text", profiles=PHARMACY, sort_order=312),
+    TemplateAttr("supplement_serving", "Serving", "text", profiles=PHARMACY, sort_order=320),
+    TemplateAttr("nutritional_notes", "Nutritional notes", "text", profiles=PHARMACY, sort_order=321),
+    TemplateAttr("shade", "Shade", "text", profiles=PHARMACY, sort_order=330),
+    TemplateAttr("scent", "Scent", "text", profiles=PHARMACY, sort_order=331),
+    TemplateAttr("skin_type", "Skin type", "text", profiles=PHARMACY, sort_order=332),
+    TemplateAttr("volume", "Volume", "text", profiles=PHARMACY, sort_order=333),
+    TemplateAttr("age_stage", "Age stage", "text", profiles=PHARMACY, sort_order=340),
+    TemplateAttr("dietary_label", "Dietary label", "text", profiles=PHARMACY, sort_order=341),
+    TemplateAttr("species", "Species", "text", profiles=PHARMACY, sort_order=350),
+    TemplateAttr("withdrawal_note", "Withdrawal note", "text", profiles=PHARMACY, sort_order=351),
+    TemplateAttr("accessory_size", "Accessory size", "text", profiles=PHARMACY, sort_order=360),
+    TemplateAttr("accessory_material", "Accessory material", "text", profiles=PHARMACY, sort_order=361),
 )
 
 _BY_KEY = {row.key: row for row in TEMPLATES}

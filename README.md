@@ -58,7 +58,7 @@ pnpm build:pos:dev    # AI POS Dev, side by side with the live register
 pnpm build:pos:prod   # production installer
 ```
 
-The production files land in `apps/desktop/src-tauri/target/release/bundle/nsis/` (`.exe`) and `.../msi/` (`.msi`). `pnpm --filter @ai-pos/desktop build:win` builds only the NSIS setup and also copies it to `dist/POS-Setup-<version>.exe`.
+The public Windows installer is the per-user NSIS setup. `pnpm --filter @ai-pos/desktop build:win` signs it, verifies the signature, and copies it to `dist/POS-Setup-<version>.exe`. An unsigned local build is `build:win:unsigned` and is not copied into `dist`.
 
 Publish that build through GitHub:
 

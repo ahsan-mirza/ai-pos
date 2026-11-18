@@ -26,9 +26,12 @@ export function SaleReturnLive() {
       const base = env.apiBaseUrl.replace(/^http/, "ws");
       const tenant = env.tenantDomain ? `&tenant=${encodeURIComponent(env.tenantDomain)}` : "";
       const socket = new WebSocket(
-        `${base}/api/v1/ws/live?token=${encodeURIComponent(token)}&role=portal&store_id=${encodeURIComponent(store)}${tenant}`,
+        `${base}/api/v1/ws/live?role=portal&store_id=${encodeURIComponent(store)}${tenant}`,
       );
       sockets.push(socket);
+      socket.onopen = () => {
+        socket.send(JSON.stringify({ type: "auth", token, role: "portal", store_id: store }));
+      };
       socket.onmessage = (message) => {
         try {
           const event = JSON.parse(String(message.data)) as { type?: string };

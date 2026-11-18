@@ -4,7 +4,7 @@ import { CheckCircle2, KeyRound, Loader2, ShieldCheck, Store } from "lucide-reac
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useRegisterLayout } from "../../components/RegisterLayout";
 import { useCapabilities } from "../../lib/capabilities";
-import { activateTerminal, inTauri, type TerminalStatus } from "../../lib/tauri";
+import { activateTerminal, enrollDemoFile, inTauri, type TerminalStatus } from "../../lib/tauri";
 
 /** Store host for this build: a public IP until DNS exists, otherwise a domain suffix. */
 const BASE_DOMAIN = (import.meta.env.VITE_TENANT_BASE_DOMAIN?.trim() || "axizpos.com").replace(/^\./, "").toLowerCase();
@@ -60,6 +60,27 @@ export function ActivationScreen({ onCancel }: { onCancel?: () => void }) {
     setError(null);
     try {
       setDone(await activateTerminal(slug, key));
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : String(caught));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const openConnection = async () => {
+    if (!inTauri() || busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const dialog = await import("@tauri-apps/plugin-dialog");
+      const selected = await dialog.open({
+        multiple: false,
+        directory: false,
+        title: "Open the AxizPOS connection file",
+        filters: [{ name: "AxizPOS connection", extensions: ["posdemo"] }],
+      });
+      if (typeof selected !== "string" || selected === "") return;
+      setDone(await enrollDemoFile(selected));
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught));
     } finally {
@@ -186,6 +207,22 @@ export function ActivationScreen({ onCancel }: { onCancel?: () => void }) {
                 {busy ? <Loader2 size={18} aria-hidden="true" className="animate-spin" /> : <KeyRound size={18} aria-hidden="true" />}
                 {busy ? "Activating…" : "Activate register"}
               </button>
+              {inTauri() && !onCancel ? (
+                <div className="rounded-2xl border border-dashed border-orange-200 p-4 dark:border-orange-500/30">
+                  <p className="text-sm font-semibold">Demo connection file</p>
+                  <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
+                    Install the register first, then download the connection file from the demo page and open it here. The file is used once and removed.
+                  </p>
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => void openConnection()}
+                    className="mt-3 flex h-12 w-full items-center justify-center rounded-xl border border-orange-500 text-sm font-semibold text-orange-600 disabled:opacity-60 dark:text-orange-300"
+                  >
+                    Open connection file
+                  </button>
+                </div>
+              ) : null}
               {onCancel ? (
                 <button
                   type="button"

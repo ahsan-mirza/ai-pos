@@ -8,6 +8,7 @@ from tests.test_kds import BURGER_ID, MODULES, floor_table, stations
 from tests.test_menu import enable
 from tests.test_orders import line, open_order
 from tests.test_returns import API_KEY, CASHIER_ID, STORE_ID, admin_id, admin_token, bearer, device, push, seed_catalog
+from tests.wsutil import authed
 
 
 def _register(client, token: str, code: str) -> str:
@@ -22,7 +23,7 @@ def _register(client, token: str, code: str) -> str:
 
 def _live(role: str, **params: str) -> str:
     query = "&".join(f"{key}={value}" for key, value in params.items())
-    return f"/api/v1/ws/live?token={API_KEY}&role={role}&{query}"
+    return f"/api/v1/ws/live?role={role}&{query}"
 
 
 def test_kitchen_events_stay_inside_the_station_room(client, session) -> None:
@@ -45,8 +46,10 @@ def test_kitchen_events_stay_inside_the_station_room(client, session) -> None:
     order = open_order(client, table, line(2, seat=1), {**line(), "product_id": BURGER_ID})
 
     with (
-        client.websocket_connect(_live("kds", station_id=bar["id"])) as bar_socket,
-        client.websocket_connect(_live("kds", station_id=kitchen["id"])) as kitchen_socket,
+        authed(client, _live("kds", station_id=bar["id"]), API_KEY, "kds", station_id=bar["id"]) as bar_socket,
+        authed(
+            client, _live("kds", station_id=kitchen["id"]), API_KEY, "kds", station_id=kitchen["id"]
+        ) as kitchen_socket,
     ):
         sent = client.post(
             f"/api/v1/orders/{order['id']}/send",
@@ -97,10 +100,14 @@ def test_cart_updates_reach_only_that_terminals_display(client) -> None:
     till_a = _register(client, token, "D1")
     till_b = _register(client, token, "D2")
     with (
-        client.websocket_connect(_live("pos", terminal_id=till_a)) as pos_a,
-        client.websocket_connect(_live("customer-display", terminal_id=till_a)) as display_a,
-        client.websocket_connect(_live("pos", terminal_id=till_b)) as pos_b,
-        client.websocket_connect(_live("customer-display", terminal_id=till_b)) as display_b,
+        authed(client, _live("pos", terminal_id=till_a), API_KEY, "pos", terminal_id=till_a) as pos_a,
+        authed(
+            client, _live("customer-display", terminal_id=till_a), API_KEY, "customer-display", terminal_id=till_a
+        ) as display_a,
+        authed(client, _live("pos", terminal_id=till_b), API_KEY, "pos", terminal_id=till_b) as pos_b,
+        authed(
+            client, _live("customer-display", terminal_id=till_b), API_KEY, "customer-display", terminal_id=till_b
+        ) as display_b,
     ):
         pos_a.send_json({"type": "customer-display:cart", "state": {"storeName": "Till 1", "lines": [{"name": "Tea"}]}})
         assert display_a.receive_json() == {
@@ -110,12 +117,15 @@ def test_cart_updates_reach_only_that_terminals_display(client) -> None:
         pos_b.send_json({"type": "customer-display:cart", "state": {"storeName": "Till 2", "lines": []}})
         assert display_b.receive_json()["state"]["storeName"] == "Till 2"
 
-    with client.websocket_connect(_live("customer-display", terminal_id=till_a)) as again:
+    with authed(
+        client, _live("customer-display", terminal_id=till_a), API_KEY, "customer-display", terminal_id=till_a
+    ) as again:
         replay = again.receive_json()
         assert replay["state"]["storeName"] == "Till 1"
 
 
 def test_unknown_terminal_is_refused(client) -> None:
     with pytest.raises(WebSocketDisconnect):
-        with client.websocket_connect(_live("pos", terminal_id=str(uuid.uuid4()))):
-            pass
+        unknown = str(uuid.uuid4())
+        with authed(client, _live("pos", terminal_id=unknown), API_KEY, "pos", terminal_id=unknown) as socket:
+            socket.receive_text()

@@ -340,6 +340,8 @@ def expire_due(settings: Settings, now: datetime | None = None) -> str:
             if row.status != "active":
                 continue
             tenant = db.get(Tenant, row.tenant_id)
+            if tenant is not None and tenant.is_demo:
+                continue
             if _aware(row.expires_at) <= moment:
                 row.status = "expired"
                 row.expiration_reason = "elapsed"

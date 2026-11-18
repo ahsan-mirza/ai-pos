@@ -336,13 +336,16 @@ def authenticate(
     return issue_session(db, settings, user, method)
 
 
-def issue_session(db: Session, settings: Settings, user: User, method: str) -> TokenResponse:
-    """Records a successful sign-in and returns the access token; `method` is password, pin or handoff."""
-    scope: Literal["portal", "pos"] = "pos" if method == "pin" else "portal"
+def issue_session(db: Session, settings: Settings, user: User, method: str, *, demo: bool = False) -> TokenResponse:
+    """Records a successful sign-in and returns the access token.
+
+    `method` is password, pin, handoff, demo, or pos-demo. Only pin and pos-demo issue a POS token.
+    """
+    scope: Literal["portal", "pos"] = "pos" if method in {"pin", "pos-demo"} else "portal"
     user.failed_login_attempts = 0
     user.locked_until = None
     user.last_login_at = utcnow()
-    audit.log_login(db, user, method, client_device="desktop" if method == "pin" else None)
+    audit.log_login(db, user, method, client_device="desktop" if method in {"pin", "pos-demo"} else None)
     db.commit()
     tenant = current_tenant()
     token, expires_in = create_access_token(
@@ -351,11 +354,14 @@ def issue_session(db: Session, settings: Settings, user: User, method: str) -> T
         token_version=user.token_version,
         settings=settings,
         tenant_id=tenant.id if tenant is not None else None,
+        demo=demo,
     )
     return TokenResponse(access_token=token, scope=scope, expires_in=expires_in, user=user_out(user, db))
 
 
-def renew_session(db: Session, settings: Settings, user: User, scope: Literal["portal", "pos"]) -> TokenResponse:
+def renew_session(
+    db: Session, settings: Settings, user: User, scope: Literal["portal", "pos"], *, demo: bool = False
+) -> TokenResponse:
     """Issues a new access token for a session that is still valid. It does not extend a revoked token."""
     tenant = current_tenant()
     token, expires_in = create_access_token(
@@ -364,6 +370,7 @@ def renew_session(db: Session, settings: Settings, user: User, scope: Literal["p
         token_version=user.token_version,
         settings=settings,
         tenant_id=tenant.id if tenant is not None else None,
+        demo=demo,
     )
     return TokenResponse(access_token=token, scope=scope, expires_in=expires_in, user=user_out(user, db))
 

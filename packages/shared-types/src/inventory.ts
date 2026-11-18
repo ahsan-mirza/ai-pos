@@ -40,6 +40,8 @@ export interface SubCategory {
   code: string;
   description: string;
   product_count: number;
+  display_order?: number;
+  is_active?: boolean;
 }
 
 export interface Category {
@@ -49,6 +51,11 @@ export interface Category {
   description: string;
   product_count: number;
   created_at: string;
+  display_order?: number;
+  is_active?: boolean;
+  image_key?: string | null;
+  product_kinds?: string[];
+  form_policy?: string;
   sub_categories: SubCategory[];
 }
 
@@ -56,6 +63,8 @@ export interface CategoryWrite {
   name: string;
   code?: string | null;
   description?: string;
+  display_order?: number;
+  is_active?: boolean;
 }
 
 // --- Brands, models, and variants ----------------------------------------------------------------

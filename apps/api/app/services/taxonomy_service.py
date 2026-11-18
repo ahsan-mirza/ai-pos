@@ -45,18 +45,25 @@ def ensure_taxonomy(db: Session, profile: str) -> int:
     if not tree:
         return 0
     added = 0
-    for spec in tree["categories"]:
+    for index, spec in enumerate(tree["categories"], start=1):
         name = " ".join(spec["name"].split())
         existing = _named(db, Category, name)
         category, _ = resolve_by_name(db, name, None)
         if existing is None:
             category.description = (spec.get("description") or "")[:255]
+            _apply_category_meta(db, category, spec, index)
             added += 1
-        for sub_name in spec.get("sub_categories", []):
-            cleaned = " ".join(sub_name.split())
-            if _sub(db, category, cleaned) is None:
-                resolve_by_name(db, category.name, cleaned)
-                added += 1
+        for sub_index, sub_spec in enumerate(spec.get("sub_categories", []), start=1):
+            if isinstance(sub_spec, str):
+                cleaned, meta = " ".join(sub_spec.split()), {}
+            else:
+                cleaned, meta = " ".join(sub_spec["name"].split()), sub_spec
+            if not cleaned or _sub(db, category, cleaned) is not None:
+                continue
+            _, sub = resolve_by_name(db, category.name, cleaned)
+            if sub is not None and meta:
+                _apply_sub_meta(sub, meta, sub_index)
+            added += 1
     for spec in tree.get("brands", []):
         name = " ".join(spec["name"].split())
         existing = _named(db, Brand, name)
@@ -68,6 +75,25 @@ def ensure_taxonomy(db: Session, profile: str) -> int:
             added += _ensure_model(db, brand, model_spec)
     db.flush()
     return added
+
+
+def _apply_category_meta(db: Session, category: Category, spec: dict, index: int) -> None:
+    """Codes, order, and eligibility are set only when the category is first inserted."""
+    wanted = str(spec.get("code") or "").strip().upper()[:32]
+    if wanted and db.scalar(select(Category.id).where(Category.code == wanted)) is None:
+        category.code = wanted
+    category.display_order = int(spec.get("display_order", index))
+    category.is_active = bool(spec.get("is_active", True))
+    category.product_kinds = [str(item) for item in spec.get("product_kinds") or []]
+    category.form_policy = str(spec.get("form_policy") or "")[:16]
+
+
+def _apply_sub_meta(sub: SubCategory, spec: dict, index: int) -> None:
+    wanted = str(spec.get("code") or "").strip().upper()[:32]
+    if wanted:
+        sub.code = wanted
+    sub.display_order = int(spec.get("display_order", index))
+    sub.is_active = bool(spec.get("is_active", True))
 
 
 def _ensure_model(db: Session, brand: Brand, spec: dict) -> int:

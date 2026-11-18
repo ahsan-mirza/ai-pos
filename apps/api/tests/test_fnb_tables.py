@@ -5,6 +5,7 @@ import uuid
 from tests.test_capabilities import change_profile
 from tests.test_orders import settle
 from tests.test_returns import API_KEY, CABLE_ID, STORE_ID, admin_token, bearer, device, push, seed_catalog
+from tests.wsutil import authed
 
 
 def _table(client, token: str) -> dict:
@@ -74,7 +75,7 @@ def test_waiter_rounds_reach_the_cashier_and_payment_closes_the_table(client) ->
     assert menu.status_code == 200, menu.text
     assert any(item["id"] == CABLE_ID for item in menu.json()["items"])
 
-    with client.websocket_connect(f"/api/v1/ws/stores/{STORE_ID}/tables?token={API_KEY}") as socket:
+    with authed(client, f"/api/v1/ws/stores/{STORE_ID}/tables?role=customer", API_KEY, "customer") as socket:
         started = client.post(
             f"/api/v1/fnb/tables/{table['id']}/session/start",
             headers=device(),
@@ -133,7 +134,12 @@ def test_waiter_rounds_reach_the_cashier_and_payment_closes_the_table(client) ->
         order = active.json()["order"]
         assert order["open_cents"] == sum(item["unit_price_cents"] * item["quantity"] for item in order["items"])
 
-        paid = push(client, "sale", settle(order, [item["id"] for item in order["items"]]))
+        paid = push(
+            client,
+            "sale",
+            settle(order, [item["id"] for item in order["items"]]),
+            occurred_at="2026-11-18T08:00:00Z",
+        )
         assert paid.status_code == 200, paid.text
         closed = socket.receive_json()
         assert closed["type"] == "TABLE_SESSION_CLOSED"
@@ -167,7 +173,7 @@ def test_guest_can_call_a_waiter_and_request_the_bill(client) -> None:
     started = client.post(f"/api/v1/fnb/tables/{table['id']}/session/start", headers=device(), json={"covers": 2})
     assert started.status_code == 200, started.text
     order = started.json()["order"]
-    with client.websocket_connect(f"/api/v1/ws/stores/{STORE_ID}/tables?token={API_KEY}") as socket:
+    with authed(client, f"/api/v1/ws/stores/{STORE_ID}/tables?role=customer", API_KEY, "customer") as socket:
         called = client.post(f"/api/v1/fnb/tables/{table['id']}/call-waiter", headers=device())
         assert called.status_code == 200, called.text
         event = socket.receive_json()
@@ -200,9 +206,9 @@ def test_guest_socket_alerts_reach_pos_terminals(client) -> None:
     started = client.post(f"/api/v1/fnb/tables/{table['id']}/session/start", headers=device(), json={"covers": 2})
     assert started.status_code == 200, started.text
 
-    pos_url = f"/api/v1/ws/stores/{STORE_ID}/tables?token={API_KEY}&role=pos"
-    guest_url = f"/api/v1/ws/stores/{STORE_ID}/tables?token={API_KEY}"
-    with client.websocket_connect(pos_url) as pos, client.websocket_connect(guest_url) as guest:
+    pos_url = f"/api/v1/ws/stores/{STORE_ID}/tables?role=pos"
+    guest_url = f"/api/v1/ws/stores/{STORE_ID}/tables?role=customer"
+    with authed(client, pos_url, API_KEY, "pos") as pos, authed(client, guest_url, API_KEY, "customer") as guest:
         guest.send_json({"type": "table:call-waiter", "tableId": table["id"], "tableName": table["label"]})
         called = _until(pos, "pos:table-alert")
         assert called["alert"] == "call-waiter"

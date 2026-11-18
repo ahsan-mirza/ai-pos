@@ -55,6 +55,7 @@ from app.schemas.onboarding import GoLiveRequest
 from app.services.onboarding_service import go_live
 from app.tenancy import registry
 from app.tenancy.context import use_tenant
+from app.tenancy.demo_policy import commercial_tenant
 from app.tenancy.models import (
     BillingAddon,
     BillingCycle,
@@ -788,14 +789,25 @@ def plan_impact(db: Session, plan_id: uuid.UUID) -> PlanImpactOut:
         db.scalar(
             select(func.count())
             .select_from(Subscription)
-            .where(Subscription.plan_id == row.id, Subscription.status != "canceled")
+            .join(Tenant, Tenant.id == Subscription.tenant_id)
+            .where(
+                Subscription.plan_id == row.id,
+                Subscription.status != "canceled",
+                commercial_tenant(),
+            )
         )
         or 0
     )
     from app.console.promotional_trial import TRIAL_TYPE, effective_status
     from app.tenancy.models import PromotionalTrial
 
-    trials = list(db.scalars(select(PromotionalTrial).where(PromotionalTrial.trial_type == TRIAL_TYPE)))
+    trials = list(
+        db.scalars(
+            select(PromotionalTrial)
+            .join(Tenant, Tenant.id == PromotionalTrial.tenant_id)
+            .where(PromotionalTrial.trial_type == TRIAL_TYPE, commercial_tenant())
+        )
+    )
     active = sum(
         1
         for trial in trials
@@ -805,7 +817,8 @@ def plan_impact(db: Session, plan_id: uuid.UUID) -> PlanImpactOut:
         db.scalar(
             select(func.count())
             .select_from(BillingInvoice)
-            .where(BillingInvoice.plan_code == row.code, BillingInvoice.status == "pending")
+            .join(Tenant, Tenant.id == BillingInvoice.tenant_id)
+            .where(BillingInvoice.plan_code == row.code, BillingInvoice.status == "pending", commercial_tenant())
         )
         or 0
     )
@@ -1261,28 +1274,60 @@ def overview(db: Session) -> OverviewOut:
     """Control-plane health. Trialing subscriptions are counted, and they are not included in MRR."""
     now = datetime.now(UTC)
     soon = now + timedelta(days=14)
-    tenants = db.scalar(select(func.count()).select_from(Tenant)) or 0
-    active_tenants = db.scalar(select(func.count()).select_from(Tenant).where(Tenant.status == "active")) or 0
-    suspended = db.scalar(select(func.count()).select_from(Tenant).where(Tenant.status == "suspended")) or 0
-    practice = db.scalar(select(func.count()).select_from(Tenant).where(Tenant.practice_mode.is_(True))) or 0
+    commercial = commercial_tenant()
+    tenants = db.scalar(select(func.count()).select_from(Tenant).where(commercial)) or 0
+    active_tenants = (
+        db.scalar(select(func.count()).select_from(Tenant).where(Tenant.status == "active", commercial)) or 0
+    )
+    suspended = (
+        db.scalar(select(func.count()).select_from(Tenant).where(Tenant.status == "suspended", commercial)) or 0
+    )
+    practice = (
+        db.scalar(select(func.count()).select_from(Tenant).where(Tenant.practice_mode.is_(True), commercial)) or 0
+    )
     cutoff = now - timedelta(days=30)
-    recent = db.scalar(select(func.count()).select_from(Tenant).where(Tenant.created_at >= cutoff)) or 0
-    stores = db.scalar(select(func.coalesce(func.sum(TenantStats.stores), 0))) or 0
-    registers = db.scalar(select(func.coalesce(func.sum(TenantStats.registers), 0))) or 0
+    recent = (
+        db.scalar(select(func.count()).select_from(Tenant).where(Tenant.created_at >= cutoff, commercial)) or 0
+    )
+    stores = (
+        db.scalar(
+            select(func.coalesce(func.sum(TenantStats.stores), 0))
+            .select_from(TenantStats)
+            .join(Tenant, Tenant.id == TenantStats.tenant_id)
+            .where(commercial)
+        )
+        or 0
+    )
+    registers = (
+        db.scalar(
+            select(func.coalesce(func.sum(TenantStats.registers), 0))
+            .select_from(TenantStats)
+            .join(Tenant, Tenant.id == TenantStats.tenant_id)
+            .where(commercial)
+        )
+        or 0
+    )
+    commercial_ids = select(Tenant.id).where(commercial_tenant())
     unpaid = db.scalar(
-        select(func.coalesce(func.sum(BillingInvoice.total_fils), 0)).where(BillingInvoice.status == "pending")
+        select(func.coalesce(func.sum(BillingInvoice.total_fils), 0)).where(
+            BillingInvoice.status == "pending", BillingInvoice.tenant_id.in_(commercial_ids)
+        )
     ) or 0
     unpaid_count = db.scalar(
-        select(func.count()).select_from(BillingInvoice).where(BillingInvoice.status == "pending")
+        select(func.count())
+        .select_from(BillingInvoice)
+        .where(BillingInvoice.status == "pending", BillingInvoice.tenant_id.in_(commercial_ids))
     ) or 0
     open_requests = db.scalar(
         select(func.count()).select_from(TenantChangeRequest).where(TenantChangeRequest.status == "PENDING")
     ) or 0
 
     rows = db.execute(
-        select(Subscription, BillingPlan, BillingCycle).join(BillingPlan, BillingPlan.id == Subscription.plan_id).join(
-            BillingCycle, BillingCycle.id == Subscription.cycle_id
-        )
+        select(Subscription, BillingPlan, BillingCycle)
+        .join(BillingPlan, BillingPlan.id == Subscription.plan_id)
+        .join(BillingCycle, BillingCycle.id == Subscription.cycle_id)
+        .join(Tenant, Tenant.id == Subscription.tenant_id)
+        .where(commercial_tenant())
     ).all()
     item_rows = list(db.scalars(select(SubscriptionItem)))
     addons = {row.code: row for row in db.scalars(select(BillingAddon))}
@@ -1348,6 +1393,7 @@ def overview(db: Session) -> OverviewOut:
             "ARR is MRR times 12. It is not a separate contract value.",
             "Unpaid checkouts are pending go-live invoices, not a general receivables ledger.",
             "Store and register counts come from the last collected tenant stats.",
+            "Demo tenants are excluded from these counts, from MRR, and from ARR.",
         ],
     )
 
@@ -1355,7 +1401,13 @@ def overview(db: Session) -> OverviewOut:
 def list_subscriptions(db: Session) -> list[SubscriptionOut]:
     if ensure_catalog(db):
         db.commit()
-    rows = list(db.scalars(select(Subscription)))
+    rows = list(
+        db.scalars(
+            select(Subscription)
+            .join(Tenant, Tenant.id == Subscription.tenant_id)
+            .where(commercial_tenant())
+        )
+    )
     if not rows:
         return []
     ids = [item.tenant_id for item in rows]

@@ -202,6 +202,14 @@ def issue_activation_key(db: Session, principal: Principal, device_id: uuid.UUID
     )
 
 
+def replace_device_token(db: Session, device: Device) -> str:
+    """Rotates the register key and returns the new token. The caller commits."""
+    token, digest = _new_key()
+    device.key_hash = digest
+    device.key_hint = token[-6:]
+    return token
+
+
 def activate_terminal(db: Session, data: TerminalActivate) -> TerminalActivation:
     """Exchanges a one-time key for the register's device token (the key is rotated, so old installs stop)."""
     now = datetime.now(UTC)

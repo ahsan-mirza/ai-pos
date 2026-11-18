@@ -65,6 +65,12 @@ function unreachable(): ApiRequestError {
 }
 
 let accessToken: string | null = null;
+let sessionEpoch = 0;
+
+/** Invalidates 401 handling for requests that started before this session. */
+export function bumpSessionEpoch(): void {
+  sessionEpoch += 1;
+}
 
 /** Every call names its tenant; the API routes it to that tenant's database. */
 function baseHeaders(): Record<string, string> {
@@ -159,9 +165,9 @@ async function request<T>(
   return (await exchange<T>(method, path, body, auth, renew, extra)).data;
 }
 
-async function rejected<T>(response: Response, auth: boolean, renew: boolean, retry: () => Promise<T>): Promise<T> {
+async function rejected<T>(response: Response, auth: boolean, renew: boolean, retry: () => Promise<T>, epoch: number): Promise<T> {
   const error = await parseError(response);
-  if (auth && response.status === 401) {
+  if (auth && response.status === 401 && epoch === sessionEpoch) {
     if (renew) {
       try {
         if (await requestSessionRenewal()) return retry();
@@ -183,6 +189,7 @@ async function exchange<T>(
   renew = true,
   extra?: Record<string, string>,
 ): Promise<{ data: T; headers: Headers }> {
+  const epoch = sessionEpoch;
   const headers = baseHeaders();
   if (extra) Object.assign(headers, extra);
   if (body !== undefined) headers["Content-Type"] = "application/json";
@@ -198,7 +205,7 @@ async function exchange<T>(
     throw unreachable();
   }
   if (!response.ok) {
-    return rejected(response, auth, renew, () => exchange(method, path, body, auth, false, extra));
+    return rejected(response, auth, renew, () => exchange(method, path, body, auth, false, extra), epoch);
   }
   if (response.status === 204) return { data: undefined as T, headers: response.headers };
   return { data: (await response.json()) as T, headers: response.headers };
@@ -243,6 +250,7 @@ export function apiDelete(path: string): Promise<void> {
 
 /** Authenticated binary download, for PDFs. A body sends a POST (e.g. a list of labels to print). */
 export async function apiBlob(path: string, body?: unknown, renew = true): Promise<Blob> {
+  const epoch = sessionEpoch;
   const headers = baseHeaders();
   if (accessToken !== null) headers.Authorization = `Bearer ${accessToken}`;
   if (body !== undefined) headers["Content-Type"] = "application/json";
@@ -257,13 +265,14 @@ export async function apiBlob(path: string, body?: unknown, renew = true): Promi
     throw unreachable();
   }
   if (!response.ok) {
-    return rejected(response, true, renew, () => apiBlob(path, body, false));
+    return rejected(response, true, renew, () => apiBlob(path, body, false), epoch);
   }
   return response.blob();
 }
 
 /** Authenticated multipart upload; the browser sets the boundary header itself. */
 export async function apiUpload<T>(path: string, form: FormData, renew = true): Promise<T> {
+  const epoch = sessionEpoch;
   const headers = baseHeaders();
   if (accessToken !== null) headers.Authorization = `Bearer ${accessToken}`;
   let response: Response;
@@ -273,7 +282,7 @@ export async function apiUpload<T>(path: string, form: FormData, renew = true): 
     throw unreachable();
   }
   if (!response.ok) {
-    return rejected(response, true, renew, () => apiUpload(path, form, false));
+    return rejected(response, true, renew, () => apiUpload(path, form, false), epoch);
   }
   return (await response.json()) as T;
 }

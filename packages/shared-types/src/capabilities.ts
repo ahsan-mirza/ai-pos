@@ -43,6 +43,7 @@ export const Capability = {
   UaeEinvoicing: "uae_einvoicing",
   DeliveryIntegrations: "delivery_integrations",
   FleetDispatch: "fleet_dispatch",
+  PharmacyCatalog: "pharmacy_catalog",
 } as const;
 export type Capability = (typeof Capability)[keyof typeof Capability];
 
@@ -106,6 +107,7 @@ export const CAPABILITIES: readonly CapabilitySpec[] = [
   { id: "uae_einvoicing", label: "UAE e-Invoicing", description: "Optional UAE e-invoicing add-on for in-scope B2B and B2G sales. Ordinary consumer receipts stay on the register.", group: "customers", available: true, requires: [] },
   { id: "delivery_integrations", label: "Delivery Integrations", description: "Marketplace and aggregator connections for restaurant and cafe delivery orders. Orders still arrive through Delivery channels.", group: "food_beverage", available: true, requires: [] },
   { id: "fleet_dispatch", label: "Fleet dispatch", description: "Delivery dates, zones, vehicles, drivers, and a manual dispatch plan with capacity checks.", group: "selling", available: true, requires: ["sales_orders"] },
+  { id: "pharmacy_catalog", label: "Pharmacy catalogue", description: "Medicine master, ingredients, dispensing class, and pharmacy product forms.", group: "inventory", available: true, requires: [] },
 ];
 
 const SPECS = new Map(CAPABILITIES.map((spec) => [spec.id, spec]));
@@ -128,6 +130,7 @@ export const BusinessProfile = {
   Restaurant: "restaurant",
   Cafe: "cafe",
   QuickService: "quick_service",
+  Pharmacy: "pharmacy",
 } as const;
 export type BusinessProfile = (typeof BusinessProfile)[keyof typeof BusinessProfile];
 
@@ -255,6 +258,15 @@ export const PROFILE_PRESETS: Record<BusinessProfile, ProfileSpec> = {
     description: "Pay-first takeaway with kitchen routing and delivery orders.",
     group: "food_beverage",
     capabilities: ["loyalty", "promotions", "menu_modifiers", "open_orders", "kds", "recipes", "delivery_channels"],
+  },
+  pharmacy: {
+    id: "pharmacy",
+    label: "Medical Pharmacy",
+    shortLabel: "Pharmacy",
+    settingsLabel: "Pharmacy settings",
+    description: "Community pharmacy catalogue with medicine identity, dispensing class, and pack rules.",
+    group: "retail_trade",
+    capabilities: ["loyalty", "promotions", "fefo", "card_terminals", "pharmacy_catalog"],
   },
 };
 
@@ -426,6 +438,22 @@ export const PROFILE_ELIGIBLE: Record<BusinessProfile, readonly Capability[]> = 
     "axiz_reach",
     "uae_einvoicing",
     "delivery_integrations",
+  ],
+  pharmacy: [
+    "loyalty",
+    "promotions",
+    "fefo",
+    "card_terminals",
+    "pharmacy_catalog",
+    "b2b_credit",
+    "sales_orders",
+    "gift_cards",
+    "multi_currency",
+    "deep_analytics",
+    "ai_insights",
+    "sales_insights",
+    "axiz_reach",
+    "uae_einvoicing",
   ],
 };
 

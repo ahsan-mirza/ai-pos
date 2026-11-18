@@ -461,6 +461,19 @@ export const SIGNUP_BUSINESS_CARDS: readonly SignupBusinessCard[] = [
       },
     ],
   },
+  {
+    profile: "pharmacy",
+    label: "Pharmacy",
+    description: "Community pharmacy catalogue, medicine identity, and dispensing class.",
+    subTypes: [
+      {
+        id: "community_pharmacy",
+        label: "Community pharmacy",
+        description: "Retail pharmacy with a medicine master, ingredients, and pack rules.",
+        modules: ["loyalty", "promotions", "fefo", "card_terminals", "pharmacy_catalog"],
+      },
+    ],
+  },
 ];
 
 export interface SignupCountry {

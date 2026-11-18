@@ -72,6 +72,8 @@ class Permission(StrEnum):
     TABLE_HISTORY_VIEW_ALL = "table_history:view_all_branches"
     DELIVERY_VIEW = "delivery:view"
     DELIVERY_MANAGE = "delivery:manage"
+    PHARMACY_CONFIGURE = "pharmacy:configure"
+    PHARMACY_CATALOGUE = "pharmacy:catalogue"
 
 
 # Granted to Store Managers by migration 20261019_0012.
@@ -210,12 +212,17 @@ PERMISSION_GROUPS: dict[str, list[tuple[Permission, str]]] = {
         (Permission.DELIVERY_VIEW, "View delivery connections and marketplace orders"),
         (Permission.DELIVERY_MANAGE, "Connect, pause, and configure delivery providers"),
     ],
+    "Pharmacy": [
+        (Permission.PHARMACY_CONFIGURE, "Pharmacy settings and category activation"),
+        (Permission.PHARMACY_CATALOGUE, "Medicine master, ingredients, and product documents"),
+    ],
 }
 
 SUPER_ADMIN_ROLE_ID = "00000000-0000-4000-8000-0000000000a1"
 STORE_MANAGER_ROLE_ID = "00000000-0000-4000-8000-0000000000a2"
 CASHIER_ROLE_ID = "00000000-0000-4000-8000-0000000000a3"
 TECHNICIAN_ROLE_ID = "00000000-0000-4000-8000-0000000000a4"
+DEMO_EXPLORER_ROLE_ID = "00000000-0000-4000-8000-0000000000a5"
 
 SYSTEM_ROLES: list[dict[str, object]] = [
     {
@@ -278,5 +285,19 @@ SYSTEM_ROLES: list[dict[str, object]] = [
         "name": "Technician",
         "description": "Works repair tickets.",
         "permissions": sorted([Permission.POS_ACCESS, Permission.REPAIRS_CREATE, Permission.REPAIRS_UPDATE]),
+    },
+    {
+        "id": DEMO_EXPLORER_ROLE_ID,
+        "name": "Demo Explorer",
+        "description": "Looks around a production demo: the register, open orders, the kitchen, and reports.",
+        "permissions": sorted(
+            [
+                Permission.PORTAL_ACCESS,
+                Permission.PORTAL_REPORTS_READ,
+                Permission.POS_ACCESS,
+                Permission.POS_ORDERS,
+                Permission.KDS_OPERATE,
+            ]
+        ),
     },
 ]

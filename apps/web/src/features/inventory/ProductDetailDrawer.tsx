@@ -3,7 +3,9 @@ import {
   GENDER_LABELS,
   PRICE_TIERS,
   PRICE_TIER_LABELS,
+  Capability,
   Permission,
+  type PharmacyProductDetail,
   unitLabel,
   formatMoney,
   type Availability,
@@ -17,6 +19,8 @@ import { Download, MapPin, Pencil, ScanLine, X } from "lucide-react";
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "../../lib/auth";
+import { useCapabilities } from "../../lib/capabilities";
+import { apiGet } from "../../lib/api";
 import {
   PurchasesTab,
   ResourceView,
@@ -26,6 +30,7 @@ import {
   SkeletonRows,
   TimelineTab,
 } from "./ProductHistoryTabs";
+import { PharmacyDetail } from "./PharmacyFields";
 import { PhotoGallery } from "./PhotoGallery";
 import { printSpecSheet, type SpecRow } from "./specSheet";
 import { useProductDetails, type Resource } from "./useProductDetails";
@@ -214,6 +219,8 @@ function DetailsTab({
               </dl>
             </section>
 
+            {pharmacy ? <PharmacyDetail detail={pharmacy} /> : null}
+
             <section>
               <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-charcoal/50">Stock by branch</h4>
               {branches.length === 0 ? (
@@ -366,6 +373,25 @@ export function ProductDetailDrawer({
   onEdit: ((product: Product) => void) | null;
 }) {
   const { can } = useAuth();
+  const { has } = useCapabilities();
+  const [pharmacy, setPharmacy] = useState<PharmacyProductDetail | null>(null);
+  useEffect(() => {
+    if (!has(Capability.PharmacyCatalog)) {
+      setPharmacy(null);
+      return;
+    }
+    let live = true;
+    void apiGet<PharmacyProductDetail>(`/api/v1/pharmacy/products/${listed.id}`)
+      .then((row) => {
+        if (live) setPharmacy(row);
+      })
+      .catch(() => {
+        if (live) setPharmacy(null);
+      });
+    return () => {
+      live = false;
+    };
+  }, [has, listed.id]);
   const [tab, setTab] = useState<TabId>("details");
   const [serialStatus, setSerialStatus] = useState<SerialStatus | null>(null);
   const [serialQuery, setSerialQuery] = useState("");

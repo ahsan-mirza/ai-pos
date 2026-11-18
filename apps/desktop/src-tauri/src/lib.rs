@@ -2,6 +2,7 @@ mod audit;
 mod auth;
 mod checkout_approvals;
 mod customers;
+mod demo;
 mod db;
 mod documents;
 mod erp;
@@ -49,6 +50,8 @@ pub struct AppState {
     session: Mutex<Option<Session>>,
     /// Bearer token from the last online unlock. Cleared on lock and on an offline unlock.
     user_token: Mutex<Option<String>>,
+    demo_notice: Mutex<Option<String>>,
+    demo_launch: Mutex<Option<String>>,
     approvals: Arc<returns::Approvals>,
     checkout_approvals: Arc<checkout_approvals::CheckoutApprovals>,
 }
@@ -443,6 +446,160 @@ async fn activate_terminal(
     Ok(status)
 }
 
+fn open_posdemo_from_args(app: &tauri::AppHandle, args: &[String]) {
+    let Some(path) = demo::posdemo_argument(args) else {
+        return;
+    };
+    let state = app.state::<AppState>();
+    {
+        let mut launch = match state.demo_launch.lock() {
+            Ok(guard) => guard,
+            Err(_) => return,
+        };
+        if launch.is_some() {
+            return;
+        }
+        *launch = Some(path.clone());
+    }
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        if let Err(message) = enroll_demo_path(app.clone(), path).await {
+            if let Some(state) = app.try_state::<AppState>() {
+                if let Ok(mut notice) = state.demo_notice.lock() {
+                    *notice = Some(message);
+                }
+                if let Ok(mut launch) = state.demo_launch.lock() {
+                    *launch = None;
+                }
+            }
+        }
+    });
+}
+
+/// Opens a demo connection file, exchanges it once, and stores the device token with DPAPI.
+async fn enroll_demo_path(app: tauri::AppHandle, path: String) -> Result<terminal::TerminalStatus, String> {
+    let state = app.state::<AppState>();
+    if state.terminal.activated && !state.terminal.demo {
+        return Err("This register is already activated.".into());
+    }
+    if let Some(blocked) = terminal::replacement_block(&state.terminal.source, state.db.pending_count()?) {
+        return Err(blocked);
+    }
+    let file = PathBuf::from(&path);
+    let config_path = state.terminal_path.clone();
+    let status = tauri::async_runtime::spawn_blocking(move || {
+        let ticket = demo::read_handoff(&file)?;
+        let config = match demo::exchange_ticket(&ticket) {
+            Ok(config) => config,
+            Err(fault) => {
+                if matches!(fault, demo::DemoFault::Refused(_)) {
+                    let _ = demo::delete_handoff(&file);
+                }
+                return Err(fault.message().to_string());
+            }
+        };
+        if let Err(message) = terminal::save(&config_path, &config) {
+            let _ = demo::delete_handoff(&file);
+            return Err(format!("{message} Download a new connection file."));
+        }
+        let _ = demo::delete_handoff(&file);
+        Ok(terminal::TerminalStatus::from_config(&config, "activation"))
+    })
+    .await
+    .map_err(|err| err.to_string())??;
+    tauri::async_runtime::spawn_blocking(move || {
+        std::thread::sleep(std::time::Duration::from_millis(400));
+        app.restart();
+    });
+    Ok(status)
+}
+
+#[tauri::command]
+async fn enroll_demo_file(app: tauri::AppHandle, path: String) -> Result<terminal::TerminalStatus, String> {
+    enroll_demo_path(app, path).await
+}
+
+#[tauri::command]
+fn take_demo_notice(state: tauri::State<AppState>) -> Result<Option<String>, String> {
+    state
+        .demo_notice
+        .lock()
+        .map(|mut guard| guard.take())
+        .map_err(|err| err.to_string())
+}
+
+/// Asks the server for the demo POS session. A revoked demo clears the local device token.
+#[tauri::command]
+async fn open_demo_session(app: tauri::AppHandle, state: tauri::State<'_, AppState>) -> Result<Session, String> {
+    if !state.terminal.demo {
+        return Err("This register is not running a demo.".into());
+    }
+    let config = state.config.clone();
+    let opened = tauri::async_runtime::spawn_blocking(move || demo::open_session(&config))
+        .await
+        .map_err(|err| err.to_string())?;
+    match opened {
+        Ok(unlocked) => {
+            let session = unlocked.session.clone();
+            *state.session.lock().map_err(|err| err.to_string())? = Some(session.clone());
+            *state.user_token.lock().map_err(|err| err.to_string())? = unlocked.access_token;
+            state
+                .db
+                .save_register_session(&session.user, session.mode, session.unlocked_at)?;
+            Ok(session)
+        }
+        Err(demo::DemoFault::Offline(message)) => match current_session(state)? {
+            Some(session) => Ok(session),
+            None => Err(message),
+        },
+        Err(demo::DemoFault::Refused(message)) => {
+            let path = state.terminal_path.clone();
+            state.db.clear_register_session()?;
+            terminal::remove(&path)?;
+            tauri::async_runtime::spawn_blocking(move || {
+                std::thread::sleep(std::time::Duration::from_millis(1200));
+                app.restart();
+            });
+            Err(message)
+        }
+    }
+}
+
+/// Leaves the demo. Shared server data stays. Unsynced local sales must sync first.
+#[tauri::command]
+async fn exit_demo(app: tauri::AppHandle, state: tauri::State<'_, AppState>) -> Result<(), String> {
+    if !state.terminal.demo {
+        return Err("This register is not running a demo.".into());
+    }
+    let pending = state.db.pending_count()?;
+    if pending > 0 {
+        return Err(format!(
+            "{pending} sale(s) are still waiting to sync. Reconnect and sync before leaving the demo."
+        ));
+    }
+    let slug = state.terminal.tenant_slug.clone();
+    if slug.is_empty() || slug.contains("..") || slug.contains('/') || slug.contains('\\') {
+        return Err("This demo register could not be closed.".into());
+    }
+    let path = state.terminal_path.clone();
+    let directory = path
+        .parent()
+        .map(|parent| parent.join("tenants").join(slug))
+        .unwrap_or_default();
+    state.db.clear_register_session()?;
+    *state.session.lock().map_err(|err| err.to_string())? = None;
+    *state.user_token.lock().map_err(|err| err.to_string())? = None;
+    terminal::remove(&path)?;
+    if directory.exists() {
+        let _ = std::fs::remove_dir_all(&directory);
+    }
+    tauri::async_runtime::spawn_blocking(move || {
+        std::thread::sleep(std::time::Duration::from_millis(400));
+        app.restart();
+    });
+    Ok(())
+}
+
 /// A manager with devices:manage releases the register (e.g. to move it to another store).
 #[tauri::command]
 async fn deactivate_terminal(
@@ -709,7 +866,11 @@ fn recent_audit_events(
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
+            open_posdemo_from_args(app, &args);
+        }))
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             DesktopConfig::load_env_file().map_err(std::io::Error::other)?;
             let directory = app.path().app_data_dir()?;
@@ -761,10 +922,13 @@ pub fn run() {
                 flush_lock: Arc::new(Mutex::new(())),
                 session: Mutex::new(None),
                 user_token: Mutex::new(None),
+                demo_notice: Mutex::new(None),
+                demo_launch: Mutex::new(None),
                 approvals: Arc::new(Mutex::new(Default::default())),
                 checkout_approvals: Arc::new(Mutex::new(Default::default())),
             });
             keyboard_detector::start(app.handle().clone());
+            open_posdemo_from_args(app.handle(), &std::env::args().skip(1).collect::<Vec<_>>());
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -779,6 +943,10 @@ pub fn run() {
             terminal_status,
             terminal_api_key,
             activate_terminal,
+            enroll_demo_file,
+            take_demo_notice,
+            open_demo_session,
+            exit_demo,
             deactivate_terminal,
             check_branches,
             enqueue_events,

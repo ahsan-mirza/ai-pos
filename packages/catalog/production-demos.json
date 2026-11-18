@@ -1,0 +1,109 @@
+{
+  "version": 1,
+  "seed": 20261118,
+  "days": 30,
+  "tenants": [
+    {
+      "code": "restaurant",
+      "slug": "demo-restaurant",
+      "name": "Harbor & Rye",
+      "profile": "restaurant",
+      "sub_type": "restaurant_all",
+      "currency": "AED",
+      "country": "AE",
+      "trn": "100200300400003",
+      "supplier": "Creek Roasters",
+      "customers": [{"name": "Lina Haddad", "type": "RETAIL"}],
+      "products": [
+        {"sku": "RST-COFFEE", "barcode": "2001000000011", "name": "House Coffee", "category": "Hot Drinks", "price_cents": 1800, "stock": 400, "modifier": true},
+        {"sku": "RST-CAKE", "barcode": "2001000000012", "name": "Lemon Cake", "category": "Desserts", "price_cents": 2400, "stock": 200, "includes_tax": true},
+        {"sku": "RST-WRAP", "barcode": "2001000000013", "name": "Chicken Wrap", "category": "Mains", "price_cents": 3200, "stock": 200},
+        {"sku": "RST-JUICE", "barcode": "2001000000014", "name": "Orange Juice", "category": "Cold Drinks", "price_cents": 1600, "stock": 200},
+        {"sku": "RST-BEANS", "barcode": "2001000000015", "name": "Espresso Beans", "category": "Ingredients", "price_cents": 4500, "stock": 5000, "ingredient": true},
+        {"sku": "RST-ESPRESSO", "barcode": "2001000000016", "name": "Espresso", "category": "Hot Drinks", "price_cents": 1400, "stock": 0, "recipe": true}
+      ],
+      "modifier": {"group": "Extra shot", "option": "Extra shot", "delta_cents": 200},
+      "tables": ["T1", "T2", "T3", "T4"]
+    },
+    {
+      "code": "supermarket",
+      "slug": "demo-supermarket",
+      "name": "Noon Market",
+      "profile": "grocery",
+      "sub_type": "grocery_supermarket",
+      "currency": "AED",
+      "country": "AE",
+      "trn": "100200300400004",
+      "supplier": "Gulf Fresh Produce",
+      "customers": [{"name": "Omar Saleh", "type": "RETAIL"}],
+      "products": [
+        {"sku": "GRO-BANANA", "barcode": "2002000000011", "name": "Bananas", "category": "Produce", "price_cents": 799, "stock": 50000, "weighed": true, "plu": "4011"},
+        {"sku": "GRO-MILK", "barcode": "2002000000012", "name": "Fresh Milk 1L", "category": "Dairy", "price_cents": 650, "stock": 10, "batch": true},
+        {"sku": "GRO-RICE", "barcode": "2002000000013", "name": "Basmati Rice 5kg", "category": "Grocery", "price_cents": 3499, "stock": 200, "promo": true},
+        {"sku": "GRO-BREAD", "barcode": "2002000000014", "name": "White Bread", "category": "Bakery", "price_cents": 450, "stock": 200},
+        {"sku": "GRO-WATER", "barcode": "2002000000015", "name": "Still Water 1.5L", "category": "Beverages", "price_cents": 250, "stock": 400}
+      ],
+      "gift_card_cents": 5000
+    },
+    {
+      "code": "electronics",
+      "slug": "demo-electronics",
+      "name": "Axis Electronics",
+      "profile": "electronics_wholesale",
+      "sub_type": "electronics_b2b",
+      "currency": "AED",
+      "country": "AE",
+      "trn": "100200300400005",
+      "supplier": "Gulf Device Supply",
+      "customers": [
+        {"name": "Walk-in Counter", "type": "RETAIL"},
+        {"name": "Noor Trading LLC", "type": "WHOLESALE", "credit_limit_cents": 5000000}
+      ],
+      "products": [
+        {"sku": "EL-PHONE", "barcode": "2003000000011", "name": "Axiz Handset", "category": "Phones", "price_cents": 189900, "stock": 3, "serial": true, "warranty_months": 12},
+        {"sku": "EL-CASE", "barcode": "2003000000012", "name": "Silicone Case", "category": "Accessories", "price_cents": 4900, "stock": 80},
+        {"sku": "EL-CABLE", "barcode": "2003000000013", "name": "USB-C Cable", "category": "Accessories", "price_cents": 2900, "stock": 80},
+        {"sku": "EL-CHARGER", "barcode": "2003000000014", "name": "Wall Charger", "category": "Accessories", "price_cents": 7900, "stock": 80}
+      ],
+      "variants": {
+        "brand": "Axis",
+        "category": "Accessories",
+        "sub_category": "Sleeves",
+        "model": "Laptop Sleeve",
+        "axes": [{"key": "size", "values": ["13", "15"]}, {"key": "color", "values": ["Black", "Grey"]}],
+        "rows": [
+          {"size": "13", "color": "Black", "sku": "EL-SLV-13-BLK", "barcode": "2003000000021", "price_cents": 8900, "stock": 80},
+          {"size": "13", "color": "Grey", "sku": "EL-SLV-13-GRY", "barcode": "2003000000022", "price_cents": 8900, "stock": 80},
+          {"size": "15", "color": "Black", "sku": "EL-SLV-15-BLK", "barcode": "2003000000023", "price_cents": 9900, "stock": 80},
+          {"size": "15", "color": "Grey", "sku": "EL-SLV-15-GRY", "barcode": "2003000000024", "price_cents": 9900, "stock": 80}
+        ]
+      }
+    },
+    {
+      "code": "fashion",
+      "slug": "demo-fashion",
+      "name": "Linen & Co",
+      "profile": "retail_fashion",
+      "sub_type": "fashion_chain",
+      "currency": "AED",
+      "country": "AE",
+      "trn": "100200300400006",
+      "supplier": "Harbor Cloth Mill",
+      "customers": [{"name": "Maya Faris", "type": "RETAIL"}],
+      "products": [],
+      "variants": {
+        "brand": "Harbor Linen",
+        "category": "Women",
+        "sub_category": "Demo Shirts",
+        "model": "Oxford Shirt",
+        "axes": [{"key": "size", "values": ["S", "M"]}, {"key": "color", "values": ["Navy", "Sand"]}],
+        "rows": [
+          {"size": "S", "color": "Navy", "sku": "FSH-OX-S-NVY", "barcode": "2004000000011", "price_cents": 8900, "stock": 80, "promo": true},
+          {"size": "S", "color": "Sand", "sku": "FSH-OX-S-SND", "barcode": "2004000000012", "price_cents": 8900, "stock": 80},
+          {"size": "M", "color": "Navy", "sku": "FSH-OX-M-NVY", "barcode": "2004000000013", "price_cents": 9900, "stock": 80},
+          {"size": "M", "color": "Sand", "sku": "FSH-OX-M-SND", "barcode": "2004000000014", "price_cents": 9900, "stock": 80}
+        ]
+      }
+    }
+  ]
+}

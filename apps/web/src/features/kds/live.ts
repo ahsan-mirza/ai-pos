@@ -25,12 +25,15 @@ export function listenForStation(
   let timer = 0;
   const base = env.apiBaseUrl.replace(/^http/, "ws");
   const tenant = env.tenantDomain ? `&tenant=${encodeURIComponent(env.tenantDomain)}` : "";
-  const url = `${base}/api/v1/ws/live?token=${encodeURIComponent(token)}&role=kds&station_id=${encodeURIComponent(stationId)}${tenant}`;
+  const url = `${base}/api/v1/ws/live?role=kds&station_id=${encodeURIComponent(stationId)}${tenant}`;
 
   const open = () => {
     if (stopped) return;
     socket = new WebSocket(url);
-    socket.onopen = () => onConnection(true);
+    socket.onopen = () => {
+      socket?.send(JSON.stringify({ type: "auth", token, role: "kds", station_id: stationId }));
+      onConnection(true);
+    };
     socket.onmessage = (message) => {
       try {
         const event = JSON.parse(String(message.data)) as KitchenLiveEvent;

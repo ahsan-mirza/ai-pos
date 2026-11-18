@@ -25,6 +25,7 @@ from app.services import fnb_table_service
 from app.services.settings_service import cached_settings
 from app.tenancy.context import use_tenant
 from app.websockets import rooms, table_sync
+from app.websockets.handshake import read_socket_credentials
 
 router = APIRouter()
 ws_router = APIRouter()
@@ -164,15 +165,15 @@ def _apply_guest_alert(websocket: WebSocket, token: str, store_id: uuid.UUID, me
 
 @ws_router.websocket("/stores/{store_id}/tables")
 async def table_events(websocket: WebSocket, store_id: uuid.UUID) -> None:
-    token = websocket.query_params.get("token") or ""
-    role = websocket.query_params.get("role") or "customer"
-    if not token or role not in {"customer", "pos"}:
-        await websocket.close(code=1008)
+    found = await read_socket_credentials(websocket, roles={"customer", "pos"}, default_role="customer")
+    if found is None:
         return
+    token, role, _frame, accepted = found
     sessions = _socket_session(websocket)
     presence_key = ""
     notify_room = ""
     pos_room = ""
+    allowed = False
     try:
         db = next(sessions)
         principal = _socket_principal(db, token)
@@ -190,7 +191,7 @@ async def table_events(websocket: WebSocket, store_id: uuid.UUID) -> None:
     if not allowed:
         await websocket.close(code=1008)
         return
-    await table_sync.connect(store_id, websocket, presence_key, role)
+    await table_sync.connect(store_id, websocket, presence_key, role, accepted=accepted)
     if pos_room:
         await rooms.join(websocket, pos_room)
     if notify_room:
