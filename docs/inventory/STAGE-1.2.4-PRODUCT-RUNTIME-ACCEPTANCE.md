@@ -176,14 +176,24 @@ The acceptance diagnostics file records identifier `com.axizpos.inventory.accept
 
 The device key copied in the acceptance runtime file did not match the enrolled register and returned 401. The sealed terminal file for `com.axizpos.inventory.acceptance` unseals to a token for tenant `inv-accept` and the same API. That enrolled token returns HTTP 200 for the product list and HTTP 403 `This action requires a signed-in user` for stock. Cashier PIN login with that token returns 200, and the cashier stock call returns 403 `You do not have permission for this action.` The runtime file was updated to the enrolled token. A second device was not created, and the installed register was not used. After the sync, the runtime token also returns product-list 200 and stock 403.
 
-The Windows product form was still not driven. Screen clicks would be global while the installed AI POS window is open.
+The Windows product form was still not driven at that point. Screen clicks would have been global while the installed AI POS window was open.
+
+## Final sprint the same evening
+
+The acceptance executable was rebuilt with `ACCEPTANCE_PROFILE=inventory` and API `http://127.0.0.1:18081`, then launched. Its process is PID 62684, `acceptance/inventory/target/release/ai-pos-desktop.exe`, window title `AxizPOS Inventory Acceptance`. UI Automation was limited to that process. The earlier pharmacy-identity binary panicked on startup and was replaced.
+
+A Floor Manager created `Acceptance Millet 250g Revised` through that window: SKU `ACC-MILLE-250G`, barcode `2008255702111`, price later saved at 375 cents, opening quantity 1, reorder 2, one opening-balance movement. The same window archived it. A later create with SKU `ACC-MILLE-250G` showed "SKU is already in use." A create with barcode `2008255702111` showed "Barcode is already in use." No `ACC-DUP-PROBE` row exists. The product list has four rows. Oats and `INV-TIN` were not edited.
+
+JPEG and PNG fixtures were stored on the millet product through the product image API and one image was deleted. The 44-byte WebP fixture was rejected as not a photo. A text file returned 415. A 5 MB zero-filled file returned 413 `Photos are limited to 5 MB.` The Windows file dialog and drag-and-drop were not driven. Window captures at 1024×768, 1280×800, 1366×768, and 1920×1080 are in `acceptance/inventory/evidence/final-release/`. At 1024×768 the product table and the tab row are clipped.
+
+When rechecked after those captures, installed PID 33672 was no longer running. Its executable timestamp and the developer `ai-pos.db`, `terminal.bin`, and `.env` timestamps were unchanged. No close or input was sent to that process.
 
 ## Status
 
 | Area | Outcome |
 |---|---|
 | Product form | PASSED WITH LIMITATIONS |
-| Product CRUD | NOT RUN |
-| Images and gallery | NOT RUN |
-| Responsive acceptance | NOT RUN |
+| Product CRUD | LIMITED |
+| Images and gallery | LIMITED |
+| Responsive acceptance | LIMITED |
 | Overall inventory | FORM PARITY IN PROGRESS |

@@ -1,7 +1,7 @@
 name: Deploy
 
-# A successful CI run on main deploys the applications. It does not migrate.
-# A manual run deploys only when its checkbox is selected. Migrations and rollback stay separate.
+# A successful CI run on main deploys the applications and upgrades every database to this release.
+# A manual run deploys only when its checkbox is selected. Rollback stays separate.
 # Approve the production environment on each job that connects to the server.
 on:
   workflow_run:
@@ -11,7 +11,7 @@ on:
   workflow_dispatch:
     inputs:
       run_migrations:
-        description: Apply the approved database migration. Leave this off for an ordinary deploy.
+        description: Upgrade every production database to this release without replacing the sites.
         type: boolean
         default: false
       deploy_applications:
@@ -38,7 +38,7 @@ jobs:
       - name: Require an explicit action
         run: |
           echo "Select run_migrations, deploy_applications, rollback, or migrations plus deploy."
-          echo "A successful CI run on main deploys without these checkboxes."
+          echo "A successful CI run on main deploys and migrates without these checkboxes."
           exit 1
 
   conflict:
@@ -151,7 +151,7 @@ jobs:
             --exclude '__pycache__/' --exclude '.pytest_cache/' --exclude '.env*' --exclude 'backend/tests/' \
             plugins/delivery/ server:$APP_DIR/plugins/delivery/
 
-      - name: Apply the approved migration
+      - name: Upgrade every database to this release
         run: |
           ssh server "APP_DIR=$APP_DIR bash -s" <<'EOF'
           set -euo pipefail
@@ -164,7 +164,8 @@ jobs:
           .venv/bin/pip install -q -r requirements.txt
           export APP_ENV=production
           .venv/bin/python -m app.tenancy.cli migration-check
-          .venv/bin/python -m app.tenancy.cli migrate-approved
+          .venv/bin/python -m app.tenancy.cli init
+          .venv/bin/python -m app.tenancy.cli migrate-all
           EOF
 
   deploy:
@@ -268,6 +269,23 @@ jobs:
           rsync -az --delete apps/web/dist/ server:$WEB_DIR/
           rsync -az --delete apps/super-admin/dist/ server:$CONSOLE_DIR/
           rsync -az --delete apps/site/dist/ server:$SITE_DIR/
+
+      - name: Upgrade every database to this release
+        run: |
+          ssh server "APP_DIR=$APP_DIR bash -s" <<'EOF'
+          set -euo pipefail
+          test -f "$APP_DIR/.env.production"
+          cd "$APP_DIR/apps/api"
+          if [ ! -x .venv/bin/pip ]; then
+            python3 -m venv .venv
+            .venv/bin/pip install -q --upgrade pip
+          fi
+          .venv/bin/pip install -q -r requirements.txt
+          export APP_ENV=production
+          .venv/bin/python -m app.tenancy.cli migration-check
+          .venv/bin/python -m app.tenancy.cli init
+          .venv/bin/python -m app.tenancy.cli migrate-all
+          EOF
 
       - name: Reload the API
         run: |

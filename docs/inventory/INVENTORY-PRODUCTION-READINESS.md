@@ -2,39 +2,47 @@
 
 Date: 19 November 2026. No production deployment, production migration, or production tenant activation was performed.
 
-## Implemented in this pass
+## What this sprint verified
 
-- Register purchase orders, receiving, and transfers submit every line in one existing API request.
-- Store-bound users no longer see category, brand, or model write controls. The API still rejects those writes.
-- The stale acceptance runtime device key was replaced with the token already enrolled in `com.axizpos.inventory.acceptance`. Device product list returns 200. Device stock returns 403. Cashier stock returns 403 for missing permission.
-- Desktop typecheck passed. `documentLines`, product payload, and inventory tab tests passed: 16 tests.
+The acceptance register is running as PID 62684 from `acceptance/inventory/target/release/ai-pos-desktop.exe`. Its window title is `AxizPOS Inventory Acceptance`. Diagnostics record identifier `com.axizpos.inventory.acceptance`, API `http://127.0.0.1:18081`, and `developer_env_loaded` false. UI Automation was scoped to that process.
 
-## Still required before a release review can start
+A Floor Manager used that window to create, update, and archive `Acceptance Millet 250g Revised` (`7781832f-cdd2-46fb-b489-83f07f2b1aff`). The saved row is SKU `ACC-MILLE-250G`, barcode `2008255702111`, 375 cents, one opening-balance movement of 1 at Acceptance Store A, then inactive. The same window rejected a duplicate SKU and a duplicate barcode. No `ACC-DUP-PROBE` row was inserted. The reference oats row and `INV-TIN` were not edited.
 
-- Windows product create, update, archive, gallery, and the four viewports on the acceptance register.
-- Launch the rebuilt acceptance executable `acceptance/inventory/target/release/ai-pos-desktop.exe` (19 November 2026 17:21:46 UTC, identity `com.axizpos.inventory.acceptance`) and complete the Windows checks. It was not opened while the installed register stayed on screen.
-- Remaining Business Pro gaps on categories, price lists, price changes, counts, and documents that the API does not model (line discounts, print).
-- Profile acceptance for fashion, electronics, food service, and a fresh pharmacy pass.
-- An `ai_pos_app` RLS session on a disposable database.
-- A signed production installer. `AXIZPOS_SIGN_THUMBPRINT` is unset, so signing stays blocked. The signing check was not disabled.
-- A measured performance run and a rehearsed backup restore.
+The purchase-order tab on that window shows `Add line`, `Create order`, and the notice that an order does not increase stock. An earlier two-line order for oats and `INV-TIN` was created and cancelled without a stock movement. A transfer that reserves stock was not posted. Receiving that posts stock was not run.
 
-## Environment left running
+JPEG and PNG fixtures uploaded to the millet product through the product image API, returned 201, and were re-encoded at 64 pixels. One image was deleted (204). A text file returned 415. A file over 5 MB returned 413 `Photos are limited to 5 MB.` The 44-byte WebP fixture was rejected as not a photo. Browse and drag-and-drop were not driven, because a file dialog is a desktop-wide window.
 
-The installed register PID 33672, `C:\Users\ahsan\AppData\Local\AI POS\ai-pos-desktop.exe`, was not clicked or closed. The acceptance API on `127.0.0.1:18081` and `axizpos-inventory-acceptance-db` on `127.0.0.1:55433` were left up because acceptance is not finished. Developer `.env` and developer app data were not modified.
+Window captures at 1024×768, 1280×800, 1366×768, and 1920×1080 are in `acceptance/inventory/evidence/final-release/`. At 1024×768 the product table and tab row are clipped.
 
-## Status
+Desktop typecheck passed. Vitest `documentLines`, product payload, and inventory tabs: 16 passed, exit 0. Pytest purchase-order lifecycle, transfer, opening stock, and other-profile pharmacy rejection: 4 passed, exit 0.
 
-| Gate | Outcome |
+## Still blocking a release review
+
+- Gallery browse, drag-and-drop, reorder, and a valid WebP photo were not completed on the window.
+- Brand, season, gender, weighed goods, and serial fields were not exercised on the live form.
+- Partial and full receiving that posts stock, and a multi-line transfer that moves stock, were not executed.
+- Fashion, electronics, restaurant, cafe, quick service, and pharmacy were not accepted on separate disposable tenants.
+- `ai_pos_app` with `NOBYPASSRLS` was not used for the acceptance SQL. Those checks used the database owner.
+- No performance sample was measured, and no fresh-database migration or backup restore was rehearsed.
+- `AXIZPOS_SIGN_THUMBPRINT` is unset. The signing check was not disabled. No production installer was produced.
+
+## Environment
+
+The acceptance API on `127.0.0.1:18081` and `axizpos-inventory-acceptance-db` on `127.0.0.1:55433` are still up. The acceptance register PID 62684 was left running. When rechecked after the viewport captures, installed PID 33672 was no longer running. Its executable timestamp (11 November 2026) and the developer `ai-pos.db`, `terminal.bin`, and `.env` timestamps were unchanged. No close or input was sent to that process.
+
+## Release gates
+
+| Release gate | Outcome |
 |---|---|
-| Product form | PASSED WITH LIMITATIONS |
-| Product CRUD | NOT RUN |
-| Images and gallery | NOT RUN |
+| Product CRUD | LIMITED |
+| Images and gallery | LIMITED |
 | Inventory forms parity | IN PROGRESS |
-| Multi-line purchasing and transfers | PASSED WITH LIMITATIONS |
+| Multi-line purchasing and receiving | LIMITED |
+| Multi-line transfers | LIMITED |
 | Business profile acceptance | NOT RUN |
-| Security and data integrity | PASSED WITH LIMITATIONS |
+| Security and data integrity | LIMITED |
+| Performance | NOT RUN |
+| Migration and recovery | BLOCKED |
 | Production build | BLOCKED |
 | Code signing | BLOCKED — CERTIFICATE REQUIRED |
 | Production deployment readiness | BLOCKED |
-| Production authorization | APPROVAL PENDING |

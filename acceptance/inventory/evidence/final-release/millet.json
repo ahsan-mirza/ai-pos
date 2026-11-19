@@ -1,0 +1,36 @@
+{
+  "login": 200,
+  "duplicate_probe_absent": true,
+  "product_count": 4,
+  "uploads": [
+    {
+      "file": "oats.jpg",
+      "status": 201,
+      "message": "",
+      "width": 64
+    },
+    {
+      "file": "oats.png",
+      "status": 201,
+      "message": "",
+      "width": 64
+    },
+    {
+      "file": "oats.webp",
+      "status": 415,
+      "message": "That file is not a JPEG, PNG or WebP photo.",
+      "width": null
+    }
+  ],
+  "image_count": 2,
+  "delete_first": 204,
+  "image_count_after_delete": 1,
+  "text_upload": {
+    "status": 415,
+    "message": "Upload a JPEG, PNG or WebP photo."
+  },
+  "oversized_upload": {
+    "status": 413,
+    "message": "Photos are limited to 5 MB."
+  }
+}
