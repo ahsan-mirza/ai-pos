@@ -1,0 +1,16 @@
+INFO:     Started server process [37356]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:18081 (Press CTRL+C to quit)
+INFO ai_pos.perf [POS_API_PERF] endpoint=GET /api/v1/products total_ms=61.3 query_count=8 store_id=ec46f632-0bb2-40da-96e2-df67c4e64931
+INFO ai_pos.perf [POS_API_PERF] endpoint=GET /api/v1/products total_ms=22.4 query_count=8 store_id=ec46f632-0bb2-40da-96e2-df67c4e64931
+ERROR asyncio Exception in callback _ProactorBasePipeTransport._call_connection_lost()
+handle: <Handle _ProactorBasePipeTransport._call_connection_lost()>
+Traceback (most recent call last):
+  File "C:\Users\ahsan\anaconda3\Lib\asyncio\events.py", line 89, in _run
+    self._context.run(self._callback, *self._args)
+    ~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\ahsan\anaconda3\Lib\asyncio\proactor_events.py", line 165, in _call_connection_lost
+    self._sock.shutdown(socket.SHUT_RDWR)
+    ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^
+ConnectionResetError: [WinError 10054] An existing connection was forcibly closed by the remote host

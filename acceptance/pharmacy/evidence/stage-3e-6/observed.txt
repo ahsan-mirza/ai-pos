@@ -1,0 +1,40 @@
+Stage 3E.6 live observations. No secrets.
+
+Pharmacy capability cache key:
+ai-pos.register-capabilities.v1:http://127.0.0.1:18080:pharmacy-accept
+tenant_id pharmacy-accept
+business_profile pharmacy
+entitlement_revision 4
+capabilities include pharmacy_catalog
+Legacy unscoped key ai-pos.register-capabilities was not present.
+
+Pharmacy SQLite profile:
+tenant pharmacy-accept
+profile pharmacy
+revision 4
+
+Pharmacy sale:
+server invoice ACCEPT-ACC2-000001
+status completed
+total_cents 1575
+local document_series INV prefix ACCEPT-ACC2 next_value 2
+sync_queue sale upsert status synced
+No second invoice was issued. The rejected-offline charge was not completed on the register.
+
+Grocery activation in the same acceptance webview:
+business Acceptance Grocery
+store code accept-grocery
+register GROC1
+unlock screen title ACCEPTANCE GROCERY
+cashier shown Grocery Cashier
+pharmacy cashiers were no longer listed
+server business_settings grocery cache_generation 3
+grocery SQLite database was created
+grocery business_settings profile row was still empty because the register stayed on the unlock screen
+grocery capability snapshot was not yet written to webview storage
+
+Header captured while the pharmacy session was online:
+Online · Queue clear
+footer Acceptance Pharmacy · Pharmacy
+
+Developer register hashes before cleanup matched the Stage 3E.5 baseline.

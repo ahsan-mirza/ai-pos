@@ -1,0 +1,7 @@
+Offline pharmacy checkout was not run.
+The pharmacy block runs only inside the Tauri webview. A browser preview does not enter that path.
+Debug builds load the repo-root .env before activation.
+The installed register identifier com.aipos.desktop already has terminal.bin and ai-pos.db under the user application data directory.
+existing_register_data=yes
+This run did not start that application and did not open its SQLite files.
+A separate acceptance identifier was not launched because the webview cannot be driven without risking that existing register.

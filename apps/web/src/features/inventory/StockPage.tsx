@@ -193,7 +193,16 @@ export function StockPage() {
       align: "right",
       className: "font-semibold",
       accessorKey: "quantity_on_hand",
-      cell: (row) => (row.sold_by_weight ? formatWeight(row.quantity_on_hand) : row.quantity_on_hand),
+      cell: (row) => (
+        <>
+          <span>{row.sold_by_weight ? formatWeight(row.quantity_on_hand) : row.quantity_on_hand}</span>
+          {row.lot_controlled ? (
+            <span className="block text-xs font-normal text-charcoal/50">
+              {row.eligible_quantity ?? 0} released in date
+            </span>
+          ) : null}
+        </>
+      ),
     },
     {
       id: "reserved",

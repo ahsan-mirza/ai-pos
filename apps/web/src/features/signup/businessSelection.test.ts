@@ -1,4 +1,4 @@
-import { SIGNUP_BUSINESS_CARDS } from "@ai-pos/shared-types";
+import { PROFILE_ELIGIBLE, PROFILE_PRESETS, SIGNUP_BUSINESS_CARDS } from "@ai-pos/shared-types";
 import { describe, expect, it } from "vitest";
 import {
   businessMotion,
@@ -18,12 +18,34 @@ const labels = [
   "Restaurant",
   "Cafe",
   "Quick Service",
+  "Pharmacy",
 ];
+
+const originalProfiles = [
+  "electronics_wholesale",
+  "wholesale_retail",
+  "retail_fashion",
+  "grocery",
+  "restaurant",
+  "cafe",
+  "quick_service",
+] as const;
+
+const originalAllInOne = {
+  electronics_wholesale: "electronics_both",
+  wholesale_retail: "wholesale_all",
+  retail_fashion: "fashion_all",
+  grocery: "grocery_all",
+  restaurant: "restaurant_all",
+  cafe: "cafe_all",
+  quick_service: "qsr_all",
+} as const;
 
 describe("business category selection", () => {
   it("lists every supported category once", () => {
     expect(SIGNUP_BUSINESS_CARDS.map((card) => card.label)).toEqual(labels);
-    expect(new Set(SIGNUP_BUSINESS_CARDS.map((card) => card.profile)).size).toBe(labels.length);
+    expect(SIGNUP_BUSINESS_CARDS.map((card) => card.profile)).toEqual(Object.keys(PROFILE_PRESETS));
+    expect(new Set(SIGNUP_BUSINESS_CARDS.map((card) => card.profile)).size).toBe(8);
   });
 
   it("moves the selected category to the top without duplicating cards", () => {
@@ -69,10 +91,22 @@ describe("operating models", () => {
     expect(operatingModels("quick_service").map((model) => model.label)).toContain("Fast-food counter");
   });
 
-  it("gives every category an all-in-one operating model", () => {
-    for (const card of SIGNUP_BUSINESS_CARDS) {
-      expect(card.subTypes.some((model) => model.allInOne)).toBe(true);
+  it("keeps an all-in-one model on the original seven profiles and a single pharmacy model", () => {
+    for (const profile of originalProfiles) {
+      const card = SIGNUP_BUSINESS_CARDS.find((item) => item.profile === profile);
+      expect(card).toBeDefined();
+      const combined = card!.subTypes.filter((model) => model.allInOne);
+      expect(combined.map((model) => model.id)).toEqual([originalAllInOne[profile]]);
     }
+    const pharmacy = SIGNUP_BUSINESS_CARDS.find((card) => card.profile === "pharmacy");
+    expect(pharmacy?.label).toBe("Pharmacy");
+    expect(pharmacy?.subTypes.map((model) => model.id)).toEqual(["community_pharmacy"]);
+    expect(pharmacy?.subTypes.some((model) => model.allInOne)).toBe(false);
+    expect(pharmacy?.subTypes[0]?.modules).toEqual(PROFILE_PRESETS.pharmacy.capabilities);
+    for (const moduleId of pharmacy?.subTypes[0]?.modules ?? []) {
+      expect(PROFILE_ELIGIBLE.pharmacy).toContain(moduleId);
+    }
+    expect(PROFILE_PRESETS.pharmacy.capabilities).toContain("pharmacy_catalog");
   });
 
   it("previews features that the selected model actually turns on", () => {
@@ -105,6 +139,9 @@ describe("selection rules", () => {
     expect(selectionReady("cafe", null)).toBe(false);
     expect(selectionReady("cafe", "full_service")).toBe(false);
     expect(selectionReady("cafe", "counter_cafe")).toBe(true);
+    expect(selectionReady("pharmacy", null)).toBe(false);
+    expect(selectionReady("pharmacy", "community_pharmacy")).toBe(true);
+    expect(selectionReady("pharmacy", "grocery_all")).toBe(false);
   });
 
   it("clears an operating model that does not belong to the new category", () => {

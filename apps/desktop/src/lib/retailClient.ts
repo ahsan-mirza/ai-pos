@@ -1,5 +1,6 @@
 import type { GiftCardProduct, StoreCreditVoucher } from "@ai-pos/shared-types";
 import { env, previewHeaders } from "../config/env";
+import { currentAccessToken } from "../features/auth/session";
 import { inTauri } from "./tauri";
 
 /** A refused or failed retail request; status 0 means the API could not be reached. */
@@ -19,7 +20,11 @@ export class RetailRequestError extends Error {
 }
 
 /** A live request through the shell's retail passthrough (whitelisted paths), or fetch in the browser preview. */
-export async function retailCall<T>(method: "GET" | "POST" | "PATCH" | "PUT", path: string, body?: unknown): Promise<T> {
+export async function retailCall<T>(
+  method: "GET" | "POST" | "PATCH" | "PUT" | "DELETE",
+  path: string,
+  body?: unknown,
+): Promise<T> {
   if (inTauri()) {
     const core = await import("@tauri-apps/api/core");
     try {
@@ -37,9 +42,14 @@ export async function retailCall<T>(method: "GET" | "POST" | "PATCH" | "PUT", pa
   }
   let response: Response;
   try {
+    const token = currentAccessToken();
     response = await fetch(`${env.apiBaseUrl}${path}`, {
       method,
-      headers: { "Content-Type": "application/json", ...previewHeaders() },
+      headers: {
+        "Content-Type": "application/json",
+        ...previewHeaders(),
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
       body: body === undefined ? undefined : JSON.stringify(body),
     });
   } catch {
@@ -61,7 +71,10 @@ export async function retailPage<T>(path: string): Promise<{ rows: T[]; total: n
   }
   let response: Response;
   try {
-    response = await fetch(`${env.apiBaseUrl}${path}`, { headers: { ...previewHeaders() } });
+    const token = currentAccessToken();
+    response = await fetch(`${env.apiBaseUrl}${path}`, {
+      headers: { ...previewHeaders(), ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    });
   } catch {
     throw new RetailRequestError(0, "offline", "The server is unreachable.");
   }
@@ -73,6 +86,53 @@ export async function retailPage<T>(path: string): Promise<{ rows: T[]; total: n
   const rows = Array.isArray(value) ? value : [];
   const total = Number(response.headers.get("X-Total-Count"));
   return { rows, total: Number.isFinite(total) ? total : rows.length };
+}
+
+function encodeBase64(bytes: Uint8Array): string {
+  let binary = "";
+  const step = 0x8000;
+  for (let index = 0; index < bytes.length; index += step) {
+    binary += String.fromCharCode(...bytes.subarray(index, index + step));
+  }
+  return btoa(binary);
+}
+
+/** Uploads one catalogue photo. The API re-encodes it; the register does not keep a second copy. */
+export async function retailUpload(path: string, file: File): Promise<unknown> {
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  if (inTauri()) {
+    const core = await import("@tauri-apps/api/core");
+    try {
+      return await core.invoke("retail_upload", {
+        path,
+        filename: file.name,
+        contentType: file.type || "image/jpeg",
+        dataBase64: encodeBase64(bytes),
+      });
+    } catch (caught) {
+      const raw = String(caught);
+      try {
+        const parsed = JSON.parse(raw) as { status: number; code: string; message: string };
+        throw new RetailRequestError(parsed.status, parsed.code, parsed.message);
+      } catch (inner) {
+        if (inner instanceof RetailRequestError) throw inner;
+        throw new RetailRequestError(0, "offline", raw);
+      }
+    }
+  }
+  const form = new FormData();
+  form.append("file", file);
+  const token = currentAccessToken();
+  const response = await fetch(`${env.apiBaseUrl}${path}`, {
+    method: "POST",
+    headers: { ...previewHeaders(), ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    body: form,
+  });
+  const value = (await response.json().catch(() => null)) as { error?: { code?: string; message?: string } } | null;
+  if (!response.ok) {
+    throw new RetailRequestError(response.status, value?.error?.code ?? "rejected", value?.error?.message ?? "The photo was not saved.");
+  }
+  return value;
 }
 
 const GIFT_PRODUCT_KEY = "ai-pos.gift-card-product";

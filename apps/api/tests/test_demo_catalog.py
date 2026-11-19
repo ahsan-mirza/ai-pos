@@ -82,12 +82,13 @@ def _session(slug: str):
 
 def test_four_demo_configs():
     codes = [spec["code"] for spec in demo_tenants()]
-    assert codes == ["restaurant", "supermarket", "electronics", "fashion"]
+    assert codes == ["restaurant", "supermarket", "electronics", "fashion", "pharmacy"]
     assert {spec["profile"] for spec in demo_tenants()} == {
         "restaurant",
         "grocery",
         "electronics_wholesale",
         "retail_fashion",
+        "pharmacy",
     }
     raw = Path(__file__).resolve().parents[3] / "packages" / "catalog" / "production-demos.json"
     body = raw.read_text(encoding="utf-8")
@@ -96,17 +97,30 @@ def test_four_demo_configs():
 
 
 def test_profiles_capabilities_and_users(demos):
-    assert [report["code"] for report in demos["reports"]] == ["restaurant", "supermarket", "electronics", "fashion"]
+    assert [report["code"] for report in demos["reports"]] == [
+        "restaurant",
+        "supermarket",
+        "electronics",
+        "fashion",
+        "pharmacy",
+    ]
     denied = explorer_denied()
     required = {
         "restaurant": {"tables", "menu_modifiers", "kds", "recipes", "split_bills"},
         "supermarket": {"weighed_items", "fefo", "loyalty", "gift_cards"},
         "electronics": {"serial_tracking", "b2b_credit", "warranty", "variants_matrix"},
         "fashion": {"variants_matrix", "loyalty", "promotions"},
+        "pharmacy": {"pharmacy_catalog", "fefo", "loyalty", "promotions"},
     }
     with registry.control_session(get_settings()) as control:
         rows = list(control.scalars(select(Tenant).where(Tenant.is_demo.is_(True))))
-    assert {row.demo_business_type for row in rows} == {"restaurant", "supermarket", "electronics", "fashion"}
+    assert {row.demo_business_type for row in rows} == {
+        "restaurant",
+        "supermarket",
+        "electronics",
+        "fashion",
+        "pharmacy",
+    }
     assert all(row.demo_access_enabled is False for row in rows)
     for spec in demo_tenants():
         db, ref = _session(spec["slug"])
@@ -122,6 +136,7 @@ def test_profiles_capabilities_and_users(demos):
                 assert Permission.USERS_CREATE.value not in explorer.permissions
                 settings = db.scalar(select(BusinessSettings))
                 assert settings is not None
+                assert settings.live_at is not None
                 assert settings.business_profile == spec["profile"]
                 assert required[spec["code"]] <= set(settings.capabilities or [])
                 if spec["code"] != "electronics":
@@ -147,6 +162,7 @@ def test_validation_report_covers_reconciliation(demos):
         "supermarket": ["stock", "tax", "payments", "plu", "fefo", "returns"],
         "electronics": ["stock", "serials", "warranties", "electronics_balance", "ledger", "payments"],
         "fashion": ["stock", "variants", "sku_unique", "barcode_unique", "tax", "no_b2b_credit"],
+        "pharmacy": ["stock", "medicines", "lots", "returns", "tax", "no_b2b_credit"],
     }.items():
         report = by_code[code]
         assert report["ok"], report["checks"]

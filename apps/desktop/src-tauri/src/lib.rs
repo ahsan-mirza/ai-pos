@@ -1,3 +1,4 @@
+mod acceptance;
 mod audit;
 mod auth;
 mod checkout_approvals;
@@ -149,6 +150,20 @@ fn current_session(state: tauri::State<AppState>) -> Result<Option<Session>, Str
         state.db.clear_register_session()?;
         return Ok(None);
     }
+    // The access token is memory-only. Restoring an online cashier without it
+    // makes the register look signed in while retail calls authenticate as the
+    // terminal, and user-only routes answer that a signed-in user is required.
+    if mode != "offline" {
+        let signed_in = state
+            .user_token
+            .lock()
+            .map_err(|err| err.to_string())?
+            .is_some();
+        if !signed_in {
+            state.db.clear_register_session()?;
+            return Ok(None);
+        }
+    }
     let session = Session {
         user,
         mode: if mode == "offline" { "offline" } else { "online" },
@@ -164,6 +179,48 @@ fn lock_session(state: tauri::State<AppState>) -> Result<(), String> {
     *state.user_token.lock().map_err(|err| err.to_string())? = None;
     state.db.clear_register_session()?;
     Ok(())
+}
+
+fn register_tenant(config: &sync::DesktopConfig) -> String {
+    let trimmed = config.tenant_domain.trim();
+    if trimmed.is_empty() {
+        "local".to_string()
+    } else {
+        trimmed.to_string()
+    }
+}
+
+fn preference_tenant(config: &sync::DesktopConfig, requested: &str) -> Result<(), String> {
+    if requested != register_tenant(config) {
+        return Err("This preference belongs to another store.".into());
+    }
+    Ok(())
+}
+
+#[tauri::command]
+fn read_catalogue_preference(
+    state: tauri::State<AppState>,
+    tenant_id: String,
+    user_id: String,
+) -> Result<Option<db::StoredPreference>, String> {
+    preference_tenant(&state.config, &tenant_id)?;
+    state.db.read_catalogue_preference(&tenant_id, &user_id)
+}
+
+#[tauri::command]
+fn write_catalogue_preference(
+    state: tauri::State<AppState>,
+    tenant_id: String,
+    user_id: String,
+    value: String,
+    updated_at: String,
+    revision: i64,
+    dirty: bool,
+) -> Result<db::StoredPreference, String> {
+    preference_tenant(&state.config, &tenant_id)?;
+    state
+        .db
+        .write_catalogue_preference(&tenant_id, &user_id, &value, &updated_at, revision, dirty)
 }
 
 #[tauri::command]
@@ -874,6 +931,8 @@ pub fn run() {
         .setup(|app| {
             DesktopConfig::load_env_file().map_err(std::io::Error::other)?;
             let directory = app.path().app_data_dir()?;
+            let identifier = app.config().identifier.clone();
+            acceptance::assert_isolated(&identifier, &directory).map_err(std::io::Error::other)?;
             std::fs::create_dir_all(&directory)?;
             let terminal_path = terminal::config_path(&directory);
             // Activated: that tenant's own database. Developer .env: the legacy shared file. Neither: activation.
@@ -907,6 +966,10 @@ pub fn run() {
                     }
                 }
             };
+            acceptance::assert_database(&identifier, &directory, &database, &config.api_base_url)
+                .map_err(std::io::Error::other)?;
+            acceptance::write_diagnostics(&directory, &database, &identifier, &config.api_base_url, &status.source)
+                .map_err(std::io::Error::other)?;
             if let Some(parent) = database.parent() {
                 std::fs::create_dir_all(parent)?;
             }
@@ -937,6 +1000,8 @@ pub fn run() {
             list_cashiers,
             current_session,
             lock_session,
+            read_catalogue_preference,
+            write_catalogue_preference,
             search_products,
             remote_search,
             terminal_store,
@@ -1022,6 +1087,7 @@ pub fn run() {
             menu::refresh_menu,
             restaurant::restaurant_request,
             retail::retail_request,
+            retail::retail_upload,
             check_app_update,
             install_app_update
         ])

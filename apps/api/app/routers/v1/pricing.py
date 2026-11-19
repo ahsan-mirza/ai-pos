@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.core.deps import Principal, authorize
+from app.core.deps import REGISTER_SCOPES, Principal, authorize
 from app.core.permissions import Permission
 from app.schemas.wholesale import BulkPriceResult, BulkPriceUpdate, PricingMatrix, PricingRow, ProductPricingWrite
 from app.services import price_service
@@ -13,8 +13,8 @@ from app.services import price_service
 router = APIRouter()
 
 Db = Annotated[Session, Depends(get_db)]
-CanRead = Annotated[Principal, Depends(authorize(Permission.PORTAL_ACCESS))]
-CanManage = Annotated[Principal, Depends(authorize(Permission.PORTAL_PRICING_MANAGE))]
+CanRead = Annotated[Principal, Depends(authorize(Permission.PORTAL_ACCESS, scopes=REGISTER_SCOPES))]
+CanManage = Annotated[Principal, Depends(authorize(Permission.PORTAL_PRICING_MANAGE, scopes=REGISTER_SCOPES))]
 
 
 @router.get("/matrix", response_model=PricingMatrix)

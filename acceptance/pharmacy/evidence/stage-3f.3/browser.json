@@ -1,0 +1,27 @@
+[
+  {
+    "name": "pharmacy-return-valid",
+    "status": "passed",
+    "detail": "POST /api/v1/returns 201 invoice P3F3-S-000001"
+  },
+  {
+    "name": "pharmacy-return-recalled",
+    "status": "passed",
+    "detail": "POST /api/v1/returns 201 invoice P3F3-S-000003"
+  },
+  {
+    "name": "pharmacy-return-supplier",
+    "status": "passed",
+    "detail": "POST /api/v1/returns 201 invoice P3F3-S-000004"
+  },
+  {
+    "name": "excess-quantity-clamped",
+    "status": "passed",
+    "detail": "max=1 value=1"
+  },
+  {
+    "name": "grocery-return",
+    "status": "passed",
+    "detail": "POST /api/v1/returns 201 invoice G3F3-S-000001"
+  }
+]

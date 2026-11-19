@@ -15,8 +15,8 @@ logger = logging.getLogger(__name__)
 API_ROOT = Path(__file__).resolve().parents[2]
 # apps/api -> repository root. On the server this is /opt/ai-pos, next to apps/.
 REPO_ROOT = API_ROOT.parent.parent
-AppEnv = Literal["development", "dev", "production", "test"]
-APP_ENVS: tuple[str, ...] = ("development", "dev", "production", "test")
+AppEnv = Literal["development", "dev", "production", "test", "acceptance", "inventory-acceptance"]
+APP_ENVS: tuple[str, ...] = ("development", "dev", "production", "test", "acceptance", "inventory-acceptance")
 
 
 def is_ip_host(value: str) -> bool:
@@ -30,7 +30,7 @@ def is_ip_host(value: str) -> bool:
 
 
 def current_app_env() -> str:
-    """APP_ENV picks a repo-root env file: .env (your machine), .env.dev, .env.production, or .env.test."""
+    """APP_ENV picks a repo-root env file: .env, .env.dev, .env.production, .env.test, .env.acceptance, or .env.inventory-acceptance."""
     value = os.environ.get("APP_ENV", "").strip().lower() or "development"
     if value not in APP_ENVS:
         raise RuntimeError(f"APP_ENV must be one of {', '.join(APP_ENVS)}; got {value!r}.")
@@ -72,8 +72,8 @@ class Settings(BaseSettings):
     # Postgres URL for tenant databases; "{database}" is replaced by the tenant's database name.
     # Unset: DATABASE_URL with its database name swapped.
     tenant_database_url_template: str | None = None
-    # Public base URL handed to activated registers; "{tenant}" is replaced by the subdomain.
-    tenant_public_url_template: str = "https://{tenant}.axizpos.com"
+    # Portal address. Stores share this host. "{tenant}" is only for a host that has store subdomains.
+    tenant_public_url_template: str = "https://axizpos.com"
     # Tenant used for requests that name none (plain localhost in development).
     default_tenant: str | None = None
     # Cache and rate limits. Required in production. Unset elsewhere uses an in-process stand-in.

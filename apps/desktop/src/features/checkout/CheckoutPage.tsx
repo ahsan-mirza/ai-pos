@@ -34,7 +34,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ManagerApprovalModal } from "../../components/ManagerApprovalModal";
 import { DrawerHeader } from "../../components/shell/Drawer";
 import type { SyncState } from "../../components/shell/HeaderBar";
-import { POS_DOCKED_QUERY, catalogGridClass, useRegisterLayout } from "../../components/RegisterLayout";
+import { POS_DOCKED_QUERY, useRegisterLayout } from "../../components/RegisterLayout";
 import { PageFrame } from "../../components/shell/RegisterShell";
 import { SearchInput } from "../../components/shell/SearchInput";
 import { useShell, useShellPage } from "../../components/shell/ShellContext";
@@ -95,8 +95,9 @@ import {
   type TableSession,
   type TicketDetails,
 } from "./fnb/tableSessions";
-import { invoiceOf, prepareNumberedBatch, submitCharge, submitQuote, type ChargeBatch } from "./checkout";
-import { activeStore, businessTax, customerTax, taxConfigurationRequired, useBusinessCurrency } from "./currency";
+import { invoiceOf, preparePermittedBatch, submitCharge, submitQuote, type ChargeBatch } from "./checkout";
+import { registerHeaderStatus } from "./registerStatus";
+import { activeStore, businessApiReachable, businessTax, customerTax, taxConfigurationRequired, useBusinessCurrency } from "./currency";
 import { RentModal } from "./RentModal";
 import { refreshPricing } from "./customerPricing";
 import { CustomerBar, GuestLookup } from "./CustomerBar";
@@ -118,7 +119,11 @@ import { serviceCharge, takeSettlement, type SettlementIntent } from "../orders/
 import { TipRow } from "../orders/TipRow";
 import { PriceOverrideModal } from "./PriceOverrideModal";
 import { CatalogSkeleton } from "./CatalogSkeleton";
+import { CatalogueViewToggle } from "./CatalogueViewToggle";
+import { CompactProductCard, ModelCompactCard, ModelListRow, ProductListRow } from "./CatalogueRows";
+import { catalogueLayoutClass } from "./cataloguePresentation";
 import { ProductCard, type TierPreview } from "./ProductCard";
+import { useCatalogueView } from "./useCatalogueView";
 import { ProductDetailsModal } from "./ProductDetailsModal";
 import { CouponRow } from "./CouponRow";
 import { customerCoupons } from "../../lib/api";
@@ -130,7 +135,7 @@ import { SaleSummary } from "./SaleSummary";
 import { TenderPanel } from "./TenderPanel";
 import { emptyPayment, planTenders, splitEqually, tenderOptions, type PaymentDraft } from "./tenders";
 import { useProductSearch } from "./useProductSearch";
-import { useSyncEngine } from "./useSyncEngine";
+import { useRejectedSyncCount, useSyncEngine } from "./useSyncEngine";
 import { takeExchange, type ExchangeIntent } from "./exchange";
 import { groupHits, inactiveSaleMessage, modelGroup, type ModelGroup } from "./variants";
 import { ModelCard, VariantPickerModal } from "./VariantPicker";
@@ -241,6 +246,7 @@ const headerIcon =
 export function CheckoutPage({ session }: CheckoutPageProps) {
   const currency = useBusinessCurrency();
   const { density } = useRegisterLayout();
+  const { view: catalogueView, setView: chooseCatalogueView } = useCatalogueView(session.user.id);
   const { t } = useLocale();
   const [catalog, setCatalog] = useState<Catalog>(() => openingCatalog());
   const [catalogLoaded, setCatalogLoaded] = useState(() => openingCatalog().products.length > 0);
@@ -283,10 +289,12 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
   const [category, setCategory] = useState<string | null>(null);
   const [chargeError, setChargeError] = useState<string | null>(null);
   const batchRef = useRef<ChargeBatch | null>(null);
+  const chargeLock = useRef(false);
   const searchRef = useRef<HTMLInputElement>(null);
   const closeCartRef = useRef<HTMLButtonElement>(null);
   const closeCart = useCallback(() => setCartOpen(false), []);
   const { report, desktop } = useSyncEngine(pulse);
+  const failedSync = useRejectedSyncCount(desktop, pulse);
   const { hits, debouncedQuery, searching, resolve } = useProductSearch(query, catalog.products);
 
   const [promotions, setPromotions] = useState<Promotion[]>([]);
@@ -383,7 +391,7 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
 
   useEffect(() => onDisplayReady(republishDisplay), []);
   useShellPage(charging, setNotice);
-  const { navigate, setCatalogSummary } = useShell();
+  const { navigate, setCatalogSummary, view } = useShell();
   const needsCredit = (plan.overLimitCents > 0 || plan.holdReason !== null) && creditApproval === null;
   const belowFloor = useMemo(() => linesBelowFloor(cart.lines, floors), [cart.lines, floors]);
   const deliveryChoice = food && orderMode === "delivery" && payment.choice !== "channel";
@@ -435,13 +443,14 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
+      if (view !== "checkout") return;
       if (event.key === "Escape" && document.querySelector(".modal-backdrop") === null) {
         setCartOpen(false);
       }
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, []);
+  }, [view]);
 
   useEffect(() => {
     if (!cartOpen || window.matchMedia(POS_DOCKED_QUERY).matches) return;
@@ -970,6 +979,9 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
       setAgeLines(pendingAge);
       return;
     }
+    if (chargeLock.current) return;
+    chargeLock.current = true;
+    setCharging(true);
     const chargedCart = { ...cartRef.current, lines: withPromotions(cartRef.current, promotions, coupon, vouchers) };
     const request: ChargeRequest = {
       cart: chargedCart,
@@ -991,7 +1003,14 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
             }
           : null,
     };
-    const batch = await prepareNumberedBatch(batchRef.current, request);
+    try {
+    const permitted = await preparePermittedBatch(batchRef.current, request);
+    if ("rejected" in permitted) {
+      setNotice(`Sale not recorded: ${permitted.rejected}`);
+      setChargeError(`Sale not recorded: ${permitted.rejected}`);
+      return;
+    }
+    const batch = permitted;
     batchRef.current = batch;
     const total = dueCents;
     const summary =
@@ -1027,8 +1046,6 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
       capabilities.enabled.has(Capability.UaeEinvoicing) && cartRef.current.customer?.trn_vat_number
         ? " UAE e-Invoice is pending. This receipt is not provider acceptance."
         : "";
-    setCharging(true);
-    try {
       const outcome = await submitCharge(batch);
       if (outcome.kind === "recorded" || outcome.kind === "queued") {
         setSettlement(null);
@@ -1057,6 +1074,7 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
       setNotice(message);
       setChargeError(message);
     } finally {
+      chargeLock.current = false;
       setCharging(false);
       setPulse((value) => value + 1);
       void syncWholesaleCaches().catch(() => undefined);
@@ -1074,16 +1092,19 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
   const itemCount = totals.pieces;
   const itemLabel = `${itemCount} item${itemCount === 1 ? "" : "s"}`;
   const sync: SyncState = desktop
-    ? {
-        tone: report.pending > 0 ? "pending" : "synced",
-        label: report.pending > 0 ? `${report.pending} unsynced` : "Synced",
-        title: statusText,
-      }
+    ? registerHeaderStatus({
+        desktop: true,
+        sessionMode: session.mode,
+        apiReachable: businessApiReachable(),
+        pending: report.pending,
+        failed: failedSync,
+        detail: statusText,
+      })
     : { tone: online ? "live" : "offline", label: online ? "Live" : "Offline", title: statusText };
 
   return (
     <>
-      <BarcodeWedge onScan={(scan) => void submitSearch(scan)} />
+      {view === "checkout" ? <BarcodeWedge onScan={(scan) => void submitSearch(scan)} /> : null}
       <PageFrame
         title="Checkout"
         sync={sync}
@@ -1227,20 +1248,37 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
             open={cartOpen}
             onDismiss={() => setCartOpen(false)}
             header={
-              <DrawerHeader title="Current sale" count={itemLabel} className="h-12 px-3">
+              <DrawerHeader
+                compact
+                title="Current sale"
+                count={itemLabel}
+                className="h-12 px-2.5"
+                toolbar={
+                  !capabilities.foodAndBeverage ? (
+                    <ServedByPicker
+                      storeId={activeStore().id}
+                      cashierId={session.user.id}
+                      cashierName={session.user.full_name}
+                      associate={cart.associate ?? null}
+                      disabled={charging}
+                      onChange={(associate) => dispatch({ type: "set_associate", associate })}
+                    />
+                  ) : null
+                }
+              >
                 <button
                   ref={closeCartRef}
                   type="button"
                   aria-label="Back to products"
                   onClick={() => setCartOpen(false)}
-                  className="-mr-2 flex h-12 w-12 items-center justify-center rounded-full text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-900 xl:hidden dark:text-zinc-400 dark:hover:bg-white/10 dark:hover:text-white"
+                  className="-mr-1 flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-900 xl:hidden dark:text-zinc-400 dark:hover:bg-white/10 dark:hover:text-white"
                 >
                   <X size={20} aria-hidden="true" />
                 </button>
               </DrawerHeader>
             }
             customer={
-              <>
+              cart.customer ? (
                 <CustomerBar
                   customer={cart.customer}
                   currency={currency}
@@ -1248,17 +1286,7 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
                   pendingCents={payment.choice === "on_account" ? plan.onAccountCents : 0}
                   onAttach={(customer: RegisterCustomer | null) => dispatch({ type: "attach_customer", customer })}
                 />
-                {!capabilities.foodAndBeverage ? (
-                  <ServedByPicker
-                    storeId={activeStore().id}
-                    cashierId={session.user.id}
-                    cashierName={session.user.full_name}
-                    associate={cart.associate ?? null}
-                    disabled={charging}
-                    onChange={(associate) => dispatch({ type: "set_associate", associate })}
-                  />
-                ) : null}
-              </>
+              ) : null
             }
             cart={
               <>
@@ -1706,6 +1734,8 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
             ) : null}
           </div>
 
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="min-w-0 flex-1">
           {(() => {
             const departmentKeys = capabilities.profile === "grocery" ? capabilities.modules.department_keys.keys : [];
             const preferred = departmentKeys.length
@@ -1724,6 +1754,9 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
               />
             );
           })()}
+            </div>
+            <CatalogueViewToggle value={catalogueView} onChange={chooseCatalogueView} />
+          </div>
 
           {catalog.message && catalog.products.length > 0 ? (
             <p className="rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-200" role="status">
@@ -1733,7 +1766,7 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
               </button>
             </p>
           ) : null}
-          {!catalogLoaded && catalog.products.length === 0 ? <CatalogSkeleton density={density} /> : null}
+          {!catalogLoaded && catalog.products.length === 0 ? <CatalogSkeleton density={density} view={catalogueView} /> : null}
           {catalogLoaded && visibleHits.length === 0 && !searching ? (
             <div className="rounded-2xl border border-dashed border-zinc-300 p-8 text-center text-sm text-zinc-500 dark:border-zinc-700 dark:text-zinc-400">
               <p>
@@ -1756,41 +1789,104 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
               ) : null}
             </div>
           ) : null}
-          <ul className={catalogGridClass(density)}>
-            {gridEntries.slice(0, GRID_LIMIT).map((entry) =>
-              entry.kind === "model" ? (
-                <ModelCard
-                  key={`model-${entry.group.modelId}`}
-                  group={entry.group}
-                  currency={currency}
-                  disabled={charging}
-                  onOpen={() => setPicker({ group: entry.group })}
-                  onInfo={() => {
-                    const first = entry.group.variants[0];
-                    if (!first) return;
-                    setDetails({ product: first, variants: entry.group.variants, title: entry.group.name, perVariant: true });
-                  }}
-                />
-              ) : (
+          <ul className={catalogueLayoutClass(catalogueView)} data-catalogue-view={catalogueView}>
+            {gridEntries.slice(0, GRID_LIMIT).map((entry) => {
+              if (entry.kind === "model") {
+                const openModel = () => setPicker({ group: entry.group });
+                const infoModel = () => {
+                  const first = entry.group.variants[0];
+                  if (!first) return;
+                  setDetails({ product: first, variants: entry.group.variants, title: entry.group.name, perVariant: true });
+                };
+                if (catalogueView === "list") {
+                  return (
+                    <ModelListRow
+                      key={`model-${entry.group.modelId}`}
+                      group={entry.group}
+                      currency={currency}
+                      disabled={charging}
+                      onOpen={openModel}
+                      onInfo={infoModel}
+                    />
+                  );
+                }
+                if (catalogueView === "compact") {
+                  return (
+                    <ModelCompactCard
+                      key={`model-${entry.group.modelId}`}
+                      group={entry.group}
+                      currency={currency}
+                      disabled={charging}
+                      onOpen={openModel}
+                      onInfo={infoModel}
+                    />
+                  );
+                }
+                return (
+                  <ModelCard
+                    key={`model-${entry.group.modelId}`}
+                    group={entry.group}
+                    currency={currency}
+                    disabled={charging}
+                    onOpen={openModel}
+                    onInfo={infoModel}
+                  />
+                );
+              }
+              const product = entry.hit.product;
+              const preview = food ? null : tierPreview(product, tier);
+              const amount = preview ? preview.base : product.price_cents;
+              const openInfo = () => {
+                const variants = product.product_model_id
+                  ? catalog.products.filter((item) => item.product_model_id === product.product_model_id && item.is_active !== false)
+                  : [];
+                setDetails({ product, variants });
+              };
+              if (catalogueView === "list") {
+                return (
+                  <ProductListRow
+                    key={product.id}
+                    hit={entry.hit}
+                    currency={currency}
+                    amount={amount}
+                    menu={food}
+                    disabled={charging}
+                    onSelect={() => select(product, true)}
+                    onInfo={openInfo}
+                    onCheckBranches={food ? undefined : () => setBranchCheck({ product })}
+                  />
+                );
+              }
+              if (catalogueView === "compact") {
+                return (
+                  <CompactProductCard
+                    key={product.id}
+                    hit={entry.hit}
+                    currency={currency}
+                    amount={amount}
+                    menu={food}
+                    disabled={charging}
+                    onSelect={() => select(product, true)}
+                    onInfo={openInfo}
+                    onCheckBranches={food ? undefined : () => setBranchCheck({ product })}
+                  />
+                );
+              }
+              return (
                 <ProductCard
-                  key={entry.hit.product.id}
+                  key={product.id}
                   hit={entry.hit}
-                  preview={food ? null : tierPreview(entry.hit.product, tier)}
+                  preview={preview}
                   currency={currency}
                   disabled={charging}
                   menuItem={food}
-                  hasModifiers={groupsFor(menu, entry.hit.product.id).length > 0 || combosFor(menu, entry.hit.product.id).length > 0}
-                  onSelect={(product) => select(product, true)}
-                  onInfo={(product) => {
-                    const variants = product.product_model_id
-                      ? catalog.products.filter((item) => item.product_model_id === product.product_model_id && item.is_active !== false)
-                      : [];
-                    setDetails({ product, variants });
-                  }}
-                  onCheckBranches={(product) => setBranchCheck({ product })}
+                  hasModifiers={groupsFor(menu, product.id).length > 0 || combosFor(menu, product.id).length > 0}
+                  onSelect={(selected) => select(selected, true)}
+                  onInfo={openInfo}
+                  onCheckBranches={(selected) => setBranchCheck({ product: selected })}
                 />
-              ),
-            )}
+              );
+            })}
           </ul>
           {gridEntries.length > GRID_LIMIT ? (
             <p className="mt-3 text-center text-sm text-zinc-500 dark:text-zinc-400">

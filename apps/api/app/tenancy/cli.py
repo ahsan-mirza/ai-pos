@@ -644,15 +644,15 @@ def main(argv: list[str] | None = None) -> None:
     merge.add_argument("--commit", action="store_true", help="write rows and switch the tenant when checks pass")
     demo = sub.add_parser("demo", help="create or refresh one demo store per business type, with POS registers")
     demo.add_argument("--only", nargs="*", help="subdomains to include (default: all in demo-businesses.json)")
-    created = sub.add_parser("create-demo-tenants", help="create the four production demo tenants")
+    created = sub.add_parser("create-demo-tenants", help="create the production demo tenants")
     created.add_argument("--confirm-production", action="store_true")
-    seeded = sub.add_parser("seed-demo-data", help="seed catalog and history for one demo or all four")
+    seeded = sub.add_parser("seed-demo-data", help="seed catalog and history for one demo or every demo")
     _add_demo_target(seeded, confirm=True)
-    reset = sub.add_parser("reset-demo-data", help="restore one demo, or all four, to the seeded baseline")
+    reset = sub.add_parser("reset-demo-data", help="restore one demo, or every demo, to the seeded baseline")
     _add_demo_target(reset, confirm=True)
     reset.add_argument("--dry-run", action="store_true")
     reset.add_argument("--recover", action="store_true", help="resume a demo left in resetting or reset_failed")
-    checked = sub.add_parser("validate-demo-data", help="reconcile one demo or all four")
+    checked = sub.add_parser("validate-demo-data", help="reconcile one demo or every demo")
     _add_demo_target(checked, confirm=False)
     disabled = sub.add_parser("deactivate-demo-accounts", help="disable demo access without deleting data")
     _add_demo_target(disabled, confirm=True)
@@ -660,10 +660,12 @@ def main(argv: list[str] | None = None) -> None:
     enabled = sub.add_parser("reactivate-demo-accounts", help="mark a deactivated demo active; public access stays off")
     _add_demo_target(enabled, confirm=True)
     access = sub.add_parser("set-demo-access", help="open or close the public demo door for one business")
+    from app.services.demo_catalog import demo_tenants
+
     access.add_argument(
         "--business-code",
         required=True,
-        choices=["restaurant", "supermarket", "electronics", "fashion"],
+        choices=[spec["code"] for spec in demo_tenants()],
     )
     door = access.add_mutually_exclusive_group(required=True)
     door.add_argument("--enabled", action="store_true")

@@ -100,6 +100,47 @@ def test_replaying_an_adjustment_does_not_apply_twice(client) -> None:
     assert replay.json()["row"]["quantity_on_hand"] == 14
 
 
+def test_register_pin_uses_the_same_inventory_permissions(client) -> None:
+    """A POS unlock is not a second login, and it is not a device key. The same permissions still apply."""
+    seed(client)
+    headers = admin(client)
+    created = client.post(
+        "/api/v1/users",
+        headers=headers,
+        json={
+            "username": "floor.manager",
+            "email": "floor.manager@example.com",
+            "full_name": "Floor Manager",
+            "role_id": STORE_MANAGER_ROLE,
+            "store_id": DT,
+            "password": "manager-password-1",
+            "pin": "2468",
+            "has_portal_access": True,
+            "has_pos_access": True,
+        },
+    )
+    assert created.status_code == 201, created.text
+    signed = client.post(
+        "/api/v1/auth/login-pin",
+        json={"username": "floor.manager", "pin": "2468"},
+        headers={"X-Api-Key": "test-api-key-value"},
+    )
+    assert signed.status_code == 200, signed.text
+    manager = bearer(signed.json()["access_token"])
+    assert client.get("/api/v1/inventory/stock", headers=manager).status_code == 200
+    assert adjust(client, manager, adjustment(CABLE, DT, "add", 1, "PHYSICAL_COUNT_AUDIT")).status_code == 201
+    assert adjust(client, manager, adjustment(CABLE, WH, "add", 1, "PHYSICAL_COUNT_AUDIT")).status_code == 403
+
+    cashier = client.post(
+        "/api/v1/auth/login-pin",
+        json={"username": "cashier", "pin": "1357"},
+        headers={"X-Api-Key": "test-api-key-value"},
+    ).json()["access_token"]
+    refused = client.get("/api/v1/inventory/stock", headers=bearer(cashier))
+    assert refused.status_code == 403
+    assert client.post("/api/v1/inventory/products", headers=bearer(cashier), json={"sku": "NOPE", "barcode": "100", "name": "Nope", "price_cents": 100, "is_serialized": False}).status_code == 403
+
+
 def test_permission_and_store_scope(client, session) -> None:
     seed(client)
     headers = admin(client)

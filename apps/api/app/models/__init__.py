@@ -37,8 +37,17 @@ from app.models.markdown import MarkdownEvent, PriceChange
 from app.models.menu import ComboSlot, ComboSlotOption, ModifierGroup, ModifierOption, ProductModifierGroup
 from app.models.messaging import MessageTemplate, OutboundMessage
 from app.models.payables import SupplierBill, SupplierBillLine, SupplierPayment, SupplierPaymentAllocation
-from app.models.pharmacy import PharmacyProductDetails, ProductDocument, ProductIngredient, SubstitutionGroup
 from app.models.payment_intent import PaymentIntent, PaymentRefund, PaymentTerminal
+from app.models.pharmacy import PharmacyProductDetails, ProductDocument, ProductIngredient, SubstitutionGroup
+from app.models.pharmacy_lots import (
+    BatchItemEvent,
+    PharmacistAuthorization,
+    PharmacyGovernanceOfficer,
+    PharmacyRecall,
+    PharmacyRecallLot,
+    PharmacySupplierReturn,
+    PharmacySupplierReturnLine,
+)
 from app.models.price_list import (
     CustomerGroup,
     PriceList,
@@ -115,6 +124,7 @@ from app.models.trade_in import TradeIn
 from app.models.transfer import StockTransfer, StockTransferLine, StockTransferSerial
 from app.models.uom import UnitOfMeasure
 from app.models.user import User
+from app.models.user_preference import UserPreference
 from app.models.warranty import WarrantyPlan, WarrantyPolicy, WarrantyRegistration
 
 __all__ = [
@@ -130,6 +140,13 @@ __all__ = [
     "Base",
     "BatchAllocation",
     "BatchItem",
+    "BatchItemEvent",
+    "PharmacistAuthorization",
+    "PharmacyGovernanceOfficer",
+    "PharmacyRecall",
+    "PharmacyRecallLot",
+    "PharmacySupplierReturn",
+    "PharmacySupplierReturnLine",
     "BranchTaxProfile",
     "Brand",
     "CacheInvalidation",
@@ -213,7 +230,10 @@ __all__ = [
     "PaymentIntent",
     "PaymentRefund",
     "PaymentTerminal",
+    "PharmacyProductDetails",
     "Product",
+    "ProductDocument",
+    "ProductIngredient",
     "ProductRental",
     "Rental",
     "RentalLine",
@@ -279,6 +299,7 @@ __all__ = [
     "StockTransferSerial",
     "Store",
     "StoreCredit",
+    "SubstitutionGroup",
     "StoreCreditRedemption",
     "SubCategory",
     "Supplier",
@@ -293,6 +314,7 @@ __all__ = [
     "UnitOfMeasure",
     "User",
     "UserAddonAccess",
+    "UserPreference",
     "WarrantyPlan",
     "WarrantyPolicy",
     "WarrantyRegistration",

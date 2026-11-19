@@ -2,6 +2,7 @@
 and wholesale customers created through the portal API."""
 
 import uuid
+from datetime import UTC, datetime, timedelta
 
 from app.services.identifiers import is_valid_imei
 
@@ -33,13 +34,23 @@ def device() -> dict[str, str]:
     return {"X-Api-Key": API_KEY}
 
 
-def event(key: str, entity: str, payload: dict) -> dict:
+def recent_occurred_at() -> str:
+    """UTC stamp one day before the test clock.
+
+    Ordinary sale syncs must stay inside the 30-day window. One day leaves a wide margin on
+    either side of that boundary. Callers that assert a sale landed on 2026-10-19 keep the
+    historical stamp by omitting this value.
+    """
+    return (datetime.now(UTC) - timedelta(days=1)).replace(microsecond=0).isoformat()
+
+
+def event(key: str, entity: str, payload: dict, *, occurred_at: str | None = None) -> dict:
     return {
         "idempotency_key": key,
         "entity_type": entity,
         "operation": "upsert",
         "payload": payload,
-        "occurred_at": "2026-10-19T08:00:00Z",
+        "occurred_at": occurred_at or "2026-10-19T08:00:00Z",
     }
 
 

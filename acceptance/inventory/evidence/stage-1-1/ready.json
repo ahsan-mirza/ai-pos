@@ -1,0 +1,16 @@
+{
+  "api": "http://127.0.0.1:18081",
+  "database": "127.0.0.1:55433/axizpos_inventory_acceptance",
+  "role": "ai_pos_app",
+  "tenant": "inv-accept",
+  "store_code": "inv-accept",
+  "store_a": "Acceptance Store A",
+  "store_b": "Acceptance Store B",
+  "manager": "floor.mgr",
+  "cashier": "cashier.inv",
+  "admin": "admin",
+  "product": "Acceptance Inventory Tin",
+  "sku": "INV-TIN",
+  "barcode": "6291000001111",
+  "profile": "grocery"
+}

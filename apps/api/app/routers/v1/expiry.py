@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.core.deps import Principal, authorize
+from app.core.deps import REGISTER_SCOPES, Principal, authorize
 from app.core.permissions import Permission
 from app.schemas.expiry import (
     ExpiringRow,
@@ -20,8 +20,8 @@ from app.services import expiry_service
 
 router = APIRouter()
 Db = Annotated[Session, Depends(get_db)]
-CanRead = Annotated[Principal, Depends(authorize(Permission.PORTAL_ACCESS))]
-CanAdjust = Annotated[Principal, Depends(authorize(Permission.INVENTORY_ADJUST_STOCK))]
+CanRead = Annotated[Principal, Depends(authorize(Permission.PORTAL_ACCESS, scopes=REGISTER_SCOPES))]
+CanAdjust = Annotated[Principal, Depends(authorize(Permission.INVENTORY_ADJUST_STOCK, scopes=REGISTER_SCOPES))]
 
 
 @router.get("/expiring", response_model=list[ExpiringRow])

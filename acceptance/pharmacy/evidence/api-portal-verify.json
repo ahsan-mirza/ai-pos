@@ -1,0 +1,22 @@
+[
+  {
+    "name": "portal-transfer-layers",
+    "status": "passed",
+    "detail": "source={'lot': 'ACCEPT-UI-XFER', 'remaining': 2, 'imported': 4, 'status': 'RELEASED', 'released_at': '2026-11-19T10:08:32.434341Z', 'expiry': '2027-06-01', 'cost': 400, 'store_id': '11111111-1111-4111-8111-111111111111', 'sold': 0, 'batch_number': 'GRN-261119-78C7-0'} destination={'lot': 'ACCEPT-UI-XFER', 'remaining': 2, 'imported': 2, 'status': 'UNRELEASED', 'released_at': None, 'expiry': '2027-06-01', 'cost': 400, 'store_id': '22222222-2222-4222-8222-222222222222', 'sold': 0, 'batch_number': 'TR-261119-F892-1-1'}"
+  },
+  {
+    "name": "portal-return-closed",
+    "status": "passed",
+    "detail": "lot={'lot': 'ACCEPT-UI-RET', 'remaining': 0, 'imported': 4, 'status': 'SUPPLIER_RETURN', 'released_at': '2026-11-19T10:08:32.492918Z', 'expiry': '2027-06-01', 'cost': 400, 'store_id': '11111111-1111-4111-8111-111111111111', 'sold': 0, 'batch_number': 'GRN-261119-D468-0'}"
+  },
+  {
+    "name": "portal-recall",
+    "status": "passed",
+    "detail": "HTTP 201"
+  },
+  {
+    "name": "portal-recall-propagates",
+    "status": "passed",
+    "detail": "layers=[{'lot': 'ACCEPT-UI-XFER', 'remaining': 2, 'imported': 4, 'status': 'RECALLED', 'released_at': '2026-11-19T10:08:32.434341Z', 'expiry': '2027-06-01', 'cost': 400, 'store_id': '11111111-1111-4111-8111-111111111111', 'sold': 0, 'batch_number': 'GRN-261119-78C7-0'}, {'lot': 'ACCEPT-UI-XFER', 'remaining': 2, 'imported': 2, 'status': 'RECALLED', 'released_at': None, 'expiry': '2027-06-01', 'cost': 400, 'store_id': '22222222-2222-4222-8222-222222222222', 'sold': 0, 'batch_number': 'TR-261119-F892-1-1'}]"
+  }
+]

@@ -1,0 +1,5 @@
+﻿device stock HTTP 403 This action requires a signed-in user.
+device products HTTP 200
+manager stock HTTP 200
+cashier stock HTTP 403 You do not have permission for this action.
+cashier products HTTP 403 You do not have permission for this action.

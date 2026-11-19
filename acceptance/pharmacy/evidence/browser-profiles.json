@@ -1,0 +1,37 @@
+[
+  {
+    "name": "electronics-portal-has-no-pharmacy-controls",
+    "status": "passed",
+    "detail": "pharmacy heading 0, release buttons 0"
+  },
+  {
+    "name": "wholesale-portal-has-no-pharmacy-controls",
+    "status": "passed",
+    "detail": "pharmacy heading 0, release buttons 0"
+  },
+  {
+    "name": "fashion-portal-has-no-pharmacy-controls",
+    "status": "passed",
+    "detail": "pharmacy heading 0, release buttons 0"
+  },
+  {
+    "name": "grocery-portal-has-no-pharmacy-controls",
+    "status": "passed",
+    "detail": "pharmacy heading 0, release buttons 0"
+  },
+  {
+    "name": "restaurant-portal-has-no-pharmacy-controls",
+    "status": "passed",
+    "detail": "pharmacy heading 0, release buttons 0"
+  },
+  {
+    "name": "cafe-portal-has-no-pharmacy-controls",
+    "status": "passed",
+    "detail": "pharmacy heading 0, release buttons 0"
+  },
+  {
+    "name": "quick-service-portal-has-no-pharmacy-controls",
+    "status": "passed",
+    "detail": "pharmacy heading 0, release buttons 0"
+  }
+]

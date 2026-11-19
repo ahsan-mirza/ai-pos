@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from app.core.capabilities import Capability, require_capability
 from app.core.config import Settings, get_settings
 from app.core.database import get_db
-from app.core.deps import Principal, authorize
+from app.core.deps import REGISTER_SCOPES, Principal, authorize
 from app.core.pagination import Offset, set_total
 from app.core.permissions import Permission
 from app.schemas.inventory import (
@@ -41,8 +41,8 @@ from app.services.settings_service import business_currency
 router = APIRouter()
 Db = Annotated[Session, Depends(get_db)]
 Config = Annotated[Settings, Depends(get_settings)]
-CanRead = Annotated[Principal, Depends(authorize(Permission.PORTAL_ACCESS))]
-CanManage = Annotated[Principal, Depends(authorize(Permission.PORTAL_INVENTORY_MANAGE))]
+CanRead = Annotated[Principal, Depends(authorize(Permission.PORTAL_ACCESS, scopes=REGISTER_SCOPES))]
+CanManage = Annotated[Principal, Depends(authorize(Permission.PORTAL_INVENTORY_MANAGE, scopes=REGISTER_SCOPES))]
 CanLookUp = Annotated[
     Principal,
     Depends(authorize(Permission.PORTAL_ACCESS, allow_device=True, scopes=("portal", "pos"))),
@@ -90,7 +90,7 @@ def update_level(product_id: uuid.UUID, store_id: uuid.UUID, payload: LevelUpdat
     return inventory.update_level(db, principal, product_id, store_id, payload)
 
 
-CanAdjust = Annotated[Principal, Depends(authorize(Permission.INVENTORY_ADJUST_STOCK))]
+CanAdjust = Annotated[Principal, Depends(authorize(Permission.INVENTORY_ADJUST_STOCK, scopes=REGISTER_SCOPES))]
 # IMEI / serial lookups need the serial tracking module; availability by product stays open to every register.
 SerialModule = [Depends(require_capability(Capability.SERIAL_TRACKING))]
 

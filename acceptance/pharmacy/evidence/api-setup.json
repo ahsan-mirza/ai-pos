@@ -1,0 +1,37 @@
+[
+  {
+    "name": "super-admin-lacks-appointment-permission",
+    "status": "passed",
+    "detail": "absent from /auth/me"
+  },
+  {
+    "name": "pharmacy-profile",
+    "status": "passed",
+    "detail": "profile=pharmacy onboarded=True"
+  },
+  {
+    "name": "stores-created",
+    "status": "passed",
+    "detail": "ACCEPT and ACCEPT2 through sync on the Pro AI plan"
+  },
+  {
+    "name": "role-cannot-carry-appointment-permission",
+    "status": "passed",
+    "detail": "HTTP 422 governed_permission Pharmacy appointment authority is not assigned on a role."
+  },
+  {
+    "name": "staff-created",
+    "status": "passed",
+    "detail": "clerks, officers, pharmacist, manager, cashier"
+  },
+  {
+    "name": "lots-received-except-a",
+    "status": "passed",
+    "detail": "B quarantined, C recalled, D expired, E two lots, transfer and return lots"
+  },
+  {
+    "name": "register-created",
+    "status": "passed",
+    "detail": "device key issued once and not written to evidence"
+  }
+]

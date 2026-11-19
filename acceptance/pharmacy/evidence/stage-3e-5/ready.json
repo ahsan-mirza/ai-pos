@@ -1,0 +1,9 @@
+{
+  "api": "http://127.0.0.1:18080",
+  "tenant": "pharmacy-accept",
+  "cashier": "cashier.one",
+  "product": "Acceptance Till Medicine",
+  "barcode": "6291000000099",
+  "database": "127.0.0.1:55432/axizpos_pharmacy_acceptance",
+  "role_expected": "ai_pos_app"
+}

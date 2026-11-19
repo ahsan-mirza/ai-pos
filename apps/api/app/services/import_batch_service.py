@@ -199,6 +199,8 @@ def _map_rows(
                 sub_category=value("sub_category")[:80],
                 serials=serials,
                 expiry_date=parsed("expiry_date", import_parser.parse_date, "Expiry date"),
+                manufacturer_lot=value("manufacturer_lot")[:64],
+                manufactured_on=parsed("manufactured_on", import_parser.parse_date, "Manufacture date"),
                 attributes={
                     key: raw[position].strip() if position < len(raw) else ""
                     for key, position in attributes_index.items()
@@ -316,6 +318,11 @@ def _evaluate(
                 errors.append("Selling price is missing.")
         if product is None and not row.name.strip():
             errors.append("Product name is missing for a new product.")
+        if product is not None:
+            from app.services.pharmacy_lots import is_lot_controlled, lot_problems
+
+            if is_lot_controlled(db, product.id):
+                errors.extend(lot_problems(row.manufacturer_lot, row.manufactured_on, row.expiry_date))
         if price is not None and row.cost_cents is not None and price < row.cost_cents:
             warnings.append("Selling price is below the purchase cost.")
         if product is not None and row.name.strip() and row.name.strip().lower() != product.name.lower():
@@ -589,6 +596,17 @@ def commit(db: Session, settings: Settings, principal: Principal, data: CommitRe
         )
         db.add(item)
         db.flush()
+        from app.services.pharmacy_lots import is_lot_controlled, record_received
+
+        if is_lot_controlled(db, product.id):
+            record_received(
+                db,
+                item,
+                manufacturer_lot=row.manufacturer_lot,
+                manufactured_on=row.manufactured_on,
+                expiry_date=row.expiry_date,
+                user_id=actor.id,
+            )
         if product.is_serialized:
             item.imported_serials = [
                 str(
@@ -838,6 +856,7 @@ def get_batch(db: Session, settings: Settings, principal: Principal, batch_id: u
     ):
         serials_by_item[serial.batch_item_id].append(serial)  # type: ignore[index]
 
+    releasers = _names(db, {item.released_by_id for item in batch.items})
     items: list[BatchItemOut] = []
     sales: list[BatchSaleOut] = []
     sale_times: dict[uuid.UUID, datetime] = {}
@@ -867,6 +886,11 @@ def get_batch(db: Session, settings: Settings, principal: Principal, batch_id: u
                 selling_price_per_unit=item.selling_price_per_unit,
                 master_price_cents=product.price_cents,
                 expiry_date=item.expiry_date,
+                manufacturer_lot=item.manufacturer_lot,
+                manufactured_on=item.manufactured_on,
+                lot_status=item.lot_status,
+                released_at=item.released_at,
+                released_by_name=releasers.get(item.released_by_id) if item.released_by_id else None,
                 serial_count=len(item.imported_serials or []),
                 serials_last4=[decrypt_value(serial.value_encrypted, settings)[-4:] for serial in units[:24]],
                 revenue_cents=value.revenue,
@@ -966,6 +990,15 @@ def update_batch(
                 product.price_cents = change.selling_price_per_unit
         if change.quantity_imported is not None and change.quantity_imported != item.quantity_imported:
             _correct_quantity(db, batch, item, product, change.quantity_imported, actor.id)
+        if item.lot_status is not None and change.clear_expiry:
+            raise ApiError(422, "lot_required", "A medicine lot keeps its expiry date.")
+        if (
+            item.lot_status is not None
+            and change.expiry_date is not None
+            and item.manufactured_on is not None
+            and change.expiry_date < item.manufactured_on
+        ):
+            raise ApiError(422, "lot_required", "Manufacture date cannot be after the expiry date.")
         if change.clear_expiry:
             item.expiry_date = None
         elif change.expiry_date is not None:

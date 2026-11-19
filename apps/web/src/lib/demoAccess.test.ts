@@ -34,7 +34,13 @@ const issued = {
 
 describe("demo entry", () => {
   it("renders the four public business codes and no tenant id", () => {
-    expect(DEMO_BUSINESSES.map((business) => business.code)).toEqual(["restaurant", "supermarket", "electronics", "fashion"]);
+    expect(DEMO_BUSINESSES.map((business) => business.code)).toEqual([
+      "restaurant",
+      "supermarket",
+      "electronics",
+      "fashion",
+      "pharmacy",
+    ]);
     for (const business of DEMO_BUSINESSES) {
       expect(demoExchangeBody(business.code)).toEqual({ business_code: business.code });
       expect(Object.keys(demoExchangeBody(business.code))).toEqual(["business_code"]);

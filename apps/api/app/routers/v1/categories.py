@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, Response
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.core.deps import Principal, authorize
+from app.core.deps import REGISTER_SCOPES, Principal, authorize
 from app.core.errors import ApiError
 from app.core.permissions import Permission
 from app.schemas.inventory import CategoryOut, CategoryUpdate, CategoryWrite
@@ -20,7 +20,7 @@ CanRead = Annotated[
 
 
 def require_catalog_admin(
-    principal: Annotated[Principal, Depends(authorize(Permission.PORTAL_INVENTORY_MANAGE))],
+    principal: Annotated[Principal, Depends(authorize(Permission.PORTAL_INVENTORY_MANAGE, scopes=REGISTER_SCOPES))],
 ) -> Principal:
     """Categories are shared by every branch, so only users not bound to one store may change them."""
     if principal.store_id is not None:

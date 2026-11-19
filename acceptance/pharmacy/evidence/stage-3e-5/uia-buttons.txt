@@ -1,0 +1,44 @@
+buttons=45
+Collapse sidebar
+Checkout
+Returns & Exchanges
+Inventory
+Time clock
+Sale Shift
+Sync Center
+Customer display
+Store settings
+Lock Register
+EN
+AR
+Light theme
+Dark theme
+Cash drawer
+Search Catalog
+All products
+Produce
+PRODUCE
+Acceptance Grocery FEFO
+Details for Acceptance Grocery FEFO
+$4.00 8 Pieces
+Branch stock
+PRODUCE
+Acceptance Grocery Tin
+Details for Acceptance Grocery Tin
+$5.00 7 Pieces
+Branch stock
+Served by
+Fold
+Cash
+Card
+Bank transfer
+QR payment
+Exact
+Add voucher
+Recall
+Charge $0.00
+Close
+Cancel
+Add to sale
+Register API. The register cannot reach the AxizPOS API. Local printers, the scale, and the keyboard stay on their own status.
+Physical keyboard. A physical keyboard is connected over USB. A separate USB light is not shown for the same device.

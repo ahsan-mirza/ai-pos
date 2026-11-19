@@ -318,3 +318,114 @@ html[lang="ar"] :is(button, input, select, textarea) {
     line-height: 1rem;
   }
 }
+
+/* Current-sale header. The cart column is about 400px wide even on a large register,
+   so the title, count, and cashier stay on one row there. The row stacks only when
+   the viewport itself is a narrow phone: below the md sheet the cart is full-bleed
+   and the back control is in the same header. */
+.drawer-header {
+  width: 100%;
+  min-width: 0;
+}
+
+.drawer-header-compact {
+  gap: 0.375rem;
+}
+
+.drawer-header-lead,
+.drawer-header-toolbar {
+  min-width: 0;
+}
+
+.drawer-header-toolbar {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.drawer-header-toolbar:empty {
+  display: none;
+}
+
+.drawer-header-end {
+  flex: 0 0 auto;
+}
+
+.served-by {
+  display: flex;
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 100%;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.375rem;
+}
+
+.served-by-select {
+  width: 9rem;
+  min-width: 5.75rem;
+  max-width: 11rem;
+  flex: 0 1 9rem;
+}
+
+.served-by-select button {
+  min-width: 0;
+  overflow: hidden;
+}
+
+.served-by-select button > span {
+  min-width: 0;
+}
+
+.served-by-select button > span > span {
+  display: block;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 419px) {
+  .drawer-header:has(.drawer-header-toolbar:not(:empty)) {
+    flex-wrap: wrap;
+    align-items: center;
+    row-gap: 0.375rem;
+    height: auto;
+    padding-bottom: 0.5rem;
+  }
+
+  .drawer-header:has(.drawer-header-toolbar:not(:empty)) .drawer-header-lead {
+    flex: 1 1 auto;
+    order: 1;
+  }
+
+  .drawer-header:has(.drawer-header-toolbar:not(:empty)) .drawer-header-end {
+    order: 2;
+  }
+
+  .drawer-header:has(.drawer-header-toolbar:not(:empty)) .drawer-header-toolbar {
+    order: 3;
+    flex: 1 1 100%;
+    width: 100%;
+    max-width: 100%;
+    justify-content: flex-start;
+  }
+
+  .drawer-header:has(.drawer-header-toolbar:not(:empty)) .served-by {
+    width: 100%;
+    max-width: none;
+  }
+
+  .drawer-header:has(.drawer-header-toolbar:not(:empty)) .served-by-select {
+    width: auto;
+    min-width: 0;
+    max-width: none;
+    flex: 1 1 auto;
+  }
+
+  .drawer-header:has(.drawer-header-toolbar:not(:empty)) .served-by-select button {
+    min-height: 2.75rem;
+  }
+}

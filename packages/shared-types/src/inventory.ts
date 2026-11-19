@@ -180,6 +180,10 @@ export interface StockRow {
   limiting_ingredient?: string | null;
   availability_note?: string | null;
   menu_status?: MenuStatus | null;
+  /** Pharmacy medicine. Receiving and stock additions must capture a manufacturer lot. */
+  lot_controlled?: boolean;
+  /** Released in-date units. The server reallocates at checkout; this figure is only a hint. */
+  eligible_quantity?: number | null;
 }
 
 export interface StockSummary {
@@ -257,6 +261,8 @@ export interface ManualAdjustment {
   unit_cost_cents?: number | null;
   landed_cost_cents?: number;
   lot_number?: string | null;
+  manufacturer_lot?: string | null;
+  manufactured_on?: string | null;
   expiry_date?: string | null;
   supplier_reference?: string | null;
   receipt_date?: string | null;
@@ -374,6 +380,9 @@ export interface ReceiveRequest {
     quantity: number;
     serials?: SerialInput[];
     aisle_shelf_location?: string | null;
+    manufacturer_lot?: string | null;
+    manufactured_on?: string | null;
+    expiry_date?: string | null;
   }[];
 }
 
@@ -386,6 +395,18 @@ export interface PurchaseOrderLine {
   quantity_ordered: number;
   quantity_received: number;
   unit_cost_cents: number;
+  lot_controlled?: boolean;
+}
+
+export interface GoodsReceiptLot {
+  batch_item_id: string;
+  product_id: string;
+  receipt_batch_number: string;
+  manufacturer_lot: string | null;
+  manufactured_on: string | null;
+  expiry_date: string | null;
+  lot_status: string | null;
+  quantity: number;
 }
 
 export interface GoodsReceipt {
@@ -396,6 +417,7 @@ export interface GoodsReceipt {
   note: string;
   created_at: string;
   lines: { purchase_order_line_id: string; product_id: string; quantity: number }[];
+  lots?: GoodsReceiptLot[];
 }
 
 export interface PurchaseOrder {

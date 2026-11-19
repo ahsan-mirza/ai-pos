@@ -291,10 +291,14 @@ def current_identity(settings: Settings | None = None) -> Identity:
 
 
 def tenant_domain_for(slug: str, settings: Settings | None = None) -> str:
-    """client1.example.com, or just the store code when the server is reached by a public IP."""
+    """Store code sent as X-Tenant-Domain.
+
+    A public URL without ``{tenant}`` means every store opens on the main domain.
+    The header stays the store code. It is not ``slug.axizpos.com``.
+    """
     settings = settings or get_settings()
     base = settings.tenant_domain_list[0] if settings.tenant_domain_list else "axizpos.com"
-    if is_ip_host(base):
+    if is_ip_host(base) or "{tenant}" not in settings.tenant_public_url_template:
         return slug
     return f"{slug}.{base}"
 

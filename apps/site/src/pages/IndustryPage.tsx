@@ -9,6 +9,8 @@ import { profileModules, publicModulePrices } from "../modules";
 import { relatedPages, type SeoPage } from "../seo";
 import { EXPLORE_DEMO_LABEL, EXPLORE_DEMO_LABEL_AR, EXPLORE_DEMO_NOTE, EXPLORE_DEMO_NOTE_AR, solutionDemoCode } from "../solutionDemo";
 import { track } from "../track";
+import { ResponsiveImage } from "../responsiveImage";
+import { whatsappChatUrl, whatsappReady, type PublicWhatsApp } from "../whatsapp";
 
 const COPY = {
   en: {
@@ -24,6 +26,9 @@ const COPY = {
     related: "Related pages",
     features: "Product features",
     contact: "Contact sales",
+    demo: "Book a demo",
+    whatsapp: "WhatsApp us",
+    product: "In the product",
     guides: "Guides",
     questions: "Questions",
     note: "Manage your sales, inventory, customers, and business operations with AxizPOS.",
@@ -40,13 +45,26 @@ const COPY = {
     related: "صفحات ذات صلة",
     features: "المزايا",
     contact: "المبيعات",
+    demo: "احجز عرضاً",
+    whatsapp: "واتساب",
+    product: "في المنتج",
     guides: "الأدلة",
     questions: "أسئلة",
     note: "إدارة البيع والمخزون والعملاء والعمليات في AxizPOS.",
   },
 } as const;
 
-export function IndustryPage({ page, catalog, onContact }: { page: SeoPage; catalog: PublicCatalog; onContact?: (note: string) => void }) {
+export function IndustryPage({
+  page,
+  catalog,
+  contact,
+  onContact,
+}: {
+  page: SeoPage;
+  catalog: PublicCatalog;
+  contact?: PublicWhatsApp;
+  onContact?: (note: string) => void;
+}) {
   const locale = page.locale === "ar" ? "ar" : "en";
   const copy = COPY[locale];
   const homePath = locale === "ar" ? "/ar" : "/";
@@ -100,10 +118,34 @@ export function IndustryPage({ page, catalog, onContact }: { page: SeoPage; cata
             <GetStartedLink className="inline-flex h-12 w-full items-center justify-center rounded-2xl bg-primary px-5 text-sm font-semibold text-white hover:bg-primary-hover sm:w-auto" />
             <a
               href="/#pricing"
+              onClick={() => track("click_explore_plans", { page_path: page.path })}
               className="inline-flex h-12 w-full items-center justify-center rounded-2xl border border-line px-5 text-sm font-semibold text-charcoal sm:w-auto"
             >
               {copy.pricing}
             </a>
+            {onContact ? (
+              <button
+                type="button"
+                onClick={() => {
+                  track("click_book_demo", { page_path: page.path });
+                  onContact("Book a demo. This page does not create an invoice.");
+                }}
+                className="inline-flex h-12 w-full items-center justify-center rounded-2xl border border-line px-5 text-sm font-semibold text-charcoal sm:w-auto"
+              >
+                {copy.demo}
+              </button>
+            ) : null}
+            {contact && whatsappReady(contact) ? (
+              <a
+                href={whatsappChatUrl(contact.number, contact.message)}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={() => track("whatsapp_click", { page_path: page.path })}
+                className="inline-flex h-12 w-full items-center justify-center rounded-2xl border border-line px-5 text-sm font-semibold text-charcoal sm:w-auto"
+              >
+                {copy.whatsapp}
+              </a>
+            ) : null}
             {demoCode ? (
               <ExploreDemoButton businessCode={demoCode} label={locale === "ar" ? EXPLORE_DEMO_LABEL_AR : EXPLORE_DEMO_LABEL} />
             ) : null}
@@ -144,18 +186,40 @@ export function IndustryPage({ page, catalog, onContact }: { page: SeoPage; cata
             </ul>
           ) : null}
           <figure className="mt-5">
-            <img
+            <ResponsiveImage
               src={page.image.src}
               alt={page.image.alt}
               width={page.image.width}
               height={page.image.height}
+              sizes="(min-width: 1024px) 24rem, 100vw"
               loading="lazy"
-              decoding="async"
               className="h-auto w-full rounded-2xl"
             />
           </figure>
         </aside>
       </section>
+      {page.gallery && page.gallery.length > 0 ? (
+        <section className="border-t border-line">
+          <div className="mx-auto max-w-page px-4 py-14 sm:px-6 lg:px-8">
+            <h2 className="text-2xl font-semibold tracking-tight text-charcoal">{copy.product}</h2>
+            <div className="mt-6 grid gap-4 md:grid-cols-2">
+              {page.gallery.map((image) => (
+                <figure key={image.src} className="overflow-hidden rounded-card border border-line bg-card">
+                  <ResponsiveImage
+                    src={image.src}
+                    alt={image.alt}
+                    width={image.width}
+                    height={image.height}
+                    sizes="(min-width: 768px) 50vw, 100vw"
+                    loading="lazy"
+                    className="h-auto w-full"
+                  />
+                </figure>
+              ))}
+            </div>
+          </div>
+        </section>
+      ) : null}
       {locale === "en" && card && card.subTypes.length > 0 ? (
         <section className="border-t border-line bg-surface">
           <div className="mx-auto max-w-page px-4 py-14 sm:px-6 lg:px-8 lg:py-16">
@@ -245,7 +309,10 @@ export function IndustryPage({ page, catalog, onContact }: { page: SeoPage; cata
               {onContact ? (
                 <button
                   type="button"
-                  onClick={() => onContact("Contact sales. This page does not create an invoice.")}
+                  onClick={() => {
+                    track("click_contact_sales", { page_path: page.path });
+                    onContact("Contact sales. This page does not create an invoice.");
+                  }}
                   className="inline-flex h-10 items-center rounded-full border border-line bg-card px-4 text-sm font-semibold text-charcoal"
                 >
                   {copy.contact}

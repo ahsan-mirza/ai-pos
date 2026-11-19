@@ -70,7 +70,7 @@ export function DemoEntry() {
         <p className="mt-3 text-sm text-charcoal/70" role={message === null ? undefined : "alert"}>
           {message ??
             (business === null
-              ? "This address is not one of the four shared demos."
+              ? "This address is not one of the shared demos."
               : "This is a shared demonstration. Other visitors can see the same sales, tables, and stock, and the data is reset from time to time.")}
         </p>
         <a className="mt-6 inline-flex rounded-xl bg-accent px-4 py-2 text-sm font-semibold text-white" href={exploreReturnUrl()}>

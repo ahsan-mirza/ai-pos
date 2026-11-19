@@ -156,6 +156,9 @@ struct RemoteSettings {
     purchased_capabilities: Option<Vec<String>>,
     #[serde(default)]
     entitlement_until: Option<String>,
+    /// Canonical tenant store code. Empty on a server that does not name the tenant.
+    #[serde(default)]
+    store_code: String,
 }
 
 fn standard_rate() -> i64 {
@@ -201,28 +204,62 @@ fn parse(raw: Option<&str>) -> Option<Value> {
     raw.and_then(|raw| serde_json::from_str(raw).ok())
 }
 
+fn profile_tenant(value: &Value) -> String {
+    value
+        .get("tenant_id")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .trim()
+        .to_string()
+}
+
 pub fn refresh(db: &Db, config: &DesktopConfig) -> Result<CurrencySnapshot, String> {
     let pending = db.pending_count().ok();
     match fetch(config, pending) {
         Ok((currency, tax, mut profile)) => {
             // A failed receipt fetch keeps the last branding rather than printing unbranded slips.
             let fetched_receipt = fetch_receipt(config).ok();
+            let mut accept_profile = true;
             if let Some(incoming) = profile.as_ref() {
-                let incoming_revision = incoming.get("entitlement_revision").and_then(Value::as_i64).unwrap_or(0);
-                if let Some((_, _, cached_profile, _)) = cached(db)? {
-                    let stored = parse(cached_profile.as_deref());
-                    let stored_revision = stored
-                        .as_ref()
-                        .and_then(|value| value.get("entitlement_revision"))
+                let incoming_tenant = incoming
+                    .get("tenant_id")
+                    .and_then(Value::as_str)
+                    .unwrap_or("")
+                    .trim();
+                let same_tenant = !config.tenant_slug.is_empty() && incoming_tenant == config.tenant_slug;
+                if !same_tenant {
+                    accept_profile = false;
+                    profile = cached(db)?.and_then(|(_, _, raw, _)| parse(raw.as_deref())).filter(|stored| {
+                        profile_tenant(stored) == config.tenant_slug || profile_tenant(stored).is_empty()
+                    });
+                } else {
+                    let incoming_revision = incoming
+                        .get("entitlement_revision")
                         .and_then(Value::as_i64)
                         .unwrap_or(0);
-                    if stored_revision > incoming_revision && stored_revision > 0 {
-                        profile = stored;
+                    if let Some((_, _, cached_profile, _)) = cached(db)? {
+                        let stored = parse(cached_profile.as_deref());
+                        let stored_tenant = stored.as_ref().map(profile_tenant).unwrap_or_default();
+                        let stored_revision = stored
+                            .as_ref()
+                            .and_then(|value| value.get("entitlement_revision"))
+                            .and_then(Value::as_i64)
+                            .unwrap_or(0);
+                        if stored_tenant == config.tenant_slug
+                            && stored_revision > incoming_revision
+                            && stored_revision > 0
+                        {
+                            profile = stored;
+                        }
                     }
                 }
             }
             let tax_json = tax.to_string();
-            let profile_json = profile.as_ref().map(Value::to_string);
+            let profile_json = if accept_profile {
+                profile.as_ref().map(Value::to_string)
+            } else {
+                cached(db)?.and_then(|(_, _, raw, _)| raw)
+            };
             let receipt_json = fetched_receipt.as_ref().map(Value::to_string);
             db.transaction(|tx| {
                 tx.execute(
@@ -320,6 +357,7 @@ fn fetch(config: &DesktopConfig, pending: Option<i64>) -> Result<(String, Value,
     });
     let profile = body.capabilities.as_ref().map(|capabilities| {
         serde_json::json!({
+            "tenant_id": body.store_code,
             "business_profile": body.business_profile,
             "capabilities": capabilities,
             "planned_capabilities": body.planned_capabilities.clone().unwrap_or_default(),

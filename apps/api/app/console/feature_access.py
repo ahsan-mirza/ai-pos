@@ -14,7 +14,7 @@ from fastapi import Depends
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.console.billing import NEW_PLAN_CODES, monthly_fils_for
+from app.console.billing import monthly_fils_for, uses_current_catalog
 from app.core import capabilities as catalog
 from app.core.config import Settings, get_settings
 from app.core.database import get_db
@@ -79,7 +79,7 @@ def explain(
     trial_keys = set(promotional)
     claimed: set[str] = set()
     for row in plans:
-        if row.code in NEW_PLAN_CODES:
+        if uses_current_catalog(row.code):
             claimed.update(row.included_modules or [])
     preset_anywhere = {item.value for items in catalog.PROFILES.values() for item in items}
     plugins: dict[str, BillingAddon] = {}
@@ -267,7 +267,7 @@ def _one(
     plugin = plugins.get(key) if state == "PLUGIN_REQUIRED" else None
     plugin_priced = plugin is not None and plugin.monthly_fils > 0
     baseline = key in preset and key not in claimed and plugins.get(key) is None and key in profile_allowed
-    grandfathered = code not in NEW_PLAN_CODES and key in _GRANDFATHERED
+    grandfathered = not uses_current_catalog(code) and key in _GRANDFATHERED
     show_price = state == "UPGRADE_REQUIRED" and not offer.custom_pricing
     return FeatureAccess(
         feature_key=key,
@@ -312,7 +312,7 @@ def _state(
     override = managed.get(key)
     if override == "off" or not available:
         return "FEATURE_DISABLED"
-    if code not in NEW_PLAN_CODES:
+    if not uses_current_catalog(code):
         if key in _GRANDFATHERED or key in current or key in purchased or override == "on" or key in preset:
             return "INCLUDED"
         return "SWITCHED_OFF"
@@ -354,7 +354,7 @@ def _offer(
     candidates = [
         row
         for row in plans
-        if row.code in NEW_PLAN_CODES and row.code != "ENTERPRISE" and key in (row.included_modules or [])
+        if uses_current_catalog(row.code) and row.code != "ENTERPRISE" and key in (row.included_modules or [])
     ]
     candidates.sort(key=lambda row: (row.sort_order, row.monthly_fils))
     plan = candidates[0] if candidates else None

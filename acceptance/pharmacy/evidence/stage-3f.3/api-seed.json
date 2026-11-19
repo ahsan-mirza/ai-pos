@@ -1,0 +1,10 @@
+[
+  {
+    "name": "pharmacy-profile",
+    "status": "passed"
+  },
+  {
+    "name": "cashier-cannot-release",
+    "status": "passed"
+  }
+]

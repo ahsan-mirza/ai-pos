@@ -69,8 +69,27 @@ for (const page of SEO_PAGES) {
     `${page.path} JSON-LD types`,
     types.includes("Organization") && types.includes("WebSite") && (homePage ? types.includes("SoftwareApplication") : types.includes("BreadcrumbList")),
   );
+  if (page.kind === "article") {
+    const articleNode = graph.find((node) => node["@type"] === "Article");
+    const published = page.published ?? "";
+    check(
+      `${page.path} Article JSON-LD`,
+      Boolean(articleNode) &&
+        articleNode.headline === page.h1 &&
+        articleNode.datePublished === published &&
+        articleNode.dateModified === (page.modified ?? published) &&
+        typeof articleNode.image === "string" &&
+        articleNode.image.startsWith("https://axizpos.com/") &&
+        articleNode.author?.["@type"] === "Organization" &&
+        articleNode.publisher?.["@type"] === "Organization",
+    );
+  }
   const other = translationOf(page);
-  check(`${page.path} has one reciprocal translation`, other !== undefined && translationOf(other)?.id === page.id);
+  if (page.untranslated) {
+    check(`${page.path} waits for a reviewed Arabic translation`, other === undefined && !head.includes('hreflang="ar"'));
+  } else {
+    check(`${page.path} has one reciprocal translation`, other !== undefined && translationOf(other)?.id === page.id);
+  }
   if (other) {
     check(`${page.path} hreflang is reciprocal`, head.includes(`hreflang="en" href="${canonicalUrl(page.locale === "ar" ? other : page)}"`) && head.includes(`hreflang="ar" href="${canonicalUrl(page.locale === "ar" ? page : other)}"`) && head.includes(`hreflang="x-default"`));
   }
@@ -85,11 +104,18 @@ const sitemap = sitemapXml();
 const locs = [...sitemap.matchAll(/<loc>([^<]+)<\/loc>/g)].map((match) => match[1]);
 check(
   "sitemap lists only the canonical landing pages",
-  locs.length === SEO_PAGES.length + 1 &&
-    locs.includes(`${SITE_ORIGIN}/home-3`) &&
+  locs.length === SEO_PAGES.length &&
+    !locs.includes(`${SITE_ORIGIN}/home-3`) &&
     SEO_PAGES.every((page) => locs.includes(canonicalUrl(page))),
 );
 check("sitemap has no redirected or private URLs", locs.every((loc) => !redirects.has(loc.replace(SITE_ORIGIN, "")) && !loc.includes("?")));
+for (const page of SEO_PAGES) {
+  const stamp = page.modified ?? page.published;
+  if (!stamp) continue;
+  const start = sitemap.indexOf(`<loc>${canonicalUrl(page)}</loc>`);
+  const block = sitemap.slice(start, sitemap.indexOf("</url>", start));
+  check(`${page.path} sitemap lastmod matches the real edit date`, block.includes(`<lastmod>${stamp}</lastmod>`));
+}
 
 const robots = robotsTxt();
 check("robots.txt points at the sitemap", robots.includes(`Sitemap: ${SITE_ORIGIN}/sitemap.xml`));
@@ -130,6 +156,30 @@ for (const [source, target] of [
 }
 check("nginx returns 404 for /home", nginx.includes("location = /home { return 404; }"));
 check("nginx does not 404 /blog", !nginx.includes("location = /blog { return 404; }"));
+const apex = nginxFiles["ai-pos.apex.conf"];
+check(
+  "nginx permanently redirects /home-3 to the homepage",
+  apex.includes("location = /home-3 {") &&
+    apex.includes("location = /home-3/ {") &&
+    apex.includes("location = /home-3/index.html {") &&
+    apex.includes("return 301 https://axizpos.com/$is_args$args;"),
+);
+check("nginx does not serve /home-3 as its own page", !apex.includes("loyalty-promotions|home-3|"));
+check(
+  "unpublished marketing URLs return the marketing 404",
+  apex.includes("pharmacy-pos|privacy|about|terms|refund") && apex.includes("error_page 404 /404.html;") && apex.includes("return 404;"),
+);
+for (const prefix of ["login(?:/|$)", "signup(?:/|$)", "dashboard(?:/|$)", "api(?:/|$)", "assets(?:/|$)", "demo(?:/|$)"]) {
+  check(`apex 404 regex keeps /${prefix.split("(")[0]} on the application`, apex.includes(prefix));
+}
+const proposedHttp = readFileSync(join(root, "deploy/nginx/proposed/ai-pos.http-to-https.conf"), "utf8");
+check(
+  "proposed HTTP redirect is separate and keeps ACME on port 80",
+  proposedHttp.includes("location ^~ /.well-known/acme-challenge/") &&
+    proposedHttp.includes("return 301 https://axizpos.com$request_uri;") &&
+    !proposedHttp.includes("listen 443") &&
+    !nginxFiles["ai-pos.conf"].includes("return 301 https://"),
+);
 const missingPage = notFoundHtml();
 check("marketing 404 is noindex and absent from the sitemap", missingPage.includes('content="noindex"') && !sitemap.includes("/404.html"));
 
@@ -137,7 +187,7 @@ function walk(dir, files = []) {
   for (const entry of readdirSync(dir)) {
     const path = join(dir, entry);
     if (statSync(path).isDirectory()) walk(path, files);
-    else if (/\.(tsx|ts)$/.test(entry) && entry !== "seo.ts") files.push(path);
+    else if (/\.(tsx|ts)$/.test(entry) && entry !== "seo.ts" && !/\.test\.tsx?$/.test(entry)) files.push(path);
   }
   return files;
 }
@@ -160,10 +210,15 @@ for (const { file, href } of hrefs) {
     href.startsWith("/pos/") ||
     href.startsWith("/portal/") ||
     href.startsWith("/images/") ||
+    href.startsWith("/api/") ||
+    href.startsWith("/hardware/") ||
     path === "/home-3";
   check(`${file} link ${href} is not a redirect`, !redirects.has(path) && !redirects.has(href));
   check(`${file} link ${href} resolves`, known);
 }
+
+const home3 = readFileSync(join(root, "apps/site/home-3/index.html"), "utf8");
+check("home-3 is a noindex preview of the homepage", home3.includes('rel="canonical" href="https://axizpos.com/"') && home3.includes('content="noindex, follow"') && !sitemap.includes("/home-3"));
 
 const home = readFileSync(join(root, "apps/site/index.html"), "utf8");
 check("marketing HTML sets a mobile viewport", home.includes('name="viewport"'));

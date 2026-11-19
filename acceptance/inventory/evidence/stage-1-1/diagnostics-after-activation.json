@@ -1,0 +1,13 @@
+{
+  "activation_path": "C:\\Users\\ahsan\\AppData\\Roaming\\com.axizpos.inventory.acceptance\\terminal.bin",
+  "activation_source": "activation",
+  "api_base_url": "http://127.0.0.1:18081",
+  "app_data_dir": "C:\\Users\\ahsan\\AppData\\Roaming\\com.axizpos.inventory.acceptance",
+  "dev_env_config_ignored": false,
+  "developer_env_loaded": false,
+  "executable": "D:\\Work\\ai-pos\\acceptance\\inventory\\target\\release\\ai-pos-desktop.exe",
+  "guard": "passed",
+  "identifier": "com.axizpos.inventory.acceptance",
+  "profile": "acceptance",
+  "sqlite_path": "C:\\Users\\ahsan\\AppData\\Roaming\\com.axizpos.inventory.acceptance\\tenants\\inv-accept\\ai-pos.db"
+}

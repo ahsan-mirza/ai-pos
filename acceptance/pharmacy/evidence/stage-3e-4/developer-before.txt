@@ -1,0 +1,13 @@
+ Volume in drive C is Windows
+ Volume Serial Number is 1E38-A000
+
+ Directory of C:\Users\ahsan\AppData\Roaming\com.aipos.desktop
+
+11/12/2026  10:54 AM    <DIR>          .
+11/07/2026  10:08 AM    <DIR>          ..
+11/05/2026  08:45 PM           286,720 ai-pos.db
+11/05/2026  08:47 PM    <DIR>          media
+11/12/2026  10:51 AM    <DIR>          tenants
+11/12/2026  10:54 AM               694 terminal.bin
+               2 File(s)        287,414 bytes
+               4 Dir(s)  234,591,784,960 bytes free

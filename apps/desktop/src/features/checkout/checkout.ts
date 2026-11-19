@@ -9,13 +9,14 @@ import {
 import {
   batchStatus,
   createQuoteViaShell,
+  currentSession,
   enqueueBatch,
   flushSync,
   inTauri,
   nextDocumentNumber,
   openQuotePdfViaShell,
 } from "../../lib/tauri";
-import { subscriptionIsLocked } from "../../lib/capabilities";
+import { capabilitiesAvailable, registerCapabilities, subscriptionIsLocked } from "../../lib/capabilities";
 import { buildChargeEvents, type ChargeRequest } from "./queue";
 
 /** One Charge attempt. Retries of an unchanged cart reuse these idempotency keys. */
@@ -69,16 +70,83 @@ export function prepareBatch(previous: ChargeBatch | null, request: ChargeReques
 }
 
 /** Like prepareBatch, but a new batch takes the next number from this register's offline invoice series.
- * Retrying an unchanged cart keeps its number; an abandoned attempt leaves a gap the API records. */
-export async function prepareNumberedBatch(previous: ChargeBatch | null, request: ChargeRequest): Promise<ChargeBatch> {
+ * Retrying an unchanged cart keeps its number. A number is taken only after the sale is allowed to proceed. */
+export async function prepareNumberedBatch(
+  previous: ChargeBatch | null,
+  request: ChargeRequest,
+  allocate: () => Promise<string | null> = allocateInvoiceNumber,
+): Promise<ChargeBatch> {
   if (previous !== null && previous.signature === cartSignature(request)) return previous;
-  const invoiceNumber = inTauri() ? await nextDocumentNumber("INV").catch(() => null) : null;
+  const invoiceNumber = await allocate();
   return prepareBatch(null, { ...request, invoiceNumber });
+}
+
+function allocateInvoiceNumber(): Promise<string | null> {
+  return inTauri() ? nextDocumentNumber("INV").catch(() => null) : Promise.resolve(null);
+}
+
+export interface ChargeGate {
+  pharmacyCatalog: boolean;
+  offline: boolean;
+  subscriptionLocked: boolean;
+  profileReady: boolean;
+}
+
+/** Policy gates that must pass before an invoice number is reserved. */
+export function chargeGate(gate: ChargeGate): string | null {
+  if (!gate.profileReady) {
+    return "This store's settings are not on this register yet. Connect once so they can be saved.";
+  }
+  if (gate.subscriptionLocked) {
+    return "New sales stay closed until the subscription is verified.";
+  }
+  return blockPharmacyOfflineSale(gate.pharmacyCatalog, gate.offline);
+}
+
+/** Refuses a blocked sale before `allocate` runs. The register calls this with the live session. */
+export async function prepareBatchAfterGate(
+  previous: ChargeBatch | null,
+  request: ChargeRequest,
+  gate: ChargeGate,
+  allocate?: () => Promise<string | null>,
+): Promise<ChargeBatch | { rejected: string }> {
+  const blocked = chargeGate(gate);
+  if (blocked) return { rejected: blocked };
+  return prepareNumberedBatch(previous, request, allocate);
+}
+
+/** Reads the live session, refuses a blocked sale, and only then reserves an invoice number. */
+export async function preparePermittedBatch(
+  previous: ChargeBatch | null,
+  request: ChargeRequest,
+  allocate?: () => Promise<string | null>,
+): Promise<ChargeBatch | { rejected: string }> {
+  const session = inTauri() ? await currentSession() : null;
+  return prepareBatchAfterGate(
+    previous,
+    request,
+    {
+      pharmacyCatalog: registerCapabilities().enabled.has("pharmacy_catalog"),
+      offline: session?.mode === "offline",
+      subscriptionLocked: subscriptionIsLocked(),
+      profileReady: capabilitiesAvailable(),
+    },
+    allocate,
+  );
 }
 
 export function invoiceOf(batch: ChargeBatch): string | null {
   const sale = batch.events.find((event) => event.entity_type === "sale")?.payload;
   return typeof sale?.invoice_number === "string" ? sale.invoice_number : null;
+}
+
+export const PHARMACY_OFFLINE_SALE =
+  "Pharmacy medicine sales need a live connection so released lots can be checked. This sale was not saved offline.";
+
+/** The register cache cannot tell a medicine from any other stocked line, so a pharmacy till fails closed. */
+export function blockPharmacyOfflineSale(pharmacyCatalog: boolean, offline: boolean): string | null {
+  if (!pharmacyCatalog || !offline) return null;
+  return PHARMACY_OFFLINE_SALE;
 }
 
 export async function submitCharge(batch: ChargeBatch): Promise<ChargeOutcome> {
@@ -89,6 +157,12 @@ export async function submitCharge(batch: ChargeBatch): Promise<ChargeOutcome> {
     };
   }
   if (inTauri()) {
+    const session = await currentSession();
+    const blocked = blockPharmacyOfflineSale(
+      registerCapabilities().enabled.has("pharmacy_catalog"),
+      session?.mode === "offline",
+    );
+    if (blocked) return { kind: "rejected", message: blocked };
     if (!batch.enqueued) {
       await enqueueBatch(batch.batchId, batch.events);
       batch.enqueued = true;

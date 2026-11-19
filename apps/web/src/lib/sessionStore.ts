@@ -24,13 +24,14 @@ export interface SessionBucket {
   removeItem(key: string): void;
 }
 
-/** `use` is still inside its lifetime. `refresh` is inside the API grace. Anything older must sign in again. */
-export type RestorePlan = "use" | "refresh" | "sign-out";
+/** `use` is still inside its lifetime. `refresh` is inside the API grace. A demo past that grace is opened again. Anything else signs in again. */
+export type RestorePlan = "use" | "refresh" | "reenter" | "sign-out";
 
 export function restorePlan(session: StoredSession | null, now: number): RestorePlan {
   if (session === null) return "sign-out";
   if (session.expiresAt > now) return "use";
   if (now - session.expiresAt <= RENEWAL_GRACE_MS) return "refresh";
+  if (session.demo) return "reenter";
   return "sign-out";
 }
 

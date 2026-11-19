@@ -1,0 +1,43 @@
+{
+  "tenant": "pharmacy-accept",
+  "store_id": "11111111-1111-4111-8111-111111111111",
+  "store_2_id": "22222222-2222-4222-8222-222222222222",
+  "order_a_id": "4a41a43b-59de-4c49-99fa-22c0b131895d",
+  "products": {
+    "A": "2d2fcc88-83c1-432c-b090-4428e832b8e3",
+    "B": "11719e9d-fc3c-4984-939d-d9e28666517c",
+    "C": "619ba4a2-c53d-41e4-b8bb-966c24e72227",
+    "D": "705421d7-fbb3-4d56-9c23-bc49289e46dc",
+    "E": "f72980c3-ce31-4e53-8312-b60932f930d0",
+    "X": "d5f87ed1-da5b-404a-a65a-0c07603c1e1d",
+    "R": "abae19c9-ef52-472b-8be3-f6f8004de6d9",
+    "H": "44a007b1-e6c7-4512-8638-42ac0caa8d29",
+    "UI_X": "47660056-5e0e-4bba-91b5-de52fd11e90b",
+    "UI_R": "b01b0872-c902-4ece-ba1e-3410c0b26540"
+  },
+  "lots": {
+    "B": "d983317f-306d-41ae-8157-d6b71c045ea7",
+    "C": "ab15a15f-b510-42a6-a67f-49acb8bf37c2",
+    "D": "f2121f9a-a096-4e7e-8d5a-152154cdae01",
+    "E_OLD": "fef919bd-8b99-40d9-8cd5-cf550284cab6",
+    "E_NEW": "043b55bf-2e9a-4d99-ab35-fe4203b764fe",
+    "X": "67c55881-ca8c-4c93-bede-62c1d75e290c",
+    "R": "72235b64-d8fe-49ba-b175-d88b3fde283b",
+    "H": "fd04a86e-6667-4325-82ff-d2e0a2479bf6",
+    "UI_X": "bbf6b02d-e2cc-47a0-94f2-2f695d33c24a",
+    "UI_R": "5d763402-d27f-44a6-bf71-0a9bb508150d"
+  },
+  "users": {
+    "clerk_a": "a0613ad1-0616-4d87-92ea-f09fa20153d9",
+    "clerk_b": "28eab3f2-b0fb-4b93-81e0-42522f2398b3",
+    "officer_1": "80a92af5-52ba-46bb-9690-c55e59d7318a",
+    "officer_2": "65f2f184-246a-46bb-af5f-97e9efc595c0",
+    "pharmacist": "5bb905da-182f-4b02-9668-88d553ffa0bb",
+    "pharmacist_2": "65b5be75-b326-4170-93d2-38345bc78a44",
+    "manager": "136bb35e-bd32-44eb-b7ff-fd0735d06bbb",
+    "cashier": "a6c316cd-eccc-49a0-8f73-fc5c75adc2fa"
+  },
+  "device_id": "f19828bc-d80d-4d66-a7cd-2868c1c5be0b",
+  "cashier_id": "a6c316cd-eccc-49a0-8f73-fc5c75adc2fa",
+  "recall_id": "27e76afe-70df-4ca4-b31f-f5fb1fb9e156"
+}

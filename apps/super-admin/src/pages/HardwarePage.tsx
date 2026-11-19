@@ -156,7 +156,7 @@ export function HardwarePage() {
       />
       <AxizTabs
         ariaLabel="Hardware section"
-        className="-mx-4 mb-5 md:-mx-6"
+        className="mb-5 w-full"
         inset="page"
         activeTab={tab}
         onChange={(id) => setTab(id as "catalogue" | "orders")}

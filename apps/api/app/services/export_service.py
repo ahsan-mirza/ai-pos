@@ -535,7 +535,7 @@ def _stock_lines(
             PurchaseBatch.created_at < until,
             PurchaseBatch.status != "REVERSED",
             PurchaseBatch.goods_receipt_id.is_(None),
-            PurchaseBatch.import_source != "ADJUST",
+            PurchaseBatch.import_source.not_in(("ADJUST", "TRANSFER")),
             ~PurchaseBatch.items.any(BatchItem.id.in_(trade_in_items)),
         )
         .options(selectinload(PurchaseBatch.items))

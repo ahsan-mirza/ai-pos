@@ -152,7 +152,17 @@ def update(db: Session, image_id: uuid.UUID, data: ProductImageUpdate) -> Produc
     if data.is_primary:
         for other in db.scalars(select(ProductImage).where(_owner_filter(row.product_id, row.product_model_id))):
             other.is_primary = other.id == row.id
-    if data.position is not None:
+    if data.position is not None and data.position != row.position:
+        # The register moves a photo by naming the neighbour's position. Give that slot back to this photo.
+        occupant = db.scalars(
+            select(ProductImage).where(
+                _owner_filter(row.product_id, row.product_model_id),
+                ProductImage.position == data.position,
+                ProductImage.id != row.id,
+            )
+        ).first()
+        if occupant is not None:
+            occupant.position = row.position
         row.position = data.position
     if "attribute_value" in data.model_fields_set:
         value = (data.attribute_value or "").strip() or None

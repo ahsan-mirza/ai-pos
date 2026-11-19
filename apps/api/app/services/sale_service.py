@@ -827,7 +827,15 @@ def record_sale(
             )
             if stocked and product.id not in dishes:
                 demand[product.id] = demand.get(product.id, 0) + line.item.quantity
-    for product_id, quantity in demand.items():
+    from app.services.pharmacy_lots import lot_controlled_ids
+
+    # Lock inventory rows in product-id order so two sales of the same products cannot deadlock.
+    # Medicine lines skip this count: released-lot eligibility is rechecked under the row lock in move_stock.
+    controlled = lot_controlled_ids(db, list(demand))
+    for product_id in sorted(demand):
+        if product_id in controlled:
+            continue
+        quantity = demand[product_id]
         level = level_for(db, product_id, data.store_id)
         promised = 0
         if has_capability(db, Capability.FASHION_RENTAL):
@@ -856,12 +864,12 @@ def record_sale(
             )
         else:
             serial_ids.append(None)
-    for product_id, quantity in demand.items():
+    for product_id in sorted(demand):
         move_stock(
             db,
             product_id=product_id,
             store_id=data.store_id,
-            quantity=-quantity,
+            quantity=-demand[product_id],
             movement_type="SALE_OUT",
             reference_type="sale",
             reference_id=data.id,

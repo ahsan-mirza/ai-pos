@@ -1,0 +1,33 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "AxizPOS Pharmacy Acceptance",
+  "identifier": "com.axizpos.pharmacy.acceptance",
+  "build": {
+    "beforeDevCommand": "pnpm exec vite --mode acceptance --port 1420 --strictPort",
+    "beforeBuildCommand": "pnpm build:acceptance"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "AxizPOS Pharmacy Acceptance",
+        "width": 1100,
+        "height": 700,
+        "resizable": true
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; connect-src 'self' http://127.0.0.1:18080 ipc: http://ipc.localhost; img-src 'self' data: http://asset.localhost asset: http://127.0.0.1:18080; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:"
+    }
+  },
+  "bundle": {
+    "active": false,
+    "fileAssociations": [],
+    "windows": {
+      "signCommand": null,
+      "nsis": {
+        "installerHooks": null
+      }
+    }
+  }
+}

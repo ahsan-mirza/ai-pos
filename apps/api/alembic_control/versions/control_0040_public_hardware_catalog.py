@@ -71,7 +71,7 @@ def upgrade() -> None:
         sa.ForeignKeyConstraint(
             ["category_id"],
             ["public_hardware_categories.id"],
-            name="fk_public_hardware_products_category_id_public_hardware_categories",
+            name="fk_hw_products_category",
         ),
         sa.PrimaryKeyConstraint("id", name="pk_public_hardware_products"),
         sa.UniqueConstraint("sku", name="uq_public_hardware_products_sku"),
@@ -126,13 +126,13 @@ def upgrade() -> None:
         sa.ForeignKeyConstraint(
             ["package_id"],
             ["public_hardware_packages.id"],
-            name="fk_public_hardware_package_items_package_id_public_hardware_packages",
+            name="fk_hw_package_items_package",
             ondelete="CASCADE",
         ),
         sa.ForeignKeyConstraint(
             ["product_id"],
             ["public_hardware_products.id"],
-            name="fk_public_hardware_package_items_product_id_public_hardware_products",
+            name="fk_hw_package_items_product",
         ),
         sa.PrimaryKeyConstraint("id", name="pk_public_hardware_package_items"),
         sa.UniqueConstraint("package_id", "product_id", name="uq_public_hardware_package_items_product"),
@@ -155,13 +155,13 @@ def upgrade() -> None:
         sa.ForeignKeyConstraint(
             ["package_id"],
             ["public_hardware_packages.id"],
-            name="fk_public_hardware_product_images_package_id_public_hardware_packages",
+            name="fk_hw_images_package",
             ondelete="CASCADE",
         ),
         sa.ForeignKeyConstraint(
             ["product_id"],
             ["public_hardware_products.id"],
-            name="fk_public_hardware_product_images_product_id_public_hardware_products",
+            name="fk_hw_images_product",
             ondelete="CASCADE",
         ),
         sa.PrimaryKeyConstraint("id", name="pk_public_hardware_product_images"),
@@ -201,13 +201,13 @@ def upgrade() -> None:
         sa.ForeignKeyConstraint(
             ["package_id"],
             ["public_hardware_packages.id"],
-            name="fk_public_hardware_enquiries_package_id_public_hardware_packages",
+            name="fk_hw_enquiries_package",
             ondelete="SET NULL",
         ),
         sa.ForeignKeyConstraint(
             ["product_id"],
             ["public_hardware_products.id"],
-            name="fk_public_hardware_enquiries_product_id_public_hardware_products",
+            name="fk_hw_enquiries_product",
             ondelete="SET NULL",
         ),
         sa.PrimaryKeyConstraint("id", name="pk_public_hardware_enquiries"),
@@ -228,7 +228,7 @@ def upgrade() -> None:
         sa.ForeignKeyConstraint(
             ["enquiry_id"],
             ["public_hardware_enquiries.id"],
-            name="fk_public_hardware_enquiry_notes_enquiry_id_public_hardware_enquiries",
+            name="fk_hw_enquiry_notes_enquiry",
             ondelete="CASCADE",
         ),
         sa.ForeignKeyConstraint(

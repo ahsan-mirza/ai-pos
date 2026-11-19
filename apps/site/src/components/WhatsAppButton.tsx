@@ -6,7 +6,7 @@ import { track } from "../track";
 
 const TIPS = [
   "💬 Ready to get started with AxizPOS?",
-  "⚡ We reply on WhatsApp in < 2 mins!",
+  "Message sales on WhatsApp.",
   "🇦🇪 Speak to us in English or Arabic!",
   "🛒 Have questions about pricing or setup?",
 ];

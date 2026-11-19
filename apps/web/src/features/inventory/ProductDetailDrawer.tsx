@@ -98,18 +98,21 @@ function Stat({
   );
 }
 
-function DetailsTab({
+export function DetailsTab({
   product,
   availability,
   purchases,
   costing,
   canManagePhotos,
+  pharmacy = null,
 }: {
   product: Product;
   availability: Resource<Availability>;
   purchases: Resource<ProductPurchaseHistory>;
   costing: Resource<ProductCosting>;
   canManagePhotos: boolean;
+  /** Null while pharmacy details are loading, missing, or this business has no pharmacy catalogue. */
+  pharmacy?: PharmacyProductDetail | null;
 }) {
   const latest = purchases.state === "ready" ? purchases.data.latest_unit_cost_cents : null;
   const costs = costing.state === "ready" ? costing.data : null;
@@ -381,6 +384,7 @@ export function ProductDetailDrawer({
       return;
     }
     let live = true;
+    setPharmacy(null);
     void apiGet<PharmacyProductDetail>(`/api/v1/pharmacy/products/${listed.id}`)
       .then((row) => {
         if (live) setPharmacy(row);
@@ -548,6 +552,7 @@ export function ProductDetailDrawer({
               purchases={detail.purchases}
               costing={detail.costing}
               canManagePhotos={can(Permission.PortalInventoryManage)}
+              pharmacy={pharmacy}
             />
           ) : active === "sales" ? (
             <SalesTab resource={detail.sales} />

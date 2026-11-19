@@ -37,7 +37,6 @@ from app.routers.v1.fnb_table_orders import router as fnb_table_orders_router
 from app.routers.v1.fnb_table_orders import ws_router as fnb_table_ws_router
 from app.routers.v1.gift_cards import router as gift_cards_router
 from app.routers.v1.grocery import router as grocery_router
-from app.routers.v1.pharmacy import router as pharmacy_router
 from app.routers.v1.insights import router as insights_router
 from app.routers.v1.integrations import router as integrations_router
 from app.routers.v1.inventory import router as inventory_router
@@ -59,6 +58,7 @@ from app.routers.v1.orders import router as orders_router
 from app.routers.v1.payables import router as payables_router
 from app.routers.v1.payments import router as payments_router
 from app.routers.v1.peripherals import router as peripherals_router
+from app.routers.v1.pharmacy import router as pharmacy_router
 from app.routers.v1.price_lists import router as price_lists_router
 from app.routers.v1.pricing import router as pricing_router
 from app.routers.v1.products import router as products_router

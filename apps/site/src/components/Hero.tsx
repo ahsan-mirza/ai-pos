@@ -1,6 +1,7 @@
 import { AnimatePresence, motion, useReducedMotion, type Variants } from "framer-motion";
 import { useEffect, useState } from "react";
 import { portalUrl } from "../env";
+import { ResponsiveImage } from "../responsiveImage";
 import { seoPage } from "../seo";
 import { AIAnimatedBackground } from "./AIAnimatedBackground";
 import { GET_STARTED_NOTE, GetStartedLink } from "./GetStartedLink";
@@ -180,13 +181,14 @@ export function Hero() {
                 animate={reduce ? undefined : { y: [0, -8, 0] }}
                 transition={reduce ? undefined : { duration: 5.5, repeat: Infinity, ease: "easeInOut" }}
               >
-                <img
+                <ResponsiveImage
                   src="/pos/terminal.png"
                   alt="AxizPOS on a register with a customer display, receipt printer, phone, and barcode scanner."
                   width={819}
                   height={782}
+                  sizes="(min-width: 1024px) 40vw, calc(100vw - 32px)"
+                  loading="eager"
                   fetchPriority="high"
-                  decoding="async"
                   className="hero-device relative h-auto w-full drop-shadow-2xl"
                 />
               </motion.div>

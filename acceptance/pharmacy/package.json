@@ -1,0 +1,8 @@
+{
+  "name": "axizpos-pharmacy-acceptance",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "playwright": "1.56.1"
+  }
+}

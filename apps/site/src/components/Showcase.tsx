@@ -1,3 +1,4 @@
+import { ResponsiveImage } from "../responsiveImage";
 import { SectionHeading } from "./SectionHeading";
 
 export function Showcase() {
@@ -7,11 +8,12 @@ export function Showcase() {
         This is the live AxizPOS admin portal, not a drawing. Revenue, categories, and the store's sales sit on the dashboard the team already uses.
       </SectionHeading>
       <figure className="mx-auto mt-8 w-full max-w-4xl">
-        <img
+        <ResponsiveImage
           src="/portal/macbook.png"
           alt="The AxizPOS admin portal on a MacBook, with revenue, units sold, and sales by category for Downtown Flagship."
           width={1466}
           height={924}
+          sizes="(min-width: 1024px) 56rem, 100vw"
           loading="lazy"
           className="h-auto w-full"
         />

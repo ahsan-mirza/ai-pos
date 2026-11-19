@@ -43,7 +43,7 @@ Server layout:
    node scripts/generate-secrets.mjs --env production
    ```
 
-   `.env.production` at the repo root is the file the API reads. `DATABASE_URL` and `CONTROL_DATABASE_URL` are already set for Postgres on the VM (`ai_pos_db` and `qios_control` on localhost). Run the generator to replace the remaining `change-me` secrets; it does not touch the database URLs. Replace every `YOUR_VM_PUBLIC_IP` with the VM's public address. `TENANT_BASE_DOMAINS`, `TENANT_PUBLIC_URL_TEMPLATE`, and `PUBLIC_BASE_URL` must all use that IP, over `http://`. Leave `DEFAULT_TENANT` unset and `SIGNUP_ENABLED=false`. Then copy it up and lock it down:
+   `.env.production` at the repo root is the file the API reads. `DATABASE_URL` and `CONTROL_DATABASE_URL` are already set for Postgres on the VM (`ai_pos_db` and `qios_control` on localhost). Run the generator to replace the remaining `change-me` secrets; it does not touch the database URLs. Replace every `YOUR_VM_PUBLIC_IP` with the VM's public address. `TENANT_BASE_DOMAINS=axizpos.com`, `TENANT_PUBLIC_URL_TEMPLATE=https://axizpos.com`, and `PUBLIC_BASE_URL=https://axizpos.com`. Stores share that host. There is no store subdomain. Leave `DEFAULT_TENANT` unset and `SIGNUP_ENABLED=false`. Then copy it up and lock it down:
 
    ```bash
    scp .env.production ubuntu@<server>:/opt/ai-pos/.env.production

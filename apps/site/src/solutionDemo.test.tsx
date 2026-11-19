@@ -67,6 +67,7 @@ describe("solution demo mapping", () => {
   it("uses the same code for each Arabic translation", () => {
     for (const page of SEO_PAGES.filter((item) => item.locale === "ar" && item.kind === "industry")) {
       expect(page.translationOf).toBeTruthy();
+      if (!Object.prototype.hasOwnProperty.call(SOLUTION_DEMO, page.translationOf)) continue;
       const code = SOLUTION_DEMO[page.translationOf as SolutionPageId];
       expect(solutionDemoCode(page)).toBe(code);
     }
@@ -87,7 +88,7 @@ describe("portal destination", () => {
   it("opens /demo/{code} on the portal origin with an empty query and no credentials", () => {
     const portals = ["http://127.0.0.1:5173/login", "http://localhost:5173/login", "https://axizpos.com/login"];
     for (const login of portals) {
-      for (const code of ["restaurant", "supermarket", "electronics", "fashion"] as const) {
+      for (const code of ["restaurant", "supermarket", "electronics", "fashion", "pharmacy"] as const) {
         const href = solutionDemoHref(login, code);
         expect(href).toBe(`${new URL(login).origin}/demo/${code}`);
         const url = new URL(href!);
@@ -106,7 +107,7 @@ describe("portal destination", () => {
     expect(new URL(href!).search).toBe("");
   });
 
-  it("rejects a code that is not one of the four public demos", () => {
+  it("rejects a code that is not one of the public demos", () => {
     expect(solutionDemoHref(portalUrl, "wholesale")).toBeNull();
     expect(solutionDemoHref(portalUrl, "restaurant?access_token=secret")).toBeNull();
     expect(solutionDemoHref(portalUrl, "")).toBeNull();

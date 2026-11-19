@@ -51,6 +51,7 @@ from app.schemas.loyalty import LoyaltySettingsWrite
 from app.schemas.menu import ModifierGroupIn, ModifierOptionIn, ProductGroupsIn
 from app.schemas.orders import DiningAreaIn, DiningTableIn, OrderAction, OrderCreate, OrderItemIn
 from app.schemas.payloads import ModifierChoice
+from app.schemas.pharmacy import IngredientWrite, PharmacyWrite
 from app.schemas.promotions import PromotionWrite
 from app.schemas.recipes import RecipeIn, RecipeLineIn
 from app.schemas.store_credit import GiftCardIssue
@@ -73,7 +74,7 @@ from app.services import (
     warranty_service,
 )
 from app.services.import_batch_service import create_supplier
-from app.services.settings_service import clear_settings_cache
+from app.services.settings_service import clear_settings_cache, load_settings
 from app.tenancy import provisioning, registry
 from app.tenancy.context import TenantRef, use_tenant
 from app.tenancy.models import Tenant
@@ -271,6 +272,33 @@ def _customers(db: Session, spec: dict) -> None:
         )
 
 
+def _pharmacy(row: dict) -> PharmacyWrite | None:
+    block = row.get("pharmacy")
+    if not block:
+        return None
+    return PharmacyWrite(
+        product_kind=block["product_kind"],
+        dispensing_class=block["dispensing_class"],
+        generic_name=block.get("generic_name") or "",
+        manufacturer=block.get("manufacturer") or "",
+        dosage_form=block.get("dosage_form") or "",
+        route=block.get("route") or "",
+        strength_amount=block.get("strength_amount"),
+        strength_unit=block.get("strength_unit") or "",
+        pack_size_label=block.get("pack_size_label") or "",
+        units_per_pack=int(block.get("units_per_pack") or 1),
+        gtin=row["barcode"],
+        ingredients=[
+            IngredientWrite(
+                name=item["name"],
+                strength_amount=item.get("strength_amount"),
+                strength_unit=item.get("strength_unit") or "",
+            )
+            for item in block.get("ingredients") or []
+        ],
+    )
+
+
 def _products(db: Session, spec: dict, actor: Principal) -> None:
     for row in spec["products"]:
         if _product(db, row["sku"]) is not None:
@@ -291,6 +319,7 @@ def _products(db: Session, spec: dict, actor: Principal) -> None:
                 plu_code=row.get("plu"),
                 is_ingredient=bool(row.get("ingredient")),
                 item_type="RAW_INGREDIENT" if row.get("ingredient") else "PRE_PACKAGED",
+                pharmacy=_pharmacy(row),
             ),
             spec["currency"],
         )
@@ -427,7 +456,7 @@ def _recipe(db: Session, spec: dict, user: User) -> None:
 
 
 def _loyalty(db: Session, spec: dict) -> None:
-    if spec["profile"] not in {"grocery", "retail_fashion"}:
+    if spec["profile"] not in {"grocery", "retail_fashion", "pharmacy"}:
         return
     loyalty_service.update_settings(
         db,
@@ -492,9 +521,22 @@ def _gift_card(db: Session, spec: dict, store: Store, user: User) -> None:
     gift_card_service.issue(db, user, GiftCardIssue(store_id=store.id, amount_cents=int(amount), note=note))
 
 
+def _receipt_line(line, row: dict, serials: dict[str, list[str]], received) -> ReceiveLineIn:
+    medicine = (row.get("pharmacy") or {}).get("product_kind") == "MEDICINE"
+    return ReceiveLineIn(
+        purchase_order_line_id=line.id,
+        quantity=line.quantity_ordered,
+        serials=[SerialInput(kind="serial", value=value) for value in serials.get(line.sku, [])],
+        manufacturer_lot=f"{line.sku}-LOT" if medicine else None,
+        manufactured_on=received - timedelta(days=30) if medicine else None,
+        expiry_date=received + timedelta(days=400) if medicine else None,
+    )
+
+
 def _opening_stock(db: Session, settings: Settings, spec: dict, store: Store, actor: Principal) -> None:
     if db.scalar(select(PurchaseOrder.id).where(PurchaseOrder.notes == _OPENING)) is not None:
         _dated_lots(db, settings, spec, store, actor)
+        _release_medicines(db, actor)
         return
     lines = []
     serials: dict[str, list[str]] = {}
@@ -528,6 +570,8 @@ def _opening_stock(db: Session, settings: Settings, spec: dict, store: Store, ac
     )
     inventory.mark_ordered(db, actor, order.id)
     placed = inventory.get_purchase_order(db, actor, order.id)
+    by_sku = {row["sku"]: row for row in spec["products"]}
+    received = datetime.now(UTC).date()
     inventory.receive_purchase_order(
         db,
         settings,
@@ -536,16 +580,22 @@ def _opening_stock(db: Session, settings: Settings, spec: dict, store: Store, ac
         ReceiveRequest(
             note="Demo opening receipt",
             lines=[
-                ReceiveLineIn(
-                    purchase_order_line_id=line.id,
-                    quantity=line.quantity_ordered,
-                    serials=[SerialInput(kind="serial", value=value) for value in serials.get(line.sku, [])],
-                )
+                _receipt_line(line, by_sku.get(line.sku) or {}, serials, received)
                 for line in placed.lines
             ],
         ),
     )
     _dated_lots(db, settings, spec, store, actor)
+    _release_medicines(db, actor)
+
+
+def _release_medicines(db: Session, actor: Principal) -> None:
+    from app.models.batch import BatchItem
+    from app.services.pharmacy_lots import release_for_sale
+
+    user_id = actor.user.id if actor.user is not None else None
+    for item in db.scalars(select(BatchItem).where(BatchItem.lot_status == "UNRELEASED")).all():
+        release_for_sale(db, item, user_id)
 
 
 def _dated_lots(db: Session, settings: Settings, spec: dict, store: Store, actor: Principal) -> None:
@@ -643,6 +693,34 @@ def _supplier(db: Session, spec: dict) -> None:
     create_supplier(db, SupplierCreate(name=spec["supplier"]))
 
 
+def _leave_practice(db: Session) -> bool:
+    """A demo is already a live store. Practice mode offers Go live, which deletes the shared catalog."""
+    row = load_settings(db, lock=True)
+    if row.live_at is not None:
+        return False
+    row.live_at = datetime.now(UTC)
+    return True
+
+
+def end_practice_for_demos(settings: Settings) -> list[str]:
+    """Marks every existing demo store live. Returns the slugs that were still in practice."""
+    with registry.control_session(settings) as control:
+        rows = list(control.scalars(select(Tenant).where(Tenant.is_demo.is_(True))))
+        for row in rows:
+            control.expunge(row)
+    changed: list[str] = []
+    for tenant in rows:
+        db = _session(settings, tenant)
+        try:
+            with use_tenant(_ref(tenant, settings)):
+                if _leave_practice(db):
+                    changed.append(tenant.slug)
+                db.commit()
+        finally:
+            db.close()
+    return changed
+
+
 def seed_catalog(settings: Settings, spec: dict, tenant: Tenant) -> None:
     """Creates the tenant's catalog. A second run does not insert a second copy of any of it."""
     ref = _ref(tenant, settings)
@@ -669,6 +747,7 @@ def seed_catalog(settings: Settings, spec: dict, tenant: Tenant) -> None:
             _gift_card(db, spec, store, user)
             _opening_stock(db, settings, spec, store, actor)
             _orders(db, spec, store, actor, user)
+            _leave_practice(db)
             db.commit()
     finally:
         db.close()

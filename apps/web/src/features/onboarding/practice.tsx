@@ -3,6 +3,7 @@ import { FlaskConical, ShieldAlert } from "lucide-react";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useLocation } from "react-router-dom";
 import { apiGet, apiPost } from "../../lib/api";
+import { useAuth } from "../../lib/auth";
 import { portalHomePath } from "../../lib/portal-home";
 import { useCanManageSettings, useCurrency } from "../../lib/currency";
 import { GoLiveModal } from "./GoLiveModal";
@@ -24,9 +25,10 @@ const PracticeContext = createContext<PracticeState>({
 
 export function PracticeProvider({ children }: { children: ReactNode }) {
   const { settings, applySettings } = useCurrency();
+  const { demo } = useAuth();
   const canManage = useCanManageSettings();
   const { pathname } = useLocation();
-  const practice = settings?.practice_mode === true;
+  const practice = settings?.practice_mode === true && demo === null;
   const [checklist, setChecklist] = useState<OnboardingChecklist | null>(null);
   const [goLiveOpen, setGoLiveOpen] = useState(false);
   const [tick, setTick] = useState(0);

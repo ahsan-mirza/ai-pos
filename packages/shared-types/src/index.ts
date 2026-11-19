@@ -561,6 +561,7 @@ export {
   variantAttributeLabels,
 } from "./inventory.js";
 export { allSpecKeys, specKey, specSchemaFor, specSummary, titleFromSpecs } from "./specifications.js";
+export { barcodeError, cleanCode, ean13, isEan13, randomCode128, randomEan13, skuFromParts } from "./productCodes.js";
 export type { SpecField, SpecSchema } from "./specifications.js";
 export type { ProductAttribute } from "./attributes.js";
 export type {
@@ -609,6 +610,7 @@ export {
   BatchStatus,
   IMPORT_ACCEPT,
   IMPORT_FIELDS,
+  importFieldsFor,
   IMPORT_MAX_FILE_BYTES,
   IMPORT_SOURCE_LABELS,
   ImportSource,

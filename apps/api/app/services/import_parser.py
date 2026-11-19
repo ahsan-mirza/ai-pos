@@ -43,6 +43,8 @@ SYNONYMS: dict[str, tuple[str, ...]] = {
     "sub_category": ("subcategory", "subcat", "subgroup"),
     "serials": ("imei", "imeis", "serial", "serials", "serialnumber", "serialnumbers", "imeiserial", "imeiserials"),
     "expiry_date": ("expiry", "expirydate", "expdate", "bestbefore", "expires"),
+    "manufacturer_lot": ("manufacturerlot", "lotnumber", "lotno", "mfrlot", "batchlot"),
+    "manufactured_on": ("manufacturedate", "manufactureddate", "mfgdate", "dateofmanufacture"),
 }
 
 

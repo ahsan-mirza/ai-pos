@@ -1,5 +1,7 @@
-@import url("https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&display=swap");
 @import "@ai-pos/design-tokens/tokens.css";
+@import "./fonts.css";
+
+.site-picture { display: block; max-width: 100%; }
 
 @tailwind base;
 @tailwind components;

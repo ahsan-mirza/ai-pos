@@ -56,7 +56,7 @@ class Tenant(ControlBase):
         ),
         CheckConstraint(
             "demo_business_type IS NULL OR demo_business_type IN "
-            "('restaurant', 'supermarket', 'electronics', 'fashion')",
+            "('restaurant', 'supermarket', 'electronics', 'fashion', 'pharmacy')",
             name="ck_tenants_demo_business_type_known",
         ),
     )
@@ -78,7 +78,7 @@ class Tenant(ControlBase):
     practice_mode: Mapped[bool] = mapped_column(Boolean, default=True)
     # Production showroom. Commercial totals skip these rows. The store itself stays active.
     is_demo: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=false())
-    # Public exchange code: restaurant, supermarket, electronics, or fashion. Not a profile key.
+    # Public exchange code. Not a profile key.
     demo_business_type: Mapped[str | None] = mapped_column(String(32), nullable=True)
     demo_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     demo_status: Mapped[str | None] = mapped_column(String(16), nullable=True)

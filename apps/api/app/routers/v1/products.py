@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import Settings, get_settings
 from app.core.database import get_db
-from app.core.deps import Principal, authorize
+from app.core.deps import REGISTER_SCOPES, Principal, authorize
 from app.core.errors import ApiError
 from app.core.permissions import Permission
 from app.models.product import Product
@@ -35,7 +35,7 @@ CanRead = Annotated[
 ]
 CanManage = Annotated[
     Principal,
-    Depends(authorize(Permission.PORTAL_INVENTORY_MANAGE, allow_device=True)),
+    Depends(authorize(Permission.PORTAL_INVENTORY_MANAGE, allow_device=True, scopes=REGISTER_SCOPES)),
 ]
 StoreParam = Annotated[uuid.UUID | None, Query(description="Report stock at this branch; omit for all branches.")]
 
@@ -118,7 +118,7 @@ HistoryLimit = Annotated[int, Query(ge=1, le=500)]
 def sales_history(
     product_id: uuid.UUID,
     db: Annotated[Session, Depends(get_db)],
-    principal: Annotated[Principal, Depends(authorize(Permission.PORTAL_REPORTS_READ))],
+    principal: Annotated[Principal, Depends(authorize(Permission.PORTAL_REPORTS_READ, scopes=REGISTER_SCOPES))],
     store_id: StoreParam = None,
     limit: HistoryLimit = 100,
 ) -> ProductSalesHistory:
@@ -130,7 +130,7 @@ def sales_history(
 def purchase_history(
     product_id: uuid.UUID,
     db: Annotated[Session, Depends(get_db)],
-    principal: Annotated[Principal, Depends(authorize(Permission.PORTAL_INVENTORY_MANAGE))],
+    principal: Annotated[Principal, Depends(authorize(Permission.PORTAL_INVENTORY_MANAGE, scopes=REGISTER_SCOPES))],
     store_id: StoreParam = None,
     limit: HistoryLimit = 100,
 ) -> ProductPurchaseHistory:
@@ -142,7 +142,7 @@ def purchase_history(
 def product_costing(
     product_id: uuid.UUID,
     db: Annotated[Session, Depends(get_db)],
-    principal: Annotated[Principal, Depends(authorize(Permission.PORTAL_INVENTORY_MANAGE))],
+    principal: Annotated[Principal, Depends(authorize(Permission.PORTAL_INVENTORY_MANAGE, scopes=REGISTER_SCOPES))],
     store_id: StoreParam = None,
 ) -> ProductCosting:
     scope = product_history.scope_for(principal, store_id)
@@ -154,7 +154,7 @@ def product_serials(
     product_id: uuid.UUID,
     db: Annotated[Session, Depends(get_db)],
     settings: Annotated[Settings, Depends(get_settings)],
-    principal: Annotated[Principal, Depends(authorize(Permission.PORTAL_ACCESS))],
+    principal: Annotated[Principal, Depends(authorize(Permission.PORTAL_ACCESS, scopes=REGISTER_SCOPES))],
     store_id: StoreParam = None,
     status: SerialStatus | None = None,
     q: Annotated[str | None, Query(max_length=64, description="Full IMEI/serial, or its last 4 digits.")] = None,
@@ -168,7 +168,7 @@ def product_serials(
 def product_movements(
     product_id: uuid.UUID,
     db: Annotated[Session, Depends(get_db)],
-    principal: Annotated[Principal, Depends(authorize(Permission.PORTAL_ACCESS))],
+    principal: Annotated[Principal, Depends(authorize(Permission.PORTAL_ACCESS, scopes=REGISTER_SCOPES))],
     store_id: StoreParam = None,
     movement_type: MovementType | None = None,
     limit: HistoryLimit = 200,
@@ -183,7 +183,7 @@ def product_movements(
 def delete_product(
     product_id: uuid.UUID,
     db: Annotated[Session, Depends(get_db)],
-    _: Annotated[Principal, Depends(authorize(Permission.PORTAL_INVENTORY_MANAGE))],
+    _: Annotated[Principal, Depends(authorize(Permission.PORTAL_INVENTORY_MANAGE, scopes=REGISTER_SCOPES))],
 ) -> Response:
     inventory.delete_product(db, product_id)
     return Response(status_code=204)
@@ -194,7 +194,7 @@ def update_product(
     product_id: uuid.UUID,
     payload: ProductUpdate,
     db: Annotated[Session, Depends(get_db)],
-    principal: Annotated[Principal, Depends(authorize(Permission.PORTAL_INVENTORY_MANAGE))],
+    principal: Annotated[Principal, Depends(authorize(Permission.PORTAL_INVENTORY_MANAGE, scopes=REGISTER_SCOPES))],
 ) -> ProductOut:
     return inventory.update_product(
         db, product_id, payload, user_id=principal.user.id if principal.user is not None else None

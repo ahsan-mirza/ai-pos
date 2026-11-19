@@ -57,6 +57,7 @@ from app.schemas.billing import (
     OverviewOut,
     PaymentMethodOut,
     PaymentOut,
+    PlanCreateIn,
     PlanImpactOut,
     PlanIn,
     PlanOut,
@@ -474,12 +475,30 @@ def billing_plan_impact(plan_id: uuid.UUID, _: CurrentOperator, settings: Config
         return billing.plan_impact(db, plan_id)
 
 
+@router.post("/billing/plans", response_model=PlanOut, status_code=201)
+def billing_plan_create(payload: PlanCreateIn, operator: ConsoleAdmin, settings: Config) -> PlanOut:
+    with registry.control_session(settings) as db:
+        return billing.create_plan(db, operator, payload)
+
+
 @router.patch("/billing/plans/{plan_id}", response_model=PlanOut)
 def billing_plan(plan_id: uuid.UUID, payload: PlanIn, operator: ConsoleAdmin, settings: Config) -> PlanOut:
     with registry.control_session(settings) as db:
         updated = billing.update_plan(db, operator, plan_id, payload)
         billing.propagate_plan(settings, db, plan_id)
         return updated
+
+
+@router.delete("/billing/plans/{plan_id}", status_code=204)
+def billing_plan_delete(
+    plan_id: uuid.UUID,
+    operator: ConsoleAdmin,
+    settings: Config,
+    reason: Annotated[str, Query(min_length=3, max_length=500)],
+) -> Response:
+    with registry.control_session(settings) as db:
+        billing.delete_plan(db, operator, plan_id, reason)
+    return Response(status_code=204)
 
 
 @router.put("/billing/annual-discount")

@@ -5,6 +5,7 @@ export const ImportSource = {
   Csv: "CSV",
   PdfInvoice: "PDF_INVOICE",
   Manual: "MANUAL",
+  Transfer: "TRANSFER",
 } as const;
 export type ImportSource = (typeof ImportSource)[keyof typeof ImportSource];
 
@@ -28,6 +29,7 @@ export const IMPORT_SOURCE_LABELS: Record<ImportSource, string> = {
   CSV: "CSV",
   PDF_INVOICE: "PDF invoice",
   MANUAL: "Manual",
+  TRANSFER: "Transfer",
 };
 
 export type ImportField =
@@ -40,7 +42,9 @@ export type ImportField =
   | "category"
   | "sub_category"
   | "serials"
-  | "expiry_date";
+  | "expiry_date"
+  | "manufacturer_lot"
+  | "manufactured_on";
 
 export interface ImportFieldSpec {
   field: ImportField;
@@ -60,7 +64,15 @@ export const IMPORT_FIELDS: readonly ImportFieldSpec[] = [
   { field: "sub_category", label: "Sub-Category", required: false },
   { field: "serials", label: "IMEI / Serials", required: false, hint: "One per unit, any separator" },
   { field: "expiry_date", label: "Expiry Date", required: false },
+  { field: "manufacturer_lot", label: "Manufacturer lot", required: false, hint: "Pharmacy medicines" },
+  { field: "manufactured_on", label: "Manufacture date", required: false, hint: "Pharmacy medicines" },
 ];
+
+/** Grocery and the other profiles do not map manufacturer-lot columns. */
+export function importFieldsFor(pharmacy: boolean): readonly ImportFieldSpec[] {
+  if (pharmacy) return IMPORT_FIELDS;
+  return IMPORT_FIELDS.filter((spec) => spec.field !== "manufacturer_lot" && spec.field !== "manufactured_on");
+}
 
 export type ImportMapping = Partial<Record<ImportField, string>>;
 
@@ -140,6 +152,8 @@ export interface ImportRow {
   sub_category: string;
   serials: string[];
   expiry_date: string | null;
+  manufacturer_lot?: string;
+  manufactured_on?: string | null;
   attributes?: Record<string, string>;
 }
 
@@ -248,6 +262,11 @@ export interface BatchItem {
   selling_price_per_unit: number;
   master_price_cents: number;
   expiry_date: string | null;
+  manufacturer_lot?: string | null;
+  manufactured_on?: string | null;
+  lot_status?: string | null;
+  released_at?: string | null;
+  released_by_name?: string | null;
   serial_count: number;
   serials_last4: string[];
   revenue_cents: number;

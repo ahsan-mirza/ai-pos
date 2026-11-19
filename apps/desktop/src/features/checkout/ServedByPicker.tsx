@@ -35,27 +35,28 @@ export function ServedByPicker({ storeId, cashierId, cashierName, associate, dis
   const others = staff.filter((member) => member.id !== cashierId);
   if (others.length === 0 && associate === null) return null;
   return (
-    <label className="flex items-center gap-2 px-4 pb-2 text-xs text-zinc-500 dark:text-white/50">
+    <label className="served-by text-zinc-500 dark:text-white/50">
       <UserRound size={14} aria-hidden="true" className="shrink-0" />
-      <span className="shrink-0 font-semibold uppercase tracking-wider">Served by</span>
-      <Select
-        size="sm"
-        className="min-w-0 flex-1"
-        aria-label="Served by"
-        disabled={disabled}
-        value={associate?.id ?? ""}
-        onChange={(value) => {
-          const member = staff.find((row) => row.id === value);
-          onChange(member ? { id: member.id, name: member.full_name } : null);
-        }}
-        options={[
-          { value: "", label: `${cashierName} (cashier)` },
-          ...others.map((member) => ({
-            value: member.id,
-            label: member.role_name ? `${member.full_name} · ${member.role_name}` : member.full_name,
-          })),
-        ]}
-      />
+      <span className="shrink-0 whitespace-nowrap text-[10px] font-semibold uppercase leading-none tracking-wider">Served by</span>
+      <div className="served-by-select">
+        <Select
+          size="sm"
+          aria-label="Served by"
+          disabled={disabled}
+          value={associate?.id ?? ""}
+          onChange={(value) => {
+            const member = staff.find((row) => row.id === value);
+            onChange(member ? { id: member.id, name: member.full_name } : null);
+          }}
+          options={[
+            { value: "", label: `${cashierName} (cashier)` },
+            ...others.map((member) => ({
+              value: member.id,
+              label: member.role_name ? `${member.full_name} · ${member.role_name}` : member.full_name,
+            })),
+          ]}
+        />
+      </div>
     </label>
   );
 }

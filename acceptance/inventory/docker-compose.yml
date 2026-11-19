@@ -1,0 +1,31 @@
+# Disposable inventory acceptance database. This is not the development Compose project.
+# It does not mount ai_pos_pg and it publishes Postgres on loopback only.
+name: axizpos-inventory-acceptance
+
+services:
+  postgres:
+    container_name: axizpos-inventory-acceptance-db
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: axizpos_acceptance
+      POSTGRES_PASSWORD: ${ACCEPTANCE_DB_PASSWORD}
+      POSTGRES_DB: axizpos_inventory_acceptance
+    ports:
+      - "127.0.0.1:${ACCEPTANCE_DB_PORT}:5432"
+    volumes:
+      - axizpos_inventory_acceptance_pg:/var/lib/postgresql/data
+    networks:
+      - acceptance
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U axizpos_acceptance -d axizpos_inventory_acceptance"]
+      interval: 3s
+      timeout: 5s
+      retries: 20
+
+networks:
+  acceptance:
+    name: axizpos-inventory-acceptance-net
+
+volumes:
+  axizpos_inventory_acceptance_pg:
+    name: axizpos-inventory-acceptance-pg

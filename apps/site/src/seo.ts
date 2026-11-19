@@ -1,6 +1,9 @@
+import { renderRichHtml } from "./blog/richText.ts";
+import { ENGLISH_GUIDES } from "./blog/guides.ts";
 import { ARABIC_PAGES } from "./seo-ar.ts";
 import { ARTICLE_PAGES, CORE_EXTRAS, FEATURE_PAGES } from "./seo-extra.ts";
-import { CAFE, ELECTRONICS, FASHION, PORTAL, QUICK_SERVICE, RESTAURANT, SITE_ORIGIN, SUPERMARKET, TERMINAL, WHOLESALE, type SeoPage } from "./seo-types.ts";
+import { IMAGE_SETS } from "./image-sets.ts";
+import { CAFE, ELECTRONICS, FASHION, PORTAL, QUICK_SERVICE, RESTAURANT, SITE_ORIGIN, SUPERMARKET, TERMINAL, WHOLESALE, type SeoImage, type SeoPage } from "./seo-types.ts";
 
 export { SITE_ORIGIN };
 export type { SeoFaq, SeoImage, SeoKind, SeoLocale, SeoPage, SeoSection } from "./seo-types";
@@ -25,15 +28,16 @@ const CORE_PAGES: SeoPage[] = [
     path: "/explore",
     title: "Explore AxizPOS | Live demos for restaurant, grocery, electronics and fashion",
     description:
-      "Choose a business and open a shared AxizPOS demo. Explore billing, inventory, sales and day-to-day management without creating an account.",
+      "Open a shared AxizPOS demo for a restaurant, grocery, electronics, or fashion business. The pharmacy card is a catalogue demonstration, not a licensed pharmacy ERP.",
     h1: "Experience AxizPOS in Action",
     kicker: "Live demos",
     lead: "Choose your business and explore how AxizPOS simplifies billing, inventory, sales and business management.",
     sections: [
       {
-        heading: "Four shared businesses",
+        heading: "Shared demonstration businesses",
         paragraphs: [
           "Restaurant & Café, Supermarket & Grocery, Electronics & Wholesale, and Fashion & Retail each open the real AxizPOS portal. Every visitor of a business sees the same demonstration data, and that data is reset from time to time.",
+          "A pharmacy card is on the same page. It opens a shared demonstration of catalogue screens. It is not a statement that a licensed pharmacy ERP is for sale, and it is not a statement that compliance, licensing, or offline verification are complete.",
         ],
       },
     ],
@@ -89,8 +93,9 @@ const CORE_PAGES: SeoPage[] = [
       {
         heading: "Checkout, stock, and the questions after service",
         paragraphs: [
-          "Staff close the sale on the register and print the receipt. Managers open the dashboard, shift close, and VAT report for the sales the store recorded. Users who can see reports can ask the assistant, in English or Arabic, about those figures. The assistant does not invent a number.",
-          "Recipes tie sold dishes back to ingredients, so stock moves with the menu instead of a separate count at the end of the week.",
+          "A table order stays open until the bill is split or closed. Takeaway uses the same menu without a table. Delivery-app orders are not on this preset. They sit on the quick-service profile.",
+          "Staff close the sale on the register and print the receipt. Recipes tie sold dishes back to ingredients. Managers open the dashboard, shift close, and VAT report for the sales the store recorded. Users who can see reports can ask the assistant, in English or Arabic, about those figures. The assistant does not invent a number.",
+          "The desktop register can keep selling after it has connected once, including when the line drops. Those sales sync later. The portal and the assistant need a connection. Public prices stay in the pricing section, in AED.",
         ],
       },
     ],
@@ -109,10 +114,10 @@ const CORE_PAGES: SeoPage[] = [
   {
     id: "retail-pos",
     path: "/retail-pos",
-    title: "Barcode Checkout and Stock | AxizPOS",
+    title: "Retail POS Software UAE | AxizPOS",
     description:
-      "The shared AxizPOS register: catalog checkout, barcodes, stock, purchase orders, and the VAT report. Supermarket and fashion profiles have their own pages.",
-    h1: "Barcode checkout and stock on the shared AxizPOS register",
+      "Retail POS software for UAE shops that sell from a catalog and a barcode. Clothing size and colour use the fashion page. Weight and expiry use the grocery page.",
+    h1: "Retail POS software for catalog checkout and stock in the UAE",
     kicker: "Retail",
     lead: "Every AxizPOS store sells from a product catalog on the register. This page is that shared checkout. Grocery and fashion are separate profiles with their own pages.",
     sections: [
@@ -126,8 +131,8 @@ const CORE_PAGES: SeoPage[] = [
       {
         heading: "Grocery and fashion have their own pages",
         paragraphs: [
-          "There is no preset named only Retail. A grocery shop starts with weighed items and expiry-first stock, described on the grocery page. A fashion shop starts with a size and colour grid, described on the fashion page.",
-          "Barcode checkout is part of the register for these stores. Restaurant tables stay off. On-account credit is not a starting module for a grocery or fashion shop. Those shops can turn it on later. A restaurant cannot.",
+          "There is no preset named only Retail. A grocery shop starts with weighed items and expiry-first stock, described on the grocery page. A clothing shop starts with a size and colour grid, described on the fashion page. A general shop counter on the wholesale profile is described on the wholesale page.",
+          "Barcode checkout is part of the register for these stores. Restaurant tables stay off. On-account credit is not a starting module for a grocery or fashion shop. Those shops can turn it on later. A restaurant cannot. Public package prices stay in the pricing section, in AED. Get Started Free opens registration on the Free plan. It does not open an invoice.",
         ],
       },
       {
@@ -167,7 +172,8 @@ const CORE_PAGES: SeoPage[] = [
       {
         heading: "A neighborhood shop, a supermarket, or cash and carry",
         paragraphs: [
-          "A neighborhood grocery is one shop: scan, weigh produce, and sell the batch that expires first, with loyalty, promotions, and card terminals. A supermarket is that counter across several lanes and a large catalogue, and adds gift cards and foreign-currency cash. Neither starts with a credit statement. The shop can turn on-account credit on later.",
+          "A neighborhood grocery is one shop: scan a barcode, weigh produce on a PLU, apply the promotion on that item, and sell the batch that expires first. A supermarket is that counter across several lanes and a large catalogue, and adds gift cards and foreign-currency cash. Expiry-first selling is a retail date rule. It is not a pharmacy lot or a recall system. Neither start includes a credit statement. The shop can turn on-account credit on later.",
+          "Managers read the dashboard and the VAT report for that store. The desktop register can keep checkout going after it has connected once. The portal still needs a connection. Package prices are in the pricing section, in AED.",
           "Cash and carry is the trade start. It keeps weight and expiry, and adds tier prices, quotations, on-account credit, cheques, and deliveries. A restaurant, café, or quick-service profile cannot turn credit on. Size and colour grids, kitchen tickets, and device serial numbers stay off this profile.",
         ],
       },
@@ -203,8 +209,9 @@ const CORE_PAGES: SeoPage[] = [
       {
         heading: "What the café profile includes",
         paragraphs: [
-          "It starts with menu modifiers, open orders, a kitchen display, and recipes that deduct ingredients. Loyalty points and promotions are included. A customer has a buying history, including returns. Points and history are not money owed. A personal promotion code can be issued from those purchases, and using it does not change points or a balance. Staff still close the sale on the register and print the receipt.",
-          "Managers read the dashboard, shift close, and VAT report for that store. The assistant can answer questions about those records in English or Arabic. It does not invent a figure.",
+          "Staff choose the drink, then a size and priced add-ons. The order can stay open as a tab and be settled later. A ticket goes to the kitchen display. Recipes deduct the ingredients stored on that recipe when the sale is closed. A modifier can price a milk choice. It does not record a guest's allergy. Staff still say the ingredients.",
+          "Loyalty points and promotions are included. A customer has a buying history, including returns. Points and history are not money owed. Managers read the dashboard, shift close, and VAT report for that store. The assistant can answer questions about those records in English or Arabic. It does not invent a figure.",
+          "The desktop register can keep selling after it has connected once. Those sales sync when the connection returns. Asking the assistant needs the portal. Package prices are in the pricing section, in AED.",
         ],
       },
     ],
@@ -296,10 +303,10 @@ const CORE_PAGES: SeoPage[] = [
   {
     id: "fashion-pos",
     path: "/fashion-pos",
-    title: "Fashion and Retail POS UAE | AxizPOS",
+    title: "Fashion POS Software UAE | AxizPOS",
     description:
-      "Fashion and apparel retail POS in the UAE: size and colour grids, variant stock, consignment, loyalty, and the same checkout and sales reports as other AxizPOS stores.",
-    h1: "Fashion and retail POS for size, colour, and variant stock",
+      "Fashion POS software for clothing stores in the UAE: size and colour grids, variant stock, boutique alterations, and chain consignment. General barcode retail has its own page.",
+    h1: "Fashion POS for size, colour, and variant stock",
     kicker: "Fashion",
     lead: "The fashion profile sells a grid, not a single barcode with no size. Staff see which variants are in stock and check out on the same register other stores use.",
     sections: [
@@ -425,6 +432,7 @@ export const SEO_PAGES: readonly SeoPage[] = [
   ...CORE_PAGES.map(finish),
   ...FEATURE_PAGES,
   ...ARTICLE_PAGES,
+  ...ENGLISH_GUIDES,
   ...ARABIC_PAGES,
 ];
 
@@ -469,6 +477,9 @@ export function marketingRedirects(): ReadonlyMap<string, string> {
   map.set("/home-2", "/");
   map.set("/home-2/", "/");
   map.set("/home-2/index.html", "/");
+  map.set("/home-3", "/");
+  map.set("/home-3/", "/");
+  map.set("/home-3/index.html", "/");
   map.set("/ai", "/#intelligence");
   map.set("/ai/", "/#intelligence");
   map.set("/copilot", "/#intelligence");
@@ -476,15 +487,34 @@ export function marketingRedirects(): ReadonlyMap<string, string> {
   return map;
 }
 
+function staticFigure(item: SeoImage, sizes: string): string {
+  const set = IMAGE_SETS[item.src as keyof typeof IMAGE_SETS];
+  const img = `<img src="${item.src}" alt="${escapeHtml(item.alt)}" width="${item.width}" height="${item.height}" sizes="${sizes}" loading="lazy" decoding="async" />`;
+  if (!set) return `<figure>${img}</figure>`;
+  return `<figure><picture><source type="image/avif" srcset="${set.avif}" sizes="${sizes}" /><source type="image/webp" srcset="${set.webp}" sizes="${sizes}" />${img}</picture></figure>`;
+}
+
 /** Crawlable copy placed in the HTML response. React replaces `#root` after it loads. */
 export function staticArticle(page: SeoPage): string {
   const sections = page.sections
-    .map(
-      (section) =>
-        `<section><h2>${escapeHtml(section.heading)}</h2>${section.paragraphs
-          .map((paragraph) => `<p>${escapeHtml(paragraph)}</p>`)
-          .join("")}</section>`,
-    )
+    .map((section) => {
+      const subsections = (section.subsections ?? [])
+        .map(
+          (sub) =>
+            `<h3>${escapeHtml(sub.heading)}</h3>${sub.paragraphs.map((paragraph) => `<p>${renderRichHtml(paragraph)}</p>`).join("")}`,
+        )
+        .join("");
+      const table = section.table
+        ? `<table><caption>${escapeHtml(section.table.caption)}</caption><thead><tr>${section.table.headers
+            .map((header) => `<th>${escapeHtml(header)}</th>`)
+            .join("")}</tr></thead><tbody>${section.table.rows
+            .map((row) => `<tr>${row.map((cell) => `<td>${escapeHtml(cell)}</td>`).join("")}</tr>`)
+            .join("")}</tbody></table>`
+        : "";
+      return `<section><h2>${escapeHtml(section.heading)}</h2>${section.paragraphs
+        .map((paragraph) => `<p>${renderRichHtml(paragraph)}</p>`)
+        .join("")}${table}${subsections}</section>`;
+    })
     .join("");
   const points =
     page.points.length > 0 ? `<ul>${page.points.map((point) => `<li>${escapeHtml(point)}</li>`).join("")}</ul>` : "";
@@ -504,8 +534,10 @@ export function staticArticle(page: SeoPage): string {
     links.length > 0
       ? `<nav>${links.map((item) => `<a href="${item.path}">${escapeHtml(item.crumb)}</a>`).join("")}</nav>`
       : "";
-  const image = `<figure><img src="${page.image.src}" alt="${escapeHtml(page.image.alt)}" width="${page.image.width}" height="${page.image.height}" /></figure>`;
-  return `<article data-seo-static=""><h1>${escapeHtml(page.h1)}</h1>${published}${lead}${sections}${points}${faqs}${related}${image}</article>`;
+  const figures = [page.image, ...(page.gallery ?? [])]
+    .map((item, index) => staticFigure(item, index === 0 ? "(min-width: 1024px) 24rem, 100vw" : "(min-width: 768px) 50vw, 100vw"))
+    .join("");
+  return `<article data-seo-static=""><h1>${escapeHtml(page.h1)}</h1>${published}${lead}${sections}${points}${faqs}${related}${figures}</article>`;
 }
 
 export function sitemapXml(): string {
@@ -514,10 +546,11 @@ export function sitemapXml(): string {
     const alternates = other
       ? `\n    <xhtml:link rel="alternate" hreflang="${page.locale ?? "en"}" href="${canonicalUrl(page)}" />\n    <xhtml:link rel="alternate" hreflang="${other.locale ?? "en"}" href="${canonicalUrl(other)}" />\n    <xhtml:link rel="alternate" hreflang="x-default" href="${canonicalUrl(page.locale === "ar" ? other : page)}" />`
       : "";
-    return `  <url><loc>${canonicalUrl(page)}</loc>${alternates}\n  </url>`;
+    const stamp = page.modified ?? page.published;
+    const lastmod = stamp ? `<lastmod>${stamp}</lastmod>` : "";
+    return `  <url><loc>${canonicalUrl(page)}</loc>${lastmod}${alternates}\n  </url>`;
   }).join("\n");
-  const extra = ["home-3"].map((slug) => `  <url><loc>${SITE_ORIGIN}/${slug}</loc>\n  </url>`).join("\n");
-  return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">\n${urls}\n${extra}\n</urlset>\n`;
+  return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">\n${urls}\n</urlset>\n`;
 }
 
 export function robotsTxt(): string {
@@ -602,7 +635,7 @@ function jsonLd(page: SeoPage): string {
       "@type": "Article",
       headline: page.h1,
       datePublished: page.published,
-      dateModified: page.published,
+      dateModified: page.modified ?? page.published,
       inLanguage: page.locale === "ar" ? "ar" : "en",
       mainEntityOfPage: url,
       author: { "@type": "Organization", name: "AxizPOS", url: `${SITE_ORIGIN}/` },
@@ -649,12 +682,14 @@ export function measurementSnippet(measurementId: string | undefined): string {
   ].join("\n    ");
 }
 
-export function headTags(page: SeoPage, verification: string | undefined, measurementId?: string): string {
+export function headTags(page: SeoPage, verification: string | undefined, measurementId?: string, bingVerification?: string): string {
   const url = canonicalUrl(page);
   const image = `${SITE_ORIGIN}${page.image.src}`;
   const token = verification?.trim() ?? "";
   const verificationTag =
     /^[A-Za-z0-9_-]{8,128}$/.test(token) ? `<meta name="google-site-verification" content="${token}" />` : "";
+  const bing = bingVerification?.trim() ?? "";
+  const bingTag = /^[A-Fa-f0-9]{16,64}$/.test(bing) ? `<meta name="msvalidate.01" content="${bing}" />` : "";
   const other = translationOf(page);
   const english = page.locale === "ar" ? other : page;
   const arabic = page.locale === "ar" ? page : other;
@@ -678,7 +713,9 @@ export function headTags(page: SeoPage, verification: string | undefined, measur
     measurementSnippet(measurementId),
     `<meta property="og:title" content="${escapeHtml(page.title)}" />`,
     `<meta property="og:description" content="${escapeHtml(page.description)}" />`,
-    `<meta property="og:type" content="website" />`,
+    `<meta property="og:type" content="${page.kind === "article" ? "article" : "website"}" />`,
+    page.kind === "article" && page.published ? `<meta property="article:published_time" content="${page.published}" />` : "",
+    page.kind === "article" ? `<meta property="article:modified_time" content="${page.modified ?? page.published ?? ""}" />` : "",
     `<meta property="og:url" content="${url}" />`,
     `<meta property="og:image" content="${image}" />`,
     `<meta property="og:image:alt" content="${escapeHtml(page.image.alt)}" />`,
@@ -690,6 +727,7 @@ export function headTags(page: SeoPage, verification: string | undefined, measur
     `<meta name="twitter:image" content="${image}" />`,
     `<meta name="twitter:image:alt" content="${escapeHtml(page.image.alt)}" />`,
     verificationTag,
+    bingTag,
     `<script type="application/ld+json">${jsonLd(page)}</script>`,
     publicWorkerBoot(),
   ]

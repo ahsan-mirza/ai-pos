@@ -12,14 +12,30 @@ from app.services.batch_ledger import today
 
 
 def enable_fefo(client, token: str) -> None:
+    """FEFO belongs to grocery. Electronics cannot turn it on."""
+    response = client.put(
+        "/api/v1/settings/profile",
+        headers=bearer(token),
+        json={"business_profile": "grocery"},
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["business_profile"] == "grocery"
+    assert "fefo" in response.json()["capabilities"]
+
+
+def test_electronics_cannot_enable_fefo(client) -> None:
+    seed_catalog(client)
+    token = admin_token(client)
     modules = [capability.value for capability in catalog.ELECTRONICS_WHOLESALE] + ["fefo"]
     response = client.put(
         "/api/v1/settings/profile",
         headers=bearer(token),
         json={"business_profile": "electronics_wholesale", "capabilities": modules},
     )
-    assert response.status_code == 200, response.text
-    assert "fefo" in response.json()["capabilities"]
+    assert response.status_code == 422, response.text
+    body = response.json()["error"]
+    assert body["code"] == "module_not_available"
+    assert "fefo" in body["details"]["modules"]
 
 
 def set_expiry(session: Session, batch: dict, days: int | None) -> uuid.UUID:

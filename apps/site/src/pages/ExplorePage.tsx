@@ -25,6 +25,7 @@ import {
 } from "@ai-pos/shared-types";
 import { useState } from "react";
 import { apiBaseUrl, portalUrl } from "../env";
+import { ResponsiveImage } from "../responsiveImage";
 import { track } from "../track";
 
 function endedNotice(): string | null {
@@ -166,6 +167,9 @@ export function ExplorePage() {
       <p className="mt-3 max-w-2xl text-sm text-[#5c5c5c]">
         Each demo is a shared environment. Other visitors can see the same sales, tables and stock, and the data is reset from time to time.
       </p>
+      <p className="mt-3 max-w-2xl text-sm text-[#5c5c5c]">
+        The pharmacy card opens a shared catalogue demonstration. It is not a licensed pharmacy ERP, and it is not a statement that compliance, licensing, or offline verification are complete.
+      </p>
       {error !== null ? (
         <p className="mt-6 max-w-2xl rounded-2xl border border-[#f26a21]/30 bg-[#fff6f0] px-4 py-3 text-sm text-[#171717]" role="alert">
           {error}
@@ -177,7 +181,7 @@ export function ExplorePage() {
           const saving = pending === `download:${business.code}`;
           return (
             <article key={business.code} className="flex flex-col overflow-hidden rounded-3xl border border-[#ececec] bg-white shadow-[0_16px_40px_rgba(17,17,17,0.06)]">
-              <img src={business.image} alt="" className="h-48 w-full object-cover" width={1774} height={887} />
+              <ResponsiveImage src={business.image} alt="" width={1774} height={887} sizes="(min-width: 768px) 50vw, 100vw" loading="lazy" className="h-48 w-full object-cover" />
               <div className="flex flex-1 flex-col gap-4 p-6">
                 <h2 className="text-2xl font-semibold text-[#171717]">{business.title}</h2>
                 <ul className="space-y-1.5 text-sm text-[#5c5c5c]">

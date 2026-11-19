@@ -1,0 +1,12 @@
+identity=com.axizpos.pharmacy.acceptance was not launched
+desktop=not started
+api=http://127.0.0.1:18080
+portal=http://127.0.0.1:15173
+postgres=127.0.0.1:55432
+operational_database=axizpos_pharmacy_acceptance
+control_database=axizpos_pharmacy_acceptance_control
+container=axizpos-pharmacy-acceptance-db
+database_role=ai_pos_app
+tenants=pharmacy-accept,accept-grocery
+inventory_api=not used
+developer_api=not used

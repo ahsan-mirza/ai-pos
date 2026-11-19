@@ -18,7 +18,7 @@ export function HardwareCatalogLayout() {
       <AxizTabs
         ariaLabel="Hardware catalog"
         inset="page"
-        className="-mx-4 -mt-4 mb-5 md:-mx-6 md:-mt-5"
+        className="mb-5 w-full"
         activeTab={active}
         tabs={LINKS.map(([to, label]) => ({ id: to, label }))}
         renderTab={({ tab, tabProps }) => <NavLink to={tab.id} {...tabProps} />}

@@ -14,8 +14,9 @@ import {
   savePrimaryColor,
   storedPrimaryColor,
 } from "../../lib/theme";
-import { useBusinessCurrency } from "../checkout/currency";
-import { useSyncEngine } from "../checkout/useSyncEngine";
+import { businessApiReachable, useBusinessCurrency } from "../checkout/currency";
+import { registerHeaderStatus } from "../checkout/registerStatus";
+import { useRejectedSyncCount, useSyncEngine } from "../checkout/useSyncEngine";
 import { useCapabilities } from "../../lib/capabilities";
 import { PrinterSettingsModal } from "../printing/PrinterSettingsModal";
 import { sampleReceipt } from "../printing/saleReceipt";
@@ -31,6 +32,7 @@ export function SettingsPage() {
   const capabilities = useCapabilities();
   const currency = useBusinessCurrency();
   const { report, desktop } = useSyncEngine(0);
+  const failedSync = useRejectedSyncCount(desktop, 0);
   const [color, setColor] = useState(() => storedPrimaryColor() ?? DEFAULT_PRIMARY);
   const [hexText, setHexText] = useState(color);
   const [printer, setPrinter] = useState(false);
@@ -50,11 +52,14 @@ export function SettingsPage() {
   const typed = normalizeHex(hexText);
   const contrast = contrastWithWhite(color);
   const sync: SyncState = desktop
-    ? {
-        tone: report.pending > 0 ? "pending" : "synced",
-        label: report.pending > 0 ? `${report.pending} unsynced` : "Synced",
-        title: report.message,
-      }
+    ? registerHeaderStatus({
+        desktop: true,
+        sessionMode: session.mode,
+        apiReachable: businessApiReachable(),
+        pending: report.pending,
+        failed: failedSync,
+        detail: report.message,
+      })
     : { tone: "live", label: "Live", title: report.message };
 
   return (

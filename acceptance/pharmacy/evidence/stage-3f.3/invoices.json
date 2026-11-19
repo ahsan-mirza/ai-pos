@@ -1,0 +1,35 @@
+{
+  "pharmacy": {
+    "valid": {
+      "sale_id": "59319242-84ec-4543-bae5-709ff28e6c40",
+      "invoice": "P3F3-S-000001",
+      "product_id": "2bd36307-fa31-4279-94aa-7a57089b33c2"
+    },
+    "excess": {
+      "sale_id": "ac363f79-535f-41b3-b1ee-b05467392c14",
+      "invoice": "P3F3-S-000002",
+      "product_id": "0dc4c38a-5053-44b9-847d-49d1f7e5857a"
+    },
+    "recalled": {
+      "sale_id": "53b9c65d-ff45-4b0d-95be-614175ec0387",
+      "invoice": "P3F3-S-000003",
+      "product_id": "931b0967-baf7-43db-a02c-adb9b33f1eb1"
+    },
+    "supplier": {
+      "sale_id": "76c54d7e-57bf-4abc-9b77-e00448feb43b",
+      "invoice": "P3F3-S-000004",
+      "product_id": "751e6a0a-fb28-4c7a-baf0-c65fa485ab92"
+    }
+  },
+  "lots": {
+    "valid": "e1286712-6bac-4390-aa7c-d731d0a76a6a",
+    "excess": "80fcc923-9997-4205-84f4-365ca6b009d3",
+    "recalled": "92feacb1-ed4e-43d8-8fb8-ecd25c3307d5",
+    "supplier": "42848d30-6f3d-43dd-94ae-96822ea700d8"
+  },
+  "grocery": {
+    "invoice": "G3F3-S-000001",
+    "product_id": "ddde69ac-ae4e-4912-b172-023ef3292351",
+    "store_id": "0bedb496-fb83-4b66-96af-b373e3625681"
+  }
+}

@@ -31,7 +31,7 @@ from app.tenancy import provisioning, registry
 from app.tenancy.context import use_tenant
 from app.tenancy.models import ControlBase, Tenant
 
-CODES = ("restaurant", "supermarket", "electronics", "fashion")
+CODES = ("restaurant", "supermarket", "electronics", "fashion", "pharmacy")
 
 
 class _Gateway(Exception):

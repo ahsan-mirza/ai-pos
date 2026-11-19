@@ -182,7 +182,14 @@ fn normalize_subdomain_for(input: &str, base: &str) -> Result<(String, String), 
 
 /// A runtime environment variable wins (LAN testing), then the value build.rs baked in from
 /// the repo-root env file (`.env`, `.env.dev`, or `.env.production`), then the production default.
+fn acceptance_build() -> bool {
+    env!("POS_ACCEPTANCE_BUILD") == "1"
+}
+
 fn setting(name: &str, baked: &str, default: &str) -> String {
+    if acceptance_build() {
+        return baked.trim().to_string();
+    }
     std::env::var(name)
         .ok()
         .map(|value| value.trim().to_string())
@@ -212,6 +219,15 @@ pub fn tenant_api_url(slug: &str) -> String {
     .replace("{tenant}", slug)
     .trim_end_matches('/')
     .to_string()
+}
+
+/// The only API address an acceptance build may call. Process environment cannot replace it.
+pub fn acceptance_api_base() -> Result<String, String> {
+    let url = tenant_api_url("acceptance");
+    if url == env!("POS_ACCEPTANCE_API_BASE") && !url.is_empty() {
+        return Ok(url);
+    }
+    Err("Acceptance API URL is not the dedicated loopback endpoint.".into())
 }
 
 fn machine_name() -> String {

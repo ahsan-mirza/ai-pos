@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { env } from "../../config/env";
-import { flushSync, inTauri, pendingCount, type SyncReport } from "../../lib/tauri";
+import { flushSync, inTauri, pendingCount, rejectedCount, type SyncReport } from "../../lib/tauri";
 import { syncBusinessCurrency } from "./currency";
 
 const idle: SyncReport = {
@@ -47,4 +47,17 @@ export function useSyncEngine(pulse: number) {
   }, [pulse]);
 
   return { report, setReport, desktop: inTauri() };
+}
+
+/** Rejected batches stay out of the pending count. The header reads them separately. */
+export function useRejectedSyncCount(active: boolean, pulse = 0) {
+  const [failed, setFailed] = useState(0);
+  useEffect(() => {
+    if (!active) return;
+    const poll = () => void rejectedCount().then((count) => setFailed(Math.max(0, count))).catch(() => undefined);
+    poll();
+    const timer = window.setInterval(poll, 15_000);
+    return () => window.clearInterval(timer);
+  }, [active, pulse]);
+  return failed;
 }

@@ -19,6 +19,8 @@ pub struct DesktopConfig {
     pub store_id: String,
     /// The tenant subdomain (client1.axizpos.com), sent as X-Tenant-Domain.
     pub tenant_domain: String,
+    /// Store code returned by activation. Capability snapshots are accepted only for this tenant.
+    pub tenant_slug: String,
 }
 
 const DEFAULT_STORE_ID: &str = "00000000-0000-4000-8000-000000000001";
@@ -62,7 +64,7 @@ impl DesktopConfig {
     /// Debug builds read the repo-root `.env` (TENANT_URL_TEMPLATE, POS_DEV_ENV_CONFIG, ...).
     /// Release builds never read files from the build machine; build.rs bakes their settings in.
     pub fn load_env_file() -> Result<(), String> {
-        if !cfg!(debug_assertions) {
+        if env!("POS_ACCEPTANCE_BUILD") == "1" || !cfg!(debug_assertions) {
             return Ok(());
         }
         let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -81,6 +83,7 @@ impl DesktopConfig {
             device_id: terminal.register_id.clone(),
             store_id: terminal.store_id.clone(),
             tenant_domain: terminal.tenant_domain.clone(),
+            tenant_slug: terminal.tenant_slug.clone(),
         }
     }
 
@@ -92,6 +95,7 @@ impl DesktopConfig {
             device_id: "unactivated".into(),
             store_id: DEFAULT_STORE_ID.into(),
             tenant_domain: String::new(),
+            tenant_slug: String::new(),
         }
     }
 
@@ -111,6 +115,9 @@ impl DesktopConfig {
 
     /// Legacy developer setup from .env, used only when POS_DEV_ENV_CONFIG=true (skips activation).
     pub fn from_env() -> Result<Option<Self>, String> {
+        if env!("POS_ACCEPTANCE_BUILD") == "1" {
+            return Ok(None);
+        }
         let opted_in = std::env::var("POS_DEV_ENV_CONFIG")
             .map(|value| {
                 matches!(
@@ -149,7 +156,8 @@ impl DesktopConfig {
             api_key,
             device_id,
             store_id,
-            tenant_domain,
+            tenant_domain: tenant_domain.clone(),
+            tenant_slug: tenant_domain,
         }))
     }
 }

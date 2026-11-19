@@ -191,6 +191,22 @@ def _shape(db: Session, checks: list[dict], spec: dict) -> None:
         covers = db.scalar(select(func.count()).select_from(WarrantyRegistration)) or 0
         _check(checks, "serials", int(serials) >= 3, str(serials))
         _check(checks, "warranties", int(covers) >= 1, str(covers))
+    if spec["code"] == "pharmacy":
+        from app.models.pharmacy import PharmacyProductDetails
+
+        medicines = (
+            db.scalar(
+                select(func.count())
+                .select_from(PharmacyProductDetails)
+                .where(PharmacyProductDetails.product_kind == "MEDICINE")
+            )
+            or 0
+        )
+        lots = (
+            db.scalar(select(func.count()).select_from(BatchItem).where(BatchItem.manufacturer_lot.is_not(None))) or 0
+        )
+        _check(checks, "medicines", int(medicines) >= 3, str(medicines))
+        _check(checks, "lots", int(lots) >= 3, str(lots))
     if spec["code"] == "fashion":
         variants = [product for product in products if product.variant_attributes]
         sized = [

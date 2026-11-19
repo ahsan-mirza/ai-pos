@@ -1,0 +1,53 @@
+{
+  "results": [
+    {
+      "name": "portal-return-quarantine",
+      "status": "passed"
+    },
+    {
+      "name": "quarantine-blocks-resale",
+      "status": "passed"
+    },
+    {
+      "name": "excess-return-rejected",
+      "status": "passed"
+    },
+    {
+      "name": "recall-status-preserved",
+      "status": "passed"
+    },
+    {
+      "name": "supplier-status-preserved",
+      "status": "passed"
+    },
+    {
+      "name": "grocery-has-no-pharmacy-catalog",
+      "status": "passed"
+    },
+    {
+      "name": "grocery-resale",
+      "status": "passed"
+    }
+  ],
+  "lots": {
+    "valid": {
+      "status": "QUARANTINED",
+      "remaining": 4
+    },
+    "recalled": {
+      "status": "RECALLED",
+      "remaining": 4
+    },
+    "supplier": {
+      "status": "SUPPLIER_RETURN",
+      "remaining": 1
+    },
+    "excess": {
+      "status": "RELEASED",
+      "remaining": 1
+    }
+  },
+  "excess_http_status": 422,
+  "returns_before": 3,
+  "returns_after": 3
+}

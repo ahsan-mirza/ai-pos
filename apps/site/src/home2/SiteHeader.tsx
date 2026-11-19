@@ -1,6 +1,5 @@
 ﻿import { ChevronDown, Globe, Menu, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { seoPage, translationOf } from "../seo";
 import { portalUrl } from "../env";
 
 const productLinks = [
@@ -176,12 +175,22 @@ function Drop({ label, links, atHome, current }: { label: string; links: { href:
     </div>
   );
 }
+function alternatePath(): string {
+  const arabic = document.documentElement.lang === "ar";
+  const link = document.querySelector(`link[rel="alternate"][hreflang="${arabic ? "en" : "ar"}"]`);
+  const href = link?.getAttribute("href");
+  if (!href) return arabic ? "/" : "/ar";
+  try {
+    return new URL(href, window.location.origin).pathname || (arabic ? "/" : "/ar");
+  } catch {
+    return arabic ? "/" : "/ar";
+  }
+}
+
 function Language() {
   const [open, setOpen] = useState(false);
-  const page = seoPage(document.documentElement.dataset.page ?? "home");
-  const other = page ? translationOf(page) : undefined;
   const arabic = document.documentElement.lang === "ar";
-  const href = other?.path ?? (arabic ? "/" : "/ar");
+  const href = alternatePath();
   return (
     <div
       className={open ? "h2-lang is-open" : "h2-lang"}

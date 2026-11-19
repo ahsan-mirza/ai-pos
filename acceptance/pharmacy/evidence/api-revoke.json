@@ -1,0 +1,17 @@
+[
+  {
+    "name": "revoked-pharmacist-cannot-release",
+    "status": "passed",
+    "detail": "HTTP 403 pharmacist_required Only an authorized pharmacist can release or clear a medicine lot."
+  },
+  {
+    "name": "revoked-pharmacist-cannot-clear",
+    "status": "passed",
+    "detail": "HTTP 403 pharmacist_required Only an authorized pharmacist can release or clear a medicine lot."
+  },
+  {
+    "name": "revocation-blocks-clearance",
+    "status": "passed",
+    "detail": "HTTP 403"
+  }
+]

@@ -1,0 +1,2 @@
+The final Stage 3F.3 command exited 0.
+Earlier disposable runs were removed with their database. They failed in the acceptance harness before the portal scenario completed: an inherited API key, a zero VAT amount, a cashier password login that the portal correctly refused, an inherited CORS list, and a selector that did not match the return dialog. No product code was changed.

@@ -8,7 +8,10 @@ import { needsActivation, terminal } from "./config/terminal";
 import { ActivationScreen } from "./features/activation/ActivationScreen";
 import { PinUnlock } from "./features/auth/PinUnlock";
 import { acceptStoredSession, lock, restore, type CashierSession } from "./features/auth/session";
+import { clearCataloguePreferenceMemory } from "./features/checkout/cataloguePreference";
 import { CheckoutPage } from "./features/checkout/CheckoutPage";
+import { InventoryPage } from "./features/inventory/InventoryPage";
+import { canOpenInventory } from "./features/inventory/tabs";
 import { CustomerDisplay } from "./features/display/CustomerDisplay";
 import { OrdersPage } from "./features/orders/OrdersPage";
 import { RepairsPage } from "./features/repairs/RepairsPage";
@@ -76,7 +79,7 @@ function RegisterApp() {
   const [demoNotice, setDemoNotice] = useState<string | null>(null);
   const [view, setView] = useState<RegisterView>("checkout");
   const shiftState = useShift();
-  const { foodAndBeverage, enabled } = useCapabilities();
+  const { foodAndBeverage, enabled, profile } = useCapabilities();
   const { density } = useRegisterLayout();
 
   useEffect(() => {
@@ -84,7 +87,8 @@ function RegisterApp() {
     if (view === "orders" && !foodAndBeverage) setView("checkout");
     if (view === "repairs" && !enabled.has(Capability.Repairs)) setView("checkout");
     if (view === "reorders" && !enabled.has(Capability.CustomerReorders)) setView("checkout");
-  }, [enabled, foodAndBeverage, view]);
+    if (view === "inventory" && session && !canOpenInventory(profile, enabled, session.user.permissions)) setView("checkout");
+  }, [enabled, foodAndBeverage, profile, session, view]);
 
   useEffect(() => {
     if (!inTauri()) return;
@@ -127,6 +131,7 @@ function RegisterApp() {
   }, [session]);
 
   const onLock = () => {
+    clearCataloguePreferenceMemory();
     void lock().finally(() => {
       setSession(null);
       setView("checkout");
@@ -159,6 +164,12 @@ function RegisterApp() {
       <ConfirmProvider>
         <VirtualKeyboardProvider>
         <RegisterShell session={session} view={view} onNavigate={setView} onLock={onLock}>
+          {view === "inventory" ? <InventoryPage session={session} /> : null}
+          {view === "checkout" || view === "inventory" ? (
+            <div className={view === "checkout" ? "contents" : "hidden"} inert={view === "inventory" ? true : undefined}>
+              <CheckoutPage session={session} />
+            </div>
+          ) : null}
           {view === "returns" ? (
             <ReturnsPage session={session} />
           ) : view === "settings" ? (
@@ -169,9 +180,7 @@ function RegisterApp() {
             <RepairsPage session={session} />
           ) : view === "reorders" && enabled.has(Capability.CustomerReorders) ? (
             <ReordersPage session={session} />
-          ) : (
-            <CheckoutPage session={session} />
-          )}
+          ) : null}
         </RegisterShell>
         </VirtualKeyboardProvider>
       </ConfirmProvider>

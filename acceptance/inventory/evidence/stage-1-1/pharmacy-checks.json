@@ -1,0 +1,24 @@
+{
+  "results": [
+    {
+      "name": "pharmacy-receive",
+      "status": "passed",
+      "detail": "HTTP 201"
+    },
+    {
+      "name": "pharmacy-lot-controlled",
+      "status": "passed",
+      "detail": "True"
+    },
+    {
+      "name": "pharmacy-unreleased-sale",
+      "status": "passed",
+      "detail": "HTTP 422 {\"error\": {\"code\": \"sync_rejected\", \"message\": \"Acceptance Medicine is not released for sale.\", \"api\": \"POST /api/v1/sync/push\", \"details\": {\"idempotency_key\": \"f8e1aa00-6008-4c3f-a1cc-d752863098a2\", \"reason\": \"lot_unreleased\"}}, \"request_id\": \"1b9467069d294d39a44115b8e75d821f\"}"
+    },
+    {
+      "name": "pharmacy-release-without-pharmacist",
+      "status": "passed",
+      "detail": "HTTP 403"
+    }
+  ]
+}

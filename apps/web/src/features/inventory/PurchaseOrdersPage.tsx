@@ -1,10 +1,12 @@
 import {
+  Capability,
   Permission,
   formatMoney,
   type Product,
   type PurchaseOrder,
   type PurchaseOrderStatus,
 } from "@ai-pos/shared-types";
+import { AxizDatePicker } from "@ai-pos/ui";
 import { PackagePlus, Plus, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
@@ -12,6 +14,7 @@ import { DataTable, usePagination, type DataTableColumn } from "../../components
 import { ErrorNote, FilterSelect, GhostButton, PrimaryButton, SelectField, TextField } from "../../components/ui/Field";
 import { Modal } from "../../components/ui/Modal";
 import { useAuth } from "../../lib/auth";
+import { useCapability } from "../../lib/capabilities";
 import { useCurrency } from "../../lib/currency";
 import { inventoryApi, message } from "./api";
 import { GridQuantityEditor } from "./GridQuantityEditor";
@@ -343,6 +346,8 @@ function parseSerials(text: string): string[] {
     .filter(Boolean);
 }
 
+type LotSlice = { key: string; quantity: string; lot: string; manufactured: string; expiry: string };
+
 function PurchaseOrderDetail({
   order,
   manage,
@@ -354,10 +359,12 @@ function PurchaseOrderDetail({
   onClose: () => void;
   onChanged: (order: PurchaseOrder) => void;
 }) {
+  const pharmacyLots = useCapability(Capability.PharmacyCatalog);
   const [receiving, setReceiving] = useState(false);
   const [quantities, setQuantities] = useState<Record<string, string>>({});
   const [serials, setSerials] = useState<Record<string, string>>({});
   const [locations, setLocations] = useState<Record<string, string>>({});
+  const [slices, setSlices] = useState<Record<string, LotSlice[]>>({});
   const [note, setNote] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -375,20 +382,75 @@ function PurchaseOrderDetail({
     }
   };
 
+  const beginReceiving = () => {
+    const next: Record<string, LotSlice[]> = {};
+    for (const line of order.lines) {
+      const outstanding = line.quantity_ordered - line.quantity_received;
+      if (pharmacyLots && line.lot_controlled && outstanding > 0) {
+        next[line.id] = [
+          { key: crypto.randomUUID(), quantity: String(outstanding), lot: "", manufactured: "", expiry: "" },
+        ];
+      }
+    }
+    setSlices(next);
+    setReceiving(true);
+  };
+
   const receive = () => {
-    const lines = order.lines
-      .map((line) => {
-        const outstanding = line.quantity_ordered - line.quantity_received;
-        const values = line.is_serialized ? parseSerials(serials[line.id] ?? "") : [];
-        const quantity = line.is_serialized ? values.length : Number(quantities[line.id] ?? outstanding);
-        return {
+    const lines: {
+      purchase_order_line_id: string;
+      quantity: number;
+      serials: { kind: "imei" | "serial"; value: string }[];
+      aisle_shelf_location: string | null;
+      manufacturer_lot?: string | null;
+      manufactured_on?: string | null;
+      expiry_date?: string | null;
+    }[] = [];
+    for (const line of order.lines) {
+      const outstanding = line.quantity_ordered - line.quantity_received;
+      if (outstanding <= 0) continue;
+      if (pharmacyLots && line.lot_controlled) {
+        const parts = slices[line.id] ?? [];
+        let total = 0;
+        for (const slice of parts) {
+          const quantity = Number(slice.quantity);
+          if (!Number.isInteger(quantity) || quantity <= 0) continue;
+          if (slice.lot.trim() === "" || slice.expiry === "") {
+            setError(`Enter the manufacturer lot and expiry for ${line.name}.`);
+            return;
+          }
+          if (slice.manufactured !== "" && slice.manufactured > slice.expiry) {
+            setError(`Manufacture date for ${line.name} is after the expiry date.`);
+            return;
+          }
+          total += quantity;
+          lines.push({
+            purchase_order_line_id: line.id,
+            quantity,
+            serials: [],
+            aisle_shelf_location: locations[line.id]?.trim() || null,
+            manufacturer_lot: slice.lot.trim(),
+            manufactured_on: slice.manufactured || null,
+            expiry_date: slice.expiry,
+          });
+        }
+        if (total > outstanding) {
+          setError(`${line.name} has only ${outstanding} left to receive.`);
+          return;
+        }
+        continue;
+      }
+      const values = line.is_serialized ? parseSerials(serials[line.id] ?? "") : [];
+      const quantity = line.is_serialized ? values.length : Number(quantities[line.id] ?? outstanding);
+      if (quantity > 0) {
+        lines.push({
           purchase_order_line_id: line.id,
           quantity,
           serials: values.map((value) => ({ kind: /^\d{15}$/.test(value) ? ("imei" as const) : ("serial" as const), value })),
           aisle_shelf_location: locations[line.id]?.trim() || null,
-        };
-      })
-      .filter((line) => line.quantity > 0);
+        });
+      }
+    }
     if (lines.length === 0) return setError("Enter at least one quantity or IMEI to receive.");
     void act(() => inventoryApi.receivePurchaseOrder(order.id, { note: note.trim(), lines }));
   };
@@ -414,7 +476,7 @@ function PurchaseOrderDetail({
               </PrimaryButton>
             ) : null}
             {canReceive && !receiving ? (
-              <PrimaryButton onClick={() => setReceiving(true)}>
+              <PrimaryButton onClick={beginReceiving}>
                 <span className="inline-flex items-center gap-2">
                   <PackagePlus size={16} aria-hidden="true" /> Receive goods (GRN)
                 </span>
@@ -455,7 +517,90 @@ function PurchaseOrderDetail({
                   <span className="block text-xs text-charcoal/50">received</span>
                 </span>
               </div>
-              {receiving && outstanding > 0 ? (
+              {receiving && outstanding > 0 && pharmacyLots && line.lot_controlled ? (
+                <div className="mt-3 space-y-3">
+                  {(slices[line.id] ?? []).map((slice) => (
+                    <div key={slice.key} className="grid gap-3 md:grid-cols-4">
+                      <TextField
+                        label={`Quantity (${outstanding} outstanding)`}
+                        type="number"
+                        min={0}
+                        value={slice.quantity}
+                        onChange={(event) =>
+                          setSlices((current) => ({
+                            ...current,
+                            [line.id]: (current[line.id] ?? []).map((item) =>
+                              item.key === slice.key ? { ...item, quantity: event.target.value } : item,
+                            ),
+                          }))
+                        }
+                      />
+                      <TextField
+                        label="Manufacturer lot"
+                        value={slice.lot}
+                        onChange={(event) =>
+                          setSlices((current) => ({
+                            ...current,
+                            [line.id]: (current[line.id] ?? []).map((item) =>
+                              item.key === slice.key ? { ...item, lot: event.target.value } : item,
+                            ),
+                          }))
+                        }
+                      />
+                      <label className="block text-sm font-medium">
+                        Manufacture date
+                        <AxizDatePicker
+                          leading
+                          aria-label={`Manufacture date for ${line.name}`}
+                          value={slice.manufactured}
+                          onChange={(event) =>
+                            setSlices((current) => ({
+                              ...current,
+                              [line.id]: (current[line.id] ?? []).map((item) =>
+                                item.key === slice.key ? { ...item, manufactured: event.target.value } : item,
+                              ),
+                            }))
+                          }
+                          className="mt-1 h-11 w-full rounded-2xl border border-line bg-surface px-3 text-sm"
+                        />
+                      </label>
+                      <label className="block text-sm font-medium">
+                        Expiry date
+                        <AxizDatePicker
+                          leading
+                          aria-label={`Expiry date for ${line.name}`}
+                          value={slice.expiry}
+                          onChange={(event) =>
+                            setSlices((current) => ({
+                              ...current,
+                              [line.id]: (current[line.id] ?? []).map((item) =>
+                                item.key === slice.key ? { ...item, expiry: event.target.value } : item,
+                              ),
+                            }))
+                          }
+                          className="mt-1 h-11 w-full rounded-2xl border border-line bg-surface px-3 text-sm"
+                        />
+                      </label>
+                    </div>
+                  ))}
+                  <button
+                    type="button"
+                    className="text-sm font-semibold text-accent"
+                    onClick={() =>
+                      setSlices((current) => ({
+                        ...current,
+                        [line.id]: [
+                          ...(current[line.id] ?? []),
+                          { key: crypto.randomUUID(), quantity: "", lot: "", manufactured: "", expiry: "" },
+                        ],
+                      }))
+                    }
+                  >
+                    + Add another manufacturer lot
+                  </button>
+                </div>
+              ) : null}
+              {receiving && outstanding > 0 && !(pharmacyLots && line.lot_controlled) ? (
                 <div className="mt-3 grid gap-3 md:grid-cols-[1fr_180px]">
                   {line.is_serialized ? (
                     <label className="block text-sm font-medium">
@@ -507,6 +652,15 @@ function PurchaseOrderDetail({
                     {formatDate(receipt.created_at)}
                     {receipt.received_by_name ? ` · ${receipt.received_by_name}` : ""}
                   </span>
+                  {(receipt.lots ?? [])
+                    .filter((lot) => lot.manufacturer_lot)
+                    .map((lot) => (
+                      <span key={lot.batch_item_id} className="mt-1 block text-xs text-charcoal/70">
+                        Receipt {receipt.number} · Manufacturer lot {lot.manufacturer_lot}
+                        {lot.expiry_date ? ` · expires ${lot.expiry_date}` : ""}
+                        {lot.lot_status ? ` · ${lot.lot_status.replace(/_/g, " ").toLowerCase()}` : ""}
+                      </span>
+                    ))}
                 </span>
                 <span className="tabular-nums">{receipt.lines.reduce((sum, line) => sum + line.quantity, 0)} units</span>
               </li>

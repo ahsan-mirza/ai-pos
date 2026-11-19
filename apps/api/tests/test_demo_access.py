@@ -33,6 +33,7 @@ NAMES = {
     "supermarket": "Noon Market",
     "electronics": "Axis Electronics",
     "fashion": "Linen & Co",
+    "pharmacy": "Cedar Pharmacy",
 }
 
 
@@ -201,12 +202,25 @@ def _user(slug: str) -> tuple:
 
 def test_each_business_code_issues_its_own_explorer(door: TestClient):
     seen = set()
-    for code in ("restaurant", "supermarket", "electronics", "fashion"):
+    for code in ("restaurant", "supermarket", "electronics", "fashion", "pharmacy"):
         body = _issued(door, code)
         seen.add(body["user"]["id"])
         claims = decode_access_token(body["access_token"], settings=get_settings())
         assert claims["tid"] == _tenant_id(f"demo-{code}")
-    assert len(seen) == 4
+    assert len(seen) == 5
+
+
+def test_apex_host_without_a_tenant_header_stays_a_closed_demo(door: TestClient):
+    """Production returned tenant_required here when this path was not exempt.
+
+    A closed public door is demo_unavailable. It is not a missing-tenant error.
+    """
+    for code in ("restaurant", "supermarket", "electronics", "fashion", "pharmacy"):
+        with _flag(f"demo-{code}", demo_access_enabled=False):
+            closed = _exchange(door, code, Host="axizpos.com")
+        _closed(closed)
+        assert "tenant_required" not in closed.text
+        assert "tenant_invalid" not in closed.text
 
 
 def test_unknown_code_and_closed_demos_are_generic(door: TestClient):

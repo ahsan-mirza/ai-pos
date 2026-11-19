@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import Settings, get_settings
 from app.core.database import get_db
-from app.core.deps import Principal, authorize
+from app.core.deps import REGISTER_SCOPES, Principal, authorize
 from app.core.errors import ApiError
 from app.core.pagination import Offset, set_total
 from app.core.permissions import Permission
@@ -36,8 +36,8 @@ from app.services.import_parser import MAX_FILE_BYTES
 router = APIRouter()
 Db = Annotated[Session, Depends(get_db)]
 Config = Annotated[Settings, Depends(get_settings)]
-CanImport = Annotated[Principal, Depends(authorize(Permission.PORTAL_INVENTORY_MANAGE))]
-CanCorrect = Annotated[Principal, Depends(authorize(Permission.INVENTORY_ADJUST_STOCK))]
+CanImport = Annotated[Principal, Depends(authorize(Permission.PORTAL_INVENTORY_MANAGE, scopes=REGISTER_SCOPES))]
+CanCorrect = Annotated[Principal, Depends(authorize(Permission.INVENTORY_ADJUST_STOCK, scopes=REGISTER_SCOPES))]
 
 
 # --- Import wizard -------------------------------------------------------------------------------

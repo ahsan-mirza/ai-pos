@@ -1,4 +1,4 @@
-import { Capability, profileSpec, type ProductUpsert } from "@ai-pos/shared-types";
+import { Capability, profileSpec } from "@ai-pos/shared-types";
 import { BrandLogo, useLocale } from "@ai-pos/ui";
 import {
   Boxes,
@@ -19,8 +19,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
-import { BranchCheckModal } from "../../features/checkout/BranchCheckModal";
-import { loadCatalog } from "../../features/checkout/catalog";
+import { canOpenInventory } from "../../features/inventory/tabs";
 import { openDisplayWindow } from "../../features/display/displayChannel";
 import { ShiftModal } from "../../features/shifts/ShiftModal";
 import { SyncCenterModal } from "../../features/sync/SyncCenterModal";
@@ -31,7 +30,7 @@ import { useRegisterLayout } from "../RegisterLayout";
 import type { RegisterView } from "./ShellContext";
 import { useShell } from "./ShellContext";
 
-type Tool = "inventory" | "clock" | "shift" | "sync" | "display" | "kitchen" | "settings";
+type Tool = "clock" | "shift" | "sync" | "display" | "kitchen" | "settings";
 
 interface SidebarNavProps {
   busy: boolean;
@@ -41,6 +40,7 @@ interface SidebarNavProps {
 
 const allPages: { id: RegisterView; label: string; icon: LucideIcon; capability?: Capability; audience?: "fnb" | "retail" }[] = [
   { id: "checkout", label: "Checkout", icon: ShoppingCart },
+  { id: "inventory", label: "Inventory & Stock", icon: Boxes },
   { id: "orders", label: "Orders & Tables", icon: UtensilsCrossed, audience: "fnb" },
   { id: "orders", label: "Void & waste", icon: RotateCcw, audience: "fnb" },
   { id: "repairs", label: "Repairs", icon: Wrench, capability: Capability.Repairs },
@@ -49,7 +49,6 @@ const allPages: { id: RegisterView; label: string; icon: LucideIcon; capability?
 ];
 
 const allTools: { id: Tool; label: string; hint: string; icon: LucideIcon; desktopOnly: boolean; capability?: Capability; audience?: "fnb" | "retail" }[] = [
-  { id: "inventory", label: "Inventory", hint: "Stock at every branch and the warehouse", icon: Boxes, desktopOnly: false, audience: "retail" as const },
   { id: "kitchen", label: "Kitchen display", hint: "Open orders and tickets sent to the kitchen", icon: ChefHat, desktopOnly: false, capability: Capability.Kds, audience: "fnb" as const },
   { id: "clock", label: "Time clock", hint: "Clock in and out with your PIN", icon: Timer, desktopOnly: true },
   { id: "shift", label: "Sale Shift", hint: "X report, pay in / out, close", icon: Clock, desktopOnly: true },
@@ -92,21 +91,21 @@ export function SidebarNav({ busy, onNavigate, onLock }: SidebarNavProps) {
   const { session, view } = useShell();
   const { railCollapsed: collapsed, toggleRail } = useRegisterLayout();
   const [tool, setTool] = useState<Tool | null>(null);
-  const [products, setProducts] = useState<ProductUpsert[] | null>(null);
   const [rejected, setRejected] = useState(0);
   const [photoFailed, setPhotoFailed] = useState(false);
   const avatarUrl = session.user.avatar_url ?? null;
   const desktop = inTauri();
-  const { enabled, profile, foodAndBeverage } = useCapabilities();
+  const { enabled, profile, foodAndBeverage, available } = useCapabilities();
   const spec = profileSpec(profile);
   const allows = (audience: "fnb" | "retail" | undefined) =>
     audience === undefined || (audience === "fnb" && foodAndBeverage) || (audience === "retail" && !foodAndBeverage);
-  const pages = allPages.filter(
-    (page) => allows(page.audience) && (page.capability === undefined || enabled.has(page.capability)),
-  );
+  const pages = allPages.filter((page) => {
+    if (page.id === "inventory" && !canOpenInventory(profile, enabled, session.user.permissions)) return false;
+    return allows(page.audience) && (page.capability === undefined || enabled.has(page.capability));
+  });
   const tools = allTools
     .filter((item) => allows(item.audience) && (item.capability === undefined || enabled.has(item.capability)))
-    .map((item) => (item.id === "settings" ? { ...item, label: spec.settingsLabel } : item));
+    .map((item) => (item.id === "settings" ? { ...item, label: available ? spec.settingsLabel : "Settings" } : item));
   const who = `${session.user.full_name} · ${session.user.role_name}${session.mode === "offline" ? " · offline unlock" : ""}`;
 
   useEffect(() => setPhotoFailed(false), [avatarUrl]);
@@ -118,13 +117,6 @@ export function SidebarNav({ busy, onNavigate, onLock }: SidebarNavProps) {
     const timer = window.setInterval(poll, 15_000);
     return () => window.clearInterval(timer);
   }, [desktop, tool]);
-
-  useEffect(() => {
-    if (tool !== "inventory" || products !== null) return;
-    loadCatalog()
-      .then((catalog) => setProducts(catalog.products))
-      .catch(() => setProducts([]));
-  }, [tool, products]);
 
   const toolAvailable = (item: (typeof allTools)[number]) =>
     (!item.desktopOnly || desktop) &&
@@ -298,9 +290,6 @@ export function SidebarNav({ busy, onNavigate, onLock }: SidebarNavProps) {
         </div>
       </aside>
 
-      {tool === "inventory" ? (
-        products === null ? null : <BranchCheckModal product={null} products={products} onClose={() => setTool(null)} />
-      ) : null}
       {tool === "shift" ? <ShiftModal session={session} onClose={() => setTool(null)} /> : null}
       {tool === "clock" ? <ClockModal session={session} onClose={() => setTool(null)} /> : null}
       {tool === "sync" ? <SyncCenterModal session={session} onClose={() => setTool(null)} /> : null}

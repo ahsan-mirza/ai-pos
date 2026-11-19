@@ -56,7 +56,13 @@ describe("POS demo connection file", () => {
 describe("POS installer download", () => {
   it("keeps both actions on every business card and the shared-demo warning", () => {
     const page = readFileSync(join(process.cwd(), "../site/src/pages/ExplorePage.tsx"), "utf8");
-    expect(DEMO_BUSINESSES.map((business) => business.code)).toEqual(["restaurant", "supermarket", "electronics", "fashion"]);
+    expect(DEMO_BUSINESSES.map((business) => business.code)).toEqual([
+      "restaurant",
+      "supermarket",
+      "electronics",
+      "fashion",
+      "pharmacy",
+    ]);
     expect(page).toContain("DEMO_BUSINESSES.map");
     expect(page).toContain("Explore Business Pro");
     expect(page).toContain("Download POS Register");

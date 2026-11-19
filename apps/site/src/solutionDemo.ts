@@ -3,7 +3,7 @@ import type { SeoPage } from "./seo-types";
 
 /**
  * Public Business Pro demo for each Solutions page.
- * A null entry is a page that does not match one of the four demos.
+ * A null entry is a page that does not match one of the public demos.
  * Retail, wholesale, and the UAE page are solutions without one matching business.
  * Hardware is the product catalogue, not a business demo.
  * Arabic pages resolve through `translationOf`.

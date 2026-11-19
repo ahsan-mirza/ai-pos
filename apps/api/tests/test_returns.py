@@ -86,7 +86,11 @@ def imei(seed: str = "49015420323751") -> str:
     return next(f"{seed}{digit}" for digit in range(10) if is_valid_imei(f"{seed}{digit}"))
 
 
-def push(client, entity: str, payload: dict, key: str | None = None, occurred_at: str = "2026-10-19T08:00:00Z"):
+def push(client, entity: str, payload: dict, key: str | None = None, occurred_at: str | None = None):
+    # A sale stamped on a fixed day ages out of the 30-day sync window. Callers that need an old
+    # sale pass occurred_at. The return-window test backdates the stored sale after it is accepted.
+    if occurred_at is None:
+        occurred_at = datetime.now(UTC).isoformat()
     event = {
         "idempotency_key": key or f"{entity}-{uuid.uuid4()}",
         "entity_type": entity,
@@ -416,6 +420,34 @@ def test_card_sale_refunds_to_card_or_credit_only(client) -> None:
     note = client.get(f"/api/v1/returns/{credit['id']}/credit-note.pdf", headers=device())
     assert note.status_code == 200
     assert note.content.startswith(b"%PDF")
+
+
+def test_sale_older_than_the_sync_window_is_refused(client) -> None:
+    seed_catalog(client)
+    stale = (datetime.now(UTC) - timedelta(days=31)).isoformat()
+    response = push(client, "sale", {
+        "id": str(uuid.uuid4()),
+        "store_id": STORE_ID,
+        "cashier_id": CASHIER_ID,
+        "currency": "USD",
+        "payment_method": "cash",
+        "subtotal_cents": 1500,
+        "tax_cents": 75,
+        "total_cents": 1575,
+        "client_sale_id": str(uuid.uuid4()),
+        "items": [
+            {
+                "id": str(uuid.uuid4()),
+                "product_id": CABLE_ID,
+                "quantity": 1,
+                "unit_price_cents": 1500,
+                "tax_cents": 75,
+                "line_total_cents": 1575,
+            }
+        ],
+    }, occurred_at=stale)
+    assert response.status_code == 422
+    assert "older than 30 days" in response.json()["error"]["message"]
 
 
 def test_outside_window_requires_override(client, session: Session) -> None:

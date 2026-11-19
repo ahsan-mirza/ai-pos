@@ -1,5 +1,6 @@
 import { motion, useInView, useReducedMotion } from "framer-motion";
 import { useRef } from "react";
+import { ResponsiveImage } from "../responsiveImage";
 
 const grocerySrc = "/images/home-2/supermarket.png";
 const kitchenSrc = "/images/home-2/restaurant.png";
@@ -46,17 +47,21 @@ export function IndustryBanner() {
             animate={{ opacity: shown ? 1 : 0 }}
             transition={{ ...enter, delay: shown && !reduce ? 0.16 : 0 }}
           >
-            <motion.img
-              src={kitchenSrc}
-              alt="Restaurant counter with an AxizPOS terminal and receipt printer"
-              width={1774}
-              height={887}
-              loading="lazy"
+            <motion.div
               initial={reduce ? false : { scale: 1.06 }}
               animate={{ scale: shown || reduce ? 1 : 1.06 }}
               whileHover={reduce ? undefined : { scale: 1.045 }}
               transition={{ ...enter, delay: shown && !reduce ? 0.16 : 0 }}
-            />
+            >
+              <ResponsiveImage
+                src={kitchenSrc}
+                alt="Restaurant counter with an AxizPOS terminal and receipt printer"
+                width={1774}
+                height={887}
+                sizes="(max-width: 860px) 100vw, 40vw"
+                loading="lazy"
+              />
+            </motion.div>
           </motion.div>
           <motion.div
             className="h2-industry-photo is-grocery"
@@ -64,17 +69,21 @@ export function IndustryBanner() {
             animate={{ opacity: shown ? 1 : 0 }}
             transition={{ ...enter, delay: shown && !reduce ? 0.08 : 0 }}
           >
-            <motion.img
-              src={grocerySrc}
-              alt="Supermarket checkout with an AxizPOS terminal and grocery basket"
-              width={1774}
-              height={887}
-              loading="lazy"
+            <motion.div
               initial={reduce ? false : { scale: 1.06 }}
               animate={{ scale: shown || reduce ? 1 : 1.06 }}
               whileHover={reduce ? undefined : { scale: 1.045 }}
               transition={{ ...enter, delay: shown && !reduce ? 0.08 : 0 }}
-            />
+            >
+              <ResponsiveImage
+                src={grocerySrc}
+                alt="Supermarket checkout with an AxizPOS terminal and grocery basket"
+                width={1774}
+                height={887}
+                sizes="(max-width: 860px) 100vw, 40vw"
+                loading="lazy"
+              />
+            </motion.div>
           </motion.div>
         </div>
 

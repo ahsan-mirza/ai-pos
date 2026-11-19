@@ -112,6 +112,30 @@ def test_unknown_missing_invalid_and_suspended_tenants_are_refused(tenants: Test
     assert (closed.status_code, closed.json()["error"]["code"]) == (403, "tenant_suspended")
 
 
+def test_catalogue_view_token_cannot_be_read_as_another_tenant(tenants: TestClient) -> None:
+    alpha = _login(tenants, "alpha", "alpha-admin", PASSWORDS["alpha"])
+    assert alpha.status_code == 200, alpha.text
+    headers = {
+        "X-Tenant-Domain": "alpha.axizpos.com",
+        "Authorization": f"Bearer {alpha.json()['access_token']}",
+    }
+    saved = tenants.put(
+        "/api/v1/users/me/preferences/product-catalogue-view",
+        headers=headers,
+        json={"product_catalogue_view": "list"},
+    )
+    assert saved.status_code == 200, saved.text
+    assert saved.json()["product_catalogue_view"] == "list"
+    leaked = tenants.get(
+        "/api/v1/users/me/preferences",
+        headers={"X-Tenant-Domain": "bravo.axizpos.com", "Authorization": headers["Authorization"]},
+    )
+    assert leaked.status_code == 401
+    own = tenants.get("/api/v1/users/me/preferences", headers=headers)
+    assert own.status_code == 200
+    assert own.json()["product_catalogue_view"] == "list"
+
+
 def test_each_tenant_only_sees_its_own_database(tenants: TestClient) -> None:
     alpha = _login(tenants, "alpha", "alpha-admin", PASSWORDS["alpha"])
     assert alpha.status_code == 200, alpha.text
@@ -175,6 +199,14 @@ def test_store_code_whitespace_resolves_to_the_same_tenant() -> None:
     assert registry.valid_slug("baristo")
     assert not registry.valid_slug("bar isto")
     assert not registry.valid_slug("")
+
+
+def test_main_domain_is_the_public_address() -> None:
+    settings = get_settings().model_copy(update={"tenant_public_url_template": "https://axizpos.com"})
+    assert registry.tenant_public_url("demo-restaurant", settings) == "https://axizpos.com"
+    assert registry.tenant_domain_for("demo-restaurant", settings) == "demo-restaurant"
+    assert registry.slug_from_domain("demo-restaurant", settings) == "demo-restaurant"
+    assert registry.slug_from_domain("axizpos.com", settings) is None
 
 
 def test_public_ip_portal_is_allowed_over_http() -> None:

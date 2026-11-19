@@ -51,6 +51,12 @@ class PlanIn(ApiModel):
     reason: str = Field(min_length=3, max_length=500)
 
 
+class PlanCreateIn(PlanIn):
+    """A console-created package. The code is fixed after the row is saved."""
+
+    code: str = Field(min_length=2, max_length=32)
+
+
 class PlanImpactOut(ApiModel):
     tenants: int
     active_promotional_trials: int

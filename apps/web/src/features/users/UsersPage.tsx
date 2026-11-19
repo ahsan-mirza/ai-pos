@@ -8,6 +8,7 @@ import { ProfileAvatar } from "../../components/ui/ProfileAvatar";
 import { useAuth } from "../../lib/auth";
 import { errorMessage, rolesApi, storesApi, usersApi } from "./api";
 import { CredentialModal } from "./CredentialModal";
+import { PharmacyGovernance } from "./PharmacyGovernance";
 import { UserFormModal } from "./UserFormModal";
 
 type Dialog =
@@ -115,6 +116,8 @@ export function UsersPage() {
           <p className="mt-2 text-xs text-charcoal/50">{roles.length} roles defined</p>
         </article>
       </div>
+
+      <PharmacyGovernance users={users} />
 
       <div className="rounded-card border border-line bg-white p-6">
         <div className="mb-5 flex flex-wrap items-center justify-between gap-3">

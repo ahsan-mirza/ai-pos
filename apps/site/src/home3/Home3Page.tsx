@@ -220,7 +220,7 @@ export function Home3Page() {
   const [draft, setDraft] = useState<string | null>(null);
 
   useEffect(() => {
-    track("view_page", { page_path: "/home-3", content_group: "home-3", locale: "en" });
+    track("view_page", { page_path: "/", content_group: "home-3", locale: "en" });
   }, []);
 
   useEffect(() => {
@@ -299,7 +299,7 @@ function Header() {
 
   return (
     <header className={stuck ? "h3-nav is-stuck" : "h3-nav"} id="top">
-      <a className="h3-logo" href="/home-3" aria-label="AxizPOS home">
+      <a className="h3-logo" href="/" aria-label="AxizPOS home">
         <img src="/brand/logo.svg" alt="" width={137} height={32} />
       </a>
       <nav id="h3-primary" className={open ? "h3-links is-open" : "h3-links"} aria-label="Primary">
@@ -749,7 +749,7 @@ function PlanCard({
           {copy.cta}
         </button>
       ) : (
-        <a className={popular ? "h3-btn h3-btn-block" : "h3-btn-line"} href={signupUrl} onClick={() => track("click_get_started", { page_path: "/home-3" })}>
+        <a className={popular ? "h3-btn h3-btn-block" : "h3-btn-line"} href={signupUrl} onClick={() => track("click_get_started", { page_path: "/" })}>
           {copy.cta}
         </a>
       )}
@@ -987,7 +987,7 @@ function SiteFooter({ contact }: { contact: PublicWhatsApp }) {
         <div className="h3-footer-base">
           <span>© {year} AxizPOS</span>
           <div className="h3-footer-lang">
-            <a href="/home-3" hrefLang="en" aria-current="page">
+            <a href="/" hrefLang="en" aria-current="page">
               EN
             </a>
             <a href="/ar" hrefLang="ar">

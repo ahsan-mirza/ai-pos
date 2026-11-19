@@ -1,0 +1,22 @@
+[
+  {
+    "name": "portal-destination-unreleased",
+    "status": "passed",
+    "detail": "Destination layer is unreleased"
+  },
+  {
+    "name": "portal-invalid-transfer-rejected",
+    "status": "passed",
+    "detail": "An oversized transfer was rejected"
+  },
+  {
+    "name": "portal-transfer-cancelled",
+    "status": "passed",
+    "detail": "The requested transfer was cancelled"
+  },
+  {
+    "name": "portal-supplier-return",
+    "status": "passed",
+    "detail": "Partial then full return left the history visible"
+  }
+]

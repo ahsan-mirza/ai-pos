@@ -3,6 +3,8 @@
 import uuid
 
 from sqlalchemy import select
+from tests.test_capabilities import change_profile
+from tests.test_inventory import ADMIN_PASSWORD
 
 from app.core import capabilities as catalog
 from app.models.audit_log import AuditLog
@@ -10,8 +12,6 @@ from app.models.pharmacy import PharmacyProductDetails, ProductIngredient
 from app.models.product import Product
 from app.services.taxonomy_service import ensure_taxonomy
 from app.tenancy.scoping import DEFAULT_TENANT_ID, INCLUDE_ALL
-from tests.test_capabilities import change_profile
-from tests.test_inventory import ADMIN_PASSWORD
 
 OTHER_TENANT = uuid.UUID("00000000-0000-4000-8000-0000000000b2")
 PROFILES = (

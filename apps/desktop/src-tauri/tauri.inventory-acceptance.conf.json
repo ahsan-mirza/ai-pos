@@ -1,0 +1,33 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "AxizPOS Inventory Acceptance",
+  "identifier": "com.axizpos.inventory.acceptance",
+  "build": {
+    "beforeDevCommand": "pnpm exec vite --mode inventory-acceptance --port 1420 --strictPort",
+    "beforeBuildCommand": "pnpm build:inventory-acceptance"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "AxizPOS Inventory Acceptance",
+        "width": 1280,
+        "height": 800,
+        "resizable": true
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; connect-src 'self' http://127.0.0.1:18081 ipc: http://ipc.localhost; img-src 'self' data: http://asset.localhost asset: http://127.0.0.1:18081; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:"
+    }
+  },
+  "bundle": {
+    "active": false,
+    "fileAssociations": [],
+    "windows": {
+      "signCommand": null,
+      "nsis": {
+        "installerHooks": null
+      }
+    }
+  }
+}

@@ -1,0 +1,37 @@
+[
+  {
+    "name": "quarantine-cleared-in-ui",
+    "status": "passed",
+    "detail": "Lot B cleared by the authorized pharmacist"
+  },
+  {
+    "name": "fefo-lot-visible",
+    "status": "passed",
+    "detail": "Sooner FEFO lot is in the drawer"
+  },
+  {
+    "name": "fefo-later-lot-visible",
+    "status": "passed",
+    "detail": "Later FEFO lot is in the drawer"
+  },
+  {
+    "name": "pharmacist-revoked-in-ui",
+    "status": "passed",
+    "detail": "The active appointment left the list"
+  },
+  {
+    "name": "revoked-history-visible-in-ui",
+    "status": "passed",
+    "detail": "Pharmacist Pharmacist Candidate 1 · revoked · requested 2026-11-19 10:07 by Governance Officer 1 · approved 2026-11-19 10:07 by Governance Officer 2 · revoked 2026-11-19 10:10 by Governance Officer 1 · Revoke pharmacist appointment"
+  },
+  {
+    "name": "grocery-has-no-pharmacy-governance",
+    "status": "passed",
+    "detail": "Pharmacy appointment heading is absent"
+  },
+  {
+    "name": "grocery-allocation-report-visible",
+    "status": "passed",
+    "detail": "Allocation report opened"
+  }
+]

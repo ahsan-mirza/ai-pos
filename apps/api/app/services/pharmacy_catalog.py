@@ -41,7 +41,11 @@ def apply(db: Session, product: Product, data: PharmacyWrite | None, *, creating
     previous = None if creating else db.get(PharmacyProductDetails, product.id)
     old_class = None if previous is None else previous.dispensing_class
     _validate(db, product, data)
-    details = previous or PharmacyProductDetails(product_id=product.id, product_kind=data.product_kind, dispensing_class=data.dispensing_class)
+    details = previous or PharmacyProductDetails(
+        product_id=product.id,
+        product_kind=data.product_kind,
+        dispensing_class=data.dispensing_class,
+    )
     if previous is None:
         db.add(details)
     _copy(details, data)
@@ -102,7 +106,11 @@ def _require_pharmacy(db: Session) -> None:
 
 def _validate(db: Session, product: Product, data: PharmacyWrite) -> None:
     if data.product_kind == "VETERINARY":
-        raise ApiError(422, "veterinary_not_licensed", "Veterinary products stay off until a later licence allows them.")
+        raise ApiError(
+            422,
+            "veterinary_not_licensed",
+            "Veterinary products stay off until a later licence allows them.",
+        )
     if data.fractional_dispensing_allowed:
         raise ApiError(422, "fractional_dispensing", "Community pharmacy packs use a whole number of base units.")
     if data.offline_policy == "ALLOW" and data.dispensing_class != "OTC":

@@ -5,6 +5,7 @@ import type { Plugin } from "vite";
 import { loadEnv } from "vite";
 import { defineConfig } from "vitest/config";
 import { SEO_PAGES, headTags, marketingRedirects, measurementSnippet, notFoundHtml, publicWorkerBoot, robotsTxt, sitemapXml, seoPage, staticArticle } from "./src/seo";
+import { staticHeroHtml } from "./src/staticHero";
 
 const root = fileURLToPath(new URL(".", import.meta.url));
 
@@ -16,6 +17,7 @@ function siteSeo(): Plugin {
   entries["home-3"] = resolve(root, "home-3/index.html");
   let verification: string | undefined;
   let measurementId: string | undefined;
+  let bingVerification: string | undefined;
   const previewPath = (url: string | undefined): string | undefined => {
     const path = url?.split("?")[0];
     if (path !== "/home-2" && path !== "/home-3") return undefined;
@@ -46,11 +48,22 @@ function siteSeo(): Plugin {
       const env = loadEnv(mode, resolve(root, "../.."), "VITE_");
       verification = env.VITE_GOOGLE_SITE_VERIFICATION;
       measurementId = env.VITE_GA_MEASUREMENT_ID;
+      bingVerification = env.VITE_BING_SITE_VERIFICATION;
       return { build: { rollupOptions: { input: entries } } };
     },
     transformIndexHtml: {
       order: "pre",
       handler(html) {
+        if (!html.includes("/fonts/archivo-latin.woff2")) {
+          const priority = html.includes("/src/home2/") ? "low" : "high";
+          html = html.replace(
+            "</head>",
+            `    <link rel="preload" href="/fonts/archivo-latin.woff2" as="font" type="font/woff2" crossorigin fetchpriority="${priority}" />\n  </head>`,
+          );
+        }
+        if (html.includes("/src/home2/") && !html.includes('id="h2-static-hero"')) {
+          html = html.replace('<div id="root">', `${staticHeroHtml()}\n    <div id="root">`);
+        }
         if (!html.includes("article[data-seo-static]")) {
           html = html.replace(
             "</head>",
@@ -65,7 +78,7 @@ function siteSeo(): Plugin {
         const id = html.match(/data-page="([^"]+)"/)?.[1] ?? "home";
         const page = seoPage(id);
         if (!page) return html;
-        const tags = headTags(page, verification, measurementId);
+        const tags = headTags(page, verification, measurementId, bingVerification);
         return html
           .replace("<!-- site-seo -->", tags)
           .replace('<div id="root"></div>', `<div id="root">${staticArticle(page)}</div>`);

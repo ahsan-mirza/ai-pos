@@ -8,6 +8,7 @@ stay at their face value.
 import calendar
 import hashlib
 import hmac
+import re
 import uuid
 from datetime import UTC, datetime, timedelta
 
@@ -39,6 +40,7 @@ from app.schemas.billing import (
     FeeIn,
     FeeOut,
     OverviewOut,
+    PlanCreateIn,
     PlanImpactOut,
     PlanIn,
     PlanOut,
@@ -81,10 +83,23 @@ _CYCLES = (
     ("HALF_YEARLY", "Half-Yearly", 6, 1_200, 3),
     ("ANNUAL", "Annual", 12, 2_500, 4),
 )
-# The only packages a new subscription, quote, or plan change may target.
+# Seeded packages a new subscription already knows. A console-created package is current too;
+# only the retired codes stay on the grandfathered rules.
 NEW_PLAN_CODES = frozenset({"FREE", "GROWTH", "PRO_AI", "ENTERPRISE"})
+SYSTEM_PLAN_CODES = LEGACY_PLAN_CODES | NEW_PLAN_CODES
+_PLAN_CODE = re.compile(r"^[A-Z][A-Z0-9_]{1,31}$")
 # 20 percent. The shared Annual cycle row stays at 25 percent for any historical plan row.
 NEW_ANNUAL_DISCOUNT_BPS = 2_000
+
+
+def uses_current_catalog(code: str | None) -> bool:
+    """True for Free, Growth, Pro AI, Enterprise, and a package created in the console.
+
+    A missing plan and the retired Lite, Standard, and Pro codes stay on the grandfathered rules.
+    """
+    return code is not None and code not in LEGACY_PLAN_CODES
+
+
 # Countries the price table can hold later. Only AE is inserted. No rate is invented for the others.
 PREPARED_MARKETS = (
     ("SA", "SAR"),
@@ -413,6 +428,28 @@ def retire_legacy_plans(db: Session) -> None:
         db.flush()
 
 
+def _ensure_cycles(db: Session) -> bool:
+    """Inserts a billing cycle that the catalog defines but the database does not have yet.
+
+    A fresh control migration inserts plans before any cycle row exists. Existing cycle
+    rows are not rewritten.
+    """
+    now = datetime.now(UTC)
+    changed = False
+    for code, name, months, discount, order in _CYCLES:
+        if db.scalar(select(BillingCycle.id).where(BillingCycle.code == code)) is not None:
+            continue
+        db.add(
+            BillingCycle(
+                code=code, name=name, months=months, discount_bps=discount, sort_order=order, updated_at=now
+            )
+        )
+        changed = True
+    if changed:
+        db.flush()
+    return changed
+
+
 def ensure_catalog(db: Session) -> bool:
     """Inserts the starting catalog once. Later edits in the console are left alone.
 
@@ -424,6 +461,8 @@ def ensure_catalog(db: Session) -> bool:
         created = True
     if not created:
         changed = ensure_freemium_catalog(db)
+        if _ensure_cycles(db):
+            changed = True
         retire_legacy_plans(db)
         from app.console.commercial_manifest import apply_commercial_catalog
 
@@ -431,12 +470,7 @@ def ensure_catalog(db: Session) -> bool:
             changed = True
         return changed
     now = datetime.now(UTC)
-    for code, name, months, discount, order in _CYCLES:
-        db.add(
-            BillingCycle(
-                code=code, name=name, months=months, discount_bps=discount, sort_order=order, updated_at=now
-            )
-        )
+    _ensure_cycles(db)
     for code, name, description, monthly, once, refundable, order in _ADDONS:
         db.add(
             BillingAddon(
@@ -593,7 +627,7 @@ def plan_out(row: BillingPlan) -> PlanOut:
         sort_order=row.sort_order,
         resource_limits=dict(row.resource_limits) if row.resource_limits else None,
         custom_pricing=row.code == "ENTERPRISE",
-        catalog_family="current" if row.code in NEW_PLAN_CODES else "legacy",
+        catalog_family="current" if uses_current_catalog(row.code) else "legacy",
     )
 
 
@@ -727,6 +761,96 @@ def _resource_limits(value: dict | None, previous: dict | None) -> dict | None:
             raise ApiError(422, "invalid_limit", f"{key} cannot be negative.")
         cleaned[key] = number
     return cleaned
+
+
+def _package_code(value: str) -> str:
+    code = value.strip().upper()
+    if not _PLAN_CODE.fullmatch(code):
+        raise ApiError(
+            422,
+            "invalid_code",
+            "Use a package code that starts with a letter and contains only letters, numbers, and underscores.",
+            details={"fields": {"code": "Use letters, numbers, and underscores, starting with a letter."}},
+        )
+    if code in LEGACY_PLAN_CODES:
+        raise ApiError(
+            422,
+            "plan_not_selectable",
+            "This code belongs to a retired package and cannot be created again.",
+            details={"fields": {"code": "Lite, Standard, and Pro are retired codes."}},
+        )
+    return code
+
+
+def create_plan(db: Session, operator: OperatorPrincipal, data: PlanCreateIn) -> PlanOut:
+    """Adds a package. Existing invoices are not involved. The code cannot be changed later."""
+    ensure_catalog(db)
+    code = _package_code(data.code)
+    if db.scalar(select(BillingPlan.id).where(BillingPlan.code == code)) is not None:
+        raise ApiError(
+            409,
+            "duplicate_code",
+            "This package code already exists.",
+            details={"fields": {"code": "This package code already exists."}},
+        )
+    row = BillingPlan(
+        code=code,
+        name=data.name.strip(),
+        included_registers=data.included_registers,
+        included_modules=require_module_keys(data.included_modules, with_dependencies=True, implemented_only=True),
+        monthly_fils=data.monthly_fils,
+        trial_days=data.trial_days,
+        active=data.active,
+        sort_order=data.sort_order,
+        resource_limits=_resource_limits(data.resource_limits, None),
+        updated_at=datetime.now(UTC),
+    )
+    db.add(row)
+    db.flush()
+    from app.console.promotional_trial import bump_revision
+
+    bump_revision(db)
+    _audit_price(db, operator, "billing.plan.create", {}, plan_out(row).model_dump(mode="json"), data.reason)
+    db.commit()
+    return plan_out(row)
+
+
+def delete_plan(db: Session, operator: OperatorPrincipal, plan_id: uuid.UUID, reason: str) -> None:
+    """Removes a console-created package that nothing references. Seeded packages stay."""
+    if len(reason.strip()) < 3:
+        raise ApiError(422, "reason_required", "Give a reason of at least 3 characters.")
+    ensure_catalog(db)
+    row = db.get(BillingPlan, plan_id)
+    if row is None:
+        raise ApiError(404, "not_found", "Package was not found.")
+    if row.code in SYSTEM_PLAN_CODES:
+        raise ApiError(
+            409,
+            "package_protected",
+            "This package is part of the catalogue and cannot be deleted. Unpublish it so new stores cannot select it.",
+        )
+    subscriptions = int(
+        db.scalar(select(func.count()).select_from(Subscription).where(Subscription.plan_id == row.id)) or 0
+    )
+    invoices = int(
+        db.scalar(select(func.count()).select_from(BillingInvoice).where(BillingInvoice.plan_code == row.code)) or 0
+    )
+    tenants = int(db.scalar(select(func.count()).select_from(Tenant).where(Tenant.plan == row.code)) or 0)
+    if subscriptions or invoices or tenants:
+        raise ApiError(
+            409,
+            "package_in_use",
+            "This package cannot be deleted because subscriptions or invoices still reference it. "
+            "Unpublish it so new stores cannot select it. Existing invoices keep their prices.",
+        )
+    before = plan_out(row).model_dump(mode="json")
+    db.execute(delete(BillingPlanPrice).where(BillingPlanPrice.plan_id == row.id))
+    db.delete(row)
+    from app.console.promotional_trial import bump_revision
+
+    bump_revision(db)
+    _audit_price(db, operator, "billing.plan.delete", before, {}, reason.strip())
+    db.commit()
 
 
 def update_plan(db: Session, operator: OperatorPrincipal, plan_id: uuid.UUID, data: PlanIn) -> PlanOut:

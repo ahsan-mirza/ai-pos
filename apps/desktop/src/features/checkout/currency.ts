@@ -11,7 +11,7 @@ import { useSyncExternalStore } from "react";
 import { env } from "../../config/env";
 import { terminal } from "../../config/terminal";
 import { getBusinessSettings, getReceiptProfile } from "../../lib/api";
-import { applyProfile } from "../../lib/capabilities";
+import { applyProfile, capabilityScope, type ProfileSnapshot } from "../../lib/capabilities";
 import { fetchBusinessCurrency, inTauri } from "../../lib/tauri";
 
 /** The register charges in the business currency a Super Admin picks in the portal, never in a local choice. */
@@ -67,9 +67,24 @@ interface TaxSnapshot {
 }
 
 let branchTaxBlocked = false;
+let apiReachable = false;
+
+/** True after this register's own settings request succeeds. An empty sync queue does not set this. */
+export function businessApiReachable(): boolean {
+  return apiReachable;
+}
 
 export function taxConfigurationRequired(): boolean {
   return branchTaxBlocked;
+}
+
+/** Keeps a settings body only when the server names the tenant this register was activated for. */
+function applyScopedProfile(raw: (ProfileSnapshot & { store_code?: string | null }) | null | undefined): void {
+  if (!raw?.capabilities) return;
+  const bound = capabilityScope();
+  const returned = (raw.tenant_id ?? raw.store_code ?? "").trim();
+  if (bound === null || returned === "" || returned !== bound.tenantId) return;
+  applyProfile({ ...raw, tenant_id: bound.tenantId, environment: bound.environment });
 }
 
 function applyTax(raw: TaxSnapshot | null | undefined): void {
@@ -107,16 +122,20 @@ export async function syncBusinessCurrency(): Promise<string> {
       const snapshot = await fetchBusinessCurrency();
       next = snapshot.currency;
       applyTax(snapshot.tax);
-      applyProfile(snapshot.profile);
+      applyScopedProfile(snapshot.profile);
       if (snapshot.receipt) receipt = snapshot.receipt;
+      // A cached or seeded profile is not a live settings response.
+      apiReachable = snapshot.source === "api";
     } else {
       const settings = await getBusinessSettings();
       next = settings.currency;
       applyTax(settings);
-      applyProfile(settings);
+      applyScopedProfile(settings);
       receipt = await getReceiptProfile(home.id).catch(() => receipt);
+      apiReachable = true;
     }
   } catch {
+    apiReachable = false;
     // Offline with nothing cached: keep the last known currency.
   }
   if (next !== null && next !== current) {

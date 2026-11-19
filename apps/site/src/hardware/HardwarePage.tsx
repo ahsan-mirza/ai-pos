@@ -1,5 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { apiBaseUrl } from "../env";
+import { ResponsiveImage } from "../responsiveImage";
 import type { PublicWhatsApp } from "../whatsapp";
 import { EnquiryForm } from "./EnquiryForm";
 import {
@@ -253,7 +254,7 @@ export function HardwarePage({ contact }: { contact: PublicWhatsApp }) {
             <h1 className="mt-3 text-4xl font-semibold tracking-tight sm:text-5xl">POS hardware for the counter you already run</h1>
             <p className="mt-4 max-w-xl text-lg leading-8 text-charcoal/75">Browse published terminals, printers, scanners, and complete packages. Prices appear only when AxizPOS has set a public price.</p>
           </div>
-          <img src="/pos/terminal.png" alt="AxizPOS on a register with a customer display, receipt printer, phone, and barcode scanner." className="w-full" />
+          <ResponsiveImage src="/pos/terminal.png" alt="AxizPOS on a register with a customer display, receipt printer, phone, and barcode scanner." width={819} height={782} sizes="(min-width: 1024px) 36rem, 100vw" loading="lazy" className="w-full" />
         </div>
       </section>
       {status === "unavailable" ? <p role="alert" className="mx-auto max-w-page px-4 py-6 text-sm">The hardware catalogue could not be loaded. You can still send an enquiry below.</p> : null}

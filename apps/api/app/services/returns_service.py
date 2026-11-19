@@ -495,6 +495,9 @@ def apply_return(db: Session, settings: Settings, payload: dict[str, object]) ->
                 user_id=cashier.id,
             )
             batch_ledger.restore_sale_item(db, sale_item_id=item.id, store_id=data.store_id, quantity=line.quantity)
+            from app.services.pharmacy_lots import hold_customer_return
+
+            hold_customer_return(db, sale_item_id=item.id, store_id=data.store_id, user_id=cashier.id)
 
     for tender in data.tenders:
         credit_id: uuid.UUID | None = None

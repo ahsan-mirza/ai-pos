@@ -1,6 +1,7 @@
 import {
   demoBusiness,
   demoMarkerFrom,
+  exchangeDemo,
   hasPermission,
   visibleDemo,
   type DemoMarker,
@@ -9,7 +10,7 @@ import {
   type User,
 } from "@ai-pos/shared-types";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { clearStoreCode, saveStoreCode } from "../config/env";
+import { clearStoreCode, env, saveStoreCode } from "../config/env";
 import { exploreReturnUrl, rememberDemoExit } from "../features/demo/returnTo";
 import { clearUserCaches } from "../pwa/register";
 import {
@@ -88,7 +89,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [status, setStatus] = useState<AuthState["status"]>(boot.status);
   const generation = useRef(0);
-  const demoRef = useRef<DemoMarker | null>(visibleDemo(boot.session));
+  const demoRef = useRef<DemoMarker | null>(
+    visibleDemo(boot.session) ?? (restorePlan(boot.session, Date.now()) === "reenter" ? (boot.session?.demo ?? null) : null),
+  );
 
   const endSession = useCallback((reason: "exit" | "expired") => {
     const marker = demoRef.current;
@@ -111,6 +114,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = useCallback(() => endSession("exit"), [endSession]);
   const expire = useCallback(() => endSession("expired"), [endSession]);
+  const reentry = useRef<Promise<boolean> | null>(null);
+  const reenteredAt = useRef(0);
 
   const begin = useCallback((response: TokenResponse) => {
     bumpSessionEpoch();
@@ -143,10 +148,52 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [begin],
   );
 
+  const continueDemo = useCallback(
+    (marker: DemoMarker): Promise<boolean> => {
+      const current = reentry.current;
+      if (current) return current;
+      if (demoRef.current?.businessCode !== marker.businessCode) return Promise.resolve(false);
+      const stamp = generation.current;
+      const flight = exchangeDemo(env.apiBaseUrl, marker.businessCode, fetch)
+        .then((result) => {
+          if (stamp !== generation.current || demoRef.current?.businessCode !== marker.businessCode) return false;
+          reenteredAt.current = Date.now();
+          begin(result);
+          return true;
+        })
+        .catch(() => false)
+        .finally(() => {
+          if (reentry.current === flight) reentry.current = null;
+        });
+      reentry.current = flight;
+      return flight;
+    },
+    [begin],
+  );
+
+  const holdDemo = useCallback(
+    async (marker: DemoMarker) => {
+      if (Date.now() - reenteredAt.current < 15_000) {
+        expire();
+        return;
+      }
+      const continued = await continueDemo(marker);
+      if (!continued && demoRef.current?.businessCode === marker.businessCode) expire();
+    },
+    [continueDemo, expire],
+  );
+
   useEffect(() => {
-    setUnauthorizedHandler(expire);
+    setUnauthorizedHandler(() => {
+      const marker = demoRef.current;
+      if (marker) {
+        void holdDemo(marker);
+        return;
+      }
+      expire();
+    });
     return () => setUnauthorizedHandler(null);
-  }, [expire]);
+  }, [expire, holdDemo]);
 
   useEffect(() => {
     setSessionRenewer(async () => {
@@ -171,16 +218,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (session === null) return;
+    const marker = session.demo;
+    if (marker && restorePlan(session, Date.now()) === "reenter") {
+      setAccessToken(null);
+      void holdDemo(marker);
+      return;
+    }
     setAccessToken(session.token);
     let stopped = false;
     let renewTimer = 0;
     let profileTimer = 0;
+    const reopen = () => {
+      const current = demoRef.current;
+      if (current) {
+        void holdDemo(current);
+        return;
+      }
+      expire();
+    };
     const scheduleRenew = (delay: number) => {
       renewTimer = window.setTimeout(() => {
         void requestSessionRenewal()
           .then((ok) => {
             if (stopped || ok) return;
-            expire();
+            reopen();
           })
           .catch(() => {
             if (!stopped) scheduleRenew(RENEW_RETRY_MS);
@@ -193,7 +254,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         refreshUser().catch((error: unknown) => {
           if (stopped) return;
           if (error instanceof ApiRequestError && error.status === 401) {
-            expire();
+            reopen();
             return;
           }
           profileTimer = window.setTimeout(loadProfile, PROFILE_RETRY_MS);
@@ -204,7 +265,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const onOnline = () => {
       refreshUser().catch((error: unknown) => {
         if (stopped) return;
-        if (error instanceof ApiRequestError && error.status === 401) expire();
+        if (error instanceof ApiRequestError && error.status === 401) reopen();
       });
     };
     window.addEventListener("online", onOnline);
@@ -214,7 +275,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       window.clearTimeout(renewTimer);
       window.clearTimeout(profileTimer);
     };
-  }, [session, user, expire, refreshUser]);
+  }, [session, user, expire, refreshUser, holdDemo]);
 
   const login = useCallback(
     async (username: string, password: string) => {

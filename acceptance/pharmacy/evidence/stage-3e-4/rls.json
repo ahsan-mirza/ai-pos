@@ -1,0 +1,177 @@
+{
+  "role": "ai_pos_app",
+  "superuser": false,
+  "bypassrls": false,
+  "results": [
+    {
+      "name": "tenant-b-seeded",
+      "status": "passed",
+      "detail": "reused the tenant B rows created before the database probe"
+    },
+    {
+      "name": "application-role",
+      "status": "passed",
+      "detail": "role=ai_pos_app superuser=False bypassrls=False"
+    },
+    {
+      "name": "batch_items-tenant-a-sees-own",
+      "status": "passed",
+      "detail": "rows=13"
+    },
+    {
+      "name": "batch_items-tenant-b-sees-own",
+      "status": "passed",
+      "detail": "rows=1"
+    },
+    {
+      "name": "batch_item_events-tenant-a-sees-own",
+      "status": "passed",
+      "detail": "rows=25"
+    },
+    {
+      "name": "batch_item_events-tenant-b-sees-own",
+      "status": "passed",
+      "detail": "rows=4"
+    },
+    {
+      "name": "pharmacist_authorizations-tenant-a-sees-own",
+      "status": "passed",
+      "detail": "rows=1"
+    },
+    {
+      "name": "pharmacist_authorizations-tenant-b-sees-own",
+      "status": "passed",
+      "detail": "rows=1"
+    },
+    {
+      "name": "pharmacy_governance_officers-tenant-a-sees-own",
+      "status": "passed",
+      "detail": "rows=2"
+    },
+    {
+      "name": "pharmacy_governance_officers-tenant-b-sees-own",
+      "status": "passed",
+      "detail": "rows=2"
+    },
+    {
+      "name": "pharmacy_recalls-tenant-a-sees-own",
+      "status": "passed",
+      "detail": "rows=1"
+    },
+    {
+      "name": "pharmacy_recalls-tenant-b-sees-own",
+      "status": "passed",
+      "detail": "rows=1"
+    },
+    {
+      "name": "pharmacy_recall_lots-tenant-a-sees-own",
+      "status": "passed",
+      "detail": "rows=2"
+    },
+    {
+      "name": "pharmacy_recall_lots-tenant-b-sees-own",
+      "status": "passed",
+      "detail": "rows=2"
+    },
+    {
+      "name": "pharmacy_supplier_returns-tenant-a-sees-own",
+      "status": "passed",
+      "detail": "rows=2"
+    },
+    {
+      "name": "pharmacy_supplier_returns-tenant-b-sees-own",
+      "status": "passed",
+      "detail": "rows=1"
+    },
+    {
+      "name": "pharmacy_supplier_return_lines-tenant-a-sees-own",
+      "status": "passed",
+      "detail": "rows=2"
+    },
+    {
+      "name": "pharmacy_supplier_return_lines-tenant-b-sees-own",
+      "status": "passed",
+      "detail": "rows=1"
+    },
+    {
+      "name": "batch_items-tenant-a-cannot-write-tenant-b",
+      "status": "passed",
+      "detail": "update=0 delete=0"
+    },
+    {
+      "name": "batch_item_events-tenant-a-cannot-write-tenant-b",
+      "status": "passed",
+      "detail": "update=0 delete=0"
+    },
+    {
+      "name": "pharmacist_authorizations-tenant-a-cannot-write-tenant-b",
+      "status": "passed",
+      "detail": "update=0 delete=0"
+    },
+    {
+      "name": "pharmacy_governance_officers-tenant-a-cannot-write-tenant-b",
+      "status": "passed",
+      "detail": "update=0 delete=0"
+    },
+    {
+      "name": "pharmacy_recalls-tenant-a-cannot-write-tenant-b",
+      "status": "passed",
+      "detail": "update=0 delete=0"
+    },
+    {
+      "name": "pharmacy_recall_lots-tenant-a-cannot-write-tenant-b",
+      "status": "passed",
+      "detail": "update=0 delete=0"
+    },
+    {
+      "name": "pharmacy_supplier_returns-tenant-a-cannot-write-tenant-b",
+      "status": "passed",
+      "detail": "update=0 delete=0"
+    },
+    {
+      "name": "pharmacy_supplier_return_lines-tenant-a-cannot-write-tenant-b",
+      "status": "passed",
+      "detail": "update=0 delete=0"
+    },
+    {
+      "name": "application-role-bypass-does-not-widen",
+      "status": "passed",
+      "detail": "without={'batch_items': 13, 'batch_item_events': 25, 'pharmacist_authorizations': 1, 'pharmacy_governance_officers': 2, 'pharmacy_recalls': 1, 'pharmacy_recall_lots': 2, 'pharmacy_supplier_returns': 2, 'pharmacy_supplier_return_lines': 2} with_bypass={'batch_items': 13, 'batch_item_events': 25, 'pharmacist_authorizations': 1, 'pharmacy_governance_officers': 2, 'pharmacy_recalls': 1, 'pharmacy_recall_lots': 2, 'pharmacy_supplier_returns': 2, 'pharmacy_supplier_return_lines': 2}"
+    },
+    {
+      "name": "missing-tenant-context-fails-closed",
+      "status": "passed",
+      "detail": "empty tenant setting hides every probed table"
+    },
+    {
+      "name": "invalid-tenant-context-fails-closed",
+      "status": "passed",
+      "detail": "malformed tenant id aborted the read"
+    },
+    {
+      "name": "tenant-c-cannot-read-pharmacy-records",
+      "status": "passed",
+      "detail": "pharmacy_tables_hidden=True pharmacy_lot_visible=False"
+    },
+    {
+      "name": "tenant-b-cannot-read-tenant-a-lot",
+      "status": "passed",
+      "detail": "visible=False"
+    },
+    {
+      "name": "api-tenant-a-cannot-read-tenant-b-product",
+      "status": "passed",
+      "detail": "matches=11"
+    },
+    {
+      "name": "api-grocery-pharmacy-closed",
+      "status": "passed",
+      "detail": "HTTP 403 capability_disabled Pharmacy catalogue is not enabled for this business. A business-wide admin can turn it on in Store Settings."
+    },
+    {
+      "name": "api-tenant-b-governance-open",
+      "status": "passed",
+      "detail": "HTTP 200"
+    }
+  ]
+}

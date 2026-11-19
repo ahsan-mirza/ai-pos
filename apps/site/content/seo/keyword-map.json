@@ -1,0 +1,138 @@
+{
+  "researchDate": "2026-11-19",
+  "market": "UAE first. GCC only where the product page already describes coverage.",
+  "metrics": "Monthly search volume, keyword difficulty, and CPC are Not verified. No Keyword Planner, Semrush, Ahrefs, or Search Console export was available. Existing ranking is Not verified. Priority is editorial, based on commercial fit with a real AxizPOS page.",
+  "rule": "One primary keyword per landing page. Secondary keywords support that page. Guides must not become a second primary URL for the same keyword.",
+  "mappings": [
+    {
+      "keyword": "POS software UAE",
+      "searchIntent": "Commercial investigation",
+      "targetMarket": "UAE",
+      "primaryLandingPage": "https://axizpos.com/pos-software-uae",
+      "secondaryKeywords": ["POS system UAE", "Point of sale software UAE", "POS billing software", "POS system for small business"],
+      "existingRanking": "Not verified",
+      "priority": "High",
+      "contentAction": "Keep this page for UAE setup: AED prices, VAT report, English and Arabic assistant. Do not add city doorway pages."
+    },
+    {
+      "keyword": "Cafe POS UAE",
+      "searchIntent": "Commercial investigation",
+      "targetMarket": "UAE",
+      "primaryLandingPage": "https://axizpos.com/cafe-pos",
+      "secondaryKeywords": ["Cafe POS software", "Coffee shop POS system", "Cafe billing software", "Cafe management software", "Cafe inventory management", "Bakery POS system", "Coffee shop billing software"],
+      "existingRanking": "Not verified",
+      "priority": "High",
+      "contentAction": "Own counter service, modifiers, open tabs, recipes, and the barista display. The Dubai guide stays a supporting article."
+    },
+    {
+      "keyword": "Restaurant POS UAE",
+      "searchIntent": "Commercial investigation",
+      "targetMarket": "UAE",
+      "primaryLandingPage": "https://axizpos.com/restaurant-pos",
+      "secondaryKeywords": ["Restaurant POS software", "Restaurant billing system", "Restaurant management software", "Restaurant inventory software", "Restaurant table management software", "Kitchen display system", "Restaurant order management system"],
+      "existingRanking": "Not verified",
+      "priority": "High",
+      "contentAction": "Own tables, kitchen tickets, split bills, and recipes. Delivery-app orders stay on the quick-service page."
+    },
+    {
+      "keyword": "Grocery POS software",
+      "searchIntent": "Commercial investigation",
+      "targetMarket": "UAE",
+      "primaryLandingPage": "https://axizpos.com/grocery-pos",
+      "secondaryKeywords": ["Grocery POS UAE", "Supermarket POS system", "Supermarket billing software", "Grocery store billing software", "Barcode billing software", "Grocery inventory management", "Supermarket stock management software"],
+      "existingRanking": "Not verified",
+      "priority": "High",
+      "contentAction": "Own barcode, weighed items, and expiry-first stock. /supermarket-pos redirects here. Do not describe expiry-first as pharmacy lots."
+    },
+    {
+      "keyword": "Retail POS software",
+      "searchIntent": "Commercial investigation",
+      "targetMarket": "UAE",
+      "primaryLandingPage": "https://axizpos.com/retail-pos",
+      "secondaryKeywords": ["Retail POS UAE", "Shop billing software", "Retail inventory management", "Store management software", "Multi-store POS system"],
+      "existingRanking": "Not verified",
+      "priority": "High",
+      "contentAction": "Own general catalog and barcode checkout. Send apparel to /fashion-pos and weight or expiry to /grocery-pos. There is no preset named only Retail."
+    },
+    {
+      "keyword": "Fashion POS software",
+      "searchIntent": "Commercial investigation",
+      "targetMarket": "UAE",
+      "primaryLandingPage": "https://axizpos.com/fashion-pos",
+      "secondaryKeywords": ["Clothing store POS", "Apparel POS system", "Boutique POS software", "Garment inventory software", "Fashion inventory management"],
+      "existingRanking": "Not verified",
+      "priority": "High",
+      "contentAction": "Own size and colour matrices, variant stock, boutique alterations, and chain consignment."
+    },
+    {
+      "keyword": "Wholesale POS UAE",
+      "searchIntent": "Commercial investigation",
+      "targetMarket": "UAE",
+      "primaryLandingPage": "https://axizpos.com/wholesale-pos",
+      "secondaryKeywords": ["Wholesale billing software", "Wholesale inventory management", "B2B POS software", "Distributor management software", "Bulk order management software"],
+      "existingRanking": "Not verified",
+      "priority": "High",
+      "contentAction": "Own tier pricing, quotations, credit statements, and partial deliveries. IMEI stays on the electronics page."
+    },
+    {
+      "keyword": "Electronics POS software",
+      "searchIntent": "Commercial investigation",
+      "targetMarket": "UAE",
+      "primaryLandingPage": "https://axizpos.com/electronics-pos",
+      "secondaryKeywords": ["Electronics shop billing software", "Electronics inventory management", "IMEI tracking POS", "Serial number tracking POS", "Electronics repair POS"],
+      "existingRanking": "Not verified",
+      "priority": "High",
+      "contentAction": "Own IMEI and serial tracking, warranties, repairs, and trade-ins."
+    },
+    {
+      "keyword": "QSR POS system",
+      "searchIntent": "Commercial investigation",
+      "targetMarket": "UAE",
+      "primaryLandingPage": "https://axizpos.com/quick-service-pos",
+      "secondaryKeywords": ["Fast food POS software", "Takeaway POS system", "Quick service restaurant POS", "Fast food billing software"],
+      "existingRanking": "Not verified",
+      "priority": "High",
+      "contentAction": "Own counter checkout and the delivery-channel start. Tables stay on the restaurant page."
+    },
+    {
+      "keyword": "AI POS software",
+      "searchIntent": "Commercial investigation",
+      "targetMarket": "UAE",
+      "primaryLandingPage": "https://axizpos.com/ai-pos",
+      "secondaryKeywords": ["AI-powered point of sale", "AI retail POS", "Smart POS software", "AI sales analytics", "AI business insights", "POS with AI assistant"],
+      "existingRanking": "Not verified",
+      "priority": "High",
+      "contentAction": "Describe only the live assistant: English or Arabic, report tools, role limits, and drafts a person must accept. Informational guides stay secondary. Arabic waits for review."
+    },
+    {
+      "keyword": "Cloud POS software",
+      "searchIntent": "Commercial investigation",
+      "targetMarket": "UAE and English",
+      "primaryLandingPage": "https://axizpos.com/blog/cloud-pos-vs-on-premise",
+      "secondaryKeywords": ["Offline POS software", "POS billing software"],
+      "existingRanking": "Not verified",
+      "priority": "Medium",
+      "contentAction": "Keep the comparison as the cloud query. The product behaviour of offline checkout stays on /offline-pos so the two intents do not share one primary."
+    },
+    {
+      "keyword": "Offline POS software",
+      "searchIntent": "Commercial investigation",
+      "targetMarket": "UAE",
+      "primaryLandingPage": "https://axizpos.com/offline-pos",
+      "secondaryKeywords": ["POS inventory management"],
+      "existingRanking": "Not verified",
+      "priority": "High",
+      "contentAction": "Keep the claim limited to the desktop register after activation. The portal still needs a connection."
+    },
+    {
+      "keyword": "Pharmacy POS software",
+      "searchIntent": "Commercial investigation",
+      "targetMarket": "UAE",
+      "primaryLandingPage": null,
+      "secondaryKeywords": ["Pharmacy billing software", "Pharmacy inventory management software", "Chemist POS system", "Pharmacy stock management software", "Medicine batch tracking software", "Pharmacy ERP software"],
+      "existingRanking": "Not verified",
+      "priority": "Planned",
+      "contentAction": "Do not publish a pharmacy landing page until product scope, compliance, licensing, and offline verification are approved. The explore card is a catalogue demonstration only, and it is not a pharmacy ERP."
+    }
+  ]
+}

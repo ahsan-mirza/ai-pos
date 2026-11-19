@@ -7,7 +7,7 @@ export const STORE_CODE_STORAGE_KEY = "ai-pos.store-code";
 export const BUSINESS_SETTINGS_STORAGE_KEY = "ai-pos.business-settings";
 
 export interface DemoBusiness {
-  code: "restaurant" | "supermarket" | "electronics" | "fashion";
+  code: "restaurant" | "supermarket" | "electronics" | "fashion" | "pharmacy";
   slug: string;
   title: string;
   short: string;
@@ -52,6 +52,15 @@ export const DEMO_BUSINESSES: readonly DemoBusiness[] = [
     cta: "Explore Fashion Demo",
     image: "/images/home-2/fashion.png",
     features: ["Size and color variants.", "Product management.", "Inventory tracking.", "Customer loyalty.", "Promotions."],
+  },
+  {
+    code: "pharmacy",
+    slug: "demo-pharmacy",
+    title: "Pharmacy",
+    short: "Pharmacy",
+    cta: "Explore Pharmacy Demo",
+    image: "/images/home-2/checkout-suite.png",
+    features: ["Medicine catalogue.", "Dispensing class.", "Manufacturer lots.", "Expiry dates.", "Loyalty and promotions."],
   },
 ];
 

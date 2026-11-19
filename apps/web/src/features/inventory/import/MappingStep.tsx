@@ -1,6 +1,8 @@
 import {
+  Capability,
   IMPORT_FIELDS,
   IMPORT_SOURCE_LABELS,
+  importFieldsFor,
   type ImportField,
   type ImportMapping,
   type ImportOptions,
@@ -12,6 +14,7 @@ import { AlertTriangle, BookmarkPlus, Check, Trash2, Wand2 } from "lucide-react"
 import { useMemo, useState } from "react";
 import { Select } from "../../../components/ui/Select";
 import { Toggle } from "../../../components/ui/Toggle";
+import { useCapability } from "../../../lib/capabilities";
 
 const UNMAPPED = "__none__";
 
@@ -48,6 +51,8 @@ export function MappingStep({
   onSaveAs: (name: string | null) => void;
   supplierName: string | null;
 }) {
+  const pharmacyLots = useCapability(Capability.PharmacyCatalog);
+  const fields = importFieldsFor(pharmacyLots);
   const [hovered, setHovered] = useState<string | null>(null);
   const columnOf = useMemo(() => {
     const byHeader = new Map<string, ImportField>();
@@ -113,7 +118,7 @@ export function MappingStep({
         </div>
 
         <ul className="divide-y divide-line overflow-hidden rounded-2xl border border-line bg-white">
-          {IMPORT_FIELDS.map((spec) => {
+          {fields.map((spec) => {
             const header = mapping[spec.field];
             const value = sample(header);
             const optional = !spec.required || (spec.field === "code" && options.auto_generate_codes);

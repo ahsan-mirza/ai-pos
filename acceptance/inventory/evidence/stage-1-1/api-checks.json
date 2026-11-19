@@ -1,0 +1,129 @@
+{
+  "results": [
+    {
+      "name": "cashier-stock-hidden",
+      "status": "passed",
+      "detail": "HTTP 403"
+    },
+    {
+      "name": "cashier-create-product",
+      "status": "passed",
+      "detail": "HTTP 403"
+    },
+    {
+      "name": "cashier-category",
+      "status": "passed",
+      "detail": "HTTP 403"
+    },
+    {
+      "name": "cashier-price-list",
+      "status": "passed",
+      "detail": "HTTP 403"
+    },
+    {
+      "name": "cashier-purchase-order",
+      "status": "passed",
+      "detail": "HTTP 403"
+    },
+    {
+      "name": "cashier-transfer",
+      "status": "passed",
+      "detail": "HTTP 403"
+    },
+    {
+      "name": "cashier-count",
+      "status": "passed",
+      "detail": "HTTP 403"
+    },
+    {
+      "name": "cashier-adjust",
+      "status": "passed",
+      "detail": "HTTP 403"
+    },
+    {
+      "name": "device-adjust",
+      "status": "passed",
+      "detail": "HTTP 403"
+    },
+    {
+      "name": "manager-stock",
+      "status": "passed",
+      "detail": "HTTP 200"
+    },
+    {
+      "name": "manager-adjust-store-a",
+      "status": "passed",
+      "detail": "HTTP 201"
+    },
+    {
+      "name": "manager-adjust-store-b",
+      "status": "passed",
+      "detail": "HTTP 403"
+    },
+    {
+      "name": "manager-price-list",
+      "status": "passed",
+      "detail": "HTTP 403"
+    },
+    {
+      "name": "manager-category-scope",
+      "status": "passed",
+      "detail": "HTTP 403"
+    },
+    {
+      "name": "admin-category",
+      "status": "passed",
+      "detail": "HTTP 201"
+    },
+    {
+      "name": "admin-brand",
+      "status": "passed",
+      "detail": "HTTP 201"
+    },
+    {
+      "name": "admin-model",
+      "status": "passed",
+      "detail": "HTTP 201"
+    },
+    {
+      "name": "admin-unit",
+      "status": "passed",
+      "detail": "HTTP 201"
+    },
+    {
+      "name": "duplicate-sku",
+      "status": "passed",
+      "detail": "HTTP 409"
+    },
+    {
+      "name": "zero-quantity",
+      "status": "passed",
+      "detail": "HTTP 422"
+    },
+    {
+      "name": "short-note",
+      "status": "passed",
+      "detail": "HTTP 422"
+    },
+    {
+      "name": "pharmacy-receive",
+      "status": "passed",
+      "detail": "HTTP 201"
+    },
+    {
+      "name": "pharmacy-lot-controlled",
+      "status": "passed",
+      "detail": "True"
+    },
+    {
+      "name": "pharmacy-unreleased-sale",
+      "status": "passed",
+      "detail": "HTTP 422 {\"error\": {\"code\": \"sync_rejected\", \"message\": \"Acceptance Medicine is not released for sale.\", \"api\": \"POST /api/v1/sync/push\", \"details\": {\"idempotency_key\": \"073569d1-d9c8-4f3c-8c75-67df9ea0755f\", \"reason\": \"lot_unreleased\"}}, \"request_id\": \"14df8b9746c44016a9269d24ac3a4c23\"}"
+    },
+    {
+      "name": "pharmacy-release-without-pharmacist",
+      "status": "passed",
+      "detail": "HTTP 403"
+    }
+  ]
+}

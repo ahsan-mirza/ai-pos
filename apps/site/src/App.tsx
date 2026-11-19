@@ -1,26 +1,18 @@
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { EMPTY_CATALOG, loadCatalog, type PublicCatalog } from "./catalog";
-import { Benefits } from "./components/Benefits";
-import { Faq } from "./components/Faq";
-import { Features } from "./components/Features";
 import { Footer } from "./components/Footer";
-import { Hero } from "./components/Hero";
-import { HowItWorks } from "./components/HowItWorks";
-import { Industries } from "./components/Industries";
-import { Modules } from "./components/Modules";
-import { Intelligence } from "./components/Intelligence";
 import { SiteHeader } from "./home2/SiteHeader";
 import "./home2/home2.css";
-import { HardwareShelf } from "./components/HardwareShelf";
-import { Pricing } from "./components/Pricing";
-import { Showcase } from "./components/Showcase";
 import { WhatsAppButton } from "./components/WhatsAppButton";
 import { apiBaseUrl } from "./env";
-import { GetStartedSection } from "./components/GetStartedSection";
-import { QuoteDialog } from "./components/QuoteDialog";
-import { HardwarePage } from "./hardware/HardwarePage";
-import { ExplorePage } from "./pages/ExplorePage";
 import { IndustryPage } from "./pages/IndustryPage";
+
+const MarketingHome = lazy(() => import("./components/MarketingHome").then((mod) => ({ default: mod.MarketingHome })));
+const HardwarePage = lazy(() => import("./hardware/HardwarePage").then((mod) => ({ default: mod.HardwarePage })));
+const ExplorePage = lazy(() => import("./pages/ExplorePage").then((mod) => ({ default: mod.ExplorePage })));
+const BlogIndex = lazy(() => import("./blog/BlogIndex").then((mod) => ({ default: mod.BlogIndex })));
+const BlogPost = lazy(() => import("./blog/BlogPost").then((mod) => ({ default: mod.BlogPost })));
+const QuoteDialog = lazy(() => import("./components/QuoteDialog").then((mod) => ({ default: mod.QuoteDialog })));
 import { seoPage } from "./seo";
 import { track } from "./track";
 import { EMPTY_WHATSAPP, parsePublicWhatsApp, type PublicWhatsApp } from "./whatsapp";
@@ -86,56 +78,43 @@ export function App() {
         }}
       />
       <main id="content">
-        {industry?.id === "hardware" ? (
-          <HardwarePage contact={contact} />
-        ) : industry?.id === "explore" ? (
-          <ExplorePage />
-        ) : industry && industry.id !== "home" ? (
-          <IndustryPage
-            page={industry}
-            catalog={catalog}
-            onContact={(note) => setQuoteDraft(note)}
-          />
-        ) : (
-          <>
-        <Hero />
-        <Intelligence />
-        <Industries />
-        <Modules catalog={catalog} />
-        <Features />
-        <HowItWorks />
-        <Showcase />
-        <Benefits />
-        <Pricing
-          catalog={catalog}
-          status={catalogStatus}
-          onQuote={(note) => {
-            setQuoteDraft(note);
-            document.getElementById("contact")?.scrollIntoView({ behavior: "smooth" });
-          }}
-        />
-        <HardwareShelf
-          items={catalog.hardware}
-          live={live}
-          onEnquire={(note) => {
-            setQuoteDraft(note);
-            document.getElementById("contact")?.scrollIntoView({ behavior: "smooth" });
-          }}
-        />
-        <Faq />
-        <GetStartedSection />
-          </>
-        )}
+        <Suspense fallback={null}>
+          {industry?.id === "hardware" ? (
+            <HardwarePage contact={contact} />
+          ) : industry?.id === "explore" ? (
+            <ExplorePage />
+          ) : industry?.kind === "blog" ? (
+            <BlogIndex page={industry} />
+          ) : industry?.kind === "article" ? (
+            <BlogPost page={industry} onContact={(note) => setQuoteDraft(note)} />
+          ) : industry && industry.id !== "home" ? (
+            <IndustryPage
+              page={industry}
+              catalog={catalog}
+              contact={contact}
+              onContact={(note) => setQuoteDraft(note)}
+            />
+          ) : (
+            <MarketingHome
+              catalog={catalog}
+              live={live}
+              catalogStatus={catalogStatus}
+              onQuote={(note) => setQuoteDraft(note)}
+            />
+          )}
+        </Suspense>
       </main>
       <Footer contact={contact} />
       <WhatsAppButton contact={contact} />
       {quoteDraft ? (
-        <QuoteDialog
-          contact={contact}
-          contactStatus={contactStatus}
-          draft={quoteDraft}
-          onClose={() => setQuoteDraft(null)}
-        />
+        <Suspense fallback={null}>
+          <QuoteDialog
+            contact={contact}
+            contactStatus={contactStatus}
+            draft={quoteDraft}
+            onClose={() => setQuoteDraft(null)}
+          />
+        </Suspense>
       ) : null}
     </div>
   );

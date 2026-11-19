@@ -1,0 +1,60 @@
+Stage 3E.6.1 sanitized observations. No tokens, PINs, activation keys, or personal data.
+
+API environment: http://127.0.0.1:18080
+Application identity: com.axizpos.pharmacy.acceptance
+Window title: AxizPOS Pharmacy Acceptance
+Database role: ai_pos_app (NOSUPERUSER, NOBYPASSRLS)
+Operational database: 127.0.0.1:55432/axizpos_pharmacy_acceptance
+development_match=no production_match=no persistent_database_match=no
+
+Pharmacy snapshot
+- cache key: ai-pos.register-capabilities.v1:http://127.0.0.1:18080:pharmacy-accept
+- tenant: pharmacy-accept
+- profile: pharmacy
+- entitlement revision: 4
+- capabilities: loyalty, promotions, fefo, card_terminals, pharmacy_catalog
+- fetched_at: 2026-11-19T13:37:08.364Z
+- local business_settings matches the same tenant, profile, revision, and capabilities
+
+Grocery snapshot after unlock and settings sync, same webview
+- cache key: ai-pos.register-capabilities.v1:http://127.0.0.1:18080:accept-grocery
+- tenant: accept-grocery
+- profile: grocery
+- entitlement revision: 3
+- capabilities: loyalty, promotions, weighed_items, fefo
+- pharmacy_catalog: absent
+- fetched_at: 2026-11-19T13:39:26.274Z
+- local business_settings matches the same tenant, profile, revision, and capabilities
+- grocery unlock listed only Acceptance Admin and Grocery Cashier
+- sell screen footer: Acceptance Grocery · Grocery
+- catalogue tabs: All products, Produce
+- legacy unscoped key present: no
+
+Both scoped snapshots were still present after the acceptance register restarted.
+The grocery screen after restart still showed the grocery profile and the tin quantity refreshed to 7.
+
+Pharmacy invoices
+- ACCEPT-ACC2-000001 completed, cash 1575, SALE_OUT quantity 1
+- blocked offline charge left the local INV series at next_value 2
+- ACCEPT-ACC2-000002 completed, cash 1575, SALE_OUT quantity 1
+- lot ACCEPT-TILL-LOT RELEASED expiry 2027-06-01 remaining 4 of 6
+- inventory quantity_on_hand for ACCEPT-TILL: 4
+- local pharmacy INV next_value after the second sale: 3
+- pharmacy queue: two sale upserts, both synced; no job from the blocked attempt
+
+Grocery offline sale
+- invoice GROCERY-GROC1-000001
+- local INV next_value: 2
+- queue before sync: one pending sale upsert and one pending store upsert
+- one POST /api/v1/sync/push returned 200
+- queue after sync: sale and store synced
+- server sale completed, cash 525, SALE_OUT quantity 1
+- GROC-TILL quantity_on_hand: 7 of 8
+- after register restart: no second sync/push and still one grocery sale
+- grocery FEFO layers were not sold: expiry 2026-12-15 remaining 3, expiry 2027-08-01 remaining 5
+
+Header
+- Before the correction, a cached settings snapshot set the API-reachable flag, so an offline session with a red API indicator was labeled "Connection restored · Re-authenticate".
+- After the API was actually restored, and before PIN re-authentication, that same label was the correct offline-session state. Cached PIN unlock did not become an online session.
+- The register now treats only a settings response whose source is "api" as reachable.
+- Rebuilt acceptance register, API stopped: header read "Offline · Queue clear" while the catalogue said it could not refresh. Grocery profile, Grocery Cashier, and the tin quantity of 7 remained. Evidence: grocery-offline-queue-clear.png.

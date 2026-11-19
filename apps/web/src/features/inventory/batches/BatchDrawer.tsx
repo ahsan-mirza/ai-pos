@@ -31,6 +31,7 @@ import { useAuth } from "../../../lib/auth";
 import { labelsApi, message } from "../api";
 import { batchesApi, centsInput, parseCents } from "../import/api";
 import { BatchStatusBadge, SoldMeter, formatDay, formatTime } from "./BatchParts";
+import { LotLifecycleActions } from "./LotLifecycleActions";
 import { RollbackModal } from "./RollbackModal";
 
 interface Draft {
@@ -270,6 +271,9 @@ export function BatchDrawer({
               <h2 id={titleId} className="mt-2 truncate font-mono text-[17px] font-semibold tracking-tight">
                 {batch?.batch_number ?? "Loading batch…"}
               </h2>
+              {batch?.items.some((item) => item.manufacturer_lot) ? (
+                <p className="mt-0.5 text-[12px] text-charcoal/55">Receipt reference {batch.batch_number}</p>
+              ) : null}
               {batch ? (
                 <p className="mt-0.5 text-[13px] text-charcoal/55">
                   {batch.store_code} · {batch.store_name}
@@ -403,6 +407,19 @@ export function BatchDrawer({
                             <td className="py-2.5 pl-5 pr-2">
                               <span className="block truncate font-medium">{item.product_name}</span>
                               <span className="block font-mono text-[11px] text-charcoal/45">{item.sku}</span>
+                              {item.manufacturer_lot ? (
+                                <span className="mt-0.5 block text-[11px] text-charcoal/55">
+                                  Manufacturer lot {item.manufacturer_lot}
+                                  {item.lot_status ? ` · ${item.lot_status.replace(/_/g, " ").toLowerCase()}` : ""}
+                                </span>
+                              ) : null}
+                              <LotLifecycleActions
+                                item={item}
+                                onDone={() => {
+                                  void load();
+                                  onChanged();
+                                }}
+                              />
                               {item.is_serialized ? (
                                 <span className="mt-1 flex flex-wrap items-center gap-1 text-[11px] text-charcoal/55">
                                   <Smartphone size={11} aria-hidden="true" />

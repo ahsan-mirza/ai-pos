@@ -122,8 +122,35 @@ class BatchItem(TenantScoped, Base):
         CheckConstraint("quantity_remaining <= quantity_imported", name="remaining_within_imported"),
         CheckConstraint("purchase_cost_per_unit >= 0", name="cost_nonnegative"),
         CheckConstraint("selling_price_per_unit >= 0", name="price_nonnegative"),
+        CheckConstraint(
+            "manufacturer_lot IS NULL OR (length(manufacturer_lot) >= 1 AND length(manufacturer_lot) <= 64)",
+            name="ck_batch_items_manufacturer_lot_length",
+        ),
+        CheckConstraint(
+            "manufactured_on IS NULL OR expiry_date IS NULL OR manufactured_on <= expiry_date",
+            name="ck_batch_items_manufactured_before_expiry",
+        ),
+        CheckConstraint(
+            "lot_status IS NULL OR lot_status IN "
+            "('RELEASED', 'UNRELEASED', 'QUARANTINED', 'RECALLED', 'DAMAGED', 'SUPPLIER_RETURN')",
+            name="ck_batch_items_lot_status",
+        ),
+        CheckConstraint(
+            "lot_status IS NULL OR lot_status <> 'RECALLED' OR recall_id IS NOT NULL",
+            name="ck_batch_items_recall_id",
+        ),
         # FIFO picks the oldest open batch item for a product at a branch.
         Index("ix_batch_items_fifo", "product_id", "store_id", "quantity_remaining", "created_at"),
+        Index("ix_batch_items_manufacturer_lot", "tenant_id", "product_id", "manufacturer_lot"),
+        Index(
+            "ix_batch_items_lot_draw",
+            "tenant_id",
+            "product_id",
+            "store_id",
+            "lot_status",
+            "expiry_date",
+            "quantity_remaining",
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -138,6 +165,28 @@ class BatchItem(TenantScoped, Base):
     purchase_cost_per_unit: Mapped[int] = mapped_column(Integer)
     selling_price_per_unit: Mapped[int] = mapped_column(Integer)
     expiry_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    # Null on grocery and every row that existed before pharmacy lots. Not a copy of batch_number.
+    manufacturer_lot: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    manufactured_on: Mapped[date | None] = mapped_column(Date, nullable=True)
+    lot_status: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    quarantine_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    recall_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("pharmacy_recalls.id", ondelete="RESTRICT", name="fk_batch_items_recall_id_pharmacy_recalls"),
+        nullable=True,
+    )
+    recall_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    released_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    released_by_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("users.id", ondelete="SET NULL", name="fk_batch_items_released_by_id_users"),
+        nullable=True,
+    )
+    source_batch_item_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("batch_items.id", ondelete="SET NULL", name="fk_batch_items_source_batch_item_id_batch_items"),
+        nullable=True,
+    )
     # Serial-number ids registered by this line. Values stay encrypted on serial_numbers.
     imported_serials: Mapped[list[str]] = mapped_column(JSON, default=list)
     source_row: Mapped[int | None] = mapped_column(Integer, nullable=True)

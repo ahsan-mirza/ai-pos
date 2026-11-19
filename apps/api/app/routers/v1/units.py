@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, Response
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.core.deps import Principal, authorize
+from app.core.deps import REGISTER_SCOPES, Principal, authorize
 from app.core.permissions import Permission
 from app.schemas.uom import UnitCreate, UnitOut, UnitUpdate
 from app.services import uom_service
@@ -13,7 +13,7 @@ from app.services import uom_service
 router = APIRouter()
 Db = Annotated[Session, Depends(get_db)]
 CanRead = Annotated[Principal, Depends(authorize(allow_device=True, scopes=("pos", "portal")))]
-CanManage = Annotated[Principal, Depends(authorize(Permission.PORTAL_INVENTORY_MANAGE))]
+CanManage = Annotated[Principal, Depends(authorize(Permission.PORTAL_INVENTORY_MANAGE, scopes=REGISTER_SCOPES))]
 
 
 @router.get("", response_model=list[UnitOut])

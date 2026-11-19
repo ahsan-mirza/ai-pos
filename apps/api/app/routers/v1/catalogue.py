@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, File, Form, Response, UploadFile
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.core.deps import Principal, authorize
+from app.core.deps import REGISTER_SCOPES, Principal, authorize
 from app.core.permissions import Permission
 from app.schemas.catalogue import CatalogAttributesOut, ProductImageOut, ProductImageUpdate
 from app.services import fashion_attributes, product_image_service
@@ -15,7 +15,9 @@ from app.services import fashion_attributes, product_image_service
 router = APIRouter()
 Db = Annotated[Session, Depends(get_db)]
 CanRead = Annotated[Principal, Depends(authorize(Permission.POS_ACCESS, allow_device=True, scopes=("pos", "portal")))]
-CanManage = Annotated[Principal, Depends(authorize(Permission.PORTAL_INVENTORY_MANAGE))]
+CanManage = Annotated[
+    Principal, Depends(authorize(Permission.PORTAL_INVENTORY_MANAGE, scopes=REGISTER_SCOPES))
+]
 Photo = Annotated[UploadFile, File()]
 AttributeKey = Annotated[str | None, Form(max_length=32)]
 AttributeValue = Annotated[str | None, Form(max_length=64)]

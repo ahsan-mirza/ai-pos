@@ -1,4 +1,4 @@
-from wholesale_support import CABLE, PHONE, admin, device, event, line, push, sale, seed
+from wholesale_support import CABLE, PHONE, admin, device, event, line, push, recent_occurred_at, sale, seed
 
 
 def create_case(client, headers: dict[str, str], **overrides) -> dict:
@@ -50,15 +50,45 @@ def test_products_sell_in_custom_packs_and_carry_their_factors(client) -> None:
     ]
 
     body = sale([line(CABLE, 48, 1000, unit_type="CASE_24")])
-    assert push(client, [event("uom-two-cases", "sale", body)]).status_code == 200
+    assert push(client, [event("uom-two-cases", "sale", body, occurred_at=recent_occurred_at())]).status_code == 200
     stored = client.get(f"/api/v1/sales/{body['id']}", headers=device()).json()
     assert stored["items"][0]["unit_type"] == "CASE_24" and stored["items"][0]["quantity"] == 48
 
-    broken = push(client, [event("uom-part-case", "sale", sale([line(CABLE, 30, 1000, unit_type="CASE_24")]))])
+    broken = push(
+        client,
+        [
+            event(
+                "uom-part-case",
+                "sale",
+                sale([line(CABLE, 30, 1000, unit_type="CASE_24")]),
+                occurred_at=recent_occurred_at(),
+            )
+        ],
+    )
     assert broken.status_code == 422 and "whole number of Case of 24" in broken.json()["error"]["message"]
-    unknown = push(client, [event("uom-unknown", "sale", sale([line(CABLE, 12, 1000, unit_type="DOZEN")]))])
+    unknown = push(
+        client,
+        [
+            event(
+                "uom-unknown",
+                "sale",
+                sale([line(CABLE, 12, 1000, unit_type="DOZEN")]),
+                occurred_at=recent_occurred_at(),
+            )
+        ],
+    )
     assert unknown.status_code == 422
-    not_listed = push(client, [event("uom-box-10", "sale", sale([line(CABLE, 10, 1000, unit_type="BOX_10")]))])
+    not_listed = push(
+        client,
+        [
+            event(
+                "uom-box-10",
+                "sale",
+                sale([line(CABLE, 10, 1000, unit_type="BOX_10")]),
+                occurred_at=recent_occurred_at(),
+            )
+        ],
+    )
     assert not_listed.status_code == 422 and "box of 10" in not_listed.json()["error"]["message"]
 
 
@@ -77,7 +107,7 @@ def test_pack_rules_for_serialized_unknown_and_retired_units(client) -> None:
     assert client.delete(f"/api/v1/units/{case['id']}", headers=headers).status_code == 409
 
     one_case = sale([line(CABLE, 24, 1000, unit_type="CASE_24")])
-    assert push(client, [event("uom-sold-case", "sale", one_case)]).status_code == 200
+    assert push(client, [event("uom-sold-case", "sale", one_case, occurred_at=recent_occurred_at())]).status_code == 200
     sell_cable_in(client, headers, ["PIECE"])
     sold_before = client.delete(f"/api/v1/units/{case['id']}", headers=headers)
     assert sold_before.status_code == 409 and "switch it off" in sold_before.json()["error"]["message"]

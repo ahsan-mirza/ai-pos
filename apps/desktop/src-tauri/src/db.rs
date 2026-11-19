@@ -772,6 +772,86 @@ impl Db {
             .map_err(|err| err.to_string())?;
         Ok(())
     }
+
+    pub fn read_catalogue_preference(
+        &self,
+        tenant_id: &str,
+        user_id: &str,
+    ) -> Result<Option<StoredPreference>, String> {
+        preference_scope(tenant_id, user_id)?;
+        let conn = self.lock()?;
+        let result = conn.query_row(
+            "SELECT preference_value, updated_at, revision, dirty
+             FROM user_preferences
+             WHERE tenant_id = ?1 AND user_id = ?2 AND preference_key = 'product_catalogue_view'",
+            params![tenant_id, user_id],
+            |row| {
+                Ok(StoredPreference {
+                    value: row.get(0)?,
+                    updated_at: row.get(1)?,
+                    revision: row.get(2)?,
+                    dirty: row.get::<_, i64>(3)? != 0,
+                })
+            },
+        );
+        match result {
+            Ok(row) => Ok(Some(row)),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(err) => Err(err.to_string()),
+        }
+    }
+
+    pub fn write_catalogue_preference(
+        &self,
+        tenant_id: &str,
+        user_id: &str,
+        value: &str,
+        updated_at: &str,
+        revision: i64,
+        dirty: bool,
+    ) -> Result<StoredPreference, String> {
+        preference_scope(tenant_id, user_id)?;
+        if !matches!(value, "grid" | "list" | "compact") {
+            return Err("Choose grid, list, or compact.".into());
+        }
+        let conn = self.lock()?;
+        conn.execute(
+            "INSERT INTO user_preferences
+                (tenant_id, user_id, preference_key, preference_value, updated_at, revision, dirty)
+             VALUES (?1, ?2, 'product_catalogue_view', ?3, ?4, ?5, ?6)
+             ON CONFLICT(tenant_id, user_id, preference_key) DO UPDATE SET
+                preference_value = excluded.preference_value,
+                updated_at = excluded.updated_at,
+                revision = excluded.revision,
+                dirty = excluded.dirty",
+            params![tenant_id, user_id, value, updated_at, revision, if dirty { 1 } else { 0 }],
+        )
+        .map_err(|err| err.to_string())?;
+        Ok(StoredPreference {
+            value: value.to_string(),
+            updated_at: updated_at.to_string(),
+            revision,
+            dirty,
+        })
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct StoredPreference {
+    pub value: String,
+    pub updated_at: String,
+    pub revision: i64,
+    pub dirty: bool,
+}
+
+fn preference_scope(tenant_id: &str, user_id: &str) -> Result<(), String> {
+    if tenant_id.trim().is_empty() || user_id.trim().is_empty() {
+        return Err("A catalogue preference needs a store and a cashier.".into());
+    }
+    if tenant_id.chars().any(|c| c.is_control()) || user_id.chars().any(|c| c.is_control()) {
+        return Err("A catalogue preference needs a store and a cashier.".into());
+    }
+    Ok(())
 }
 
 fn migrate(conn: &Connection) -> Result<(), String> {
@@ -894,6 +974,16 @@ fn migrate(conn: &Connection) -> Result<(), String> {
             user_json TEXT NOT NULL,
             mode TEXT NOT NULL,
             unlocked_at INTEGER NOT NULL
+         );
+         CREATE TABLE IF NOT EXISTS user_preferences (
+            tenant_id TEXT NOT NULL,
+            user_id TEXT NOT NULL,
+            preference_key TEXT NOT NULL,
+            preference_value TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            revision INTEGER NOT NULL,
+            dirty INTEGER NOT NULL DEFAULT 0,
+            PRIMARY KEY (tenant_id, user_id, preference_key)
          );",
     )
     .map_err(|err| err.to_string())
@@ -1078,4 +1168,38 @@ fn read_product(row: &rusqlite::Row<'_>) -> rusqlite::Result<ProductRow> {
         is_active: row.get::<_, i64>(36)? != 0,
         price_includes_tax: row.get::<_, i64>(37)? != 0,
     })
+}
+
+#[cfg(test)]
+mod preference_tests {
+    use super::Db;
+
+    #[test]
+    fn cashiers_and_tenants_keep_separate_catalogue_views() {
+        let path = std::env::temp_dir().join(format!("axiz-pref-{}-{}.db", std::process::id(), line!()));
+        let _ = std::fs::remove_file(&path);
+        let db = Db::open(&path).expect("database");
+        assert!(db.read_catalogue_preference("tenant-a", "user-a").unwrap().is_none());
+        db.write_catalogue_preference("tenant-a", "user-a", "grid", "2026-11-19T10:00:00Z", 1, false)
+            .unwrap();
+        db.write_catalogue_preference("tenant-a", "user-b", "list", "2026-11-19T10:05:00Z", 2, true)
+            .unwrap();
+        db.write_catalogue_preference("tenant-b", "user-a", "compact", "2026-11-19T10:06:00Z", 1, false)
+            .unwrap();
+        let cashier_a = db.read_catalogue_preference("tenant-a", "user-a").unwrap().unwrap();
+        let cashier_b = db.read_catalogue_preference("tenant-a", "user-b").unwrap().unwrap();
+        let other_tenant = db.read_catalogue_preference("tenant-b", "user-a").unwrap().unwrap();
+        assert_eq!(cashier_a.value, "grid");
+        assert!(!cashier_a.dirty);
+        assert_eq!(cashier_b.value, "list");
+        assert!(cashier_b.dirty);
+        assert_eq!(other_tenant.value, "compact");
+        assert!(db
+            .write_catalogue_preference("tenant-a", "user-a", "tiles", "2026-11-19T10:07:00Z", 3, true)
+            .is_err());
+        assert!(db
+            .write_catalogue_preference("", "user-a", "grid", "2026-11-19T10:07:00Z", 1, false)
+            .is_err());
+        let _ = std::fs::remove_file(&path);
+    }
 }

@@ -40,6 +40,10 @@ export default defineConfig({
     ],
     dedupe: ["react", "react-dom", "lucide-react"],
   },
+  test: {
+    // sidebarSections.test.ts is a Node test runner file. Vitest has no suite there.
+    exclude: ["**/node_modules/**", "**/dist/**", "src/components/layout/sidebarSections.test.ts"],
+  },
   server: {
     port: 5173,
     strictPort: true,

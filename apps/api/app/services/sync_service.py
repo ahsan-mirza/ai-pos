@@ -470,12 +470,10 @@ def push_batch(
         db.commit()
     except SyncRejected as exc:
         db.rollback()
-        raise ApiError(
-            422,
-            "sync_rejected",
-            exc.message,
-            details={"idempotency_key": event.idempotency_key},
-        ) from exc
+        details: dict[str, object] = {"idempotency_key": event.idempotency_key}
+        if exc.code:
+            details["reason"] = exc.code
+        raise ApiError(422, "sync_rejected", exc.message, details=details) from exc
     except ApiError:
         db.rollback()
         raise

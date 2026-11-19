@@ -1,0 +1,18 @@
+{
+  "api": "http://127.0.0.1:18080",
+  "health_after_restart": 200,
+  "requests_observed_on_restart": [
+    "GET /health",
+    "GET /api/v1/products/revision",
+    "GET /api/v1/settings",
+    "GET /api/v1/settings/receipt",
+    "POST /api/v1/audit-logs/sync"
+  ],
+  "sale_post_observed": false,
+  "pending_sync_jobs_after_reconnect": 0,
+  "queued_sales": ["ACCEPT-ACC2-000001"],
+  "queued_sale_status": "synced",
+  "till_stock_quantity": 5,
+  "register_session_mode_after_reconnect": "offline",
+  "note": "The blocked pharmacy cart was not uploaded. The register session stayed offline until a new online unlock. A second online checkout was not completed in the register."
+}

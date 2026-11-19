@@ -1,4 +1,7 @@
+import { cleanCode } from "@ai-pos/shared-types";
 import { useState } from "react";
+
+export { cleanCode };
 
 /** "Computers & Laptops" -> "COMPUTERS-LAPTOPS". Matches the API's code rule: letters, digits and dashes. */
 export function codeFromName(name: string, maxLength = 32): string {
@@ -11,17 +14,6 @@ export function codeFromName(name: string, maxLength = 32): string {
     .replace(/^-|-$/g, "")
     .slice(0, maxLength)
     .replace(/-$/, "");
-}
-
-/** Sanitises a code as it is typed, keeping a trailing dash so the user can keep typing. */
-export function cleanCode(value: string, maxLength = 32): string {
-  return value
-    .toUpperCase()
-    .replace(/[^A-Z0-9\s-]/g, "")
-    .replace(/\s+/g, "-")
-    .replace(/-+/g, "-")
-    .replace(/^-/, "")
-    .slice(0, maxLength);
 }
 
 /**

@@ -1,14 +1,32 @@
+import { fileURLToPath } from "node:url";
+
 import react from "@vitejs/plugin-react";
 import { defineConfig, loadEnv } from "vite";
 
-const envDir = "../../";
+const acceptanceDir = fileURLToPath(new URL("./config/acceptance", import.meta.url));
+const inventoryAcceptanceDir = fileURLToPath(new URL("./config/inventory-acceptance", import.meta.url));
 
 export default defineConfig(({ mode }) => {
+  const inventoryAcceptance = mode === "inventory-acceptance";
+  const acceptance = mode === "acceptance" || inventoryAcceptance;
+  const envDir = inventoryAcceptance ? inventoryAcceptanceDir : acceptance ? acceptanceDir : "../../";
+  const acceptanceApi = inventoryAcceptance ? "http://127.0.0.1:18081" : "http://127.0.0.1:18080";
   const current = loadEnv(mode, envDir, "VITE_");
-  const production = mode === "production" ? current : loadEnv("production", envDir, "VITE_");
+  const production = acceptance || mode === "production" ? current : loadEnv("production", envDir, "VITE_");
   // A local .env often has no store host, so the activation screen fell back to axizpos.com.
   // Use the production file's host (the VM IP) unless this mode sets its own.
-  const tenantDomain = current.VITE_TENANT_BASE_DOMAIN || production.VITE_TENANT_BASE_DOMAIN;
+  // The acceptance mode reads only apps/desktop/config/acceptance and does not use that fallback.
+  const tenantDomain = acceptance
+    ? current.VITE_TENANT_BASE_DOMAIN
+    : current.VITE_TENANT_BASE_DOMAIN || production.VITE_TENANT_BASE_DOMAIN;
+  if (acceptance) {
+    if (current.VITE_API_BASE_URL !== acceptanceApi) {
+      throw new Error(`Acceptance frontend must use ${acceptanceApi} and no other API.`);
+    }
+    if (!tenantDomain || tenantDomain.includes("axizpos.com") || tenantDomain.includes("130.210.53.214")) {
+      throw new Error("Acceptance frontend must not use a production or developer tenant host.");
+    }
+  }
   return {
     envDir,
     plugins: [react()],

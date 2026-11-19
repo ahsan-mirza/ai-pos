@@ -8,10 +8,12 @@ from sqlalchemy.orm import Session
 from app.core.config import Settings, get_settings
 from app.core.database import get_db
 from app.core.deps import Principal, authorize
+from app.core.errors import ApiError
 from app.core.permissions import Permission
 from app.models.user import User
 from app.schemas.auth import PasswordReset, PinReset, RegisterStaffOut, UserCreate, UserOut, UserUpdate
-from app.services import rbac_service
+from app.schemas.user_preference import CatalogueViewOut, CatalogueViewWrite
+from app.services import rbac_service, user_preference_service
 
 router = APIRouter()
 
@@ -22,7 +24,16 @@ CanRead = Annotated[Principal, Depends(authorize(Permission.USERS_READ))]
 CanCreate = Annotated[Principal, Depends(authorize(Permission.USERS_CREATE))]
 CanUpdate = Annotated[Principal, Depends(authorize(Permission.USERS_UPDATE))]
 CanDelete = Annotated[Principal, Depends(authorize(Permission.USERS_DELETE))]
+OwnCatalogue = Annotated[
+    Principal, Depends(authorize(Permission.POS_ACCESS, scopes=("pos", "portal")))
+]
 Db = Annotated[Session, Depends(get_db)]
+
+
+def _signed_in(principal: Principal) -> User:
+    if principal.user is None:
+        raise ApiError(403, "forbidden", "This action requires a signed-in user.")
+    return principal.user
 
 
 @router.get("", response_model=list[UserOut])
@@ -50,6 +61,23 @@ def register_staff(db: Db, principal: AtRegister, store_id: uuid.UUID | None = N
         for user in sorted(rows, key=lambda row: row.full_name.lower())
         if Permission.POS_ACCESS.value in user.permissions and (user.store_id is None or user.store_id == branch)
     ]
+
+
+@router.get("/me/preferences", response_model=CatalogueViewOut)
+def read_my_catalogue_view(db: Db, actor: OwnCatalogue) -> CatalogueViewOut:
+    """The signed-in cashier's catalogue view. A missing choice is grid."""
+    return user_preference_service.read_catalogue_view(db, _signed_in(actor))
+
+
+@router.put("/me/preferences/product-catalogue-view", response_model=CatalogueViewOut)
+def save_my_catalogue_view(payload: CatalogueViewWrite, db: Db, actor: OwnCatalogue) -> CatalogueViewOut:
+    """Save this cashier's view. The user id is the token subject, never a request field."""
+    return user_preference_service.save_catalogue_view(
+        db,
+        _signed_in(actor),
+        payload.product_catalogue_view,
+        payload.updated_at,
+    )
 
 
 @router.get("/{user_id}", response_model=UserOut)

@@ -7,6 +7,8 @@
     "dev": "vite --port 1420 --strictPort",
     "build": "tsc -p tsconfig.json --noEmit && vite build --mode production",
     "build:dev": "tsc -p tsconfig.json --noEmit && vite build --mode dev",
+    "build:acceptance": "tsc -p tsconfig.json --noEmit && vite build --mode acceptance",
+    "build:inventory-acceptance": "tsc -p tsconfig.json --noEmit && vite build --mode inventory-acceptance",
     "lint": "tsc -p tsconfig.json --noEmit && eslint src",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",

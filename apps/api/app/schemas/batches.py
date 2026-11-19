@@ -4,7 +4,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-ImportSource = Literal["EXCEL", "CSV", "PDF_INVOICE", "MANUAL"]
+ImportSource = Literal["EXCEL", "CSV", "PDF_INVOICE", "MANUAL", "TRANSFER"]
 BatchStatus = Literal["ACTIVE", "PARTIALLY_SOLD", "EXHAUSTED", "REVERSED"]
 ImportField = Literal[
     "name",
@@ -17,6 +17,8 @@ ImportField = Literal[
     "sub_category",
     "serials",
     "expiry_date",
+    "manufacturer_lot",
+    "manufactured_on",
 ]
 REQUIRED_FIELDS: tuple[ImportField, ...] = ("name", "code", "quantity", "cost", "price")
 RowStatus = Literal["NEW", "EXISTING", "ERROR"]
@@ -115,8 +117,15 @@ class ImportRow(ApiModel):
     sub_category: str = Field(default="", max_length=80)
     serials: list[str] = Field(default_factory=list, max_length=5000)
     expiry_date: date | None = None
+    manufacturer_lot: str = Field(default="", max_length=64)
+    manufactured_on: date | None = None
     # Attribute key -> cell text. Omitted keys are not required.
     attributes: dict[str, str] = Field(default_factory=dict)
+
+    @field_validator("manufacturer_lot")
+    @classmethod
+    def trim_lot(cls, value: str) -> str:
+        return value.strip()
 
 
 class PreviewRequest(ApiModel):
@@ -234,6 +243,11 @@ class BatchItemOut(ApiModel):
     selling_price_per_unit: int
     master_price_cents: int
     expiry_date: date | None
+    manufacturer_lot: str | None = None
+    manufactured_on: date | None = None
+    lot_status: str | None = None
+    released_at: datetime | None = None
+    released_by_name: str | None = None
     serial_count: int
     serials_last4: list[str]
     revenue_cents: int

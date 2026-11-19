@@ -74,6 +74,8 @@ class Permission(StrEnum):
     DELIVERY_MANAGE = "delivery:manage"
     PHARMACY_CONFIGURE = "pharmacy:configure"
     PHARMACY_CATALOGUE = "pharmacy:catalogue"
+    # Lets the holder appoint another user to release lots. Holding it is not itself a release authority.
+    PHARMACY_AUTHORIZE_PHARMACIST = "pharmacy:authorize_pharmacist"
 
 
 # Granted to Store Managers by migration 20261019_0012.
@@ -132,6 +134,9 @@ RETAIL_MANAGER_PERMISSIONS = ("gift_cards:manage", "tax_free:manage", "online_or
 
 
 ALL_PERMISSIONS: frozenset[str] = frozenset(item.value for item in Permission)
+# Appointment authority is not an ordinary permission. Super Admin sync must not grant or restore it.
+GOVERNED_PERMISSIONS: frozenset[str] = frozenset({Permission.PHARMACY_AUTHORIZE_PHARMACIST.value})
+SUPER_ADMIN_PERMISSIONS: frozenset[str] = ALL_PERMISSIONS - GOVERNED_PERMISSIONS
 
 PERMISSION_GROUPS: dict[str, list[tuple[Permission, str]]] = {
     "Users": [
@@ -215,6 +220,10 @@ PERMISSION_GROUPS: dict[str, list[tuple[Permission, str]]] = {
     "Pharmacy": [
         (Permission.PHARMACY_CONFIGURE, "Pharmacy settings and category activation"),
         (Permission.PHARMACY_CATALOGUE, "Medicine master, ingredients, and product documents"),
+        (
+            Permission.PHARMACY_AUTHORIZE_PHARMACIST,
+            "Not assigned on a role and not included in Super Admin. A governed officer record appoints pharmacists. This is not a licence check.",
+        ),
     ],
 }
 
@@ -229,7 +238,7 @@ SYSTEM_ROLES: list[dict[str, object]] = [
         "id": SUPER_ADMIN_ROLE_ID,
         "name": "Super Admin",
         "description": "Unrestricted access across every store.",
-        "permissions": sorted(ALL_PERMISSIONS),
+        "permissions": sorted(SUPER_ADMIN_PERMISSIONS),
         "max_discount_bps": 10_000,
     },
     {

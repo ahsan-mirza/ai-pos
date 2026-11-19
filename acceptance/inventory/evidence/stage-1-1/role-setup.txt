@@ -1,0 +1,1 @@
+UPDATE tenants failed because the column name was wrong. The database URL was removed from this file.

@@ -37,6 +37,8 @@ import {
   type LocalReturn,
 } from "../../lib/tauri";
 import type { CashierSession } from "../auth/session";
+import { businessApiReachable } from "../checkout/currency";
+import { registerHeaderStatus } from "../checkout/registerStatus";
 import { printReceipt } from "../printing/print";
 import type { ReceiptDoc } from "@ai-pos/receipt";
 import { creditNoteReceipt, giftReceiptFromLookup } from "../printing/saleReceipt";
@@ -45,7 +47,7 @@ import { BarcodeWedge } from "../checkout/BarcodeWedge";
 import { startExchange } from "../checkout/exchange";
 import { useBusinessCurrency } from "../checkout/currency";
 import { ImeiModal } from "../checkout/ImeiModal";
-import { useSyncEngine } from "../checkout/useSyncEngine";
+import { useRejectedSyncCount, useSyncEngine } from "../checkout/useSyncEngine";
 import { DataTable, type DataTableColumn } from "../../components/DataTable";
 import { ManagerApprovalModal } from "../../components/ManagerApprovalModal";
 import { RefundTenders } from "./RefundTenders";
@@ -140,6 +142,7 @@ export function ReturnsPage({ session, openingInvoice = null }: ReturnsPageProps
   const [pulse, setPulse] = useState(0);
   const batchRef = useRef<ReturnBatch | null>(null);
   const { report, desktop } = useSyncEngine(pulse);
+  const failedSync = useRejectedSyncCount(desktop, pulse);
   const codeInput = useRef<HTMLInputElement>(null);
   useShellPage(busy, setNotice);
   const { navigate } = useShell();
@@ -423,9 +426,14 @@ export function ReturnsPage({ session, openingInvoice = null }: ReturnsPageProps
   const canChooseRefund = step === "items" && itemsReady && !busy;
   const sync: SyncState = desktop
     ? {
-        tone: report.pending > 0 ? "pending" : "synced",
-        label: report.pending > 0 ? `${report.pending} unsynced` : "Synced",
-        title: statusText,
+        ...registerHeaderStatus({
+          desktop: true,
+          sessionMode: session.mode,
+          apiReachable: businessApiReachable(),
+          pending: report.pending,
+          failed: failedSync,
+          detail: statusText,
+        }),
       }
     : { tone: "live", label: "Live", title: statusText };
 

@@ -11,9 +11,10 @@ import {
 } from "@ai-pos/shared-types";
 import { DataTable, Select, type DataTableColumn } from "@ai-pos/ui";
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useConfirm } from "../components/ConfirmDialog";
 import { FilterSearch, FilterSlot, PageHeader } from "../components/PageHeader";
 import { ErrorNote, Field, GhostButton, Modal, PrimaryButton } from "../components/ui";
-import { api, errorText } from "../lib/api";
+import { ConsoleError, api, errorText } from "../lib/api";
 import { money, when } from "../lib/format";
 import { useSession } from "../lib/session";
 
@@ -25,6 +26,25 @@ function filsOf(value: string): number {
   const parsed = Number(value);
   if (!Number.isFinite(parsed) || parsed < 0) return 0;
   return Math.round(parsed * 100);
+}
+
+const PROTECTED_PACKAGES = new Set(["FREE", "GROWTH", "PRO_AI", "ENTERPRISE", "LITE", "STANDARD", "PRO"]);
+
+function packageCodeError(value: string): string | null {
+  const code = value.trim().toUpperCase();
+  if (!/^[A-Z][A-Z0-9_]{1,31}$/.test(code)) {
+    return "Use letters, numbers, and underscores, starting with a letter.";
+  }
+  if (code === "LITE" || code === "STANDARD" || code === "PRO") return "Lite, Standard, and Pro are retired codes.";
+  return null;
+}
+
+function fieldError(caught: unknown, field: string): string | null {
+  if (!(caught instanceof ConsoleError) || !caught.details) return null;
+  const fields = caught.details.fields;
+  if (!fields || typeof fields !== "object") return null;
+  const message = (fields as Record<string, unknown>)[field];
+  return typeof message === "string" ? message : null;
 }
 
 function useCatalog() {
@@ -96,8 +116,12 @@ export function PackagesPage() {
   const { operator } = useSession();
   const admin = operator?.role === "ADMIN";
   const { catalog, error, reload } = useCatalog();
+  const confirm = useConfirm();
   const [editing, setEditing] = useState<BillingPlan | null>(null);
+  const [creating, setCreating] = useState(false);
   const [viewing, setViewing] = useState<BillingPlan | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("");
   const needle = query.trim().toLowerCase();
@@ -112,6 +136,17 @@ export function PackagesPage() {
         description="Monthly prices before the billing-cycle discount. Checkout and the public site read these rows."
         controls={
           <>
+            {admin ? (
+              <PrimaryButton
+                onClick={() => {
+                  setNotice(null);
+                  setActionError(null);
+                  setCreating(true);
+                }}
+              >
+                New package
+              </PrimaryButton>
+            ) : null}
             <FilterSearch label="Search packages" value={query} onChange={setQuery} placeholder="Search name or code" />
             <FilterSlot>
               <Select
@@ -128,7 +163,12 @@ export function PackagesPage() {
           </>
         }
       />
-      <ErrorNote message={error} />
+      <ErrorNote message={error ?? actionError} />
+      {notice ? (
+        <p role="status" className="mb-4 rounded-2xl bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
+          {notice}
+        </p>
+      ) : null}
       {catalog && plans.length === 0 ? (
         <p className="rounded-2xl border border-dashed border-line bg-white px-4 py-8 text-center text-sm text-charcoal/60">
           No packages match. Clear the search or publication filter.
@@ -153,6 +193,31 @@ export function PackagesPage() {
             <div className="mt-4 flex gap-2">
               <GhostButton onClick={() => setViewing(plan)}>View</GhostButton>
               {admin ? <GhostButton onClick={() => setEditing(plan)}>Edit</GhostButton> : null}
+              {admin && !PROTECTED_PACKAGES.has(plan.code) ? (
+                <GhostButton
+                  onClick={() => {
+                    void confirm({
+                      title: `Delete ${plan.name}?`,
+                      message:
+                        "The package is removed only when no subscription, tenant, or invoice references it. Existing invoices on other packages keep their prices.",
+                      confirmLabel: "Delete package",
+                      tone: "danger",
+                    }).then((accepted) => {
+                      if (!accepted) return;
+                      setActionError(null);
+                      api
+                        .del(`/billing/plans/${plan.id}?reason=${encodeURIComponent(`Delete unused package ${plan.code}`)}`)
+                        .then(() => {
+                          setNotice("Package deleted successfully.");
+                          void reload();
+                        })
+                        .catch((caught: unknown) => setActionError(errorText(caught, "Could not delete the package.")));
+                    });
+                  }}
+                >
+                  Delete
+                </GhostButton>
+              ) : null}
             </div>
           </li>
         ))}
@@ -173,12 +238,17 @@ export function PackagesPage() {
           }
         />
       ) : null}
-      {editing ? (
+      {creating || editing ? (
         <PlanEditor
           plan={editing}
-          onClose={() => setEditing(null)}
-          onSaved={() => {
+          onClose={() => {
+            setCreating(false);
             setEditing(null);
+          }}
+          onSaved={(message) => {
+            setCreating(false);
+            setEditing(null);
+            setNotice(message);
             void reload();
           }}
         />
@@ -256,32 +326,36 @@ const LIMIT_FIELDS = [
   ["ai_questions_per_month", "AI questions / month"],
 ] as const;
 
-function PlanEditor({ plan, onClose, onSaved }: { plan: BillingPlan; onClose: () => void; onSaved: () => void }) {
-  const [name, setName] = useState(plan.name);
-  const [price, setPrice] = useState((plan.monthly_fils / 100).toFixed(2));
-  const [registers, setRegisters] = useState(String(plan.included_registers));
-  const [modules, setModules] = useState<string[]>(plan.included_modules);
+function PlanEditor({ plan, onClose, onSaved }: { plan: BillingPlan | null; onClose: () => void; onSaved: (message: string) => void }) {
+  const [code, setCode] = useState("");
+  const [codeError, setCodeError] = useState<string | null>(null);
+  const [name, setName] = useState(plan?.name ?? "");
+  const [price, setPrice] = useState(plan ? (plan.monthly_fils / 100).toFixed(2) : "");
+  const [registers, setRegisters] = useState(String(plan?.included_registers ?? 1));
+  const [modules, setModules] = useState<string[]>(plan?.included_modules ?? []);
   const [catalogue, setCatalogue] = useState<ModuleCatalogueItem[]>([]);
   const [limits, setLimits] = useState<Record<string, string>>(() =>
-    Object.fromEntries(LIMIT_FIELDS.map(([key]) => [key, plan.resource_limits?.[key] == null ? "" : String(plan.resource_limits[key])])),
+    Object.fromEntries(LIMIT_FIELDS.map(([key]) => [key, plan?.resource_limits?.[key] == null ? "" : String(plan.resource_limits[key])])),
   );
-  const [trial, setTrial] = useState(String(plan.trial_days));
-  const [sortOrder, setSortOrder] = useState(String(plan.sort_order));
-  const [active, setActive] = useState(plan.active);
+  const [trial, setTrial] = useState(String(plan?.trial_days ?? 0));
+  const [sortOrder, setSortOrder] = useState(String(plan?.sort_order ?? 0));
+  const [active, setActive] = useState(plan?.active ?? true);
   const [impact, setImpact] = useState<string | null>(null);
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const retired = plan?.code === "LITE" || plan?.code === "STANDARD" || plan?.code === "PRO";
   useEffect(() => {
     api
       .get<ModuleCatalogueItem[]>("/modules")
       .then((rows) => setCatalogue(rows.filter((row) => row.available)))
       .catch(() => setCatalogue([]));
+    if (!plan) return;
     api
       .get<{ tenants: number; active_promotional_trials: number; open_invoices: number; note: string }>(`/billing/plans/${plan.id}/impact`)
       .then((row) => setImpact(`${row.tenants} stores, ${row.active_promotional_trials} active Pro AI trials, ${row.open_invoices} open invoices. ${row.note}`))
       .catch(() => setImpact(null));
-  }, [plan.id]);
+  }, [plan]);
   const selected = new Set(modules);
   const dependencyWarning = catalogue
     .filter((row) => selected.has(row.key) && row.requires.some((need) => !selected.has(need)))
@@ -291,8 +365,8 @@ function PlanEditor({ plan, onClose, onSaved }: { plan: BillingPlan; onClose: ()
   };
   return (
     <Modal
-      title={plan.name}
-      subtitle={`${plan.code} · code is fixed`}
+      title={plan ? plan.name : "New package"}
+      subtitle={plan ? `${plan.code} · code is fixed` : "The code cannot be changed after the package is created."}
       onClose={onClose}
       footer={
         <>
@@ -300,38 +374,66 @@ function PlanEditor({ plan, onClose, onSaved }: { plan: BillingPlan; onClose: ()
           <PrimaryButton
             disabled={busy || reason.trim().length < 3 || dependencyWarning.length > 0}
             onClick={() => {
+              const nextCodeError = plan ? null : packageCodeError(code);
+              setCodeError(nextCodeError);
+              if (nextCodeError || !name.trim()) {
+                setError(nextCodeError ?? "Enter a package name.");
+                return;
+              }
+              const monthly = Number(price);
+              if (!Number.isFinite(monthly) || monthly < 0) {
+                setError("Enter a price of zero or more.");
+                return;
+              }
               setBusy(true);
               setError(null);
-              api
-                .patch<BillingPlan>(`/billing/plans/${plan.id}`, {
-                  name,
-                  included_registers: Number(registers) || 1,
-                  included_modules: modules,
-                  monthly_fils: filsOf(price),
-                  trial_days: Number(trial) || 0,
-                  active: plan.code === "LITE" || plan.code === "STANDARD" || plan.code === "PRO" ? false : active,
-                  sort_order: Number(sortOrder) || 0,
-                  resource_limits: Object.fromEntries(
-                    LIMIT_FIELDS.map(([key]) => {
-                      const raw = (limits[key] ?? "").trim();
-                      return [key, raw === "" ? null : Number(raw)];
-                    }),
-                  ),
-                  reason: reason.trim(),
-                })
-                .then(onSaved)
+              const body = {
+                name: name.trim(),
+                included_registers: Number(registers) || 1,
+                included_modules: modules,
+                monthly_fils: filsOf(price),
+                trial_days: Number(trial) || 0,
+                active: retired ? false : active,
+                sort_order: Number(sortOrder) || 0,
+                resource_limits: Object.fromEntries(
+                  LIMIT_FIELDS.map(([key]) => {
+                    const raw = (limits[key] ?? "").trim();
+                    return [key, raw === "" ? null : Number(raw)];
+                  }),
+                ),
+                reason: reason.trim(),
+              };
+              const request = plan
+                ? api.patch<BillingPlan>(`/billing/plans/${plan.id}`, body)
+                : api.post<BillingPlan>("/billing/plans", { ...body, code: code.trim().toUpperCase() });
+              request
+                .then(() => onSaved(plan ? "Package updated successfully." : "Package created successfully."))
                 .catch((caught: unknown) => {
-                  setError(errorText(caught, "Could not publish the package."));
+                  setCodeError(fieldError(caught, "code"));
+                  setError(errorText(caught, plan ? "Could not publish the package." : "Could not create the package."));
                   setBusy(false);
                 });
             }}
           >
-            {busy ? "Publishing…" : "Publish"}
+            {busy ? "Saving…" : plan ? "Publish" : "Create package"}
           </PrimaryButton>
         </>
       }
     >
       <div className="grid gap-3">
+        {plan ? null : (
+          <Field
+            label="Code"
+            value={code}
+            onChange={(event) => {
+              setCode(event.target.value.toUpperCase());
+              setCodeError(null);
+            }}
+            hint="Letters, numbers, and underscores. Example: RETAIL_PLUS."
+            error={codeError ?? undefined}
+            required
+          />
+        )}
         <Field label="Name" value={name} onChange={(event) => setName(event.target.value)} />
         <Field label="Monthly list price (AED)" value={price} inputMode="decimal" onChange={(event) => setPrice(event.target.value)} hint="Country prices are edited under Commercial. This remains the fallback list price." />
         <Field label="Included registers" value={registers} inputMode="numeric" onChange={(event) => setRegisters(event.target.value)} />
@@ -363,13 +465,18 @@ function PlanEditor({ plan, onClose, onSaved }: { plan: BillingPlan; onClose: ()
         <label className="flex items-center gap-2 text-sm">
           <input
             type="checkbox"
-            checked={plan.code === "LITE" || plan.code === "STANDARD" || plan.code === "PRO" ? false : active}
-            disabled={plan.code === "LITE" || plan.code === "STANDARD" || plan.code === "PRO"}
+            checked={retired ? false : active}
+            disabled={retired}
             onChange={(event) => setActive(event.target.checked)}
           />{" "}
           Available for new subscriptions
         </label>
         {impact ? <p className="rounded-2xl bg-amber-50 px-3 py-2 text-xs text-amber-900">{impact}</p> : null}
+        {plan ? null : (
+          <p className="text-xs text-charcoal/50">
+            A new package uses each billing cycle&apos;s own discount. The published annual rate stays on Free, Growth, Pro AI, and Enterprise. Issued invoices are not rewritten.
+          </p>
+        )}
         <Reason value={reason} onChange={setReason} />
         <ErrorNote message={error} />
       </div>
@@ -391,7 +498,7 @@ export function BillingPage() {
       />
       <ErrorNote message={error} />
       <h2 className="text-sm font-semibold">Recurring billing cycles</h2>
-      <ul className="mt-3 grid gap-3 md:grid-cols-2">
+      <ul className="mt-3 grid w-full grid-cols-1 gap-3 lg:grid-cols-2">
         {(catalog?.cycles ?? []).map((row) => (
           <li key={row.id} className="rounded-2xl border border-line bg-white p-5 shadow-sm">
             <div className="flex items-start justify-between gap-3">
@@ -423,9 +530,9 @@ export function BillingPage() {
       </ul>
       <h2 className="mt-8 text-sm font-semibold">One-time onboarding</h2>
       <p className="mt-1 text-xs text-charcoal/50">Charged once. This is not monthly revenue and the cycle discount does not apply.</p>
-      <ul className="mt-3 grid gap-3">
+      <ul className="mt-3 grid w-full grid-cols-1 gap-3">
         {(catalog?.fees ?? []).map((row) => (
-          <li key={row.id} className="flex flex-wrap items-center gap-4 rounded-2xl border border-line bg-white px-5 py-4 shadow-sm">
+          <li key={row.id} className="flex w-full flex-wrap items-center justify-between gap-4 rounded-2xl border border-line bg-white px-5 py-4 shadow-sm">
             <div className="min-w-0 flex-1">
               <p className="font-semibold">{row.name}</p>
               <p className="mt-1 text-sm text-charcoal/60">{aed(row.amount_fils)} once</p>

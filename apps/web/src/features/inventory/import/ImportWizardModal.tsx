@@ -1,6 +1,6 @@
 import {
   Capability,
-  IMPORT_FIELDS,
+  importFieldsFor,
   formatMoney,
   type BatchDetail,
   type ImportMapping,
@@ -44,6 +44,8 @@ function toRow(row: ImportPreviewRow): ImportRow {
     sub_category: row.sub_category,
     serials: row.serials,
     expiry_date: row.expiry_date,
+    manufacturer_lot: row.manufacturer_lot ?? "",
+    manufactured_on: row.manufactured_on ?? null,
     attributes: row.attributes ?? {},
   };
 }
@@ -90,6 +92,8 @@ export function ImportWizardModal({
   const [error, setError] = useState<string | null>(null);
   const [committed, setCommitted] = useState<BatchDetail | null>(null);
   const consignmentModule = useCapability(Capability.Consignment);
+  const pharmacyLots = useCapability(Capability.PharmacyCatalog);
+  const importFields = importFieldsFor(pharmacyLots);
   const [consignment, setConsignment] = useState(false);
 
   const supplier = suppliers.find((item) => item.id === supplierId) ?? null;
@@ -409,7 +413,7 @@ export function ImportWizardModal({
             {committed
               ? "Stock, IMEIs and the audit trail were updated."
               : step === 2
-                ? `${IMPORT_FIELDS.filter((spec) => mapping[spec.field]).length} of ${IMPORT_FIELDS.length} fields mapped`
+                ? `${importFields.filter((spec) => mapping[spec.field]).length} of ${importFields.length} fields mapped`
                 : step === 3
                   ? `${Object.keys(attributeMapping).length} specification column${Object.keys(attributeMapping).length === 1 ? "" : "s"} mapped`
                   : step === 4

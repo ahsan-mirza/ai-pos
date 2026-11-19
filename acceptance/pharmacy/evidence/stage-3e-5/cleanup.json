@@ -1,0 +1,13 @@
+{
+  "acceptance_container": "removed",
+  "acceptance_volume": "removed",
+  "acceptance_network": "removed",
+  "acceptance_sqlite": "removed",
+  "acceptance_webview": "removed",
+  "acceptance_executable": "removed",
+  "runtime_secrets": "removed",
+  "developer_directory": "present",
+  "developer_hashes_match": true,
+  "developer_sqlite_opened": false,
+  "unrelated_containers_left_running": ["evolution_api", "evolution_postgres", "evolution_redis"]
+}

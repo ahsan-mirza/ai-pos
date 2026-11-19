@@ -176,6 +176,7 @@ def unhandled_error(exc: Exception, *, debug: bool, api: str | None = None) -> t
 class SyncRejected(Exception):
     """A single sync event failed. The surrounding batch is rolled back."""
 
-    def __init__(self, message: str) -> None:
+    def __init__(self, message: str, *, code: str | None = None) -> None:
         self.message = message
+        self.code = code
         super().__init__(message)

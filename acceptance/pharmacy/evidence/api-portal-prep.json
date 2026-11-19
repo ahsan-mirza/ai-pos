@@ -1,0 +1,12 @@
+[
+  {
+    "name": "portal-release-UI_X",
+    "status": "passed",
+    "detail": "HTTP 200"
+  },
+  {
+    "name": "portal-release-UI_R",
+    "status": "passed",
+    "detail": "HTTP 200"
+  }
+]

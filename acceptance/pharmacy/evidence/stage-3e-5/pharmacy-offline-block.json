@@ -1,0 +1,11 @@
+{
+  "session_mode": "offline",
+  "username": "cashier.one",
+  "attempt": "cash checkout of Acceptance Till Medicine, quantity 1, cash received 15.75",
+  "result": "Sale not recorded: Pharmacy medicine sales need a live connection so released lots can be checked. This sale was not saved offline.",
+  "queued": false,
+  "pending_sync_rows": 0,
+  "sale_rows_in_queue": 1,
+  "sale_queue_status": "synced",
+  "note": "The one queued sale is the earlier online sale. The blocked offline medicine checkout was not written."
+}

@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect } from "react";
 import type { CashierSession } from "../../features/auth/session";
 
-export type RegisterView = "checkout" | "returns" | "settings" | "orders" | "repairs" | "reorders";
+export type RegisterView = "checkout" | "returns" | "settings" | "orders" | "repairs" | "reorders" | "inventory";
 
 export interface ShellValue {
   session: CashierSession;

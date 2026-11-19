@@ -6,15 +6,15 @@ from fastapi import APIRouter, Depends, Query, Response
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.core.deps import Principal, authorize
+from app.core.deps import REGISTER_SCOPES, Principal, authorize
 from app.core.permissions import Permission
 from app.schemas.recipes import ModifierRecipeIn, ModifierRecipeOut, RecipeIn, RecipeOut, UsageVarianceReport
 from app.services import recipe_service
 
 router = APIRouter()
 Db = Annotated[Session, Depends(get_db)]
-CanManage = Annotated[Principal, Depends(authorize(Permission.PORTAL_INVENTORY_MANAGE))]
-CanReport = Annotated[Principal, Depends(authorize(Permission.PORTAL_REPORTS_READ))]
+CanManage = Annotated[Principal, Depends(authorize(Permission.PORTAL_INVENTORY_MANAGE, scopes=REGISTER_SCOPES))]
+CanReport = Annotated[Principal, Depends(authorize(Permission.PORTAL_REPORTS_READ, scopes=REGISTER_SCOPES))]
 
 
 def _user_id(principal: Principal) -> uuid.UUID | None:

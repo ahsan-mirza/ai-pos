@@ -104,6 +104,112 @@
           {"size": "M", "color": "Sand", "sku": "FSH-OX-M-SND", "barcode": "2004000000014", "price_cents": 9900, "stock": 80}
         ]
       }
+    },
+    {
+      "code": "pharmacy",
+      "slug": "demo-pharmacy",
+      "name": "Cedar Pharmacy",
+      "profile": "pharmacy",
+      "sub_type": "community_pharmacy",
+      "currency": "AED",
+      "country": "AE",
+      "trn": "100200300400007",
+      "supplier": "Gulf Pharma Supply",
+      "customers": [{"name": "Hana Yousef", "type": "RETAIL"}],
+      "products": [
+        {
+          "sku": "PH-PARA",
+          "barcode": "2005000000011",
+          "name": "Paracetamol 500mg",
+          "category": "Pain relief",
+          "price_cents": 1200,
+          "stock": 400,
+          "pharmacy": {
+            "product_kind": "MEDICINE",
+            "dispensing_class": "OTC",
+            "generic_name": "Paracetamol",
+            "manufacturer": "Gulf Pharma",
+            "dosage_form": "Tablet",
+            "route": "Oral",
+            "strength_amount": "500",
+            "strength_unit": "mg",
+            "pack_size_label": "24 tablets",
+            "units_per_pack": 1,
+            "ingredients": [{"name": "Paracetamol", "strength_amount": "500", "strength_unit": "mg"}]
+          }
+        },
+        {
+          "sku": "PH-IBU",
+          "barcode": "2005000000012",
+          "name": "Ibuprofen 400mg",
+          "category": "Pain relief",
+          "price_cents": 1800,
+          "stock": 300,
+          "promo": true,
+          "pharmacy": {
+            "product_kind": "MEDICINE",
+            "dispensing_class": "OTC",
+            "generic_name": "Ibuprofen",
+            "manufacturer": "Gulf Pharma",
+            "dosage_form": "Tablet",
+            "route": "Oral",
+            "strength_amount": "400",
+            "strength_unit": "mg",
+            "pack_size_label": "20 tablets",
+            "units_per_pack": 1,
+            "ingredients": [{"name": "Ibuprofen", "strength_amount": "400", "strength_unit": "mg"}]
+          }
+        },
+        {
+          "sku": "PH-AMOX",
+          "barcode": "2005000000013",
+          "name": "Amoxicillin 500mg",
+          "category": "Antibiotics",
+          "price_cents": 2800,
+          "stock": 200,
+          "pharmacy": {
+            "product_kind": "MEDICINE",
+            "dispensing_class": "PRESCRIPTION",
+            "generic_name": "Amoxicillin",
+            "manufacturer": "Gulf Pharma",
+            "dosage_form": "Capsule",
+            "route": "Oral",
+            "strength_amount": "500",
+            "strength_unit": "mg",
+            "pack_size_label": "21 capsules",
+            "units_per_pack": 1,
+            "ingredients": [{"name": "Amoxicillin", "strength_amount": "500", "strength_unit": "mg"}]
+          }
+        },
+        {
+          "sku": "PH-VITC",
+          "barcode": "2005000000014",
+          "name": "Vitamin C 1000mg",
+          "category": "Vitamins",
+          "price_cents": 3500,
+          "stock": 150,
+          "pharmacy": {
+            "product_kind": "SUPPLEMENT",
+            "dispensing_class": "OTC",
+            "manufacturer": "Gulf Pharma",
+            "pack_size_label": "30 tablets",
+            "units_per_pack": 1
+          }
+        },
+        {
+          "sku": "PH-MASK",
+          "barcode": "2005000000015",
+          "name": "Surgical Masks",
+          "category": "Supplies",
+          "price_cents": 1500,
+          "stock": 200,
+          "pharmacy": {
+            "product_kind": "SUPPLY",
+            "dispensing_class": "OTC",
+            "manufacturer": "Gulf Pharma"
+          }
+        }
+      ]
     }
   ]
 }

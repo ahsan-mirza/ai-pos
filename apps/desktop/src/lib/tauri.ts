@@ -78,6 +78,36 @@ export function pinLogin(username: string, pin: string): Promise<CashierSession>
   return invoke<CashierSession>("pin_login", { username, pin });
 }
 
+export interface StoredCataloguePreference {
+  value: string;
+  updated_at: string;
+  revision: number;
+  dirty: boolean;
+}
+
+/** This register's SQLite copy of one cashier's catalogue view. The sales queue is not used. */
+export function readCataloguePreference(tenantId: string, userId: string): Promise<StoredCataloguePreference | null> {
+  return invoke<StoredCataloguePreference | null>("read_catalogue_preference", { tenantId, userId });
+}
+
+export function writeCataloguePreference(input: {
+  tenantId: string;
+  userId: string;
+  value: string;
+  updatedAt: string;
+  revision: number;
+  dirty: boolean;
+}): Promise<StoredCataloguePreference> {
+  return invoke<StoredCataloguePreference>("write_catalogue_preference", {
+    tenantId: input.tenantId,
+    userId: input.userId,
+    value: input.value,
+    updatedAt: input.updatedAt,
+    revision: input.revision,
+    dirty: input.dirty,
+  });
+}
+
 export interface RegisterCashier {
   id: string;
   display_name: string;
@@ -329,12 +359,14 @@ export interface CurrencySnapshot {
   } | null;
   /** Null when the API has never sent a profile: every module stays on. */
   profile: {
+    tenant_id?: string | null;
     business_profile: string | null;
     capabilities: string[];
     planned_capabilities: string[];
     module_settings?: Partial<ModuleSettings> | null;
     practice_mode?: boolean;
     pos_policy?: Partial<PosPolicy> | null;
+    entitlement_revision?: number;
   } | null;
   /** Receipt branding and this branch's contact lines; null until the register has fetched them once. */
   receipt?: ReceiptProfile | null;

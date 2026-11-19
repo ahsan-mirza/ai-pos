@@ -168,6 +168,10 @@ def get_principal(
     raise ApiError(401, "unauthorized", "Sign in or provide a valid API key.")
 
 
+# Register unlock issues a pos-scoped token. Inventory routes opt into this pair; other portal routes stay portal-only.
+REGISTER_SCOPES = ("portal", "pos")
+
+
 def authorize(
     *required: Permission,
     allow_device: bool = False,

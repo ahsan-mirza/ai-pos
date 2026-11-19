@@ -337,6 +337,10 @@ class StockRow(ApiModel):
     limiting_ingredient: str | None = None
     availability_note: str | None = None
     menu_status: MenuStatus | None = None
+    # True only for a pharmacy medicine. The adjustment form asks for a manufacturer lot.
+    lot_controlled: bool = False
+    # Released in-date units. Checkout does not trust this number; it reallocates under a row lock.
+    eligible_quantity: int | None = None
 
 
 class StockSummary(ApiModel):
@@ -403,6 +407,9 @@ class ManualAdjustment(ApiModel):
     unit_cost_cents: int | None = Field(default=None, ge=0, le=10**11)
     landed_cost_cents: int = Field(default=0, ge=0, le=10**11)
     lot_number: str | None = Field(default=None, max_length=32)
+    # Medicine additions store this on the cost layer. It is not the receipt number.
+    manufacturer_lot: str | None = Field(default=None, max_length=64)
+    manufactured_on: date | None = None
     expiry_date: date | None = None
     supplier_reference: str | None = Field(default=None, max_length=120)
     receipt_date: date | None = None
@@ -415,7 +422,7 @@ class ManualAdjustment(ApiModel):
             raise ValueError(f"Explain the adjustment in at least {NOTE_MIN_LENGTH} characters.")
         return stripped
 
-    @field_validator("lot_number", "supplier_reference")
+    @field_validator("lot_number", "manufacturer_lot", "supplier_reference")
     @classmethod
     def blank_text(cls, value: str | None) -> str | None:
         if value is None:
@@ -556,6 +563,17 @@ class ReceiveLineIn(ApiModel):
     quantity: int = Field(ge=1, le=100_000)
     serials: list[SerialInput] = Field(default_factory=list, max_length=1000)
     aisle_shelf_location: str | None = Field(default=None, max_length=64)
+    manufacturer_lot: str | None = Field(default=None, max_length=64)
+    manufactured_on: date | None = None
+    expiry_date: date | None = None
+
+    @field_validator("manufacturer_lot")
+    @classmethod
+    def blank_lot(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        stripped = value.strip()
+        return stripped or None
 
 
 class ReceiveRequest(ApiModel):
@@ -572,11 +590,25 @@ class PurchaseOrderLineOut(ApiModel):
     quantity_ordered: int
     quantity_received: int
     unit_cost_cents: int
+    lot_controlled: bool = False
 
 
 class GoodsReceiptLineOut(ApiModel):
     purchase_order_line_id: UUID
     product_id: UUID
+    quantity: int
+
+
+class GoodsReceiptLotOut(ApiModel):
+    """Lot identity of one cost layer opened by this receipt. Quantity is the layer's imported quantity."""
+
+    batch_item_id: UUID
+    product_id: UUID
+    receipt_batch_number: str
+    manufacturer_lot: str | None
+    manufactured_on: date | None
+    expiry_date: date | None
+    lot_status: str | None
     quantity: int
 
 
@@ -588,6 +620,7 @@ class GoodsReceiptOut(ApiModel):
     note: str
     created_at: datetime
     lines: list[GoodsReceiptLineOut]
+    lots: list[GoodsReceiptLotOut] = Field(default_factory=list)
 
 
 class PurchaseOrderOut(ApiModel):

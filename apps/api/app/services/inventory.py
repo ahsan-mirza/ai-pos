@@ -38,6 +38,7 @@ from app.schemas.inventory import (
     AvailabilityOut,
     BranchStock,
     GoodsReceiptLineOut,
+    GoodsReceiptLotOut,
     GoodsReceiptOut,
     LevelUpdate,
     ManualAdjustment,
@@ -94,7 +95,8 @@ def portal_errors[**P, R](fn: Callable[P, R]) -> Callable[P, R]:
         except SyncRejected as exc:
             if db is not None:
                 db.rollback()
-            raise ApiError(422, "inventory_rejected", exc.message) from exc
+            details = {"reason": exc.code} if exc.code else None
+            raise ApiError(422, "inventory_rejected", exc.message, details=details) from exc
         except IntegrityError as exc:
             if db is not None:
                 db.rollback()
@@ -163,6 +165,9 @@ def move_stock(
         raise SyncRejected("A stock movement needs a non-zero quantity.")
     level = level_for(db, product_id, store_id)
     if quantity < 0:
+        # Branch quantity is checked before lot eligibility. A request larger than
+        # on-hand, including a zero-quantity layer, stops here. Lot reason codes
+        # apply when the branch has units that are not eligible to sell.
         usable = level.quantity_on_hand if allow_reserved else level.available
         if usable + quantity < 0:
             raise SyncRejected(f"Insufficient stock: {max(usable, 0)} available at this branch.")
@@ -488,7 +493,13 @@ def _status(on_hand: int, minimum: int, maximum: int | None) -> str:
 
 
 def _stock_row(
-    product: Product, store: Store | None, levels: list[InventoryLevel], *, thumb_url: str | None = None
+    product: Product,
+    store: Store | None,
+    levels: list[InventoryLevel],
+    *,
+    thumb_url: str | None = None,
+    lot_controlled: bool = False,
+    eligible_quantity: int | None = None,
 ) -> StockRow:
     on_hand = sum(level.quantity_on_hand for level in levels)
     reserved = sum(level.quantity_reserved for level in levels)
@@ -524,6 +535,8 @@ def _stock_row(
         thumb_url=thumb_url,
         status=_status(on_hand, minimum, maximum),  # type: ignore[arg-type]
         item_type=product.item_type,  # type: ignore[arg-type]
+        lot_controlled=lot_controlled,
+        eligible_quantity=eligible_quantity,
     )
 
 
@@ -582,12 +595,18 @@ def stock_summary(
             levels_by_product[level.product_id].append(level)
 
     covers = product_image_service.cover_urls(db, products)
+    from app.services.pharmacy_lots import eligible_quantities, lot_controlled_ids
+
+    controlled = lot_controlled_ids(db, [product.id for product in products])
+    eligible = eligible_quantities(db, controlled, scope)
     rows = [
         _stock_row(
             product,
             store,
             levels_by_product.get(product.id, []),
             thumb_url=covers.get(product.id, (None, None))[1],
+            lot_controlled=product.id in controlled,
+            eligible_quantity=eligible.get(product.id, 0) if product.id in controlled else None,
         )
         for product in products
     ]
@@ -696,8 +715,17 @@ def _single_row(db: Session, product: Product, store: Store) -> StockRow:
         select(InventoryLevel).where(InventoryLevel.product_id == product.id, InventoryLevel.store_id == store.id)
     )
     covers = product_image_service.cover_urls(db, [product])
+    from app.services.pharmacy_lots import eligible_quantities, is_lot_controlled
+
+    controlled = is_lot_controlled(db, product.id)
+    eligible = eligible_quantities(db, [product.id], store.id) if controlled else {}
     return _stock_row(
-        product, store, [level] if level is not None else [], thumb_url=covers.get(product.id, (None, None))[1]
+        product,
+        store,
+        [level] if level is not None else [],
+        thumb_url=covers.get(product.id, (None, None))[1],
+        lot_controlled=controlled,
+        eligible_quantity=eligible.get(product.id, 0) if controlled else None,
     )
 
 
@@ -743,12 +771,15 @@ def _open_adjustment_layer(
     data: ManualAdjustment,
     change: int,
     user_id: uuid.UUID,
+    *,
+    lot_controlled: bool,
 ) -> BatchItem:
     from app.services.cost_layers import record_adjustment_layer
 
     if data.unit_cost_cents is None:
         raise ApiError(422, "cost_required", "Enter the unit acquisition cost for the stock being added.")
     try:
+        # A medicine lot is not written into the receipt number. Other products keep that existing behavior.
         return record_adjustment_layer(
             db,
             product=product,
@@ -760,8 +791,8 @@ def _open_adjustment_layer(
             currency=product.currency,
             adjustment_id=data.adjustment_id,
             note=data.note,
-            lot_number=data.lot_number,
-            expiry_date=data.expiry_date,
+            lot_number=None if lot_controlled else data.lot_number,
+            expiry_date=None if lot_controlled else data.expiry_date,
             supplier_reference=data.supplier_reference,
             receipt_date=data.receipt_date,
         )
@@ -845,6 +876,14 @@ def manual_adjust(db: Session, settings: Settings, principal: Principal, data: M
         raise ApiError(422, "reason_mismatch", "Supplier samples can only add stock.")
     if change > 0 and data.unit_cost_cents is None:
         raise ApiError(422, "cost_required", "Enter the unit acquisition cost for the stock being added.")
+    from app.services.pharmacy_lots import is_lot_controlled, lot_problems
+
+    lot_controlled = change > 0 and is_lot_controlled(db, product.id)
+    medicine_lot = (data.manufacturer_lot or data.lot_number) if lot_controlled else None
+    if lot_controlled:
+        problems = lot_problems(medicine_lot, data.manufactured_on, data.expiry_date)
+        if problems:
+            raise ApiError(422, "lot_required", problems[0])
     if data.receipt_date is not None and data.receipt_date > datetime.now(UTC).date():
         raise ApiError(422, "invalid_request", "The receipt date cannot be in the future.")
     movement_type = "DAMAGE_SHRINKAGE" if data.reason_code in DAMAGE_REASONS else "AUDIT_ADJUSTMENT"
@@ -909,7 +948,22 @@ def manual_adjust(db: Session, settings: Settings, principal: Principal, data: M
                 raise ApiError(422, "serial_state", f"A selected unit is no longer in stock at {store.name}. Refresh.")
             transition_serial(db, serial, status=status, store_id=store.id, **ledger)
 
-    layer = _open_adjustment_layer(db, product, store, data, change, actor.id) if change > 0 else None
+    layer = (
+        _open_adjustment_layer(db, product, store, data, change, actor.id, lot_controlled=lot_controlled)
+        if change > 0
+        else None
+    )
+    if layer is not None and lot_controlled:
+        from app.services.pharmacy_lots import record_received
+
+        record_received(
+            db,
+            layer,
+            manufacturer_lot=medicine_lot,
+            manufactured_on=data.manufactured_on,
+            expiry_date=data.expiry_date,
+            user_id=actor.id,
+        )
     for serial in inbound:
         if layer is not None:
             serial.batch_item_id = layer.id
@@ -1605,6 +1659,34 @@ def _po_out(db: Session, order: PurchaseOrder) -> PurchaseOrderOut:
         .all()
     }
     names = _names(db, [order.created_by_id, *(receipt.received_by_id for receipt in order.receipts)])
+    from app.services.pharmacy_lots import lot_controlled_ids
+
+    controlled = lot_controlled_ids(db, [line.product_id for line in order.lines])
+    receipt_ids = [receipt.id for receipt in order.receipts]
+    lots_by_receipt: dict[uuid.UUID, list[GoodsReceiptLotOut]] = defaultdict(list)
+    if receipt_ids:
+        from app.models.batch import BatchItem, PurchaseBatch
+
+        for receipt_id, batch_number, item in db.execute(
+            select(PurchaseBatch.goods_receipt_id, PurchaseBatch.batch_number, BatchItem)
+            .join(BatchItem, BatchItem.batch_id == PurchaseBatch.id)
+            .where(PurchaseBatch.goods_receipt_id.in_(receipt_ids))
+            .order_by(BatchItem.created_at, BatchItem.id)
+        ):
+            if receipt_id is None:
+                continue
+            lots_by_receipt[receipt_id].append(
+                GoodsReceiptLotOut(
+                    batch_item_id=item.id,
+                    product_id=item.product_id,
+                    receipt_batch_number=batch_number,
+                    manufacturer_lot=item.manufacturer_lot,
+                    manufactured_on=item.manufactured_on,
+                    expiry_date=item.expiry_date,
+                    lot_status=item.lot_status,
+                    quantity=item.quantity_imported,
+                )
+            )
     return PurchaseOrderOut(
         id=order.id,
         number=order.number,
@@ -1630,6 +1712,7 @@ def _po_out(db: Session, order: PurchaseOrder) -> PurchaseOrderOut:
                 quantity_ordered=line.quantity_ordered,
                 quantity_received=line.quantity_received,
                 unit_cost_cents=line.unit_cost_cents,
+                lot_controlled=line.product_id in controlled,
             )
             for line in order.lines
         ],
@@ -1649,6 +1732,7 @@ def _po_out(db: Session, order: PurchaseOrder) -> PurchaseOrderOut:
                     )
                     for line in receipt.lines
                 ],
+                lots=lots_by_receipt.get(receipt.id, []),
             )
             for receipt in order.receipts
         ],
@@ -1774,19 +1858,27 @@ def receive_purchase_order(
     db.add(receipt)
     db.flush()
     from app.services.cost_layers import record_receipt_layer
+    from app.services.pharmacy_lots import is_lot_controlled, lot_problems, record_received
 
     seen: set[uuid.UUID] = set()
+    slice_counts: dict[uuid.UUID, int] = {}
     for entry in data.lines:
         line = lines.get(entry.purchase_order_line_id)
         if line is None:
             raise ApiError(422, "invalid_request", "Receipt line is not on this purchase order.")
-        if line.id in seen:
+        product = _product(db, line.product_id)
+        controlled = is_lot_controlled(db, product.id)
+        if controlled:
+            problems = lot_problems(entry.manufacturer_lot, entry.manufactured_on, entry.expiry_date)
+            if problems:
+                raise ApiError(422, "lot_required", problems[0])
+        elif line.id in seen:
             raise ApiError(422, "invalid_request", "Each purchase order line can appear once per receipt.")
-        seen.add(line.id)
+        else:
+            seen.add(line.id)
         outstanding = line.quantity_ordered - line.quantity_received
         if entry.quantity > outstanding:
             raise ApiError(422, "over_receipt", f"Only {outstanding} left to receive on this line.")
-        product = _product(db, line.product_id)
         registered: list[SerialNumber] = []
         if product.is_serialized:
             serials = _serial_inputs(entry.serials)
@@ -1825,6 +1917,13 @@ def receive_purchase_order(
                 user_id=actor.id,
                 note=f"{order.number} from {order.supplier_name}",
             )
+        slice_counts[line.id] = slice_counts.get(line.id, 0) + 1
+        slice_count = slice_counts[line.id]
+        batch_number = (
+            f"{receipt.number}-{line.position}"
+            if slice_count == 1
+            else f"{receipt.number}-{line.position}-{slice_count}"
+        )
         layer = record_receipt_layer(
             db,
             product=product,
@@ -1836,8 +1935,17 @@ def receive_purchase_order(
             supplier_id=order.supplier_id,
             currency=product.currency,
             note=f"{receipt.number} {order.number}",
-            batch_number=f"{receipt.number}-{line.position}",
+            batch_number=batch_number[:32],
         )
+        if controlled:
+            record_received(
+                db,
+                layer,
+                manufacturer_lot=entry.manufacturer_lot,
+                manufactured_on=entry.manufactured_on,
+                expiry_date=entry.expiry_date,
+                user_id=actor.id,
+            )
         for serial in registered:
             serial.batch_item_id = layer.id
         if entry.aisle_shelf_location:
@@ -2043,6 +2151,21 @@ def ship_transfer(
                 user_id=actor.id,
                 note=transfer.number,
             )
+            from app.services.pharmacy_lots import record_transfer_shipped
+
+            shipped = db.scalar(
+                select(StockMovement)
+                .where(
+                    StockMovement.reference_type == "stock_transfer",
+                    StockMovement.reference_id == transfer.id,
+                    StockMovement.product_id == product.id,
+                    StockMovement.movement_type == "TRANSFER_OUT",
+                    StockMovement.store_id == transfer.source_store_id,
+                )
+                .order_by(StockMovement.created_at.desc(), StockMovement.id.desc())
+            )
+            if shipped is not None:
+                record_transfer_shipped(db, shipped, actor.id)
             continue
         entries = serials_by_line.get(line.id, [])
         if len(entries) != line.quantity:
@@ -2100,6 +2223,20 @@ def receive_transfer(db: Session, settings: Settings, principal: Principal, tran
             reference_id=transfer.id,
             user_id=actor.id,
             note=transfer.number,
+        )
+        from app.services.pharmacy_lots import open_transfer_destination
+        from app.services.settings_service import business_currency
+
+        open_transfer_destination(
+            db,
+            transfer_id=transfer.id,
+            transfer_number=transfer.number,
+            line_position=line.position,
+            product_id=line.product_id,
+            destination_store_id=transfer.destination_store_id,
+            quantity=line.quantity,
+            user_id=actor.id,
+            currency=business_currency(db),
         )
     for row in transfer.serials:
         serial = db.get(SerialNumber, row.serial_number_id)

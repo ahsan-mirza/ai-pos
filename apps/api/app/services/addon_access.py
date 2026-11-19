@@ -33,7 +33,7 @@ from sqlalchemy.orm import Session
 
 from app.core.cache import get_value, increment, set_value
 from app.core.errors import ApiError
-from app.core.permissions import ALL_PERMISSIONS, Permission
+from app.core.permissions import ALL_PERMISSIONS, GOVERNED_PERMISSIONS, Permission
 from app.models.addon_access import UserAddonAccess
 from app.models.audit_log import AuditLog
 from app.models.base import utcnow
@@ -223,11 +223,16 @@ def effective_permissions(db: Session, user: User) -> set[str]:
                 for permission in actions:
                     if permission in exclusive and permission not in decision.permissions:
                         base.discard(permission)
-                base.update(permission for permission in decision.permissions if permission in ALL_PERMISSIONS)
+                base.update(
+                    permission
+                    for permission in decision.permissions
+                    if permission in ALL_PERMISSIONS and permission not in GOVERNED_PERMISSIONS
+                )
             elif not decision.allowed:
                 for permission in actions:
                     if permission in exclusive:
                         base.discard(permission)
+    base.difference_update(GOVERNED_PERMISSIONS)
     set_value(cache_key, json.dumps(sorted(base)), _CACHE_TTL)
     return base
 

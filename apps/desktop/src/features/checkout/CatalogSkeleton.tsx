@@ -1,10 +1,13 @@
-import { catalogGridClass, type CatalogDensity } from "../../components/RegisterLayout";
+import type { CatalogDensity } from "../../components/RegisterLayout";
+import { catalogueLayoutClass } from "./cataloguePresentation";
+import type { CatalogueView } from "./cataloguePreference";
 
 /** Product-card placeholders. No names, prices, or stock — those stay blank until a real catalogue arrives. */
-export function CatalogSkeleton({ density }: { density: CatalogDensity }) {
-  const image = density === "compact" ? "aspect-video" : "aspect-[4/3]";
+export function CatalogSkeleton({ density, view = "grid" }: { density: CatalogDensity; view?: CatalogueView }) {
+  const image = density === "compact" || view === "compact" ? "h-16" : view === "list" ? "h-12 w-12" : "aspect-[4/3]";
+  const layout = catalogueLayoutClass(view);
   return (
-    <ul className={catalogGridClass(density)} aria-busy="true" aria-label="Loading products">
+    <ul className={layout} aria-busy="true" aria-label="Loading products">
       {Array.from({ length: 8 }, (_, index) => (
         <li
           key={index}

@@ -1,0 +1,375 @@
+{
+  "results": [
+    {
+      "name": "lot-a-released-once",
+      "status": "passed",
+      "detail": "status=RELEASED remaining=10"
+    },
+    {
+      "name": "lot-b-still-quarantined",
+      "status": "passed",
+      "detail": "status=QUARANTINED remaining=5"
+    },
+    {
+      "name": "lot-c-recalled-quantity",
+      "status": "passed",
+      "detail": "status=RECALLED remaining=5"
+    },
+    {
+      "name": "lot-d-expired-unreleased",
+      "status": "passed",
+      "detail": "status=UNRELEASED expiry=2026-01-15"
+    },
+    {
+      "name": "release-240f6320",
+      "status": "passed",
+      "detail": "HTTP 200"
+    },
+    {
+      "name": "release-87375d72",
+      "status": "passed",
+      "detail": "HTTP 200"
+    },
+    {
+      "name": "fefo-lots-released",
+      "status": "passed",
+      "detail": "200 200"
+    },
+    {
+      "name": "release-dc86e3db",
+      "status": "passed",
+      "detail": "HTTP 200"
+    },
+    {
+      "name": "release-f97c38b4",
+      "status": "passed",
+      "detail": "HTTP 200"
+    },
+    {
+      "name": "transfer-and-return-lots-released",
+      "status": "passed",
+      "detail": "200 200"
+    },
+    {
+      "name": "release-rejected-recalled",
+      "status": "passed",
+      "detail": "HTTP 422 lot_recalled A recalled lot cannot be released."
+    },
+    {
+      "name": "release-rejected-expired",
+      "status": "passed",
+      "detail": "HTTP 422 lot_expired An expired lot cannot be released."
+    },
+    {
+      "name": "expired-lot-cannot-be-released",
+      "status": "passed",
+      "detail": "HTTP 422 lot_expired"
+    },
+    {
+      "name": "release-requires-confirmation",
+      "status": "passed",
+      "detail": "HTTP 422 confirmation_required Confirm this action before it is saved."
+    },
+    {
+      "name": "release-requires-reason",
+      "status": "passed",
+      "detail": "HTTP 422 invalid_request Reason should have at least 3 characters."
+    },
+    {
+      "name": "rejected-releases-do-not-change-hold",
+      "status": "passed",
+      "detail": "recalled, expired, unconfirmed, and short-reason releases were refused"
+    },
+    {
+      "name": "pharmacy-vat",
+      "status": "passed",
+      "detail": "registered=True rate_bps=500"
+    },
+    {
+      "name": "medicine-e-eligible-before-sale",
+      "status": "passed",
+      "detail": "on_hand=8 eligible=8"
+    },
+    {
+      "name": "sale",
+      "status": "passed",
+      "detail": "HTTP 200"
+    },
+    {
+      "name": "fefo-sale-accepted",
+      "status": "passed",
+      "detail": "HTTP 200"
+    },
+    {
+      "name": "fefo-allocation",
+      "status": "passed",
+      "detail": "old remaining=0 sold=3; new remaining=4 sold=1"
+    },
+    {
+      "name": "recall-sales-lookup",
+      "status": "passed",
+      "detail": "HTTP 200"
+    },
+    {
+      "name": "recall-does-not-include-other-lots",
+      "status": "passed",
+      "detail": "total=0"
+    },
+    {
+      "name": "sale",
+      "status": "passed",
+      "detail": "HTTP 422 sync_rejected lot_quarantined Acceptance Medicine B is quarantined and cannot be sold."
+    },
+    {
+      "name": "sale-rejected-quarantined",
+      "status": "passed",
+      "detail": "HTTP 422 lot_quarantined"
+    },
+    {
+      "name": "sale",
+      "status": "passed",
+      "detail": "HTTP 422 sync_rejected lot_recalled Acceptance Medicine C is recalled and cannot be sold."
+    },
+    {
+      "name": "sale-rejected-recalled",
+      "status": "passed",
+      "detail": "HTTP 422 lot_recalled"
+    },
+    {
+      "name": "sale",
+      "status": "passed",
+      "detail": "HTTP 422 sync_rejected lot_unreleased Acceptance Medicine D is not released for sale."
+    },
+    {
+      "name": "sale-rejected-expired",
+      "status": "passed",
+      "detail": "HTTP 422 lot_unreleased"
+    },
+    {
+      "name": "sale",
+      "status": "passed",
+      "detail": "HTTP 422 sync_rejected lot_unreleased Acceptance Hold is not released for sale."
+    },
+    {
+      "name": "sale-rejected-unreleased-hold",
+      "status": "passed",
+      "detail": "HTTP 422 lot_unreleased"
+    },
+    {
+      "name": "sale",
+      "status": "passed",
+      "detail": "HTTP 422 sync_rejected Insufficient stock: 4 available at this branch."
+    },
+    {
+      "name": "sale-rejected-insufficient-stock",
+      "status": "passed",
+      "detail": "HTTP 422 Insufficient stock: 4 available at this branch."
+    },
+    {
+      "name": "sale",
+      "status": "passed",
+      "detail": "HTTP 422 sync_rejected lot_recalled Acceptance Medicine C is recalled and cannot be sold."
+    },
+    {
+      "name": "failed-second-line-rolls-back",
+      "status": "passed",
+      "detail": "HTTP 422"
+    },
+    {
+      "name": "rollback-keeps-lot-a",
+      "status": "passed",
+      "detail": "remaining=10 sold=0"
+    },
+    {
+      "name": "supplier-return-partial",
+      "status": "passed",
+      "detail": "HTTP 201"
+    },
+    {
+      "name": "supplier-return-quantity",
+      "status": "passed",
+      "detail": "remaining=3"
+    },
+    {
+      "name": "supplier-return-all",
+      "status": "passed",
+      "detail": "HTTP 201"
+    },
+    {
+      "name": "supplier-return-closes-lot",
+      "status": "passed",
+      "detail": "remaining=0 status=SUPPLIER_RETURN"
+    },
+    {
+      "name": "sale",
+      "status": "passed",
+      "detail": "HTTP 422 sync_rejected Insufficient stock: 0 available at this branch."
+    },
+    {
+      "name": "sale-rejected-empty-supplier-return",
+      "status": "passed",
+      "detail": "HTTP 422 Insufficient stock: 0 available at this branch. status=SUPPLIER_RETURN"
+    },
+    {
+      "name": "transfer-attempt",
+      "status": "passed",
+      "detail": "HTTP 201"
+    },
+    {
+      "name": "transfer-shipped",
+      "status": "passed",
+      "detail": "HTTP 200"
+    },
+    {
+      "name": "transfer-received",
+      "status": "passed",
+      "detail": "HTTP 200"
+    },
+    {
+      "name": "transfer-completed",
+      "status": "passed",
+      "detail": "destination lot is unreleased and quantity is conserved"
+    },
+    {
+      "name": "store-manager-cannot-nominate",
+      "status": "passed",
+      "detail": "HTTP 403 officer_required Only a governance officer can nominate another officer."
+    },
+    {
+      "name": "store-manager-cannot-release",
+      "status": "passed",
+      "detail": "HTTP 403 pharmacist_required Only an authorized pharmacist can release or clear a medicine lot."
+    },
+    {
+      "name": "super-admin-cannot-appoint",
+      "status": "passed",
+      "detail": "HTTP 403 officer_required Only a governance officer can appoint or revoke a pharmacist."
+    },
+    {
+      "name": "second-appointment-blocked",
+      "status": "passed",
+      "detail": "HTTP 409 already_authorized This user is already authorized to release medicine lots."
+    },
+    {
+      "name": "receive-rejected-without-manufacturer-lot",
+      "status": "passed",
+      "detail": "HTTP 422 lot_required Manufacturer lot is required for a medicine."
+    },
+    {
+      "name": "receive-rejected-without-expiry",
+      "status": "passed",
+      "detail": "HTTP 422 lot_required Expiry date is required for a medicine."
+    },
+    {
+      "name": "damaged-lot-sale",
+      "status": "skipped",
+      "detail": "DAMAGED is a stored status and sale/release reject it, but no stock workflow sets it. Waste and damage adjustments remove quantity instead. Direct SQL was not used."
+    },
+    {
+      "name": "offline-pharmacy-checkout",
+      "status": "skipped",
+      "detail": "The pharmacy offline block runs only inside the Tauri register. The desktop app was not started because it loads the developer environment."
+    },
+    {
+      "name": "electronics_wholesale-pharmacy-closed",
+      "status": "passed",
+      "detail": "HTTP 403 capability_disabled Pharmacy catalogue is not enabled for this business. A business-wide admin can turn it on in Store Settings."
+    },
+    {
+      "name": "electronics_wholesale-received",
+      "status": "passed",
+      "detail": "HTTP 201 "
+    },
+    {
+      "name": "electronics_wholesale-sale",
+      "status": "passed",
+      "detail": "HTTP 200 on_hand=1"
+    },
+    {
+      "name": "wholesale_retail-pharmacy-closed",
+      "status": "passed",
+      "detail": "HTTP 403 capability_disabled Pharmacy catalogue is not enabled for this business. A business-wide admin can turn it on in Store Settings."
+    },
+    {
+      "name": "wholesale_retail-received",
+      "status": "passed",
+      "detail": "HTTP 201 "
+    },
+    {
+      "name": "wholesale_retail-sale",
+      "status": "passed",
+      "detail": "HTTP 200 on_hand=1"
+    },
+    {
+      "name": "retail_fashion-pharmacy-closed",
+      "status": "passed",
+      "detail": "HTTP 403 capability_disabled Pharmacy catalogue is not enabled for this business. A business-wide admin can turn it on in Store Settings."
+    },
+    {
+      "name": "retail_fashion-received",
+      "status": "passed",
+      "detail": "HTTP 201 "
+    },
+    {
+      "name": "retail_fashion-sale",
+      "status": "passed",
+      "detail": "HTTP 200 on_hand=1"
+    },
+    {
+      "name": "grocery-pharmacy-closed",
+      "status": "passed",
+      "detail": "HTTP 403 capability_disabled Pharmacy catalogue is not enabled for this business. A business-wide admin can turn it on in Store Settings."
+    },
+    {
+      "name": "grocery-sign-in",
+      "status": "failed",
+      "detail": "POST /api/v1/sync/push -> 409 {\"error\":{\"code\":\"plan_limit\",\"message\":\"This plan includes 1 branches. Existing records stay available.\",\"api\":\"POST /api/v1/sync/push\"},\"request_id\":\"1fbe73b7ad8b46e1924fc70213a35f3c\"}"
+    },
+    {
+      "name": "restaurant-pharmacy-closed",
+      "status": "passed",
+      "detail": "HTTP 403 capability_disabled Pharmacy catalogue is not enabled for this business. A business-wide admin can turn it on in Store Settings."
+    },
+    {
+      "name": "restaurant-received",
+      "status": "passed",
+      "detail": "HTTP 201 "
+    },
+    {
+      "name": "restaurant-sale",
+      "status": "passed",
+      "detail": "HTTP 200 on_hand=1"
+    },
+    {
+      "name": "cafe-pharmacy-closed",
+      "status": "passed",
+      "detail": "HTTP 403 capability_disabled Pharmacy catalogue is not enabled for this business. A business-wide admin can turn it on in Store Settings."
+    },
+    {
+      "name": "cafe-received",
+      "status": "passed",
+      "detail": "HTTP 201 "
+    },
+    {
+      "name": "cafe-sale",
+      "status": "passed",
+      "detail": "HTTP 200 on_hand=1"
+    },
+    {
+      "name": "quick_service-pharmacy-closed",
+      "status": "passed",
+      "detail": "HTTP 403 capability_disabled Pharmacy catalogue is not enabled for this business. A business-wide admin can turn it on in Store Settings."
+    },
+    {
+      "name": "quick_service-received",
+      "status": "passed",
+      "detail": "HTTP 201 "
+    },
+    {
+      "name": "quick_service-sale",
+      "status": "passed",
+      "detail": "HTTP 200 on_hand=1"
+    }
+  ],
+  "fefo_sale": 200
+}

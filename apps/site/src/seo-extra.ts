@@ -1,15 +1,41 @@
-import { PORTAL, SURFACE, TERMINAL, type SeoPage } from "./seo-types.ts";
+import { DASHBOARD, PORTAL, SALE_PHONE, SURFACE, TERMINAL, type SeoPage } from "./seo-types.ts";
 
 const PUBLISHED = "2026-11-16";
 
 /** Extra fields for pages that already have a URL. One primary intent each. */
 export const CORE_EXTRAS: Record<string, Partial<SeoPage>> = {
+  explore: {
+    related: ["/hardware", "/restaurant-pos", "/grocery-pos", "/electronics-pos", "/fashion-pos"],
+    faqs: [
+      {
+        question: "Does opening a demo create an account?",
+        answer:
+          "No. Explore opens a shared demonstration business. It does not register a store, and public demo access stays closed until an operator enables it.",
+      },
+      {
+        question: "Is the pharmacy card a complete pharmacy ERP?",
+        answer:
+          "No. It opens a shared catalogue demonstration. It does not mean a licensed, compliance-complete pharmacy system is available, and it does not mean offline verification is finished.",
+      },
+    ],
+  },
+  hardware: {
+    related: ["/explore", "/pos-software-uae"],
+    faqs: [
+      {
+        question: "Does a hardware enquiry open a store?",
+        answer:
+          "No. The form records a quotation request for published products or packages. Draft products stay off the public page.",
+      },
+    ],
+  },
   home: {
     kind: "home",
-    related: ["/restaurant-pos", "/cafe-pos", "/grocery-pos", "/electronics-pos", "/fashion-pos", "/wholesale-pos", "/blog"],
+    related: ["/restaurant-pos", "/cafe-pos", "/grocery-pos", "/retail-pos", "/fashion-pos", "/electronics-pos", "/wholesale-pos", "/quick-service-pos", "/ai-pos", "/blog"],
   },
   "restaurant-pos": {
-    related: ["/cafe-pos", "/quick-service-pos", "/kitchen-display", "/blog/restaurant-pos-features-uae"],
+    related: ["/cafe-pos", "/quick-service-pos", "/kitchen-display", "/offline-pos", "/ai-pos", "/blog/restaurant-pos-features-uae"],
+    gallery: [SURFACE, DASHBOARD],
     faqs: [
       {
         question: "Does the restaurant profile start with tables?",
@@ -29,12 +55,13 @@ export const CORE_EXTRAS: Record<string, Partial<SeoPage>> = {
     ],
   },
   "retail-pos": {
-    related: ["/grocery-pos", "/fashion-pos", "/inventory-management", "/pos-software-uae"],
+    related: ["/grocery-pos", "/fashion-pos", "/wholesale-pos", "/inventory-management", "/pos-software-uae"],
+    gallery: [DASHBOARD],
     faqs: [
       {
         question: "Is there a preset named only Retail?",
         answer:
-          "No. This page is the shared register: catalog checkout, barcodes, stock, purchase orders, and transfers. Grocery and fashion each have their own profile and page.",
+          "No. This page is the shared register: catalog checkout, barcodes, stock, purchase orders, and transfers. Grocery, fashion, and the wholesale counter each have their own page.",
       },
       {
         question: "Does barcode checkout start on this register?",
@@ -43,7 +70,8 @@ export const CORE_EXTRAS: Record<string, Partial<SeoPage>> = {
     ],
   },
   "grocery-pos": {
-    related: ["/inventory-management", "/retail-pos", "/loyalty-promotions", "/blog/supermarket-pos-barcode-inventory"],
+    related: ["/inventory-management", "/retail-pos", "/loyalty-promotions", "/offline-pos", "/blog/supermarket-pos-barcode-inventory"],
+    gallery: [DASHBOARD],
     faqs: [
       {
         question: "What does a supermarket start with that a neighborhood grocery does not?",
@@ -58,7 +86,8 @@ export const CORE_EXTRAS: Record<string, Partial<SeoPage>> = {
     ],
   },
   "cafe-pos": {
-    related: ["/restaurant-pos", "/quick-service-pos", "/kitchen-display", "/loyalty-promotions", "/blog/cafe-pos-dubai"],
+    related: ["/restaurant-pos", "/quick-service-pos", "/kitchen-display", "/offline-pos", "/loyalty-promotions", "/blog/cafe-pos-dubai"],
+    gallery: [SALE_PHONE, DASHBOARD],
     faqs: [
       {
         question: "Does every café start include tables?",
@@ -72,7 +101,8 @@ export const CORE_EXTRAS: Record<string, Partial<SeoPage>> = {
     ],
   },
   "quick-service-pos": {
-    related: ["/cafe-pos", "/restaurant-pos", "/kitchen-display"],
+    related: ["/cafe-pos", "/restaurant-pos", "/kitchen-display", "/offline-pos"],
+    gallery: [SALE_PHONE],
     faqs: [
       {
         question: "Which quick-service start includes delivery-channel orders?",
@@ -111,7 +141,8 @@ export const CORE_EXTRAS: Record<string, Partial<SeoPage>> = {
     ],
   },
   "electronics-pos": {
-    related: ["/imei-serial-tracking", "/wholesale-pos", "/inventory-management", "/blog/electronics-pos-imei"],
+    related: ["/imei-serial-tracking", "/wholesale-pos", "/inventory-management", "/ai-pos", "/blog/electronics-pos-imei"],
+    gallery: [DASHBOARD],
     faqs: [
       {
         question: "Which electronics start includes a credit statement?",
@@ -433,6 +464,69 @@ export const FEATURE_PAGES: SeoPage[] = [
     image: PORTAL,
     crumb: "Loyalty and promotions",
   },
+  {
+    id: "ai-pos",
+    path: "/ai-pos",
+    locale: "en",
+    kind: "feature",
+    untranslated: true,
+    title: "AI POS Software | AxizPOS",
+    description:
+      "What the AxizPOS assistant can answer from a store's own sales, stock, and shifts, in English or Arabic, and which actions still need a person.",
+    h1: "AI POS software that answers from the records a store already has",
+    kicker: "AI assistant",
+    lead: "The AxizPOS assistant is a question about one signed-in business. It reads the reports that user's role can open. It does not invent a sales figure, and it does not send a purchase to a supplier.",
+    sections: [
+      {
+        heading: "How the assistant works",
+        paragraphs: [
+          "A person who can open the portal asks in English or Arabic. The assistant picks a report tool for that question. The number in the answer is the number the tool returned, quoted as the tool formatted it. If the question is outside the signed-in business, or about a branch that user cannot open, the assistant says it cannot access that. It does not switch tenant because the question asked it to.",
+          "If the role cannot see that report, the answer says so and asks for an administrator to grant access. It does not fill the gap with a guess. Greeting and help replies do not include business figures.",
+        ],
+      },
+      {
+        heading: "What it can be asked",
+        paragraphs: [
+          "When the report exists for that business and that role, questions can cover sales, top products, categories, payment mix, profit, expenses, stock value, slow or unsold stock, shrink, unusual voids and refunds, price suggestions, kitchen timing, table turnaround, items bought together, customer balances, supplier payables, and credit risk. A restaurant cannot be asked for a credit ledger it is not allowed to keep. The tool only runs where that profile has the underlying records.",
+          "A reorder question reads the latest replenishment run for that store: suggested quantities, the method label, and on-hand stock. Accepting a suggestion in inventory can create a draft purchase order or a transfer from a branch with surplus. The assistant does not place that order with a supplier. A person still edits the draft.",
+        ],
+      },
+      {
+        heading: "What it does not do",
+        paragraphs: [
+          "It does not run on the desktop register during an outage. The register can keep selling after it has connected once, and those tickets sync later. The assistant cannot see them until they are in the portal, and the portal needs a connection.",
+          "It does not watch cameras, write marketing, or file a tax return. The VAT report is a report of recorded sales. It is not a filing. It does not claim a licensed pharmacy workflow. Checkout prices, modifiers, and tenders stay rules on the profile. They are not a chat.",
+        ],
+      },
+    ],
+    points: [
+      "English or Arabic, for the signed-in business only",
+      "Figures come from report tools, not from a guess",
+      "A missing permission is stated, not filled in",
+      "Reorder answers read a replenishment run; a person accepts a draft",
+      "The assistant needs the portal. The register can sell offline.",
+    ],
+    faqs: [
+      {
+        question: "Does the assistant change prices or send a purchase order by itself?",
+        answer:
+          "No. Price suggestions and reorder lines are answers and drafts. A person accepts a replenishment suggestion before a draft purchase order or a transfer exists. The supplier is not sent a silent order.",
+      },
+      {
+        question: "Which languages does it answer in?",
+        answer: "English and Arabic. The reply follows the language of the question. It does not translate the product into other languages on this page.",
+      },
+      {
+        question: "Can it answer while the shop is offline?",
+        answer:
+          "No. Asking is portal work and needs a connection. The desktop register can continue checkout after activation. Those are different screens.",
+      },
+    ],
+    related: ["/restaurant-pos", "/grocery-pos", "/offline-pos", "/blog/what-is-an-ai-pos-system", "/explore"],
+    image: DASHBOARD,
+    gallery: [SURFACE],
+    crumb: "AI POS",
+  },
 ];
 
 export const ARTICLE_PAGES: SeoPage[] = [
@@ -441,9 +535,10 @@ export const ARTICLE_PAGES: SeoPage[] = [
     path: "/blog",
     locale: "en",
     kind: "blog",
+    modified: "2026-11-19",
     title: "POS Guides for UAE Businesses | AxizPOS",
     description:
-      "Practical guides on choosing a POS in the UAE, café and restaurant workflows, supermarket stock, serial numbers, offline selling, branches, and published AED pricing.",
+      "Guides for shops in the UAE and GCC: choosing a POS, restaurant service, supermarket stock, wholesale credit, offline selling, and what the AxizPOS assistant does today.",
     h1: "Guides for choosing and running AxizPOS",
     kicker: "Guides",
     lead: "These notes describe how AxizPOS actually behaves. They do not rank products we have not used, and they do not invent a customer count.",
@@ -466,6 +561,32 @@ export const ARTICLE_PAGES: SeoPage[] = [
       "/blog/offline-pos-vs-cloud-pos",
       "/blog/multi-branch-inventory",
       "/blog/pos-software-pricing-uae",
+      "/blog/best-pos-system-uae",
+      "/blog/restaurant-pos-system-uae",
+      "/blog/supermarket-inventory-management",
+      "/blog/pos-vs-billing-software",
+      "/blog/reduce-stock-loss-retail",
+      "/blog/electronics-wholesale-pos",
+      "/blog/offline-pos-uae",
+      "/blog/ai-pos-retail-restaurants",
+      "/blog/what-is-an-ai-pos-system",
+      "/blog/ai-pos-vs-traditional-pos",
+      "/blog/how-ai-is-changing-pos",
+      "/blog/pos-software-for-small-business",
+      "/blog/cloud-pos-vs-on-premise",
+      "/blog/offline-pos-software",
+      "/blog/ai-inventory-management",
+      "/blog/pos-analytics",
+      "/blog/ai-demand-forecasting-retail",
+      "/blog/multi-store-pos-system",
+      "/blog/pos-system-integration",
+      "/blog/inventory-loss-prevention",
+      "/blog/retail-pos-software",
+      "/blog/restaurant-pos-automation",
+      "/blog/grocery-pos-software",
+      "/blog/wholesale-pos-software",
+      "/blog/electronics-store-pos",
+      "/blog/fashion-pos-software",
     ],
     image: PORTAL,
     crumb: "Guides",

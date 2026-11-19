@@ -1,14 +1,23 @@
 import { Capability, activeRules, applyPromotions, type Promotion, type PromotionKind } from "@ai-pos/shared-types";
 import { env, previewHeaders } from "../../config/env";
-import { hasCapability } from "../../lib/capabilities";
+import { capabilityScope, hasCapability } from "../../lib/capabilities";
 import { inTauri } from "../../lib/tauri";
 import type { CartLine, CartState } from "./cart";
 
-const CACHE_KEY = "ai-pos.promotions";
+const LEGACY_CACHE_KEY = "ai-pos.promotions";
+
+function cacheKey(): string | null {
+  const scope = capabilityScope();
+  if (scope === null) return null;
+  return `ai-pos.promotions.v1:${scope.environment}:${scope.tenantId}`;
+}
 
 function cached(): Promotion[] {
+  const key = cacheKey();
+  if (key === null) return [];
   try {
-    const raw = localStorage.getItem(CACHE_KEY);
+    localStorage.removeItem(LEGACY_CACHE_KEY);
+    const raw = localStorage.getItem(key);
     return raw ? (JSON.parse(raw) as Promotion[]) : [];
   } catch {
     return [];
@@ -17,8 +26,10 @@ function cached(): Promotion[] {
 
 /** Live promotions when online; the last list fetched when offline, so offline sales still get them. */
 export async function loadPromotions(): Promise<Promotion[]> {
+  const key = cacheKey();
   if (!hasCapability(Capability.Promotions)) {
-    localStorage.removeItem(CACHE_KEY);
+    if (key) localStorage.removeItem(key);
+    localStorage.removeItem(LEGACY_CACHE_KEY);
     return [];
   }
   try {
@@ -30,8 +41,9 @@ export async function loadPromotions(): Promise<Promotion[]> {
       const response = await fetch(`${env.apiBaseUrl}/api/v1/promotions/active?store_id=${env.storeId}`, { headers: previewHeaders() });
       fresh = response.ok ? ((await response.json()) as Promotion[]) : null;
     }
-    if (Array.isArray(fresh)) {
-      localStorage.setItem(CACHE_KEY, JSON.stringify(fresh));
+    if (Array.isArray(fresh) && key) {
+      localStorage.removeItem(LEGACY_CACHE_KEY);
+      localStorage.setItem(key, JSON.stringify(fresh));
       return fresh;
     }
   } catch {

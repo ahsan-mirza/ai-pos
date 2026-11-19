@@ -11,6 +11,7 @@ import {
   type ManualAdjustmentResult,
   type ProductCosting,
   type SerialInput,
+  Capability,
   type StockRow,
   type StoreSerial,
 } from "@ai-pos/shared-types";
@@ -88,6 +89,7 @@ export function AdjustStockModal({
   const { currency: businessCurrency } = useCurrency();
   const { has } = useCapabilities();
   const trackLots = has("fefo");
+  const medicineLots = has(Capability.PharmacyCatalog) && row.lot_controlled === true;
   const [mode, setMode] = useState<AdjustmentMode>("add");
   const [quantity, setQuantity] = useState(row.is_serialized ? 0 : 1);
   const [reason, setReason] = useState<AdjustmentReason | "">("");
@@ -97,6 +99,7 @@ export function AdjustStockModal({
   const [landedCost, setLandedCost] = useState("");
   const [supplierRef, setSupplierRef] = useState("");
   const [lotNumber, setLotNumber] = useState("");
+  const [manufactured, setManufactured] = useState("");
   const [expiry, setExpiry] = useState("");
   const [receiptDate, setReceiptDate] = useState("");
   const [historyOpen, setHistoryOpen] = useState(false);
@@ -201,6 +204,11 @@ export function AdjustStockModal({
     }
     if (needScans && scanned.length !== needScans) return `Scan ${needScans} IMEI/serial number${needScans === 1 ? "" : "s"}.`;
     if (needPicks && selected.size !== needPicks) return `Select ${needPicks} unit${needPicks === 1 ? "" : "s"} to write off.`;
+    if (adding && medicineLots && lotNumber.trim() === "") return "Enter the manufacturer lot.";
+    if (adding && medicineLots && expiry === "") return "Enter the expiry date.";
+    if (adding && medicineLots && manufactured !== "" && expiry !== "" && manufactured > expiry) {
+      return "Manufacture date cannot be after the expiry date.";
+    }
     if (adding && unitCents === null) return "Enter the unit acquisition cost.";
     if (adding && landedCents === null) return "Enter the additional landed cost as a number, or leave it blank.";
     if (reason === "") return "Choose an adjustment reason.";
@@ -255,8 +263,10 @@ export function AdjustStockModal({
           remove_serial_ids: needPicks ? [...selected] : [],
           unit_cost_cents: adding ? unitCents : null,
           landed_cost_cents: adding ? (landedCents ?? 0) : 0,
-          lot_number: adding && trackLots ? lotNumber.trim() || null : null,
-          expiry_date: adding && trackLots && expiry ? expiry : null,
+          lot_number: adding && trackLots && !medicineLots ? lotNumber.trim() || null : null,
+          manufacturer_lot: adding && medicineLots ? lotNumber.trim() || null : null,
+          manufactured_on: adding && medicineLots && manufactured ? manufactured : null,
+          expiry_date: adding && (medicineLots || trackLots) && expiry ? expiry : null,
           supplier_reference: adding ? supplierRef.trim() || null : null,
           receipt_date: adding && receiptDate ? receiptDate : null,
         }),
@@ -437,18 +447,30 @@ export function AdjustStockModal({
                 className="mt-1.5 h-11 w-full rounded-xl border border-transparent bg-surface text-sm font-normal focus:border-accent focus:bg-white focus:outline-none"
               />
             </label>
-            {trackLots ? (
+            {medicineLots || trackLots ? (
               <div className="grid gap-4 sm:grid-cols-2">
                 <label className="block text-sm font-medium">
-                  Batch / lot number
+                  {medicineLots ? "Manufacturer lot" : "Batch / lot number"}
                   <input
                     value={lotNumber}
-                    aria-label="Batch or lot number"
+                    aria-label={medicineLots ? "Manufacturer lot" : "Batch or lot number"}
                     onChange={(event) => setLotNumber(event.target.value)}
-                    maxLength={32}
+                    maxLength={medicineLots ? 64 : 32}
                     className="mt-1.5 h-11 w-full rounded-xl border border-transparent bg-surface px-4 text-sm font-normal focus:border-accent focus:bg-white focus:outline-none"
                   />
                 </label>
+                {medicineLots ? (
+                  <label className="block text-sm font-medium">
+                    Manufacture date
+                    <AxizDatePicker
+                      leading
+                      aria-label="Manufacture date"
+                      value={manufactured}
+                      onChange={(event) => setManufactured(event.target.value)}
+                      className="mt-1.5 h-11 w-full rounded-xl border border-transparent bg-surface text-sm font-normal focus:border-accent focus:bg-white focus:outline-none"
+                    />
+                  </label>
+                ) : null}
                 <label className="block text-sm font-medium">
                   Expiry date
                   <AxizDatePicker

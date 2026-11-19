@@ -1,0 +1,11 @@
+{
+  "unreleased_status_preservation": "NOT RUN. No existing portal or pharmacy endpoint sets a sold released layer back to UNRELEASED, and quantities were not written with SQL.",
+  "damaged_status_preservation": "NOT RUN. No existing service writes DAMAGED, and this stage does not add that workflow.",
+  "windows_register": "BLOCKED — INVENTORY ACCEPTANCE SESSION ACTIVE",
+  "tenant_capability_cache": "NOT RUN. It requires the Pharmacy acceptance register, which was not launched while the inventory acceptance session is active.",
+  "offline_and_header_states": "NOT RUN. Those states are produced by the register session, not by the Business Pro portal.",
+  "double_click_charge": "NOT RUN. It requires the Windows register.",
+  "grocery_offline_sync": "NOT RUN. It requires the Windows register. The grocery customer return in the portal was run separately.",
+  "revoked_pharmacist_ui": "NOT RUN. Revocation was not repeated on the register in this stage.",
+  "natural_person_and_licence": "NOT RUN. Those checks are outside the application-account model and were not added."
+}

@@ -1,9 +1,16 @@
+import { useState } from "react";
+import { track } from "../track";
 import { GET_STARTED_NOTE, GetStartedLink } from "./GetStartedLink";
-import { SignupEmbed } from "./SignupEmbed";
+import { SignupDialog } from "./SignupEmbed";
 
-/** Two-column close of the marketing page. The card runs the existing signup wizard. */
+/** Two-column close of the marketing page. The signup wizard loads only after it is opened. */
 export function GetStartedSection() {
   const arabic = document.documentElement.lang === "ar";
+  const [signupOpen, setSignupOpen] = useState(false);
+  const openSignup = () => {
+    track("click_get_started", { page_path: window.location.pathname });
+    setSignupOpen(true);
+  };
   return (
     <section id="contact" className="border-t border-line bg-charcoal text-canvas">
       <div className="mx-auto grid max-w-page gap-10 px-4 py-16 sm:px-6 lg:grid-cols-[minmax(0,20rem)_minmax(0,1fr)] lg:items-start lg:gap-12 lg:px-8 lg:py-20">
@@ -31,7 +38,15 @@ export function GetStartedSection() {
               {arabic ? "أنشئ الحساب وجهّز المتجر من الخطوات نفسها." : "Create your AxizPOS account and set up your business in a few simple steps."}
             </p>
           </div>
-          <SignupEmbed />
+          <button
+            type="button"
+            onClick={openSignup}
+            className="inline-flex h-12 items-center justify-center rounded-2xl bg-primary px-5 text-sm font-semibold text-white hover:bg-primary-hover"
+          >
+            {arabic ? "ابدأ مجاناً" : "Get Started Free"}
+          </button>
+          <p className="mt-3 text-xs leading-5 text-slate-500">{arabic ? "يفتح نموذج التسجيل الحالي." : "Opens the signup form. New stores start on the Free plan."}</p>
+          {signupOpen ? <SignupDialog onClose={() => setSignupOpen(false)} /> : null}
         </div>
       </div>
     </section>

@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import Settings, get_settings
 from app.core.database import get_db
-from app.core.deps import Principal, authorize
+from app.core.deps import REGISTER_SCOPES, Principal, authorize
 from app.core.permissions import Permission
 from app.schemas.stock_counts import StockCountCreate, StockCountEntries, StockCountOut, StockCountSummary
 from app.services import stock_count_service
@@ -14,8 +14,8 @@ from app.services import stock_count_service
 router = APIRouter()
 Db = Annotated[Session, Depends(get_db)]
 Config = Annotated[Settings, Depends(get_settings)]
-CanCount = Annotated[Principal, Depends(authorize(Permission.PORTAL_ACCESS))]
-CanPost = Annotated[Principal, Depends(authorize(Permission.INVENTORY_ADJUST_STOCK))]
+CanCount = Annotated[Principal, Depends(authorize(Permission.PORTAL_ACCESS, scopes=REGISTER_SCOPES))]
+CanPost = Annotated[Principal, Depends(authorize(Permission.INVENTORY_ADJUST_STOCK, scopes=REGISTER_SCOPES))]
 
 
 @router.get("", response_model=list[StockCountSummary])

@@ -1,0 +1,18 @@
+{
+  "tenant": "accept-grocery",
+  "cashier": "cashier.g",
+  "product": "Acceptance Grocery Tin",
+  "fefo_product": "Acceptance Grocery FEFO",
+  "fefo_layers": [
+    {
+      "lot": "GROC-EARLY",
+      "quantity": 3,
+      "expiry": "2026-12-15"
+    },
+    {
+      "lot": "GROC-LATER",
+      "quantity": 5,
+      "expiry": "2027-08-01"
+    }
+  ]
+}

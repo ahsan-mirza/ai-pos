@@ -22,7 +22,6 @@ import {
 } from "lucide-react";
 import { Fragment, useCallback, useEffect, useRef, useState, type FocusEvent, type MouseEvent, type ReactNode } from "react";
 import { Link, NavLink, Outlet, useLocation } from "react-router-dom";
-import { CatalogueNav, cataloguePath } from "./CatalogueNav";
 import { PaymentCountBadge } from "./PaymentCountBadge";
 import { PaymentNoticeBell, PaymentReviewProvider, usePaymentReviews } from "../lib/paymentReviews";
 import { useSession } from "../lib/session";
@@ -444,11 +443,10 @@ export function Shell() {
     <PaymentReviewProvider>
     <div className="flex h-dvh w-screen overflow-hidden bg-[#f8fafc] font-sans text-charcoal">
       <Sidebar collapsed={collapsed} mobileOpen={mobileOpen} onCloseMobile={closeMobile} />
-      <div className="flex min-w-0 flex-1 flex-col">
+      <div className="flex w-full min-w-0 flex-1 flex-col">
         <Header collapsed={collapsed} onToggleCollapsed={toggleCollapsed} onOpenMobile={() => setMobileOpen(true)} />
-        <main className="relative min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
-          <div className="px-4 py-4 md:px-6 md:py-5">
-            {cataloguePath(pathname) ? <CatalogueNav /> : null}
+        <main className="relative min-h-0 w-full min-w-0 flex-1 overflow-y-auto overflow-x-hidden">
+          <div className="w-full min-w-0 px-4 py-4 md:px-6 md:py-5">
             <Outlet />
           </div>
         </main>

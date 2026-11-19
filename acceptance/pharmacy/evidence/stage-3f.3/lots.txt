@@ -1,0 +1,8 @@
+ manufacturer_lot |   lot_status    | quantity_imported | quantity_remaining 
+------------------+-----------------+-------------------+--------------------
+ LOT-EXCESS       | RELEASED        |                 2 |                  1
+ LOT-RECALL       | RECALLED        |                 4 |                  4
+ LOT-RET          | QUARANTINED     |                 4 |                  4
+ LOT-SUP          | SUPPLIER_RETURN |                 2 |                  1
+(4 rows)
+

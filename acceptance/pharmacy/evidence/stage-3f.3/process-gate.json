@@ -1,0 +1,42 @@
+{
+    "desktops":  [
+                     {
+                         "ProcessId":  59572,
+                         "ExecutablePath":  "D:\\Work\\ai-pos\\acceptance\\inventory\\target\\release\\ai-pos-desktop.exe",
+                         "CommandLine":  "\"D:\\Work\\ai-pos\\acceptance\\inventory\\target\\release\\ai-pos-desktop.exe\" "
+                     }
+                 ],
+    "listeners":  [
+                      {
+                          "LocalAddress":  "::",
+                          "LocalPort":  5432,
+                          "OwningProcess":  8812
+                      },
+                      {
+                          "LocalAddress":  "127.0.0.1",
+                          "LocalPort":  55433,
+                          "OwningProcess":  47156
+                      },
+                      {
+                          "LocalAddress":  "127.0.0.1",
+                          "LocalPort":  18081,
+                          "OwningProcess":  37356
+                      },
+                      {
+                          "LocalAddress":  "0.0.0.0",
+                          "LocalPort":  8000,
+                          "OwningProcess":  19120
+                      },
+                      {
+                          "LocalAddress":  "0.0.0.0",
+                          "LocalPort":  5432,
+                          "OwningProcess":  8812
+                      }
+                  ],
+    "containers":  [
+                       "axizpos-inventory-acceptance-db 127.0.0.1:55433-\u003e5432/tcp",
+                       "evolution_api 127.0.0.1:8080-\u003e8080/tcp",
+                       "evolution_postgres 5432/tcp",
+                       "evolution_redis 6379/tcp"
+                   ]
+}

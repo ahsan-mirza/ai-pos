@@ -1,0 +1,6 @@
+INFO:     Started server process [31316]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:18081 (Press CTRL+C to quit)
+INFO ai_pos.perf [POS_API_PERF] endpoint=GET /api/v1/products total_ms=54.3 query_count=8 store_id=ec46f632-0bb2-40da-96e2-df67c4e64931
+INFO ai_pos.perf [POS_API_PERF] endpoint=GET /api/v1/products total_ms=25.3 query_count=8 store_id=ec46f632-0bb2-40da-96e2-df67c4e64931

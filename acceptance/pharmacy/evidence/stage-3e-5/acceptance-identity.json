@@ -1,0 +1,13 @@
+{
+  "activation_path": "C:\\Users\\ahsan\\AppData\\Roaming\\com.axizpos.pharmacy.acceptance\\terminal.bin",
+  "activation_source": "activation",
+  "api_base_url": "http://127.0.0.1:18080",
+  "app_data_dir": "C:\\Users\\ahsan\\AppData\\Roaming\\com.axizpos.pharmacy.acceptance",
+  "dev_env_config_ignored": false,
+  "developer_env_loaded": false,
+  "executable": "D:\\Work\\ai-pos\\apps\\desktop\\src-tauri\\target\\release\\ai-pos-desktop.exe",
+  "guard": "passed",
+  "identifier": "com.axizpos.pharmacy.acceptance",
+  "profile": "acceptance",
+  "sqlite_path": "C:\\Users\\ahsan\\AppData\\Roaming\\com.axizpos.pharmacy.acceptance\\tenants\\pharmacy-accept\\ai-pos.db"
+}

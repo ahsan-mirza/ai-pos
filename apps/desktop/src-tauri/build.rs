@@ -1,6 +1,6 @@
 use std::{env, fs, path::PathBuf};
 
-const ENVIRONMENTS: [&str; 3] = ["development", "dev", "production"];
+const ENVIRONMENTS: [&str; 4] = ["development", "dev", "production", "acceptance"];
 
 /// Bakes the activation endpoint from the repo-root env file into the binary, so an installer never
 /// depends on files from the build machine. POS_ENV defaults to development for debug builds and
@@ -16,6 +16,14 @@ fn main() {
     if !ENVIRONMENTS.contains(&pos_env.as_str()) {
         panic!("POS_ENV must be one of {ENVIRONMENTS:?}; got {pos_env:?}.");
     }
+    if pos_env == "acceptance" {
+        emit_acceptance();
+        tauri_build::build();
+        return;
+    }
+    println!("cargo:rustc-env=POS_ACCEPTANCE_BUILD=0");
+    println!("cargo:rustc-env=POS_ACCEPTANCE_IDENTIFIER=");
+    println!("cargo:rustc-env=POS_ACCEPTANCE_API_BASE=");
 
     let manifest_dir =
         PathBuf::from(env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR is set by cargo"));
@@ -56,6 +64,37 @@ fn main() {
     println!("cargo:rustc-env=POS_TENANT_URL_TEMPLATE={url_template}");
     println!("cargo:rustc-env=POS_TENANT_BASE_DOMAIN={base_domain}");
     tauri_build::build()
+}
+
+fn emit_acceptance() {
+    println!("cargo:rerun-if-env-changed=ACCEPTANCE_PROFILE");
+    println!("cargo:rerun-if-env-changed=ACCEPTANCE_TENANT_URL_TEMPLATE");
+    println!("cargo:rerun-if-env-changed=ACCEPTANCE_TENANT_BASE_DOMAIN");
+    let profile = env::var("ACCEPTANCE_PROFILE").unwrap_or_else(|_| "pharmacy".to_string());
+    let (identifier, expected_url) = match profile.as_str() {
+        "pharmacy" => (
+            "com.axizpos.pharmacy.acceptance",
+            "http://127.0.0.1:18080",
+        ),
+        "inventory" => (
+            "com.axizpos.inventory.acceptance",
+            "http://127.0.0.1:18081",
+        ),
+        other => panic!("ACCEPTANCE_PROFILE must be pharmacy or inventory; got {other:?}."),
+    };
+    let url = env::var("ACCEPTANCE_TENANT_URL_TEMPLATE").unwrap_or_default();
+    let domain = env::var("ACCEPTANCE_TENANT_BASE_DOMAIN").unwrap_or_default();
+    if url != expected_url {
+        panic!("Acceptance profile {profile} requires ACCEPTANCE_TENANT_URL_TEMPLATE={expected_url}.");
+    }
+    if domain != "acceptance.invalid" {
+        panic!("Acceptance builds require ACCEPTANCE_TENANT_BASE_DOMAIN=acceptance.invalid.");
+    }
+    println!("cargo:rustc-env=POS_TENANT_URL_TEMPLATE={url}");
+    println!("cargo:rustc-env=POS_TENANT_BASE_DOMAIN={domain}");
+    println!("cargo:rustc-env=POS_ACCEPTANCE_BUILD=1");
+    println!("cargo:rustc-env=POS_ACCEPTANCE_IDENTIFIER={identifier}");
+    println!("cargo:rustc-env=POS_ACCEPTANCE_API_BASE={url}");
 }
 
 fn read_tenant_pair(path: &std::path::Path) -> (String, String) {

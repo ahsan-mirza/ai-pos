@@ -1,0 +1,72 @@
+[
+  {
+    "name": "nominator-cannot-confirm-in-ui",
+    "status": "passed",
+    "detail": "Confirm is hidden for the nominator"
+  },
+  {
+    "name": "officer-one-confirmed",
+    "status": "passed",
+    "detail": "Clerk B confirmed Officer 1"
+  },
+  {
+    "name": "two-officers",
+    "status": "passed",
+    "detail": "Two active officers"
+  },
+  {
+    "name": "revoke-hidden-while-two-officers",
+    "status": "passed",
+    "detail": "Revoke is hidden so the count cannot fall below two"
+  },
+  {
+    "name": "super-admin-cannot-nominate-after-bootstrap",
+    "status": "passed",
+    "detail": "Nomination form is closed"
+  },
+  {
+    "name": "super-admin-cannot-edit-appointment-permission",
+    "status": "passed",
+    "detail": "The permission checkbox is disabled"
+  },
+  {
+    "name": "requester-cannot-approve",
+    "status": "passed",
+    "detail": "Approve is hidden for the requester"
+  },
+  {
+    "name": "pharmacist-approved",
+    "status": "passed",
+    "detail": "Officer 2 approved Candidate 1"
+  },
+  {
+    "name": "medicine-a-received-in-ui",
+    "status": "passed",
+    "detail": "Goods receipt posted. Receipt number and manufacturer lot are separate."
+  },
+  {
+    "name": "unreleased-lot-visible",
+    "status": "passed",
+    "detail": "Batch drawer shows ACCEPT-LOT-A"
+  },
+  {
+    "name": "release-blocked-without-reason",
+    "status": "passed",
+    "detail": "Confirm stays disabled before a reason and confirmation"
+  },
+  {
+    "name": "lot-a-released-in-ui",
+    "status": "passed",
+    "detail": "Release confirmed in the batch drawer"
+  },
+  {
+    "name": "quarantine-visible",
+    "status": "passed",
+    "detail": "Lot B is quarantined in the batch drawer"
+  },
+  {
+    "name": "recalled-lot-has-no-release",
+    "status": "passed",
+    "detail": "Release is not offered for the recalled lot"
+  }
+]

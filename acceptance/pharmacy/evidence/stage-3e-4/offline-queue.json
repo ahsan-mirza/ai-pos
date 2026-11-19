@@ -1,0 +1,25 @@
+{
+  "captured_while_api": "down",
+  "sqlite": "com.axizpos.pharmacy.acceptance/tenants/pharmacy-accept/ai-pos.db",
+  "register_session_mode": "offline",
+  "pending_sync_jobs": 0,
+  "sync_queue": [
+    {"entity_type": "store", "operation": "upsert", "status": "synced"},
+    {"entity_type": "sale", "operation": "upsert", "status": "synced", "invoice": "ACCEPT-ACC2-000001", "line_count": 1},
+    {"entity_type": "product", "operation": "upsert", "status": "synced"},
+    {"entity_type": "register_shift", "operation": "upsert", "status": "synced"}
+  ],
+  "held_carts": 0,
+  "local_cash_movements": 0,
+  "local_returns": 0,
+  "receipt_cache": 0,
+  "local_shifts": 1,
+  "till_product": {
+    "sku": "ACCEPT-TILL",
+    "name": "Acceptance Till Medicine",
+    "stock_quantity": 5,
+    "note": "Quantity 6 was received. The online sale reduced it to 5. The blocked offline attempt left it at 5."
+  },
+  "screen_message": "Sale not recorded: Pharmacy medicine sales need a live connection so released lots can be checked. This sale was not saved offline.",
+  "ui_cart": "The payment panel still showed the unsaved cart after rejection. It was not written to held_carts or sync_queue."
+}

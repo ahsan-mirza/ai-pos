@@ -1,0 +1,38 @@
+database_role=axizpos_acceptance
+role_superuser=yes
+role_bypassrls=yes
+database_role=axizpos_acceptance
+role_superuser=yes
+role_bypassrls=yes
+ACCEPTANCE ISOLATION
+identifier=axizpos-pharmacy-acceptance
+postgres_container=axizpos-pharmacy-acceptance-db
+network=axizpos-pharmacy-acceptance-net
+volume=axizpos-pharmacy-acceptance-pg
+operational_target=127.0.0.1:55432/axizpos_pharmacy_acceptance
+control_target=127.0.0.1:55432/axizpos_pharmacy_acceptance_control
+api_target=http://127.0.0.1:18080
+portal_api_target=http://127.0.0.1:18080
+development_match=no
+production_match=no
+persistent_database_match=no
+
+# application role
+database_role=ai_pos_app
+role_superuser=no
+role_bypassrls=no
+database_role=ai_pos_app
+role_superuser=no
+role_bypassrls=no
+ACCEPTANCE ISOLATION
+identifier=axizpos-pharmacy-acceptance
+postgres_container=axizpos-pharmacy-acceptance-db
+network=axizpos-pharmacy-acceptance-net
+volume=axizpos-pharmacy-acceptance-pg
+operational_target=127.0.0.1:55432/axizpos_pharmacy_acceptance
+control_target=127.0.0.1:55432/axizpos_pharmacy_acceptance_control
+api_target=http://127.0.0.1:18080
+portal_api_target=http://127.0.0.1:18080
+development_match=no
+production_match=no
+persistent_database_match=no

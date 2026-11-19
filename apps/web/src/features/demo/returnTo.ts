@@ -1,4 +1,4 @@
-/** Where Exit Demo and a finished demo session send the visitor. The address never carries a token. */
+/** Where Exit Demo returns the visitor. A demo that cannot be opened again uses the same address with an ended notice. The address never carries a token. */
 
 export function marketingExploreUrl(): string {
   const configured = import.meta.env.VITE_MARKETING_URL;

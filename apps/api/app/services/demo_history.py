@@ -47,6 +47,7 @@ _RETURNABLE = {
     "supermarket": "GRO-WATER",
     "electronics": "EL-CABLE",
     "fashion": "FSH-OX-S-SND",
+    "pharmacy": "PH-PARA",
 }
 _DAYS = 30
 
@@ -241,9 +242,9 @@ def _lines_for(
 
 
 def _promo_line(db: Session, spec: dict, index: int) -> tuple | None:
-    if index != 5 or spec["code"] not in {"supermarket", "fashion"}:
+    if index != 5 or spec["code"] not in {"supermarket", "fashion", "pharmacy"}:
         return None
-    sku = "GRO-RICE" if spec["code"] == "supermarket" else "FSH-OX-S-NVY"
+    sku = {"supermarket": "GRO-RICE", "fashion": "FSH-OX-S-NVY", "pharmacy": "PH-IBU"}[spec["code"]]
     product = _by_sku(db, sku)
     promotion = db.scalar(select(Promotion).where(Promotion.name == f"{spec['name']} 10% off"))
     if promotion is None:

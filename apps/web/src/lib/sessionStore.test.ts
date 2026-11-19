@@ -45,6 +45,12 @@ describe("portal session restoration", () => {
     const outside: StoredSession = { token: "access-3", expiresAt: now - RENEWAL_GRACE_MS - 1 };
     expect(restorePlan(outside, now)).toBe("sign-out");
     expect(restorePlan(null, now)).toBe("sign-out");
+    const demo: StoredSession = {
+      token: "demo-old",
+      expiresAt: now - RENEWAL_GRACE_MS - 1,
+      demo: { businessCode: "pharmacy", businessName: "Cedar Pharmacy" },
+    };
+    expect(restorePlan(demo, now)).toBe("reenter");
   });
 
   it("moves a tab session into persistent storage and drops the tab copy", () => {

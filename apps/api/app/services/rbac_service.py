@@ -10,8 +10,9 @@ from app.core.config import Settings
 from app.core.deps import Principal
 from app.core.errors import ApiError
 from app.core.permissions import (
-    ALL_PERMISSIONS,
+    GOVERNED_PERMISSIONS,
     PERMISSION_GROUPS,
+    SUPER_ADMIN_PERMISSIONS,
     SYSTEM_ROLES,
     Permission,
 )
@@ -173,7 +174,8 @@ def ensure_system_roles(db: Session) -> None:
                 role.set_permissions(permissions)
                 db.add(role)
         if name == "Super Admin":
-            role.set_permissions(set(ALL_PERMISSIONS))
+            # Replaces the stored set, so a previous sync cannot leave the governed permission in place.
+            role.set_permissions(set(SUPER_ADMIN_PERMISSIONS))
     db.flush()
 
 
@@ -376,6 +378,17 @@ def renew_session(
 
 
 # --- Authorization rules -------------------------------------------------------------------------
+
+
+def _reject_governed_role_grant(permissions: set[str]) -> None:
+    governed = sorted(permissions & GOVERNED_PERMISSIONS)
+    if governed:
+        raise ApiError(
+            422,
+            "governed_permission",
+            "Pharmacy appointment authority is not assigned on a role.",
+            details={"permissions": governed},
+        )
 
 
 def _assert_can_grant(actor: Principal, permissions: set[str]) -> None:
@@ -628,6 +641,7 @@ def list_roles(db: Session) -> list[RoleOut]:
 
 def create_role(db: Session, actor: Principal, data: RoleCreate) -> RoleOut:
     permissions = set(data.permissions)
+    _reject_governed_role_grant(permissions)
     _assert_can_grant(actor, permissions)
     if db.scalar(select(Role).where(func.lower(Role.name) == data.name.lower())) is not None:
         raise ApiError(409, "conflict", "A role with this name already exists.")
@@ -649,8 +663,12 @@ def update_role(db: Session, actor: Principal, role_id: uuid.UUID, data: RoleUpd
     if role is None:
         raise ApiError(404, "not_found", "Role was not found.")
     _assert_can_grant(actor, role.permissions)
-    if holds_super_admin_role(role) and data.permissions is not None and set(data.permissions) != ALL_PERMISSIONS:
-        raise ApiError(422, "system_role", "Super Admin always holds every permission.")
+    if holds_super_admin_role(role) and data.permissions is not None and set(data.permissions) != SUPER_ADMIN_PERMISSIONS:
+        raise ApiError(
+            422,
+            "system_role",
+            "Super Admin holds every ordinary permission. Pharmacy appointment authority stays outside this role.",
+        )
     if data.name is not None and data.name != role.name:
         if role.is_system:
             raise ApiError(422, "system_role", "System roles cannot be renamed.")
@@ -664,6 +682,7 @@ def update_role(db: Session, actor: Principal, role_id: uuid.UUID, data: RoleUpd
         role.max_discount_bps = data.max_discount_bps
     if data.permissions is not None:
         permissions = set(data.permissions)
+        _reject_governed_role_grant(permissions)
         _assert_can_grant(actor, permissions)
         if actor.user is not None and actor.user.role_id == role.id and not permissions >= actor.permissions:
             raise ApiError(422, "self_change", "You cannot remove permissions from your own role.")

@@ -2,7 +2,7 @@
 
 from app.services.tax import line_tax
 from test_foundations import set_tax, taxed_line, taxed_sale
-from wholesale_support import CABLE, STORE, admin, device, event, line, push, seed
+from wholesale_support import CABLE, STORE, admin, device, event, line, push, recent_occurred_at, seed
 
 
 def _patch(client, headers, product_id: str, **fields) -> dict:
@@ -49,7 +49,7 @@ def test_inclusive_and_exclusive_lines_share_one_sale(client) -> None:
     exclusive["product_id"] = other.json()["id"]
     body = taxed_sale([inclusive, exclusive])
     assert (body["subtotal_cents"], body["tax_cents"], body["total_cents"]) == (19524, 976, 20500)
-    response = push(client, [event("mixed-tax", "sale", body)])
+    response = push(client, [event("mixed-tax", "sale", body, occurred_at=recent_occurred_at())])
     assert response.status_code == 200, response.text
     stored = client.get(f"/api/v1/sales/{body['id']}", headers=device()).json()
     by_product = {item["product_id"]: item for item in stored["items"]}
@@ -75,7 +75,7 @@ def test_zero_and_exempt_prices_do_not_gain_tax(client) -> None:
         _patch(client, headers, CABLE, price_includes_tax=True, tax_category=category)
         body = taxed_sale([taxed_line(10000, 1, inclusive=True, rate=0)])
         assert body["tax_cents"] == 0 and body["total_cents"] == 10000
-        response = push(client, [event(f"no-tax-{category}", "sale", body)])
+        response = push(client, [event(f"no-tax-{category}", "sale", body, occurred_at=recent_occurred_at())])
         assert response.status_code == 200, response.text
 
 
@@ -94,7 +94,7 @@ def test_discount_is_removed_before_tax_is_extracted(client) -> None:
         line_total_cents=priced.line_total_cents,
     )
     body = taxed_sale([item])
-    response = push(client, [event("inclusive-discount", "sale", body)])
+    response = push(client, [event("inclusive-discount", "sale", body, occurred_at=recent_occurred_at())])
     assert response.status_code == 200, response.text
     stored = client.get(f"/api/v1/sales/{body['id']}", headers=device()).json()
     assert stored["items"][0]["tax_cents"] == priced.tax_cents

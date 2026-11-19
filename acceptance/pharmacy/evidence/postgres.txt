@@ -1,0 +1,206 @@
+# Acceptance PostgreSQL (read only)
+
+## migration
+  version_num  
+---------------
+ 20261119_0119
+(1 row)
+
+
+
+## databases
+               datname               
+-------------------------------------
+ axizpos_pharmacy_acceptance
+ axizpos_pharmacy_acceptance_control
+ postgres
+ template0
+ template1
+(5 rows)
+
+
+
+## rls
+            relname             | relrowsecurity | relforcerowsecurity 
+--------------------------------+----------------+---------------------
+ batch_item_events              | t              | t
+ batch_items                    | t              | t
+ pharmacist_authorizations      | t              | t
+ pharmacy_governance_officers   | t              | t
+ pharmacy_recall_lots           | t              | t
+ pharmacy_recalls               | t              | t
+ pharmacy_supplier_return_lines | t              | t
+ pharmacy_supplier_returns      | t              | t
+(8 rows)
+
+
+
+## append_only_trigger
+            tgname             
+-------------------------------
+ batch_item_events_append_only
+(1 row)
+
+
+
+## forced_rls_hides_officers
+ officers_visible_without_tenant 
+---------------------------------
+                               4
+(1 row)
+
+
+
+## control_migration
+ version_num  
+--------------
+ control_0041
+(1 row)
+
+
+
+## duplicate_pharmacists
+BEGIN
+SET
+ tenant_id | user_id | count 
+-----------+---------+-------
+(0 rows)
+
+ROLLBACK
+
+
+## duplicate_officers
+BEGIN
+SET
+ tenant_id | user_id | count 
+-----------+---------+-------
+(0 rows)
+
+ROLLBACK
+
+
+## active_officers
+BEGIN
+SET
+ status | count 
+--------+-------
+ ACTIVE |     4
+(1 row)
+
+ROLLBACK
+
+
+## pharmacist_statuses
+BEGIN
+SET
+ status  | count 
+---------+-------
+ ACTIVE  |     1
+ REVOKED |     1
+(2 rows)
+
+ROLLBACK
+
+
+## lots
+BEGIN
+SET
+ manufacturer_lot |   lot_status    | quantity_imported | quantity_remaining | expiry_date | released | released_by 
+------------------+-----------------+-------------------+--------------------+-------------+----------+-------------
+ ACCEPT-FEFO-NEW  | RELEASED        |                 5 |                  4 | 2028-03-01  | t        | t
+ ACCEPT-FEFO-OLD  | RELEASED        |                 3 |                  0 | 2027-03-01  | t        | t
+ ACCEPT-HOLD      | UNRELEASED      |                 2 |                  2 | 2027-06-01  | f        | f
+ ACCEPT-LOT-A     | RELEASED        |                10 |                 10 | 2027-06-01  | t        | t
+ ACCEPT-LOT-B     | RELEASED        |                 5 |                  5 | 2027-06-01  | t        | t
+ ACCEPT-LOT-C     | RECALLED        |                 5 |                  5 | 2027-06-01  | f        | f
+ ACCEPT-LOT-D     | UNRELEASED      |                 5 |                  5 | 2026-01-15  | f        | f
+ ACCEPT-RETURN    | SUPPLIER_RETURN |                 4 |                  0 | 2027-06-01  | t        | t
+ ACCEPT-UI-RET    | SUPPLIER_RETURN |                 4 |                  0 | 2027-06-01  | t        | t
+ ACCEPT-UI-XFER   | RECALLED        |                 2 |                  2 | 2027-06-01  | f        | f
+ ACCEPT-UI-XFER   | RECALLED        |                 4 |                  2 | 2027-06-01  | t        | t
+ ACCEPT-XFER      | RELEASED        |                 4 |                  2 | 2027-06-01  | t        | t
+ ACCEPT-XFER      | UNRELEASED      |                 2 |                  2 | 2027-06-01  | f        | f
+(13 rows)
+
+ROLLBACK
+
+
+## allocations
+BEGIN
+SET
+ manufacturer_lot |   movement_type   | quantity 
+------------------+-------------------+----------
+ ACCEPT-FEFO-NEW  | SALE_OUT          |        1
+ ACCEPT-FEFO-OLD  | SALE_OUT          |        3
+ ACCEPT-RETURN    | PURCHASE_REVERSAL |        3
+ ACCEPT-RETURN    | PURCHASE_REVERSAL |        1
+ ACCEPT-UI-RET    | PURCHASE_REVERSAL |        1
+ ACCEPT-UI-RET    | PURCHASE_REVERSAL |        3
+ ACCEPT-UI-XFER   | TRANSFER_OUT      |        2
+ ACCEPT-XFER      | TRANSFER_OUT      |        2
+(8 rows)
+
+ROLLBACK
+
+
+## events
+BEGIN
+SET
+ manufacturer_lot |     action      | from_status |    to_status    
+------------------+-----------------+-------------+-----------------
+ ACCEPT-FEFO-NEW  | RECEIVED        |             | UNRELEASED
+ ACCEPT-FEFO-NEW  | RELEASED        | UNRELEASED  | RELEASED
+ ACCEPT-FEFO-OLD  | RECEIVED        |             | UNRELEASED
+ ACCEPT-FEFO-OLD  | RELEASED        | UNRELEASED  | RELEASED
+ ACCEPT-HOLD      | RECEIVED        |             | UNRELEASED
+ ACCEPT-LOT-A     | RECEIVED        |             | UNRELEASED
+ ACCEPT-LOT-A     | RELEASED        | UNRELEASED  | RELEASED
+ ACCEPT-LOT-B     | RECEIVED        |             | UNRELEASED
+ ACCEPT-LOT-B     | QUARANTINED     | UNRELEASED  | QUARANTINED
+ ACCEPT-LOT-B     | RELEASED        | QUARANTINED | RELEASED
+ ACCEPT-LOT-C     | RECEIVED        |             | UNRELEASED
+ ACCEPT-LOT-C     | RECALLED        | UNRELEASED  | RECALLED
+ ACCEPT-LOT-D     | RECEIVED        |             | UNRELEASED
+ ACCEPT-RETURN    | RECEIVED        |             | UNRELEASED
+ ACCEPT-RETURN    | RELEASED        | UNRELEASED  | RELEASED
+ ACCEPT-RETURN    | SUPPLIER_RETURN | RELEASED    | RELEASED
+ ACCEPT-RETURN    | SUPPLIER_RETURN | RELEASED    | SUPPLIER_RETURN
+ ACCEPT-UI-RET    | RECEIVED        |             | UNRELEASED
+ ACCEPT-UI-RET    | RELEASED        | UNRELEASED  | RELEASED
+ ACCEPT-UI-RET    | SUPPLIER_RETURN | RELEASED    | RELEASED
+ ACCEPT-UI-RET    | SUPPLIER_RETURN | RELEASED    | SUPPLIER_RETURN
+ ACCEPT-UI-XFER   | RECEIVED        |             | UNRELEASED
+ ACCEPT-UI-XFER   | RELEASED        | UNRELEASED  | RELEASED
+ ACCEPT-UI-XFER   | TRANSFER_OUT    | RELEASED    | RELEASED
+ ACCEPT-UI-XFER   | TRANSFER_IN     |             | UNRELEASED
+ ACCEPT-UI-XFER   | RECALLED        | RELEASED    | RECALLED
+ ACCEPT-UI-XFER   | RECALLED        | UNRELEASED  | RECALLED
+ ACCEPT-XFER      | RECEIVED        |             | UNRELEASED
+ ACCEPT-XFER      | RELEASED        | UNRELEASED  | RELEASED
+ ACCEPT-XFER      | TRANSFER_OUT    | RELEASED    | RELEASED
+ ACCEPT-XFER      | TRANSFER_IN     |             | UNRELEASED
+(31 rows)
+
+ROLLBACK
+
+
+## negative_stock
+BEGIN
+SET
+ count 
+-------
+     0
+(1 row)
+
+ROLLBACK
+
+
+## orphan_events
+BEGIN
+SET
+ count 
+-------
+     0
+(1 row)
+
+ROLLBACK

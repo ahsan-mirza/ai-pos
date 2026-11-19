@@ -7,7 +7,22 @@ import {
   type BusinessProfile,
 } from "@ai-pos/shared-types";
 import { describe, expect, it } from "vitest";
-import { applyProfile, applySignedInAddons, registerCapabilities } from "./capabilities";
+import { applyProfile, applySignedInAddons, bindCapabilityTenant, capabilityCacheKey, registerCapabilities } from "./capabilities";
+
+const SCOPE = { tenantId: "electronics", environment: "http://127.0.0.1:18080" };
+
+function memoryStorage() {
+  const values = new Map<string, string>();
+  Object.defineProperty(globalThis, "localStorage", {
+    configurable: true,
+    value: {
+      getItem: (key: string) => values.get(key) ?? null,
+      setItem: (key: string, value: string) => values.set(key, value),
+      removeItem: (key: string) => values.delete(key),
+    },
+  });
+  return values;
+}
 
 describe("business profiles", () => {
   it("ships the seven presets in two groups", () => {
@@ -69,7 +84,11 @@ describe("business profiles", () => {
   });
 
   it("keeps the newer entitlement and drops a purchase after its offline window", () => {
+    memoryStorage();
+    bindCapabilityTenant(SCOPE);
     applyProfile({
+      tenant_id: SCOPE.tenantId,
+      environment: SCOPE.environment,
       business_profile: "electronics_wholesale",
       capabilities: ["loyalty"],
       entitlement_revision: 2,
@@ -78,12 +97,16 @@ describe("business profiles", () => {
     });
     expect(registerCapabilities().enabled.has("loyalty")).toBe(true);
     applyProfile({
+      tenant_id: SCOPE.tenantId,
+      environment: SCOPE.environment,
       business_profile: "electronics_wholesale",
       capabilities: ["promotions"],
       entitlement_revision: 1,
     });
     expect(registerCapabilities().enabled.has("loyalty")).toBe(true);
     applyProfile({
+      tenant_id: SCOPE.tenantId,
+      environment: SCOPE.environment,
       business_profile: "electronics_wholesale",
       capabilities: ["loyalty", "sales_orders"],
       entitlement_revision: 3,
@@ -95,7 +118,11 @@ describe("business profiles", () => {
   });
 
   it("hides a paid add-on from a cashier who was not granted it, including a stale offline unlock", () => {
+    memoryStorage();
+    bindCapabilityTenant(SCOPE);
     applyProfile({
+      tenant_id: SCOPE.tenantId,
+      environment: SCOPE.environment,
       business_profile: "electronics_wholesale",
       capabilities: ["loyalty", "gift_cards"],
       entitlement_revision: 4,
@@ -111,5 +138,67 @@ describe("business profiles", () => {
     applySignedInAddons(["gift_cards"], { offline: true, syncedAt: 1_000, now: 1_000 + 24 * 60 * 60 + 5 });
     expect(registerCapabilities().enabled.has("gift_cards")).toBe(false);
     applySignedInAddons(null);
+  });
+
+  it("accepts a grocery snapshot whose revision is lower than the previous tenant", () => {
+    const values = memoryStorage();
+    const pharmacy = { tenantId: "pharmacy-accept", environment: SCOPE.environment };
+    const grocery = { tenantId: "accept-grocery", environment: SCOPE.environment };
+    bindCapabilityTenant(pharmacy);
+    applyProfile({
+      tenant_id: pharmacy.tenantId,
+      environment: pharmacy.environment,
+      business_profile: "pharmacy",
+      capabilities: ["pharmacy_catalog", "fefo"],
+      entitlement_revision: 4,
+    });
+    expect(registerCapabilities().profile).toBe("pharmacy");
+    expect(values.has(capabilityCacheKey(pharmacy))).toBe(true);
+
+    bindCapabilityTenant(grocery);
+    expect(registerCapabilities().available).toBe(false);
+    expect(registerCapabilities().enabled.has("pharmacy_catalog")).toBe(false);
+    applyProfile({
+      tenant_id: grocery.tenantId,
+      environment: grocery.environment,
+      business_profile: "grocery",
+      capabilities: ["loyalty", "fefo"],
+      entitlement_revision: 3,
+    });
+    expect(registerCapabilities().profile).toBe("grocery");
+    expect(registerCapabilities().enabled.has("pharmacy_catalog")).toBe(false);
+    expect(registerCapabilities().enabled.has("fefo")).toBe(true);
+
+    bindCapabilityTenant(pharmacy);
+    expect(registerCapabilities().profile).toBe("pharmacy");
+    expect(registerCapabilities().enabled.has("pharmacy_catalog")).toBe(true);
+  });
+
+  it("rejects a snapshot for another tenant, a missing identity, and the old unscoped cache", () => {
+    const values = memoryStorage();
+    values.set("ai-pos.register-capabilities", JSON.stringify({ business_profile: "pharmacy", capabilities: ["pharmacy_catalog"], entitlement_revision: 9 }));
+    bindCapabilityTenant(SCOPE);
+    expect(values.has("ai-pos.register-capabilities")).toBe(false);
+    expect(registerCapabilities().available).toBe(false);
+    applyProfile({ business_profile: "pharmacy", capabilities: ["pharmacy_catalog"], entitlement_revision: 4 });
+    applyProfile({
+      tenant_id: "someone-else",
+      environment: SCOPE.environment,
+      business_profile: "pharmacy",
+      capabilities: ["pharmacy_catalog"],
+      entitlement_revision: 9,
+    });
+    expect(registerCapabilities().available).toBe(false);
+    values.set(capabilityCacheKey({ tenantId: SCOPE.tenantId, environment: "http://other" }), JSON.stringify({
+      schema: 1,
+      tenant_id: SCOPE.tenantId,
+      environment: "http://other",
+      business_profile: "pharmacy",
+      capabilities: ["pharmacy_catalog"],
+      entitlement_revision: 4,
+      fetched_at: new Date().toISOString(),
+    }));
+    bindCapabilityTenant(SCOPE);
+    expect(registerCapabilities().available).toBe(false);
   });
 });

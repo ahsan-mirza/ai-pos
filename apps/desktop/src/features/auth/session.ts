@@ -8,6 +8,12 @@ export type { CashierSession };
 /** Same window the register already uses for a cached offline unlock. */
 export const REGISTER_SESSION_SECS = 24 * 60 * 60;
 const BROWSER_SESSION_KEY = "axiz.pos.cashier";
+/** Lives in memory for this window. A refresh must ask for the PIN again before it can sync preferences. */
+let accessToken: string | null = null;
+
+export function currentAccessToken(): string | null {
+  return accessToken;
+}
 
 /**
  * A refresh may restore this cashier. The PIN and access token are never written here.
@@ -69,19 +75,28 @@ async function acceptUnlock(session: CashierSession): Promise<CashierSession> {
 
 /** Tauri verifies online first, then against the local Argon2 cache. The browser preview is online only. */
 export async function unlock(username: string, pin: string): Promise<CashierSession> {
-  const session = inTauri() ? await pinLogin(username, pin) : sessionFrom(await loginPin(username.trim().toLowerCase(), pin));
-  return acceptUnlock(session);
+  if (inTauri()) {
+    accessToken = null;
+    return acceptUnlock(await pinLogin(username, pin));
+  }
+  const response = await loginPin(username.trim().toLowerCase(), pin);
+  accessToken = response.access_token;
+  return acceptUnlock(sessionFrom(response));
 }
 
 /** A chosen profile. The PIN is still checked; selecting a card does not unlock the register. */
 export async function unlockSelected(userId: string, pin: string): Promise<CashierSession> {
-  const session = inTauri()
-    ? await unlockSelectedCashier(userId, pin)
-    : sessionFrom(await unlockCashier(userId, pin));
-  return acceptUnlock(session);
+  if (inTauri()) {
+    accessToken = null;
+    return acceptUnlock(await unlockSelectedCashier(userId, pin));
+  }
+  const response = await unlockCashier(userId, pin);
+  accessToken = response.access_token;
+  return acceptUnlock(sessionFrom(response));
 }
 
 export async function lock(): Promise<void> {
+  accessToken = null;
   forgetBrowser();
   if (inTauri()) await lockSession();
 }

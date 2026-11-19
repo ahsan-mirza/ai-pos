@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import Settings, get_settings
 from app.core.database import get_db
-from app.core.deps import Principal, authorize
+from app.core.deps import REGISTER_SCOPES, Principal, authorize
 from app.core.errors import ApiError
 from app.core.permissions import Permission
 from app.schemas.replenishment import (
@@ -24,7 +24,7 @@ from app.services import replenishment_service
 
 router = APIRouter()
 Db = Annotated[Session, Depends(get_db)]
-CanManage = Annotated[Principal, Depends(authorize(Permission.REPLENISHMENT_MANAGE))]
+CanManage = Annotated[Principal, Depends(authorize(Permission.REPLENISHMENT_MANAGE, scopes=REGISTER_SCOPES))]
 
 
 def _store(principal: Principal, store_id: uuid.UUID) -> uuid.UUID:

@@ -1,0 +1,13 @@
+{
+  "decision": "explicit_cashier_reauthentication",
+  "automatic_promotion": false,
+  "reason": "Session mode is chosen only when a PIN unlock finishes. A reachable API returns mode online and a POS access token. An unreachable API returns mode offline and no access token. Catalogue refresh, settings refresh, and queue flush run when the API answers again. None of those paths rewrite register session mode or restore a POS token.",
+  "supported_recovery": "Lock the register and unlock again with the cashier PIN while the API is reachable. That is a new online unlock, not a promotion of the cached offline session.",
+  "sources": [
+    "apps/desktop/src-tauri/src/auth.rs pin_login and finish_offline",
+    "apps/desktop/src-tauri/src/lib.rs current_session",
+    "apps/desktop/src/features/checkout/useSyncEngine.ts",
+    "apps/desktop/src/features/checkout/catalog.ts useCatalogUpdates",
+    "apps/desktop/src/features/checkout/checkout.ts blockPharmacyOfflineSale"
+  ]
+}

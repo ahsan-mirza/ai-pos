@@ -262,7 +262,7 @@ def test_dry_run_changes_nothing(demos):
     summary = reset_demo_tenant(get_settings(), "restaurant", dry_run=True)
     listed = reset_all_demo_tenants(get_settings(), dry_run=True)
     assert summary["dry_run"] is True and summary["sales"] == len(before["demo-restaurant"])
-    assert [item["code"] for item in listed] == ["restaurant", "supermarket", "electronics", "fashion"]
+    assert [item["code"] for item in listed] == ["restaurant", "supermarket", "electronics", "fashion", "pharmacy"]
     assert _sales("demo-restaurant") == before["demo-restaurant"]
     assert _users("demo-restaurant") == users
     assert _control_row("demo-restaurant").demo_status == "active"
@@ -473,14 +473,14 @@ def test_deactivation_revokes_the_session_and_keeps_the_records(demos):
     _rejected("demo-fashion", token)
 
 
-def test_reset_all_four_tenants(demos):
+def test_reset_all_demo_tenants(demos):
     assert demos["reports"]
     before = {
         spec["code"]: [(sale_id, total) for _sale, sale_id, total in _sales(spec["slug"])] for spec in demo_tenants()
     }
     subscriptions = {spec["slug"]: _subscription(_control_row(spec["slug"]).id) for spec in demo_tenants()}
     results = reset_all_demo_tenants(get_settings())
-    assert [item["code"] for item in results] == ["restaurant", "supermarket", "electronics", "fashion"]
+    assert [item["code"] for item in results] == ["restaurant", "supermarket", "electronics", "fashion", "pharmacy"]
     assert all(item["ok"] for item in results)
     for spec in demo_tenants():
         restored = [(sale_id, total) for _sale, sale_id, total in _sales(spec["slug"])]

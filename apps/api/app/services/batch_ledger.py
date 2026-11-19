@@ -17,6 +17,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.capabilities import Capability, has_capability
+from app.core.errors import SyncRejected
 from app.models.batch import BatchAllocation, BatchItem, PurchaseBatch
 from app.models.inventory import StockMovement
 from app.models.sale_item import SaleItem
@@ -130,6 +131,26 @@ def _flag_expired_sale(db: Session, movement: StockMovement, drawn: list[tuple[B
     )
 
 
+def _medicine_sale_layers(db: Session, movement: StockMovement, items: list[BatchItem]) -> list[BatchItem] | None:
+    """Eligible layers for a medicine sale, after the caller has locked `items`.
+
+    None means this movement is not a pharmacy medicine sale, so grocery draw is unchanged.
+    """
+    if movement.movement_type not in ("SALE_OUT", "RECIPE_OUT"):
+        return None
+    from app.models.product import Product
+    from app.services.pharmacy_lots import explain_shortage, is_lot_controlled, strict_sale_candidates
+
+    if not is_lot_controlled(db, movement.product_id):
+        return None
+    eligible = strict_sale_candidates(items)
+    if sum(item.quantity_remaining for item in eligible) < -movement.quantity:
+        product = db.get(Product, movement.product_id)
+        code, message = explain_shortage(items, product.name if product is not None else "This medicine")
+        raise SyncRejected(message, code=code)
+    return eligible
+
+
 def _consume(db: Session, movement: StockMovement, batch_item_id: uuid.UUID | None) -> set[uuid.UUID]:
     needed = -movement.quantity
     touched: set[uuid.UUID] = set()
@@ -137,6 +158,9 @@ def _consume(db: Session, movement: StockMovement, batch_item_id: uuid.UUID | No
         serial = db.get(SerialNumber, movement.serial_number_id)
         target = batch_item_id or (serial.batch_item_id if serial is not None else None)
         item = db.get(BatchItem, target) if target is not None else None
+        if _medicine_sale_layers(db, movement, [item] if item is not None else []) is not None:
+            if item is None or item.store_id != movement.store_id or item.product_id != movement.product_id:
+                raise SyncRejected("This medicine is not in stock at this store.", code="store_mismatch")
         if item is not None and item.store_id == movement.store_id:
             taken = _draw(db, movement, item, needed)
             if taken:
@@ -144,8 +168,21 @@ def _consume(db: Session, movement: StockMovement, batch_item_id: uuid.UUID | No
                 _flag_expired_sale(db, movement, [(item, taken)])
         return touched
     candidates = _open_items(db, movement.product_id, movement.store_id)
-    if batch_item_id is not None:
-        candidates.sort(key=lambda row: row.id != batch_item_id)
+    medicine_sale = False
+    if movement.movement_type == "TRANSFER_OUT":
+        from app.services.pharmacy_lots import is_lot_controlled, transfer_candidates
+
+        if is_lot_controlled(db, movement.product_id):
+            candidates = transfer_candidates(candidates)
+            if sum(item.quantity_remaining for item in candidates) < needed:
+                raise SyncRejected("Not enough released in-date stock to transfer this medicine.")
+    else:
+        sale_layers = _medicine_sale_layers(db, movement, candidates)
+        if sale_layers is not None:
+            candidates = sale_layers
+            medicine_sale = True
+        elif batch_item_id is not None:
+            candidates.sort(key=lambda row: row.id != batch_item_id)
     drawn: list[tuple[BatchItem, int]] = []
     for item in candidates:
         if needed <= 0:
@@ -155,6 +192,11 @@ def _consume(db: Session, movement: StockMovement, batch_item_id: uuid.UUID | No
             needed -= taken
             touched.add(item.batch_id)
             drawn.append((item, taken))
+    if medicine_sale and needed > 0:
+        raise SyncRejected(
+            "Stock changed during checkout. This sale was not completed.",
+            code="stock_changed",
+        )
     _flag_expired_sale(db, movement, drawn)
     return touched
 

@@ -14,9 +14,23 @@ export interface SeoImage {
   height: number;
 }
 
+export interface SeoSubsection {
+  heading: string;
+  paragraphs: string[];
+}
+
+export interface SeoTable {
+  caption: string;
+  headers: string[];
+  rows: string[][];
+}
+
 export interface SeoSection {
   heading: string;
   paragraphs: string[];
+  subsections?: SeoSubsection[];
+  /** A visible comparison. The same rows are in the server HTML. */
+  table?: SeoTable;
 }
 
 export interface SeoFaq {
@@ -49,6 +63,19 @@ export interface SeoPage {
   translationOf?: string;
   /** ISO date for a guide. */
   published?: string;
+  /** ISO date of the last real edit. Omitted until the page changes after publication. */
+  modified?: string;
+  /** Listing group, such as Restaurant or Grocery. */
+  category?: string;
+  /** Search terms for the blog index. Not printed as a keyword meta tag. */
+  keywords?: string[];
+  /** Product or guide the article asks the reader to open next. */
+  ctaHref?: string;
+  ctaLabel?: string;
+  /** Extra product images. The hero image stays `image`. */
+  gallery?: SeoImage[];
+  /** English page with no public Arabic URL until a person reviews the translation. */
+  untranslated?: boolean;
 }
 
 export const TERMINAL: SeoImage = {
@@ -59,10 +86,24 @@ export const TERMINAL: SeoImage = {
 };
 
 export const SURFACE: SeoImage = {
-  src: "/pos/surface.png",
-  alt: "The AxizPOS register on a tablet, with dine-in tables and checkout.",
-  width: 949,
-  height: 706,
+  src: "/pos/register.jpg",
+  alt: "AxizPOS checkout with dine-in tables, takeaway, and delivery on the register.",
+  width: 1600,
+  height: 1000,
+};
+
+export const DASHBOARD: SeoImage = {
+  src: "/portal/dashboard.jpg",
+  alt: "AxizPOS portal dashboard with sales figures for one store.",
+  width: 1600,
+  height: 1036,
+};
+
+export const SALE_PHONE: SeoImage = {
+  src: "/images/home-2/phones/new-sale.png",
+  alt: "AxizPOS new sale on a phone, with quantities and an AED total.",
+  width: 873,
+  height: 1448,
 };
 
 export const PORTAL: SeoImage = {

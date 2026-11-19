@@ -1,0 +1,43 @@
+{
+  "identity": "com.axizpos.pharmacy.acceptance",
+  "sqlite": "tenants/accept-grocery/ai-pos.db",
+  "tenant": "accept-grocery",
+  "profile_after_clean_cache": "grocery",
+  "capabilities": ["loyalty", "promotions", "weighed_items", "fefo"],
+  "online_sale": {
+    "invoice": "GROCERY-GROC1-000001",
+    "sku": "GROC-TILL",
+    "quantity": 1,
+    "total_cents": 525
+  },
+  "capability_leak": {
+    "observed": true,
+    "settings_label_before_cache_clear": "Pharmacy settings",
+    "footer_profile_before_cache_clear": "Pharmacy",
+    "cause": "WebView localStorage entitlement revision 4 from pharmacy was newer than grocery revision 3, so applyProfile ignored the grocery snapshot",
+    "offline_result_while_leaked": "blocked by the pharmacy offline rule and not queued"
+  },
+  "offline_sale_after_profile_applied": {
+    "invoice": "GROCERY-GROC1-000003",
+    "sku": "GROC-TILL",
+    "quantity": 1,
+    "total_cents": 525,
+    "pending_sale_rows": 1,
+    "local_stock_before_sync": 7,
+    "local_stock_decremented_on_enqueue": false
+  },
+  "sync": {
+    "uploaded_once": true,
+    "server_till_remaining": 6,
+    "restart_replayed": false
+  },
+  "fefo": {
+    "invoice": "GROCERY-GROC1-000004",
+    "quantity": 4,
+    "total_cents": 1680,
+    "earlier": {"lot": "GROC-EARLY", "expiry": "2026-12-15", "initial": 3, "sold": 3, "remaining": 0},
+    "later": {"lot": "GROC-LATER", "expiry": "2027-08-01", "initial": 5, "sold": 1, "remaining": 4},
+    "lot_status": null
+  },
+  "local_stock_after_sync": {"GROC-TILL": 6, "GROC-FEFO": 4}
+}

@@ -23,9 +23,13 @@ export interface RegisterCapabilities {
   practice: boolean;
   /** Till rules: discount reasons and limits, gift cards, the returns policy. */
   policy: PosPolicy;
+  /** False until this tenant has its own verified snapshot. Another tenant's profile is never shown in its place. */
+  available: boolean;
 }
 
 export interface ProfileSnapshot {
+  tenant_id?: string | null;
+  environment?: string | null;
   business_profile?: string | null;
   capabilities?: readonly string[] | null;
   planned_capabilities?: readonly string[] | null;
@@ -39,9 +43,24 @@ export interface ProfileSnapshot {
   promotional_until?: string | null;
   subscription_operational?: boolean;
   subscription_seen_at?: number;
+  fetched_at?: string | null;
 }
 
-const CACHE_KEY = "ai-pos.register-capabilities";
+/** Verified terminal identity. The frontend does not get to pick another tenant's cache. */
+export interface CapabilityScope {
+  tenantId: string;
+  environment: string;
+}
+
+const LEGACY_CACHE_KEY = "ai-pos.register-capabilities";
+const SCHEMA = 1;
+
+interface StoredSnapshot extends ProfileSnapshot {
+  schema: number;
+  tenant_id: string;
+  environment: string;
+  fetched_at: string;
+}
 
 function modulesOf(raw: Partial<ModuleSettings> | null | undefined): ModuleSettings {
   return { ...DEFAULT_MODULE_SETTINGS, ...(raw ?? {}) };
@@ -64,27 +83,65 @@ function entitled(raw: ProfileSnapshot): readonly string[] | null | undefined {
   return current;
 }
 
-function build(raw: ProfileSnapshot | null): RegisterCapabilities {
-  const name = raw?.business_profile ?? DEFAULT_BUSINESS_PROFILE;
+function unavailable(): RegisterCapabilities {
+  const profile = DEFAULT_BUSINESS_PROFILE;
+  return {
+    profile,
+    enabled: new Set(),
+    planned: new Set(),
+    foodAndBeverage: false,
+    modules: modulesOf(null),
+    practice: false,
+    policy: resolvePosPolicy(null),
+    available: false,
+  };
+}
+
+function build(raw: ProfileSnapshot): RegisterCapabilities {
+  const name = raw.business_profile ?? DEFAULT_BUSINESS_PROFILE;
   const profile = isBusinessProfile(name) ? name : DEFAULT_BUSINESS_PROFILE;
-  const source = raw ? entitled(raw) : null;
+  const source = entitled(raw);
   const enabled = source ? source.filter(isCapability) : [];
-  const planned = raw?.planned_capabilities?.filter(isCapability) ?? [];
+  const planned = raw.planned_capabilities?.filter(isCapability) ?? [];
   return {
     profile,
     enabled: new Set(enabled),
     planned: new Set(planned),
     foodAndBeverage: PROFILE_PRESETS[profile].group === "food_beverage",
-    modules: modulesOf(raw?.module_settings),
-    practice: raw?.practice_mode === true,
-    policy: resolvePosPolicy(raw?.pos_policy),
+    modules: modulesOf(raw.module_settings),
+    practice: raw.practice_mode === true,
+    policy: resolvePosPolicy(raw.pos_policy),
+    available: true,
   };
 }
 
-function readCached(): ProfileSnapshot | null {
+function browserStorage(): Storage | null {
   try {
-    const raw = localStorage.getItem(CACHE_KEY);
-    return raw === null ? null : (JSON.parse(raw) as ProfileSnapshot);
+    if (typeof localStorage === "undefined") return null;
+    return localStorage;
+  } catch {
+    return null;
+  }
+}
+
+export function capabilityCacheKey(scope: CapabilityScope): string {
+  return `ai-pos.register-capabilities.v${SCHEMA}:${scope.environment}:${scope.tenantId}`;
+}
+
+function dropLegacyCache(): void {
+  browserStorage()?.removeItem(LEGACY_CACHE_KEY);
+}
+
+function readStored(scope: CapabilityScope): StoredSnapshot | null {
+  const raw = browserStorage()?.getItem(capabilityCacheKey(scope));
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as StoredSnapshot;
+    if (parsed.schema !== SCHEMA) return null;
+    if (parsed.tenant_id !== scope.tenantId || parsed.environment !== scope.environment) return null;
+    if (!Array.isArray(parsed.capabilities)) return null;
+    if (typeof parsed.business_profile !== "string" || parsed.business_profile === "") return null;
+    return parsed;
   } catch {
     return null;
   }
@@ -94,12 +151,13 @@ function readCached(): ProfileSnapshot | null {
  * last list, and paid add-ons still follow the signed-in user. */
 const OFFLINE_ADDON_SECONDS = 24 * 60 * 60;
 const SUBSCRIPTION_LEASE_MS = 24 * 60 * 60 * 1000;
-let storeCurrent: RegisterCapabilities = build(readCached());
-let purchased = new Set(readCached()?.purchased_capabilities ?? []);
+let scope: CapabilityScope | null = null;
+let storeCurrent: RegisterCapabilities = unavailable();
+let purchased = new Set<string>();
 let signedInAddons: ReadonlySet<string> | null = null;
 let current: RegisterCapabilities = storeCurrent;
-let revision = readCached()?.entitlement_revision ?? 0;
-let subscriptionLocked = lockedFrom(readCached());
+let subscriptionLocked = false;
+const listeners = new Set<() => void>();
 
 function lockedFrom(raw: ProfileSnapshot | null): boolean {
   if (!raw || raw.subscription_operational == null) return false;
@@ -107,9 +165,47 @@ function lockedFrom(raw: ProfileSnapshot | null): boolean {
   const seen = raw.subscription_seen_at ?? 0;
   return seen > 0 && Date.now() - seen > SUBSCRIPTION_LEASE_MS;
 }
-const listeners = new Set<() => void>();
 
-function publish(): void {
+function adopt(raw: ProfileSnapshot): void {
+  storeCurrent = build(raw);
+  purchased = new Set(raw.purchased_capabilities ?? []);
+  if (raw.subscription_operational != null) subscriptionLocked = raw.subscription_operational === false;
+  else subscriptionLocked = lockedFrom(raw);
+  publish(true);
+}
+
+/**
+ * Switches the register to one verified tenant. In-memory capabilities from the previous tenant are
+ * dropped before this tenant's own cache is read. An unscoped legacy snapshot is deleted, never adopted.
+ */
+export function bindCapabilityTenant(next: CapabilityScope | null): void {
+  dropLegacyCache();
+  const changed = scope?.tenantId !== next?.tenantId || scope?.environment !== next?.environment;
+  scope = next;
+  if (changed) signedInAddons = null;
+  if (next === null) {
+    purchased = new Set();
+    subscriptionLocked = false;
+    storeCurrent = unavailable();
+    publish(true);
+    return;
+  }
+  const stored = readStored(next);
+  if (stored === null) {
+    purchased = new Set();
+    subscriptionLocked = false;
+    storeCurrent = unavailable();
+    publish(true);
+    return;
+  }
+  adopt(stored);
+}
+
+export function capabilityScope(): CapabilityScope | null {
+  return scope;
+}
+
+function publish(force = false): void {
   const granted = signedInAddons;
   const enabled =
     granted === null
@@ -117,6 +213,8 @@ function publish(): void {
       : new Set([...storeCurrent.enabled].filter((capability) => !purchased.has(capability) || granted.has(capability)));
   const next = { ...storeCurrent, enabled };
   const same =
+    !force &&
+    next.available === current.available &&
     next.profile === current.profile &&
     next.practice === current.practice &&
     next.enabled.size === current.enabled.size &&
@@ -148,62 +246,55 @@ export function applySignedInAddons(
   publish();
 }
 
+/** Applies a snapshot only when it names the tenant this register is bound to. Revisions are compared inside that tenant. */
 export function applyProfile(raw: ProfileSnapshot | null | undefined): void {
-  if (!raw?.capabilities) return;
+  if (!scope || !raw?.capabilities) return;
+  const tenantId = raw.tenant_id?.trim() ?? "";
+  if (tenantId === "" || tenantId !== scope.tenantId) return;
+  if (raw.environment != null && raw.environment !== "" && raw.environment !== scope.environment) return;
   const nextRevision = raw.entitlement_revision ?? 0;
-  if (nextRevision > 0 && revision > nextRevision) return;
+  const stored = readStored(scope);
+  const storedRevision = stored?.entitlement_revision ?? 0;
+  if (nextRevision > 0 && storedRevision > nextRevision) return;
+  const fetchedAt = new Date().toISOString();
+  const record: StoredSnapshot = {
+    schema: SCHEMA,
+    tenant_id: scope.tenantId,
+    environment: scope.environment,
+    fetched_at: fetchedAt,
+    business_profile: raw.business_profile,
+    capabilities: raw.capabilities,
+    planned_capabilities: raw.planned_capabilities,
+    module_settings: raw.module_settings,
+    practice_mode: raw.practice_mode,
+    pos_policy: raw.pos_policy,
+    entitlement_revision: raw.entitlement_revision,
+    purchased_capabilities: raw.purchased_capabilities,
+    entitlement_until: raw.entitlement_until,
+    promotional_capabilities: raw.promotional_capabilities,
+    promotional_until: raw.promotional_until,
+    subscription_operational: raw.subscription_operational,
+    subscription_seen_at: raw.subscription_operational == null ? undefined : Date.now(),
+  };
   try {
-    const {
-      business_profile,
-      capabilities,
-      planned_capabilities,
-      module_settings,
-      practice_mode,
-      pos_policy,
-      entitlement_revision,
-      purchased_capabilities,
-      entitlement_until,
-      promotional_capabilities,
-      promotional_until,
-      subscription_operational,
-    } = raw;
-    const seenAt = subscription_operational == null ? undefined : Date.now();
-    localStorage.setItem(
-      CACHE_KEY,
-      JSON.stringify({
-        business_profile,
-        capabilities,
-        planned_capabilities,
-        module_settings,
-        practice_mode,
-        pos_policy,
-        entitlement_revision,
-        purchased_capabilities,
-        entitlement_until,
-        promotional_capabilities,
-        promotional_until,
-        subscription_operational,
-        subscription_seen_at: seenAt,
-      }),
-    );
-    if (subscription_operational != null) subscriptionLocked = subscription_operational === false;
+    browserStorage()?.setItem(capabilityCacheKey(scope), JSON.stringify(record));
   } catch {
     // Storage disabled: the in-memory copy still serves this session.
   }
-  if (nextRevision > revision) revision = nextRevision;
-  storeCurrent = build(raw);
-  purchased = new Set(raw.purchased_capabilities ?? []);
-  publish();
-  for (const listener of listeners) listener();
+  adopt(record);
 }
 
 export function registerCapabilities(): RegisterCapabilities {
   return current;
 }
 
+export function capabilitiesAvailable(): boolean {
+  return current.available;
+}
+
 /** New paid work stays closed when the server reported a block, or the last open snapshot is older than a day. */
 export function subscriptionIsLocked(): boolean {
-  const cached = readCached();
+  const cached = scope ? readStored(scope) : null;
   if (cached?.subscription_operational === true && cached.subscription_seen_at) {
     if (Date.now() - cached.subscription_seen_at > SUBSCRIPTION_LEASE_MS) return true;
   }

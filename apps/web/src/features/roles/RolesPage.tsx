@@ -61,8 +61,14 @@ export function RolesPage() {
       const [roleRows, groupRows] = await Promise.all([rolesApi.list(), rolesApi.permissions()]);
       setRoles(roleRows);
       setGroups(groupRows);
-      const selected = roleRows.find((role) => role.id === selectId) ?? roleRows[0];
-      if (selected) setDraft(toDraft(selected));
+      setDraft((current) => {
+        const keep = selectId ?? current.id;
+        if (keep) {
+          const selected = roleRows.find((role) => role.id === keep);
+          return selected ? toDraft(selected) : current;
+        }
+        return roleRows[0] ? toDraft(roleRows[0]) : current;
+      });
     } catch (caught) {
       setError(errorMessage(caught, "Could not load roles."));
     }
@@ -212,7 +218,7 @@ export function RolesPage() {
               <h2 className="text-2xl font-semibold">{draft.id === null ? "New role" : draft.name}</h2>
               <p className="text-sm text-charcoal/60">
                 {isSuperAdmin
-                  ? "Super Admin always holds every permission."
+                  ? "Super Admin holds the administration permissions. Pharmacist appointment is governed separately and is not one of them."
                   : draft.isSystem
                     ? "Built-in role. Permissions can be tuned; the name is fixed."
                     : "Custom role."}

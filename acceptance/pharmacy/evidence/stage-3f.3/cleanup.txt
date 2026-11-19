@@ -1,0 +1,4 @@
+pharmacy_acceptance_container_remaining=no
+developer_files_unchanged=yes
+inventory_acceptance_register=not stopped by this run
+developer_api=not stopped by this run

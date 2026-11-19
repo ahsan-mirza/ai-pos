@@ -1,0 +1,20 @@
+Windows Pharmacy register: BLOCKED — INVENTORY ACCEPTANCE SESSION ACTIVE
+The inventory acceptance executable was not closed, clicked, or replaced.
+No second AxizPOS register was launched.
+Tenant capability-cache reactivation on the Windows register: NOT RUN
+Pharmacy online register sale, double-click Charge, offline block, PIN reauthentication, and header states: NOT RUN
+Grocery offline synchronization on the Windows register: NOT RUN
+
+Recorded at the start of the final portal run (process-gate.json):
+pid=59572
+executable=D:\Work\ai-pos\acceptance\inventory\target\release\ai-pos-desktop.exe
+identity=com.axizpos.inventory.acceptance
+webview=C:\Users\ahsan\AppData\Local\com.axizpos.inventory.acceptance\EBWebView
+api=http://127.0.0.1:18081
+api_listener_pid=37356
+database=axizpos-inventory-acceptance-db 127.0.0.1:55433
+
+Visible windows read after the portal run, same pid and executable:
+hwnd=26480636 title=com.axizpos.inventory.acceptance-siw
+hwnd=28774662 title=AxizPOS Inventory Acceptance
+hwnd=28576924 title empty

@@ -32,6 +32,7 @@ export const Permission = {
   DeliveryManage: "delivery:manage",
   PharmacyConfigure: "pharmacy:configure",
   PharmacyCatalogue: "pharmacy:catalogue",
+  PharmacyAuthorizePharmacist: "pharmacy:authorize_pharmacist",
   CurrenciesManage: "currencies:manage",
   PayablesManage: "payables:manage",
   ExpensesManage: "expenses:manage",
