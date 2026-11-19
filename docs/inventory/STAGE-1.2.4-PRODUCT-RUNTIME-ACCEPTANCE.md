@@ -166,6 +166,18 @@ Acceptance is incomplete, so nothing was removed. The acceptance API and disposa
 
 The product form has not had a completed Windows pass for create confirmation, gallery editing, or the four viewports. Other inventory screens are still the older register screens. The stock list still requires a signed-in user, which is why a terminal-only call shows the signed-in-user message while the product list loads.
 
+## Follow-up the same evening
+
+The oats reference row was checked again and left unchanged: SKU `ACC-OATS-500G-500G`, barcode `2008627812707`, on hand 2, reserved 0, one opening-balance movement. `INV-TIN` is still 500 cents, on hand 7, reserved 0. A duplicate SKU POST still returns 409.
+
+A Floor Manager created one purchase order with two lines (the oats product and `INV-TIN`) and cancelled it. The API returned 201, then 200 with status `cancelled`. Two such cancelled drafts exist. Neither changed on-hand quantity or added a stock movement. A transfer was not created, because creating a transfer reserves source quantity.
+
+The acceptance diagnostics file records identifier `com.axizpos.inventory.acceptance`, API `http://127.0.0.1:18081`, activation source `activation`, and `developer_env_loaded` false.
+
+The device key copied in the acceptance runtime file did not match the enrolled register and returned 401. The sealed terminal file for `com.axizpos.inventory.acceptance` unseals to a token for tenant `inv-accept` and the same API. That enrolled token returns HTTP 200 for the product list and HTTP 403 `This action requires a signed-in user` for stock. Cashier PIN login with that token returns 200, and the cashier stock call returns 403 `You do not have permission for this action.` The runtime file was updated to the enrolled token. A second device was not created, and the installed register was not used. After the sync, the runtime token also returns product-list 200 and stock 403.
+
+The Windows product form was still not driven. Screen clicks would be global while the installed AI POS window is open.
+
 ## Status
 
 | Area | Outcome |

@@ -226,7 +226,7 @@ jobs:
           ssh server "bash -s" <<EOF
           set -euo pipefail
           stamp=\$(date -u +%Y%m%dT%H%M%SZ)
-          dest=/var/backups/ai-pos/\$stamp
+          dest=$APP_DIR/backups/\$stamp
           mkdir -p "\$dest/nginx"
           cp -a /etc/nginx/sites-available/ai-pos.conf "\$dest/nginx/" || true
           cp -a /etc/nginx/snippets/ai-pos.shared.conf "\$dest/nginx/" || true
@@ -238,7 +238,7 @@ jobs:
           tar -C /var/www -czf "\$dest/site.tgz" ai-pos-site
           cp -a "$APP_DIR/.env.production" "\$dest/env.production"
           chmod 600 "\$dest/env.production"
-          printf '%s\n' "\$dest" > /var/backups/ai-pos/LATEST
+          printf '%s\n' "\$dest" > $APP_DIR/backups/LATEST
           echo "Saved \$dest"
           EOF
 
@@ -311,8 +311,8 @@ jobs:
         run: |
           ssh server "bash -s" <<'EOF'
           set -euo pipefail
-          test -f /var/backups/ai-pos/LATEST
-          dest=$(cat /var/backups/ai-pos/LATEST)
+          test -f /opt/ai-pos/backups/LATEST
+          dest=$(cat /opt/ai-pos/backups/LATEST)
           test -f "$dest/api-source.tgz"
           test -f "$dest/portal.tgz"
           test -f "$dest/console.tgz"

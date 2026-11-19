@@ -1,0 +1,61 @@
+{
+  "diagnostics": {
+    "identifier": "com.axizpos.inventory.acceptance",
+    "api_base_url": "http://127.0.0.1:18081",
+    "developer_env_loaded": false,
+    "activation_source": "activation"
+  },
+  "oats": {
+    "status": 200,
+    "sku": "ACC-OATS-500G-500G",
+    "barcode": "2008627812707",
+    "name": "Acceptance Oats 500g Revised",
+    "price_cents": 240
+  },
+  "tin": {
+    "status": 200,
+    "sku": "INV-TIN",
+    "barcode": "6291000001111",
+    "price_cents": 500,
+    "name": "Acceptance Inventory Tin"
+  },
+  "duplicate_sku": {
+    "status": 409,
+    "message": "SKU is already in use."
+  },
+  "multiline_po": {
+    "status": 201,
+    "line_count": 2,
+    "message": ""
+  },
+  "multiline_po_cancel": {
+    "status": 200,
+    "order_status": "cancelled"
+  },
+  "multiline_transfer": "not created against reference stock; a requested transfer reserves quantity",
+  "runtime_device_key": {
+    "status": 401,
+    "message": "Sign in or provide a valid API key."
+  },
+  "terminal_file": {
+    "present": true,
+    "unsealed": true,
+    "api_base_url": "http://127.0.0.1:18081",
+    "tenant_slug": "inv-accept",
+    "token_present": true
+  },
+  "enrolled_device": {
+    "products": 200,
+    "products_message": "",
+    "stock": 403,
+    "stock_message": "This action requires a signed-in user."
+  },
+  "cashier_pin": {
+    "status": 200,
+    "message": ""
+  },
+  "cashier_stock": {
+    "status": 403,
+    "message": "You do not have permission for this action."
+  }
+}

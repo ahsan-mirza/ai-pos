@@ -40,6 +40,7 @@ export function InventoryPage({ session }: { session: CashierSession }) {
     online,
     storeId: session.user.store_id,
     manage,
+    catalogAdmin: manage && session.user.store_id == null,
     pharmacy: profile === "pharmacy",
     pharmacyCatalogue,
     canAdjust: allow(Permission.InventoryAdjustStock),

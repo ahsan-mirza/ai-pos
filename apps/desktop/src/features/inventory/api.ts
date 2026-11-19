@@ -104,6 +104,7 @@ export const inventoryApi = {
   transfers: (storeId: string | null) =>
     retailPage<Transfer>(`/api/v1/inventory/transfers${query({ store_id: storeId, offset: 0, limit: 50 })}`),
   createTransfer: (body: Record<string, unknown>) => retailCall<Transfer>("POST", "/api/v1/inventory/transfers", body),
+  transfer: (id: string) => retailCall<TransferDetail>("GET", `/api/v1/inventory/transfers/${id}`),
   shipTransfer: (id: string) => retailCall<Transfer>("POST", `/api/v1/inventory/transfers/${id}/ship`, { serial_lines: [] }),
   receiveTransfer: (id: string) => retailCall<Transfer>("POST", `/api/v1/inventory/transfers/${id}/receive`, {}),
   cancelTransfer: (id: string) => retailCall<Transfer>("POST", `/api/v1/inventory/transfers/${id}/cancel`, {}),
@@ -348,6 +349,10 @@ export interface Transfer {
   status: string;
   source_store_code: string;
   destination_store_code: string;
+}
+
+export interface TransferDetail extends Transfer {
+  lines: { id: string; sku: string; name: string; quantity: number }[];
 }
 
 export interface StoreRow {

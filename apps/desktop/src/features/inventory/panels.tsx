@@ -19,6 +19,14 @@ import {
   type PurchaseOrder,
   type StockRow,
 } from "./api";
+import {
+  blankLine,
+  purchaseOrderLines,
+  receiptLines,
+  transferLines,
+  type DraftLine,
+  type ReceiptDraft,
+} from "./documentLines";
 import { ProductDrawer } from "./productForm";
 import { Banner, Drawer, Field, PrimaryButton, QuietButton, Table, control } from "./ui";
 
@@ -26,6 +34,8 @@ export interface WorkspaceAccess {
   online: boolean;
   storeId: string | null;
   manage: boolean;
+  /** Catalog writes are tenant-wide. A store-bound sign-in can search and select, and the API refuses the write. */
+  catalogAdmin: boolean;
   pharmacy: boolean;
   pharmacyCatalogue: boolean;
   canAdjust: boolean;
@@ -382,7 +392,7 @@ function NamedPanel({ access, title, kind }: { access: WorkspaceAccess; title: s
       {kind === "category" ? (
         <Banner tone="info">Categories are shared by every branch. A store-bound sign-in can view them; changing them stays with a user who is not tied to one store.</Banner>
       ) : null}
-      {access.manage ? (
+      {access.catalogAdmin ? (
         <form className="flex flex-wrap gap-2" onSubmit={(event) => void create(event)}>
           <input className={`${control} max-w-xs`} placeholder={`${title} name`} value={name} onChange={(event) => setName(event.target.value)} required />
           <PrimaryButton type="submit" disabled={!access.online}>Add {title}</PrimaryButton>
@@ -399,7 +409,7 @@ function NamedPanel({ access, title, kind }: { access: WorkspaceAccess; title: s
             <td className="px-3 py-2">{row.code}</td>
             <td className="px-3 py-2">{row.product_count ?? 0}</td>
             <td className="px-3 py-2">
-              {access.manage ? (
+              {access.catalogAdmin ? (
                 <button
                   type="button"
                   className="font-semibold text-primary-600"
@@ -437,7 +447,7 @@ export function ModelsPanel(access: WorkspaceAccess) {
   }, [access.online]);
   return (
     <section className="space-y-3">
-      {access.manage ? (
+      {access.catalogAdmin ? (
         <form
           className="grid gap-2 md:grid-cols-4"
           onSubmit={(event) => {
@@ -867,98 +877,185 @@ export function CountsPanel(access: WorkspaceAccess) {
   );
 }
 
+function nextLineKey(): string {
+  return globalThis.crypto?.randomUUID?.() ?? `line-${Date.now()}`;
+}
+
+function DocumentLines({
+  lines,
+  onChange,
+  storeId,
+  online,
+  showCost,
+}: {
+  lines: DraftLine[];
+  onChange: (lines: DraftLine[]) => void;
+  storeId: string | null;
+  online: boolean;
+  showCost: boolean;
+}) {
+  return (
+    <div className="space-y-2">
+      {lines.map((line) => (
+        <div key={line.key} className="grid gap-2 md:grid-cols-[minmax(0,1fr)_8rem_8rem_auto]">
+          <ProductSelect
+            storeId={storeId}
+            online={online}
+            value={line.productId}
+            onChange={(productId) => onChange(lines.map((item) => (item.key === line.key ? { ...item, productId } : item)))}
+          />
+          <input
+            className={control}
+            aria-label="Quantity"
+            inputMode="numeric"
+            value={line.quantity}
+            onChange={(event) => onChange(lines.map((item) => (item.key === line.key ? { ...item, quantity: event.target.value } : item)))}
+          />
+          {showCost ? (
+            <input
+              className={control}
+              aria-label="Unit cost"
+              inputMode="decimal"
+              value={line.cost}
+              onChange={(event) => onChange(lines.map((item) => (item.key === line.key ? { ...item, cost: event.target.value } : item)))}
+            />
+          ) : (
+            <span />
+          )}
+          <QuietButton onClick={() => onChange(lines.filter((item) => item.key !== line.key))} disabled={lines.length === 1}>
+            Remove
+          </QuietButton>
+        </div>
+      ))}
+      <QuietButton onClick={() => onChange([...lines, blankLine(nextLineKey())])}>Add line</QuietButton>
+    </div>
+  );
+}
+
 export function PurchaseOrdersPanel(access: WorkspaceAccess) {
   const load = useCallback(() => inventoryApi.purchaseOrders(access.storeId), [access.storeId]);
   const { data, error, reload } = useResource(load, access.online);
   const [order, setOrder] = useState<PurchaseOrder | null>(null);
   const [supplier, setSupplier] = useState("");
-  const [productId, setProductId] = useState("");
-  const [quantity, setQuantity] = useState("1");
-  const [cost, setCost] = useState("0");
-  const [lot, setLot] = useState("");
-  const [expiry, setExpiry] = useState("");
+  const [notes, setNotes] = useState("");
+  const [lines, setLines] = useState<DraftLine[]>(() => [blankLine(nextLineKey())]);
+  const [receipts, setReceipts] = useState<Record<string, ReceiptDraft>>({});
   const [message, setMessage] = useState<string | null>(null);
+  const [formError, setFormError] = useState<string | null>(null);
   const storeId = access.storeId;
+  const receiving = order?.status === "ordered" || order?.status === "partially_received";
   return (
     <section className="space-y-3">
-      <Banner tone="info">Creating or approving an order does not increase stock. Stock moves when the goods are received.</Banner>
+      <Banner tone="info">Creating or approving an order does not increase stock. Stock moves when the goods are received. One order can hold many products.</Banner>
       {access.manage && storeId ? (
         <form
-          className="grid gap-2 md:grid-cols-5"
+          className="space-y-2"
           onSubmit={(event) => {
             event.preventDefault();
+            setFormError(null);
+            if (supplier.trim().length < 2) {
+              setFormError("Enter the supplier name.");
+              return;
+            }
+            const payload = purchaseOrderLines(lines);
+            if ("error" in payload) {
+              setFormError(payload.error);
+              return;
+            }
             void inventoryApi.createPurchaseOrder({
-              supplier_name: supplier,
+              supplier_name: supplier.trim(),
               destination_store_id: storeId,
-              lines: [{ product_id: productId, quantity_ordered: Number(quantity), unit_cost_cents: cents(cost) }],
+              notes: notes.trim(),
+              lines: payload.lines,
             }).then(() => {
+              setSupplier("");
+              setNotes("");
+              setLines([blankLine(nextLineKey())]);
               setMessage("Draft purchase order saved.");
               reload();
-            }).catch((caught) => setMessage(inventoryError(caught, "Could not create the order.")));
+            }).catch((caught) => setFormError(inventoryError(caught, "Could not create the order.")));
           }}
         >
-          <input className={control} placeholder="Supplier" value={supplier} onChange={(event) => setSupplier(event.target.value)} required />
-          <ProductSelect storeId={storeId} online={access.online} value={productId} onChange={setProductId} />
-          <input className={control} aria-label="Quantity" value={quantity} onChange={(event) => setQuantity(event.target.value)} />
-          <input className={control} aria-label="Unit cost" value={cost} onChange={(event) => setCost(event.target.value)} />
+          <div className="grid gap-2 md:grid-cols-2">
+            <input className={control} placeholder="Supplier" value={supplier} onChange={(event) => setSupplier(event.target.value)} required />
+            <input className={control} placeholder="Reference or note" value={notes} onChange={(event) => setNotes(event.target.value)} />
+          </div>
+          <DocumentLines lines={lines} onChange={setLines} storeId={storeId} online={access.online} showCost />
           <PrimaryButton type="submit" disabled={!access.online}>Create order</PrimaryButton>
         </form>
       ) : null}
       {error ? <Banner tone="error">{error}</Banner> : null}
-      {message ? <Banner tone="info">{message}</Banner> : null}
-      <Table headers={["Order", "Supplier", "Store", "Status", ""]}>
+      {formError ? <Banner tone="error">{formError}</Banner> : null}
+      {message ? <Banner tone="ok">{message}</Banner> : null}
+      <Table headers={["Order", "Supplier", "Store", "Lines", "Status", ""]}>
         {(data?.rows ?? []).map((row) => (
           <tr key={row.id}>
             <td className="px-3 py-2">{row.number}</td>
             <td className="px-3 py-2">{row.supplier_name}</td>
             <td className="px-3 py-2">{row.destination_store_name}</td>
+            <td className="px-3 py-2 tabular-nums">{row.lines?.length ?? 0}</td>
             <td className="px-3 py-2">{row.status}</td>
-            <td className="px-3 py-2"><button type="button" className="font-semibold text-primary-600" onClick={() => void inventoryApi.purchaseOrder(row.id).then(setOrder)}>Open</button></td>
+            <td className="px-3 py-2"><button type="button" className="font-semibold text-primary-600" onClick={() => void inventoryApi.purchaseOrder(row.id).then((next) => { setOrder(next); setReceipts({}); })}>Open</button></td>
           </tr>
         ))}
       </Table>
       {order ? (
         <Drawer title={order.number} onClose={() => setOrder(null)}>
-          <p className="mb-2 text-sm">Status {order.status}</p>
-          <Table headers={["Product", "Ordered", "Received"]}>
-            {order.lines.map((line) => (
-              <tr key={line.id}>
-                <td className="px-3 py-2">{line.name}</td>
-                <td className="px-3 py-2">{line.quantity_ordered}</td>
-                <td className="px-3 py-2">{line.quantity_received}</td>
-              </tr>
-            ))}
+          <p className="mb-2 text-sm">Status {order.status}. {order.lines.length} lines.</p>
+          <Table headers={["Product", "Ordered", "Received", receiving ? "Receive now" : ""]}>
+            {order.lines.map((line) => {
+              const outstanding = line.quantity_ordered - line.quantity_received;
+              const draft = receipts[line.id] ?? { quantity: outstanding > 0 ? String(outstanding) : "0", lot: "", expiry: "" };
+              return (
+                <tr key={line.id}>
+                  <td className="px-3 py-2">{line.name}</td>
+                  <td className="px-3 py-2 tabular-nums">{line.quantity_ordered}</td>
+                  <td className="px-3 py-2 tabular-nums">{line.quantity_received}</td>
+                  <td className="px-3 py-2">
+                    {receiving && outstanding > 0 ? (
+                      <div className="space-y-1">
+                        <input
+                          className={control}
+                          aria-label={`Receive ${line.name}`}
+                          inputMode="numeric"
+                          value={draft.quantity}
+                          onChange={(event) => setReceipts({ ...receipts, [line.id]: { ...draft, quantity: event.target.value } })}
+                        />
+                        {access.pharmacy && line.lot_controlled ? (
+                          <>
+                            <input className={control} aria-label={`Lot for ${line.name}`} placeholder="Manufacturer lot" value={draft.lot} onChange={(event) => setReceipts({ ...receipts, [line.id]: { ...draft, lot: event.target.value } })} />
+                            <input className={control} aria-label={`Expiry for ${line.name}`} type="date" value={draft.expiry} onChange={(event) => setReceipts({ ...receipts, [line.id]: { ...draft, expiry: event.target.value } })} />
+                          </>
+                        ) : null}
+                      </div>
+                    ) : null}
+                  </td>
+                </tr>
+              );
+            })}
           </Table>
           <div className="mt-3 flex flex-wrap gap-2">
             {order.status === "draft" ? <PrimaryButton disabled={!access.online} onClick={() => void inventoryApi.placePurchaseOrder(order.id).then(setOrder)}>Submit</PrimaryButton> : null}
-            {order.status === "ordered" || order.status === "partially_received" ? (
-              <form
-                className="space-y-2"
-                onSubmit={(event) => {
-                  event.preventDefault();
-                  const line = order.lines[0];
-                  if (!line) return;
-                  void inventoryApi.receivePurchaseOrder(order.id, {
-                    lines: [{
-                      purchase_order_line_id: line.id,
-                      quantity: line.quantity_ordered - line.quantity_received,
-                      manufacturer_lot: lot || null,
-                      expiry_date: expiry || null,
-                    }],
-                  }).then((next) => {
+            {receiving ? (
+              <PrimaryButton
+                disabled={!access.online}
+                onClick={() => {
+                  const payload = receiptLines(order.lines, receipts, access.pharmacy);
+                  if ("error" in payload) {
+                    setFormError(payload.error);
+                    return;
+                  }
+                  void inventoryApi.receivePurchaseOrder(order.id, { lines: payload.lines }).then((next) => {
                     setOrder(next);
+                    setReceipts({});
+                    setFormError(null);
                     setMessage("Goods received through the existing receiving service.");
-                  }).catch((caught) => setMessage(inventoryError(caught, "Receiving was refused.")));
+                    reload();
+                  }).catch((caught) => setFormError(inventoryError(caught, "Receiving was refused.")));
                 }}
               >
-                {access.pharmacy ? (
-                  <>
-                    <Field label="Manufacturer lot"><input className={control} value={lot} onChange={(event) => setLot(event.target.value)} required /></Field>
-                    <Field label="Expiry"><input className={control} type="date" value={expiry} onChange={(event) => setExpiry(event.target.value)} required /></Field>
-                  </>
-                ) : null}
-                <PrimaryButton type="submit" disabled={!access.online}>Receive remaining</PrimaryButton>
-              </form>
+                Post receipt
+              </PrimaryButton>
             ) : null}
             {order.status !== "cancelled" && order.status !== "received" ? (
               <QuietButton onClick={() => void inventoryApi.cancelPurchaseOrder(order.id).then(setOrder)} disabled={!access.online}>Cancel</QuietButton>
@@ -976,41 +1073,51 @@ export function TransfersPanel(access: WorkspaceAccess) {
   const stores = useResource(useCallback(() => inventoryApi.stores(), []), access.online);
   const [source, setSource] = useState(access.storeId ?? "");
   const [destination, setDestination] = useState("");
-  const [productId, setProductId] = useState("");
-  const [quantity, setQuantity] = useState("1");
+  const [lines, setLines] = useState<DraftLine[]>(() => [blankLine(nextLineKey())]);
   const [message, setMessage] = useState<string | null>(null);
+  const [formError, setFormError] = useState<string | null>(null);
+  const [open, setOpen] = useState<Awaited<ReturnType<typeof inventoryApi.transfer>> | null>(null);
   return (
     <section className="space-y-3">
-      {access.pharmacy ? <Banner tone="info">A pharmacy transfer arrives unreleased. It cannot be sold until an authorized pharmacist releases that destination lot.</Banner> : null}
+      {access.pharmacy ? <Banner tone="info">A pharmacy transfer arrives unreleased. It cannot be sold until an authorized pharmacist releases that destination lot. Only eligible released stock can leave the source.</Banner> : null}
       {access.manage ? (
         <form
-          className="grid gap-2 md:grid-cols-5"
+          className="space-y-2"
           onSubmit={(event) => {
             event.preventDefault();
+            setFormError(null);
+            const payload = transferLines(source, destination, lines);
+            if ("error" in payload) {
+              setFormError(payload.error);
+              return;
+            }
             void inventoryApi.createTransfer({
               source_store_id: source,
               destination_store_id: destination,
-              lines: [{ product_id: productId, quantity: Number(quantity) }],
+              lines: payload.lines,
             }).then(() => {
+              setLines([blankLine(nextLineKey())]);
               setMessage("Transfer created. Stock leaves the source when it ships and arrives when it is received.");
               orders.reload();
-            }).catch((caught) => setMessage(inventoryError(caught, "Could not create the transfer.")));
+            }).catch((caught) => setFormError(inventoryError(caught, "Could not create the transfer.")));
           }}
         >
-          <select className={control} aria-label="Source store" value={source} onChange={(event) => setSource(event.target.value)}>
-            {(stores.data ?? []).map((store) => <option key={store.id} value={store.id}>{store.name}</option>)}
-          </select>
-          <select className={control} aria-label="Destination store" value={destination} onChange={(event) => setDestination(event.target.value)} required>
-            <option value="">Destination</option>
-            {(stores.data ?? []).map((store) => <option key={store.id} value={store.id}>{store.name}</option>)}
-          </select>
-          <ProductSelect storeId={access.storeId} online={access.online} value={productId} onChange={setProductId} />
-          <input className={control} aria-label="Transfer quantity" value={quantity} onChange={(event) => setQuantity(event.target.value)} />
+          <div className="grid gap-2 md:grid-cols-2">
+            <select className={control} aria-label="Source store" value={source} onChange={(event) => setSource(event.target.value)}>
+              {(stores.data ?? []).map((store) => <option key={store.id} value={store.id}>{store.name}</option>)}
+            </select>
+            <select className={control} aria-label="Destination store" value={destination} onChange={(event) => setDestination(event.target.value)} required>
+              <option value="">Destination</option>
+              {(stores.data ?? []).map((store) => <option key={store.id} value={store.id}>{store.name}</option>)}
+            </select>
+          </div>
+          <DocumentLines lines={lines} onChange={setLines} storeId={access.storeId} online={access.online} showCost={false} />
           <PrimaryButton type="submit" disabled={!access.online}>Create transfer</PrimaryButton>
         </form>
       ) : null}
       {orders.error ? <Banner tone="error">{orders.error}</Banner> : null}
-      {message ? <Banner tone="info">{message}</Banner> : null}
+      {formError ? <Banner tone="error">{formError}</Banner> : null}
+      {message ? <Banner tone="ok">{message}</Banner> : null}
       <Table headers={["Transfer", "From", "To", "Status", ""]}>
         {(orders.data?.rows ?? []).map((transfer) => (
           <tr key={transfer.id}>
@@ -1019,13 +1126,28 @@ export function TransfersPanel(access: WorkspaceAccess) {
             <td className="px-3 py-2">{transfer.destination_store_code}</td>
             <td className="px-3 py-2">{transfer.status}</td>
             <td className="px-3 py-2 space-x-2">
+              <button type="button" className="font-semibold text-primary-600" onClick={() => void inventoryApi.transfer(transfer.id).then(setOpen)}>Lines</button>
               {transfer.status === "requested" ? <button type="button" className="font-semibold text-primary-600" onClick={() => void inventoryApi.shipTransfer(transfer.id).then(() => orders.reload())}>Ship</button> : null}
               {transfer.status === "in_transit" ? <button type="button" className="font-semibold text-primary-600" onClick={() => void inventoryApi.receiveTransfer(transfer.id).then(() => orders.reload())}>Receive</button> : null}
-              <button type="button" className="font-semibold text-primary-600" onClick={() => void inventoryApi.cancelTransfer(transfer.id).then(() => orders.reload()).catch((caught) => setMessage(inventoryError(caught, "This transfer can no longer be cancelled.")))}>Cancel</button>
+              <button type="button" className="font-semibold text-primary-600" onClick={() => void inventoryApi.cancelTransfer(transfer.id).then(() => orders.reload()).catch((caught) => setFormError(inventoryError(caught, "This transfer can no longer be cancelled.")))}>Cancel</button>
             </td>
           </tr>
         ))}
       </Table>
+      {open ? (
+        <Drawer title={open.number} onClose={() => setOpen(null)}>
+          <p className="mb-2 text-sm">{open.source_store_code} to {open.destination_store_code}. Status {open.status}.</p>
+          <Table headers={["Product", "SKU", "Quantity"]}>
+            {open.lines.map((line) => (
+              <tr key={line.id}>
+                <td className="px-3 py-2">{line.name}</td>
+                <td className="px-3 py-2">{line.sku}</td>
+                <td className="px-3 py-2 tabular-nums">{line.quantity}</td>
+              </tr>
+            ))}
+          </Table>
+        </Drawer>
+      ) : null}
     </section>
   );
 }
