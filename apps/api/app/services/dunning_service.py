@@ -17,7 +17,7 @@ from app.services.settings_service import business_currency, load_settings
 
 
 def _business_name(db: Session) -> str:
-    return load_settings(db).legal_name or "AI POS"
+    return load_settings(db).legal_name or "AxizPOS"
 
 
 def render_statement(db: Session, customer_id: uuid.UUID) -> bytes:

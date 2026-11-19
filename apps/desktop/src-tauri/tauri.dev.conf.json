@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "AxizPOS POS Register Dev",
+  "productName": "AxizPOS Dev",
   "identifier": "com.aipos.desktop.dev",
   "build": {
     "beforeBuildCommand": "pnpm build:dev"
@@ -18,7 +18,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "AxizPOS POS Register Dev",
+        "title": "AxizPOS Dev",
         "width": 1440,
         "height": 900,
         "resizable": true

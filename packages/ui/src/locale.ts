@@ -1176,6 +1176,7 @@ const arabic: Record<string, string> = {
   Outstanding: "المتبقي",
   Total: "الإجمالي",
   "Attach B2B Customer / Walk-in": "إرفاق عميل جملة / زائر",
+  "Search customer": "ابحث عن عميل",
   "No customers cached on this register yet.": "لا يوجد عملاء محفوظون على هذا الجهاز بعد.",
   "No customer matches {query}.": "لا يوجد عميل يطابق {query}.",
   "Add {name} as a new customer": "أضف {name} كعميل جديد",

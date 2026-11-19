@@ -2,7 +2,7 @@
 name = "ai-pos-desktop"
 version = "0.1.1"
 edition = "2021"
-description = "Offline-first AI POS cashier shell"
+description = "Offline-first AxizPOS cashier shell"
 publish = false
 
 [lib]

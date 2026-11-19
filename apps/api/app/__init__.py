@@ -1,1 +1,1 @@
-"""AI POS cloud API."""
+"""AxizPOS cloud API."""

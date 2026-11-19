@@ -27,7 +27,7 @@ const EMPTY: MailSettings = {
   username: "",
   password_set: false,
   from_address: "",
-  from_name: "AI POS",
+  from_name: "AxizPOS",
 };
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;

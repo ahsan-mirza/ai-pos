@@ -446,7 +446,7 @@ class MailSettings(ControlBase):
     username: Mapped[str] = mapped_column(String(254), default="")
     password_encrypted: Mapped[str] = mapped_column(Text, default="")
     from_address: Mapped[str] = mapped_column(String(254), default="")
-    from_name: Mapped[str] = mapped_column(String(120), default="AI POS")
+    from_name: Mapped[str] = mapped_column(String(120), default="AxizPOS")
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, onupdate=_now)
 
 

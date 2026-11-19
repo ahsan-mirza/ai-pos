@@ -46,7 +46,7 @@ if (-not $signtool) {
     exit 1
 }
 
-& $signtool sign /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 /sha1 $thumbprint /d "AxizPOS POS Register" $Target
+& $signtool sign /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 /sha1 $thumbprint /d "AxizPOS" $Target
 if ($LASTEXITCODE -ne 0) {
     Write-Error "Production signing stopped. signtool rejected the file."
     exit $LASTEXITCODE

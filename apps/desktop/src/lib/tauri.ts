@@ -297,7 +297,7 @@ export function cacheTableEvent(storeId: string, payload: string): Promise<void>
 
 async function invoke<T>(command: string, args?: Record<string, unknown>): Promise<T> {
   if (bridge() === null) {
-    throw new Error("This action only works in the AxizPOS POS Register window.");
+    throw new Error("This action only works in the AxizPOS window.");
   }
   const core = await import("@tauri-apps/api/core");
   return core.invoke<T>(command, args);

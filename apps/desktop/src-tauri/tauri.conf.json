@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "AxizPOS POS Register",
+  "productName": "AxizPOS",
   "version": "0.1.1",
   "identifier": "com.aipos.desktop",
   "build": {
@@ -13,7 +13,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "AxizPOS POS Register",
+        "title": "AxizPOS",
         "width": 1440,
         "height": 900,
         "resizable": true
@@ -34,13 +34,13 @@
     "homepage": "https://axizpos.com",
     "copyright": "Copyright © 2026 AxizPOS",
     "category": "Business",
-    "shortDescription": "AxizPOS POS Register",
-    "longDescription": "AxizPOS point of sale register for Windows. A connection file is opened only after the person chooses it.",
+    "shortDescription": "AxizPOS",
+    "longDescription": "AxizPOS point of sale for Windows. A connection file is opened only after the person chooses it.",
     "fileAssociations": [
       {
         "ext": ["posdemo"],
         "name": "AxizPOS Demo Connection",
-        "description": "AxizPOS POS Register connection file",
+        "description": "AxizPOS connection file",
         "mimeType": "application/vnd.axizpos.posdemo",
         "role": "Editor"
       }

@@ -133,7 +133,7 @@ function RequireSuperAdmin({ children }: { children: ReactNode }) {
   return (
     <section className="rounded-card border border-line bg-white p-8">
       <h2 className="text-2xl font-semibold">Not available</h2>
-      <p className="mt-2 text-sm text-charcoal/60">Only a Super Admin can download the AxizPOS Register installer.</p>
+      <p className="mt-2 text-sm text-charcoal/60">Only a Super Admin can download the AxizPOS installer.</p>
     </section>
   );
 }

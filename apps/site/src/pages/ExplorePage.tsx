@@ -206,7 +206,7 @@ export function ExplorePage() {
                     aria-busy={saving}
                     onClick={() => void download(business.code)}
                   >
-                    {saving ? "Preparing download…" : "Download POS Register"}
+                    {saving ? "Preparing download…" : "Download AxizPOS"}
                   </button>
                 </div>
               </div>
@@ -254,7 +254,7 @@ function ConnectionFile({ business }: { business: DemoBusiness }) {
       anchor.click();
       URL.revokeObjectURL(url);
       setPhase("started");
-      setMessage("The connection file download has started. Open it in AxizPOS POS Register.");
+      setMessage("The connection file download has started. Open it in AxizPOS.");
     } catch (caught) {
       setPhase("failed");
       const unavailable = caught instanceof PosInstallerError && caught.failure === "unavailable";
@@ -324,16 +324,16 @@ function PosInstallPanel({
       >
         <p className="text-sm font-semibold uppercase tracking-[0.16em] text-[#f26a21]">Windows application</p>
         <h2 id="pos-install-title" className="mt-2 text-2xl font-semibold text-[#171717]">
-          Install AxizPOS POS Register
+          Install AxizPOS
         </h2>
         <p className="mt-3 text-sm text-[#5c5c5c]">
-          This is the actual AxizPOS POS Register for Windows. Windows 10 or Windows 11 is required. The same installer is used for every business.
+          This is the AxizPOS app for Windows. Windows 10 or Windows 11 is required. The same installer is used for every business.
         </p>
         <p className="mt-2 text-sm text-[#5c5c5c]">
           {business.title} is selected. The installer does not sign the register in and does not contain a connection ticket. After the application is installed, download a connection file and open it from the activation screen. The file works once and expires after a few minutes.
         </p>
         <ol className="mt-4 list-decimal space-y-1 pl-5 text-sm text-[#171717]">
-          <li>Download AxizPOS POS Register.</li>
+          <li>Download AxizPOS.</li>
           <li>Open the Windows installer.</li>
           <li>Complete installation and launch the application.</li>
           <li>Download the connection file and open it in the register.</li>

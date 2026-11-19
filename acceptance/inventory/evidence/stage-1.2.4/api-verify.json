@@ -1,0 +1,162 @@
+{
+  "cashier_pin_login": {
+    "status": 401,
+    "message": "A valid terminal token is required."
+  },
+  "cashier_password_login": {
+    "status": 403,
+    "message": "This account cannot sign in to the web portal."
+  },
+  "manager_product_list": {
+    "status": 200,
+    "count": 3,
+    "products": [
+      {
+        "id": "84f0174e-2e54-4352-9b68-e76b06a69674",
+        "sku": "INV-TIN",
+        "barcode": "6291000001111",
+        "name": "Acceptance Inventory Tin",
+        "price_cents": 500,
+        "tax_category": "STANDARD",
+        "price_includes_tax": false,
+        "is_active": true,
+        "category": "Produce",
+        "category_id": "d33ad97e-417a-4ea3-9108-cceff2b01fee",
+        "specifications": {},
+        "model_number": null
+      },
+      {
+        "id": "16737149-a7d2-48e5-94a3-026fd50848df",
+        "sku": "ACC-OATS-500G-500G",
+        "barcode": "2008627812707",
+        "name": "Acceptance Oats 500g Revised",
+        "price_cents": 240,
+        "tax_category": "STANDARD",
+        "price_includes_tax": false,
+        "is_active": true,
+        "category": "Acceptance Dry Goods",
+        "category_id": "8d9ff8f2-326d-4f41-a14d-b8466c10c35f",
+        "specifications": {
+          "pack": "500g"
+        },
+        "model_number": "OATSMPN1"
+      },
+      {
+        "id": "06c87ca2-e6d0-4e41-89e9-258b19a8690f",
+        "sku": "INV-RICE-01",
+        "barcode": "6291000002222",
+        "name": "Acceptance Rice 1kg",
+        "price_cents": 375,
+        "tax_category": "STANDARD",
+        "price_includes_tax": false,
+        "is_active": false,
+        "category": "Acceptance Dry Goods",
+        "category_id": "8d9ff8f2-326d-4f41-a14d-b8466c10c35f",
+        "specifications": {},
+        "model_number": null
+      }
+    ]
+  },
+  "manager_oats_detail": {
+    "status": 200,
+    "product": {
+      "id": "16737149-a7d2-48e5-94a3-026fd50848df",
+      "sku": "ACC-OATS-500G-500G",
+      "barcode": "2008627812707",
+      "name": "Acceptance Oats 500g Revised",
+      "price_cents": 240,
+      "tax_category": "STANDARD",
+      "price_includes_tax": false,
+      "is_active": true,
+      "category": "Acceptance Dry Goods",
+      "category_id": "8d9ff8f2-326d-4f41-a14d-b8466c10c35f",
+      "specifications": {
+        "pack": "500g"
+      },
+      "model_number": "OATSMPN1"
+    }
+  },
+  "manager_oats_images": {
+    "status": 200,
+    "count": 2,
+    "widths": [
+      64,
+      64
+    ],
+    "heights": [
+      64,
+      48
+    ],
+    "urls_are_tenant_media": true
+  },
+  "manager_stock": {
+    "status": 200,
+    "message": "",
+    "oats": [
+      {
+        "sku": "ACC-OATS-500G-500G",
+        "quantity_on_hand": 2,
+        "store_name": "Acceptance Store A"
+      }
+    ]
+  },
+  "rice_search": {
+    "status": 200,
+    "hits": [
+      {
+        "sku": "INV-RICE-01",
+        "is_active": false
+      }
+    ]
+  },
+  "duplicate_sku": {
+    "status": 409,
+    "message": "SKU is already in use."
+  },
+  "duplicate_barcode": {
+    "status": 409,
+    "message": "Barcode is already in use."
+  },
+  "floor_manager_create_category": {
+    "status": 403,
+    "message": "Categories are shared across branches. Ask a Super Admin to change them."
+  },
+  "floor_manager_list_categories": {
+    "status": 200,
+    "includes_dry_goods": true,
+    "includes_produce": true
+  },
+  "admin_create_category": {
+    "status": 201,
+    "created": true,
+    "message": ""
+  },
+  "admin_delete_probe_category": {
+    "status": 204,
+    "message": ""
+  },
+  "device_stock": {
+    "status": 401,
+    "message": "Sign in or provide a valid API key."
+  },
+  "device_products": {
+    "status": 401,
+    "message": "Sign in or provide a valid API key."
+  },
+  "cashier_stock": {
+    "status": null,
+    "message": "PIN login did not return a token"
+  },
+  "cashier_products": {
+    "status": null,
+    "message": "PIN login did not return a token"
+  },
+  "product_count_after_duplicate_attempts": 3,
+  "oats_still_one": 1,
+  "tin_unchanged": {
+    "sku": "INV-TIN",
+    "name": "Acceptance Inventory Tin",
+    "price_cents": 500,
+    "barcode": "6291000001111"
+  }
+}

@@ -134,6 +134,6 @@ describe("demo entry", () => {
     expect(source).toContain("grid-cols-1");
     expect(source).toContain("md:grid-cols-2");
     expect(source).toContain("Explore Business Pro");
-    expect(source).toContain("Download POS Register");
+    expect(source).toContain("Download AxizPOS");
   });
 });

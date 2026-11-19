@@ -20,7 +20,7 @@ describe("AxizPOS Windows packaging", () => {
     const hooks = readFileSync(join(process.cwd(), "build/installer.nsh"), "utf8");
     const signer = readFileSync(join(root, "sign-pos.ps1"), "utf8");
     expect(config.identifier).toBe("com.aipos.desktop");
-    expect(config.productName).toBe("AxizPOS POS Register");
+    expect(config.productName).toBe("AxizPOS");
     expect(config.bundle.publisher).toBe("AxizPOS");
     expect(config.bundle.targets).toEqual(["nsis"]);
     expect(config.bundle.fileAssociations[0]?.ext).toEqual(["posdemo"]);
@@ -29,7 +29,9 @@ describe("AxizPOS Windows packaging", () => {
     expect(signer).toContain("AXIZPOS_SIGN_THUMBPRINT");
     expect(signer).not.toMatch(/[0-9A-Fa-f]{40}/);
     expect(hooks).toContain("com.aipos.desktop");
-    expect(hooks).toContain("AxizPOS POS Register");
+    expect(hooks).toContain("Uninstall\\AxizPOS\"");
+    expect(hooks).toContain("Uninstall\\AxizPOS POS Register");
     expect(hooks).toContain("Uninstall\\AI POS");
+    expect(hooks).toContain('$3 == "AxizPOS"');
   });
 });

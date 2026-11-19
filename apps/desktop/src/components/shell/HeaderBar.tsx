@@ -104,7 +104,7 @@ export function HeaderBar({
 
   return (
     <header className="relative z-30 flex h-14 shrink-0 items-center gap-2 border-b border-zinc-200 bg-white px-3 dark:border-zinc-800 dark:bg-zinc-900 min-[1280px]:gap-3 min-[1280px]:px-4">
-      <div className="min-w-0 flex-1">{leading ? <div className="w-full max-w-md">{leading}</div> : null}</div>
+      <div className="min-w-0 flex-1">{leading ? <div className="w-full min-w-[14rem] max-w-md">{leading}</div> : null}</div>
       <div className="flex shrink-0 items-center gap-1.5 min-[1366px]:gap-2">
         {practice ? (
           <span

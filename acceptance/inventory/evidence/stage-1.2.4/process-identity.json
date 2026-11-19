@@ -1,0 +1,48 @@
+{
+  "checked_at": "2026-11-19T17:05:00Z",
+  "windows_input_desktop": "available",
+  "acceptance_register_running": false,
+  "acceptance_form_open": false,
+  "acceptance_executable": "D:\\Work\\ai-pos\\acceptance\\inventory\\target\\release\\ai-pos-desktop.exe",
+  "acceptance_executable_bytes": 20881408,
+  "acceptance_executable_mtime_utc": "2026-11-19T15:06:45.9892562Z",
+  "application_identity": "com.axizpos.inventory.acceptance",
+  "webview_data_directory_present": true,
+  "other_axizpos_desktop": {
+    "pid": 33672,
+    "executable": "C:\\Users\\ahsan\\AppData\\Local\\AI POS\\ai-pos-desktop.exe",
+    "visible_hwnd": 24315754,
+    "title": "AI POS",
+    "action": "left running; not clicked, not closed"
+  },
+  "api": {
+    "url": "http://127.0.0.1:18081",
+    "listener_pid": 37356,
+    "node_pid": 60208,
+    "command": "scripts/python.mjs --env=inventory-acceptance -m app.serve"
+  },
+  "database": {
+    "container": "axizpos-inventory-acceptance-db",
+    "host": "127.0.0.1",
+    "port": 55433,
+    "listener_pid": 47156,
+    "database": "axizpos_inventory_acceptance",
+    "role": "axizpos_acceptance",
+    "status": "Up 3 hours (healthy)"
+  },
+  "left_running": [
+    "developer API listener on 0.0.0.0:8000 pid 55912",
+    "host postgres on 5432 pid 8812",
+    "desktop vite on [::1]:1420 pid 14696",
+    "evolution_api, evolution_postgres, evolution_redis",
+    "temporary pharmacy_accept_server.py pids 44548 and 40248"
+  ],
+  "developer_metadata": {
+    "ai_pos_db_bytes": 286720,
+    "ai_pos_db_mtime_utc": "2026-11-05T16:45:24.7395762Z",
+    "terminal_bin_bytes": 694,
+    "terminal_bin_mtime_utc": "2026-11-12T06:54:38.2139055Z",
+    "env_bytes": 1878,
+    "env_mtime_utc": "2026-11-12T15:21:28.8718332Z"
+  }
+}

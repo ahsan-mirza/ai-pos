@@ -84,7 +84,7 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
 
 def create_app() -> FastAPI:
     settings = get_settings()
-    app = FastAPI(title="AI POS API", version="0.1.0", lifespan=lifespan)
+    app = FastAPI(title="AxizPOS API", version="0.1.0", lifespan=lifespan)
     # Added before CORS so CORS wraps it: tenant errors still carry CORS headers for the browser.
     tenancy_middleware.install(app, settings)
 

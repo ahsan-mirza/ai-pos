@@ -77,7 +77,7 @@ class TamaraAdapter:
             "description": request.description or f"In-store purchase {request.reference}",
             "country_code": "SA" if request.currency == "SAR" else "AE",
             "payment_type": "PAY_BY_INSTALMENTS",
-            "platform": "AI POS in-store",
+            "platform": "AxizPOS in-store",
             "locale": "en_US",
             "items": [
                 {

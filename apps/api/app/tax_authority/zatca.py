@@ -155,7 +155,7 @@ def credentials(db: Session, settings: Settings, *, seller_name: str, vat_number
                 x509.NameAttribute(NameOID.COUNTRY_NAME, "SA"),
                 x509.NameAttribute(NameOID.ORGANIZATION_NAME, seller_name[:64] or "Business"),
                 x509.NameAttribute(NameOID.ORGANIZATIONAL_UNIT_NAME, vat_number[:10] or "simulation"),
-                x509.NameAttribute(NameOID.COMMON_NAME, f"AI POS EGS {vat_number or 'simulation'}"),
+                x509.NameAttribute(NameOID.COMMON_NAME, f"AxizPOS EGS {vat_number or 'simulation'}"),
             ]
         )
         now = datetime.now(UTC)

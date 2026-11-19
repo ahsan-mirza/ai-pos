@@ -281,7 +281,7 @@ def current_identity(settings: Settings | None = None) -> Identity:
     ref = current_tenant()
     if ref is None:
         host = urlparse(settings.public_base_url).hostname or "localhost"
-        return Identity(slug="default", name="AI POS", domain=host, url=settings.public_base_url.rstrip("/"))
+        return Identity(slug="default", name="AxizPOS", domain=host, url=settings.public_base_url.rstrip("/"))
     return Identity(
         slug=ref.slug,
         name=ref.name,

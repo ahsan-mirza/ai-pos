@@ -65,7 +65,7 @@ describe("POS installer download", () => {
     ]);
     expect(page).toContain("DEMO_BUSINESSES.map");
     expect(page).toContain("Explore Business Pro");
-    expect(page).toContain("Download POS Register");
+    expect(page).toContain("Download AxizPOS");
     expect(page).toContain("planDemoOpen");
     expect(page).toContain("grid-cols-1");
     expect(page).toContain("md:grid-cols-2");

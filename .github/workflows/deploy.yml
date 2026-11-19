@@ -1,8 +1,13 @@
 name: Deploy
 
-# Manual only. A green CI run does not deploy and does not migrate.
+# A successful CI run on main deploys the applications. It does not migrate.
+# A manual run deploys only when its checkbox is selected. Migrations and rollback stay separate.
 # Approve the production environment on each job that connects to the server.
 on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
   workflow_dispatch:
     inputs:
       run_migrations:
@@ -27,13 +32,13 @@ permissions:
 
 jobs:
   choose:
-    if: ${{ !inputs.run_migrations && !inputs.deploy_applications && !inputs.rollback }}
+    if: ${{ github.event_name == 'workflow_dispatch' && !inputs.run_migrations && !inputs.deploy_applications && !inputs.rollback }}
     runs-on: ubuntu-latest
     steps:
       - name: Require an explicit action
         run: |
           echo "Select run_migrations, deploy_applications, rollback, or migrations plus deploy."
-          echo "This workflow does not start from CI."
+          echo "A successful CI run on main deploys without these checkboxes."
           exit 1
 
   conflict:
@@ -46,10 +51,12 @@ jobs:
           exit 1
 
   build:
-    if: ${{ inputs.run_migrations || inputs.deploy_applications }}
+    if: ${{ (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success') || inputs.run_migrations || inputs.deploy_applications }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
 
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
@@ -96,6 +103,8 @@ jobs:
       APP_DIR: /opt/ai-pos
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
 
       - name: Configure SSH
         env:
@@ -160,7 +169,7 @@ jobs:
 
   deploy:
     needs: [choose, build, migrate, conflict]
-    if: ${{ always() && inputs.deploy_applications && !inputs.rollback && needs.build.result == 'success' && (needs.migrate.result == 'success' || needs.migrate.result == 'skipped') && (needs.choose.result == 'skipped' || needs.choose.result == 'success') && needs.conflict.result == 'skipped' }}
+    if: ${{ always() && ((github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success') || inputs.deploy_applications) && !inputs.rollback && needs.build.result == 'success' && (needs.migrate.result == 'success' || needs.migrate.result == 'skipped') && (needs.choose.result == 'skipped' || needs.choose.result == 'success') && needs.conflict.result == 'skipped' }}
     runs-on: ubuntu-latest
     environment: production
     env:
@@ -170,6 +179,8 @@ jobs:
       SITE_DIR: /var/www/ai-pos-site
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
 
       - name: Download frontend builds
         uses: actions/download-artifact@v4

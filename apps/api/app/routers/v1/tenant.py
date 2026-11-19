@@ -48,7 +48,7 @@ def tenant(settings: Annotated[Settings, Depends(get_settings)]) -> TenantOut:
     """Public: which store this subdomain belongs to (login and activation screens show its name)."""
     ref = current_tenant()
     if ref is None:
-        return TenantOut(slug="default", name="AI POS", url=settings.public_base_url, multi_tenant=False)
+        return TenantOut(slug="default", name="AxizPOS", url=settings.public_base_url, multi_tenant=False)
     return TenantOut(slug=ref.slug, name=ref.name, url=tenant_public_url(ref.slug, settings), multi_tenant=True)
 
 

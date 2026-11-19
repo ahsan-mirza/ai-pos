@@ -177,7 +177,7 @@ class Settings(BaseSettings):
     payment_provider: str = Field(default="dev", pattern="^(dev|emvco)$")
     payment_webhook_secret: str | None = None
     emvco_merchant_account: str | None = None
-    emvco_merchant_name: str = "AI POS"
+    emvco_merchant_name: str = "AxizPOS"
     emvco_merchant_city: str = "Dubai"
     emvco_mcc: str = Field(default="5732", pattern=r"^\d{4}$")
     payment_intent_minutes: int = Field(default=10, ge=1, le=60)

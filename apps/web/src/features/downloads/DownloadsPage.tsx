@@ -19,7 +19,7 @@ function formatDay(value: string): string {
 const STEPS = [
   { title: "Install", body: "Run the installer on the Windows PC at the counter." },
   { title: "Create an activation key", body: "Register the till for its branch and issue a one-time key." },
-  { title: "Activate", body: "Open AxizPOS Register, enter the store address and the key. The catalog syncs and the till is ready." },
+  { title: "Activate", body: "Open AxizPOS, enter the store address and the key. The catalog syncs and the till is ready." },
 ] as const;
 
 type PlatformId = "windows" | "android" | "ios";
@@ -75,7 +75,7 @@ export function DownloadsPage() {
     <section>
       <div className="mb-6 grid gap-3 sm:grid-cols-2">
         <p className="rounded-2xl border border-line bg-white px-4 py-3 text-sm text-charcoal/70">
-          <span className="font-semibold text-charcoal">AxizPOS Register.</span> Checkout, sales, and the register workflows that keep working offline and sync when the store is back online.
+          <span className="font-semibold text-charcoal">AxizPOS.</span> Checkout, sales, and the register workflows that keep working offline and sync when the store is back online.
         </p>
         <p className="rounded-2xl border border-line bg-white px-4 py-3 text-sm text-charcoal/70">
           <span className="font-semibold text-charcoal">AxizPOS Business.</span> Store operations, inventory, customers, reports, staff, and the other management tools in this portal. The same store, role, and modules apply.
@@ -85,7 +85,7 @@ export function DownloadsPage() {
       <h2 className="text-sm font-semibold uppercase tracking-[0.12em] text-charcoal/45">Available now</h2>
       <div className="mt-3 grid grid-cols-1 items-stretch gap-4 lg:max-w-xl">
         <ProductCard
-          name="AxizPOS Register for Windows"
+          name="AxizPOS for Windows"
           platform="windows"
           prominent
           status="Available"
@@ -122,7 +122,7 @@ export function DownloadsPage() {
       <h2 className="mb-3 mt-8 text-sm font-semibold uppercase tracking-[0.12em] text-charcoal/45">Coming soon</h2>
       <div className="grid grid-cols-1 items-stretch gap-4 md:grid-cols-2 xl:grid-cols-4">
         <ProductCard
-          name="AxizPOS Register for Android"
+          name="AxizPOS for Android"
           platform="android"
           muted
           status="Coming Soon"
@@ -130,7 +130,7 @@ export function DownloadsPage() {
           action={<SoonButton />}
         />
         <ProductCard
-          name="AxizPOS Register for iOS"
+          name="AxizPOS for iOS"
           platform="ios"
           muted
           status="Coming Soon"

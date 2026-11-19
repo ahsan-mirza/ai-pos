@@ -2,7 +2,7 @@
 
 CI copies each POS release to <DOWNLOADS_DIR>/pos/<version>/ together with a manifest.json:
     {"version": "0.2.0", "published_at": "2026-10-21T08:00:00Z", "notes": "...",
-     "files": [{"name": "AI POS_0.2.0_x64-setup.exe", "sha256": "..."}]}
+     "files": [{"name": "AxizPOS_0.2.0_x64-setup.exe", "sha256": "..."}]}
 A folder copied by hand without a manifest still lists; its hashes are computed on first read.
 """
 

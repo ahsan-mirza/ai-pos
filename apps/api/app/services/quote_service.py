@@ -676,7 +676,7 @@ def render_quote_pdf(db: Session, settings: Settings, quote_id: uuid.UUID, store
     pdf.cell(12, 5.6, "ai", align="C")
     pdf.set_xy(pdf.l_margin + 16, 15.5)
     pdf.font(8, color=MUTED)
-    pdf.cell(80, 5, (store.name if store is not None else "AI POS").upper())
+    pdf.cell(80, 5, (store.name if store is not None else "AxizPOS").upper())
     pdf.set_xy(pdf.l_margin + 16, 20.5)
     pdf.font(18, bold=True)
     pdf.cell(80, 8, "Proforma quotation")

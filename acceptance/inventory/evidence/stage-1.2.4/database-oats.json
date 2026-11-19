@@ -1,0 +1,60 @@
+{
+  "interrupted_payload_present": false,
+  "interrupted_name": "Acceptance Oats 500g",
+  "interrupted_sku": "ACC-OATS-500G",
+  "interrupted_barcode": "2003884332906",
+  "interrupted_price": "2.25",
+  "interrupted_opening_quantity": 0,
+  "persisted_product": {
+    "id": "16737149-a7d2-48e5-94a3-026fd50848df",
+    "tenant_id": "106cd7bd-87e6-43ca-9ec7-6853f7d936ce",
+    "sku": "ACC-OATS-500G-500G",
+    "barcode": "2008627812707",
+    "name": "Acceptance Oats 500g Revised",
+    "price_cents": 240,
+    "tax_category": "STANDARD",
+    "price_includes_tax": false,
+    "category": "Acceptance Dry Goods",
+    "model_number": "OATSMPN1",
+    "specifications": {"pack": "500g"},
+    "is_active": true,
+    "created_at": "2026-11-19T15:14:26.108797Z",
+    "updated_at": "2026-11-19T15:24:06.744837Z",
+    "matching_rows": 1
+  },
+  "stock": {
+    "store": "Acceptance Store A",
+    "quantity_on_hand": 2,
+    "quantity_reserved": 0,
+    "min_reorder_level": 1,
+    "other_stores": 0,
+    "movements": [
+      {
+        "movement_type": "AUDIT_ADJUSTMENT",
+        "quantity": 2,
+        "quantity_after": 2,
+        "reference_type": "opening_balance",
+        "created_at": "2026-11-19T15:14:26.123052Z"
+      }
+    ]
+  },
+  "images": {
+    "count": 2,
+    "stored_as": "webp",
+    "tenant_directory": "apps/api/storage/inv-accept/media/products",
+    "files_bytes": [84, 88]
+  },
+  "inv_tin": {
+    "sku": "INV-TIN",
+    "name": "Acceptance Inventory Tin",
+    "price_cents": 500,
+    "barcode": "6291000001111",
+    "changed_this_session": false
+  },
+  "archived_rice": {
+    "sku": "INV-RICE-01",
+    "is_active": false,
+    "quantity_on_hand": 3,
+    "movements": ["opening_balance +4", "sale -1"]
+  }
+}
