@@ -144,7 +144,10 @@ def test_medicine_receipt_records_the_lot_separately_from_the_receipt_number(cli
     assert events[0].to_status == "UNRELEASED"
     assert _on_hand(session, product_id) == before + 8
     movements = session.scalars(
-        select(StockMovement).where(StockMovement.product_id == uuid.UUID(product_id), StockMovement.movement_type == "PURCHASE_IN")
+        select(StockMovement).where(
+            StockMovement.product_id == uuid.UUID(product_id),
+            StockMovement.movement_type == "PURCHASE_IN",
+        )
     ).all()
     assert len(movements) == 1
     assert movements[0].quantity == 8

@@ -165,7 +165,8 @@ def test_only_an_appointed_pharmacist_can_release(client, session) -> None:
     assert unconfirmed.json()["error"]["code"] == "confirmation_required"
 
     manager_headers, manager_id = _manager(client, headers)
-    assert "pharmacy:authorize_pharmacist" not in client.get("/api/v1/auth/me", headers=manager_headers).json()["permissions"]
+    manager_me = client.get("/api/v1/auth/me", headers=manager_headers)
+    assert "pharmacy:authorize_pharmacist" not in manager_me.json()["permissions"]
     still = _release(client, manager_headers, item.id)
     assert still.status_code == 403
     assert still.json()["error"]["code"] == "pharmacist_required"
@@ -182,7 +183,10 @@ def test_only_an_appointed_pharmacist_can_release(client, session) -> None:
     assert missing_confirm.json()["error"]["code"] == "confirmation_required"
     session.expire_all()
     assert item.lot_status == "UNRELEASED"
-    assert session.scalar(select(func.count()).select_from(BatchItemEvent).where(BatchItemEvent.action == "RELEASED")) == 0
+    released_events = session.scalar(
+        select(func.count()).select_from(BatchItemEvent).where(BatchItemEvent.action == "RELEASED")
+    )
+    assert released_events == 0
 
     released = _release(client, manager_headers, item.id)
     assert released.status_code == 200, released.text
@@ -281,7 +285,10 @@ def test_release_rejects_ineligible_lots(client, session) -> None:
     assert held.json()["error"]["code"] == "invalid_transition"
     session.expire_all()
     assert item.lot_status == "QUARANTINED"
-    assert session.scalar(select(func.count()).select_from(BatchItemEvent).where(BatchItemEvent.action == "RELEASED")) == 0
+    released_events = session.scalar(
+        select(func.count()).select_from(BatchItemEvent).where(BatchItemEvent.action == "RELEASED")
+    )
+    assert released_events == 0
 
 
 def test_recalled_lot_cannot_be_released_or_cleared(client, session) -> None:
@@ -403,7 +410,10 @@ def test_pharmacist_clears_an_eligible_quarantine(client, session) -> None:
     assert item.lot_status == "RELEASED"
     assert item.quantity_remaining == 2
     event = session.scalar(
-        select(BatchItemEvent).where(BatchItemEvent.from_status == "QUARANTINED", BatchItemEvent.to_status == "RELEASED")
+        select(BatchItemEvent).where(
+            BatchItemEvent.from_status == "QUARANTINED",
+            BatchItemEvent.to_status == "RELEASED",
+        )
     )
     assert event is not None
     assert event.reason == "Quality hold lifted"

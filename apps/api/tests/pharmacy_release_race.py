@@ -12,7 +12,7 @@ from datetime import date
 
 from alembic import command
 from alembic.config import Config
-from sqlalchemy import create_engine, func, select, text
+from sqlalchemy import create_engine, func, select, text  # noqa: TID251
 from sqlalchemy.engine import make_url
 from sqlalchemy.orm import sessionmaker
 
@@ -257,7 +257,9 @@ def _expect_one(factory, item_id, previous: str, results: list[str]) -> None:
         raise SystemExit(f"Lot ended as {item.lot_status} with remaining {item.quantity_remaining}.")
     released = [event for event in events if event.from_status == previous and event.to_status == "RELEASED"]
     if len(released) != 1 or movements != 0:
-        raise SystemExit(f"Expected one {previous} to RELEASED event and no stock movement, got {len(released)} and {movements}.")
+        raise SystemExit(
+            f"Expected one {previous} to RELEASED event and no stock movement, got {len(released)} and {movements}."
+        )
     db.execute(text("SELECT set_config('app.tenant_id', :tenant, true)"), {"tenant": str(TENANT)})
     db.execute(text("SELECT set_config('app.bypass_rls', 'off', true)"))
     try:

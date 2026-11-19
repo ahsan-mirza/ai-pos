@@ -28,9 +28,9 @@ from app.models.pharmacy_lots import (
     PharmacySupplierReturn,
     PharmacySupplierReturnLine,
 )
-from app.models.user import User
 from app.models.sale import Sale
 from app.models.sale_item import SaleItem
+from app.models.user import User
 
 UNRELEASED = "UNRELEASED"
 RELEASED = "RELEASED"
@@ -477,7 +477,9 @@ def _require_known_user(db: Session, user_id: uuid.UUID) -> User:
     return user
 
 
-def nominate_officer(db: Session, actor_id: uuid.UUID, user_id: uuid.UUID, reason: str, *, role_manager: bool) -> PharmacyGovernanceOfficer:
+def nominate_officer(
+    db: Session, actor_id: uuid.UUID, user_id: uuid.UUID, reason: str, *, role_manager: bool
+) -> PharmacyGovernanceOfficer:
     from app.services import audit
 
     if actor_id == user_id:
@@ -518,7 +520,9 @@ def nominate_officer(db: Session, actor_id: uuid.UUID, user_id: uuid.UUID, reaso
     return row
 
 
-def confirm_officer(db: Session, actor_id: uuid.UUID, user_id: uuid.UUID, reason: str, *, role_manager: bool) -> PharmacyGovernanceOfficer:
+def confirm_officer(
+    db: Session, actor_id: uuid.UUID, user_id: uuid.UUID, reason: str, *, role_manager: bool
+) -> PharmacyGovernanceOfficer:
     from app.services import audit
 
     cleaned = audit.require_reason(reason, "governance confirmation")
@@ -581,7 +585,11 @@ def revoke_officer(db: Session, actor_id: uuid.UUID, user_id: uuid.UUID, reason:
     )
     if len(active) <= 2:
         db.rollback()
-        raise ApiError(409, "oversight_required", "Two governance officers have to remain so one person cannot approve alone.")
+        raise ApiError(
+            409,
+            "oversight_required",
+            "Two governance officers have to remain so one person cannot approve alone.",
+        )
     row = next((item for item in active if item.user_id == user_id), None)
     if row is None:
         db.rollback()
@@ -693,7 +701,11 @@ def request_pharmacist(db: Session, actor_id: uuid.UUID, user_id: uuid.UUID, rea
         db.commit()
     except IntegrityError:
         db.rollback()
-        raise ApiError(409, "already_pending", "This user already has a pharmacist appointment waiting for approval.") from None
+        raise ApiError(
+            409,
+            "already_pending",
+            "This user already has a pharmacist appointment waiting for approval.",
+        ) from None
     db.refresh(row)
     return row
 
@@ -838,7 +850,11 @@ def governance_snapshot(db: Session, actor_id: uuid.UUID, *, role_manager: bool)
             return {}
         return {user.id: user.full_name for user in db.scalars(select(User).where(User.id.in_(ids))).all()}
 
-    officers = list(db.scalars(select(PharmacyGovernanceOfficer).where(PharmacyGovernanceOfficer.status.in_(("PENDING", "ACTIVE")))))
+    officers = list(
+        db.scalars(
+            select(PharmacyGovernanceOfficer).where(PharmacyGovernanceOfficer.status.in_(("PENDING", "ACTIVE")))
+        )
+    )
     appointments = list(
         db.scalars(select(PharmacistAuthorization).where(PharmacistAuthorization.status.in_(("PENDING", "ACTIVE"))))
     )
@@ -973,7 +989,17 @@ def _become_released(db: Session, item: BatchItem, user_id: uuid.UUID, reason: s
     )
 
 
-def _release_failure(db: Session, batch_item_id: uuid.UUID, user_id: uuid.UUID, reason: str, status: int, code: str, message: str, *, clearance: bool) -> None:
+def _release_failure(
+    db: Session,
+    batch_item_id: uuid.UUID,
+    user_id: uuid.UUID,
+    reason: str,
+    status: int,
+    code: str,
+    message: str,
+    *,
+    clearance: bool,
+) -> None:
     _abort(
         db,
         status,
@@ -999,12 +1025,30 @@ def release_lot(db: Session, batch_item_id: uuid.UUID, user_id: uuid.UUID, reaso
         _release_failure(db, batch_item_id, user_id, reason, exc.status_code, exc.code, exc.message, clearance=False)
     item = _locked_medicine_layer(db, batch_item_id)
     if item.lot_status == "RELEASED":
-        _release_failure(db, batch_item_id, user_id, cleaned, 409, "already_released", "This lot is already released.", clearance=False)
+        _release_failure(
+            db,
+            batch_item_id,
+            user_id,
+            cleaned,
+            409,
+            "already_released",
+            "This lot is already released.",
+            clearance=False,
+        )
     blocked = _release_block(item)
     if blocked is not None:
         _release_failure(db, batch_item_id, user_id, cleaned, 422, blocked[0], blocked[1], clearance=False)
     if item.lot_status != UNRELEASED:
-        _release_failure(db, batch_item_id, user_id, cleaned, 422, "invalid_transition", "Only an unreleased lot can be released.", clearance=False)
+        _release_failure(
+            db,
+            batch_item_id,
+            user_id,
+            cleaned,
+            422,
+            "invalid_transition",
+            "Only an unreleased lot can be released.",
+            clearance=False,
+        )
     _become_released(db, item, user_id, cleaned, "pharmacy.lot_released")
     db.commit()
     return item
@@ -1021,14 +1065,41 @@ def clear_quarantine(db: Session, batch_item_id: uuid.UUID, user_id: uuid.UUID, 
         _release_failure(db, batch_item_id, user_id, reason, exc.status_code, exc.code, exc.message, clearance=True)
     item = _locked_medicine_layer(db, batch_item_id)
     if item.lot_status == "RECALLED":
-        _release_failure(db, batch_item_id, user_id, cleaned, 422, "lot_recalled", "A recalled lot cannot be cleared through quarantine.", clearance=True)
+        _release_failure(
+            db,
+            batch_item_id,
+            user_id,
+            cleaned,
+            422,
+            "lot_recalled",
+            "A recalled lot cannot be cleared through quarantine.",
+            clearance=True,
+        )
     if item.lot_status == "RELEASED":
-        _release_failure(db, batch_item_id, user_id, cleaned, 409, "already_released", "This lot is already released.", clearance=True)
+        _release_failure(
+            db,
+            batch_item_id,
+            user_id,
+            cleaned,
+            409,
+            "already_released",
+            "This lot is already released.",
+            clearance=True,
+        )
     blocked = _release_block(item)
     if blocked is not None:
         _release_failure(db, batch_item_id, user_id, cleaned, 422, blocked[0], blocked[1], clearance=True)
     if item.lot_status != "QUARANTINED":
-        _release_failure(db, batch_item_id, user_id, cleaned, 422, "invalid_transition", "Only a quarantined lot can be cleared.", clearance=True)
+        _release_failure(
+            db,
+            batch_item_id,
+            user_id,
+            cleaned,
+            422,
+            "invalid_transition",
+            "Only a quarantined lot can be cleared.",
+            clearance=True,
+        )
     _become_released(db, item, user_id, cleaned, "pharmacy.lot_quarantine_cleared")
     db.commit()
     return item

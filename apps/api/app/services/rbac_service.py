@@ -663,7 +663,11 @@ def update_role(db: Session, actor: Principal, role_id: uuid.UUID, data: RoleUpd
     if role is None:
         raise ApiError(404, "not_found", "Role was not found.")
     _assert_can_grant(actor, role.permissions)
-    if holds_super_admin_role(role) and data.permissions is not None and set(data.permissions) != SUPER_ADMIN_PERMISSIONS:
+    if (
+        holds_super_admin_role(role)
+        and data.permissions is not None
+        and set(data.permissions) != SUPER_ADMIN_PERMISSIONS
+    ):
         raise ApiError(
             422,
             "system_role",

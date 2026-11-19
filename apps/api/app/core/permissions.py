@@ -222,7 +222,8 @@ PERMISSION_GROUPS: dict[str, list[tuple[Permission, str]]] = {
         (Permission.PHARMACY_CATALOGUE, "Medicine master, ingredients, and product documents"),
         (
             Permission.PHARMACY_AUTHORIZE_PHARMACIST,
-            "Not assigned on a role and not included in Super Admin. A governed officer record appoints pharmacists. This is not a licence check.",
+            "Not assigned on a role and not included in Super Admin. "
+            "A governed officer record appoints pharmacists. This is not a licence check.",
         ),
     ],
 }

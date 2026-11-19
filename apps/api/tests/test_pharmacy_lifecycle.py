@@ -82,7 +82,9 @@ def test_released_medicine_transfer_keeps_the_lot_and_starts_unreleased(client, 
     assert batch.batch_number != LOT
     actions = {
         (event.batch_item_id, event.action, event.to_status)
-        for event in session.scalars(select(BatchItemEvent).where(BatchItemEvent.action.in_(("TRANSFER_OUT", "TRANSFER_IN"))))
+        for event in session.scalars(
+            select(BatchItemEvent).where(BatchItemEvent.action.in_(("TRANSFER_OUT", "TRANSFER_IN")))
+        )
     }
     assert (source.id, "TRANSFER_OUT", "RELEASED") in actions
     assert (destination.id, "TRANSFER_IN", "UNRELEASED") in actions
@@ -99,7 +101,10 @@ def test_released_medicine_transfer_keeps_the_lot_and_starts_unreleased(client, 
     )
     assert (wh, shj) == (2, 4)
     movements = session.scalars(
-        select(StockMovement).where(StockMovement.product_id == uuid.UUID(product_id), StockMovement.movement_type.in_(("TRANSFER_OUT", "TRANSFER_IN")))
+        select(StockMovement).where(
+            StockMovement.product_id == uuid.UUID(product_id),
+            StockMovement.movement_type.in_(("TRANSFER_OUT", "TRANSFER_IN")),
+        )
     ).all()
     assert sorted(row.quantity for row in movements) == [-4, 4]
 
@@ -121,7 +126,8 @@ def test_one_transfer_can_draw_two_lots_and_ineligible_lots_stay_put(client, ses
     )
     assert second.status_code == 201, second.text
     second_order = second.json()
-    assert client.post(f"/api/v1/inventory/purchase-orders/{second_order['id']}/order", headers=headers).status_code == 200
+    ordered = client.post(f"/api/v1/inventory/purchase-orders/{second_order['id']}/order", headers=headers)
+    assert ordered.status_code == 200
     later = client.post(
         f"/api/v1/inventory/purchase-orders/{second_order['id']}/receive",
         headers=headers,
@@ -170,7 +176,10 @@ def test_one_transfer_can_draw_two_lots_and_ineligible_lots_stay_put(client, ses
     assert _layers(session, blocked)[0].quantity_remaining == 5
     assert _layers(session, blocked)[0].lot_status == "UNRELEASED"
     outgoing = session.scalars(
-        select(StockMovement).where(StockMovement.product_id == uuid.UUID(blocked), StockMovement.movement_type == "TRANSFER_OUT")
+        select(StockMovement).where(
+            StockMovement.product_id == uuid.UUID(blocked),
+            StockMovement.movement_type == "TRANSFER_OUT",
+        )
     ).all()
     assert outgoing == []
 
@@ -235,7 +244,8 @@ def test_partial_and_multi_lot_supplier_return_rolls_back_together(client, sessi
             "lines": [{"product_id": product_id, "quantity_ordered": 3, "unit_cost_cents": 400}],
         },
     ).json()
-    assert client.post(f"/api/v1/inventory/purchase-orders/{second_order['id']}/order", headers=headers).status_code == 200
+    ordered = client.post(f"/api/v1/inventory/purchase-orders/{second_order['id']}/order", headers=headers)
+    assert ordered.status_code == 200
     assert (
         client.post(
             f"/api/v1/inventory/purchase-orders/{second_order['id']}/receive",
@@ -457,7 +467,9 @@ def test_quarantine_records_an_event_and_cannot_clear_a_recall(client, session) 
     )
     assert missing_release.status_code == 403
     assert missing_release.json()["error"]["code"] == "pharmacist_required"
-    count = session.scalar(select(func.count()).select_from(BatchItemEvent).where(BatchItemEvent.batch_item_id == item.id))
+    count = session.scalar(
+        select(func.count()).select_from(BatchItemEvent).where(BatchItemEvent.batch_item_id == item.id)
+    )
     session.execute(
         BatchItemEvent.__table__.update().where(BatchItemEvent.id == event_row.id).values(reason="rewritten")
     )

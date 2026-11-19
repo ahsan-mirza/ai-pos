@@ -5,7 +5,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, Integer, String, Text, Uuid, text
+from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, Integer, String, Text, Uuid, text  # noqa: TID251
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base, TenantScoped, tenant_unique, utcnow
@@ -285,7 +285,11 @@ class PharmacyRecallLot(TenantScoped, Base):
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
     recall_id: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True),
-        ForeignKey("pharmacy_recalls.id", ondelete="CASCADE", name="fk_pharmacy_recall_lots_recall_id_pharmacy_recalls"),
+        ForeignKey(
+            "pharmacy_recalls.id",
+            ondelete="CASCADE",
+            name="fk_pharmacy_recall_lots_recall_id_pharmacy_recalls",
+        ),
     )
     product_id: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True),

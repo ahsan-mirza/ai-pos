@@ -28,8 +28,8 @@ from app.schemas.pharmacy_lots import (
     QuarantineOut,
     RecallIn,
     RecallOut,
-    RecallSalesOut,
     RecallSaleOut,
+    RecallSalesOut,
     RecallStatusIn,
     SupplierReturnIn,
     SupplierReturnLineOut,
@@ -51,6 +51,7 @@ CanCatalogue = Annotated[
     ),
 ]
 CanStock = Annotated[Principal, Depends(authorize(Permission.PORTAL_INVENTORY_MANAGE, scopes=REGISTER_SCOPES))]
+SignedIn = Annotated[Principal, Depends(get_principal)]
 
 
 @router.get("/products", response_model=list[PharmacyProductOut])
@@ -123,7 +124,7 @@ def own_pharmacist_authorization(db: Db, principal: CanStock) -> PharmacistSelfO
 
 
 @router.get("/governance", response_model=GovernanceOut)
-def governance(db: Db, principal: Principal = Depends(get_principal)) -> GovernanceOut:
+def governance(db: Db, principal: SignedIn) -> GovernanceOut:
     _user_id(principal)
     return GovernanceOut.model_validate(
         pharmacy_lots.governance_snapshot(db, _user_id(principal), role_manager=_role_manager(principal))
@@ -131,7 +132,7 @@ def governance(db: Db, principal: Principal = Depends(get_principal)) -> Governa
 
 
 @router.post("/governance-officers", response_model=PharmacistOut, status_code=201)
-def nominate_officer(payload: PharmacistGrantIn, db: Db, principal: Principal = Depends(get_principal)) -> PharmacistOut:
+def nominate_officer(payload: PharmacistGrantIn, db: Db, principal: SignedIn) -> PharmacistOut:
     row = pharmacy_lots.nominate_officer(
         db, _user_id(principal), payload.user_id, _confirm(payload), role_manager=_role_manager(principal)
     )
@@ -140,7 +141,7 @@ def nominate_officer(payload: PharmacistGrantIn, db: Db, principal: Principal = 
 
 @router.post("/governance-officers/{user_id}/confirm", response_model=PharmacistOut)
 def confirm_officer(
-    user_id: uuid.UUID, payload: ConfirmedReason, db: Db, principal: Principal = Depends(get_principal)
+    user_id: uuid.UUID, payload: ConfirmedReason, db: Db, principal: SignedIn
 ) -> PharmacistOut:
     row = pharmacy_lots.confirm_officer(
         db, _user_id(principal), user_id, _confirm(payload), role_manager=_role_manager(principal)
@@ -150,21 +151,21 @@ def confirm_officer(
 
 @router.post("/governance-officers/{user_id}/revoke", response_model=PharmacistOut)
 def revoke_officer(
-    user_id: uuid.UUID, payload: ConfirmedReason, db: Db, principal: Principal = Depends(get_principal)
+    user_id: uuid.UUID, payload: ConfirmedReason, db: Db, principal: SignedIn
 ) -> PharmacistOut:
     row = pharmacy_lots.revoke_officer(db, _user_id(principal), user_id, _confirm(payload))
     return PharmacistOut(user_id=row.user_id, status=row.status, granted_at=row.requested_at.isoformat(), active=False)
 
 
 @router.post("/pharmacists", response_model=PharmacistOut, status_code=201)
-def request_pharmacist(payload: PharmacistGrantIn, db: Db, principal: Principal = Depends(get_principal)) -> PharmacistOut:
+def request_pharmacist(payload: PharmacistGrantIn, db: Db, principal: SignedIn) -> PharmacistOut:
     row = pharmacy_lots.request_pharmacist(db, _user_id(principal), payload.user_id, _confirm(payload))
     return _decision_out(row)
 
 
 @router.post("/pharmacists/{user_id}/approve", response_model=PharmacistOut)
 def approve_pharmacist(
-    user_id: uuid.UUID, payload: ConfirmedReason, db: Db, principal: Principal = Depends(get_principal)
+    user_id: uuid.UUID, payload: ConfirmedReason, db: Db, principal: SignedIn
 ) -> PharmacistOut:
     row = pharmacy_lots.approve_pharmacist(db, _user_id(principal), user_id, _confirm(payload))
     return _decision_out(row)
@@ -172,7 +173,7 @@ def approve_pharmacist(
 
 @router.post("/pharmacists/{user_id}/reject", response_model=PharmacistOut)
 def reject_pharmacist(
-    user_id: uuid.UUID, payload: ConfirmedReason, db: Db, principal: Principal = Depends(get_principal)
+    user_id: uuid.UUID, payload: ConfirmedReason, db: Db, principal: SignedIn
 ) -> PharmacistOut:
     row = pharmacy_lots.reject_pharmacist(db, _user_id(principal), user_id, _confirm(payload))
     return _decision_out(row)
@@ -180,7 +181,7 @@ def reject_pharmacist(
 
 @router.post("/pharmacists/{user_id}/revoke", response_model=PharmacistOut)
 def revoke_pharmacist(
-    user_id: uuid.UUID, payload: ConfirmedReason, db: Db, principal: Principal = Depends(get_principal)
+    user_id: uuid.UUID, payload: ConfirmedReason, db: Db, principal: SignedIn
 ) -> PharmacistOut:
     row = pharmacy_lots.revoke_pharmacist(db, _user_id(principal), user_id, _confirm(payload))
     return _decision_out(row)

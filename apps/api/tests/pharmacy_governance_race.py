@@ -12,13 +12,12 @@ from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import func, select, text
+from sqlalchemy import func, select, text  # noqa: TID251
 
 from app.core.errors import ApiError
 from app.models.batch import BatchItem
 from app.models.business_settings import BusinessSettings
-from app.models.pharmacy_lots import PharmacistAuthorization, PharmacyGovernanceOfficer
-from app.models.product import Product
+from app.models.pharmacy_lots import PharmacistAuthorization
 from app.models.role import Role
 from app.models.store import Store
 from app.models.user import User
@@ -153,12 +152,17 @@ def main() -> None:
         engine, factory = _factory(url)
         db = factory()
         db.info[INCLUDE_ALL] = True
-        revoked = db.scalar(select(PharmacistAuthorization.revoked_at).where(PharmacistAuthorization.user_id == ids["pharmacist"]))
+        revoked = db.scalar(
+            select(PharmacistAuthorization.revoked_at).where(PharmacistAuthorization.user_id == ids["pharmacist"])
+        )
         remaining = db.scalar(select(BatchItem.quantity_remaining).where(BatchItem.id == held))
         status = db.scalar(select(BatchItem.lot_status).where(BatchItem.id == held))
         db.close()
         if revoked is None or remaining != 4 or status != "UNRELEASED":
-            raise SystemExit(f"Downgrade changed the pending grant or the lot: revoked={revoked} status={status} remaining={remaining}.")
+            raise SystemExit(
+                "Downgrade changed the pending grant or the lot: "
+                f"revoked={revoked} status={status} remaining={remaining}."
+            )
         if _table(engine, "pharmacy_governance_officers"):
             raise SystemExit("Downgrade left pharmacy_governance_officers in place.")
         engine.dispose()
@@ -167,7 +171,9 @@ def main() -> None:
         db = factory()
         db.info[INCLUDE_ALL] = True
         with use_tenant(SCOPE):
-            restored = db.scalar(select(PharmacistAuthorization).where(PharmacistAuthorization.user_id == ids["pharmacist"]))
+            restored = db.scalar(
+                select(PharmacistAuthorization).where(PharmacistAuthorization.user_id == ids["pharmacist"])
+            )
             if restored is None or restored.status != "REVOKED" or active_pharmacist(db, ids["pharmacist"]) is not None:
                 raise SystemExit("The unapproved appointment became active after the round trip.")
         db.close()
@@ -237,7 +243,11 @@ def main() -> None:
             raise SystemExit("Revocation race changed quantity or left the authorization active.")
         if sorted(contested) == ["ok", "ok"] and item.lot_status == "RELEASED" and release_events == 1:
             pass
-        elif sorted(contested) == ["ok", "pharmacist_required"] and item.lot_status == "UNRELEASED" and release_events == 0:
+        elif (
+            sorted(contested) == ["ok", "pharmacist_required"]
+            and item.lot_status == "UNRELEASED"
+            and release_events == 0
+        ):
             pass
         else:
             raise SystemExit(
@@ -245,7 +255,9 @@ def main() -> None:
             )
 
         second = uuid.uuid4()
-        second_item = _layer(factory, product_id=second, store_id=store_id, user_id=ids["nominator"], status="UNRELEASED")
+        second_item = _layer(
+            factory, product_id=second, store_id=store_id, user_id=ids["nominator"], status="UNRELEASED"
+        )
         db = factory()
         with use_tenant(SCOPE):
             approve_pharmacist(db, ids["officer2"], ids["again"], "Approve the second pharmacist")
@@ -260,7 +272,9 @@ def main() -> None:
             raise SystemExit(f"Expected one release, got {released}.")
 
         third = uuid.uuid4()
-        third_item = _layer(factory, product_id=third, store_id=store_id, user_id=ids["nominator"], status="QUARANTINED")
+        third_item = _layer(
+            factory, product_id=third, store_id=store_id, user_id=ids["nominator"], status="QUARANTINED"
+        )
         cleared = _race(
             factory,
             lambda db: clear_quarantine(db, third_item, ids["again"], "First clearance"),
@@ -282,7 +296,9 @@ def main() -> None:
         if engine is not None:
             admin = engine.execution_options(isolation_level="AUTOCOMMIT")
             with admin.connect() as connection:
-                exists = connection.execute(text("SELECT 1 FROM pg_roles WHERE rolname = :name"), {"name": probe}).scalar()
+                exists = connection.execute(
+                    text("SELECT 1 FROM pg_roles WHERE rolname = :name"), {"name": probe}
+                ).scalar()
                 if exists:
                     connection.execute(text(f'REVOKE ALL ON TABLE pharmacy_governance_officers FROM "{probe}"'))
                     connection.execute(text(f'REVOKE ALL ON TABLE pharmacist_authorizations FROM "{probe}"'))

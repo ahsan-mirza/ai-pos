@@ -17,7 +17,7 @@ from datetime import date, timedelta
 
 from alembic import command
 from alembic.config import Config
-from sqlalchemy import create_engine, func, select, text
+from sqlalchemy import create_engine, func, select, text  # noqa: TID251
 from sqlalchemy.engine import make_url
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import sessionmaker
@@ -541,9 +541,15 @@ def _supplier_races(Admin, App, scope, store_id, user_id) -> None:
     full_ok = [item for item in full if item[0] == "ok"]
     record(
         "3F2-SR-FULL",
-        len(full_ok) == 1 and len(full) == 2 and evidence[str(full_layer)]["remaining"] == 0 and evidence[str(full_layer)]["status"] == "SUPPLIER_RETURN" and documents["full_docs"] == 1 and documents["full_moves"] == 1,
+        len(full_ok) == 1
+        and len(full) == 2
+        and evidence[str(full_layer)]["remaining"] == 0
+        and evidence[str(full_layer)]["status"] == "SUPPLIER_RETURN"
+        and documents["full_docs"] == 1
+        and documents["full_moves"] == 1,
         "One full return, loser rejected, remaining 0, status SUPPLIER_RETURN, one movement",
-        f"attempts={full} layer={evidence[str(full_layer)]} docs={documents['full_docs']} moves={documents['full_moves']}",
+        f"attempts={full} layer={evidence[str(full_layer)]} "
+        f"docs={documents['full_docs']} moves={documents['full_moves']}",
         "ai_pos_app sessions",
     )
     record(
@@ -556,12 +562,15 @@ def _supplier_races(Admin, App, scope, store_id, user_id) -> None:
         and evidence[str(part_layer)]["status"] == "SUPPLIER_RETURN"
         and documents["part_moves"] == 3,
         "Two partial returns leave the original UNRELEASED status, then the last units set SUPPLIER_RETURN",
-        f"partial={part} opened={opened} close={closing} layer={evidence[str(part_layer)]} moves={documents['part_moves']}",
+        f"partial={part} opened={opened} close={closing} "
+        f"layer={evidence[str(part_layer)]} moves={documents['part_moves']}",
         "lot_status after the partial returns and after the closing return",
     )
     record(
         "3F2-SR-STATUS",
-        recalled[0] == "ok" and evidence[str(recalled_layer)]["status"] == "RECALLED" and evidence[str(recalled_layer)]["remaining"] == 3,
+        recalled[0] == "ok"
+        and evidence[str(recalled_layer)]["status"] == "RECALLED"
+        and evidence[str(recalled_layer)]["remaining"] == 3,
         "A partial supplier return leaves a recalled layer recalled",
         f"attempt={recalled} layer={evidence[str(recalled_layer)]}",
         "lot_status after the return",
@@ -587,7 +596,9 @@ def _admin_counts(Admin, full_product, part_product, recalled_product) -> dict[s
     def docs(product_id: uuid.UUID) -> int:
         return int(
             db.scalar(
-                select(func.count(PharmacySupplierReturnLine.id)).where(PharmacySupplierReturnLine.product_id == product_id)
+                select(func.count(PharmacySupplierReturnLine.id)).where(
+                    PharmacySupplierReturnLine.product_id == product_id
+                )
             )
             or 0
         )
@@ -682,7 +693,9 @@ def _accept_return(App, scope, sale_id, sale_item_id, store_id, user_id, quantit
             if sale is None or item is None:
                 raise SyncRejected("Original sale is not visible.")
             already = int(
-                db.scalar(select(func.coalesce(func.sum(ReturnItem.quantity), 0)).where(ReturnItem.sale_item_id == item.id))
+                db.scalar(
+                    select(func.coalesce(func.sum(ReturnItem.quantity), 0)).where(ReturnItem.sale_item_id == item.id)
+                )
                 or 0
             )
             if quantity > item.quantity - already:
@@ -803,7 +816,8 @@ def _customer_races(Admin, App, scope_a, scope_b, store_a, store_b, user_a, user
         and movements == 2
         and blocked[0] != "ok",
         "Two one-unit returns succeed, a third is rejected, the whole layer is quarantined, and it cannot be sold",
-        f"attempts={attempts} extra={extra} layer={evidence[str(layer)]} return_movements={movements} resale={blocked} audits={audits}",
+        f"attempts={attempts} extra={extra} layer={evidence[str(layer)]} "
+        f"return_movements={movements} resale={blocked} audits={audits}",
         "sale row lock, return items, RETURN_IN movements, QUARANTINED",
     )
 
@@ -883,7 +897,9 @@ def _movement_count(Admin, product_id: uuid.UUID, movement_type: str) -> int:
 def _audit_count(Admin, action: str) -> int:
     db = Admin()
     db.info[INCLUDE_ALL] = True
-    count = int(db.execute(text("SELECT count(*) FROM audit_logs WHERE action = :action"), {"action": action}).scalar() or 0)
+    count = int(
+        db.execute(text("SELECT count(*) FROM audit_logs WHERE action = :action"), {"action": action}).scalar() or 0
+    )
     db.close()
     return count
 
@@ -987,9 +1003,16 @@ def _multiline(Admin, App, scope, store_id, user_id) -> None:
     check.close()
     record(
         "3F2-ROLLBACK",
-        outcome.startswith("lot_unreleased") and good_on == 3 and bad_on == 3 and sale_left is None and tender_left == 0 and moves == 0 and sync_after == before_sync,
+        outcome.startswith("lot_unreleased")
+        and good_on == 3
+        and bad_on == 3
+        and sale_left is None
+        and tender_left == 0
+        and moves == 0
+        and sync_after == before_sync,
         "An ineligible later line rolls back the earlier allocation, sale, tender, and movements",
-        f"outcome={outcome} good={good_on} bad={bad_on} sale_left={sale_left is not None} tenders={tender_left} movements={moves} sync={sync_after}",
+        f"outcome={outcome} good={good_on} bad={bad_on} sale_left={sale_left is not None} "
+        f"tenders={tender_left} movements={moves} sync={sync_after}",
         "one ai_pos_app transaction",
     )
 
@@ -1149,7 +1172,8 @@ def _rls(admin_engine, App, scope_a, scope_b) -> None:
         try:
             db.execute(
                 text(
-                    "INSERT INTO pharmacy_recalls (id, tenant_id, reference, source_text, severity, reason, status, created_at) "
+                    "INSERT INTO pharmacy_recalls "
+                    "(id, tenant_id, reference, source_text, severity, reason, status, created_at) "
                     "VALUES (:id, :tenant, 'CROSS', 'x', 'high', 'no', 'OPEN', now())"
                 ),
                 {"id": uuid.uuid4(), "tenant": str(TENANT_A)},
@@ -1174,7 +1198,8 @@ def _rls(admin_engine, App, scope_a, scope_b) -> None:
         and raw["empty_products"] == 0
         and bypass == 0
         and info["session_user"] == "ai_pos_app",
-        "Own rows are visible, cross-tenant insert and a missing tenant insert raise SQLSTATE 42501, and bypass does not widen the application role",
+        "Own rows are visible, cross-tenant insert and a missing tenant insert raise SQLSTATE 42501, "
+        "and bypass does not widen the application role",
         f"tenant_a={own} tenant_b={other} cross={cross} sqlstate={state} empty={raw} bypass_other_products={bypass}",
         "login ai_pos_app, not SET ROLE",
     )
@@ -1212,7 +1237,8 @@ def app_connection_state(App, tenant_value: str) -> dict[str, object]:
         try:
             conn.execute(
                 text(
-                    "INSERT INTO pharmacy_recalls (id, tenant_id, reference, source_text, severity, reason, status, created_at) "
+                    "INSERT INTO pharmacy_recalls "
+                    "(id, tenant_id, reference, source_text, severity, reason, status, created_at) "
                     "VALUES (:id, :tenant, 'EMPTY', 'x', 'high', 'no', 'OPEN', now())"
                 ),
                 {"id": uuid.uuid4(), "tenant": str(TENANT_A)},
@@ -1292,8 +1318,8 @@ def _performance(admin_engine, Admin, App, scope, store_id, user_id) -> None:
         session = _app(App)
         count = {"n": 0}
 
-        def bump(*_args, **_kwargs) -> None:
-            count["n"] += 1
+        def bump(*_args, counter: dict[str, int] = count, **_kwargs) -> None:
+            counter["n"] += 1
 
         from sqlalchemy import event
 
@@ -1412,8 +1438,11 @@ def _migration(admin_url, app_password: str) -> None:
         try:
             db.execute(
                 text(
-                    "INSERT INTO products (id, tenant_id, sku, barcode, name, category, price_cents, currency, is_serialized, created_at, updated_at) "
-                    "VALUES (:id, :tenant, 'CROSS-PRIOR', '6290000000004', 'Cross', 'Grocery', 100, 'USD', false, now(), now())"
+                    "INSERT INTO products "
+                    "(id, tenant_id, sku, barcode, name, category, price_cents, currency, "
+                    "is_serialized, created_at, updated_at) "
+                    "VALUES (:id, :tenant, 'CROSS-PRIOR', '6290000000004', 'Cross', 'Grocery', "
+                    "100, 'USD', false, now(), now())"
                 ),
                 {"id": uuid.uuid4(), "tenant": str(TENANT_B)},
             )
@@ -1433,7 +1462,8 @@ def _migration(admin_url, app_password: str) -> None:
         and hidden == 0
         and state == "42501",
         "Upgrade from 20261119_0119 keeps quantities and tenant ownership, and a second upgrade stays at head",
-        f"from={at_previous} to={version} before={before} after={after} visible={visible} hidden={hidden} cross={state}",
+        f"from={at_previous} to={version} before={before} after={after} "
+        f"visible={visible} hidden={hidden} cross={state}",
         "disposable database stage3f2_from_0119",
     )
 
@@ -1469,7 +1499,14 @@ def _insert_prior(engine) -> dict[str, object]:
             )
             db.add(product)
             db.flush()
-            db.add(InventoryLevel(tenant_id=tenant_id, product_id=product.id, store_id=store.id, quantity_on_hand=quantity))
+            db.add(
+                InventoryLevel(
+                    tenant_id=tenant_id,
+                    product_id=product.id,
+                    store_id=store.id,
+                    quantity_on_hand=quantity,
+                )
+            )
             batch = PurchaseBatch(
                 tenant_id=tenant_id,
                 batch_number=f"PRIOR-{sku}",

@@ -30,7 +30,10 @@ def is_ip_host(value: str) -> bool:
 
 
 def current_app_env() -> str:
-    """APP_ENV picks a repo-root env file: .env, .env.dev, .env.production, .env.test, .env.acceptance, or .env.inventory-acceptance."""
+    """APP_ENV picks a repo-root env file.
+
+    The file is .env, .env.dev, .env.production, .env.test, .env.acceptance, or .env.inventory-acceptance.
+    """
     value = os.environ.get("APP_ENV", "").strip().lower() or "development"
     if value not in APP_ENVS:
         raise RuntimeError(f"APP_ENV must be one of {', '.join(APP_ENVS)}; got {value!r}.")

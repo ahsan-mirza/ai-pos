@@ -478,7 +478,9 @@ def test_customer_return_holds_the_medicine_layer(client, session) -> None:
     total = line["unit_price_cents"] + tax - fee
     approver = client.post("/api/v1/auth/login-password", json={"username": "admin", "password": ADMIN_PASSWORD})
     assert approver.status_code == 200, approver.text
-    approver_id = client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {approver.json()['access_token']}"}).json()["id"]
+    approver_id = client.get(
+        "/api/v1/auth/me", headers={"Authorization": f"Bearer {approver.json()['access_token']}"}
+    ).json()["id"]
     returned = push(
         client,
         [
@@ -512,7 +514,11 @@ def test_customer_return_holds_the_medicine_layer(client, session) -> None:
                         }
                     ],
                     "tenders": [{"method": "cash", "amount_cents": total}],
-                    "override": {"approved_by_id": approver_id, "reasons": ["no_refund_permission"], "note": "Checked box."},
+                    "override": {
+                        "approved_by_id": approver_id,
+                        "reasons": ["no_refund_permission"],
+                        "note": "Checked box.",
+                    },
                 },
             )
         ],
@@ -556,9 +562,12 @@ def test_sale_reason_precedence_is_stable() -> None:
         values.update(kwargs)
         return SimpleNamespace(**values)
 
-    assert explain_shortage([layer(lot_status="UNRELEASED", expiry_date=date(2020, 1, 15))], "Med")[0] == "lot_unreleased"
+    unreleased = explain_shortage([layer(lot_status="UNRELEASED", expiry_date=date(2020, 1, 15))], "Med")
+    assert unreleased[0] == "lot_unreleased"
     assert explain_shortage([layer(expiry_date=date(2020, 1, 15))], "Med")[0] == "lot_expired"
     assert explain_shortage([layer(lot_status="DAMAGED")], "Med")[0] == "lot_damaged"
-    assert explain_shortage([layer(lot_status="SUPPLIER_RETURN", quantity_remaining=2)], "Med")[0] == "lot_supplier_return"
-    assert explain_shortage([layer(lot_status="SUPPLIER_RETURN", quantity_remaining=0)], "Med")[0] == "insufficient_released_stock"
+    supplier = explain_shortage([layer(lot_status="SUPPLIER_RETURN", quantity_remaining=2)], "Med")
+    assert supplier[0] == "lot_supplier_return"
+    empty_supplier = explain_shortage([layer(lot_status="SUPPLIER_RETURN", quantity_remaining=0)], "Med")
+    assert empty_supplier[0] == "insufficient_released_stock"
     assert explain_shortage([layer(), layer()], "Med")[0] == "insufficient_released_stock"

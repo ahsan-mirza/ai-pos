@@ -3,7 +3,7 @@
 import uuid
 
 from sqlalchemy import select
-from tests.test_inventory import WH, seed
+from tests.test_inventory import seed
 from tests.test_pharmacy_catalog import OTHER_TENANT, _pharmacy
 from tests.test_pharmacy_lots import _layers, _order_and_receive
 from tests.test_pharmacy_release import _appoint, _grant, _manager, _officers, _product, _release
@@ -110,7 +110,8 @@ def test_appointment_requires_two_officers_and_blocks_reciprocal_approval(client
     )
     assert reciprocal.status_code == 403
     assert reciprocal.json()["error"]["code"] == "separation_of_duties"
-    assert client.get("/api/v1/pharmacy/pharmacist-authorization", headers=officer_b_headers).json()["authorized"] is False
+    own = client.get("/api/v1/pharmacy/pharmacist-authorization", headers=officer_b_headers)
+    assert own.json()["authorized"] is False
 
     pending_release = _release(client, other_headers, uuid.uuid4())
     assert pending_release.status_code == 403
@@ -146,7 +147,8 @@ def test_appointment_requires_two_officers_and_blocks_reciprocal_approval(client
         json={"reason": "Appointment ended", "confirm": True},
     )
     assert revoked.status_code == 200, revoked.text
-    assert client.get("/api/v1/pharmacy/pharmacist-authorization", headers=manager_headers).json()["authorized"] is False
+    manager_auth = client.get("/api/v1/pharmacy/pharmacist-authorization", headers=manager_headers)
+    assert manager_auth.json()["authorized"] is False
     assert session.scalar(select(User).where(User.id == uuid.UUID(manager_id))) is not None
     history = client.get("/api/v1/pharmacy/governance", headers=officer_b_headers)
     assert history.status_code == 200, history.text

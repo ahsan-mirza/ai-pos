@@ -1,5 +1,5 @@
 /** In-store barcode and SKU drafts for the product form. EAN-13 check digits match the API. */
-import { ean13, isEan13 } from "@ai-pos/shared-types";
+import { isEan13 } from "@ai-pos/shared-types";
 
 export { barcodeError, ean13, isEan13, randomCode128, randomEan13, skuFromParts } from "@ai-pos/shared-types";
 

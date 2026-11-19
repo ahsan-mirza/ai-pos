@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine, text  # noqa: TID251
 from sqlalchemy.engine import make_url
 
 TENANT = "11111111-1111-4111-8111-111111111111"
@@ -34,7 +34,8 @@ def main() -> None:
                 text(
                     "INSERT INTO pharmacy_recalls "
                     "(id, tenant_id, reference, source_text, severity, reason, status, created_at) "
-                    "VALUES ('cccccccc-cccc-4ccc-8ccc-cccccccccccc', :tenant, 'PROBE-LEAK', 'x', 'low', 'x', 'OPEN', now())"
+                    "VALUES ('cccccccc-cccc-4ccc-8ccc-cccccccccccc', :tenant, "
+                    "'PROBE-LEAK', 'x', 'low', 'x', 'OPEN', now())"
                 ),
                 {"tenant": TENANT},
             )

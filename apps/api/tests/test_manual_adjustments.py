@@ -138,7 +138,12 @@ def test_register_pin_uses_the_same_inventory_permissions(client) -> None:
     ).json()["access_token"]
     refused = client.get("/api/v1/inventory/stock", headers=bearer(cashier))
     assert refused.status_code == 403
-    assert client.post("/api/v1/inventory/products", headers=bearer(cashier), json={"sku": "NOPE", "barcode": "100", "name": "Nope", "price_cents": 100, "is_serialized": False}).status_code == 403
+    created = client.post(
+        "/api/v1/inventory/products",
+        headers=bearer(cashier),
+        json={"sku": "NOPE", "barcode": "100", "name": "Nope", "price_cents": 100, "is_serialized": False},
+    )
+    assert created.status_code == 403
 
 
 def test_permission_and_store_scope(client, session) -> None:

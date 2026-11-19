@@ -11,7 +11,7 @@ from datetime import date, timedelta
 
 from alembic import command
 from alembic.config import Config
-from sqlalchemy import create_engine, func, select, text
+from sqlalchemy import create_engine, func, select, text  # noqa: TID251
 from sqlalchemy.engine import make_url
 from sqlalchemy.orm import sessionmaker
 
@@ -280,7 +280,14 @@ def _check(session_factory, product_id, *, remaining: int, sales: int, allocatio
         f"product {product_id.hex[:8]} on_hand={on_hand} remaining={left} "
         f"movements={movement_count} allocations={allocation_count} negative={negative}"
     )
-    if on_hand != remaining or left != remaining or negative or movement_count != sales or allocation_count != allocations:
+    mismatched = (
+        on_hand != remaining
+        or left != remaining
+        or negative
+        or movement_count != sales
+        or allocation_count != allocations
+    )
+    if mismatched:
         raise SystemExit(
             f"Race result mismatch: on_hand {on_hand}, remaining {left}, movements {movement_count}, "
             f"allocations {allocation_count}, expected remaining {remaining}, sales {sales}, allocations {allocations}."
