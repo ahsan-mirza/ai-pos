@@ -111,6 +111,8 @@ def effective_status(row: PromotionalTrial | None, now: datetime | None = None) 
 
 
 def _block_reason(db: Session, tenant: Tenant, now: datetime) -> str | None:
+    if tenant.is_demo:
+        return "This store cannot start a trial."
     if not trial_enabled(db):
         return "The Pro AI trial is switched off."
     if tenant.status != "active":

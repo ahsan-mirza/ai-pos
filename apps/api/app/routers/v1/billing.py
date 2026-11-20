@@ -676,8 +676,11 @@ def access_status(principal: Annotated[Principal, Depends(get_principal)], setti
 
 @router.get("/promotional-trial", response_model=PromotionalTrialOut)
 def promotional_trial_status(
-    _: Annotated[Principal, Depends(authorize(Permission.SETTINGS_MANAGE))], settings: Config
+    principal: Annotated[Principal, Depends(authorize(Permission.PORTAL_ACCESS))], settings: Config
 ) -> PromotionalTrialOut:
+    """Dashboard read. Starting the trial still requires settings:manage, so other portal users get a closed offer."""
+    if Permission.SETTINGS_MANAGE.value not in principal.permissions:
+        return PromotionalTrialOut(eligible=False, status="not_started", enabled=False)
     tenant_id = _tenant_id(settings)
     with registry.control_session(settings) as db:
         tenant = db.get(Tenant, tenant_id)

@@ -47,6 +47,18 @@ def _tenant(db, slug: str, status: str = "active") -> Tenant:
     return tenant
 
 
+def test_demo_store_cannot_start_the_promotional_trial() -> None:
+    with _control() as db:
+        ensure_catalog(db)
+        tenant = _tenant(db, "demo")
+        assign_free(db, tenant)
+        tenant.is_demo = True
+        with pytest.raises(ApiError) as caught:
+            start(db, tenant, uuid.uuid4())
+        assert caught.value.status_code == 409
+        assert caught.value.code == "trial_ineligible"
+
+
 def test_free_and_growth_can_start_once_and_other_plans_cannot() -> None:
     with _control() as db:
         ensure_catalog(db)
@@ -187,6 +199,10 @@ def test_one_store_cannot_read_or_restart_another_stores_trial(platform) -> None
     }
     forbidden = platform.client.post("/api/v1/billing/promotional-trial", headers=manager)
     assert forbidden.status_code == 403
+    quiet = platform.client.get("/api/v1/billing/promotional-trial", headers=manager)
+    assert quiet.status_code == 200, quiet.text
+    assert quiet.json()["eligible"] is False
+    assert quiet.json()["status"] == "not_started"
     started = platform.client.post("/api/v1/billing/promotional-trial", headers=alpha)
     assert started.status_code == 200, started.text
     body = started.json()

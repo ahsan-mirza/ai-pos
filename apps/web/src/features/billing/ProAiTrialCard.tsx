@@ -1,8 +1,9 @@
-import { formatMoney, type BillingCatalog } from "@ai-pos/shared-types";
+import { Permission, formatMoney, type BillingCatalog } from "@ai-pos/shared-types";
 import { formatDateTime, useLocale } from "@ai-pos/ui";
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { ApiRequestError, apiGet, apiPost } from "../../lib/api";
+import { useAuth } from "../../lib/auth";
 import { usePractice } from "../onboarding/practice";
 
 interface PromotionalTrial {
@@ -23,6 +24,8 @@ interface PromotionalTrial {
 
 export function ProAiTrialCard() {
   const { t } = useLocale();
+  const { can } = useAuth();
+  const allowed = can(Permission.SettingsManage);
   const { practice, openGoLive } = usePractice();
   const [trial, setTrial] = useState<PromotionalTrial | null>(null);
   const [hidden, setHidden] = useState(() => sessionStorage.getItem("ai-pos.pro-ai-trial-hidden") === "1");
@@ -44,8 +47,9 @@ export function ProAiTrialCard() {
   };
 
   useEffect(() => {
+    if (!allowed) return;
     load();
-  }, []);
+  }, [allowed]);
 
   useEffect(() => {
     if (trial?.status !== "expired") return;

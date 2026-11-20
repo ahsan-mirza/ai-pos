@@ -206,6 +206,20 @@ def _user(slug: str) -> tuple:
     return db, found.tenant
 
 
+def test_demo_explorer_reads_a_closed_trial_offer(door: TestClient):
+    issued = _issued(door, "restaurant")
+    response = door.get(
+        "/api/v1/billing/promotional-trial",
+        headers={
+            "Authorization": f"Bearer {issued['access_token']}",
+            "X-Tenant-Domain": "demo-restaurant.axizpos.com",
+        },
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["eligible"] is False
+    assert "settings:manage" not in response.text
+
+
 def test_ready_opens_a_closed_door_without_reseeding(door: TestClient):
     settings = get_settings()
     set_demo_access(settings, "restaurant", enabled=False)
