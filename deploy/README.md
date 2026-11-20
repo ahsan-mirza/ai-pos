@@ -139,6 +139,8 @@ journalctl -u ai-pos-api -f
 cd /opt/ai-pos/apps/api && APP_ENV=production .venv/bin/python -m app.tenancy.cli list
 ```
 
+A normal deploy runs `ready-demo-access --confirm-production` after the database upgrade. That creates any missing catalog demo and opens the public door for every demo that is already active. It does not reseed an existing demo, and it stops without opening any door when a catalog demo is disabled, resetting, expired, or not a demo. The public refusal stays `demo_unavailable`.
+
 To roll back, re-run **Deploy** from the Actions tab on an earlier successful run. Migrations are not reversed automatically.
 
 ## Search Console

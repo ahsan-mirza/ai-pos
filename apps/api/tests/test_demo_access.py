@@ -20,7 +20,13 @@ from app.models.role import Role
 from app.models.user import User
 from app.services import payment_service
 from app.services.demo_access import set_demo_access
-from app.services.demo_catalog import EXPLORER_USERNAME, demo_tenants, seed_production_demos
+from app.services.demo_catalog import (
+    EXPLORER_USERNAME,
+    DemoSeedError,
+    demo_tenants,
+    ready_production_demos,
+    seed_production_demos,
+)
 from app.services.demo_reset import deactivate_demo_account, reactivate_demo_account, reset_demo_tenant
 from app.services.rbac_service import ensure_super_admin, ensure_system_roles
 from app.services.settings_service import clear_settings_cache, load_settings
@@ -198,6 +204,34 @@ def _user(slug: str) -> tuple:
     assert found.tenant is not None
     db = sessionmaker(bind=build_engine(found.tenant.database_url), expire_on_commit=False)()
     return db, found.tenant
+
+
+def test_ready_opens_a_closed_door_without_reseeding(door: TestClient):
+    settings = get_settings()
+    set_demo_access(settings, "restaurant", enabled=False)
+    try:
+        reports = ready_production_demos(settings)
+    except Exception:
+        set_demo_access(settings, "restaurant", enabled=True)
+        raise
+    assert {item["code"] for item in reports} == set(NAMES)
+    assert all(item["action"] == "opened" and item["demo_access_enabled"] is True for item in reports)
+    assert _exchange(door, "restaurant").status_code == 200
+
+
+def test_ready_stops_before_opening_when_a_demo_is_inactive(door: TestClient):
+    settings = get_settings()
+    set_demo_access(settings, "restaurant", enabled=False)
+    try:
+        with _flag("demo-pharmacy", demo_status="disabled"):
+            with pytest.raises(DemoSeedError, match="demo-pharmacy"):
+                ready_production_demos(settings)
+            with registry.control_session(settings) as db:
+                row = db.scalar(select(Tenant).where(Tenant.slug == "demo-restaurant"))
+                assert row is not None and row.demo_access_enabled is False
+    finally:
+        set_demo_access(settings, "restaurant", enabled=True)
+    assert _exchange(door, "restaurant").status_code == 200
 
 
 def test_each_business_code_issues_its_own_explorer(door: TestClient):

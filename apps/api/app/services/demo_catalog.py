@@ -780,6 +780,81 @@ def seed_production_demos(settings: Settings, codes: list[str] | None = None) ->
     return reports
 
 
+def _explorer_state(settings: Settings, tenant: Tenant) -> str:
+    """Whether the public Demo Explorer can be signed in. missing, blocked, or ok."""
+    ref = _ref(tenant, settings)
+    db = _session(settings, tenant)
+    try:
+        with use_tenant(ref):
+            user = db.scalar(select(User).where(User.username == EXPLORER_USERNAME))
+            if user is None:
+                return "missing"
+            role = user.role
+            permissions = set() if role is None else set(role.permissions)
+            if (
+                not user.is_active
+                or role is None
+                or not role.is_system
+                or role.name != "Demo Explorer"
+                or Permission.PORTAL_ACCESS.value not in permissions
+                or Permission.USERS_CREATE.value in permissions
+            ):
+                return "blocked"
+            return "ok"
+    finally:
+        db.close()
+
+
+def ready_production_demos(settings: Settings) -> list[dict]:
+    """Seeds a missing production demo and opens the public door. Existing demo data is left in place.
+
+    A demo that is disabled, resetting, expired, or not the catalog tenant stops the run before any
+    door is opened. A broken explorer is not repaired, because that would change who can sign in.
+    """
+    from app.services.demo_access import _expired, set_demo_access
+
+    planned: list[tuple[dict, str]] = []
+    for spec in demo_tenants():
+        with registry.control_session(settings) as db:
+            row = db.scalar(select(Tenant).where(Tenant.slug == spec["slug"]))
+            present = row is not None
+            if present:
+                is_demo = bool(row.is_demo and row.demo_business_type == spec["code"])
+                active = row.demo_status == "active" and row.status == "active" and not _expired(row.demo_expires_at)
+            else:
+                is_demo = False
+                active = False
+        if not present:
+            planned.append((spec, "seeded"))
+            continue
+        if not is_demo:
+            raise DemoSeedError(f"{spec['slug']} is not the {spec['code']} demo.")
+        if not active:
+            raise DemoSeedError(f"{spec['slug']} is not an active demo.")
+        planned.append((spec, "opened"))
+
+    reports = []
+    for spec, action in planned:
+        if action == "seeded":
+            seed_production_demos(settings, [spec["code"]])
+        with registry.control_session(settings) as db:
+            row = db.scalar(select(Tenant).where(Tenant.slug == spec["slug"]))
+            if row is None:
+                raise DemoSeedError(f"{spec['slug']} was not registered.")
+            db.expunge(row)
+        state = _explorer_state(settings, row)
+        if state == "missing":
+            seed_catalog(settings, spec, row)
+            state = _explorer_state(settings, row)
+            if action != "seeded":
+                action = "explorer"
+        if state != "ok":
+            raise DemoSeedError(f"{spec['slug']} explorer cannot sign in.")
+        set_demo_access(settings, spec["code"], enabled=True)
+        reports.append({"code": spec["code"], "slug": spec["slug"], "action": action, "demo_access_enabled": True})
+    return reports
+
+
 def explorer_denied() -> frozenset[str]:
     """Permissions the public demo user must not hold."""
     return frozenset(

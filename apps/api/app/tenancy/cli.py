@@ -21,6 +21,7 @@ python -m app.tenancy.cli validate-demo-data --business-code supermarket
 python -m app.tenancy.cli deactivate-demo-accounts --business-code fashion
 python -m app.tenancy.cli reactivate-demo-accounts --business-code fashion
 python -m app.tenancy.cli set-demo-access --business-code restaurant --enabled --confirm-production
+python -m app.tenancy.cli ready-demo-access --confirm-production
 """
 
 import argparse
@@ -582,6 +583,20 @@ def deactivate_demo_accounts(args: argparse.Namespace, settings: Settings) -> No
     _print_json({"command": "deactivate-demo-accounts", "results": results})
 
 
+def ready_demo_access(args: argparse.Namespace, settings: Settings) -> None:
+    from app.core.errors import ApiError
+    from app.services.demo_catalog import DemoSeedError, ready_production_demos
+
+    _confirm_production(args, settings)
+    try:
+        reports = ready_production_demos(settings)
+    except DemoSeedError as exc:
+        sys.exit(str(exc))
+    except ApiError as exc:
+        sys.exit(exc.message)
+    _print_json({"command": "ready-demo-access", "results": reports})
+
+
 def set_demo_access(args: argparse.Namespace, settings: Settings) -> None:
     from app.core.errors import ApiError
     from app.services.demo_access import set_demo_access as apply_access
@@ -659,6 +674,11 @@ def main(argv: list[str] | None = None) -> None:
     disabled.add_argument("--operator", help="operator id recorded on the audit row")
     enabled = sub.add_parser("reactivate-demo-accounts", help="mark a deactivated demo active; public access stays off")
     _add_demo_target(enabled, confirm=True)
+    ready = sub.add_parser(
+        "ready-demo-access",
+        help="seed any missing production demo and open every active public door",
+    )
+    ready.add_argument("--confirm-production", action="store_true")
     access = sub.add_parser("set-demo-access", help="open or close the public demo door for one business")
     from app.services.demo_catalog import demo_tenants
 
@@ -710,6 +730,7 @@ def main(argv: list[str] | None = None) -> None:
         "validate-demo-data": validate_demo_data,
         "deactivate-demo-accounts": deactivate_demo_accounts,
         "reactivate-demo-accounts": reactivate_demo_accounts,
+        "ready-demo-access": ready_demo_access,
         "set-demo-access": set_demo_access,
     }[args.command](args, settings)
 

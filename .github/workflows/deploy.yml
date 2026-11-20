@@ -285,6 +285,7 @@ jobs:
           .venv/bin/python -m app.tenancy.cli migration-check
           .venv/bin/python -m app.tenancy.cli init
           .venv/bin/python -m app.tenancy.cli migrate-all
+          .venv/bin/python -m app.tenancy.cli ready-demo-access --confirm-production
           EOF
 
       - name: Reload the API
@@ -401,6 +402,7 @@ jobs:
       - name: Check public routes and CORS
         run: |
           python3 - <<'PY'
+          import json
           import urllib.error
           import urllib.request
           origin = "https://axizpos.com"
@@ -442,4 +444,24 @@ jobs:
           status, allow, body = options("https://evil.example")
           if allow is not None or b"Disallowed CORS origin" not in body:
               raise SystemExit("external origin was not rejected")
+
+          def exchange(code):
+              request = urllib.request.Request(
+                  origin + "/api/v1/demo-access/exchange",
+                  data=json.dumps({"business_code": code}).encode(),
+                  method="POST",
+                  headers={"Content-Type": "application/json"},
+              )
+              try:
+                  with urllib.request.urlopen(request, timeout=20) as response:
+                      status, payload = response.status, json.loads(response.read().decode())
+              except urllib.error.HTTPError as error:
+                  status, payload = error.code, json.loads(error.read().decode() or "{}")
+              issued = status == 200 and payload.get("demo") is True and payload.get("business_code") == code
+              print(code, status, "issued" if issued else payload.get("error", {}).get("code", "unexpected"))
+              if not issued:
+                  raise SystemExit(f"{code} demo is not available")
+
+          for code in ("restaurant", "supermarket", "electronics", "fashion", "pharmacy"):
+              exchange(code)
           PY
