@@ -10,7 +10,7 @@ use tauri::{AppHandle, Emitter};
 
 use crate::sync::DesktopConfig;
 
-const CHECK_TIMEOUT: Duration = Duration::from_secs(3);
+const CHECK_TIMEOUT: Duration = Duration::from_secs(15);
 const DOWNLOAD_TIMEOUT: Duration = Duration::from_secs(600);
 /// Quiet period after launch so the register can open before the first lookup.
 const FIRST_CHECK: Duration = Duration::from_secs(20);
@@ -54,18 +54,19 @@ fn hex(bytes: &[u8]) -> String {
     bytes.iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
-async fn feed(config: &DesktopConfig) -> Result<Option<AppUpdate>, String> {
+fn feed(config: &DesktopConfig) -> Result<Option<AppUpdate>, String> {
     if config.api_base_url.contains("not-activated") {
         return Ok(None);
     }
-    let client = reqwest::Client::builder()
+    // Blocking client on the update thread. The async runtime's block_on from that thread
+    // can panic, and a panic ends the loop for the rest of the time the register stays open.
+    let client = reqwest::blocking::Client::builder()
         .timeout(CHECK_TIMEOUT)
         .build()
         .map_err(|err| err.to_string())?;
     let response = client
         .get(format!("{}/api/v1/downloads/latest.json", config.api_base_url))
         .send()
-        .await
         .map_err(|err| err.to_string())?;
     if response.status().as_u16() == 404 {
         return Ok(None);
@@ -73,7 +74,7 @@ async fn feed(config: &DesktopConfig) -> Result<Option<AppUpdate>, String> {
     if !response.status().is_success() {
         return Err(format!("Update check failed ({})", response.status()));
     }
-    let body: Feed = response.json().await.map_err(|err| err.to_string())?;
+    let body: Feed = response.json().map_err(|err| err.to_string())?;
     let path = body.path.trim();
     if path.is_empty() || !path.starts_with('/') {
         return Err("The update feed did not include a download path.".into());
@@ -87,20 +88,16 @@ async fn feed(config: &DesktopConfig) -> Result<Option<AppUpdate>, String> {
 }
 
 /// Looks up the published installer for as long as this window stays open.
-/// A newer version is announced once; the lookup itself never surfaces in the register.
+/// Each newer result is announced again, so a missed event is not the last one.
 pub fn watch(app: AppHandle, config: DesktopConfig) {
     std::thread::Builder::new()
         .name("update-check".into())
         .spawn(move || {
-            let mut announced = String::new();
             std::thread::sleep(FIRST_CHECK);
             loop {
                 let current = app.package_info().version.to_string();
-                if let Some(update) = tauri::async_runtime::block_on(check(&config, &current)) {
-                    if announced != update.version {
-                        announced = update.version.clone();
-                        let _ = app.emit("app-update-available", update);
-                    }
+                if let Some(update) = decide(&config, &current) {
+                    let _ = app.emit("app-update-available", update);
                 }
                 std::thread::sleep(CHECK_EVERY);
             }
@@ -108,12 +105,24 @@ pub fn watch(app: AppHandle, config: DesktopConfig) {
         .ok();
 }
 
-pub async fn check(config: &DesktopConfig, current: &str) -> Option<AppUpdate> {
-    match feed(config).await {
+fn decide(config: &DesktopConfig, current: &str) -> Option<AppUpdate> {
+    match feed(config) {
         Ok(Some(update)) if is_newer(current, &update.version) => Some(update),
         Ok(_) => None,
         Err(message) => {
             eprintln!("ai-pos: update check skipped: {message}");
+            None
+        }
+    }
+}
+
+pub async fn check(config: &DesktopConfig, current: &str) -> Option<AppUpdate> {
+    let config = config.clone();
+    let current = current.to_string();
+    match tauri::async_runtime::spawn_blocking(move || decide(&config, &current)).await {
+        Ok(update) => update,
+        Err(err) => {
+            eprintln!("ai-pos: update check skipped: {err}");
             None
         }
     }
@@ -154,6 +163,18 @@ pub async fn install(app: &AppHandle, config: &DesktopConfig, current: &str) -> 
     launch_installer(&path)?;
     app.exit(0);
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_newer;
+
+    #[test]
+    fn a_published_version_is_newer_only_when_it_is_ahead() {
+        assert!(is_newer("0.1.2", "0.1.3"));
+        assert!(!is_newer("0.1.2", "0.1.2"));
+        assert!(!is_newer("0.1.3", "0.1.2"));
+    }
 }
 
 fn launch_installer(path: &std::path::Path) -> Result<(), String> {

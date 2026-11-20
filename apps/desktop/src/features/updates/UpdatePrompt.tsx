@@ -1,26 +1,43 @@
 import { listen } from "@tauri-apps/api/event";
-import { useEffect, useState } from "react";
-import { inTauri, installAppUpdate, type AppUpdate } from "../../lib/tauri";
+import { useEffect, useRef, useState } from "react";
+import { checkAppUpdate, inTauri, installAppUpdate, type AppUpdate } from "../../lib/tauri";
 
-/** Shown only after a background check finds a newer installer. The check itself stays off screen. */
+const CHECK_EVERY_MS = 15 * 60 * 1000;
+
+/** Shown only after a check finds a newer installer. The check itself stays off screen. */
 export function UpdatePrompt() {
   const [offer, setOffer] = useState<AppUpdate | null>(null);
   const [percent, setPercent] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const dismissed = useRef<string | null>(null);
 
   useEffect(() => {
     if (!inTauri()) return;
     let live = true;
+    const offerUpdate = (update: AppUpdate | null) => {
+      if (!live || update === null || dismissed.current === update.version) return;
+      setOffer((current) => (current?.version === update.version ? current : update));
+    };
+    const look = () => {
+      void checkAppUpdate().then(offerUpdate).catch(() => undefined);
+    };
+    look();
+    const timer = window.setInterval(look, CHECK_EVERY_MS);
+    const onVisible = () => {
+      if (document.visibilityState === "visible") look();
+    };
+    document.addEventListener("visibilitychange", onVisible);
     const progress = listen<{ percent: number }>("update-progress", (event) => {
       if (live) setPercent(event.payload.percent);
     });
     const available = listen<AppUpdate>("app-update-available", (event) => {
-      if (!live) return;
-      setOffer((current) => (current?.version === event.payload.version ? current : event.payload));
+      offerUpdate(event.payload);
     });
     return () => {
       live = false;
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVisible);
       void progress.then((stop) => stop());
       void available.then((stop) => stop());
     };
@@ -56,7 +73,10 @@ export function UpdatePrompt() {
           <button
             type="button"
             disabled={busy}
-            onClick={() => setOffer(null)}
+            onClick={() => {
+              dismissed.current = offer.version;
+              setOffer(null);
+            }}
             className="rounded-full border border-gray-200 px-5 py-2 text-sm font-medium disabled:opacity-40"
           >
             Later
