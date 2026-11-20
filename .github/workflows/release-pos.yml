@@ -1,10 +1,12 @@
 name: Release POS
 
 on:
+  push:
+    tags: ["v*.*.*"]
   workflow_dispatch:
     inputs:
       publish_installer:
-        description: Upload the signed installer to the server. A build alone does not publish.
+        description: Upload the installer to the server. A manual run publishes only when this is checked. A version tag always publishes.
         type: boolean
         default: false
 
@@ -26,6 +28,16 @@ jobs:
 
       - name: Sync POS version
         run: node scripts/sync-pos-version.mjs
+
+      - name: Check tag matches app version
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          app_version=$(node scripts/sync-pos-version.mjs --print)
+          tag_version="${GITHUB_REF_NAME#v}"
+          if [ "$app_version" != "$tag_version" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match apps/desktop/VERSION ($app_version)"
+            exit 1
+          fi
 
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
@@ -62,10 +74,10 @@ jobs:
             dist/POS-Setup-*.signing.json
           if-no-files-found: error
 
-  # Copies the signed installer to the server. A tag push does not start this workflow.
+  # A version tag publishes. A manual run publishes only when publish_installer is checked.
   publish:
     needs: windows
-    if: ${{ inputs.publish_installer }}
+    if: ${{ github.event_name == 'push' || inputs.publish_installer }}
     runs-on: ubuntu-latest
     environment: production
     env:
