@@ -1,7 +1,7 @@
 {
   "name": "@ai-pos/desktop",
   "private": true,
-  "version": "0.1.1",
+  "version": "0.1.3",
   "type": "module",
   "scripts": {
     "dev": "vite --port 1420 --strictPort",
@@ -14,9 +14,9 @@
     "test": "vitest run",
     "sync-version": "node ../../scripts/sync-pos-version.mjs",
     "tauri:dev": "pnpm sync-version && tauri dev",
-    "tauri:build": "pnpm sync-version && node ../../scripts/require-pos-signing.mjs && cross-env POS_ENV=production tauri build --bundles nsis",
-    "build:win": "pnpm sync-version && node ../../scripts/require-pos-signing.mjs && cross-env POS_ENV=production tauri build --bundles nsis --target x86_64-pc-windows-msvc && node ../../scripts/verify-pos-installer.mjs && node ../../scripts/stage-pos-setup.mjs",
-    "build:win:unsigned": "pnpm sync-version && cross-env POS_ENV=production tauri build --no-sign --bundles nsis --target x86_64-pc-windows-msvc",
+    "tauri:build": "pnpm sync-version && node ../../scripts/build-pos-windows.mjs",
+    "build:win": "pnpm sync-version && node ../../scripts/build-pos-windows.mjs",
+    "build:win:unsigned": "pnpm sync-version && cross-env AXIZPOS_SIGN_MODE=unsigned node ../../scripts/build-pos-windows.mjs",
     "tauri:build:dev": "pnpm sync-version && cross-env POS_ENV=dev tauri build --no-sign --config src-tauri/tauri.dev.conf.json"
   },
   "dependencies": {

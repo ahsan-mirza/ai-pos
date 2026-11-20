@@ -1,0 +1,30 @@
+{
+  "window_pid": 24440,
+  "window_hwnd": 13241702,
+  "dialog_hwnd": 13306564,
+  "dialog_process": "msedgewebview2",
+  "dialog_owner_hwnd": 13241702,
+  "dialog_owner_pid": 24440,
+  "product_sku": "ACC-GALLERY-CLOSE",
+  "product_id": "a608bfd9-c493-4ea8-aab0-2dfa8345bad1",
+  "browse": {
+    "files": ["oats.jpg", "oats.png", "oats-valid.webp"],
+    "rejected_not_selected": "oats.webp (44 bytes, not a decodable image)",
+    "stored": [
+      {"position": 0, "width": 64, "height": 48, "primary": true},
+      {"position": 1, "width": 64, "height": 64, "primary": false},
+      {"position": 2, "width": 80, "height": 60, "primary": false}
+    ]
+  },
+  "reorder_later": [
+    {"position": 0, "width": 64, "height": 64, "primary": false},
+    {"position": 1, "width": 64, "height": 48, "primary": true},
+    {"position": 2, "width": 80, "height": 60, "primary": false}
+  ],
+  "after_remove": [
+    {"position": 1, "width": 64, "height": 48, "primary": true},
+    {"position": 2, "width": 80, "height": 60, "primary": false}
+  ],
+  "reopen": "Saved photos showed Later, Earlier, and two Remove controls.",
+  "drag_and_drop": "NOT RUN"
+}

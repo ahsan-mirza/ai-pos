@@ -1806,6 +1806,37 @@ def create_purchase_order(db: Session, principal: Principal, data: PurchaseOrder
 
 
 @portal_errors
+def update_draft_purchase_order(
+    db: Session, principal: Principal, order_id: uuid.UUID, data: PurchaseOrderCreate
+) -> PurchaseOrderOut:
+    """Replace a draft's supplier, note, and lines. Placed orders stay unchanged."""
+    order = _order(db, principal, order_id, lock=True)
+    if order.status != "draft" or any(line.quantity_received for line in order.lines):
+        raise ApiError(422, "po_state", "Only a draft with nothing received can be edited.")
+    _require_store_access(principal, data.destination_store_id)
+    _store(db, data.destination_store_id)
+    order.supplier_name = data.supplier_name.strip()
+    order.destination_store_id = data.destination_store_id
+    order.notes = data.notes.strip()
+    order.expected_at = data.expected_at
+    order.lines.clear()
+    for position, line in enumerate(data.lines):
+        _product(db, line.product_id)
+        order.lines.append(
+            PurchaseOrderLine(
+                position=position,
+                product_id=line.product_id,
+                quantity_ordered=line.quantity_ordered,
+                quantity_received=0,
+                unit_cost_cents=line.unit_cost_cents,
+            )
+        )
+    db.commit()
+    db.refresh(order)
+    return _po_out(db, order)
+
+
+@portal_errors
 def mark_ordered(db: Session, principal: Principal, order_id: uuid.UUID) -> PurchaseOrderOut:
     order = _order(db, principal, order_id, lock=True)
     if order.status != "draft":

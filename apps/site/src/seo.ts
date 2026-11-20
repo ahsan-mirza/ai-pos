@@ -3,6 +3,7 @@ import { ENGLISH_GUIDES } from "./blog/guides.ts";
 import { ARABIC_PAGES } from "./seo-ar.ts";
 import { ARTICLE_PAGES, CORE_EXTRAS, FEATURE_PAGES } from "./seo-extra.ts";
 import { IMAGE_SETS } from "./image-sets.ts";
+import { robotsDisallowBlock } from "./indexability.ts";
 import { CAFE, ELECTRONICS, FASHION, PORTAL, QUICK_SERVICE, RESTAURANT, SITE_ORIGIN, SUPERMARKET, TERMINAL, WHOLESALE, type SeoImage, type SeoPage } from "./seo-types.ts";
 
 export { SITE_ORIGIN };
@@ -560,13 +561,7 @@ export function robotsTxt(): string {
     "",
     "# Marketing pages stay crawlable. The portal shell sends noindex itself.",
     "# Sign-in, the console, and the API are not public content.",
-    "Disallow: /admin74246/",
-    "Disallow: /api/",
-    "Disallow: /login",
-    "Disallow: /signup",
-    "Disallow: /forgot-password",
-    "Disallow: /recover-store-code",
-    "Disallow: /dashboard",
+    robotsDisallowBlock(),
     "",
     `Sitemap: ${SITE_ORIGIN}/sitemap.xml`,
     "",

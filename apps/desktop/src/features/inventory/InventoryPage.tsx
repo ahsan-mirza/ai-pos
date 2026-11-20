@@ -3,6 +3,7 @@ import { useMemo, useState } from "react";
 import { PageFrame } from "../../components/shell/RegisterShell";
 import type { CashierSession } from "../auth/session";
 import { useCapabilities } from "../../lib/capabilities";
+import { inventoryTabListClass, inventoryWorkspaceClass } from "./layout";
 import type { WorkspaceAccess } from "./panels";
 import { inventoryTabs } from "./tabs";
 import {
@@ -63,12 +64,12 @@ export function InventoryPage({ session }: { session: CashierSession }) {
       }
       drawer={null}
     >
-      <div className="flex min-h-full flex-col gap-4 p-4">
+      <div className={inventoryWorkspaceClass}>
         {tabs.length === 0 ? (
           <p className="text-sm text-zinc-600 dark:text-zinc-300">This sign-in cannot open inventory management.</p>
         ) : (
           <>
-            <div className="flex gap-2 overflow-x-auto" role="tablist" aria-label="Inventory sections">
+            <div className={inventoryTabListClass} role="tablist" aria-label="Inventory sections">
               {tabs.map((item) => (
                 <button
                   key={item.id}

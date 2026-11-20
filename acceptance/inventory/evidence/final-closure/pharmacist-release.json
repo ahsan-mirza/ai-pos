@@ -1,0 +1,37 @@
+{
+  "pharmacist_authorized": {
+    "authorized": true
+  },
+  "pharmacist_who": {
+    "status": 200,
+    "message": ""
+  },
+  "admin_authorized": {
+    "authorized": false
+  },
+  "admin_who": {
+    "status": 200,
+    "message": ""
+  },
+  "product": {
+    "status": 201,
+    "message": ""
+  },
+  "order": {
+    "status": 201,
+    "message": ""
+  },
+  "receive": {
+    "status": 200,
+    "message": ""
+  },
+  "admin_release": {
+    "status": 403,
+    "message": "pharmacist_required: Only an authorized pharmacist can release or clear a medicine lot."
+  },
+  "pharmacist_release": {
+    "status": 200,
+    "message": "",
+    "lot_status": "RELEASED"
+  }
+}

@@ -1,0 +1,74 @@
+{
+  "invalid_password": [
+    401,
+    "invalid_credentials"
+  ],
+  "invalid_pin": [
+    401,
+    "invalid_credentials"
+  ],
+  "missing_terminal_token": [
+    401,
+    "unauthorized"
+  ],
+  "invalid_terminal_token": [
+    401,
+    "unauthorized"
+  ],
+  "expired_token": [
+    401,
+    "invalid_token"
+  ],
+  "device_create": 201,
+  "device_before_revoke": 200,
+  "device_revoke": 200,
+  "revoked_device": [
+    401,
+    "device_revoked"
+  ],
+  "transfer_create": [
+    201,
+    "requested"
+  ],
+  "transfer_ship": [
+    200,
+    "in_transit"
+  ],
+  "source_bound_receive": [
+    403,
+    "store_scope"
+  ],
+  "destination_receive": [
+    200,
+    "received"
+  ],
+  "repeat_receive": [
+    422,
+    "transfer_state"
+  ],
+  "close1_a": [
+    10,
+    0
+  ],
+  "close1_b": [
+    4,
+    0
+  ],
+  "oats_a": [
+    2,
+    0
+  ],
+  "tin_a": [
+    7,
+    0
+  ],
+  "pharmacist_self_approve": [
+    403,
+    "separation_of_duties"
+  ],
+  "pharmacist_other_officer_reject": [
+    200,
+    "REJECTED"
+  ],
+  "drag_drop_received": false
+}

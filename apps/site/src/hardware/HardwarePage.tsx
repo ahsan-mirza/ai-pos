@@ -5,7 +5,6 @@ import type { PublicWhatsApp } from "../whatsapp";
 import { EnquiryForm } from "./EnquiryForm";
 import {
   hardwareView,
-  productJsonLd,
   publicPrice,
   readCategory,
   readList,
@@ -122,18 +121,8 @@ export function HardwarePage({ contact }: { contact: PublicWhatsApp }) {
             return;
           }
           setDetailProduct(product);
-          const linked = productJsonLd(product, `${window.location.origin}/hardware/products/${product.slug}`);
+          // The server document stays canonical at /hardware. A product path is the same page, not a second indexable URL.
           document.title = `${product.name} | AxizPOS hardware`;
-          document.querySelector('meta[name="description"]')?.setAttribute("content", product.short_description || product.name);
-          document.querySelector('link[rel="canonical"]')?.setAttribute("href", `${window.location.origin}/hardware/products/${product.slug}`);
-          document.getElementById("hardware-jsonld")?.remove();
-          if (linked) {
-            const script = document.createElement("script");
-            script.id = "hardware-jsonld";
-            script.type = "application/ld+json";
-            script.textContent = JSON.stringify(linked);
-            document.head.appendChild(script);
-          }
         } else {
           const bundle = readPackage(body);
           if (!bundle) {

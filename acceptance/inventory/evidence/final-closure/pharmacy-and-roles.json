@@ -1,0 +1,107 @@
+{
+  "oats_before": {
+    "on_hand": 2,
+    "reserved": 0
+  },
+  "cashier_pin": {
+    "status": null,
+    "message": ""
+  },
+  "store_manager": {
+    "roles_status": 200,
+    "roles_message": "",
+    "system_roles": [
+      "Acceptance Floor",
+      "Cashier",
+      "Demo Explorer",
+      "Store Manager",
+      "Super Admin",
+      "Technician"
+    ],
+    "create": {
+      "status": 201,
+      "message": ""
+    },
+    "login": {
+      "status": 200,
+      "message": ""
+    },
+    "other_branch_adjust": {
+      "status": 403,
+      "message": "store_scope: You can only work with your own store's stock."
+    },
+    "category_create": {
+      "status": 403,
+      "message": "store_scope: Categories are shared across branches. Ask a Super Admin to change them."
+    }
+  },
+  "pharmacy": {
+    "stores": {
+      "status": 200,
+      "message": "",
+      "count": 1
+    },
+    "categories": {
+      "status": 200,
+      "message": ""
+    },
+    "offline_allow_on_prescription": {
+      "status": 422,
+      "message": "offline_policy: Only an OTC product can be marked for offline sale."
+    },
+    "product": {
+      "status": 201,
+      "message": ""
+    },
+    "order": {
+      "status": 201,
+      "message": "",
+      "place": 200,
+      "place_message": "",
+      "state": "ordered"
+    },
+    "receive_without_lot": {
+      "status": 422,
+      "message": "lot_required: Manufacturer lot is required for a medicine."
+    },
+    "receive": {
+      "status": 200,
+      "message": "",
+      "state": "received"
+    },
+    "release_without_pharmacist": {
+      "status": 403,
+      "message": "pharmacist_required: Only an authorized pharmacist can release or clear a medicine lot.",
+      "lot_status": "UNRELEASED",
+      "manufacturer_lot": "MFG-CLOSE-1",
+      "expiry": "2027-12-01"
+    },
+    "on_hand": {
+      "on_hand": 4,
+      "reserved": 0
+    },
+    "unreleased_transfer": {
+      "status": null,
+      "message": "Pharmacy tenant has one branch."
+    },
+    "quarantine": {
+      "status": 200,
+      "message": "",
+      "state": "QUARANTINED"
+    },
+    "recall": {
+      "status": 201,
+      "message": "",
+      "state": "OPEN",
+      "layers": 1
+    },
+    "on_hand_after": {
+      "on_hand": 4,
+      "reserved": 0
+    }
+  },
+  "oats_after": {
+    "on_hand": 2,
+    "reserved": 0
+  }
+}

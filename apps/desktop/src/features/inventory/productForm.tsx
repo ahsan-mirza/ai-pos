@@ -646,15 +646,15 @@ export function ProductDrawer({
             <input className={control} inputMode="decimal" value={state.price} onChange={(event) => patch({ price: event.target.value })} />
           </Field>
           <Field label="SKU" required error={errors.sku} hint={editing ? "SKUs are fixed once a product exists." : "Letters, digits and dashes. Follows the name until you edit it."}>
-            <div className="flex gap-2">
-              <input className={control} value={skuValue} disabled={editing} placeholder="Generated from the name" onChange={(event) => patch({ skuManual: true, sku: cleanCode(event.target.value, 64) })} />
+            <div className="flex min-w-0 flex-wrap gap-2">
+              <input className={`${control} min-w-0 flex-1`} value={skuValue} disabled={editing} placeholder="Generated from the name" onChange={(event) => patch({ skuManual: true, sku: cleanCode(event.target.value, 64) })} />
               {editing ? null : <button type="button" className="h-12 shrink-0 rounded-full bg-zinc-900 px-3 text-xs font-semibold text-white" onClick={() => patch({ skuManual: true, sku: skuFromParts(state.skuPrefix, state.name, state.specs) })}>Auto Generate</button>}
             </div>
             {editing ? null : <input className={`${control} mt-2`} value={state.skuPrefix} maxLength={8} placeholder="SKU prefix" onChange={(event) => patch({ skuPrefix: cleanCode(event.target.value, 8) })} />}
           </Field>
           <Field label="Barcode / UPC / EAN" required={!editing && !state.autoBarcode} error={errors.barcode} hint={editing ? "Barcodes are fixed once a product exists." : "Leave blank to assign a unique EAN-13."}>
-            <div className="flex gap-2">
-              <input className={control} value={state.barcode} disabled={editing} onChange={(event) => patch({ barcode: event.target.value.trim(), autoBarcode: event.target.value.trim() === "" })} />
+            <div className="flex min-w-0 flex-wrap gap-2">
+              <input className={`${control} min-w-0 flex-1`} value={state.barcode} disabled={editing} onChange={(event) => patch({ barcode: event.target.value.trim(), autoBarcode: event.target.value.trim() === "" })} />
               {editing ? null : <button type="button" className="h-12 shrink-0 rounded-full bg-zinc-900 px-3 text-xs font-semibold text-white" onClick={() => void uniqueBarcode("ean13").then((code) => { if (code) patch({ barcode: code, autoBarcode: false }); })}>EAN-13</button>}
             </div>
             {editing ? null : (

@@ -1,0 +1,188 @@
+{
+  "login": 200,
+  "products": [
+    {
+      "sku": "ACC-BARLEY-1KG",
+      "status": 201,
+      "id": "e2f4ed93-8021-4c3d-b9af-749e4428353c",
+      "message": ""
+    },
+    {
+      "sku": "ACC-LENTIL-1KG",
+      "status": 201,
+      "id": "0a2cef93-c649-4622-b8a5-42fdbb72d15d",
+      "message": ""
+    },
+    {
+      "sku": "ACC-CHICKP-1KG",
+      "status": 201,
+      "id": "91f08d25-aee3-4f0a-9a1f-af35c99f4c65",
+      "message": ""
+    }
+  ],
+  "grocery_fashion_fields": {
+    "status": 201,
+    "season": "SS26",
+    "gender": "women",
+    "message": ""
+  },
+  "weighed": {
+    "status": 201,
+    "sold_by_weight": true,
+    "message": ""
+  },
+  "floor_manager_brand_create": {
+    "status": 403,
+    "message": "Categories are shared across branches. Ask a Super Admin to change them."
+  },
+  "po_create": {
+    "status": 201,
+    "po_status": "draft",
+    "lines": 3,
+    "total": 1600
+  },
+  "po_edit": {
+    "status": 200,
+    "first_qty": 5,
+    "total": 1700
+  },
+  "po_submit": {
+    "status": 200,
+    "po_status": "ordered"
+  },
+  "partial_receive": {
+    "status": 200,
+    "po_status": "partially_received",
+    "message": ""
+  },
+  "over_receive": {
+    "status": 422,
+    "message": "Only 3 left to receive on this line."
+  },
+  "full_receive": {
+    "status": 200,
+    "po_status": "received",
+    "message": ""
+  },
+  "stock_after_receive": {
+    "ACC-BARLEY-1KG": {
+      "on_hand": 11,
+      "before": 6,
+      "movements": [
+        {
+          "type": "PURCHASE_IN",
+          "qty": 3,
+          "store": "ec46f632-0bb2-40da-96e2-df67c4e64931"
+        },
+        {
+          "type": "PURCHASE_IN",
+          "qty": 2,
+          "store": "ec46f632-0bb2-40da-96e2-df67c4e64931"
+        },
+        {
+          "type": "AUDIT_ADJUSTMENT",
+          "qty": 6,
+          "store": "ec46f632-0bb2-40da-96e2-df67c4e64931"
+        }
+      ]
+    },
+    "ACC-LENTIL-1KG": {
+      "on_hand": 9,
+      "before": 6,
+      "movements": [
+        {
+          "type": "PURCHASE_IN",
+          "qty": 2,
+          "store": "ec46f632-0bb2-40da-96e2-df67c4e64931"
+        },
+        {
+          "type": "PURCHASE_IN",
+          "qty": 1,
+          "store": "ec46f632-0bb2-40da-96e2-df67c4e64931"
+        },
+        {
+          "type": "AUDIT_ADJUSTMENT",
+          "qty": 6,
+          "store": "ec46f632-0bb2-40da-96e2-df67c4e64931"
+        }
+      ]
+    },
+    "ACC-CHICKP-1KG": {
+      "on_hand": 8,
+      "before": 6,
+      "movements": [
+        {
+          "type": "PURCHASE_IN",
+          "qty": 1,
+          "store": "ec46f632-0bb2-40da-96e2-df67c4e64931"
+        },
+        {
+          "type": "PURCHASE_IN",
+          "qty": 1,
+          "store": "ec46f632-0bb2-40da-96e2-df67c4e64931"
+        },
+        {
+          "type": "AUDIT_ADJUSTMENT",
+          "qty": 6,
+          "store": "ec46f632-0bb2-40da-96e2-df67c4e64931"
+        }
+      ]
+    }
+  },
+  "po_cancel": {
+    "status": 200,
+    "po_status": "cancelled",
+    "barley_on_hand": 11
+  },
+  "transfer_create": {
+    "status": 201,
+    "transfer_status": "requested",
+    "lines": 3,
+    "barley_reserved": 2,
+    "message": ""
+  },
+  "transfer_insufficient": {
+    "status": 422,
+    "message": "Only 9 available to reserve at the source branch.",
+    "barley_reserved": 2,
+    "barley_on_hand": 11
+  },
+  "transfer_complete": {
+    "ship": "in_transit",
+    "receive": null,
+    "balances": {
+      "ACC-BARLEY-1KG": {
+        "source_on_hand": 9,
+        "source_reserved": 0,
+        "destination_on_hand": null
+      },
+      "ACC-LENTIL-1KG": {
+        "source_on_hand": 7,
+        "source_reserved": 0,
+        "destination_on_hand": null
+      },
+      "ACC-CHICKP-1KG": {
+        "source_on_hand": 6,
+        "source_reserved": 0,
+        "destination_on_hand": null
+      }
+    }
+  },
+  "webp": {
+    "status": 201,
+    "width": 1200,
+    "bytes": 2680,
+    "message": ""
+  },
+  "reference": {
+    "oats_on_hand": 2,
+    "oats_reserved": 0,
+    "tin_on_hand": 7,
+    "tin_reserved": 0
+  },
+  "cashier_stock": {
+    "login": 401,
+    "stock": 403,
+    "message": "This action requires a signed-in user."
+  }
+}

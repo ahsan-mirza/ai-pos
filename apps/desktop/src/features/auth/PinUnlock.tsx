@@ -1,7 +1,6 @@
 import { BrandLogo, useLocale } from "@ai-pos/ui";
 import { Delete } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { version as packagedVersion } from "../../../package.json";
 import { useRegisterLayout } from "../../components/RegisterLayout";
 import { terminal } from "../../config/terminal";
 import { store } from "../checkout/catalog";
@@ -33,16 +32,8 @@ export function PinUnlock({
   const [pin, setPin] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [version, setVersion] = useState(packagedVersion);
   const selected = cashiers.find((card) => card.id === selectedId) ?? null;
   const lock = useRef(false);
-
-  useEffect(() => {
-    void import("@tauri-apps/api/app")
-      .then(({ getVersion }) => getVersion())
-      .then(setVersion)
-      .catch(() => undefined);
-  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -259,7 +250,6 @@ export function PinUnlock({
           }}
         />
       ) : null}
-      <p className={`pointer-events-none fixed bottom-4 right-5 text-xs tabular-nums ${dark ? "text-white/40" : "text-zinc-400"}`}>v{version}</p>
     </div>
   );
 }

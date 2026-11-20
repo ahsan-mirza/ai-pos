@@ -940,6 +940,7 @@ export function PurchaseOrdersPanel(access: WorkspaceAccess) {
   const [notes, setNotes] = useState("");
   const [lines, setLines] = useState<DraftLine[]>(() => [blankLine(nextLineKey())]);
   const [receipts, setReceipts] = useState<Record<string, ReceiptDraft>>({});
+  const [draftQty, setDraftQty] = useState<Record<string, string>>({});
   const [message, setMessage] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const storeId = access.storeId;
@@ -995,7 +996,7 @@ export function PurchaseOrdersPanel(access: WorkspaceAccess) {
             <td className="px-3 py-2">{row.destination_store_name}</td>
             <td className="px-3 py-2 tabular-nums">{row.lines?.length ?? 0}</td>
             <td className="px-3 py-2">{row.status}</td>
-            <td className="px-3 py-2"><button type="button" className="font-semibold text-primary-600" onClick={() => void inventoryApi.purchaseOrder(row.id).then((next) => { setOrder(next); setReceipts({}); })}>Open</button></td>
+            <td className="px-3 py-2"><button type="button" className="font-semibold text-primary-600" onClick={() => void inventoryApi.purchaseOrder(row.id).then((next) => { setOrder(next); setReceipts({}); setDraftQty({}); })}>Open</button></td>
           </tr>
         ))}
       </Table>
@@ -1009,7 +1010,17 @@ export function PurchaseOrdersPanel(access: WorkspaceAccess) {
               return (
                 <tr key={line.id}>
                   <td className="px-3 py-2">{line.name}</td>
-                  <td className="px-3 py-2 tabular-nums">{line.quantity_ordered}</td>
+                  <td className="px-3 py-2 tabular-nums">
+                    {order.status === "draft" ? (
+                      <input
+                        className={control}
+                        aria-label={`Quantity for ${line.name}`}
+                        inputMode="numeric"
+                        value={draftQty[line.id] ?? String(line.quantity_ordered)}
+                        onChange={(event) => setDraftQty({ ...draftQty, [line.id]: event.target.value })}
+                      />
+                    ) : line.quantity_ordered}
+                  </td>
                   <td className="px-3 py-2 tabular-nums">{line.quantity_received}</td>
                   <td className="px-3 py-2">
                     {receiving && outstanding > 0 ? (
@@ -1035,7 +1046,37 @@ export function PurchaseOrdersPanel(access: WorkspaceAccess) {
             })}
           </Table>
           <div className="mt-3 flex flex-wrap gap-2">
-            {order.status === "draft" ? <PrimaryButton disabled={!access.online} onClick={() => void inventoryApi.placePurchaseOrder(order.id).then(setOrder)}>Submit</PrimaryButton> : null}
+            {order.status === "draft" ? (
+              <>
+                <QuietButton
+                  disabled={!access.online}
+                  onClick={() => {
+                    const lines = order.lines.map((line) => {
+                      const quantity = Number(draftQty[line.id] ?? line.quantity_ordered);
+                      return { product_id: line.product_id, quantity_ordered: quantity, unit_cost_cents: line.unit_cost_cents };
+                    });
+                    if (lines.some((line) => !Number.isInteger(line.quantity_ordered) || line.quantity_ordered < 1)) {
+                      setFormError("Each line needs a whole quantity of at least 1.");
+                      return;
+                    }
+                    void inventoryApi.updatePurchaseOrder(order.id, {
+                      supplier_name: order.supplier_name,
+                      destination_store_id: order.destination_store_id,
+                      notes: order.notes,
+                      lines,
+                    }).then((next) => {
+                      setOrder(next);
+                      setDraftQty({});
+                      setMessage("Draft purchase order updated.");
+                      reload();
+                    }).catch((caught) => setFormError(inventoryError(caught, "Could not update the draft.")));
+                  }}
+                >
+                  Save draft
+                </QuietButton>
+                <PrimaryButton disabled={!access.online} onClick={() => void inventoryApi.placePurchaseOrder(order.id).then(setOrder)}>Submit</PrimaryButton>
+              </>
+            ) : null}
             {receiving ? (
               <PrimaryButton
                 disabled={!access.online}

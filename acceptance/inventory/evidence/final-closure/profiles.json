@@ -1,0 +1,197 @@
+{
+  "profiles": [
+    {
+      "slug": "inv-grocery",
+      "login": 200,
+      "login_message": "",
+      "profile": "grocery",
+      "settings_status": 200,
+      "settings_message": "",
+      "fefo_enabled": true,
+      "serial_enabled": false,
+      "weighed_enabled": true,
+      "pharmacy_enabled": false,
+      "fefo_attempt": null,
+      "branch_b": {
+        "status": 409,
+        "message": "This plan includes 1 branches. Existing records stay available."
+      },
+      "serials": {
+        "status": 403,
+        "message": "IMEI / serial tracking is not enabled for this business. A business-wide admin can turn it on in Store Settings."
+      }
+    },
+    {
+      "slug": "inv-fashion",
+      "login": 200,
+      "login_message": "",
+      "profile": "retail_fashion",
+      "settings_status": 200,
+      "settings_message": "",
+      "fefo_enabled": false,
+      "serial_enabled": false,
+      "weighed_enabled": false,
+      "pharmacy_enabled": false,
+      "fefo_attempt": null,
+      "branch_b": {
+        "status": 409,
+        "message": "This plan includes 1 branches. Existing records stay available."
+      },
+      "serials": {
+        "status": 403,
+        "message": "IMEI / serial tracking is not enabled for this business. A business-wide admin can turn it on in Store Settings."
+      }
+    },
+    {
+      "slug": "inv-electronics",
+      "login": 200,
+      "login_message": "",
+      "profile": "electronics_wholesale",
+      "settings_status": 200,
+      "settings_message": "",
+      "fefo_enabled": false,
+      "serial_enabled": true,
+      "weighed_enabled": false,
+      "pharmacy_enabled": false,
+      "fefo_attempt": {
+        "status": 422,
+        "message": "Expiry-first stock (FEFO) does not fit a Electronics business. Ask IT Support to add it."
+      },
+      "branch_b": {
+        "status": 409,
+        "message": "This plan includes 1 branches. Existing records stay available."
+      },
+      "serials": {
+        "status": 422,
+        "message": "Product id is required. Store id is required."
+      }
+    },
+    {
+      "slug": "inv-restaurant",
+      "login": 200,
+      "login_message": "",
+      "profile": "restaurant",
+      "settings_status": 200,
+      "settings_message": "",
+      "fefo_enabled": false,
+      "serial_enabled": false,
+      "weighed_enabled": false,
+      "pharmacy_enabled": false,
+      "fefo_attempt": null,
+      "branch_b": {
+        "status": 409,
+        "message": "This plan includes 1 branches. Existing records stay available."
+      },
+      "serials": {
+        "status": 403,
+        "message": "IMEI / serial tracking is not enabled for this business. A business-wide admin can turn it on in Store Settings."
+      }
+    },
+    {
+      "slug": "inv-cafe",
+      "login": 200,
+      "login_message": "",
+      "profile": "cafe",
+      "settings_status": 200,
+      "settings_message": "",
+      "fefo_enabled": false,
+      "serial_enabled": false,
+      "weighed_enabled": false,
+      "pharmacy_enabled": false,
+      "fefo_attempt": null,
+      "branch_b": {
+        "status": 409,
+        "message": "This plan includes 1 branches. Existing records stay available."
+      },
+      "serials": {
+        "status": 403,
+        "message": "IMEI / serial tracking is not enabled for this business. A business-wide admin can turn it on in Store Settings."
+      }
+    },
+    {
+      "slug": "inv-qsr",
+      "login": 200,
+      "login_message": "",
+      "profile": "quick_service",
+      "settings_status": 200,
+      "settings_message": "",
+      "fefo_enabled": false,
+      "serial_enabled": false,
+      "weighed_enabled": false,
+      "pharmacy_enabled": false,
+      "fefo_attempt": null,
+      "branch_b": {
+        "status": 409,
+        "message": "This plan includes 1 branches. Existing records stay available."
+      },
+      "serials": {
+        "status": 403,
+        "message": "IMEI / serial tracking is not enabled for this business. A business-wide admin can turn it on in Store Settings."
+      }
+    },
+    {
+      "slug": "inv-pharmacy",
+      "login": 200,
+      "login_message": "",
+      "profile": "pharmacy",
+      "settings_status": 200,
+      "settings_message": "",
+      "fefo_enabled": true,
+      "serial_enabled": false,
+      "weighed_enabled": false,
+      "pharmacy_enabled": true,
+      "fefo_attempt": null,
+      "branch_b": {
+        "status": 409,
+        "message": "This plan includes 1 branches. Existing records stay available."
+      },
+      "serials": {
+        "status": 403,
+        "message": "IMEI / serial tracking is not enabled for this business. A business-wide admin can turn it on in Store Settings."
+      }
+    }
+  ],
+  "roles": {
+    "system_roles": [
+      "Cashier",
+      "Demo Explorer",
+      "Store Manager",
+      "Super Admin",
+      "Technician"
+    ],
+    "cashier_login": {
+      "status": 403,
+      "message": "This account cannot sign in to the web portal."
+    },
+    "cashier_adjust": {
+      "status": null,
+      "message": ""
+    },
+    "manager_create": {
+      "status": 409,
+      "message": "This plan includes 2 staff accounts. Existing records stay available."
+    },
+    "manager_login": {
+      "status": 401,
+      "message": "Invalid email, username, or password."
+    },
+    "manager_other_branch": {
+      "status": null,
+      "message": ""
+    },
+    "admin_session_still_valid": {
+      "status": 200,
+      "message": ""
+    },
+    "missing_api_key": {
+      "status": 401,
+      "message": "A valid terminal token is required."
+    },
+    "product_read": {
+      "status": 200,
+      "message": "",
+      "plu": "445577",
+      "weighed": true
+    }
+  }
+}

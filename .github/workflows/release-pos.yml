@@ -46,7 +46,7 @@ jobs:
       - name: Production build env
         run: test -f .env.production || cp deploy/portal.production.env .env.production
 
-      - name: Build the signed NSIS installer
+      - name: Build the Windows installer
         env:
           AXIZPOS_SIGN_THUMBPRINT: ${{ secrets.AXIZPOS_SIGN_THUMBPRINT }}
           TAURI_WINDOWS_SIGNTOOL_PATH: ${{ secrets.TAURI_WINDOWS_SIGNTOOL_PATH }}
@@ -59,6 +59,7 @@ jobs:
           path: |
             dist/POS-Setup-*.exe
             dist/POS-Setup-*.exe.sha256
+            dist/POS-Setup-*.signing.json
           if-no-files-found: error
 
   # Copies the signed installer to the server. A tag push does not start this workflow.
@@ -81,7 +82,7 @@ jobs:
           import pathlib, re
           names = [path.name for path in pathlib.Path("artifact").iterdir() if path.suffix.lower() == ".exe"]
           if len(names) != 1:
-              raise SystemExit("The artifact must contain one signed exe.")
+              raise SystemExit("The artifact must contain one installer exe.")
           match = re.fullmatch(r"POS-Setup-(.+)\.exe", names[0])
           if match is None:
               raise SystemExit("The installer name is not POS-Setup-<version>.exe.")
@@ -91,6 +92,7 @@ jobs:
           mkdir -p "release/$version"
           find artifact -type f -name 'POS-Setup-*.exe' -exec cp {} "release/$version/" \;
           find artifact -type f -name 'POS-Setup-*.exe.sha256' -exec cp {} "release/$version/" \;
+          find artifact -type f -name 'POS-Setup-*.signing.json' -exec cp {} "release/$version/" \;
           python3 - "release/$version" "$version" <<'EOF'
           import hashlib, json, pathlib, sys
           from datetime import datetime, timezone
@@ -98,16 +100,27 @@ jobs:
           folder, version = pathlib.Path(sys.argv[1]), sys.argv[2]
           exe_files = sorted(folder.glob("POS-Setup-*.exe"))
           if len(exe_files) != 1:
-              sys.exit("One signed exe is required before a manifest is written.")
+              sys.exit("One installer exe is required before a manifest is written.")
           exe = exe_files[0]
           digest = hashlib.sha256(exe.read_bytes()).hexdigest()
           recorded = folder / f"{exe.name}.sha256"
           if not recorded.is_file() or digest not in recorded.read_text(encoding="utf-8"):
-              sys.exit("The checksum file does not match the signed exe. The manifest was not written.")
+              sys.exit("The checksum file does not match the installer. The manifest was not written.")
+          signing_files = list(folder.glob("POS-Setup-*.signing.json"))
+          signing = "UNKNOWN"
+          if signing_files:
+              signing = json.loads(signing_files[0].read_text(encoding="utf-8")).get("signing", "UNKNOWN")
+          if signing == "SIGNED":
+              note = "Authenticode signed."
+          elif signing == "UNSIGNED":
+              note = "UNSIGNED. Authenticode does not identify the publisher."
+          else:
+              sys.exit("The signing metadata is missing. The manifest was not written.")
           manifest = {
               "version": version,
               "published_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-              "notes": None,
+              "signing": signing,
+              "notes": note,
               "files": [{"name": exe.name, "sha256": digest}],
           }
           (folder / "manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")

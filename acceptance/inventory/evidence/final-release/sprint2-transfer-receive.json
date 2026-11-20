@@ -1,0 +1,34 @@
+{
+  "found": "32ec1f8e-5106-42dd-80dc-0b364ed75a82",
+  "number": "TR-261119-D37A",
+  "receive_http": 200,
+  "receive_status": "received",
+  "message": "",
+  "balances": {
+    "ACC-BARLEY-1KG": {
+      "source": 9,
+      "destination": 2
+    },
+    "ACC-LENTIL-1KG": {
+      "source": 7,
+      "destination": 2
+    },
+    "ACC-CHICKP-1KG": {
+      "source": 6,
+      "destination": 2
+    }
+  },
+  "gallery": {
+    "png": 80,
+    "count": 2,
+    "positions": [
+      1,
+      0
+    ],
+    "reorder": 1
+  },
+  "cashier_pin": {
+    "status": 401,
+    "message": "Invalid email, username, or password."
+  }
+}

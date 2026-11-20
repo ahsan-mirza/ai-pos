@@ -1,16 +1,16 @@
 # Inventory production deployment runbook
 
-Date: 19 November 2026. This runbook does not authorize a deployment. No production migration was run and no production tenant was activated.
+Date: 20 November 2026. This runbook does not authorize a deployment. No production migration was run and no production tenant was activated.
 
 ## Blockers that must be cleared first
 
 | Item | State |
 |---|---|
-| Code signing thumbprint `AXIZPOS_SIGN_THUMBPRINT` | Unset. `scripts/require-pos-signing.mjs` exits 1 until it is a 40-character certificate thumbprint. The private key stays in the Windows certificate store. |
-| Production API base URL | Not recorded in this repository as a confirmed production value. Do not embed the acceptance URL `http://127.0.0.1:18081` or a developer URL. |
+| Code signing | Optional. No certificate is configured, so `dist/POS-Setup-0.1.3.exe` is UNSIGNED. `Get-AuthenticodeSignature` returned `NotSigned`. A later certificate still uses `AXIZPOS_SIGN_THUMBPRINT` and `scripts/sign-pos.ps1`. See `UNSIGNED-WINDOWS-RELEASE-POLICY.md`. |
+| Production application identity | `apps/desktop/src-tauri/tauri.conf.json` names the product AxizPOS and the identifier `com.aipos.desktop`. The acceptance URL `http://127.0.0.1:18081` is only in `tauri.inventory-acceptance.conf.json`. The production content-security policy still allows `http://localhost:8000`, `http://127.0.0.1:8000`, and `http://130.210.53.214`. |
 | Production database host, role, and backup location | Not inspected. Do not copy `.env`, `.env.inventory-acceptance`, or the acceptance runtime file. |
-| Inventory Windows acceptance | Product create, gallery, and viewports on the acceptance register are not complete. |
-| Business-profile acceptance | Only the grocery disposable tenant has current API checks. |
+| Windows gallery and document screens | Browse of a JPEG, PNG, and valid WebP was confirmed on the acceptance window, including reopen, reorder, and remove. Drag-and-drop was not driven. Purchase, transfer, and stock-count screens were captured. A scrolled receive form was not captured. |
+| Business-profile tenants | Seven profiles were initialized on a disposable database. The trial plan allows one branch and two staff accounts. |
 
 Until those are closed, deployment readiness stays blocked.
 

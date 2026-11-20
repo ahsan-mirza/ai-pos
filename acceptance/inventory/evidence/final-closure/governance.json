@@ -1,0 +1,57 @@
+{
+  "admin": {
+    "status": 200,
+    "message": ""
+  },
+  "cashier_pin": {
+    "status": 401,
+    "message": "invalid_credentials: Invalid email, username, or password."
+  },
+  "accounts": {
+    "role": {
+      "status": 201,
+      "message": ""
+    },
+    "clerk": {
+      "status": 201,
+      "message": ""
+    },
+    "officer_a": {
+      "status": 201,
+      "message": ""
+    },
+    "officer_b": {
+      "status": 201,
+      "message": ""
+    },
+    "pharmacist": {
+      "status": 201,
+      "message": ""
+    }
+  },
+  "officer_a": {
+    "nominate": 201,
+    "nominate_message": "",
+    "confirm": 200,
+    "confirm_message": ""
+  },
+  "officer_b": {
+    "nominate": 201,
+    "nominate_message": "",
+    "confirm": 200,
+    "confirm_message": ""
+  },
+  "appointment": {
+    "request": {
+      "status": 201,
+      "message": ""
+    },
+    "approve": {
+      "status": 200,
+      "message": "",
+      "active": true
+    },
+    "officer_login": 200,
+    "second_login": 200
+  }
+}

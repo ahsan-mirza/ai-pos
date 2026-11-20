@@ -1,0 +1,308 @@
+{
+  "reference_before": {
+    "oats": {
+      "on_hand": 2,
+      "reserved": 0,
+      "available": 2
+    },
+    "tin": {
+      "on_hand": 7,
+      "reserved": 0,
+      "available": 7
+    }
+  },
+  "forms": {
+    "floor_category_create": {
+      "status": 403,
+      "message": "Categories are shared across branches. Ask a Super Admin to change them."
+    },
+    "admin_category_create": {
+      "status": 201,
+      "message": ""
+    },
+    "admin_subcategory_create": {
+      "status": 201,
+      "message": ""
+    },
+    "admin_category_delete": {
+      "status": 204,
+      "message": ""
+    },
+    "floor_brand_create": {
+      "status": 403,
+      "message": "Categories are shared across branches. Ask a Super Admin to change them."
+    },
+    "admin_brand_create": {
+      "status": 201,
+      "message": ""
+    },
+    "admin_brand_delete": {
+      "status": 204,
+      "message": ""
+    },
+    "floor_unit_create": {
+      "status": 201,
+      "message": ""
+    },
+    "floor_unit_delete": {
+      "status": 204,
+      "message": ""
+    },
+    "floor_price_list_read": {
+      "status": 200,
+      "message": ""
+    },
+    "admin_price_list_create": {
+      "status": 201,
+      "message": ""
+    },
+    "floor_price_list_create": {
+      "status": 403,
+      "message": "You do not have permission for this action."
+    },
+    "admin_price_change_create": {
+      "status": 201,
+      "message": ""
+    },
+    "admin_price_change_cancel": {
+      "status": 200,
+      "message": "",
+      "state": "CANCELLED"
+    },
+    "batches": {
+      "status": 200,
+      "message": ""
+    },
+    "serials": {
+      "status": 403,
+      "message": "IMEI / serial tracking is not enabled for this business. A business-wide admin can turn it on in Store Settings."
+    },
+    "floor_replenishment": {
+      "status": 403,
+      "message": "You do not have permission for this action."
+    },
+    "admin_replenishment": {
+      "status": 201,
+      "message": "",
+      "accepted": false
+    },
+    "stock_count_create": {
+      "status": 404,
+      "message": "That API does not exist."
+    }
+  },
+  "purchase": {
+    "create": 201,
+    "message": "",
+    "draft_total": 1000,
+    "edited_total": 1300,
+    "edit_status": 200,
+    "edit_message": "",
+    "reopen_status": 200,
+    "reopen_total": 1300,
+    "line_count": 3,
+    "supplier": "Closure supplier",
+    "branch": "ec46f632-0bb2-40da-96e2-df67c4e64931",
+    "place_status": 200,
+    "place_state": "ordered",
+    "place_message": "",
+    "edit_after_place": {
+      "status": 422,
+      "message": "Only a draft with nothing received can be edited."
+    },
+    "vat_field": {
+      "status": 422,
+      "message": "Vat cents cannot be changed here."
+    },
+    "partial": {
+      "status": 200,
+      "state": "partially_received",
+      "message": ""
+    },
+    "over": {
+      "status": 422,
+      "message": "Only 3 left to receive on this line."
+    },
+    "full": {
+      "status": 200,
+      "state": "received",
+      "message": ""
+    },
+    "repeat_receive": {
+      "status": 422,
+      "message": "Place the purchase order before receiving goods.",
+      "unchanged": true
+    },
+    "cancel": {
+      "create": 201,
+      "cancel": 200,
+      "state": "cancelled",
+      "message": "",
+      "stock_unchanged": true
+    },
+    "stock": {
+      "5bc4bc28-b3f6-412f-9741-829191ce53fc": {
+        "on_hand": 14,
+        "reserved": 0,
+        "available": 14
+      },
+      "604ce012-a70c-48d8-bd1f-b999d45abe57": {
+        "on_hand": 12,
+        "reserved": 0,
+        "available": 12
+      },
+      "dc4c1a6d-c4dd-4c06-a6ee-a04632fa776e": {
+        "on_hand": 11,
+        "reserved": 0,
+        "available": 11
+      }
+    },
+    "movements": {
+      "5bc4bc28-b3f6-412f-9741-829191ce53fc": [
+        "PURCHASE_IN",
+        "PURCHASE_IN",
+        "AUDIT_ADJUSTMENT"
+      ],
+      "604ce012-a70c-48d8-bd1f-b999d45abe57": [
+        "PURCHASE_IN",
+        "PURCHASE_IN",
+        "AUDIT_ADJUSTMENT"
+      ],
+      "dc4c1a6d-c4dd-4c06-a6ee-a04632fa776e": [
+        "PURCHASE_IN",
+        "AUDIT_ADJUSTMENT"
+      ]
+    }
+  },
+  "transfer": {
+    "create": {
+      "status": 201,
+      "state": "requested",
+      "message": ""
+    },
+    "insufficient": {
+      "status": 422,
+      "message": "Only 12 available to reserve at the source branch.",
+      "reserved_after": {
+        "on_hand": 14,
+        "reserved": 2,
+        "available": 12
+      }
+    },
+    "ship": {
+      "status": 200,
+      "state": "in_transit",
+      "message": ""
+    },
+    "floor_receive": {
+      "status": 403,
+      "message": "You can only work with your own store's stock."
+    },
+    "admin_receive": {
+      "status": 200,
+      "state": "received",
+      "message": ""
+    },
+    "cancel": {
+      "create": 201,
+      "cancel": 200,
+      "state": "cancelled",
+      "message": "",
+      "source_unchanged": true
+    },
+    "before": {
+      "5bc4bc28-b3f6-412f-9741-829191ce53fc": {
+        "source": {
+          "on_hand": 14,
+          "reserved": 0,
+          "available": 14
+        },
+        "destination": {
+          "on_hand": 0,
+          "reserved": 0,
+          "available": 0
+        }
+      },
+      "604ce012-a70c-48d8-bd1f-b999d45abe57": {
+        "source": {
+          "on_hand": 12,
+          "reserved": 0,
+          "available": 12
+        },
+        "destination": {
+          "on_hand": 0,
+          "reserved": 0,
+          "available": 0
+        }
+      },
+      "dc4c1a6d-c4dd-4c06-a6ee-a04632fa776e": {
+        "source": {
+          "on_hand": 11,
+          "reserved": 0,
+          "available": 11
+        },
+        "destination": {
+          "on_hand": 0,
+          "reserved": 0,
+          "available": 0
+        }
+      }
+    },
+    "after": {
+      "5bc4bc28-b3f6-412f-9741-829191ce53fc": {
+        "source": {
+          "on_hand": 12,
+          "reserved": 0,
+          "available": 12
+        },
+        "destination": {
+          "on_hand": 2,
+          "reserved": 0,
+          "available": 2
+        }
+      },
+      "604ce012-a70c-48d8-bd1f-b999d45abe57": {
+        "source": {
+          "on_hand": 10,
+          "reserved": 0,
+          "available": 10
+        },
+        "destination": {
+          "on_hand": 2,
+          "reserved": 0,
+          "available": 2
+        }
+      },
+      "dc4c1a6d-c4dd-4c06-a6ee-a04632fa776e": {
+        "source": {
+          "on_hand": 9,
+          "reserved": 0,
+          "available": 9
+        },
+        "destination": {
+          "on_hand": 2,
+          "reserved": 0,
+          "available": 2
+        }
+      }
+    }
+  },
+  "reference_after": {
+    "oats": {
+      "on_hand": 2,
+      "reserved": 0,
+      "available": 2
+    },
+    "tin": {
+      "on_hand": 7,
+      "reserved": 0,
+      "available": 7
+    }
+  },
+  "contract": {
+    "line_discount": "PurchaseOrderCreate has no line discount.",
+    "vat": "PurchaseOrderCreate has no VAT field. A VAT field is rejected.",
+    "second_approver": "Submit places a draft. There is no second approver.",
+    "partial_transfer_receipt": "Receive posts the full shipped quantity. There is no discrepancy document."
+  }
+}

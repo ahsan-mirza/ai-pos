@@ -58,7 +58,7 @@ pnpm build:pos:dev    # AI POS Dev, side by side with the live register
 pnpm build:pos:prod   # production installer
 ```
 
-The public Windows installer is the per-user NSIS setup. `pnpm --filter @ai-pos/desktop build:win` signs it, verifies the signature, and copies it to `dist/POS-Setup-<version>.exe`. An unsigned local build is `build:win:unsigned` and is not copied into `dist`.
+The public Windows installer is the per-user NSIS setup. `pnpm --filter @ai-pos/desktop build:win` signs it when `AXIZPOS_SIGN_THUMBPRINT` is a 40-character thumbprint. With no thumbprint, the same command builds an installer marked `UNSIGNED`, checks that the files have no Authenticode signature, and copies it to `dist/POS-Setup-<version>.exe`. `build:win:unsigned` forces that unsigned path. An unsigned installer does not identify the publisher.
 
 Publish that build through GitHub:
 

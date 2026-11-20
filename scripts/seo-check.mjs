@@ -182,12 +182,16 @@ check(
 );
 const missingPage = notFoundHtml();
 check("marketing 404 is noindex and absent from the sitemap", missingPage.includes('content="noindex"') && !sitemap.includes("/404.html"));
+check(
+  "marketing 404 location sends X-Robots-Tag noindex",
+  apex.includes("location = /404.html {") && apex.includes('add_header X-Robots-Tag "noindex" always;'),
+);
 
 function walk(dir, files = []) {
   for (const entry of readdirSync(dir)) {
     const path = join(dir, entry);
     if (statSync(path).isDirectory()) walk(path, files);
-    else if (/\.(tsx|ts)$/.test(entry) && entry !== "seo.ts" && !/\.test\.tsx?$/.test(entry)) files.push(path);
+    else if (/\.(tsx|ts)$/.test(entry) && entry !== "seo.ts" && entry !== "indexability.ts" && !/\.test\.tsx?$/.test(entry)) files.push(path);
   }
   return files;
 }

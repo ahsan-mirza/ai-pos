@@ -1,0 +1,53 @@
+{
+  "baseline": "20261119_0119",
+  "baseline_source": "down_revision of 20261119_0120 in apps/api/alembic/versions/20261119_0120_user_preferences.py",
+  "at_previous": "20261119_0119",
+  "head": "20261119_0120",
+  "second_upgrade": "20261119_0120",
+  "before": {
+    "PRIOR-A": {
+      "on_hand": 7,
+      "movement": 7,
+      "tenant": "00000000-0000-4000-8000-0000000000a1",
+      "movement_id": "febb9435-2fd9-4817-b7d4-32847423e79d"
+    },
+    "PRIOR-B": {
+      "on_hand": 4,
+      "movement": 4,
+      "tenant": "00000000-0000-4000-8000-0000000000b1",
+      "movement_id": "e44eb624-d018-4e24-916c-a046cfb2a5b9"
+    }
+  },
+  "after": {
+    "PRIOR-A": {
+      "on_hand": 7,
+      "movement": 7,
+      "tenant": "00000000-0000-4000-8000-0000000000a1",
+      "movement_id": "febb9435-2fd9-4817-b7d4-32847423e79d"
+    },
+    "PRIOR-B": {
+      "on_hand": 4,
+      "movement": 4,
+      "tenant": "00000000-0000-4000-8000-0000000000b1",
+      "movement_id": "e44eb624-d018-4e24-916c-a046cfb2a5b9"
+    }
+  },
+  "quantities_unchanged": true,
+  "app_role": {
+    "login": true,
+    "superuser": false,
+    "bypassrls": false,
+    "current_user": "ai_pos_app"
+  },
+  "tenant_a_visible": 1,
+  "tenant_b_hidden": 0,
+  "empty_tenant_products": 0,
+  "cross_tenant_insert": "42501",
+  "backup_sha256": "fbc52e626a5bbaec8a56b537eb4c47309451fb7a4bfad4863d45aa4e63e5e894",
+  "backup_bytes": 1008693,
+  "restore_exit": 0,
+  "source_counts": "products|10\npurchase_orders|4\nstock_movements|23\nstock_transfers|1",
+  "restored_counts": "products|10\npurchase_orders|4\nstock_movements|23\nstock_transfers|1",
+  "restored_oats_on_hand": "2",
+  "disposable_removed": true
+}

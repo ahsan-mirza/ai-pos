@@ -1,5 +1,6 @@
 import { Capability } from "@ai-pos/shared-types";
 import { useEffect, useState, type ReactNode } from "react";
+import { AppVersionMark } from "./components/AppVersionMark";
 import { ConfirmProvider } from "./components/ConfirmDialog";
 import { useRegisterLayout, type CatalogDensity } from "./components/RegisterLayout";
 import { RegisterShell } from "./components/shell/RegisterShell";
@@ -189,6 +190,7 @@ function RegisterApp() {
   return (
     <>
       {screen}
+      <AppVersionMark />
       <UpdatePrompt />
     </>
   );

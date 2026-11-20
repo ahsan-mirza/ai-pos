@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { inventoryTableClass, inventoryTableFrameClass } from "./layout";
 
 export function Banner({ tone, children }: { tone: "info" | "error" | "ok"; children: ReactNode }) {
   const color =
@@ -85,18 +86,18 @@ export function QuietButton({ children, onClick, disabled }: { children: ReactNo
 
 export function Table({ headers, children }: { headers: string[]; children: ReactNode }) {
   return (
-    <div className="overflow-x-auto rounded-xl ring-1 ring-zinc-200 dark:ring-zinc-800">
-      <table className="min-w-full text-left text-sm">
+    <div className={inventoryTableFrameClass}>
+      <table className={inventoryTableClass}>
         <thead className="bg-zinc-50 text-xs uppercase tracking-wide text-zinc-500 dark:bg-zinc-900">
           <tr>
             {headers.map((header) => (
-              <th key={header} className="px-3 py-2 font-semibold">
+              <th key={header} className="break-words px-3 py-2 font-semibold">
                 {header}
               </th>
             ))}
           </tr>
         </thead>
-        <tbody className="divide-y divide-zinc-200 dark:divide-zinc-800">{children}</tbody>
+        <tbody className="divide-y divide-zinc-200 dark:divide-zinc-800 [&_td]:break-words [&_td]:px-3 [&_td]:py-2">{children}</tbody>
       </table>
     </div>
   );
@@ -124,11 +125,11 @@ export function FormModal({
         role="dialog"
         aria-modal="true"
         aria-label={title}
-        className="flex h-[96vh] max-h-[96vh] w-[96vw] max-w-6xl flex-col overflow-hidden rounded-3xl bg-white shadow-xl dark:bg-zinc-950"
+        className="flex h-[96vh] max-h-[96vh] w-[96vw] min-w-0 max-w-6xl flex-col overflow-hidden rounded-3xl bg-white shadow-xl dark:bg-zinc-950"
       >
         <div className="shrink-0 border-b border-zinc-200 px-5 py-4 dark:border-zinc-800">
-          <div className="flex items-start justify-between gap-3">
-            <div>
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="min-w-0">
               <h2 className="text-xl font-semibold">{title}</h2>
               {subtitle ? <p className="mt-1 text-sm text-zinc-500">{subtitle}</p> : null}
             </div>

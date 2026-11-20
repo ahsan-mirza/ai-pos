@@ -201,6 +201,13 @@ def purchase_order(order_id: uuid.UUID, db: Db, principal: CanRead) -> PurchaseO
     return inventory.get_purchase_order(db, principal, order_id)
 
 
+@router.put("/purchase-orders/{order_id}", response_model=PurchaseOrderOut)
+def update_purchase_order(
+    order_id: uuid.UUID, payload: PurchaseOrderCreate, db: Db, principal: CanManage
+) -> PurchaseOrderOut:
+    return inventory.update_draft_purchase_order(db, principal, order_id, payload)
+
+
 @router.post("/purchase-orders/{order_id}/order", response_model=PurchaseOrderOut)
 def place_purchase_order(order_id: uuid.UUID, db: Db, principal: CanManage) -> PurchaseOrderOut:
     return inventory.mark_ordered(db, principal, order_id)

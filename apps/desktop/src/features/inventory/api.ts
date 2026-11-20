@@ -97,6 +97,8 @@ export const inventoryApi = {
     retailPage<PurchaseOrder>(`/api/v1/inventory/purchase-orders${query({ store_id: storeId, offset: 0, limit: 50 })}`),
   purchaseOrder: (id: string) => retailCall<PurchaseOrder>("GET", `/api/v1/inventory/purchase-orders/${id}`),
   createPurchaseOrder: (body: Record<string, unknown>) => retailCall<PurchaseOrder>("POST", "/api/v1/inventory/purchase-orders", body),
+  updatePurchaseOrder: (id: string, body: Record<string, unknown>) =>
+    retailCall<PurchaseOrder>("PUT", `/api/v1/inventory/purchase-orders/${id}`, body),
   placePurchaseOrder: (id: string) => retailCall<PurchaseOrder>("POST", `/api/v1/inventory/purchase-orders/${id}/order`, {}),
   receivePurchaseOrder: (id: string, body: Record<string, unknown>) =>
     retailCall<PurchaseOrder>("POST", `/api/v1/inventory/purchase-orders/${id}/receive`, body),
@@ -332,13 +334,17 @@ export interface PurchaseOrder {
   number: string;
   supplier_name: string;
   status: string;
+  destination_store_id: string;
   destination_store_name: string;
+  notes: string;
+  total_cost_cents: number;
   lines: {
     id: string;
     product_id: string;
     name: string;
     quantity_ordered: number;
     quantity_received: number;
+    unit_cost_cents: number;
     lot_controlled?: boolean;
   }[];
 }

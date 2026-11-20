@@ -303,7 +303,7 @@ export function KeyboardStatusBar() {
           {catalogSummary}
         </p>
         <div
-          className="flex min-w-0 max-w-[46%] shrink-0 flex-nowrap items-center justify-end gap-0.5 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+          className="flex min-w-0 max-w-[46%] shrink-0 flex-nowrap items-center justify-end gap-0.5 overflow-x-auto pe-14 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
           role="group"
           aria-label="Device status"
           data-device-status="strip"

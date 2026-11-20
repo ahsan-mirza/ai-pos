@@ -1,0 +1,106 @@
+{
+  "login_ms": 145.3,
+  "repetitions": 20,
+  "timings": {
+    "product_list": {
+      "n": 20,
+      "median_ms": 47.2,
+      "p95_ms": 65.8,
+      "max_ms": 77.4
+    },
+    "product_search": {
+      "n": 20,
+      "median_ms": 47.1,
+      "p95_ms": 58.8,
+      "max_ms": 59.9
+    },
+    "stock": {
+      "n": 20,
+      "median_ms": 47.7,
+      "p95_ms": 53.3,
+      "max_ms": 53.6
+    },
+    "purchase_orders": {
+      "n": 20,
+      "median_ms": 84.5,
+      "p95_ms": 100.7,
+      "max_ms": 111.8
+    },
+    "transfers": {
+      "n": 20,
+      "median_ms": 46.2,
+      "p95_ms": 65.9,
+      "max_ms": 70.3
+    },
+    "gallery": {
+      "n": 20,
+      "median_ms": 30.8,
+      "p95_ms": 44.8,
+      "max_ms": 45.4
+    }
+  },
+  "errors": [],
+  "draft_create_cancel": [
+    {
+      "create_ms": 74.6,
+      "cancel_ms": 57.4,
+      "status": "cancelled"
+    },
+    {
+      "create_ms": 80.6,
+      "cancel_ms": 54.7,
+      "status": "cancelled"
+    },
+    {
+      "create_ms": 84.7,
+      "cancel_ms": 56.9,
+      "status": "cancelled"
+    },
+    {
+      "create_ms": 54.3,
+      "cancel_ms": 53.5,
+      "status": "cancelled"
+    },
+    {
+      "create_ms": 86.5,
+      "cancel_ms": 35.6,
+      "status": "cancelled"
+    }
+  ],
+  "database_size": "23 MB",
+  "database_bytes": 23723031,
+  "row_counts_as_app_role_without_tenant": {
+    "products": 0,
+    "stock_movements": 0,
+    "purchase_orders": 0,
+    "stock_transfers": 0,
+    "product_images": 0
+  },
+  "row_counts_as_owner": {
+    "products": 10,
+    "stock_movements": 23,
+    "purchase_orders": 9,
+    "stock_transfers": 1,
+    "product_images": 5
+  },
+  "cashier_pin": 200,
+  "cashier_stock": {
+    "status": 403,
+    "message": "You do not have permission for this action."
+  },
+  "cashier_adjust": {
+    "status": 403,
+    "message": "You do not have permission for this action."
+  },
+  "app_role": {
+    "user": "ai_pos_app",
+    "superuser": false,
+    "bypassrls": false,
+    "login": true
+  },
+  "grocery_sees_oats": 1,
+  "pharmacy_sees_oats": 0,
+  "empty_tenant_products": 0,
+  "cross_tenant_insert": "42501",
+  "threshold": "No approved latency target is recorded for inventory."
+}

@@ -201,11 +201,48 @@ def test_purchase_order_lifecycle_receives_into_destination(client, session) -> 
     assert created.status_code == 201, created.text
     order = created.json()
     assert order["status"] == "draft"
+    edited = client.put(
+        f"/api/v1/inventory/purchase-orders/{order['id']}",
+        headers=headers,
+        json={
+            "supplier_name": "Volt Distribution",
+            "destination_store_id": WH,
+            "lines": [
+                {"product_id": CABLE, "quantity_ordered": 40, "unit_cost_cents": 600},
+                {"product_id": PHONE, "quantity_ordered": 2, "unit_cost_cents": 60000},
+            ],
+        },
+    )
+    assert edited.status_code == 200, edited.text
+    assert edited.json()["lines"][0]["quantity_ordered"] == 40
+    restored = client.put(
+        f"/api/v1/inventory/purchase-orders/{order['id']}",
+        headers=headers,
+        json={
+            "supplier_name": "Volt Distribution",
+            "destination_store_id": WH,
+            "lines": [
+                {"product_id": CABLE, "quantity_ordered": 50, "unit_cost_cents": 600},
+                {"product_id": PHONE, "quantity_ordered": 2, "unit_cost_cents": 60000},
+            ],
+        },
+    )
+    assert restored.status_code == 200, restored.text
+    order = client.post(f"/api/v1/inventory/purchase-orders/{order['id']}/order", headers=headers).json()
+    locked = client.put(
+        f"/api/v1/inventory/purchase-orders/{order['id']}",
+        headers=headers,
+        json={
+            "supplier_name": "Volt Distribution",
+            "destination_store_id": WH,
+            "lines": [{"product_id": CABLE, "quantity_ordered": 50, "unit_cost_cents": 600}],
+        },
+    )
+    assert locked.status_code == 422
     lines = {line["sku"]: line["id"] for line in order["lines"]}
 
     early = client.post(f"/api/v1/inventory/purchase-orders/{order['id']}/receive", headers=headers, json={"lines": []})
     assert early.status_code == 422
-    assert client.post(f"/api/v1/inventory/purchase-orders/{order['id']}/order", headers=headers).status_code == 200
 
     partial = client.post(
         f"/api/v1/inventory/purchase-orders/{order['id']}/receive",
