@@ -25,7 +25,7 @@ from app.schemas.devices import (
     TerminalActivate,
     TerminalActivation,
 )
-from app.services import audit
+from app.services import audit, entitlement_service
 from app.services.numbering import DEVICE_SUFFIX, device_prefix
 from app.tenancy.registry import current_identity
 
@@ -225,6 +225,10 @@ def activate_terminal(db: Session, data: TerminalActivate) -> TerminalActivation
     store = db.get(Store, device.store_id) if device is not None else None
     if device is None or store is None:
         raise ApiError(401, "activation_invalid", "This activation key is wrong, already used, or expired.")
+    entitlement = None
+    if data.device_public_key.strip():
+        # Sign before the one-time key is consumed. A missing signing seed must not burn the key.
+        entitlement = entitlement_service.issue(db, device, store, data.device_public_key, rebind=True)
     token, digest = _new_key()
     device.key_hash = digest
     device.key_hint = token[-6:]
@@ -241,11 +245,14 @@ def activate_terminal(db: Session, data: TerminalActivate) -> TerminalActivation
     )
     db.commit()
     identity = current_identity()
+    from app.tenancy.scoping import active_tenant_id
+
     return TerminalActivation(
         tenant_slug=identity.slug,
         tenant_name=identity.name,
         tenant_domain=identity.domain,
         tenant_url=identity.url,
+        tenant_id=str(active_tenant_id()),
         store_id=store.id,
         store_code=store.code,
         store_name=store.name,
@@ -253,6 +260,7 @@ def activate_terminal(db: Session, data: TerminalActivate) -> TerminalActivation
         register_code=device.code,
         register_name=device.name,
         device_token=token,
+        entitlement=entitlement,
     )
 
 

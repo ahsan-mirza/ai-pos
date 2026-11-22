@@ -29,7 +29,7 @@ export function CatalogueViewToggle({ value, onChange }: { value: CatalogueView;
       role="radiogroup"
       aria-label="Product catalogue view"
       onKeyDown={onKeyDown}
-      className="inline-flex shrink-0 items-center gap-1 rounded-2xl border border-zinc-200 bg-white p-1 dark:border-zinc-700 dark:bg-zinc-900"
+      className="inline-flex h-14 shrink-0 items-center gap-1 rounded-xl border border-zinc-200 bg-white p-1 dark:border-zinc-700 dark:bg-zinc-900"
     >
       {OPTIONS.map((option) => {
         const selected = value === option.id;
@@ -43,7 +43,7 @@ export function CatalogueViewToggle({ value, onChange }: { value: CatalogueView;
             aria-label={option.label}
             title={option.label}
             onClick={() => onChange(option.id)}
-            className={`inline-flex h-11 w-11 items-center justify-center rounded-xl border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/70 ${
+            className={`inline-flex h-full w-11 items-center justify-center rounded-lg border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/70 ${
               selected
                 ? "border-primary-500 bg-primary-500 text-white"
                 : "border-transparent text-zinc-700 hover:border-zinc-300 hover:bg-zinc-50 dark:text-zinc-200 dark:hover:border-zinc-600 dark:hover:bg-zinc-800"

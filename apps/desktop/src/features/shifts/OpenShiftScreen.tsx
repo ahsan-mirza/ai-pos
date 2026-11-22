@@ -41,7 +41,7 @@ export function OpenShiftScreen({ session, onLock }: { session: CashierSession; 
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-charcoal p-6 font-sans text-white">
-      <div className="w-full max-w-lg rounded-[28px] bg-white/5 p-8">
+      <div className="w-full max-w-lg rounded-[1.75rem] bg-white/5 p-8">
         <div className="flex items-center justify-between">
           <BrandLogo tone="dark" className="h-10 w-auto" />
           <button

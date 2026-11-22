@@ -44,6 +44,15 @@ export function ProductPhoto({ src, className = "" }: { src: string | null | und
   );
 }
 
+/** The parent image well sets the height. The frame only fills that well. */
+export const productPhotoFrameHeight = {
+  standard: "h-full max-h-full",
+  compact: "h-full max-h-full",
+} as const;
+
+export const productImageWellClass =
+  "relative h-[var(--pos-product-image-height)] max-h-[var(--pos-product-image-height)] w-full shrink-0 grow-0 overflow-hidden";
+
 /** Top of a till card: every photo sits in the same frame. A category icon shows when there is no picture. */
 export function ProductPhotoFrame({
   src,
@@ -62,12 +71,12 @@ export function ProductPhotoFrame({
   const inset = flush ? "w-full" : compact ? "-mx-3 -mt-3 w-[calc(100%+1.5rem)]" : "-mx-4 -mt-4 w-[calc(100%+2rem)]";
   return (
     <span
-      className={`relative block shrink-0 overflow-hidden bg-zinc-100 dark:bg-zinc-900 ${flush ? "mb-0" : "mb-3"} ${inset} ${compact ? "aspect-video" : "aspect-[4/3]"} ${dimmed ? "opacity-60" : ""}`}
+      className={`relative flex w-full shrink-0 grow-0 items-center justify-center overflow-hidden bg-zinc-100 dark:bg-zinc-900 ${flush ? "mb-0" : "mb-3"} ${inset} ${compact ? productPhotoFrameHeight.compact : productPhotoFrameHeight.standard} ${dimmed ? "opacity-60" : ""}`}
     >
       <span className="absolute inset-0 flex items-center justify-center text-zinc-400 dark:text-zinc-500">{icon}</span>
       <ProductPhoto
         src={src}
-        className="absolute inset-0 block h-full w-full object-cover object-center"
+        className="absolute inset-0 block h-full w-full object-contain object-center"
       />
     </span>
   );

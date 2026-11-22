@@ -16,5 +16,5 @@ export const chartColors = ["var(--primary)", "#222026", "#8A868E", "#CBCECE"] a
 export const fontFamily = "Archivo, sans-serif";
 
 export const radius = {
-  card: "20px",
+  card: "1.25rem",
 } as const;

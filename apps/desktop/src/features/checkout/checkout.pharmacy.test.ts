@@ -25,6 +25,8 @@ describe("pharmacy offline sales", () => {
     expect(blocked).toEqual({ rejected: expect.stringMatching(/live connection/) });
     expect(allocated).toBe(0);
     expect(chargeGate({ pharmacyCatalog: false, offline: true, subscriptionLocked: false, profileReady: true })).toBeNull();
+    expect(chargeGate({ pharmacyCatalog: false, offline: true, subscriptionLocked: false, profileReady: false })).toBeNull();
+    expect(chargeGate({ pharmacyCatalog: false, offline: false, subscriptionLocked: false, profileReady: false })).toMatch(/settings/);
     expect(chargeGate({ pharmacyCatalog: true, offline: true, subscriptionLocked: false, profileReady: false })).toMatch(/settings/);
   });
 

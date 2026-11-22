@@ -156,7 +156,7 @@ export function SerialPickerModal({ session, product, inCart, onClose, onConfirm
             </div>
 
             <div className="mt-4 flex items-center justify-between">
-              <span className="text-[11px] font-semibold uppercase tracking-wider text-charcoal/50 dark:text-zinc-500">
+              <span className="text-[0.6875rem] font-semibold uppercase tracking-wider text-charcoal/50 dark:text-zinc-500">
                 In stock here {units ? `(${needle ? `${filtered.length} of ` : ""}${units.length})` : ""}
               </span>
               {loading ? <span className="animate-pulse text-xs text-primary">Loading…</span> : null}

@@ -1,0 +1,16 @@
+{
+  "host": "127.0.0.1",
+  "port": 55821,
+  "operational_database": "axizpos_laundry_acceptance",
+  "control_database": "axizpos_laundry_acceptance_control",
+  "previous_revision": "20261119_0120",
+  "head": "20261121_0121",
+  "repeat_upgrade": "passed",
+  "grocery_brand_preserved": "Grocery Kept",
+  "downgrade_to": "20261119_0120",
+  "role": "ai_pos_app",
+  "login": true,
+  "superuser": false,
+  "bypassrls": false,
+  "developer_database_used": false
+}

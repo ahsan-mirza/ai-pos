@@ -271,7 +271,7 @@ export function BulkImeiModal({ product, inCart, initialQuantity = 10, onClose, 
                   bad ? "bg-danger text-white" : warn ? "border border-warning bg-warning/10 dark:bg-zinc-900" : "bg-surface dark:bg-zinc-800/60"
                 }`}
               >
-                <span className={`text-[10px] font-semibold uppercase tracking-wide ${bad ? "text-white/80" : "text-charcoal/50 dark:text-zinc-400"}`}>
+                <span className={`text-[0.625rem] font-semibold uppercase tracking-wide ${bad ? "text-white/80" : "text-charcoal/50 dark:text-zinc-400"}`}>
                   {index + 1} · {statusText[slot.status]}
                 </span>
                 <span className="truncate font-mono text-xs">{slot.value}</span>

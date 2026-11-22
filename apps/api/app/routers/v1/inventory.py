@@ -2,12 +2,13 @@ import uuid
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query, Response
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.capabilities import Capability, require_capability
 from app.core.config import Settings, get_settings
 from app.core.database import get_db
-from app.core.deps import REGISTER_SCOPES, Principal, authorize
+from app.core.deps import REGISTER_SCOPES, Principal, authorize, require_device
 from app.core.pagination import Offset, set_total
 from app.core.permissions import Permission
 from app.schemas.inventory import (
@@ -33,9 +34,12 @@ from app.schemas.inventory import (
     TransferShip,
     TransferStatus,
 )
-from app.schemas.payloads import ProductOut, SerialStatus
+from pydantic import Field
+
+from app.schemas.payloads import ApiModel, ProductOut, SerialStatus
 from app.schemas.product_history import ProductCosting
-from app.services import inventory, product_history
+from app.models.terminal_allocation import TerminalAllocation
+from app.services import allocation_service, inventory, product_history
 from app.services.settings_service import business_currency
 
 router = APIRouter()
@@ -43,6 +47,7 @@ Db = Annotated[Session, Depends(get_db)]
 Config = Annotated[Settings, Depends(get_settings)]
 CanRead = Annotated[Principal, Depends(authorize(Permission.PORTAL_ACCESS, scopes=REGISTER_SCOPES))]
 CanManage = Annotated[Principal, Depends(authorize(Permission.PORTAL_INVENTORY_MANAGE, scopes=REGISTER_SCOPES))]
+CanAllocate = Annotated[Principal, Depends(authorize(Permission.INVENTORY_ADJUST_STOCK, scopes=REGISTER_SCOPES))]
 CanLookUp = Annotated[
     Principal,
     Depends(authorize(Permission.PORTAL_ACCESS, allow_device=True, scopes=("portal", "pos"))),
@@ -279,3 +284,109 @@ def receive_transfer(transfer_id: uuid.UUID, db: Db, settings: Config, principal
 @router.post("/transfers/{transfer_id}/cancel", response_model=TransferOut)
 def cancel_transfer(transfer_id: uuid.UUID, db: Db, settings: Config, principal: CanManage) -> TransferOut:
     return inventory.cancel_transfer(db, settings, principal, transfer_id)
+
+
+class AllocationCreate(ApiModel):
+    store_id: uuid.UUID
+    device_id: uuid.UUID
+    product_id: uuid.UUID
+    quantity: int = Field(ge=1)
+    serial_number_id: uuid.UUID | None = None
+    batch_item_id: uuid.UUID | None = None
+
+
+class AllocationRelease(ApiModel):
+    confirmed_sequence: int = Field(ge=0)
+    confirmed_remaining: int = Field(ge=0)
+
+
+def _allocation_body(row) -> dict[str, object]:
+    return {
+        "id": str(row.id),
+        "manifest_id": str(row.manifest_id),
+        "version": row.version,
+        "store_id": str(row.store_id),
+        "device_id": str(row.device_id),
+        "product_id": str(row.product_id),
+        "unit": row.unit,
+        "quantity_allocated": row.quantity_allocated,
+        "quantity_consumed": row.quantity_consumed,
+        "remaining": row.remaining,
+        "status": row.status,
+        "payload": row.manifest_payload,
+        "signature": row.manifest_signature,
+        "key_id": row.signing_key_id,
+    }
+
+
+@router.get("/allocation-feed")
+def allocation_feed(
+    db: Db, principal: Annotated[Principal, Depends(require_device)]
+) -> dict[str, object]:
+    """This register's own active manifests. Another terminal's grant is not included."""
+    device = principal.device
+    if device is None or principal.store_id is None:
+        return {"allocations": []}
+    rows = db.scalars(
+        select(TerminalAllocation).where(
+            TerminalAllocation.store_id == principal.store_id,
+            TerminalAllocation.device_id == device.id,
+            TerminalAllocation.status == "ACTIVE",
+        )
+    ).all()
+    return {"allocations": [_allocation_body(row) for row in rows]}
+
+
+@router.get("/allocations")
+def list_allocations(db: Db, principal: CanAllocate) -> list[dict[str, object]]:
+    """Allocations for the signed-in branch. A sign-in with no branch sees none."""
+    if principal.store_id is None:
+        return []
+    rows = db.scalars(
+        select(TerminalAllocation).where(TerminalAllocation.store_id == principal.store_id)
+    ).all()
+    return [_allocation_body(row) for row in rows]
+
+
+@router.post("/allocations", status_code=201)
+def create_allocation(payload: AllocationCreate, db: Db, principal: CanAllocate) -> dict[str, object]:
+    row = allocation_service.issue_allocation(
+        db,
+        principal,
+        store_id=payload.store_id,
+        device_id=payload.device_id,
+        product_id=payload.product_id,
+        quantity=payload.quantity,
+        serial_number_id=payload.serial_number_id,
+        batch_item_id=payload.batch_item_id,
+    )
+    db.commit()
+    return _allocation_body(row)
+
+
+@router.post("/allocations/{allocation_id}/release")
+def release_allocation(
+    allocation_id: uuid.UUID,
+    payload: AllocationRelease,
+    db: Db,
+    principal: CanAllocate,
+) -> dict[str, object]:
+    row, release_payload, signature = allocation_service.release_allocation(
+        db,
+        principal,
+        allocation_id,
+        confirmed_sequence=payload.confirmed_sequence,
+        confirmed_remaining=payload.confirmed_remaining,
+    )
+    db.commit()
+    body = _allocation_body(row)
+    body["release_payload"] = release_payload
+    body["release_signature"] = signature
+    return body
+
+
+@router.post("/allocations/{allocation_id}/quarantine")
+def quarantine_allocation(allocation_id: uuid.UUID, db: Db, principal: CanAllocate) -> dict[str, object]:
+    row = allocation_service.quarantine_allocation(db, principal, allocation_id)
+    db.commit()
+    return _allocation_body(row)

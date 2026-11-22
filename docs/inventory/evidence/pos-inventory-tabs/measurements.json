@@ -1,0 +1,344 @@
+{
+  "initial": {
+    "labels": [
+      "Stock",
+      "Products",
+      "Pricing",
+      "Price lists",
+      "Price changes",
+      "Categories",
+      "Brands",
+      "Models",
+      "Units",
+      "Batches",
+      "Replenishment",
+      "Stock counts",
+      "Purchase orders",
+      "Transfers"
+    ],
+    "selected": "Stock",
+    "list": {
+      "width": 1176,
+      "scrollWidth": 1194,
+      "height": 48,
+      "overflowX": "auto",
+      "overflowY": "clip",
+      "flexWrap": "nowrap"
+    },
+    "tab": {
+      "height": 48,
+      "background": "rgba(0, 0, 0, 0)",
+      "weight": "600",
+      "radius": "0px",
+      "shrink": "0",
+      "whiteSpace": "nowrap",
+      "pill": false
+    },
+    "idle": {
+      "weight": "500",
+      "color": "rgba(34, 32, 38, 0.55)"
+    },
+    "underline": {
+      "height": 2,
+      "color": "rgb(242, 106, 33)"
+    },
+    "mainOverflowY": "auto"
+  },
+  "shots": [
+    {
+      "width": 1024,
+      "height": 768,
+      "file": "after-1024x768.png",
+      "layout": {
+        "labels": [
+          "Stock",
+          "Products",
+          "Pricing",
+          "Price lists",
+          "Price changes",
+          "Categories",
+          "Brands",
+          "Models",
+          "Units",
+          "Batches",
+          "Replenishment",
+          "Stock counts",
+          "Purchase orders",
+          "Transfers"
+        ],
+        "selected": "Stock",
+        "list": {
+          "width": 912,
+          "scrollWidth": 1194,
+          "height": 48,
+          "overflowX": "auto",
+          "overflowY": "clip",
+          "flexWrap": "nowrap"
+        },
+        "tab": {
+          "height": 48,
+          "background": "rgba(0, 0, 0, 0)",
+          "weight": "600",
+          "radius": "0px",
+          "shrink": "0",
+          "whiteSpace": "nowrap",
+          "pill": false
+        },
+        "idle": {
+          "weight": "500",
+          "color": "rgba(34, 32, 38, 0.55)"
+        },
+        "underline": {
+          "height": 2,
+          "color": "rgb(242, 106, 33)"
+        },
+        "mainOverflowY": "auto"
+      }
+    },
+    {
+      "width": 1280,
+      "height": 800,
+      "file": "after-1280x800.png",
+      "layout": {
+        "labels": [
+          "Stock",
+          "Products",
+          "Pricing",
+          "Price lists",
+          "Price changes",
+          "Categories",
+          "Brands",
+          "Models",
+          "Units",
+          "Batches",
+          "Replenishment",
+          "Stock counts",
+          "Purchase orders",
+          "Transfers"
+        ],
+        "selected": "Stock",
+        "list": {
+          "width": 1168,
+          "scrollWidth": 1194,
+          "height": 48,
+          "overflowX": "auto",
+          "overflowY": "clip",
+          "flexWrap": "nowrap"
+        },
+        "tab": {
+          "height": 48,
+          "background": "rgba(0, 0, 0, 0)",
+          "weight": "600",
+          "radius": "0px",
+          "shrink": "0",
+          "whiteSpace": "nowrap",
+          "pill": false
+        },
+        "idle": {
+          "weight": "500",
+          "color": "rgba(34, 32, 38, 0.55)"
+        },
+        "underline": {
+          "height": 2,
+          "color": "rgb(242, 106, 33)"
+        },
+        "mainOverflowY": "auto"
+      }
+    },
+    {
+      "width": 1366,
+      "height": 768,
+      "file": "after-1366x768.png",
+      "layout": {
+        "labels": [
+          "Stock",
+          "Products",
+          "Pricing",
+          "Price lists",
+          "Price changes",
+          "Categories",
+          "Brands",
+          "Models",
+          "Units",
+          "Batches",
+          "Replenishment",
+          "Stock counts",
+          "Purchase orders",
+          "Transfers"
+        ],
+        "selected": "Stock",
+        "list": {
+          "width": 1286,
+          "scrollWidth": 1286,
+          "height": 48,
+          "overflowX": "auto",
+          "overflowY": "clip",
+          "flexWrap": "nowrap"
+        },
+        "tab": {
+          "height": 48,
+          "background": "rgba(0, 0, 0, 0)",
+          "weight": "600",
+          "radius": "0px",
+          "shrink": "0",
+          "whiteSpace": "nowrap",
+          "pill": false
+        },
+        "idle": {
+          "weight": "500",
+          "color": "rgba(34, 32, 38, 0.55)"
+        },
+        "underline": {
+          "height": 2,
+          "color": "rgb(242, 106, 33)"
+        },
+        "mainOverflowY": "auto"
+      }
+    },
+    {
+      "width": 1920,
+      "height": 1080,
+      "file": "after-1920x1080.png",
+      "layout": {
+        "labels": [
+          "Stock",
+          "Products",
+          "Pricing",
+          "Price lists",
+          "Price changes",
+          "Categories",
+          "Brands",
+          "Models",
+          "Units",
+          "Batches",
+          "Replenishment",
+          "Stock counts",
+          "Purchase orders",
+          "Transfers"
+        ],
+        "selected": "Stock",
+        "list": {
+          "width": 1840,
+          "scrollWidth": 1840,
+          "height": 48,
+          "overflowX": "auto",
+          "overflowY": "clip",
+          "flexWrap": "nowrap"
+        },
+        "tab": {
+          "height": 48,
+          "background": "rgba(0, 0, 0, 0)",
+          "weight": "600",
+          "radius": "0px",
+          "shrink": "0",
+          "whiteSpace": "nowrap",
+          "pill": false
+        },
+        "idle": {
+          "weight": "500",
+          "color": "rgba(34, 32, 38, 0.55)"
+        },
+        "underline": {
+          "height": 2,
+          "color": "rgb(242, 106, 33)"
+        },
+        "mainOverflowY": "auto"
+      }
+    }
+  ],
+  "exercise": {
+    "rows": [
+      {
+        "name": "Stock",
+        "selected": "true",
+        "scrollLeft": 0,
+        "inView": true
+      },
+      {
+        "name": "Products",
+        "selected": "false",
+        "scrollLeft": 0,
+        "inView": true
+      },
+      {
+        "name": "Pricing",
+        "selected": "false",
+        "scrollLeft": 0,
+        "inView": true
+      },
+      {
+        "name": "Price lists",
+        "selected": "false",
+        "scrollLeft": 0,
+        "inView": true
+      },
+      {
+        "name": "Price changes",
+        "selected": "false",
+        "scrollLeft": 0,
+        "inView": true
+      },
+      {
+        "name": "Categories",
+        "selected": "false",
+        "scrollLeft": 0,
+        "inView": true
+      },
+      {
+        "name": "Brands",
+        "selected": "false",
+        "scrollLeft": 0,
+        "inView": true
+      },
+      {
+        "name": "Models",
+        "selected": "false",
+        "scrollLeft": 0,
+        "inView": true
+      },
+      {
+        "name": "Units",
+        "selected": "false",
+        "scrollLeft": 0,
+        "inView": true
+      },
+      {
+        "name": "Batches",
+        "selected": "false",
+        "scrollLeft": 0,
+        "inView": true
+      },
+      {
+        "name": "Replenishment",
+        "selected": "false",
+        "scrollLeft": 0,
+        "inView": true
+      },
+      {
+        "name": "Stock counts",
+        "selected": "false",
+        "scrollLeft": 0,
+        "inView": false
+      },
+      {
+        "name": "Purchase orders",
+        "selected": "false",
+        "scrollLeft": 0,
+        "inView": false
+      },
+      {
+        "name": "Transfers",
+        "selected": "false",
+        "scrollLeft": 0,
+        "inView": false
+      }
+    ],
+    "overflow": true,
+    "clientWidth": 912,
+    "scrollWidth": 1194,
+    "next": true,
+    "previous": false,
+    "contentCanScroll": true,
+    "focus": "solid 2px rgba(0, 0, 0, 0)"
+  }
+}

@@ -29,8 +29,8 @@ WINDOW = {"start": "2026-10-01T00:00:00Z", "end": "2026-10-20T00:00:00Z"}
 
 def test_completed_sale_reconciles_and_a_void_does_not(client, session) -> None:
     seed_catalog(client)
-    sold = record_sale(client, product_id=CABLE_ID, price=1500, quantity=2)
-    voided = record_sale(client, product_id=CABLE_ID, price=1500, quantity=1)
+    sold = record_sale(client, product_id=CABLE_ID, price=1500, quantity=2, occurred_at="2026-10-19T08:00:00Z")
+    voided = record_sale(client, product_id=CABLE_ID, price=1500, quantity=1, occurred_at="2026-10-19T09:00:00Z")
     row = session.get(Sale, uuid.UUID(voided["id"]))
     assert row is not None
     row.status = "voided"
@@ -101,7 +101,7 @@ def test_split_tenders_are_not_counted_twice(client) -> None:
             {"method": "card", "amount_cents": 2150},
         ],
     }
-    assert push(client, "sale", payload).status_code == 200
+    assert push(client, "sale", payload, occurred_at="2026-10-19T08:00:00Z").status_code == 200
     headers = bearer(admin_token(client))
     summary = client.get("/api/v1/sales-insights/summary", headers=headers, params=WINDOW)
     assert summary.json()["charged_cents"] == 3150
@@ -112,7 +112,7 @@ def test_split_tenders_are_not_counted_twice(client) -> None:
 
 def test_a_partial_refund_reduces_net_and_items(client) -> None:
     seed_catalog(client)
-    sold = record_sale(client, product_id=CABLE_ID, price=1500, quantity=2)
+    sold = record_sale(client, product_id=CABLE_ID, price=1500, quantity=2, occurred_at="2026-11-16T08:00:00Z")
     body = receipt(client, sold["id"])
     posted = push(client, "sale_return", return_payload(body, override=approval(admin_id(client))))
     assert posted.status_code == 200, posted.text
@@ -120,7 +120,7 @@ def test_a_partial_refund_reduces_net_and_items(client) -> None:
     summary = client.get(
         "/api/v1/sales-insights/summary",
         headers=headers,
-        params={"start": "2026-10-01T00:00:00Z", "end": "2026-11-06T00:00:00Z"},
+        params={"start": "2026-10-01T00:00:00Z", "end": "2026-11-23T00:00:00Z"},
     )
     assert summary.status_code == 200, summary.text
     report = summary.json()

@@ -8,7 +8,7 @@ use serde_json::{json, Value};
 
 use crate::AppState;
 
-const PREFIXES: [&str; 26] = [
+const PREFIXES: [&str; 28] = [
     "/api/v1/gift-cards",
     "/api/v1/customers",
     "/api/v1/quotes",
@@ -35,6 +35,8 @@ const PREFIXES: [&str; 26] = [
     "/api/v1/pharmacy",
     "/api/v1/recipes",
     "/api/v1/stores",
+    "/api/v1/laundry",
+    "/api/v1/terminals",
 ];
 
 fn safe(path: &str) -> bool {
@@ -62,7 +64,43 @@ fn with_total(path: &str, body: Value, total: Option<&str>) -> Value {
 }
 
 fn failure(status: u16, code: &str, message: &str) -> String {
-    json!({ "status": status, "code": code, "message": message }).to_string()
+    failure_with(status, code, message, "")
+}
+
+fn failure_with(status: u16, code: &str, message: &str, request_id: &str) -> String {
+    json!({
+        "status": status,
+        "code": code,
+        "message": message,
+        "request_id": request_id,
+    })
+    .to_string()
+}
+
+/// Laundry routes need the cashier token. A terminal key alone is not that session.
+pub(crate) fn laundry_blocked(path: &str, has_user_token: bool) -> bool {
+    path.starts_with("/api/v1/laundry") && !has_user_token
+}
+
+fn api_refusal(status: u16, value: &Value, header_id: &str) -> String {
+    let code = value["error"]["code"].as_str().unwrap_or("rejected");
+    let message = value["error"]["message"]
+        .as_str()
+        .unwrap_or("The server refused the request.");
+    let request_id = value["request_id"]
+        .as_str()
+        .filter(|item| !item.is_empty())
+        .or_else(|| value["error"]["request_id"].as_str().filter(|item| !item.is_empty()))
+        .unwrap_or(header_id);
+    failure_with(status, code, message, request_id)
+}
+
+fn header_request_id(headers: &reqwest::header::HeaderMap) -> String {
+    headers
+        .get("x-request-id")
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or("")
+        .to_string()
 }
 
 #[tauri::command]
@@ -72,7 +110,7 @@ pub async fn retail_request(
     path: String,
     body: Option<Value>,
 ) -> Result<Value, String> {
-    state
+    let session = state
         .session()?
         .ok_or_else(|| failure(401, "locked", "Unlock the register first."))?;
     let user_token = state
@@ -80,6 +118,20 @@ pub async fn retail_request(
         .lock()
         .map_err(|err| err.to_string())?
         .clone();
+    if laundry_blocked(&path, user_token.is_some()) {
+        if session.mode == "offline" {
+            return Err(failure(
+                0,
+                "offline",
+                "Production needs the server. This offline unlock has no access token.",
+            ));
+        }
+        return Err(failure(
+            401,
+            "authentication_required",
+            "This action requires a signed-in user.",
+        ));
+    }
     if !safe(&path) {
         return Err(failure(
             400,
@@ -112,6 +164,7 @@ pub async fn retail_request(
             .send()
             .map_err(|err| failure(0, "offline", &format!("The server is unreachable: {err}")))?;
         let status = response.status();
+        let header_id = header_request_id(response.headers());
         let total = response
             .headers()
             .get("x-total-count")
@@ -120,11 +173,7 @@ pub async fn retail_request(
         let value: Value = response.json().unwrap_or(Value::Null);
         let value = with_total(&path, value, total.as_deref());
         if !status.is_success() {
-            let code = value["error"]["code"].as_str().unwrap_or("rejected");
-            let message = value["error"]["message"]
-                .as_str()
-                .unwrap_or("The server refused the request.");
-            return Err(failure(status.as_u16(), code, message));
+            return Err(api_refusal(status.as_u16(), &value, &header_id));
         }
         Ok(value)
     })
@@ -175,7 +224,7 @@ pub async fn retail_upload(
     content_type: String,
     data_base64: String,
 ) -> Result<Value, String> {
-    state
+    let session = state
         .session()?
         .ok_or_else(|| failure(401, "locked", "Unlock the register first."))?;
     let user_token = state
@@ -183,6 +232,20 @@ pub async fn retail_upload(
         .lock()
         .map_err(|err| err.to_string())?
         .clone();
+    if laundry_blocked(&path, user_token.is_some()) {
+        if session.mode == "offline" {
+            return Err(failure(
+                0,
+                "offline",
+                "Production needs the server. This offline unlock has no access token.",
+            ));
+        }
+        return Err(failure(
+            401,
+            "authentication_required",
+            "This action requires a signed-in user.",
+        ));
+    }
     if !safe(&path) || !path.contains("/images") {
         return Err(failure(400, "invalid_path", "That upload is not allowed from the register."));
     }
@@ -220,13 +283,10 @@ pub async fn retail_upload(
             .send()
             .map_err(|err| failure(0, "offline", &format!("The server is unreachable: {err}")))?;
         let status = response.status();
+        let header_id = header_request_id(response.headers());
         let value: Value = response.json().unwrap_or(Value::Null);
         if !status.is_success() {
-            let code = value["error"]["code"].as_str().unwrap_or("rejected");
-            let message = value["error"]["message"]
-                .as_str()
-                .unwrap_or("The server refused the photo.");
-            return Err(failure(status.as_u16(), code, message));
+            return Err(api_refusal(status.as_u16(), &value, &header_id));
         }
         Ok(value)
     })
@@ -236,7 +296,8 @@ pub async fn retail_upload(
 
 #[cfg(test)]
 mod tests {
-    use super::safe;
+    use super::{api_refusal, laundry_blocked, safe};
+    use serde_json::json;
 
     #[test]
     fn only_retail_paths_pass() {
@@ -251,6 +312,9 @@ mod tests {
         assert!(safe("/api/v1/inventory/stock?store_id=s-1&status=low"));
         assert!(safe("/api/v1/products"));
         assert!(safe("/api/v1/pharmacy/lots/123/release"));
+        assert!(safe("/api/v1/laundry/production/board"));
+        assert!(safe("/api/v1/laundry/orders?q=LD-7B77A286"));
+        assert!(!safe("/api/v1/laundryx"));
         assert!(safe("/api/v1/users/register-staff?store_id=s-1"));
         assert!(safe("/api/v1/users/me/preferences"));
         assert!(safe("/api/v1/users/me/preferences/product-catalogue-view"));
@@ -259,6 +323,28 @@ mod tests {
         assert!(!safe("/api/v1/users/me"));
         assert!(!safe("/api/v1/gift-cards/../users"));
         assert!(!safe("/api/v1/gift-cardsx"));
+    }
+
+    #[test]
+    fn laundry_without_a_user_token_does_not_reach_the_api() {
+        assert!(laundry_blocked("/api/v1/laundry/production/board", false));
+        assert!(laundry_blocked("/api/v1/laundry/orders?q=LD-7B77A286", false));
+        assert!(!laundry_blocked("/api/v1/laundry/production/board", true));
+        assert!(!laundry_blocked("/api/v1/products", false));
+    }
+
+    #[test]
+    fn api_refusal_keeps_the_request_id() {
+        let value = json!({
+            "error": {"code": "forbidden", "message": "You do not have permission for this action."},
+            "request_id": "req-laundry-1"
+        });
+        let raw = api_refusal(403, &value, "");
+        assert!(raw.contains("\"status\":403"));
+        assert!(raw.contains("req-laundry-1"));
+        assert!(raw.contains("You do not have permission"));
+        let from_header = api_refusal(401, &json!({"error": {"code": "invalid_token", "message": "Expired."}}), "hdr-9");
+        assert!(from_header.contains("hdr-9"));
     }
 
     #[test]

@@ -1,4 +1,5 @@
 import uuid
+from datetime import UTC, datetime, timedelta
 
 from app.services.identifiers import is_valid_imei
 
@@ -18,7 +19,7 @@ def event(key: str, entity: str, payload: dict) -> dict:
         "entity_type": entity,
         "operation": "upsert",
         "payload": payload,
-        "occurred_at": "2026-10-19T08:00:00Z",
+        "occurred_at": (datetime.now(UTC) - timedelta(days=1)).strftime("%Y-%m-%dT%H:%M:%SZ"),
     }
 
 
@@ -109,6 +110,20 @@ def test_cash_checkout_decrements_stock_once(client) -> None:
     assert sales[0]["payment_method"] == "cash"
     assert sales[0]["total_cents"] == 1500 * 3 + 225
     assert sales[0]["items"][0]["quantity"] == 3
+
+
+def test_a_changed_sale_payload_does_not_replace_the_original(client) -> None:
+    seed_store_and_product(client)
+    sale = sale_payload(quantity=1)
+    assert push(client, [event("sale-amount-1", "sale", sale)]).status_code == 200
+    changed = sale_payload(quantity=1)
+    changed["total_cents"] = int(changed["total_cents"]) + 50
+    response = push(client, [event("sale-amount-1", "sale", changed)])
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "idempotency_conflict"
+    sales = client.get("/api/v1/sales", headers=headers()).json()
+    assert len(sales) == 1
+    assert sales[0]["total_cents"] == sale["total_cents"]
 
 
 def test_idempotency_key_conflict(client) -> None:

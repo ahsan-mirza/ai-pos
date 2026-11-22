@@ -43,6 +43,8 @@ struct ErrorBody {
 #[derive(Debug, Deserialize)]
 struct ErrorDetail {
     message: String,
+    #[serde(default)]
+    code: String,
 }
 
 #[derive(Serialize)]
@@ -56,8 +58,21 @@ pub struct SyncReport {
 enum PushError {
     /// The server refused the batch. `server_time` is the Date header, when it could be read.
     Rejected { reason: String, server_time: Option<String> },
+    /// The same key was stored with a different payload. The local event stays unchanged.
+    Conflict { reason: String },
     /// Network, auth, or server failure. The batch stays queued.
     Unavailable(String),
+}
+
+/// Queue status for a push response. A lost response stays pending so the original key can be sent again.
+pub fn queue_status_for(http_status: u16, error_code: &str) -> &'static str {
+    if http_status == 409 && error_code == "idempotency_conflict" {
+        return "conflict";
+    }
+    if matches!(http_status, 409 | 413 | 422) {
+        return "rejected";
+    }
+    "pending"
 }
 
 impl DesktopConfig {
@@ -176,7 +191,12 @@ pub fn flush(db: &Db, config: &DesktopConfig) -> Result<SyncReport, String> {
         };
         match post_batch(config, &events) {
             Ok(response) => {
-                db.mark_batch(&batch_id, "synced", None)?;
+                let queued = if response.results.iter().any(|result| result.status == "awaiting_review") {
+                    "awaiting_review"
+                } else {
+                    "synced"
+                };
+                db.mark_batch(&batch_id, queued, None)?;
                 synced += 1;
                 applied += response
                     .results
@@ -188,6 +208,11 @@ pub fn flush(db: &Db, config: &DesktopConfig) -> Result<SyncReport, String> {
                     .iter()
                     .filter(|result| result.status == "duplicate")
                     .count() as i64;
+            }
+            Err(PushError::Conflict { reason }) => {
+                db.mark_batch(&batch_id, "conflict", Some(&reason))?;
+                rejected += 1;
+                last_rejection = Some(reason);
             }
             Err(PushError::Rejected { reason, server_time }) => {
                 // A register clock ahead of head office keeps failing until the stamp is pulled back.
@@ -217,11 +242,24 @@ pub fn flush(db: &Db, config: &DesktopConfig) -> Result<SyncReport, String> {
         }
     }
 
-    let message = match (unavailable, last_rejection) {
-        (Some(reason), _) => format!("Not synced: {reason}"),
-        (None, Some(reason)) => format!("{rejected} queued sale(s) rejected: {reason}"),
-        (None, None) if synced > 0 => "Synced with the API.".to_string(),
-        (None, None) => "Queue is empty.".to_string(),
+    // The sale queue is already marked. A missing first snapshot is reported.
+    // A later pull miss stays on the cursor and retries on the next flush.
+    let catalogue_note = if db.bootstrap_cursor()?.is_none() {
+        refresh_catalogue(config, db).err()
+    } else {
+        let _ = refresh_catalogue(config, db);
+        None
+    };
+
+    let message = match (unavailable, last_rejection, catalogue_note) {
+        (Some(reason), _, _) => format!("Not synced: {reason}"),
+        (None, Some(reason), _) => format!("{rejected} queued sale(s) rejected: {reason}"),
+        (None, None, Some(reason)) if synced > 0 => {
+            format!("Sales synced. Catalogue snapshot still incomplete: {reason}")
+        }
+        (None, None, Some(reason)) => format!("Catalogue snapshot still incomplete: {reason}"),
+        (None, None, None) if synced > 0 => "Synced with the API.".to_string(),
+        (None, None, None) => "Queue is empty.".to_string(),
     };
 
     Ok(SyncReport {
@@ -240,7 +278,59 @@ struct RemoteProduct {
     quantity_reserved: i64,
 }
 
+/// First contact takes the signed snapshot. Later flushes take the cursor page.
+/// Both commit menu, floor, and the cursor in one database transaction.
+fn refresh_catalogue(config: &DesktopConfig, db: &Db) -> Result<(), String> {
+    if db.bootstrap_cursor()?.is_none() {
+        bootstrap_catalogue(config, db)?;
+    } else {
+        pull_catalogue(config, db)?;
+    }
+    // The selling screen reads the assembled modifier document. Refresh it from the same API
+    // after the signed rows commit, and keep the previous document if this call misses.
+    let _ = crate::menu::refresh(db, config);
+    Ok(())
+}
+
 const CATALOG_PAGE: usize = 1000;
+
+#[derive(Deserialize)]
+struct AllocationFeedItem {
+    payload: String,
+    signature: String,
+    key_id: String,
+}
+
+#[derive(Deserialize)]
+struct AllocationFeed {
+    allocations: Vec<AllocationFeedItem>,
+}
+
+/// Installs this register's signed grants. A manifest that fails verification is left out.
+pub fn install_allocations(
+    config: &DesktopConfig,
+    db: &Db,
+    expected: &crate::entitlement::ExpectedBinding,
+) -> Result<usize, String> {
+    let response = client()?
+        .get(format!("{}/api/v1/inventory/allocation-feed", config.api_base_url))
+        .headers(config.auth_headers())
+        .send()
+        .map_err(|err| err.to_string())?;
+    let status = response.status();
+    let body = response.text().map_err(|err| err.to_string())?;
+    if !status.is_success() {
+        return Err(error_message(&body, status.as_u16()));
+    }
+    let feed: AllocationFeed = serde_json::from_str(&body).map_err(|err| err.to_string())?;
+    let mut installed = 0usize;
+    for item in feed.allocations {
+        if crate::allocation::install(db, &item.payload, &item.signature, &item.key_id, expected).is_ok() {
+            installed += 1;
+        }
+    }
+    Ok(installed)
+}
 
 /// The whole catalog, page by page (supermarkets carry tens of thousands of SKUs). The register sells from what
 /// is free: stock held by open quotes is subtracted.
@@ -393,11 +483,19 @@ fn post_batch(config: &DesktopConfig, events: &[QueuedEvent]) -> Result<PushResp
     if status.is_success() {
         return serde_json::from_str(&body).map_err(|err| PushError::Unavailable(err.to_string()));
     }
+    let code = error_code(&body);
     let reason = error_message(&body, status.as_u16());
-    match status.as_u16() {
-        409 | 413 | 422 => Err(PushError::Rejected { reason, server_time }),
+    match queue_status_for(status.as_u16(), &code) {
+        "conflict" => Err(PushError::Conflict { reason }),
+        "rejected" => Err(PushError::Rejected { reason, server_time }),
         _ => Err(PushError::Unavailable(reason)),
     }
+}
+
+fn error_code(body: &str) -> String {
+    serde_json::from_str::<ErrorBody>(body)
+        .map(|parsed| parsed.error.code)
+        .unwrap_or_default()
 }
 
 /// `Fri, 23 Oct 2026 16:38:59 GMT` → `2026-10-23T16:38:59Z`.
@@ -438,6 +536,191 @@ pub(crate) fn client() -> Result<reqwest::blocking::Client, String> {
         .map_err(|err| err.to_string())
 }
 
+fn checkout_settings_page(
+    http: &reqwest::blocking::Client,
+    config: &DesktopConfig,
+    session_id: &str,
+) -> Result<Option<String>, String> {
+    let response = http
+        .get(format!(
+            "{}/api/v1/terminals/bootstrap/sessions/{session_id}/pages",
+            config.api_base_url
+        ))
+        .headers(config.auth_headers())
+        .query(&[
+            ("dataset", "checkout_settings"),
+            ("after_position", "-1"),
+            ("limit", "1"),
+        ])
+        .send()
+        .map_err(|err| err.to_string())?;
+    let status = response.status();
+    let body = response.text().map_err(|err| err.to_string())?;
+    if !status.is_success() {
+        return Err(error_message(&body, status.as_u16()));
+    }
+    let page: serde_json::Value = serde_json::from_str(&body).map_err(|err| err.to_string())?;
+    let Some(records) = page["records"].as_array() else {
+        return Err("The checkout settings page has no records.".into());
+    };
+    let Some(first) = records.first() else {
+        return Ok(None);
+    };
+    if first.get("record").is_none_or(|item| item.is_null()) {
+        return Ok(None);
+    }
+    serde_json::to_string(&first["record"]).map(Some).map_err(|err| err.to_string())
+}
+
+fn dataset_page(
+    http: &reqwest::blocking::Client,
+    config: &DesktopConfig,
+    session_id: &str,
+    dataset: &str,
+) -> Result<Vec<(String, String)>, String> {
+    let mut after = -1_i64;
+    let mut rows = Vec::new();
+    loop {
+        let after_text = after.to_string();
+        let response = http
+            .get(format!(
+                "{}/api/v1/terminals/bootstrap/sessions/{session_id}/pages",
+                config.api_base_url
+            ))
+            .headers(config.auth_headers())
+            .query(&[
+                ("dataset", dataset),
+                ("after_position", after_text.as_str()),
+                ("limit", "50"),
+            ])
+            .send()
+            .map_err(|err| err.to_string())?;
+        let status = response.status();
+        let body = response.text().map_err(|err| err.to_string())?;
+        if !status.is_success() {
+            return Err(error_message(&body, status.as_u16()));
+        }
+        let page: serde_json::Value = serde_json::from_str(&body).map_err(|err| err.to_string())?;
+        for record in page["records"].as_array().ok_or("The config page has no records.")? {
+            let id = record["id"].as_str().unwrap_or_default().to_string();
+            if id.is_empty() {
+                continue;
+            }
+            let payload = serde_json::to_string(&record["record"]).map_err(|err| err.to_string())?;
+            rows.push((id, payload));
+        }
+        if page["done"].as_bool().unwrap_or(false) {
+            return Ok(rows);
+        }
+        let next = page["next_position"].as_i64().unwrap_or(after);
+        if next == after {
+            return Err("The config page did not advance.".into());
+        }
+        after = next;
+    }
+}
+
+/// Downloads the frozen catalogue and the checkout settings, then activates both together.
+pub fn bootstrap_catalogue(config: &DesktopConfig, db: &crate::db::Db) -> Result<i64, String> {
+    let http = client()?;
+    let response = http
+        .post(format!("{}/api/v1/terminals/bootstrap/sessions", config.api_base_url))
+        .headers(config.auth_headers())
+        .send()
+        .map_err(|err| err.to_string())?;
+    let status = response.status();
+    let body = response.text().map_err(|err| err.to_string())?;
+    if !status.is_success() {
+        return Err(error_message(&body, status.as_u16()));
+    }
+    let started: serde_json::Value = serde_json::from_str(&body).map_err(|err| err.to_string())?;
+    let session_id = started["session_id"].as_str().ok_or("The bootstrap session id is missing.")?;
+    let expected = started["product_count"].as_i64().unwrap_or(0);
+    let generation = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|duration| duration.as_secs() as i64)
+        .unwrap_or(1);
+    let settings = checkout_settings_page(&http, config, session_id)?;
+    let menu = dataset_page(&http, config, session_id, "menu")?;
+    let floor = dataset_page(&http, config, session_id, "floor")?;
+        let mut after = -1_i64;
+        let mut cursor = String::new();
+        loop {
+            let after_text = after.to_string();
+            let response = http
+                .get(format!(
+                    "{}/api/v1/terminals/bootstrap/sessions/{session_id}/pages",
+                    config.api_base_url
+                ))
+                .headers(config.auth_headers())
+                .query(&[
+                    ("dataset", "products"),
+                    ("after_position", after_text.as_str()),
+                    ("limit", "50"),
+                ])
+            .send()
+            .map_err(|err| err.to_string())?;
+        let status = response.status();
+        let body = response.text().map_err(|err| err.to_string())?;
+        if !status.is_success() {
+            return Err(error_message(&body, status.as_u16()));
+        }
+        let page: serde_json::Value = serde_json::from_str(&body).map_err(|err| err.to_string())?;
+        let records = page["records"].as_array().ok_or("The bootstrap page has no records.")?;
+        let mut rows = Vec::new();
+        for record in records {
+            let id = record["id"].as_str().unwrap_or_default().to_string();
+            let payload = serde_json::to_string(&record["record"]).map_err(|err| err.to_string())?;
+            rows.push((id, payload));
+        }
+        db.stage_products(generation, &rows)?;
+        if let Some(value) = page["cursor"].as_str() {
+            cursor = value.to_string();
+        }
+        if page["done"].as_bool().unwrap_or(false) {
+            db.finish_bootstrap(generation, expected, &cursor, settings.as_deref(), &menu, &floor)?;
+            return Ok(expected);
+        }
+        after = page["next_position"].as_i64().unwrap_or(after);
+    }
+}
+
+/// Applies the next product changes and stores the continuation cursor in the same local transaction.
+pub fn pull_catalogue(config: &DesktopConfig, db: &crate::db::Db) -> Result<usize, String> {
+    let Some(cursor) = db.bootstrap_cursor()? else {
+        return Err("Download the catalogue before pulling changes.".into());
+    };
+    let http = client()?;
+    let response = http
+        .get(format!("{}/api/v1/terminals/bootstrap/pull", config.api_base_url))
+        .headers(config.auth_headers())
+        .query(&[("cursor", cursor.as_str()), ("limit", "50")])
+        .send()
+        .map_err(|err| err.to_string())?;
+    let status = response.status();
+    let body = response.text().map_err(|err| err.to_string())?;
+    if !status.is_success() {
+        return Err(error_message(&body, status.as_u16()));
+    }
+    let page: serde_json::Value = serde_json::from_str(&body).map_err(|err| err.to_string())?;
+    let next = page["cursor"].as_str().unwrap_or(&cursor).to_string();
+    let mut changes = Vec::new();
+    for change in page["changes"].as_array().ok_or("The pull response has no changes.")? {
+        let seq = change["seq"].as_i64().ok_or("A pull change has no sequence.")?;
+        let dataset = change["dataset"].as_str().unwrap_or("products").to_string();
+        let operation = change["operation"].as_str().unwrap_or("upsert").to_string();
+        let id = change["record_id"].as_str().unwrap_or_default().to_string();
+        let payload = if change["record"].is_null() {
+            None
+        } else {
+            Some(serde_json::to_string(&change["record"]).map_err(|err| err.to_string())?)
+        };
+        changes.push((seq, dataset, operation, id, payload));
+    }
+    db.apply_catalogue_pull(&config.store_id, &changes, &next)?;
+    Ok(changes.len())
+}
+
 fn error_message(body: &str, status: u16) -> String {
     serde_json::from_str::<ErrorBody>(body)
         .map(|parsed| parsed.error.message)
@@ -449,7 +732,16 @@ fn error_message(body: &str, status: u16) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::http_date_to_iso;
+    use super::{http_date_to_iso, queue_status_for};
+
+    #[test]
+    fn a_payload_collision_is_not_a_successful_sync() {
+        assert_eq!(queue_status_for(409, "idempotency_conflict"), "conflict");
+        assert_eq!(queue_status_for(422, "sync_rejected"), "rejected");
+        assert_eq!(queue_status_for(409, "conflict"), "rejected");
+        assert_eq!(queue_status_for(503, ""), "pending");
+        assert_eq!(queue_status_for(200, ""), "pending");
+    }
 
     #[test]
     fn http_date_becomes_utc_iso() {

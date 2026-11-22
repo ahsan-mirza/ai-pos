@@ -7,7 +7,8 @@ import { useLocale } from "@ai-pos/ui";
 import { useSubscriptionLocked } from "../../lib/capabilities";
 import { useRegisterLayout } from "../RegisterLayout";
 import { POSAlertBanner } from "../POSAlertBanner";
-import { HeaderBar, type SyncState } from "./HeaderBar";
+import { HeaderBar } from "./HeaderBar";
+import type { SyncState } from "./syncState";
 import { KeyboardStatusBar } from "./KeyboardStatusBar";
 import { ShellContext, type RegisterView } from "./ShellContext";
 import { SidebarNav } from "./SidebarNav";
@@ -27,14 +28,29 @@ interface RegisterShellProps {
 export function RegisterShell({ session, view, onNavigate, onLock, children }: RegisterShellProps) {
   const { theme } = useRegisterLayout();
   const [busy, setBusy] = useState(false);
+  const [drawerHeld, setDrawerHeld] = useState(false);
   const [catalogSummary, setCatalogSummary] = useState<string | null>(null);
+  const [registerStatus, setRegisterStatus] = useState<SyncState | null>(null);
   const notifier = useRef<((message: string) => void) | null>(null);
   const setNotifier = useCallback((notify: ((message: string) => void) | null) => {
     notifier.current = notify;
   }, []);
   const value = useMemo(
-    () => ({ session, view, setBusy, setNotifier, catalogSummary, setCatalogSummary, navigate: onNavigate }),
-    [session, view, setNotifier, catalogSummary, onNavigate],
+    () => ({
+      session,
+      view,
+      busy,
+      setBusy,
+      drawerHeld,
+      setDrawerHeld,
+      setNotifier,
+      catalogSummary,
+      setCatalogSummary,
+      registerStatus,
+      setRegisterStatus,
+      navigate: onNavigate,
+    }),
+    [session, view, busy, drawerHeld, setNotifier, catalogSummary, registerStatus, onNavigate],
   );
 
   useEffect(() => {

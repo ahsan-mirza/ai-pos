@@ -24,7 +24,37 @@
   --font-en: "Inter", "Archivo", sans-serif;
   --font-ar: "Noto Naskh Arabic", "Inter", "Archivo", sans-serif;
   --font-sans: var(--font-en);
-  --radius-card: 20px;
+  --radius-card: 1.25rem;
+  /* Spacing, type, and control sizes. 1rem follows the browser root font-size. */
+  --pos-space-1: 0.25rem;
+  --pos-space-2: 0.5rem;
+  --pos-space-3: 0.75rem;
+  --pos-space-4: 1rem;
+  --pos-space-5: 1.25rem;
+  --pos-space-6: 1.5rem;
+  --pos-space-8: 2rem;
+  --pos-space-10: 2.5rem;
+  --pos-space-12: 3rem;
+  --pos-radius-sm: 0.375rem;
+  --pos-radius-md: 0.5rem;
+  --pos-radius-lg: 0.75rem;
+  --pos-radius-xl: 1rem;
+  --pos-radius-pill: 999rem;
+  --pos-text-xs: 0.6875rem;
+  --pos-text-sm: 0.75rem;
+  --pos-text-base: 0.875rem;
+  --pos-text-md: 1rem;
+  --pos-text-lg: 1.125rem;
+  --pos-text-xl: 1.25rem;
+  --pos-text-2xl: 1.5rem;
+  --pos-control-sm: 2rem;
+  --pos-control-md: 2.5rem;
+  --pos-control-lg: 3rem;
+  --pos-icon-sm: 0.875rem;
+  --pos-icon-md: 1rem;
+  --pos-icon-lg: 1.25rem;
+  --pos-product-image-height: 7rem;
+  --pos-product-footer-height: 2.375rem;
   /* Dining floor. Light is the default; `.dark` and `[data-theme="dark"]` retint the same names. */
   --table-card-bg: #ffffff;
   --table-card-ink: #222026;
@@ -228,11 +258,11 @@ html[lang="ar"] {
 }
 
 :focus-visible {
-  outline: 2px solid var(--color-accent);
-  outline-offset: 2px;
+  outline: 0.125rem solid var(--color-accent);
+  outline-offset: 0.125rem;
 }
 
-/* Field widths. Below 640px every size uses the row. From there, the cap follows the control. */
+/* Field widths. Below 40rem every size uses the row. From there, the cap follows the control. */
 :root {
   --field-sm: 13.75rem;
   --field-date: 16.25rem;
@@ -258,7 +288,7 @@ html[lang="ar"] {
   min-width: 0;
 }
 
-@media (min-width: 640px) {
+@media (min-width: 40rem) {
   .field-sm { max-width: var(--field-sm); }
   .field-date { max-width: var(--field-date); }
   .field-phone { max-width: var(--field-phone); }
@@ -275,7 +305,7 @@ html[lang="ar"] {
   align-items: start;
 }
 
-@media (min-width: 768px) {
+@media (min-width: 48rem) {
   .form-grid {
     grid-template-columns: repeat(2, minmax(0, 26.25rem));
   }

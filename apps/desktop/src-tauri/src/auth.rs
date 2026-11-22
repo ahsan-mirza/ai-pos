@@ -155,7 +155,16 @@ pub fn unlock_by_id(db: &Db, config: &DesktopConfig, user_id: &str, pin: &str) -
     require_pin(pin)?;
     match remote_unlock(config, user_id, pin) {
         Remote::Accepted(response) => accept_remote(db, response, pin),
-        Remote::Refused { message, .. } => Err(message),
+        Remote::Refused { status, message } => {
+            if status == 401 {
+                if let Ok(Some(cached)) = db.cached_user_by_id(user_id) {
+                    if cached.provisioning_status == "pending" {
+                        return offline_login_id(db, config, user_id, pin);
+                    }
+                }
+            }
+            Err(message)
+        }
         Remote::Unreachable => offline_login_id(db, config, user_id, pin),
     }
 }
@@ -267,6 +276,12 @@ fn offline_login_id(db: &Db, config: &DesktopConfig, user_id: &str, pin: &str) -
 fn finish_offline(db: &Db, cached: CachedUser, pin: &str) -> Result<PinUnlock, String> {
     let username = cached.username.clone();
     let now = now_secs();
+    if cached.is_active == 0 {
+        return Err("This account is disabled on this register.".into());
+    }
+    if cached.provisioning_status == "rejected" {
+        return Err("This account was not accepted by the server.".into());
+    }
     if cached.locked_until.is_some_and(|until| until > now) {
         return Err("Too many failed attempts on this register. Try again in a few minutes.".into());
     }
@@ -425,12 +440,17 @@ fn interpret(response: reqwest::blocking::Response) -> Remote {
     Remote::Unreachable
 }
 
-fn hash_pin(pin: &str) -> Result<String, String> {
+pub(crate) fn hash_pin(pin: &str) -> Result<String, String> {
     let salt = SaltString::generate(&mut OsRng);
     Argon2::default()
         .hash_password(pin.as_bytes(), &salt)
         .map(|hash| hash.to_string())
         .map_err(|err| err.to_string())
+}
+
+#[cfg(test)]
+pub(crate) fn tests_verify_pin(pin: &str, encoded: &str) -> bool {
+    verify_pin(pin, encoded)
 }
 
 #[cfg(test)]
@@ -443,9 +463,47 @@ mod tests {
         assert_eq!(fresh_addons("[\"gift_cards\"]", 1_000, 1_000 + 60), vec!["gift_cards".to_string()]);
         assert!(fresh_addons("not-json", 1_000, 1_000).is_empty());
     }
+
+    #[test]
+    fn five_wrong_pins_lock_the_local_cashier() {
+        let path = std::env::temp_dir().join(format!("axiz-o7-lock-{}.db", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        let db = crate::db::Db::open(&path).unwrap();
+        crate::staff::create_local(
+            &db,
+            crate::staff::NewStaff {
+                actor_id: "manager".into(),
+                actor_role: "Store Manager".into(),
+                actor_store_id: "branch-a".into(),
+                seat_limit: Some(5),
+                seat_trusted: true,
+                tenant_id: "tenant-a".into(),
+                terminal_id: "till-a".into(),
+                user_id: "cashier-local".into(),
+                username: "new.cashier".into(),
+                full_name: "New Cashier".into(),
+                store_id: "branch-a".into(),
+                role_name: "Cashier".into(),
+                pin: "1357".into(),
+                event_id: "event-lock".into(),
+            },
+        )
+        .unwrap();
+        assert!(super::finish_offline(&db, db.cached_user("new.cashier").unwrap().unwrap(), "1357").is_ok());
+        for _ in 0..5 {
+            let cached = db.cached_user("new.cashier").unwrap().unwrap();
+            assert!(super::finish_offline(&db, cached, "0000").is_err());
+        }
+        let locked = super::finish_offline(&db, db.cached_user("new.cashier").unwrap().unwrap(), "1357");
+        let Err(message) = locked else {
+            panic!("a locked cashier was allowed in");
+        };
+        assert!(message.contains("Too many failed attempts"));
+        let _ = std::fs::remove_file(&path);
+    }
 }
 
-fn verify_pin(pin: &str, encoded: &str) -> bool {
+pub(crate) fn verify_pin(pin: &str, encoded: &str) -> bool {
     PasswordHash::new(encoded)
         .map(|parsed| {
             Argon2::default()

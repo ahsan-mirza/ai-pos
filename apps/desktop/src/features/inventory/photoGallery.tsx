@@ -49,12 +49,12 @@ export function SavedPhotoGallery({ productId }: { productId: string }) {
           <li key={image.id} className="relative overflow-hidden rounded-2xl border border-zinc-200">
             <img src={media(image.thumb_url || image.url)} alt="" className="aspect-square w-full object-cover" />
             <div className="absolute inset-x-1 bottom-1 flex justify-end gap-1">
-              {image.is_primary ? <span className="rounded-full bg-orange-500 px-2 py-0.5 text-[10px] font-semibold text-white">Main</span> : (
-                <button type="button" disabled={busy} className="rounded-full bg-white px-2 py-0.5 text-[10px] font-semibold" onClick={() => void run(() => inventoryApi.updateImage(image.id, { is_primary: true }), "Could not change the cover.")}>Main</button>
+              {image.is_primary ? <span className="rounded-full bg-orange-500 px-2 py-0.5 text-[0.625rem] font-semibold text-white">Main</span> : (
+                <button type="button" disabled={busy} className="rounded-full bg-white px-2 py-0.5 text-[0.625rem] font-semibold" onClick={() => void run(() => inventoryApi.updateImage(image.id, { is_primary: true }), "Could not change the cover.")}>Main</button>
               )}
-              {index > 0 ? <button type="button" disabled={busy} className="rounded-full bg-white px-2 py-0.5 text-[10px]" onClick={() => void run(() => inventoryApi.updateImage(image.id, { position: ordered[index - 1]!.position }), "Could not reorder the photo.")}>Earlier</button> : null}
-              {index < ordered.length - 1 ? <button type="button" disabled={busy} className="rounded-full bg-white px-2 py-0.5 text-[10px]" onClick={() => void run(() => inventoryApi.updateImage(image.id, { position: ordered[index + 1]!.position }), "Could not reorder the photo.")}>Later</button> : null}
-              <button type="button" disabled={busy} className="rounded-full bg-white px-2 py-0.5 text-[10px] font-semibold" onClick={() => void run(() => inventoryApi.deleteImage(image.id), "Could not delete the photo.")}>Remove</button>
+              {index > 0 ? <button type="button" disabled={busy} className="rounded-full bg-white px-2 py-0.5 text-[0.625rem]" onClick={() => void run(() => inventoryApi.updateImage(image.id, { position: ordered[index - 1]!.position }), "Could not reorder the photo.")}>Earlier</button> : null}
+              {index < ordered.length - 1 ? <button type="button" disabled={busy} className="rounded-full bg-white px-2 py-0.5 text-[0.625rem]" onClick={() => void run(() => inventoryApi.updateImage(image.id, { position: ordered[index + 1]!.position }), "Could not reorder the photo.")}>Later</button> : null}
+              <button type="button" disabled={busy} className="rounded-full bg-white px-2 py-0.5 text-[0.625rem] font-semibold" onClick={() => void run(() => inventoryApi.deleteImage(image.id), "Could not delete the photo.")}>Remove</button>
             </div>
           </li>
         ))}

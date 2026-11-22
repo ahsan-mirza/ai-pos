@@ -76,6 +76,31 @@ class Permission(StrEnum):
     PHARMACY_CATALOGUE = "pharmacy:catalogue"
     # Lets the holder appoint another user to release lots. Holding it is not itself a release authority.
     PHARMACY_AUTHORIZE_PHARMACIST = "pharmacy:authorize_pharmacist"
+    LAUNDRY_CONFIGURE = "laundry:configure"
+    LAUNDRY_CATALOGUE = "laundry:catalogue"
+    LAUNDRY_ORDERS_VIEW = "laundry:orders:view"
+    LAUNDRY_ORDERS_CREATE = "laundry:orders:create"
+    LAUNDRY_ORDERS_UPDATE = "laundry:orders:update"
+    LAUNDRY_ORDERS_CANCEL = "laundry:orders:cancel"
+    LAUNDRY_GARMENTS_VIEW = "laundry:garments:view"
+    LAUNDRY_GARMENTS_UPDATE = "laundry:garments:update"
+    LAUNDRY_TAGS_PRINT = "laundry:tags:print"
+    LAUNDRY_PRICING_VIEW = "laundry:pricing:view"
+    LAUNDRY_PRICING_OVERRIDE = "laundry:pricing:override"
+    LAUNDRY_PHOTOS_UPLOAD = "laundry:photos:upload"
+    LAUNDRY_ORDERS_REPRINT = "laundry:orders:reprint"
+    LAUNDRY_PRODUCTION_VIEW = "laundry:production:view"
+    LAUNDRY_PRODUCTION_SORT = "laundry:production:sort"
+    LAUNDRY_PRODUCTION_PROCESS = "laundry:production:process"
+    LAUNDRY_PRODUCTION_FINISH = "laundry:production:finish"
+    LAUNDRY_PRODUCTION_OVERRIDE = "laundry:production:override"
+    LAUNDRY_QUALITY_INSPECT = "laundry:quality:inspect"
+    LAUNDRY_PACKING = "laundry:packing:operate"
+    LAUNDRY_INCIDENTS_REPORT = "laundry:incidents:report"
+    LAUNDRY_INCIDENTS_RESOLVE = "laundry:incidents:resolve"
+    LAUNDRY_MACHINES_OPERATE = "laundry:machines:operate"
+    LAUNDRY_MACHINES_CONFIGURE = "laundry:machines:configure"
+    LAUNDRY_BATCHES_MANAGE = "laundry:batches:manage"
 
 
 # Granted to Store Managers by migration 20261019_0012.
@@ -225,6 +250,33 @@ PERMISSION_GROUPS: dict[str, list[tuple[Permission, str]]] = {
             "Not assigned on a role and not included in Super Admin. "
             "A governed officer record appoints pharmacists. This is not a licence check.",
         ),
+    ],
+    "Laundry": [
+        (Permission.LAUNDRY_CONFIGURE, "Laundry operating modes, workflows, and templates"),
+        (Permission.LAUNDRY_CATALOGUE, "Laundry services, garment types, and price lists"),
+        (Permission.LAUNDRY_ORDERS_VIEW, "View laundry orders"),
+        (Permission.LAUNDRY_ORDERS_CREATE, "Take a laundry order"),
+        (Permission.LAUNDRY_ORDERS_UPDATE, "Edit a laundry order before production"),
+        (Permission.LAUNDRY_ORDERS_CANCEL, "Cancel a laundry order"),
+        (Permission.LAUNDRY_GARMENTS_VIEW, "View garments on a laundry order"),
+        (Permission.LAUNDRY_GARMENTS_UPDATE, "Update a garment on a laundry order"),
+        (Permission.LAUNDRY_TAGS_PRINT, "Print and replace laundry tags"),
+        (Permission.LAUNDRY_PRICING_VIEW, "View a laundry price snapshot"),
+        (Permission.LAUNDRY_PRICING_OVERRIDE, "Change a laundry price after production starts"),
+        (Permission.LAUNDRY_PHOTOS_UPLOAD, "Upload laundry intake photos"),
+        (Permission.LAUNDRY_ORDERS_REPRINT, "Reprint a laundry receipt"),
+        (Permission.LAUNDRY_PRODUCTION_VIEW, "View the laundry production floor"),
+        (Permission.LAUNDRY_PRODUCTION_SORT, "Sort a laundry garment"),
+        (Permission.LAUNDRY_PRODUCTION_PROCESS, "Run washing and dry-cleaning stages"),
+        (Permission.LAUNDRY_PRODUCTION_FINISH, "Run drying, ironing, and folding stages"),
+        (Permission.LAUNDRY_PRODUCTION_OVERRIDE, "Move a garment off the next stage, with an audit reason"),
+        (Permission.LAUNDRY_QUALITY_INSPECT, "Record a laundry quality inspection"),
+        (Permission.LAUNDRY_PACKING, "Pack a laundry order and mark it ready"),
+        (Permission.LAUNDRY_INCIDENTS_REPORT, "Report a missing or damaged garment"),
+        (Permission.LAUNDRY_INCIDENTS_RESOLVE, "Investigate and close a laundry incident"),
+        (Permission.LAUNDRY_MACHINES_OPERATE, "Start and complete a laundry machine cycle"),
+        (Permission.LAUNDRY_MACHINES_CONFIGURE, "Register laundry machines and maintenance"),
+        (Permission.LAUNDRY_BATCHES_MANAGE, "Create and run a laundry production batch"),
     ],
 }
 

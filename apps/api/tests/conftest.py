@@ -21,11 +21,13 @@ os.environ["LOGIN_LOCKOUT_MINUTES"] = "15"
 os.environ["SCHEDULER_ENABLED"] = "false"
 
 import uuid
+from datetime import UTC, datetime
 
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session, sessionmaker
 
+from app.core import clock
 from app.core.config import get_settings
 from app.core.database import build_engine, get_db
 from app.core.permissions import CASHIER_ROLE_ID
@@ -37,10 +39,21 @@ from app.services.settings_service import clear_settings_cache
 
 get_settings.cache_clear()
 
+# 15:00 UTC on 17 November 2026. A sale at 08:00 UTC on 19 October is 29 days earlier, inside the 30-day window.
+SALE_CLOCK = datetime(2026, 11, 17, 15, 0, tzinfo=UTC)
+
 CASHIER_ID = "00000000-0000-4000-8000-000000000002"
 CASHIER_PIN = "1357"
 ADMIN_PASSWORD = "root-password-123"
 ADMIN_PIN = "2468"
+
+
+@pytest.fixture(autouse=True)
+def _frozen_sale_clock():
+    """Every test sees the same sale clock. Production code still calls the wall clock when this is unset."""
+    clock.freeze(SALE_CLOCK)
+    yield
+    clock.reset()
 
 
 @pytest.fixture(autouse=True)
@@ -49,9 +62,11 @@ def _isolated_limits() -> None:
     from app.core import cache
     from app.routers.super_admin import _attempts as console_attempts
     from app.routers.v1.terminals import _attempts as activation_attempts
+    from app.routers.v1.terminals import _issue_attempts as entitlement_attempts
 
     console_attempts.clear()
     activation_attempts.clear()
+    entitlement_attempts.clear()
     cache.reset()
 
 

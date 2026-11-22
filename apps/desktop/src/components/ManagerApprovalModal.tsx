@@ -140,7 +140,7 @@ export function ManagerApprovalModal({
           }}
         >
           {children}
-          <div className="grid grid-cols-[1fr_120px] gap-3">
+          <div className="grid grid-cols-[1fr_7.5rem] gap-3">
             <label className="text-sm font-medium" htmlFor="approver-username">
               Manager username
               <input

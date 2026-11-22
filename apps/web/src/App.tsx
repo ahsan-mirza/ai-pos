@@ -6,6 +6,9 @@ import { AppShell, PageFrame } from "./components/layout/AppShell";
 import { ConfirmProvider } from "./components/ui/ConfirmDialog";
 import { DashboardPage } from "./features/analytics/DashboardPage";
 import { SalesInsightsPage } from "./features/analytics/SalesInsightsPage";
+import { LaundryCatalogPage } from "./features/laundry/LaundryCatalogPage";
+import { LaundryManagePage } from "./features/laundry/LaundryManagePage";
+import { LaundryOrdersPage } from "./features/laundry/LaundryOrdersPage";
 import { RentalsPage } from "./features/rentals/RentalsPage";
 import { DeepAnalyticsPage } from "./features/analytics/DeepAnalyticsPage";
 import { EInvoicingPage } from "./features/einvoicing/EInvoicingPage";
@@ -347,6 +350,33 @@ function Portal() {
               </RequirePermission>
             }
           />
+          <Route
+            path="laundry"
+            element={
+              <RequirePermission permission={Permission.LaundryCatalogue}>
+                <RequireCapability capability={Capability.LaundryOperations}>
+                  <LaundryCatalogPage />
+                </RequireCapability>
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="laundry/orders"
+            element={
+              <RequirePermission permission={Permission.LaundryOrdersView}>
+                <RequireCapability capability={Capability.LaundryOperations}>
+                  <LaundryOrdersPage />
+                </RequireCapability>
+              </RequirePermission>
+            }
+          />
+          <Route path="laundry/production" element={<RequirePermission permission={Permission.LaundryProductionView}><RequireCapability capability={Capability.LaundryOperations}><LaundryManagePage section="production" /></RequireCapability></RequirePermission>} />
+          <Route path="laundry/workflows" element={<RequirePermission permission={Permission.LaundryConfigure}><RequireCapability capability={Capability.LaundryOperations}><LaundryManagePage section="workflows" /></RequireCapability></RequirePermission>} />
+          <Route path="laundry/production/batches" element={<RequirePermission permission={Permission.LaundryBatchesManage}><RequireCapability capability={Capability.LaundryOperations}><LaundryManagePage section="batches" /></RequireCapability></RequirePermission>} />
+          <Route path="laundry/machines" element={<RequirePermission permission={Permission.LaundryMachinesConfigure}><RequireCapability capability={Capability.LaundryOperations}><LaundryManagePage section="machines" /></RequireCapability></RequirePermission>} />
+          <Route path="laundry/quality-control" element={<RequirePermission permission={Permission.LaundryQualityInspect}><RequireCapability capability={Capability.LaundryOperations}><LaundryManagePage section="quality" /></RequireCapability></RequirePermission>} />
+          <Route path="laundry/incidents" element={<RequirePermission permission={Permission.LaundryIncidentsResolve}><RequireCapability capability={Capability.LaundryOperations}><LaundryManagePage section="incidents" /></RequireCapability></RequirePermission>} />
+          <Route path="laundry/reports/production" element={<RequirePermission permission={Permission.LaundryProductionView}><RequireCapability capability={Capability.LaundryOperations}><LaundryManagePage section="reports" /></RequireCapability></RequirePermission>} />
           <Route
             path="rentals"
             element={

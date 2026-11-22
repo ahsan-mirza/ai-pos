@@ -46,7 +46,7 @@ export function CreditBadge({ customer, currency, pendingCents = 0 }: CreditBadg
         <div className={`h-full rounded-full ${over ? "bg-primary" : "bg-zinc-200 dark:bg-white/70"}`} style={{ width: `${used}%` }} />
       </div>
       {customer.risk_grade || customer.overdue_cents > 0 || (customer.pending_on_account_cents ?? 0) > 0 ? (
-        <p className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-zinc-600 dark:text-white/60 tabular-nums">
+        <p className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[0.6875rem] text-zinc-600 dark:text-white/60 tabular-nums">
           {customer.risk_grade ? (
             <span
               title={`Credit risk score ${customer.risk_score ?? "?"}/100`}

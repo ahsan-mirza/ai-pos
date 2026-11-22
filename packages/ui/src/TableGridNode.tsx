@@ -92,7 +92,7 @@ export function TableSeatGraphic({
 }
 
 /** Measured height of the current floor card. Status changes color, not this box. */
-const CARD_HEIGHT = "h-[167px]";
+const CARD_HEIGHT = "h-[10.4375rem]";
 export function TableGridNode({
   label,
   seats,
@@ -189,9 +189,9 @@ export function TableGridNode({
       } ${disabled ? "cursor-not-allowed opacity-60 active:scale-100" : ""}`}
     >
       <span className="inline-flex h-5 max-w-full shrink-0 items-center self-start overflow-hidden rounded-full border border-[var(--table-tone-line)] bg-[var(--table-tone-fill)] px-2 text-[var(--table-tone-ink)]">
-        <span className="truncate text-[11px] font-semibold leading-4">{headline}</span>
+        <span className="truncate text-[0.6875rem] font-semibold leading-4">{headline}</span>
       </span>
-      <span className="flex h-[72px] shrink-0 items-center justify-center">
+      <span className="flex h-[4.5rem] shrink-0 items-center justify-center">
         <TableSeatGraphic seats={seats} tone={tone} shape={shape} size={72} guests={occupied ? Math.max(covers, 1) : 0} />
       </span>
       <span className="flex min-w-0 shrink-0 flex-col">

@@ -40,9 +40,13 @@ from app.routers.v1.grocery import router as grocery_router
 from app.routers.v1.insights import router as insights_router
 from app.routers.v1.integrations import router as integrations_router
 from app.routers.v1.inventory import router as inventory_router
+from app.routers.v1.offline_reviews import router as offline_reviews_router
 from app.routers.v1.kds import router as kds_router
 from app.routers.v1.kitchen_agent import router as kitchen_agent_router
 from app.routers.v1.labels import router as labels_router
+from app.routers.v1.laundry import router as laundry_router
+from app.routers.v1.laundry_orders import router as laundry_orders_router
+from app.routers.v1.laundry_production import router as laundry_production_router
 from app.routers.v1.live_socket import router as live_ws_router
 from app.routers.v1.loyalty import exports_router
 from app.routers.v1.loyalty import router as loyalty_router
@@ -134,6 +138,7 @@ api_router.include_router(brands_router, prefix="/brands", tags=["brands"])
 api_router.include_router(product_models_router, prefix="/product-models", tags=["brands"])
 api_router.include_router(stock_counts_router, prefix="/inventory/counts", tags=["stock counts"])
 api_router.include_router(inventory_router, prefix="/inventory", tags=["inventory"])
+api_router.include_router(offline_reviews_router, tags=["offline reviews"])
 api_router.include_router(register_router, prefix="/inventory", tags=["inventory"])
 api_router.include_router(batches_router, prefix="/inventory", tags=["purchase batches"])
 api_router.include_router(expiry_router, prefix="/inventory", tags=["expiry"], dependencies=module(Capability.FEFO))
@@ -143,6 +148,24 @@ api_router.include_router(
     prefix="/pharmacy",
     tags=["pharmacy"],
     dependencies=module(Capability.PHARMACY_CATALOG),
+)
+api_router.include_router(
+    laundry_router,
+    prefix="/laundry",
+    tags=["laundry"],
+    dependencies=module(Capability.LAUNDRY_OPERATIONS),
+)
+api_router.include_router(
+    laundry_orders_router,
+    prefix="/laundry",
+    tags=["laundry orders"],
+    dependencies=module(Capability.LAUNDRY_OPERATIONS),
+)
+api_router.include_router(
+    laundry_production_router,
+    prefix="/laundry",
+    tags=["laundry production"],
+    dependencies=module(Capability.LAUNDRY_OPERATIONS),
 )
 api_router.include_router(
     pricing_router, prefix="/pricing", tags=["pricing"], dependencies=module(Capability.WHOLESALE_PRICING)

@@ -15,6 +15,7 @@ import {
   ShoppingCart,
   Timer,
   UtensilsCrossed,
+  WashingMachine,
   Wrench,
   type LucideIcon,
 } from "lucide-react";
@@ -27,8 +28,11 @@ import { ClockModal } from "../../features/timeclock/ClockModal";
 import { useCapabilities } from "../../lib/capabilities";
 import { inTauri, rejectedCount } from "../../lib/tauri";
 import { useRegisterLayout } from "../RegisterLayout";
+import { registerPageLabel, registerPageTarget } from "../../features/laundry/laundryNav";
+import { visibleStations } from "../../features/laundry/productionAccess";
 import type { RegisterView } from "./ShellContext";
 import { useShell } from "./ShellContext";
+import { openSettings, openSidebarPage, ordersRailActive, settingsGearActive } from "./settingsEntry";
 
 type Tool = "clock" | "shift" | "sync" | "display" | "kitchen" | "settings";
 
@@ -44,6 +48,7 @@ const allPages: { id: RegisterView; label: string; icon: LucideIcon; capability?
   { id: "orders", label: "Orders & Tables", icon: UtensilsCrossed, audience: "fnb" },
   { id: "orders", label: "Void & waste", icon: RotateCcw, audience: "fnb" },
   { id: "repairs", label: "Repairs", icon: Wrench, capability: Capability.Repairs },
+  { id: "laundry", label: "Laundry", icon: WashingMachine, capability: Capability.LaundryOperations },
   { id: "returns", label: "Returns & Exchanges", icon: RotateCcw, audience: "retail" },
   { id: "reorders", label: "Reorder alerts", icon: Repeat, capability: Capability.CustomerReorders },
 ];
@@ -80,7 +85,7 @@ function Tip({ show, children }: { show: boolean; children: ReactNode }) {
 }
 
 const itemBase =
-  "group relative flex h-12 w-full items-center gap-3 rounded-xl px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/50 disabled:cursor-not-allowed disabled:opacity-40";
+  "group relative flex w-full items-center gap-3 rounded-xl px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/50 disabled:cursor-not-allowed disabled:opacity-40";
 const itemIdle =
   "text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-white/5 dark:hover:text-zinc-100";
 const itemActive = "bg-primary-500 text-white shadow-md shadow-primary-500/25";
@@ -91,6 +96,7 @@ export function SidebarNav({ busy, onNavigate, onLock }: SidebarNavProps) {
   const { session, view } = useShell();
   const { railCollapsed: collapsed, toggleRail } = useRegisterLayout();
   const [tool, setTool] = useState<Tool | null>(null);
+  const [hash, setHash] = useState(() => (typeof window === "undefined" ? "" : window.location.hash));
   const [rejected, setRejected] = useState(0);
   const [photoFailed, setPhotoFailed] = useState(false);
   const avatarUrl = session.user.avatar_url ?? null;
@@ -99,8 +105,10 @@ export function SidebarNav({ busy, onNavigate, onLock }: SidebarNavProps) {
   const spec = profileSpec(profile);
   const allows = (audience: "fnb" | "retail" | undefined) =>
     audience === undefined || (audience === "fnb" && foodAndBeverage) || (audience === "retail" && !foodAndBeverage);
+  const laundryBusiness = profile === "laundry";
   const pages = allPages.filter((page) => {
     if (page.id === "inventory" && !canOpenInventory(profile, enabled, session.user.permissions)) return false;
+    if (page.id === "laundry" && (laundryBusiness || visibleStations(session.user.permissions).length === 0)) return false;
     return allows(page.audience) && (page.capability === undefined || enabled.has(page.capability));
   });
   const tools = allTools
@@ -109,6 +117,16 @@ export function SidebarNav({ busy, onNavigate, onLock }: SidebarNavProps) {
   const who = `${session.user.full_name} · ${session.user.role_name}${session.mode === "offline" ? " · offline unlock" : ""}`;
 
   useEffect(() => setPhotoFailed(false), [avatarUrl]);
+
+  useEffect(() => {
+    const sync = () => setHash(window.location.hash);
+    window.addEventListener("hashchange", sync);
+    window.addEventListener("popstate", sync);
+    return () => {
+      window.removeEventListener("hashchange", sync);
+      window.removeEventListener("popstate", sync);
+    };
+  }, []);
 
   useEffect(() => {
     if (!desktop) return;
@@ -132,13 +150,13 @@ export function SidebarNav({ busy, onNavigate, onLock }: SidebarNavProps) {
       title={!collapsed ? props.title : undefined}
       disabled={props.disabled}
       onClick={props.onClick}
-      className={`${itemBase} ${collapsed ? "justify-center px-0" : ""} ${props.active ? itemActive : itemIdle}`}
+      className={`${itemBase} ${collapsed ? "h-10 justify-center px-0" : "h-12"} ${props.active ? itemActive : itemIdle}`}
     >
-      <Icon size={20} strokeWidth={1.75} aria-hidden="true" className="shrink-0" />
+      <Icon strokeWidth={1.75} aria-hidden="true" className="h-5 w-5 shrink-0" />
       {collapsed ? null : <span className="truncate">{label}</span>}
       {props.badge ? (
         <span
-          className={`flex h-5 min-w-5 items-center justify-center rounded-full bg-primary-500 px-1 text-[10px] font-bold tabular-nums text-white ${
+          className={`flex h-5 min-w-5 items-center justify-center rounded-full bg-primary-500 px-1 text-[0.625rem] font-bold tabular-nums text-white ${
             collapsed ? "absolute end-1 top-1" : "ms-auto"
           }`}
         >
@@ -149,17 +167,26 @@ export function SidebarNav({ busy, onNavigate, onLock }: SidebarNavProps) {
     </button>
   );
 
-  const pageButtons = pages.map(({ id, label, icon }) =>
-    navItem(`${id}-${label}`, t(label), icon, { active: view === id && label !== "Void & waste", disabled: busy && view !== id, onClick: () => onNavigate(id) }),
-  );
+  const pageButtons = pages.map(({ id, label, icon }) => {
+    const shown = registerPageLabel(profile, id, label);
+    const target = registerPageTarget(profile, id);
+    const active = laundryBusiness && id === "checkout" ? ordersRailActive(profile, view, hash) : view === target && shown !== "Void & waste";
+    return navItem(`${id}-${shown}`, t(shown), icon, {
+      active,
+      disabled: busy && view !== target,
+      onClick: () => openSidebarPage(profile, id, onNavigate),
+    });
+  });
   const openTool = (id: Tool) => {
     if (id === "display") void openDisplayWindow();
-    else if (id === "settings" || id === "kitchen") onNavigate(id === "kitchen" ? "orders" : "settings");
+    else if (id === "settings") openSettings(profile, onNavigate);
+    else if (id === "kitchen") onNavigate("orders");
     else setTool(id);
   };
+  const gearActive = settingsGearActive(profile, view, hash);
   const toolButtons = tools.map((item) =>
     navItem(item.id, t(item.label), item.icon, {
-      active: item.id === "settings" && view === "settings",
+      active: item.id === "settings" && gearActive,
       disabled: !toolAvailable(item),
       onClick: () => openTool(item.id),
       badge: item.id === "sync" ? rejected : 0,
@@ -171,32 +198,36 @@ export function SidebarNav({ busy, onNavigate, onLock }: SidebarNavProps) {
     <>
       <header className="flex shrink-0 items-center gap-1 overflow-x-auto border-b border-zinc-200 bg-white px-3 py-2 md:hidden dark:border-zinc-800 dark:bg-zinc-900">
         <BrandLogo variant="mark" alt="" className="me-1 h-10 w-10 shrink-0" />
-        {pages.map(({ id, label, icon: Icon }) => (
+        {pages.map(({ id, label, icon: Icon }) => {
+          const target = registerPageTarget(profile, id);
+          const active = laundryBusiness && id === "checkout" ? ordersRailActive(profile, view, hash) : view === target;
+          return (
           <button
             key={`${id}-${label}`}
             type="button"
-            aria-label={label}
-            aria-current={view === id ? "page" : undefined}
-            disabled={busy && view !== id}
-            onClick={() => onNavigate(id)}
-            className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-xl ${view === id ? itemActive : itemIdle}`}
+            aria-label={registerPageLabel(profile, id, label)}
+            aria-current={active ? "page" : undefined}
+            disabled={busy && view !== target}
+            onClick={() => openSidebarPage(profile, id, onNavigate)}
+            className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-xl ${active ? itemActive : itemIdle}`}
           >
-            <Icon size={18} aria-hidden="true" />
+            <Icon aria-hidden="true" className="h-[1.125rem] w-[1.125rem]" />
           </button>
-        ))}
+          );
+        })}
         {tools.map((item) => (
           <button
             key={item.id}
             type="button"
-            aria-label={item.label}
-            aria-current={item.id === "settings" && view === "settings" ? "page" : undefined}
+            aria-label={t(item.label)}
+            aria-current={item.id === "settings" && gearActive ? "page" : undefined}
             disabled={!toolAvailable(item)}
             onClick={() => openTool(item.id)}
             className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-xl disabled:opacity-40 ${
-              item.id === "settings" && view === "settings" ? itemActive : itemIdle
+              item.id === "settings" && gearActive ? itemActive : itemIdle
             }`}
           >
-            <item.icon size={18} aria-hidden="true" />
+            <item.icon aria-hidden="true" className="h-[1.125rem] w-[1.125rem]" />
           </button>
         ))}
         <button
@@ -206,7 +237,7 @@ export function SidebarNav({ busy, onNavigate, onLock }: SidebarNavProps) {
           disabled={busy}
           className={`ms-auto flex h-12 w-12 shrink-0 items-center justify-center rounded-xl disabled:opacity-40 ${itemIdle}`}
         >
-          <Lock size={18} aria-hidden="true" />
+          <Lock aria-hidden="true" className="h-[1.125rem] w-[1.125rem]" />
         </button>
       </header>
 
@@ -229,25 +260,25 @@ export function SidebarNav({ busy, onNavigate, onLock }: SidebarNavProps) {
             }`}
           >
             {collapsed ? (
-              <PanelLeftOpen size={18} strokeWidth={1.75} aria-hidden="true" className="rtl:scale-x-[-1]" />
+              <PanelLeftOpen strokeWidth={1.75} aria-hidden="true" className="h-[1.125rem] w-[1.125rem] rtl:scale-x-[-1]" />
             ) : (
-              <PanelLeftClose size={18} strokeWidth={1.75} aria-hidden="true" className="rtl:scale-x-[-1]" />
+              <PanelLeftClose strokeWidth={1.75} aria-hidden="true" className="h-[1.125rem] w-[1.125rem] rtl:scale-x-[-1]" />
             )}
           </button>
         </div>
 
-        <nav aria-label={t("Register")} className={`flex-1 px-3 py-4 ${collapsed ? "" : "custom-scrollbar overflow-y-auto"}`}>
-          {collapsed ? null : <p className="mb-2 px-3 text-[11px] font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-500">{t(foodAndBeverage ? "Service" : "Sell")}</p>}
-          <div className="flex flex-col gap-1">{pageButtons}</div>
+        <nav aria-label={t("Register")} className={`px-3 ${collapsed ? "py-2" : "custom-scrollbar flex-1 overflow-y-auto py-3"}`}>
+          {collapsed ? null : <p className="mb-2 px-3 text-[0.6875rem] font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-500">{t(foodAndBeverage ? "Service" : "Sell")}</p>}
+          <div className="flex flex-col gap-0.5">{pageButtons}</div>
           {collapsed ? (
-            <div className="mx-auto my-4 h-px w-8 bg-zinc-200 dark:bg-zinc-800" />
+            <div className="mx-auto my-2 h-px w-8 bg-zinc-200 dark:bg-zinc-800" />
           ) : (
-            <p className="mb-2 mt-6 px-3 text-[11px] font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-500">{t("Register")}</p>
+            <p className="mb-2 mt-4 px-3 text-[0.6875rem] font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-500">{t("Register")}</p>
           )}
-          <div className="flex flex-col gap-1">{toolButtons}</div>
+          <div className="flex flex-col gap-0.5">{toolButtons}</div>
         </nav>
 
-        <div className="shrink-0 space-y-1 border-t border-zinc-200 p-3 dark:border-zinc-800">
+        <div className={`shrink-0 space-y-1 border-t border-zinc-200 dark:border-zinc-800 ${collapsed ? "mt-2 p-2" : "mt-auto p-3"}`}>
           <div
             tabIndex={collapsed ? 0 : undefined}
             role={collapsed ? "img" : undefined}
@@ -280,7 +311,7 @@ export function SidebarNav({ busy, onNavigate, onLock }: SidebarNavProps) {
             )}
             <Tip show={collapsed}>
               <span className="block font-semibold">{session.user.full_name}</span>
-              <span className="block text-[11px] opacity-70">
+              <span className="block text-[0.6875rem] opacity-70">
                 {session.user.role_name}
                 {session.mode === "offline" ? " · offline unlock" : ""}
               </span>

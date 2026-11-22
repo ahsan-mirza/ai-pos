@@ -15,8 +15,18 @@ logger = logging.getLogger(__name__)
 API_ROOT = Path(__file__).resolve().parents[2]
 # apps/api -> repository root. On the server this is /opt/ai-pos, next to apps/.
 REPO_ROOT = API_ROOT.parent.parent
-AppEnv = Literal["development", "dev", "production", "test", "acceptance", "inventory-acceptance"]
-APP_ENVS: tuple[str, ...] = ("development", "dev", "production", "test", "acceptance", "inventory-acceptance")
+AppEnv = Literal[
+    "development", "dev", "production", "test", "acceptance", "inventory-acceptance", "laundry-acceptance"
+]
+APP_ENVS: tuple[str, ...] = (
+    "development",
+    "dev",
+    "production",
+    "test",
+    "acceptance",
+    "inventory-acceptance",
+    "laundry-acceptance",
+)
 
 
 def is_ip_host(value: str) -> bool:
@@ -32,7 +42,8 @@ def is_ip_host(value: str) -> bool:
 def current_app_env() -> str:
     """APP_ENV picks a repo-root env file.
 
-    The file is .env, .env.dev, .env.production, .env.test, .env.acceptance, or .env.inventory-acceptance.
+    The file is .env, .env.dev, .env.production, .env.test, .env.acceptance,
+    .env.inventory-acceptance, or .env.laundry-acceptance.
     """
     value = os.environ.get("APP_ENV", "").strip().lower() or "development"
     if value not in APP_ENVS:
@@ -85,6 +96,10 @@ class Settings(BaseSettings):
     pin_salt: str = Field(min_length=16)
     encryption_secret: str = Field(min_length=32)
     api_key: str = Field(min_length=16)
+    # Ed25519 seed (standard base64, 32 bytes) and key id for permanent register entitlements.
+    # Empty leaves issuance unconfigured. The desktop build receives only the matching public key.
+    entitlement_signing_seed: str = ""
+    entitlement_signing_key_id: str = ""
     api_host: str = "0.0.0.0"
     api_port: int = Field(default=8000, ge=1, le=65535)
     cors_origins: str

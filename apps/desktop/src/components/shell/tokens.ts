@@ -8,7 +8,7 @@ export const ui = {
   border: "border-zinc-200 dark:border-zinc-800",
   divide: "divide-zinc-200 dark:divide-zinc-800",
   muted: "text-zinc-500 dark:text-zinc-400",
-  label: "text-[11px] font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400",
+  label: "text-[0.6875rem] font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400",
   card: "rounded-2xl border border-zinc-200 bg-white transition-colors hover:border-zinc-300 dark:border-zinc-800 dark:bg-zinc-800/40 dark:hover:border-zinc-700",
   primaryAction:
     "flex h-14 w-full items-center justify-center gap-2 rounded-xl bg-primary-500 px-5 text-base font-bold tabular-nums text-white shadow-lg shadow-primary-500/25 transition-colors hover:bg-primary-600 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-primary-500/30 active:scale-[0.99] disabled:cursor-not-allowed disabled:bg-zinc-200 disabled:text-zinc-500 disabled:shadow-none dark:disabled:bg-zinc-800 dark:disabled:text-zinc-500",

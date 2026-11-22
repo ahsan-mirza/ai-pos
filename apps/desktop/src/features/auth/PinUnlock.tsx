@@ -109,7 +109,7 @@ export function PinUnlock({
       data-theme={theme}
       className={`flex min-h-screen flex-col items-center justify-center p-4 font-sans sm:p-6 ${dark ? "bg-charcoal text-white" : "bg-slate-50 text-zinc-900"}`}
     >
-      <div className="grid w-full max-w-5xl items-start gap-8 lg:grid-cols-[minmax(0,1fr)_340px]">
+      <div className="grid w-full max-w-5xl items-start gap-8 lg:grid-cols-[minmax(0,1fr)_21.25rem]">
         <section className="min-w-0">
           <BrandLogo tone={dark ? "dark" : "light"} className="h-10 w-auto" />
           <p className={`mt-8 text-xs font-medium uppercase tracking-[0.18em] ${muted}`}>
@@ -204,7 +204,7 @@ export function PinUnlock({
           ) : null}
         </section>
 
-        <section className={`rounded-[28px] border p-5 sm:p-6 ${panel}`}>
+        <section className={`rounded-[1.75rem] border p-5 sm:p-6 ${panel}`}>
           <p className="min-h-6 text-center text-sm font-medium">{manual ? t("Username login") : (selected?.display_name ?? t("Select a cashier"))}</p>
           <div className="mt-4 flex justify-center gap-3" aria-label={t("{count} digits entered", { count: pin.length })}>
             {Array.from({ length: MAX_PIN }, (_, index) => (

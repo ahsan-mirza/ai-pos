@@ -1,7 +1,7 @@
 import type { ComboChoice, ModifierChoice } from "./sale-item.js";
 
 export type ServiceType = "DINE_IN" | "TAKEAWAY" | "DELIVERY";
-export type OrderStatus = "OPEN" | "SETTLED" | "VOID";
+export type OrderStatus = "OPEN" | "SETTLED" | "VOID" | "REVIEW";
 export type TableStatus = "free" | "seated" | "ordered" | "bill";
 export type KitchenStatus = "new" | "preparing" | "ready" | "bumped";
 

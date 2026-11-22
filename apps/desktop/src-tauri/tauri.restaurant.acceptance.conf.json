@@ -1,0 +1,33 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "AxizPOS Restaurant Acceptance",
+  "identifier": "com.axizpos.restaurant.acceptance",
+  "build": {
+    "beforeDevCommand": "pnpm exec vite --mode restaurant-acceptance --port 1420 --strictPort",
+    "beforeBuildCommand": "pnpm build:restaurant-acceptance"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "AxizPOS Restaurant Acceptance",
+        "width": 1100,
+        "height": 700,
+        "resizable": true
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; connect-src 'self' http://127.0.0.1:18089 ipc: http://ipc.localhost; img-src 'self' data: http://asset.localhost asset: http://127.0.0.1:18089; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:"
+    }
+  },
+  "bundle": {
+    "active": false,
+    "fileAssociations": [],
+    "windows": {
+      "signCommand": null,
+      "nsis": {
+        "installerHooks": null
+      }
+    }
+  }
+}

@@ -132,12 +132,12 @@ function GuestSplit({
               {(["cash", "card"] as const).map((method) => (
                 <button key={method} type="button" aria-pressed={guest.method === method} disabled={disabled || guest.paid}
                   onClick={() => update(index, { method })}
-                  className={`h-7 rounded-full px-2 text-[11px] font-semibold ${guest.method === method ? "bg-white text-zinc-900 shadow-sm dark:bg-zinc-800 dark:text-white" : "text-zinc-500"}`}>
+                  className={`h-7 rounded-full px-2 text-[0.6875rem] font-semibold ${guest.method === method ? "bg-white text-zinc-900 shadow-sm dark:bg-zinc-800 dark:text-white" : "text-zinc-500"}`}>
                   {method === "cash" ? "Cash" : "Card"}
                 </button>
               ))}
             </div>
-            <label className="flex shrink-0 items-center gap-1 text-[11px] font-semibold">
+            <label className="flex shrink-0 items-center gap-1 text-[0.6875rem] font-semibold">
               <input type="checkbox" checked={guest.paid} disabled={disabled || parseCents(guest.amount) === null}
                 onChange={(event) => update(index, { paid: event.target.checked })} className="h-4 w-4 accent-emerald-500" />
               Paid
@@ -392,7 +392,7 @@ export function TenderPanel({
               />
             </label>
             <p className="w-24 shrink-0 text-right" aria-live="polite">
-              <span className="block text-[10px] font-semibold uppercase tracking-wide text-zinc-500 dark:text-white/50">Change</span>
+              <span className="block text-[0.625rem] font-semibold uppercase tracking-wide text-zinc-500 dark:text-white/50">Change</span>
               <span className={`block truncate text-base font-bold tabular-nums ${changeDue ? "text-emerald-500 dark:text-emerald-400" : "text-zinc-400 dark:text-white/40"}`}>
                 {changeDue !== null ? formatMoney(changeDue, currency) : "—"}
               </span>
@@ -424,7 +424,7 @@ export function TenderPanel({
               type="button"
               disabled={disabled || dueCents === 0}
               onClick={() => onChange({ ...draft, cashReceived: exact })}
-              className="h-7 shrink-0 rounded-full bg-zinc-200/70 px-3 text-[11px] font-semibold transition hover:bg-zinc-200 disabled:opacity-40 dark:bg-white/10 dark:hover:bg-white/15"
+              className="h-7 shrink-0 rounded-full bg-zinc-200/70 px-3 text-[0.6875rem] font-semibold transition hover:bg-zinc-200 disabled:opacity-40 dark:bg-white/10 dark:hover:bg-white/15"
             >
               Exact
             </button>
@@ -434,7 +434,7 @@ export function TenderPanel({
                 type="button"
                 disabled={disabled}
                 onClick={() => onChange({ ...draft, cashReceived: (cents / 100).toFixed(2) })}
-                className="h-7 shrink-0 rounded-full border border-zinc-200 px-2.5 text-[11px] font-semibold tabular-nums transition hover:border-primary hover:text-primary disabled:opacity-40 dark:border-white/10"
+                className="h-7 shrink-0 rounded-full border border-zinc-200 px-2.5 text-[0.6875rem] font-semibold tabular-nums transition hover:border-primary hover:text-primary disabled:opacity-40 dark:border-white/10"
               >
                 {formatMoney(cents, currency)}
               </button>
@@ -575,11 +575,11 @@ export function TenderPanel({
           ) : null}
           <dl className="grid grid-cols-2 gap-2 text-sm">
             <div className="rounded-xl bg-white dark:bg-zinc-900/60 px-3 py-2">
-              <dt className="text-[11px] text-zinc-500 dark:text-white/50">Deposit paid</dt>
+              <dt className="text-[0.6875rem] text-zinc-500 dark:text-white/50">Deposit paid</dt>
               <dd className="font-semibold tabular-nums">{formatMoney(plan.paidCents, currency)}</dd>
             </div>
             <div className="rounded-xl bg-white dark:bg-zinc-900/60 px-3 py-2">
-              <dt className="text-[11px] text-zinc-500 dark:text-white/50">Balance on credit</dt>
+              <dt className="text-[0.6875rem] text-zinc-500 dark:text-white/50">Balance on credit</dt>
               <dd className="font-semibold tabular-nums text-primary">{formatMoney(plan.onAccountCents, currency)}</dd>
             </div>
           </dl>

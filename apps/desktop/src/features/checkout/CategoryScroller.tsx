@@ -175,7 +175,7 @@ export function CategoryScroller({
   };
 
   return (
-    <div className="-mx-5 flex w-full min-w-0 max-w-full items-center gap-1.5 px-5">
+    <div className="-mx-4 flex w-full min-w-0 max-w-full items-center gap-1.5 px-4">
       <ScrollArrow
         name="earlier"
         show={edges.overflow}

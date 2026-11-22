@@ -731,7 +731,7 @@ export function RepairsPage({ session }: { session: CashierSession }) {
         />
         <DataTable
           aria-label="Repair jobs"
-          minWidth="720px"
+          minWidth="45rem"
           columns={jobColumns}
           data={jobs}
           getRowId={(row) => row.id}

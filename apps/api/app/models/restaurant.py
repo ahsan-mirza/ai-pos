@@ -8,6 +8,7 @@ from datetime import datetime
 from sqlalchemy import (
     JSON,
     Boolean,
+    Text,
     CheckConstraint,
     DateTime,
     ForeignKey,
@@ -23,7 +24,8 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.models.base import Base, TenantScoped, TimestampMixin, tenant_unique, utcnow
 
 SERVICE_TYPES = ("DINE_IN", "TAKEAWAY", "DELIVERY")
-ORDER_STATUSES = ("OPEN", "SETTLED", "VOID")
+# REVIEW is an offline table collision waiting for a manager. It does not occupy the table.
+ORDER_STATUSES = ("OPEN", "SETTLED", "VOID", "REVIEW")
 TABLE_SHAPES = ("square", "round", "rect")
 
 
@@ -155,6 +157,29 @@ class OpenOrderItem(TenantScoped, Base):
     )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     order: Mapped[OpenOrder] = relationship("OpenOrder", back_populates="items")
+
+
+class TableSessionConflict(TenantScoped, TimestampMixin, Base):
+    """Two offline tills opened the same table. Both orders are kept. This row is the manager review."""
+
+    __tablename__ = "table_session_conflicts"
+    __table_args__ = (tenant_unique("idempotency_key", name="uq_table_session_conflicts_key"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    store_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("stores.id"), index=True)
+    table_id: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True), ForeignKey("dining_tables.id"), nullable=True)
+    primary_order_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("open_orders.id"))
+    conflicting_order_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("open_orders.id"))
+    idempotency_key: Mapped[str] = mapped_column(String(128))
+    origin_device_id: Mapped[str] = mapped_column(String(64))
+    origin_actor_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True))
+    primary_revision: Mapped[int] = mapped_column(Integer, default=1)
+    reason: Mapped[str] = mapped_column(String(255))
+    payload: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(32), default="submitted")
+    decision: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    decided_by_id: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True), nullable=True)
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class CodHandover(TenantScoped, Base):

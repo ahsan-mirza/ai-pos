@@ -1,4 +1,5 @@
 import {
+  Fragment,
   useEffect,
   useId,
   useRef,
@@ -108,8 +109,8 @@ function domId(prefix: string, id: string): string {
 
 function tabClass(selected: boolean, tab: AxizTabDefinition): string {
   return [
-    "relative flex h-12 min-w-max flex-1 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap bg-transparent px-3 text-[13px] outline-none transition-colors motion-reduce:transition-none",
-    "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--tab-focus)]",
+    "relative z-0 flex h-12 min-w-max shrink-0 grow items-center justify-center gap-1.5 whitespace-nowrap bg-transparent px-3 text-[0.8125rem] outline-none transition-colors motion-reduce:transition-none",
+    "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-0.125rem] focus-visible:outline-[var(--tab-focus)]",
     selected
       ? "font-semibold text-[var(--tab-text)]"
       : "font-medium text-[var(--tab-text-muted)] hover:text-[var(--tab-hover)]",
@@ -142,8 +143,6 @@ export function AxizTabs({
   const reactId = useId();
   const prefix = idPrefix ?? reactId;
   const scrollerRef = useRef<HTMLDivElement>(null);
-  const startRef = useRef<HTMLSpanElement>(null);
-  const endRef = useRef<HTMLSpanElement>(null);
   const visible = tabs.filter((tab) => !tab.hidden);
   const controlled = activeTab !== undefined;
   const [uncontrolled, setUncontrolled] = useState(defaultTab ?? visible[0]?.id ?? "");
@@ -169,26 +168,29 @@ export function AxizTabs({
 
   useEffect(() => {
     const root = scrollerRef.current;
-    const start = startRef.current;
-    const end = endRef.current;
-    if (!root || !start || !end || typeof IntersectionObserver === "undefined") return;
-    const observer = new IntersectionObserver(
-      (entries) => {
-        setEdges((current) => {
-          const next = { ...current };
-          for (const entry of entries) {
-            if (entry.target === start) next.start = !entry.isIntersecting;
-            if (entry.target === end) next.end = !entry.isIntersecting;
-          }
-          return next.start === current.start && next.end === current.end ? current : next;
-        });
-      },
-      { root, threshold: 1 },
-    );
-    observer.observe(start);
-    observer.observe(end);
-    return () => observer.disconnect();
+    if (!root) return;
+    const measure = () => {
+      const max = root.scrollWidth - root.clientWidth;
+      const start = root.scrollLeft > 1;
+      const end = max > 1 && root.scrollLeft < max - 1;
+      setEdges((current) => (current.start === start && current.end === end ? current : { start, end }));
+    };
+    measure();
+    root.addEventListener("scroll", measure, { passive: true });
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(measure);
+    observer?.observe(root);
+    return () => {
+      root.removeEventListener("scroll", measure);
+      observer?.disconnect();
+    };
   }, [visible.length]);
+
+  const scrollByPage = (direction: -1 | 1) => {
+    const root = scrollerRef.current;
+    if (!root) return;
+    const reading = readingDirection(root) === "rtl" ? -1 : 1;
+    root.scrollBy({ left: direction * reading * Math.max(120, root.clientWidth * 0.75), behavior: "smooth" });
+  };
 
   useEffect(() => {
     const node = scrollerRef.current?.querySelector<HTMLElement>(`[data-axiz-tab="${CSS.escape(selectedId)}"]`);
@@ -225,16 +227,27 @@ export function AxizTabs({
   };
 
   return (
-    <div className={`relative min-w-0 max-w-full bg-[var(--tab-bg)] ${className}`}>
+    <div className={`min-w-0 max-w-full bg-[var(--tab-bg)] ${className}`}>
+      <div className="flex min-w-0 items-stretch">
+      {edges.start ? (
+        <button
+          type="button"
+          aria-label="Show previous tabs"
+          data-axiz-overflow="start"
+          onClick={() => scrollByPage(-1)}
+          className="w-8 shrink-0 border-b border-[var(--tab-line)] text-[var(--tab-text-muted)]"
+        >
+          ‹
+        </button>
+      ) : null}
       <div
         ref={scrollerRef}
         role="tablist"
         aria-label={ariaLabel}
         aria-orientation="horizontal"
         onKeyDown={onKeyDown}
-        className={`no-scrollbar flex h-12 w-full min-w-0 flex-nowrap items-stretch overflow-x-auto overflow-y-hidden border-b border-[var(--tab-line)] ${gutter} ${listClassName}`}
+        className={`no-scrollbar flex h-12 w-full min-w-0 flex-1 flex-nowrap items-stretch overflow-x-auto overflow-y-hidden border-b border-[var(--tab-line)] ${gutter} ${listClassName}`}
       >
-        <span ref={startRef} className="w-px shrink-0" aria-hidden="true" />
         {visible.map((tab) => {
           const selected = tab.id === selectedId;
           const tabProps: AxizTabProps = {
@@ -261,7 +274,7 @@ export function AxizTabs({
                 {tab.icon ? <span className="inline-flex shrink-0 items-center">{tab.icon}</span> : null}
                 <span>{tab.label}</span>
                 {tab.badge != null && tab.badge !== false ? (
-                  <span className="text-[11px] font-semibold tabular-nums text-[var(--tab-text-muted)]">{tab.badge}</span>
+                  <span className="text-[0.6875rem] font-semibold tabular-nums text-[var(--tab-text-muted)]">{tab.badge}</span>
                 ) : null}
                 <span
                   aria-hidden="true"
@@ -274,7 +287,7 @@ export function AxizTabs({
             ),
           };
           if (renderTab) {
-            return <span key={tab.id} className="contents">{renderTab({ tab, selected, tabProps })}</span>;
+            return <Fragment key={tab.id}>{renderTab({ tab, selected, tabProps })}</Fragment>;
           }
           if (tab.href && !tab.disabled) {
             return (
@@ -289,22 +302,19 @@ export function AxizTabs({
             </button>
           );
         })}
-        <span ref={endRef} className="w-px shrink-0" aria-hidden="true" />
       </div>
-      {edges.start ? (
-        <span
-          aria-hidden="true"
-          data-axiz-overflow="start"
-          className="pointer-events-none absolute inset-y-0 start-0 z-10 w-8 bg-gradient-to-r from-[var(--tab-bg)] to-transparent rtl:bg-gradient-to-l"
-        />
-      ) : null}
       {edges.end ? (
-        <span
-          aria-hidden="true"
+        <button
+          type="button"
+          aria-label="Show more tabs"
           data-axiz-overflow="end"
-          className="pointer-events-none absolute inset-y-0 end-0 z-10 w-8 bg-gradient-to-l from-[var(--tab-bg)] to-transparent rtl:bg-gradient-to-r"
-        />
+          onClick={() => scrollByPage(1)}
+          className="w-8 shrink-0 border-b border-[var(--tab-line)] text-[var(--tab-text-muted)]"
+        >
+          ›
+        </button>
       ) : null}
+      </div>
       {children != null ? (
         <div role="tabpanel" id={panelId} aria-labelledby={domId(prefix, selectedId)} tabIndex={0} className={`w-full ${panelClassName}`}>
           {children}

@@ -8,6 +8,7 @@ from pathlib import Path
 
 from sqlalchemy import select
 
+from app.core.clock import utcnow
 from app.core.config import get_settings
 from app.models import AuditLog
 from app.models.inventory import InventoryLevel
@@ -31,8 +32,8 @@ def fashion(client) -> dict[str, str]:
     return headers
 
 
-def push_sale(client, key: str, body: dict):
-    return push(client, [event("fashion-" + key, "sale", body)])
+def push_sale(client, key: str, body: dict, when: str | None = None):
+    return push(client, [event("fashion-" + key, "sale", body, occurred_at=when)])
 
 
 def status(response) -> tuple[int, str]:
@@ -170,7 +171,7 @@ def return_body(receipt_body: dict, *, condition: str, reason: str, tender: str 
         "store_id": STORE,
         "cashier_id": CASHIER_ID,
         "currency": "USD",
-        "processed_at": datetime.now(UTC).isoformat(),
+        "processed_at": utcnow().isoformat(),
         "subtotal_cents": subtotal,
         "tax_refund_cents": 0,
         "restocking_fee_cents": 0,
@@ -219,8 +220,9 @@ def test_fashion_returns_policy(client, session) -> None:
     seed(client)
     headers = fashion(client)
     _, admin_id = admin(client)
+    recent = utcnow().replace(microsecond=0).isoformat()
     sold = sale([line(CABLE, 1, 1500)])
-    assert status(push_sale(client, "ret-sale-1", sold)) == (200, "applied")
+    assert status(push_sale(client, "ret-sale-1", sold, when=recent)) == (200, "applied")
     body = receipt_for(client, sold["id"])
     assert body["policy"]["preset"] == "fashion"
     assert [row["key"] for row in body["policy"]["conditions"]] == ["tags_attached", "worn", "damaged"]
@@ -241,8 +243,8 @@ def test_fashion_returns_policy(client, session) -> None:
     assert cable_on_hand(session) == before + 1
 
     # 20 days old: outside the 14-day refund window, inside the 16-day exchange window -> voucher only.
-    old = sale([line(CABLE, 1, 1500)], sold_at=(datetime.now(UTC) - timedelta(days=20)).isoformat())
-    assert status(push_sale(client, "ret-sale-2", old)) == (200, "applied")
+    old = sale([line(CABLE, 1, 1500)], sold_at=(utcnow() - timedelta(days=20)).isoformat())
+    assert status(push_sale(client, "ret-sale-2", old, when=recent)) == (200, "applied")
     old_receipt = receipt_for(client, old["id"])
     override = {"approved_by_id": admin_id, "reasons": ["no_refund_permission"], "note": "Checked."}
     cash = return_body(old_receipt, condition="worn", reason="style", override=override)
@@ -255,7 +257,7 @@ def test_fashion_returns_policy(client, session) -> None:
     product.is_final_sale = True
     session.commit()
     final = sale([line(CABLE, 1, 1500)])
-    assert status(push_sale(client, "ret-sale-3", final)) == (200, "applied")
+    assert status(push_sale(client, "ret-sale-3", final, when=recent)) == (200, "applied")
     final_receipt = receipt_for(client, final["id"])
     assert final_receipt["items"][0]["final_sale"] is True
     blocked = return_body(final_receipt, condition="tags_attached", reason="size_fit", override=override)
@@ -274,7 +276,7 @@ def test_refunds_carry_their_share_of_the_discount(client) -> None:
     seed(client)
     _, admin_id = admin(client)
     sold = sale([discounted(CABLE, 1, 1500, 300, discount_override={"approved_by_id": admin_id, "note": "VIP"})])
-    assert status(push_sale(client, "disc-ret-sale", sold)) == (200, "applied")
+    assert status(push_sale(client, "disc-ret-sale", sold, when=utcnow().replace(microsecond=0).isoformat())) == (200, "applied")
     body = receipt_for(client, sold["id"])
     assert body["items"][0]["discount_cents"] == 300
     override = {"approved_by_id": admin_id, "reasons": ["no_refund_permission"], "note": "Checked."}

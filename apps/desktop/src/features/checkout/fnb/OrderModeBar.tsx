@@ -1,6 +1,8 @@
 import type { DeliveryChannel, DiningArea } from "@ai-pos/shared-types";
 import { FloorBoard, Select, useLocale } from "@ai-pos/ui";
+import { SEARCH_DEBOUNCE_MS } from "@ai-pos/shared-types";
 import { ArrowLeft, Bike, ChevronDown, ChevronUp, Minus, Plus, Search, Soup, UtensilsCrossed } from "lucide-react";
+import { PosButton } from "../../../components/shell/posControls";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { staffApi, type RegisterStaff } from "../../../lib/retailClient";
 import { channelsApi } from "../../orders/ordersClient";
@@ -99,7 +101,7 @@ function summaryDetail(
 }
 
 function cartSheetOpen(): boolean {
-  if (window.matchMedia("(min-width: 1280px)").matches) return false;
+  if (window.matchMedia("(min-width: 80rem)").matches) return false;
   return document.getElementById("current-sale")?.classList.contains("cart-sheet") ?? false;
 }
 
@@ -376,7 +378,7 @@ export function OrderModeBar({
             setSearched(query);
           }
         });
-    }, 160);
+    }, SEARCH_DEBOUNCE_MS);
     return () => {
       cancelled = true;
       window.clearTimeout(timer);
@@ -478,10 +480,10 @@ export function OrderModeBar({
   const drivers = driver && !staff.some((member) => member.full_name === driver) ? [driver, ...staff.map((member) => member.full_name)] : staff.map((member) => member.full_name);
 
   return (
-    <section className="min-w-0 rounded-2xl border border-zinc-200 bg-white p-2 dark:border-zinc-800 dark:bg-zinc-900">
+    <section className="min-w-0 rounded-2xl border border-zinc-200 bg-white p-1.5 dark:border-zinc-800 dark:bg-zinc-900">
       {choosing ? (
         <div
-          className="grid grid-cols-3 gap-3 max-[480px]:flex max-[480px]:snap-x max-[480px]:overflow-x-auto"
+          className="grid grid-cols-3 gap-2 max-[30rem]:flex max-[30rem]:snap-x max-[30rem]:overflow-x-auto"
           role="group"
           aria-label="Order type"
         >
@@ -492,10 +494,10 @@ export function OrderModeBar({
                 key={item.id}
                 type="button"
                 onClick={() => pickMode(item.id)}
-                className="flex min-h-24 min-w-0 flex-col items-start justify-center gap-2 rounded-2xl border border-zinc-200 bg-zinc-50 px-5 py-4 text-left transition-colors hover:border-primary-500 hover:bg-primary-500/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 max-[480px]:min-w-40 max-[480px]:shrink-0 max-[480px]:snap-start dark:border-zinc-700 dark:bg-zinc-950 dark:hover:border-primary-500"
+                className="flex min-h-16 min-w-0 flex-col items-start justify-center gap-1 rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-2.5 text-left transition-colors hover:border-primary-500 hover:bg-primary-500/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 max-[30rem]:min-w-40 max-[30rem]:shrink-0 max-[30rem]:snap-start dark:border-zinc-700 dark:bg-zinc-950 dark:hover:border-primary-500"
               >
-                <Icon size={28} aria-hidden="true" className="text-primary-500" />
-                <span className="text-lg font-semibold text-zinc-950 dark:text-white">{item.label}</span>
+                <Icon size={22} aria-hidden="true" className="text-primary-500" />
+                <span className="text-base font-semibold text-zinc-950 dark:text-white">{item.label}</span>
               </button>
             );
           })}
@@ -617,20 +619,17 @@ export function OrderModeBar({
                     <GuestCounter value={guests} onChange={(next) => setGuests(Math.min(Math.max(pending.seats, 1), next))} />
                   </div>
                   <div className="mt-5 flex justify-end gap-2">
-                    <button type="button" onClick={() => setPending(null)} className="h-11 rounded-full px-4 text-sm font-semibold text-zinc-600 dark:text-zinc-300">
-                      Cancel
-                    </button>
-                    <button
-                      type="button"
+                    <PosButton variant="ghost" size="sm" onClick={() => setPending(null)}>Cancel</PosButton>
+                    <PosButton
+                      size="sm"
                       onClick={() => {
                         const table = pending;
                         setPending(null);
                         onSeat(table.label, guests, table.id, table.orderId);
                       }}
-                      className="h-11 rounded-full bg-primary-500 px-5 text-sm font-semibold text-white"
                     >
                       Open table
-                    </button>
+                    </PosButton>
                   </div>
                 </div>
               </div>
@@ -650,51 +649,57 @@ export function OrderModeBar({
               <div className="grid gap-2 sm:grid-cols-2">
                 <label className={labelClass}>
                   Customer name
-                  <input
-                    required
-                    value={name}
-                    role="combobox"
-                    aria-expanded={guestListOpen && searchSource === "name"}
-                    aria-controls={listId}
-                    aria-autocomplete="list"
-                    autoComplete="off"
-                    placeholder="Search name"
-                    onChange={(event) => {
-                      setName(event.target.value);
-                      setSearchSource("name");
-                      setSearchOpen(true);
-                      setPicked(null);
-                    }}
-                    onFocus={() => {
-                      setSearchSource("name");
-                      setSearchOpen(true);
-                    }}
-                    className={`${field} mt-1`}
-                  />
+                  <span className="relative mt-1 block">
+                    <Search size={18} aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 z-10 -translate-y-1/2 text-zinc-400" />
+                    <input
+                      required
+                      value={name}
+                      role="combobox"
+                      aria-expanded={guestListOpen && searchSource === "name"}
+                      aria-controls={listId}
+                      aria-autocomplete="list"
+                      autoComplete="off"
+                      placeholder="Search name"
+                      onChange={(event) => {
+                        setName(event.target.value);
+                        setSearchSource("name");
+                        setSearchOpen(true);
+                        setPicked(null);
+                      }}
+                      onFocus={() => {
+                        setSearchSource("name");
+                        setSearchOpen(true);
+                      }}
+                      className={`${field} !pl-9`}
+                    />
+                  </span>
                 </label>
                 <label className={labelClass}>
                   Phone
-                  <input
-                    value={phone}
-                    role="combobox"
-                    aria-expanded={guestListOpen && searchSource === "phone"}
-                    aria-controls={listId}
-                    aria-autocomplete="list"
-                    inputMode="tel"
-                    autoComplete="off"
-                    placeholder="Search phone"
-                    onChange={(event) => {
-                      setPhone(event.target.value);
-                      setSearchSource("phone");
-                      setSearchOpen(true);
-                      setPicked(null);
-                    }}
-                    onFocus={() => {
-                      setSearchSource("phone");
-                      setSearchOpen(true);
-                    }}
-                    className={`${field} mt-1`}
-                  />
+                  <span className="relative mt-1 block">
+                    <Search size={18} aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 z-10 -translate-y-1/2 text-zinc-400" />
+                    <input
+                      value={phone}
+                      role="combobox"
+                      aria-expanded={guestListOpen && searchSource === "phone"}
+                      aria-controls={listId}
+                      aria-autocomplete="list"
+                      inputMode="tel"
+                      autoComplete="off"
+                      placeholder="Search phone"
+                      onChange={(event) => {
+                        setPhone(event.target.value);
+                        setSearchSource("phone");
+                        setSearchOpen(true);
+                        setPicked(null);
+                      }}
+                      onFocus={() => {
+                        setSearchSource("phone");
+                        setSearchOpen(true);
+                      }}
+                      className={`${field} !pl-9`}
+                    />
+                  </span>
                 </label>
               </div>
               {guestListOpen ? (
@@ -764,7 +769,7 @@ export function OrderModeBar({
                 <label htmlFor="delivery-customer" className={labelClass}>
                   Customer
                   <span className="relative mt-1 block">
-                    <Search aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 z-10 h-4 w-4 -translate-y-1/2 text-zinc-400" />
+                    <Search size={18} aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 z-10 -translate-y-1/2 text-zinc-400" />
                     <input
                       id="delivery-customer"
                       required
@@ -792,28 +797,31 @@ export function OrderModeBar({
                 </label>
                 <label className={labelClass}>
                   Phone
-                  <input
-                    required
-                    value={phone}
-                    role="combobox"
-                    aria-expanded={guestListOpen && searchSource === "phone"}
-                    aria-controls={listId}
-                    aria-autocomplete="list"
-                    inputMode="tel"
-                    autoComplete="off"
-                    placeholder="Search phone"
-                    onChange={(event) => {
-                      setPhone(event.target.value);
-                      setSearchSource("phone");
-                      setSearchOpen(true);
-                      setPicked(null);
-                    }}
-                    onFocus={() => {
-                      setSearchSource("phone");
-                      setSearchOpen(true);
-                    }}
-                    className={`${field} mt-1`}
-                  />
+                  <span className="relative mt-1 block">
+                    <Search size={18} aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 z-10 -translate-y-1/2 text-zinc-400" />
+                    <input
+                      required
+                      value={phone}
+                      role="combobox"
+                      aria-expanded={guestListOpen && searchSource === "phone"}
+                      aria-controls={listId}
+                      aria-autocomplete="list"
+                      inputMode="tel"
+                      autoComplete="off"
+                      placeholder="Search phone"
+                      onChange={(event) => {
+                        setPhone(event.target.value);
+                        setSearchSource("phone");
+                        setSearchOpen(true);
+                        setPicked(null);
+                      }}
+                      onFocus={() => {
+                        setSearchSource("phone");
+                        setSearchOpen(true);
+                      }}
+                      className={`${field} !pl-9`}
+                    />
+                  </span>
                 </label>
               </div>
               {guestListOpen ? (
@@ -918,20 +926,16 @@ export function OrderModeBar({
               Changing this order type may affect table assignment, pickup details, delivery information, charges, and kitchen routing. Do you want to continue?
             </p>
             <div className="mt-5 flex flex-wrap justify-end gap-2">
-              <button type="button" onClick={() => setConfirmOpen(false)} className="h-12 rounded-full px-4 text-sm font-semibold text-zinc-700 dark:text-zinc-200">
-                Keep Current Order
-              </button>
-              <button
-                type="button"
+              <PosButton variant="ghost" onClick={() => setConfirmOpen(false)}>Keep Current Order</PosButton>
+              <PosButton
                 onClick={() => {
                   setConfirmOpen(false);
                   picking.current = true;
                   setChoosing(true);
                 }}
-                className="h-12 rounded-full bg-primary-500 px-4 text-sm font-semibold text-white"
               >
                 Change Order Type
-              </button>
+              </PosButton>
             </div>
           </div>
         </div>
@@ -950,9 +954,7 @@ export function OrderModeBar({
               It has already been sent to the kitchen or dispatched. Keep working in the current order type.
             </p>
             <div className="mt-5 flex flex-wrap justify-end gap-2">
-              <button type="button" onClick={() => setBlockedOpen(false)} className="h-12 rounded-full bg-primary-500 px-4 text-sm font-semibold text-white">
-                Keep Current Order
-              </button>
+              <PosButton onClick={() => setBlockedOpen(false)}>Keep Current Order</PosButton>
               {onCancelOrder ? (
                 <button
                   type="button"

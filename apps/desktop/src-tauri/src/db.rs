@@ -1,7 +1,7 @@
 use std::path::Path;
 use std::sync::Mutex;
 
-use rusqlite::{params, Connection};
+use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 
 use crate::auth::CashierProfile;
@@ -160,6 +160,8 @@ pub struct CachedUser {
     pub max_discount_bps: Option<i64>,
     pub addon_modules: String,
     pub updated_at: i64,
+    pub provisioning_status: String,
+    pub is_active: i64,
 }
 
 pub struct CashierDirectoryRow {
@@ -184,8 +186,13 @@ fn cached_user_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<CachedUser> {
         max_discount_bps: row.get(9)?,
         addon_modules: row.get(10)?,
         updated_at: row.get(11)?,
+        provisioning_status: row.get(12)?,
+        is_active: row.get(13)?,
     })
 }
+
+const CACHED_USER_COLUMNS: &str = "user_id, username, full_name, store_id, role_name, permissions, pin_hash, \
+     failed_attempts, locked_until, max_discount_bps, addon_modules, updated_at, provisioning_status, is_active";
 
 const PRODUCT_COLUMNS: &str = "id, store_id, sku, barcode, name, category, price_cents, currency, is_serialized, \
      stock_quantity, model_number, brand, min_order_quantity, sellable_units, prices_json, tax_category, \
@@ -193,6 +200,46 @@ const PRODUCT_COLUMNS: &str = "id, store_id, sku, barcode, name, category, price
      tare_grams, nearest_expiry, units_json, has_recipe, is_ingredient, price_lists_json, image_url, thumb_url, \
      season, collection, gender, compare_at_cents, is_active, price_includes_tax";
 const PRODUCT_COLUMN_COUNT: usize = 38;
+
+/// Writes the frozen checkout currency and tax into the same transaction as the catalogue or a pull.
+fn write_checkout_settings(tx: &Connection, text: &str) -> Result<(), String> {
+    let value: serde_json::Value = serde_json::from_str(text).map_err(|err| err.to_string())?;
+    let currency = value
+        .get("currency")
+        .and_then(|item| item.as_str())
+        .unwrap_or("")
+        .trim()
+        .to_ascii_uppercase();
+    if currency.len() != 3 || !currency.chars().all(|item| item.is_ascii_uppercase()) {
+        return Err("The checkout settings have no currency.".into());
+    }
+    let tax = serde_json::json!({
+        "enforced": value.get("vat_registered").and_then(|item| item.as_bool()).unwrap_or(false),
+        "prices_include_vat": value.get("prices_include_vat").and_then(|item| item.as_bool()).unwrap_or(false),
+        "standard_rate_bps": value.get("standard_rate_bps").and_then(|item| item.as_i64()).unwrap_or(500),
+        "trn": value.get("trn").cloned().unwrap_or(serde_json::Value::Null),
+        "legal_name": value.get("legal_name").cloned().unwrap_or(serde_json::Value::Null),
+        "legal_name_ar": value.get("legal_name_ar").cloned().unwrap_or(serde_json::Value::Null),
+        "tax_authority": value.get("tax_authority").and_then(|item| item.as_str()).unwrap_or("fta"),
+    });
+    let tax_json = tax.to_string();
+    let receipt_json = match value.get("receipt") {
+        Some(receipt) if !receipt.is_null() => Some(receipt.to_string()),
+        _ => None,
+    };
+    tx.execute(
+        "INSERT INTO business_settings (id, currency, fetched_at, tax_json, receipt_json)
+         VALUES (1, ?1, strftime('%s','now'), ?2, ?3)
+         ON CONFLICT(id) DO UPDATE SET
+            currency = excluded.currency,
+            fetched_at = excluded.fetched_at,
+            tax_json = excluded.tax_json,
+            receipt_json = COALESCE(excluded.receipt_json, business_settings.receipt_json)",
+        params![currency, tax_json, receipt_json],
+    )
+    .map_err(|err| err.to_string())?;
+    Ok(())
+}
 
 pub struct Db {
     conn: Mutex<Connection>,
@@ -340,6 +387,143 @@ impl Db {
         self.transaction(|tx| insert_events(tx, batch_id, events))
     }
 
+    /// Stores a verified allocation manifest. The caller has already checked the signature.
+    pub fn save_allocation(
+        &self,
+        allocation_id: &str,
+        product_id: &str,
+        quantity: i64,
+        payload: &str,
+        signature: &str,
+        key_id: &str,
+    ) -> Result<(), String> {
+        self.transaction(|tx| {
+            tx.execute(
+                "INSERT OR IGNORE INTO terminal_allocations (
+                    allocation_id, product_id, quantity_allocated, quantity_consumed,
+                    last_sequence, status, payload, signature, key_id
+                 ) VALUES (?1, ?2, ?3, 0, 0, 'ACTIVE', ?4, ?5, ?6)",
+                params![allocation_id, product_id, quantity, payload, signature, key_id],
+            )
+            .map_err(|err| err.to_string())?;
+            Ok(())
+        })
+    }
+
+    /// Decrements one allocation and writes the queue row in the same SQLite transaction.
+    pub fn consume_allocation(
+        &self,
+        allocation_id: &str,
+        quantity: i64,
+        batch_id: &str,
+        events: &[QueuedEvent],
+    ) -> Result<i64, String> {
+        if quantity < 1 {
+            return Err("Allocation quantity must be a positive integer.".into());
+        }
+        self.transaction(|tx| {
+            let changed = tx
+                .execute(
+                    "UPDATE terminal_allocations
+                     SET quantity_consumed = quantity_consumed + ?1,
+                         last_sequence = last_sequence + 1,
+                         status = CASE
+                             WHEN quantity_consumed + ?1 = quantity_allocated THEN 'EXHAUSTED'
+                             ELSE status
+                         END
+                     WHERE allocation_id = ?2 AND status = 'ACTIVE'
+                       AND quantity_allocated - quantity_consumed >= ?1",
+                    params![quantity, allocation_id],
+                )
+                .map_err(|err| err.to_string())?;
+            if changed != 1 {
+                return Err("Available offline allocation is not enough for this sale.".into());
+            }
+            let sequence: i64 = tx
+                .query_row(
+                    "SELECT last_sequence FROM terminal_allocations WHERE allocation_id = ?1",
+                    params![allocation_id],
+                    |row| row.get(0),
+                )
+                .map_err(|err| err.to_string())?;
+            insert_events(tx, batch_id, events)?;
+            Ok(sequence)
+        })
+    }
+
+    /// Consumes every draw and writes the queue, including the sale payload, in one transaction.
+    /// A shortfall or a duplicate idempotency key leaves the allocation and the queue unchanged.
+    pub fn enqueue_consuming(
+        &self,
+        batch_id: &str,
+        events: &[QueuedEvent],
+        draws: &[(String, String, i64)],
+    ) -> Result<(), String> {
+        if draws.is_empty() {
+            return self.enqueue(batch_id, events);
+        }
+        self.transaction(|tx| {
+            let mut stamped = events.to_vec();
+            let mut allocations = Vec::new();
+            for (allocation_id, product_id, quantity) in draws {
+                if *quantity < 1 {
+                    return Err("Allocation quantity must be a positive integer.".into());
+                }
+                let changed = tx
+                    .execute(
+                        "UPDATE terminal_allocations
+                         SET quantity_consumed = quantity_consumed + ?1,
+                             last_sequence = last_sequence + 1,
+                             status = CASE
+                                 WHEN quantity_consumed + ?1 = quantity_allocated THEN 'EXHAUSTED'
+                                 ELSE status
+                             END
+                         WHERE allocation_id = ?2 AND status = 'ACTIVE'
+                           AND quantity_allocated - quantity_consumed >= ?1",
+                        params![quantity, allocation_id],
+                    )
+                    .map_err(|err| err.to_string())?;
+                if changed != 1 {
+                    return Err("Available offline allocation is not enough for this sale.".into());
+                }
+                let sequence: i64 = tx
+                    .query_row(
+                        "SELECT last_sequence FROM terminal_allocations WHERE allocation_id = ?1",
+                        params![allocation_id],
+                        |row| row.get(0),
+                    )
+                    .map_err(|err| err.to_string())?;
+                allocations.push(serde_json::json!({
+                    "allocation_id": allocation_id,
+                    "product_id": product_id,
+                    "quantity": quantity,
+                    "sequence": sequence,
+                }));
+            }
+            for event in &mut stamped {
+                if event.entity_type == "sale" {
+                    event.payload["allocations"] = serde_json::Value::Array(allocations.clone());
+                }
+            }
+            insert_events(tx, batch_id, &stamped)
+        })
+    }
+
+    pub fn allocation_remaining(&self, allocation_id: &str) -> Result<Option<i64>, String> {
+        self.read(|conn| {
+            conn.query_row(
+                "SELECT quantity_allocated - quantity_consumed FROM terminal_allocations WHERE allocation_id = ?1",
+                params![allocation_id],
+                |row| row.get(0),
+            )
+            .map(Some)
+            .or_else(|err| match err {
+                rusqlite::Error::QueryReturnedNoRows => Ok(None),
+                other => Err(other.to_string()),
+            })
+        })
+    }
+
     /// Runs `work` in one SQLite transaction so feature modules can write alongside the sync queue atomically.
     pub fn transaction<T>(
         &self,
@@ -411,6 +595,323 @@ impl Db {
             });
         }
         Ok(Some((batch_id, events)))
+    }
+
+    pub fn readiness_counts(&self) -> Result<(i64, i64), String> {
+        let conn = self.lock()?;
+        let products: i64 = conn
+            .query_row("SELECT COUNT(*) FROM products", [], |row| row.get(0))
+            .map_err(|err| err.to_string())?;
+        let staff: i64 = conn
+            .query_row("SELECT COUNT(*) FROM cached_users", [], |row| row.get(0))
+            .map_err(|err| err.to_string())?;
+        Ok((products, staff))
+    }
+
+    pub fn config_count(&self, dataset: &str) -> Result<i64, String> {
+        let table = match dataset {
+            "menu" => "register_menu",
+            "floor" => "register_floor",
+            _ => return Err("unknown config dataset".to_string()),
+        };
+        self.read(|conn| {
+            conn.query_row(
+                &format!("SELECT COUNT(*) FROM {table} WHERE operation != 'delete'"),
+                [],
+                |row| row.get(0),
+            )
+            .map_err(|err| err.to_string())
+        })
+    }
+
+    /// Active signed menu or floor payloads. The checkout screen reads these when the API is down.
+    pub fn config_payloads(&self, dataset: &str) -> Result<Vec<String>, String> {
+        let table = match dataset {
+            "menu" => "register_menu",
+            "floor" => "register_floor",
+            _ => return Err("unknown config dataset".to_string()),
+        };
+        self.read(|conn| {
+            let mut stmt = conn
+                .prepare(&format!(
+                    "SELECT payload FROM {table} WHERE operation != 'delete' AND payload IS NOT NULL"
+                ))
+                .map_err(|err| err.to_string())?;
+            let rows = stmt
+                .query_map([], |row| row.get(0))
+                .map_err(|err| err.to_string())?
+                .collect::<Result<Vec<String>, _>>()
+                .map_err(|err| err.to_string())?;
+            Ok(rows)
+        })
+    }
+
+    /// `incomplete` until a generation is activated. A product count by itself is not complete.
+    pub fn bootstrap_label(&self) -> String {
+        self.read(|conn| {
+            let status: Result<String, _> = conn.query_row(
+                "SELECT status FROM bootstrap_state WHERE id = 1",
+                [],
+                |row| row.get(0),
+            );
+            Ok(match status {
+                Ok(value) if value == "complete" => "complete".to_string(),
+                Ok(value) if value == "in_progress" => "in_progress".to_string(),
+                Ok(value) if value == "failed" => "failed".to_string(),
+                Ok(value) if value == "pull_failed" => "pull_failed".to_string(),
+                Ok(value) if value == "incomplete" => "incomplete".to_string(),
+                Err(_) => String::new(),
+                _ => String::new(),
+            })
+        })
+        .unwrap_or_else(|_| "failed".to_string())
+    }
+
+    pub fn stage_products(&self, generation: i64, rows: &[(String, String)]) -> Result<(), String> {
+        self.transaction(|tx| {
+            tx.execute(
+                "INSERT INTO bootstrap_state (id, schema_version, generation, status, last_seq)
+                 VALUES (1, 1, ?1, 'in_progress', 0)
+                 ON CONFLICT(id) DO UPDATE SET status = 'in_progress'",
+                params![generation],
+            )
+            .map_err(|err| err.to_string())?;
+            for (id, payload) in rows {
+                let existing: Result<String, _> = tx.query_row(
+                    "SELECT payload FROM bootstrap_stage WHERE generation = ?1 AND id = ?2",
+                    params![generation, id],
+                    |row| row.get(0),
+                );
+                if let Ok(previous) = existing {
+                    if previous != *payload {
+                        return Err("duplicate page does not match the staged row".to_string());
+                    }
+                    continue;
+                }
+                tx.execute(
+                    "INSERT INTO bootstrap_stage (generation, id, payload) VALUES (?1, ?2, ?3)",
+                    params![generation, id, payload],
+                )
+                .map_err(|err| err.to_string())?;
+            }
+            Ok(())
+        })
+    }
+
+    /// Replaces the product cache only when the staged generation has the expected row count.
+    /// `sync_queue` is not in this statement.
+    pub fn activate_bootstrap(
+        &self,
+        generation: i64,
+        expected: i64,
+        cursor: &str,
+        settings: Option<&str>,
+    ) -> Result<(), String> {
+        self.finish_bootstrap(generation, expected, cursor, settings, &[], &[])
+    }
+
+    /// Replaces products, menu, and floor together. A short download never reaches this call.
+    pub fn finish_bootstrap(
+        &self,
+        generation: i64,
+        expected: i64,
+        cursor: &str,
+        settings: Option<&str>,
+        menu: &[(String, String)],
+        floor: &[(String, String)],
+    ) -> Result<(), String> {
+        let count: i64 = self.read(|conn| {
+            conn.query_row(
+                "SELECT COUNT(*) FROM bootstrap_stage WHERE generation = ?1",
+                params![generation],
+                |row| row.get(0),
+            )
+            .map_err(|err| err.to_string())
+        })?;
+        if count != expected {
+            self.transaction(|tx| {
+                let stored: i64 = tx
+                    .query_row("SELECT generation FROM bootstrap_state WHERE id = 1", [], |row| row.get(0))
+                    .unwrap_or(generation);
+                let status = if stored != generation { "complete" } else { "failed" };
+                tx.execute(
+                    "UPDATE bootstrap_state SET status = ?1, last_error = 'incomplete' WHERE id = 1",
+                    params![status],
+                )
+                .map_err(|err| err.to_string())?;
+                Ok(())
+            })?;
+            return Err("incomplete bootstrap".to_string());
+        }
+        self.transaction(|tx| {
+            let mut stmt = tx
+                .prepare("SELECT payload FROM bootstrap_stage WHERE generation = ?1 ORDER BY id")
+                .map_err(|err| err.to_string())?;
+            let parsed: Vec<ProductRow> = stmt
+                .query_map(params![generation], |row| row.get::<_, String>(0))
+                .map_err(|err| err.to_string())?
+                .map(|payload| {
+                    let text = payload.map_err(|err| err.to_string())?;
+                    serde_json::from_str(&text).map_err(|err| err.to_string())
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+            drop(stmt);
+            tx.execute("DELETE FROM products", [])
+                .map_err(|err| err.to_string())?;
+            for product in &parsed {
+                insert_product(tx, product)?;
+            }
+            if let Some(text) = settings {
+                write_checkout_settings(tx, text)?;
+            }
+            replace_config(tx, "register_menu", menu)?;
+            replace_config(tx, "register_floor", floor)?;
+            tx.execute(
+                "UPDATE bootstrap_state SET status = 'complete', generation = ?1, cursor = ?2, last_error = NULL WHERE id = 1",
+                params![generation, cursor],
+            )
+            .map_err(|err| err.to_string())?;
+            Ok(())
+        })
+    }
+
+    /// Applies one pull batch and the new sequence in the same transaction.
+    pub fn apply_product_pull(
+        &self,
+        changes: &[(i64, String, String, Option<String>)],
+        cursor: &str,
+    ) -> Result<(), String> {
+        let expanded: Vec<_> = changes
+            .iter()
+            .map(|(seq, operation, id, payload)| {
+                (
+                    *seq,
+                    "products".to_string(),
+                    operation.clone(),
+                    id.clone(),
+                    payload.clone(),
+                )
+            })
+            .collect();
+        self.apply_catalogue_pull("", &expanded, cursor)
+    }
+
+    /// One pull page. `store_id` drops a floor row that names another branch. Menu is tenant-wide.
+    pub fn apply_catalogue_pull(
+        &self,
+        store_id: &str,
+        changes: &[(i64, String, String, String, Option<String>)],
+        cursor: &str,
+    ) -> Result<(), String> {
+        self.transaction(|tx| {
+            let last: i64 = tx
+                .query_row("SELECT last_seq FROM bootstrap_state WHERE id = 1", [], |row| row.get(0))
+                .unwrap_or(0);
+            let mut expected = last;
+            for (seq, _, _, _, _) in changes {
+                if *seq <= last {
+                    continue;
+                }
+                if *seq != expected + 1 {
+                    return Err("pull batch skipped a change".to_string());
+                }
+                expected = *seq;
+            }
+            let mut next = last;
+            for (seq, dataset, operation, id, payload) in changes {
+                if *seq <= last {
+                    continue;
+                }
+                if operation == "omit" {
+                    next = *seq;
+                    continue;
+                }
+                if dataset == "menu" || dataset == "floor" {
+                    if dataset == "floor" && floor_is_other_branch(store_id, payload.as_deref()) {
+                        next = *seq;
+                        continue;
+                    }
+                    let table = if dataset == "menu" { "register_menu" } else { "register_floor" };
+                    upsert_config(tx, table, id, operation, payload.as_deref(), *seq)?;
+                    next = *seq;
+                    continue;
+                }
+                if operation == "settings" {
+                    let text = payload.clone().ok_or_else(|| "missing checkout settings".to_string())?;
+                    write_checkout_settings(tx, &text)?;
+                } else if operation == "delete" {
+                    tx.execute("UPDATE products SET is_active = 0 WHERE id = ?1", params![id])
+                        .map_err(|err| err.to_string())?;
+                } else {
+                    let text = payload.clone().ok_or_else(|| "missing product payload".to_string())?;
+                    let mut value: serde_json::Value = serde_json::from_str(&text).map_err(|err| err.to_string())?;
+                    let authoritative = value
+                        .get("stock_authoritative")
+                        .and_then(|item| item.as_bool())
+                        .unwrap_or(true);
+                    if !authoritative {
+                        if let Ok(previous) = tx.query_row(
+                            "SELECT stock_quantity FROM products WHERE id = ?1",
+                            params![id],
+                            |row| row.get::<_, i64>(0),
+                        ) {
+                            if let Some(object) = value.as_object_mut() {
+                                object.insert("stock_quantity".into(), serde_json::Value::from(previous));
+                            }
+                        }
+                    }
+                    let mut product: ProductRow = serde_json::from_value(value).map_err(|err| err.to_string())?;
+                    if product.id != *id {
+                        return Err("record id does not match the payload".to_string());
+                    }
+                    tx.execute("DELETE FROM products WHERE id = ?1", params![id])
+                        .map_err(|err| err.to_string())?;
+                    insert_product(tx, &mut product)?;
+                }
+                next = *seq;
+            }
+            tx.execute(
+                "UPDATE bootstrap_state SET last_seq = ?1, cursor = ?2, status = 'complete' WHERE id = 1",
+                params![next, cursor],
+            )
+                .map_err(|err| err.to_string())?;
+            Ok(())
+        })
+    }
+
+    pub fn bootstrap_last_seq(&self) -> Result<i64, String> {
+        self.read(|conn| {
+            conn.query_row("SELECT last_seq FROM bootstrap_state WHERE id = 1", [], |row| row.get(0))
+                .map_err(|err| err.to_string())
+        })
+    }
+
+    pub fn register_config(&self, dataset: &str, record_id: &str) -> Result<Option<String>, String> {
+        let table = match dataset {
+            "menu" => "register_menu",
+            "floor" => "register_floor",
+            _ => return Err("unknown config dataset".to_string()),
+        };
+        self.read(|conn| {
+            conn.query_row(
+                &format!("SELECT payload FROM {table} WHERE record_id = ?1 AND operation != 'delete'"),
+                params![record_id],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(|err| err.to_string())
+        })
+    }
+
+    pub fn bootstrap_cursor(&self) -> Result<Option<String>, String> {
+        self.read(|conn| {
+            let value: Result<Option<String>, _> = conn.query_row(
+                "SELECT cursor FROM bootstrap_state WHERE id = 1 AND status = 'complete'",
+                [],
+                |row| row.get(0),
+            );
+            Ok(value.unwrap_or(None).filter(|cursor| !cursor.is_empty()))
+        })
     }
 
     pub fn pending_count(&self) -> Result<i64, String> {
@@ -629,9 +1130,7 @@ impl Db {
     pub fn cached_user_by_id(&self, user_id: &str) -> Result<Option<CachedUser>, String> {
         let conn = self.lock()?;
         conn.query_row(
-            "SELECT user_id, username, full_name, store_id, role_name, permissions, pin_hash, failed_attempts, locked_until,
-                    max_discount_bps, addon_modules, updated_at
-             FROM cached_users WHERE user_id = ?1",
+            &format!("SELECT {CACHED_USER_COLUMNS} FROM cached_users WHERE user_id = ?1"),
             params![user_id],
             cached_user_row,
         )
@@ -691,9 +1190,7 @@ impl Db {
     pub fn cached_user(&self, username: &str) -> Result<Option<CachedUser>, String> {
         let conn = self.lock()?;
         conn.query_row(
-            "SELECT user_id, username, full_name, store_id, role_name, permissions, pin_hash, failed_attempts, locked_until,
-                    max_discount_bps, addon_modules, updated_at
-             FROM cached_users WHERE username = ?1",
+            &format!("SELECT {CACHED_USER_COLUMNS} FROM cached_users WHERE username = ?1"),
             params![username],
             cached_user_row,
         )
@@ -884,6 +1381,17 @@ fn migrate(conn: &Connection) -> Result<(), String> {
             last_error TEXT,
             created_at TEXT NOT NULL
         );
+        CREATE TABLE IF NOT EXISTS terminal_allocations (
+            allocation_id TEXT PRIMARY KEY,
+            product_id TEXT NOT NULL,
+            quantity_allocated INTEGER NOT NULL,
+            quantity_consumed INTEGER NOT NULL,
+            last_sequence INTEGER NOT NULL,
+            status TEXT NOT NULL,
+            payload TEXT NOT NULL,
+            signature TEXT NOT NULL,
+            key_id TEXT NOT NULL
+        );
         CREATE TABLE IF NOT EXISTS cached_users (
             user_id TEXT PRIMARY KEY,
             username TEXT NOT NULL UNIQUE,
@@ -945,6 +1453,49 @@ fn migrate(conn: &Connection) -> Result<(), String> {
         conn.execute_batch("ALTER TABLE cached_users ADD COLUMN max_discount_bps INTEGER;")
             .map_err(|err| err.to_string())?;
     }
+    if !has_column(conn, "cached_users", "provisioning_status")? {
+        conn.execute_batch(
+            "ALTER TABLE cached_users ADD COLUMN provisioning_status TEXT NOT NULL DEFAULT 'server';",
+        )
+        .map_err(|err| err.to_string())?;
+    }
+    if !has_column(conn, "cached_users", "is_active")? {
+        conn.execute_batch("ALTER TABLE cached_users ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1;")
+            .map_err(|err| err.to_string())?;
+    }
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS staff_provisioning (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            operation TEXT NOT NULL,
+            payload TEXT NOT NULL,
+            status TEXT NOT NULL,
+            last_error TEXT,
+            created_at TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS staff_audit (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            actor_id TEXT NOT NULL,
+            user_id TEXT NOT NULL,
+            operation TEXT NOT NULL,
+            status TEXT NOT NULL,
+            created_at TEXT NOT NULL
+        );",
+    )
+    .map_err(|err| err.to_string())?;
+    for (column, definition) in [
+        ("tenant_id", "TEXT NOT NULL DEFAULT ''"),
+        ("origin_terminal_id", "TEXT NOT NULL DEFAULT ''"),
+        ("schema_version", "INTEGER NOT NULL DEFAULT 1"),
+        ("base_version", "TEXT"),
+    ] {
+        if !has_column(conn, "staff_provisioning", column)? {
+            conn.execute_batch(&format!(
+                "ALTER TABLE staff_provisioning ADD COLUMN {column} {definition};"
+            ))
+            .map_err(|err| err.to_string())?;
+        }
+    }
     if !has_column(conn, "cached_users", "addon_modules")? {
         conn.execute_batch(
             "ALTER TABLE cached_users ADD COLUMN addon_modules TEXT NOT NULL DEFAULT '[]';",
@@ -984,9 +1535,92 @@ fn migrate(conn: &Connection) -> Result<(), String> {
             revision INTEGER NOT NULL,
             dirty INTEGER NOT NULL DEFAULT 0,
             PRIMARY KEY (tenant_id, user_id, preference_key)
+         );
+         CREATE TABLE IF NOT EXISTS bootstrap_state (
+            id INTEGER PRIMARY KEY CHECK (id = 1),
+            schema_version INTEGER NOT NULL,
+            generation INTEGER NOT NULL DEFAULT 0,
+            status TEXT NOT NULL,
+            snapshot_id TEXT,
+            last_seq INTEGER NOT NULL DEFAULT 0,
+            cursor TEXT,
+            last_error TEXT
+         );
+         CREATE TABLE IF NOT EXISTS bootstrap_stage (
+            generation INTEGER NOT NULL,
+            id TEXT NOT NULL,
+            payload TEXT NOT NULL,
+            PRIMARY KEY (generation, id)
+         );
+         CREATE TABLE IF NOT EXISTS register_menu (
+            record_id TEXT PRIMARY KEY,
+            operation TEXT NOT NULL,
+            payload TEXT,
+            seq INTEGER NOT NULL
+         );
+         CREATE TABLE IF NOT EXISTS register_floor (
+            record_id TEXT PRIMARY KEY,
+            operation TEXT NOT NULL,
+            payload TEXT,
+            seq INTEGER NOT NULL
          );",
     )
     .map_err(|err| err.to_string())
+}
+
+fn replace_config(
+    tx: &rusqlite::Transaction<'_>,
+    table: &str,
+    rows: &[(String, String)],
+) -> Result<(), String> {
+    if table != "register_menu" && table != "register_floor" {
+        return Err("unknown config dataset".to_string());
+    }
+    tx.execute(&format!("DELETE FROM {table}"), [])
+        .map_err(|err| err.to_string())?;
+    for (id, payload) in rows {
+        upsert_config(tx, table, id, "upsert", Some(payload), 0)?;
+    }
+    Ok(())
+}
+
+fn upsert_config(
+    tx: &rusqlite::Transaction<'_>,
+    table: &str,
+    id: &str,
+    operation: &str,
+    payload: Option<&str>,
+    seq: i64,
+) -> Result<(), String> {
+    if id.is_empty() {
+        return Ok(());
+    }
+    tx.execute(
+        &format!(
+            "INSERT INTO {table} (record_id, operation, payload, seq) VALUES (?1, ?2, ?3, ?4)
+             ON CONFLICT(record_id) DO UPDATE SET operation = excluded.operation, payload = excluded.payload, seq = excluded.seq
+             WHERE excluded.seq >= {table}.seq"
+        ),
+        params![id, operation, payload, seq],
+    )
+    .map_err(|err| err.to_string())?;
+    Ok(())
+}
+
+fn floor_is_other_branch(store_id: &str, payload: Option<&str>) -> bool {
+    if store_id.is_empty() {
+        return false;
+    }
+    let Some(text) = payload else {
+        return true;
+    };
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(text) else {
+        return true;
+    };
+    value
+        .get("store_id")
+        .and_then(|item| item.as_str())
+        .is_none_or(|owner| owner != store_id)
 }
 
 pub fn insert_events(

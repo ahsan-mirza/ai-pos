@@ -3,7 +3,7 @@ import { useMemo, useRef, useState, type MouseEvent, type PointerEvent, type Rea
 import { floorCounts, matchesFloorFilter, type FloorFilter, type FloorMatch } from "./floorStatus";
 import { useLocale } from "./LocaleSwitch";
 
-export const floorTableGridClass = "grid grid-cols-[repeat(auto-fill,minmax(156px,1fr))] gap-2";
+export const floorTableGridClass = "grid grid-cols-[repeat(auto-fill,minmax(9.75rem,1fr))] gap-2";
 
 const FILTERS: { id: FloorFilter; label: string; tone: string; active: string }[] = [
   { id: "all", label: "All", tone: "var(--primary)", active: "border-transparent bg-primary text-white" },

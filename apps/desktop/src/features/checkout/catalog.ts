@@ -2,6 +2,7 @@ import seed from "@ai-pos/catalog/seed.json";
 import type { ProductUpsert, StoreUpsert } from "@ai-pos/shared-types";
 import { useEffect } from "react";
 import { catalogRevision as fetchCatalogRevision, listProducts } from "../../lib/api";
+import { beginSync } from "../../lib/syncActivity";
 import { cachedProducts, catalogRevision as readDesktopRevision, inTauri, refreshProducts } from "../../lib/tauri";
 import { registerCapabilities } from "../../lib/capabilities";
 import { productFitsRegister } from "../../lib/industry";
@@ -131,8 +132,10 @@ async function fetchCatalog(): Promise<Catalog> {
 
 export function loadCatalog(): Promise<Catalog> {
   if (inflight) return inflight;
+  const end = beginSync();
   inflight = fetchCatalog().finally(() => {
     inflight = null;
+    end();
   });
   return inflight;
 }

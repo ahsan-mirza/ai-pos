@@ -60,6 +60,9 @@ def device_from_key(db: Session, settings: Settings, key: str) -> Principal | No
         if seen is None or (seen.replace(tzinfo=UTC) if seen.tzinfo is None else seen) < now - LAST_SEEN_RESOLUTION:
             db.execute(update(Device).where(Device.id == device.id).values(last_seen_at=now))
             db.commit()
+        from app.tenancy.scoping import bind_request_scope
+
+        bind_request_scope(db, device.store_id, device.id)
         return Principal(kind="device", scope="device", device=device)
     if settings.allow_shared_api_key and secrets_equal(key, settings.api_key):
         return Principal(kind="device", scope="device")
@@ -154,6 +157,9 @@ def get_principal(
         audit_context.bind_user(user.id, user.full_name, user.role.name if user.role else None, user.store_id)
         from app.services.addon_access import effective_permissions
 
+        from app.tenancy.scoping import bind_request_scope
+
+        bind_request_scope(db, user.store_id, None)
         return Principal(
             kind="user",
             scope=scope,  # type: ignore[arg-type]

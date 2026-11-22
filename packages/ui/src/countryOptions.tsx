@@ -52,7 +52,7 @@ export function CountryFlag({ iso }: { iso: string }) {
       </span>
     );
   }
-  return <Icon className="h-3.5 w-5 shrink-0 rounded-[2px]" />;
+  return <Icon className="h-3.5 w-5 shrink-0 rounded-[0.125rem]" />;
 }
 
 export const COUNTRY_OPTIONS: CountryOption[] = getCountries()

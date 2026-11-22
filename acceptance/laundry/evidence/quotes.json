@@ -1,0 +1,88 @@
+{
+  "piece_one": {
+    "status": 200,
+    "total_cents": 1050,
+    "tax_cents": 50,
+    "rate_bps": 500,
+    "minimum_charge_applied": false
+  },
+  "piece_extras": {
+    "status": 200,
+    "total_cents": 2415,
+    "tax_cents": 115,
+    "rate_bps": 500,
+    "minimum_charge_applied": false
+  },
+  "counter": {
+    "status": 200,
+    "total_cents": 3150,
+    "tax_cents": 150,
+    "rate_bps": 500,
+    "minimum_charge_applied": false
+  },
+  "branch_a": {
+    "status": 200,
+    "total_cents": 1890,
+    "tax_cents": 90,
+    "rate_bps": 500,
+    "minimum_charge_applied": false
+  },
+  "wrong_branch": {
+    "status": 422,
+    "code": "expired_price_list"
+  },
+  "hotel": {
+    "status": 200,
+    "total_cents": 1260,
+    "tax_cents": 60,
+    "rate_bps": 500,
+    "minimum_charge_applied": false
+  },
+  "wrong_customer": {
+    "status": 422,
+    "code": "expired_price_list"
+  },
+  "expired": {
+    "status": 422,
+    "code": "expired_price_list"
+  },
+  "branch_b_express": {
+    "status": 422,
+    "code": "express_capacity"
+  },
+  "kg_net": {
+    "status": 200,
+    "total_cents": 2363,
+    "tax_cents": 113,
+    "rate_bps": 500,
+    "minimum_charge_applied": false
+  },
+  "kg_minimum": {
+    "status": 200,
+    "total_cents": 2100,
+    "tax_cents": 100,
+    "rate_bps": 500,
+    "minimum_charge_applied": true
+  },
+  "future": {
+    "status": 422,
+    "code": "expired_price_list"
+  },
+  "missing_rate": {
+    "status": 422,
+    "code": "missing_rate"
+  },
+  "grocery_catalog": {
+    "status": 403
+  },
+  "matches_browser": true,
+  "restriction_codes": {
+    "wrong_branch": "expired_price_list",
+    "wrong_customer": "expired_price_list",
+    "expired": "expired_price_list",
+    "future": "expired_price_list",
+    "missing_rate": "missing_rate",
+    "branch_b_express": "express_capacity"
+  },
+  "result": "PASSED"
+}

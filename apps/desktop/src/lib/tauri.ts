@@ -171,7 +171,7 @@ export function inTauri(): boolean {
 /** Activated identity of this register (no device token; that stays in Rust). */
 export interface TerminalStatus {
   activated: boolean;
-  source: "activation" | "env" | "none";
+  source: "activation" | "env" | "none" | "recovery";
   tenant_slug: string;
   tenant_name: string;
   tenant_domain: string;
@@ -183,6 +183,23 @@ export interface TerminalStatus {
   register_code: string;
   register_name: string;
   demo?: boolean;
+  entitlement_code?: string;
+  readiness?: string;
+  single_terminal_offline_stock?: boolean;
+}
+
+export interface ReadinessReport {
+  entitlement_code: string;
+  readiness: string;
+  message: string;
+  single_terminal_offline_stock: boolean;
+}
+
+export function bootstrapReadiness(
+  capabilitySnapshot: boolean,
+  serverSubscriptionBlocked: boolean,
+): Promise<ReadinessReport> {
+  return invoke("bootstrap_readiness", { capabilitySnapshot, serverSubscriptionBlocked });
 }
 
 export function terminalStatus(): Promise<TerminalStatus> {
@@ -301,6 +318,65 @@ async function invoke<T>(command: string, args?: Record<string, unknown>): Promi
   }
   const core = await import("@tauri-apps/api/core");
   return core.invoke<T>(command, args);
+}
+
+export interface TerminalAllocationBalance {
+  product_id: string;
+  allocation_id: string;
+  remaining: number;
+}
+
+export function terminalAllocationBalances(): Promise<TerminalAllocationBalance[]> {
+  return invoke<TerminalAllocationBalance[]>("terminal_allocation_balances");
+}
+
+export interface RegisterStaffRow {
+  user_id: string;
+  username: string;
+  full_name: string;
+  role_name: string;
+  store_id: string;
+  provisioning_status: string;
+  is_active: number;
+}
+
+export interface StaffSeatReport {
+  trusted: boolean;
+  limit: number | null;
+  active: number;
+}
+
+export function listRegisterStaff(): Promise<RegisterStaffRow[]> {
+  return invoke<RegisterStaffRow[]>("list_register_staff");
+}
+
+export function registerStaffSeats(): Promise<StaffSeatReport> {
+  return invoke<StaffSeatReport>("register_staff_seats");
+}
+
+export function createRegisterStaff(input: { username: string; fullName: string; roleName: string; pin: string }): Promise<string> {
+  return invoke<string>("create_register_staff", {
+    username: input.username,
+    fullName: input.fullName,
+    roleName: input.roleName,
+    pin: input.pin,
+  });
+}
+
+export function editRegisterStaff(input: { userId: string; fullName: string; roleName: string }): Promise<void> {
+  return invoke("edit_register_staff", { userId: input.userId, fullName: input.fullName, roleName: input.roleName });
+}
+
+export function resetRegisterStaffPin(userId: string, pin: string): Promise<void> {
+  return invoke("reset_register_staff_pin", { userId, pin });
+}
+
+export function disableRegisterStaff(userId: string): Promise<void> {
+  return invoke("disable_register_staff", { userId });
+}
+
+export function submitStaffProvisioning(): Promise<string> {
+  return invoke<string>("submit_staff_provisioning");
 }
 
 export function searchProductsLocal(query: string, limit = 50): Promise<ProductSearchHit<ProductUpsert>[]> {
@@ -622,6 +698,10 @@ export function resolveBatch(batchId: string, action: "retry" | "discard"): Prom
 
 export function rejectedCount(): Promise<number> {
   return invoke<number>("rejected_count");
+}
+
+export function conflictCount(): Promise<number> {
+  return invoke<number>("conflict_count");
 }
 
 export function fetchBusinessCurrency(): Promise<CurrencySnapshot> {

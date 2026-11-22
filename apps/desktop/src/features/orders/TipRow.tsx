@@ -18,7 +18,7 @@ export function TipRow({ billCents, presetsBps, tipCents, currency, disabled, on
   const presetCents = (bps: number) => Math.floor((billCents * bps + 5000) / 10_000);
   return (
     <div className="flex flex-wrap items-center gap-1.5">
-      <span className="inline-flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wide text-zinc-500 dark:text-white/50">
+      <span className="inline-flex items-center gap-1 text-[0.6875rem] font-semibold uppercase tracking-wide text-zinc-500 dark:text-white/50">
         <HandCoins size={13} aria-hidden="true" /> Tip
       </span>
       <button
@@ -29,7 +29,7 @@ export function TipRow({ billCents, presetsBps, tipCents, currency, disabled, on
           setCustom("");
           onChange(0);
         }}
-        className={`h-7 rounded-full px-2.5 text-[11px] font-semibold ${tipCents === 0 ? "bg-primary text-white" : "bg-zinc-200/70 dark:bg-white/10"}`}
+        className={`h-7 rounded-full px-2.5 text-[0.6875rem] font-semibold ${tipCents === 0 ? "bg-primary text-white" : "bg-zinc-200/70 dark:bg-white/10"}`}
       >
         None
       </button>
@@ -47,7 +47,7 @@ export function TipRow({ billCents, presetsBps, tipCents, currency, disabled, on
               setCustom("");
               onChange(cents);
             }}
-            className={`h-7 rounded-full px-2.5 text-[11px] font-semibold tabular-nums ${active ? "bg-primary text-white" : "bg-zinc-200/70 dark:bg-white/10"}`}
+            className={`h-7 rounded-full px-2.5 text-[0.6875rem] font-semibold tabular-nums ${active ? "bg-primary text-white" : "bg-zinc-200/70 dark:bg-white/10"}`}
           >
             {bps / 100}%
           </button>
@@ -65,7 +65,7 @@ export function TipRow({ billCents, presetsBps, tipCents, currency, disabled, on
           const cents = Math.round((Number.parseFloat(value || "0") || 0) * 100);
           onChange(Math.max(0, cents));
         }}
-        className="h-7 w-20 rounded-full border border-zinc-200 bg-white px-2.5 text-right text-[11px] font-semibold tabular-nums focus:border-primary focus:outline-none dark:border-white/10 dark:bg-zinc-900/60"
+        className="h-7 w-20 rounded-full border border-zinc-200 bg-white px-2.5 text-right text-[0.6875rem] font-semibold tabular-nums focus:border-primary focus:outline-none dark:border-white/10 dark:bg-zinc-900/60"
       />
     </div>
   );

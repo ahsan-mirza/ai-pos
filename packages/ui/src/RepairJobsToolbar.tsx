@@ -1,4 +1,4 @@
-import { ChevronDown } from "lucide-react";
+import { ChevronDown, Search } from "lucide-react";
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { DateInput } from "./DateInput";
 import { Select, type SelectOption } from "./Select";
@@ -67,16 +67,20 @@ export function RepairJobsToolbar({
 
   return (
     <div className="@container w-full min-w-0">
-    <div className="flex w-full min-w-0 flex-wrap items-center gap-2 @[640px]:flex-nowrap">
-      <input
-        value={search}
-        onChange={(event) => onSearch(event.target.value)}
-        placeholder="Search repairs..."
-        aria-label="Search repair jobs"
-        className="h-11 w-full min-w-0 rounded-2xl border border-gray-200 bg-gray-50 px-4 text-sm text-charcoal outline-none placeholder:text-gray-400 focus:border-orange-500 focus:ring-2 focus:ring-orange-500 @[640px]:w-auto @[640px]:min-w-[12rem] @[640px]:flex-[1_1_240px] dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:placeholder:text-zinc-500"
-      />
+    <div className="flex w-full min-w-0 flex-wrap items-center gap-2 @[40rem]:flex-nowrap">
+      <label className="relative w-full min-w-0 @[40rem]:w-auto @[40rem]:min-w-[12rem] @[40rem]:flex-[1_1_15rem]">
+        <span className="sr-only">Search repair jobs</span>
+        <Search size={16} aria-hidden="true" className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+        <input
+          value={search}
+          onChange={(event) => onSearch(event.target.value)}
+          placeholder="Search repairs..."
+          aria-label="Search repair jobs"
+          className="h-11 w-full rounded-2xl border border-gray-200 bg-gray-50 pl-9 pr-4 text-sm text-charcoal outline-none placeholder:text-gray-400 focus:border-orange-500 focus:ring-2 focus:ring-orange-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100 dark:placeholder:text-zinc-500"
+        />
+      </label>
       <Select aria-label="Status" className={field} value={status} onChange={onStatus} options={statusOptions} />
-      <div className="hidden @[1080px]:contents">
+      <div className="hidden @[67.5rem]:contents">
         {hasType ? <Select aria-label="Repair type" className={field} value={type} onChange={onType} options={typeOptions} /> : null}
         {hasDates ? <DateRange from={from ?? ""} to={to ?? ""} onFrom={onFrom} onTo={onTo} /> : null}
         {hasTechnician ? (
@@ -89,7 +93,7 @@ export function RepairJobsToolbar({
           moreActive={moreActive}
           hideOnLarge={!more}
         >
-          <div className="grid gap-3 @[1080px]:hidden">
+          <div className="grid gap-3 @[67.5rem]:hidden">
             {hasType ? <Select aria-label="Repair type" value={type} onChange={onType} options={typeOptions} /> : null}
             {hasDates ? (
               <div className="grid gap-2">
@@ -109,7 +113,7 @@ export function RepairJobsToolbar({
           Clear
         </button>
       ) : null}
-      {action ? <div className="ml-auto shrink-0 @[640px]:ml-0">{action}</div> : null}
+      {action ? <div className="ml-auto shrink-0 @[40rem]:ml-0">{action}</div> : null}
     </div>
     </div>
   );
@@ -168,7 +172,7 @@ function FilterMenu({
 
   const marked = active || moreActive;
   return (
-    <div ref={root} className={`relative shrink-0 ${hideOnLarge ? "@[1080px]:hidden" : ""}`}>
+    <div ref={root} className={`relative shrink-0 ${hideOnLarge ? "@[67.5rem]:hidden" : ""}`}>
       <button
         type="button"
         className={trigger}
@@ -176,7 +180,7 @@ function FilterMenu({
         aria-controls={panelId}
         onClick={() => setOpen((value) => !value)}
       >
-        {collapsedActive && !marked ? <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-orange-500 @[1080px]:hidden" /> : null}
+        {collapsedActive && !marked ? <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-orange-500 @[67.5rem]:hidden" /> : null}
         {marked ? <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-orange-500" /> : null}
         <span className="truncate">{label}</span>
         <ChevronDown aria-hidden="true" className="h-4 w-4 shrink-0 text-gray-500" />

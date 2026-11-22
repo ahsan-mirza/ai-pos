@@ -127,7 +127,7 @@ export function DiningTableShape({
   const radius = shortest / 2 - inset;
   const chairs = round ? roundChairs(count, width, height, depth, radius) : squareChairs(count, width, height, depth, inset);
   const top: CSSProperties = round
-    ? { left: width / 2 - radius, top: height / 2 - radius, width: radius * 2, height: radius * 2, borderRadius: "9999px" }
+    ? { left: width / 2 - radius, top: height / 2 - radius, width: radius * 2, height: radius * 2, borderRadius: "999rem" }
     : { left: inset, top: inset, width: width - inset * 2, height: height - inset * 2, borderRadius: Math.min(14, shortest / 6) };
 
   return (

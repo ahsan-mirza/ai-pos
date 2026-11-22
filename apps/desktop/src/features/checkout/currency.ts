@@ -151,5 +151,5 @@ function subscribe(listener: () => void): () => void {
 }
 
 export function useBusinessCurrency(): string {
-  return useSyncExternalStore(subscribe, businessCurrency);
+  return useSyncExternalStore(subscribe, businessCurrency, businessCurrency);
 }

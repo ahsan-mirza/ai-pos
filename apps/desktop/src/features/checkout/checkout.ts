@@ -9,14 +9,16 @@ import {
 import {
   batchStatus,
   createQuoteViaShell,
-  currentSession,
   enqueueBatch,
   flushSync,
   inTauri,
   nextDocumentNumber,
   openQuotePdfViaShell,
+  bootstrapReadiness,
 } from "../../lib/tauri";
-import { capabilitiesAvailable, registerCapabilities, subscriptionIsLocked } from "../../lib/capabilities";
+import { capabilitiesAvailable, registerCapabilities, subscriptionHold } from "../../lib/capabilities";
+import { terminal } from "../../config/terminal";
+import { businessApiReachable, syncBusinessCurrency } from "./currency";
 import { buildChargeEvents, type ChargeRequest } from "./queue";
 
 /** One Charge attempt. Retries of an unchanged cart reuse these idempotency keys. */
@@ -90,14 +92,25 @@ export interface ChargeGate {
   offline: boolean;
   subscriptionLocked: boolean;
   profileReady: boolean;
+  /** Distinguishes a stale 24-hour lease from a server-reported block. */
+  hold?: "server" | "lease" | null;
+  /** Rust already verified a permanent entitlement for this device. */
+  entitlementValid?: boolean;
 }
 
 /** Policy gates that must pass before an invoice number is reserved. */
 export function chargeGate(gate: ChargeGate): string | null {
-  if (!gate.profileReady) {
+  if (!gate.profileReady && !(gate.offline && !gate.pharmacyCatalog)) {
     return "This store's settings are not on this register yet. Connect once so they can be saved.";
   }
-  if (gate.subscriptionLocked) {
+  const hold = gate.hold ?? (gate.subscriptionLocked ? "server" : null);
+  if (hold === "server") {
+    return "New sales stay closed until the subscription is verified.";
+  }
+  if (hold === "lease") {
+    if (gate.entitlementValid === true) {
+      return blockPharmacyOfflineSale(gate.pharmacyCatalog, gate.offline);
+    }
     return "New sales stay closed until the subscription is verified.";
   }
   return blockPharmacyOfflineSale(gate.pharmacyCatalog, gate.offline);
@@ -115,24 +128,40 @@ export async function prepareBatchAfterGate(
   return prepareNumberedBatch(previous, request, allocate);
 }
 
+/** Loads store settings when the API answers, then decides whether this sale can post or queue. */
+async function resolveGate(): Promise<ChargeGate> {
+  await syncBusinessCurrency().catch(() => undefined);
+  return liveGate(!businessApiReachable());
+}
+
+async function liveGate(offline: boolean): Promise<ChargeGate> {
+  const hold = subscriptionHold();
+  let entitlementValid = terminal()?.entitlement_code === "VALID_PERMANENT_ENTITLEMENT";
+  if (inTauri()) {
+    try {
+      const report = await bootstrapReadiness(capabilitiesAvailable(), hold === "server");
+      entitlementValid = report.entitlement_code === "VALID_PERMANENT_ENTITLEMENT";
+    } catch {
+      entitlementValid = false;
+    }
+  }
+  return {
+    pharmacyCatalog: registerCapabilities().enabled.has("pharmacy_catalog"),
+    offline,
+    subscriptionLocked: hold !== null,
+    profileReady: capabilitiesAvailable(),
+    hold,
+    entitlementValid,
+  };
+}
+
 /** Reads the live session, refuses a blocked sale, and only then reserves an invoice number. */
 export async function preparePermittedBatch(
   previous: ChargeBatch | null,
   request: ChargeRequest,
   allocate?: () => Promise<string | null>,
 ): Promise<ChargeBatch | { rejected: string }> {
-  const session = inTauri() ? await currentSession() : null;
-  return prepareBatchAfterGate(
-    previous,
-    request,
-    {
-      pharmacyCatalog: registerCapabilities().enabled.has("pharmacy_catalog"),
-      offline: session?.mode === "offline",
-      subscriptionLocked: subscriptionIsLocked(),
-      profileReady: capabilitiesAvailable(),
-    },
-    allocate,
-  );
+  return prepareBatchAfterGate(previous, request, await resolveGate(), allocate);
 }
 
 export function invoiceOf(batch: ChargeBatch): string | null {
@@ -150,18 +179,8 @@ export function blockPharmacyOfflineSale(pharmacyCatalog: boolean, offline: bool
 }
 
 export async function submitCharge(batch: ChargeBatch): Promise<ChargeOutcome> {
-  if (subscriptionIsLocked()) {
-    return {
-      kind: "rejected",
-      message: "New sales stay closed until the subscription is verified.",
-    };
-  }
   if (inTauri()) {
-    const session = await currentSession();
-    const blocked = blockPharmacyOfflineSale(
-      registerCapabilities().enabled.has("pharmacy_catalog"),
-      session?.mode === "offline",
-    );
+    const blocked = chargeGate(await resolveGate());
     if (blocked) return { kind: "rejected", message: blocked };
     if (!batch.enqueued) {
       await enqueueBatch(batch.batchId, batch.events);
@@ -176,6 +195,8 @@ export async function submitCharge(batch: ChargeBatch): Promise<ChargeOutcome> {
     return { kind: "queued", message: report.message };
   }
 
+  const blocked = chargeGate(await resolveGate());
+  if (blocked) return { kind: "rejected", message: blocked };
   try {
     await pushBatch(batch.events);
     return { kind: "recorded" };

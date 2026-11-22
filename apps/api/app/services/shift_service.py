@@ -125,6 +125,26 @@ def build_report(db: Session, shift: RegisterShift) -> ShiftReport:
         )
         or 0
     )
+    from app.models.laundry_order import LaundryDeposit
+
+    laundry_in = int(
+        db.scalar(
+            select(func.coalesce(func.sum(LaundryDeposit.amount_cents), 0)).where(
+                LaundryDeposit.shift_id == shift.id, LaundryDeposit.method == "cash"
+            )
+        )
+        or 0
+    )
+    laundry_out = int(
+        db.scalar(
+            select(func.coalesce(func.sum(LaundryDeposit.amount_cents), 0)).where(
+                LaundryDeposit.refund_shift_id == shift.id,
+                LaundryDeposit.method == "cash",
+                LaundryDeposit.status == "REFUNDED",
+            )
+        )
+        or 0
+    )
     expected = (
         shift.opening_float_cents
         + tenders.get("cash", 0)
@@ -136,6 +156,8 @@ def build_report(db: Session, shift: RegisterShift) -> ShiftReport:
         - movements.get("CASH_DROP", 0)
         + deposit_in
         - deposit_out
+        + laundry_in
+        - laundry_out
     )
     return ShiftReport(
         sales_count=int(count),

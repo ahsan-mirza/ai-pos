@@ -37,7 +37,7 @@ function quantityText(product: ProductUpsert, quantity: number): string {
 function Field({ label, value }: { label: string; value: string }) {
   return (
     <div className="min-w-0">
-      <dt className="text-[11px] font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400">{label}</dt>
+      <dt className="text-[0.6875rem] font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400">{label}</dt>
       <dd className="mt-0.5 break-words text-sm text-zinc-900 dark:text-zinc-100">{value}</dd>
     </div>
   );
@@ -142,7 +142,7 @@ export function ProductDetailsModal({
         <div className="mb-4 flex items-start gap-3">
           <ProductPhoto src={product.thumb_url ?? product.image_url} className="h-16 w-16 shrink-0 rounded-xl object-cover" />
           <div className="min-w-0 flex-1">
-            <p className="text-[11px] font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400">{product.category || "Uncategorized"}</p>
+            <p className="text-[0.6875rem] font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400">{product.category || "Uncategorized"}</p>
             <h2 id="product-details-title" className="text-lg font-semibold leading-snug">{heading}</h2>
             {perVariant ? (
               <p className="mt-0.5 text-xs text-zinc-500 dark:text-zinc-400">{variants.length} sizes and colours</p>
@@ -156,13 +156,13 @@ export function ProductDetailsModal({
         </div>
 
         <div className="mb-4 flex flex-wrap items-center gap-2">
-          <span className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${product.is_active === false ? "bg-zinc-200 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300" : "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"}`}>
+          <span className={`rounded-full px-2.5 py-1 text-[0.6875rem] font-semibold ${product.is_active === false ? "bg-zinc-200 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300" : "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"}`}>
             {product.is_active === false ? "Inactive" : "Active"}
           </span>
           {perVariant ? null : (
-            <span className="rounded-full bg-zinc-100 px-2.5 py-1 text-[11px] font-semibold text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300">{TONE_LABEL[tone]}</span>
+            <span className="rounded-full bg-zinc-100 px-2.5 py-1 text-[0.6875rem] font-semibold text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300">{TONE_LABEL[tone]}</span>
           )}
-          {stale && !perVariant ? <span className="text-[11px] text-amber-700 dark:text-amber-300">Last synchronized stock</span> : null}
+          {stale && !perVariant ? <span className="text-[0.6875rem] text-amber-700 dark:text-amber-300">Last synchronized stock</span> : null}
         </div>
 
         <dl className="grid grid-cols-2 gap-x-4 gap-y-3">
@@ -231,11 +231,11 @@ export function ProductDetailsModal({
                 <li key={item.id} className="flex items-baseline justify-between gap-3 py-1.5">
                   <span className="min-w-0">
                     <span className="block truncate font-medium">{Object.values(item.variant_attributes ?? {}).join(" · ") || item.name}</span>
-                    <span className="block truncate font-mono text-[11px] text-zinc-500">{item.sku}</span>
+                    <span className="block truncate font-mono text-[0.6875rem] text-zinc-500">{item.sku}</span>
                   </span>
                   <span className="shrink-0 text-right tabular-nums">
                     <span className="block">{formatMoney(item.price_cents, currency)}</span>
-                    <span className="block text-[11px] text-zinc-500">{tracked(item) ? quantityText(item, item.stock_quantity) : "Not tracked"}</span>
+                    <span className="block text-[0.6875rem] text-zinc-500">{tracked(item) ? quantityText(item, item.stock_quantity) : "Not tracked"}</span>
                   </span>
                 </li>
               ))}
@@ -297,7 +297,7 @@ export function ProductDetailsModal({
           </section>
         ) : null}
 
-        <p className="mt-5 flex items-start gap-2 text-[11px] text-zinc-500 dark:text-zinc-400">
+        <p className="mt-5 flex items-start gap-2 text-[0.6875rem] text-zinc-500 dark:text-zinc-400">
           <Info size={14} aria-hidden="true" className="mt-0.5 shrink-0" />
           This view does not change the order.
         </p>

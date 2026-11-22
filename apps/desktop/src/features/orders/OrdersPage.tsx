@@ -25,7 +25,7 @@ import { useCallback, useEffect, useId, useMemo, useState } from "react";
 import { ManagerApprovalModal } from "../../components/ManagerApprovalModal";
 import { DrawerHeader } from "../../components/shell/Drawer";
 import { PageFrame } from "../../components/shell/RegisterShell";
-import { useShell } from "../../components/shell/ShellContext";
+import { useDrawerHold, useShell } from "../../components/shell/ShellContext";
 import { ui } from "../../components/shell/tokens";
 import { useCapabilities } from "../../lib/capabilities";
 import type { CashierSession } from "../auth/session";
@@ -41,6 +41,7 @@ import { DeliveryCashDialog } from "./DeliveryCashDialog";
 import { printKitchenTickets } from "./kitchenPrint";
 import { SplitChecksModal } from "./SplitChecksModal";
 import { IncomingDeliveries, KeyInDeliveryModal } from "./IncomingDeliveries";
+import { TableConflictPanel } from "./TableConflictPanel";
 import { OrderRequestError, channelsApi, ordersApi, queueOfflineOrder } from "./ordersClient";
 import { listenForTableEvents } from "./tableSync";
 import { startSettlement } from "./settlement";
@@ -295,6 +296,7 @@ export function OrdersPage({ session }: { session: CashierSession }) {
   const [channels, setChannels] = useState<DeliveryChannel[]>([]);
   const [keyingIn, setKeyingIn] = useState(false);
   const [busy, setBusy] = useState(false);
+  useDrawerHold(busy);
   const [seating, setSeating] = useState<DiningTable | null>(null);
   const [adding, setAdding] = useState(false);
   const [cashOpen, setCashOpen] = useState(false);
@@ -624,7 +626,7 @@ export function OrdersPage({ session }: { session: CashierSession }) {
       drawer={
         <aside
           aria-label={selected ? "Active order" : "Order"}
-          className={`${selected ? "flex" : "hidden lg:flex"} fixed inset-0 z-30 min-h-0 flex-col border-zinc-200 bg-white lg:static lg:z-auto lg:w-[420px] lg:border-l dark:border-white/10 dark:bg-charcoal`}
+          className={`${selected ? "flex" : "hidden lg:flex"} fixed inset-0 z-30 min-h-0 flex-col border-zinc-200 bg-white lg:static lg:z-auto lg:w-[26.25rem] lg:border-l dark:border-white/10 dark:bg-charcoal`}
         >
           {selected === null ? (
             <div className="flex flex-1 flex-col items-center justify-center p-8 text-center text-sm text-zinc-500 dark:text-white/50">
@@ -689,11 +691,11 @@ export function OrdersPage({ session }: { session: CashierSession }) {
                         <span className={`min-w-0 truncate font-semibold ${item.voided_at ? "line-through" : ""}`}>{lineLabel(item)}</span>
                         <span className="shrink-0 font-bold tabular-nums">{formatMoney(item.unit_price_cents * item.quantity, currency)}</span>
                       </div>
-                      <p className="mt-0.5 text-[11px] text-zinc-500 dark:text-white/50">
+                      <p className="mt-0.5 text-[0.6875rem] text-zinc-500 dark:text-white/50">
                         {item.quantity} × {formatMoney(item.unit_price_cents, currency)}
                         {item.note ? ` · ${item.note}` : ""}
                       </p>
-                      <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px] text-zinc-500 dark:text-white/50">
+                      <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[0.6875rem] text-zinc-500 dark:text-white/50">
                         <span className="rounded-full bg-primary/10 px-1.5 font-semibold text-primary">{itemStatus(item)}</span>
                         {item.seat ? <span className="rounded-full bg-zinc-200/70 px-1.5 dark:bg-white/10">Seat {item.seat}</span> : null}
                         {editable ? (
@@ -710,7 +712,7 @@ export function OrdersPage({ session }: { session: CashierSession }) {
                         ) : null}
                       </div>
                       {item.sent_at && !item.voided_at ? (
-                        <p className="mt-1 text-[11px] text-zinc-500 dark:text-white/50">Already in the kitchen. Void it with a reason to correct it. New items do not change this line.</p>
+                        <p className="mt-1 text-[0.6875rem] text-zinc-500 dark:text-white/50">Already in the kitchen. Void it with a reason to correct it. New items do not change this line.</p>
                       ) : null}
                     </li>
                     );
@@ -719,7 +721,7 @@ export function OrdersPage({ session }: { session: CashierSession }) {
 
                 {draft.length > 0 ? (
                   <div className="rounded-2xl border border-primary/40 p-2">
-                    <p className="px-1 text-[11px] font-semibold uppercase tracking-wide text-primary">Adding</p>
+                    <p className="px-1 text-[0.6875rem] font-semibold uppercase tracking-wide text-primary">Adding</p>
                     <ul className="mt-1 space-y-1 text-sm">
                       {draft.map((line) => (
                         <li key={line.id} className="px-1">
@@ -749,7 +751,7 @@ export function OrdersPage({ session }: { session: CashierSession }) {
 
                 {adding ? (
                 <>
-                <div className="flex items-center gap-1.5 text-[11px] font-semibold">
+                <div className="flex items-center gap-1.5 text-[0.6875rem] font-semibold">
                   <span className="text-zinc-500 dark:text-white/50">Seat</span>
                   {[null, 1, 2, 3, 4, 5, 6].map((value) => (
                     <button key={value ?? "all"} type="button" aria-pressed={seat === value} onClick={() => setSeat(value)}
@@ -918,17 +920,17 @@ export function OrdersPage({ session }: { session: CashierSession }) {
                 ) : null}
                 <div className="flex gap-2">
                   {tablesOn ? (
-                    <button type="button" disabled={busy} onClick={() => setMoving(selected)} className={`${ui.secondaryAction} h-12 w-14 shrink-0 flex-col rounded-2xl text-[10px]`}>
+                    <button type="button" disabled={busy} onClick={() => setMoving(selected)} className={`${ui.secondaryAction} h-12 w-14 shrink-0 flex-col rounded-2xl text-[0.625rem]`}>
                       <MoveRight size={16} aria-hidden="true" /> Move
                     </button>
                   ) : null}
                   {orders.length > 1 ? (
-                    <button type="button" disabled={busy} onClick={() => setMergeFrom(selected)} className={`${ui.secondaryAction} h-12 w-14 shrink-0 flex-col rounded-2xl text-[10px]`}>
+                    <button type="button" disabled={busy} onClick={() => setMergeFrom(selected)} className={`${ui.secondaryAction} h-12 w-14 shrink-0 flex-col rounded-2xl text-[0.625rem]`}>
                       <Merge size={16} aria-hidden="true" /> Merge
                     </button>
                   ) : null}
                   {splitOn ? (
-                    <button type="button" disabled={busy || unpaid.length === 0} onClick={() => setSplitting(true)} className={`${ui.secondaryAction} h-12 w-14 shrink-0 flex-col rounded-2xl text-[10px]`}>
+                    <button type="button" disabled={busy || unpaid.length === 0} onClick={() => setSplitting(true)} className={`${ui.secondaryAction} h-12 w-14 shrink-0 flex-col rounded-2xl text-[0.625rem]`}>
                       <Split size={16} aria-hidden="true" /> Split
                     </button>
                   ) : null}
@@ -972,6 +974,9 @@ export function OrdersPage({ session }: { session: CashierSession }) {
           </p>
         ) : null}
 
+        {tablesOn && session.user.permissions.includes(Permission.PosVoidSentItem) ? (
+          <TableConflictPanel storeId={storeId} userId={userId} currency={currency} />
+        ) : null}
         {tablesOn && floor ? (
           <section aria-label="Floor plan">
             {floor.areas.length === 0 ? <p className="mb-2 text-sm text-zinc-500">No dining areas yet. Add them in the portal under Inventory › Floor plan.</p> : null}

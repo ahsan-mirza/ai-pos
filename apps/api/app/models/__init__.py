@@ -5,6 +5,14 @@ from app.models.attribute import ProductAttributeDefinition, ProductAttributeVal
 from app.models.audit_log import AuditLog
 from app.models.banking import BankAccount, BankStatement, BankStatementLine
 from app.models.base import Base
+from app.models.bootstrap import (
+    BootstrapDatasetItem,
+    BootstrapSession,
+    BootstrapSettingSnapshot,
+    BootstrapSnapshotItem,
+    CatalogChange,
+    CatalogFeedCounter,
+)
 from app.models.batch import BatchAllocation, BatchItem, ImportMappingTemplate, PurchaseBatch, Supplier
 from app.models.branch_tax import BranchTaxProfile, LegalEntity
 from app.models.brand import Brand, ProductModel
@@ -31,6 +39,39 @@ from app.models.fleet import (
 )
 from app.models.inventory import InventoryLevel, StockMovement
 from app.models.kitchen import KitchenStation, KitchenTicket, KitchenTicketItem
+from app.models.laundry import (
+    LaundryBranchCapacity,
+    LaundryGarmentType,
+    LaundryPriceList,
+    LaundryPriceRate,
+    LaundryService,
+    LaundryServiceCategory,
+    LaundryServiceGarment,
+    LaundrySettings,
+    LaundryWorkflowTemplate,
+)
+from app.models.laundry_order import (
+    LaundryBag,
+    LaundryDeposit,
+    LaundryGarment,
+    LaundryOrder,
+    LaundryOrderEvent,
+    LaundryPhoto,
+    LaundryTag,
+    LaundryTagEvent,
+)
+from app.models.laundry_production import (
+    LaundryBatch,
+    LaundryBatchItem,
+    LaundryIncident,
+    LaundryInspection,
+    LaundryMachine,
+    LaundryMachineCycle,
+    LaundryPackingScan,
+    LaundryReworkTask,
+    LaundrySortingCategory,
+    LaundryStageEvent,
+)
 from app.models.loyalty import LoyaltyEntry
 from app.models.margin import MarginPolicy
 from app.models.markdown import MarkdownEvent, PriceChange
@@ -94,7 +135,14 @@ from app.models.reservation import (
     TableActivityEvent,
     TableSeatingSession,
 )
-from app.models.restaurant import CodHandover, DiningArea, DiningTable, OpenOrder, OpenOrderItem
+from app.models.restaurant import (
+    CodHandover,
+    DiningArea,
+    DiningTable,
+    OpenOrder,
+    OpenOrderItem,
+    TableSessionConflict,
+)
 from app.models.return_item import ReturnItem
 from app.models.return_tender import ReturnTender
 from app.models.role import Role, RolePermission
@@ -115,10 +163,14 @@ from app.models.scheduled_job import ScheduledJob
 from app.models.serial_number import SerialNumber
 from app.models.shift import CashMovement, RegisterShift
 from app.models.staff import CommissionRule, EmployeeProfile, PayrollLine, PayrollRun
+from app.models.offline_approval import OfflineConflictAdjustment, OfflineWriteoffRequest
+from app.models.staff_provisioning import StaffProvisioningEvent
 from app.models.stock_count import StockCount, StockCountLine
 from app.models.store import Store
 from app.models.store_credit import StoreCredit, StoreCreditRedemption
 from app.models.sync_event import SyncEvent
+from app.models.offline_review import ConflictAdjustmentRequest, LostTerminalRequest
+from app.models.terminal_allocation import TerminalAllocation, TerminalAllocationConsumption
 from app.models.time_entry import TimeEntry
 from app.models.trade_in import TradeIn
 from app.models.transfer import StockTransfer, StockTransferLine, StockTransferSerial
@@ -184,6 +236,33 @@ __all__ = [
     "ProductAttributeValue",
     "InventoryLevel",
     "LegalEntity",
+    "LaundryBag",
+    "LaundryBatch",
+    "LaundryBatchItem",
+    "LaundryIncident",
+    "LaundryInspection",
+    "LaundryMachine",
+    "LaundryMachineCycle",
+    "LaundryPackingScan",
+    "LaundryReworkTask",
+    "LaundrySortingCategory",
+    "LaundryStageEvent",
+    "LaundryDeposit",
+    "LaundryGarment",
+    "LaundryOrder",
+    "LaundryOrderEvent",
+    "LaundryPhoto",
+    "LaundryTag",
+    "LaundryTagEvent",
+    "LaundryBranchCapacity",
+    "LaundryGarmentType",
+    "LaundryPriceList",
+    "LaundryPriceRate",
+    "LaundryService",
+    "LaundryServiceCategory",
+    "LaundryServiceGarment",
+    "LaundrySettings",
+    "LaundryWorkflowTemplate",
     "KitchenStation",
     "KitchenTicket",
     "KitchenTicketItem",
@@ -193,6 +272,7 @@ __all__ = [
     "CodHandover",
     "DiningArea",
     "DiningTable",
+    "TableSessionConflict",
     "OpenOrder",
     "OpenOrderItem",
     "Reservation",

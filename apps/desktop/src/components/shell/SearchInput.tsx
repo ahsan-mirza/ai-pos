@@ -10,7 +10,8 @@ interface SearchInputProps {
   placeholder: string;
   onChange: (value: string) => void;
   onSubmit: (value: string) => void;
-  actionLabel: string;
+  /** Omit this to keep the field as a single control. Enter still submits. */
+  actionLabel?: string;
   actionIcon?: LucideIcon;
   icon?: LucideIcon;
   busy?: boolean;
@@ -80,9 +81,8 @@ export function SearchInput({
       <div className="flex h-14 overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-sm transition-colors focus-within:border-primary-500 focus-within:ring-4 focus-within:ring-primary-500/15 dark:border-zinc-800 dark:bg-zinc-900/60">
         <div className="relative min-w-0 flex-1">
           <Icon
-            size={20}
             aria-hidden="true"
-            className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-zinc-400 dark:text-zinc-500"
+            className="pointer-events-none absolute left-4 top-1/2 h-[1.125rem] w-[1.125rem] -translate-y-1/2 text-zinc-400 dark:text-zinc-500"
           />
           <input
             ref={setRef}
@@ -108,16 +108,16 @@ export function SearchInput({
               uppercase ? "uppercase" : ""
             }`}
           />
-          <span className="pointer-events-none absolute right-3 top-1/2 hidden -translate-y-1/2 items-center gap-1.5 text-[11px] text-zinc-500 sm:flex dark:text-zinc-400">
+          <span className="pointer-events-none absolute right-3 top-1/2 hidden -translate-y-1/2 items-center gap-1.5 text-[0.6875rem] text-zinc-500 sm:flex dark:text-zinc-400">
             {shortcut ? (
               <>
-                <kbd className="rounded-md border border-zinc-200 bg-zinc-50 px-1.5 py-0.5 font-mono text-[10px] font-semibold dark:border-zinc-700 dark:bg-zinc-800">
+                <kbd className="rounded-md border border-zinc-200 bg-zinc-50 px-1.5 py-0.5 font-mono text-[0.625rem] font-semibold dark:border-zinc-700 dark:bg-zinc-800">
                   {shortcut}
                 </kbd>
                 focus
               </>
             ) : null}
-            <kbd className="rounded-md border border-zinc-200 bg-zinc-50 px-1.5 py-0.5 font-mono text-[10px] font-semibold dark:border-zinc-700 dark:bg-zinc-800">
+            <kbd className="rounded-md border border-zinc-200 bg-zinc-50 px-1.5 py-0.5 font-mono text-[0.625rem] font-semibold dark:border-zinc-700 dark:bg-zinc-800">
               ↵
             </kbd>
           </span>
@@ -135,14 +135,16 @@ export function SearchInput({
             </button>
           ) : null}
         </div>
-        <button
-          type="submit"
-          disabled={busy || disabled || value.trim() === ""}
-          className="flex shrink-0 items-center gap-2 border-l border-primary-600/20 bg-primary-500 px-5 text-sm font-semibold text-white transition-colors hover:bg-primary-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-white/60 disabled:bg-primary-500/50 disabled:text-white/80"
-        >
-          <ActionIcon size={17} aria-hidden="true" />
-          <span className="hidden sm:inline">{busy ? "Working…" : actionLabel}</span>
-        </button>
+        {actionLabel ? (
+          <button
+            type="submit"
+            disabled={busy || disabled || value.trim() === ""}
+            className="flex shrink-0 items-center gap-2 border-l border-primary-600/20 bg-primary-500 px-5 text-sm font-semibold text-white transition-colors hover:bg-primary-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-white/60 disabled:bg-primary-500/50 disabled:text-white/80"
+          >
+            <ActionIcon size={17} aria-hidden="true" />
+            <span className="hidden sm:inline">{busy ? "Working…" : actionLabel}</span>
+          </button>
+        ) : null}
       </div>
     </form>
   );

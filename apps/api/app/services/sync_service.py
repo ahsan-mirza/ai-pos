@@ -65,6 +65,7 @@ EntityType = Literal[
     "time_entry",
     "customer",
     "open_order",
+    "laundry_order",
 ]
 SyncSource = Literal["register", "portal"]
 # Entity types whose payload store_id must be the calling register's own branch.
@@ -91,6 +92,7 @@ class SyncContext:
     device_id: str
     occurred_at: datetime
     device: Device | None = None
+    idempotency_key: str | None = None
 
 
 Handler = Callable[[Session, Settings, dict[str, object], SyncContext], uuid.UUID]
@@ -297,7 +299,13 @@ def apply_sale(
     data = parse_payload(SalePayload, payload)
     if data.sold_at is None and ctx is not None:
         data = data.model_copy(update={"sold_at": ctx.occurred_at})
-    return record_sale(db, settings, data, device=ctx.device if ctx is not None else None).id
+    return record_sale(
+        db,
+        settings,
+        data,
+        device=ctx.device if ctx is not None else None,
+        allocation_event_key=ctx.idempotency_key if ctx is not None else None,
+    ).id
 
 
 def apply_sale_return(db: Session, settings: Settings, payload: dict[str, object], ctx: SyncContext) -> uuid.UUID:
@@ -465,7 +473,13 @@ def push_batch(
     results: list[SyncPushResult] = []
     try:
         for event in request.events:
-            ctx = SyncContext(source=source, device_id=request.device_id, occurred_at=event.occurred_at, device=device)
+            ctx = SyncContext(
+                source=source,
+                device_id=request.device_id,
+                occurred_at=event.occurred_at,
+                device=device,
+                idempotency_key=event.idempotency_key,
+            )
             results.append(_apply_event(db, ctx, event, settings))
         db.commit()
     except SyncRejected as exc:
@@ -479,9 +493,30 @@ def push_batch(
         raise
     except IntegrityError as exc:
         db.rollback()
+        recovered = _duplicates_after_rollback(db, request)
+        if recovered is not None:
+            return SyncPushResponse(results=recovered)
         logger.exception("Sync batch conflicted with stored data.")
         raise ApiError(409, "conflict", "The batch conflicts with existing data.") from exc
     return SyncPushResponse(results=results)
+
+
+def _duplicates_after_rollback(db: Session, request: SyncPushRequest) -> list[SyncPushResult] | None:
+    """A concurrent same-payload commit wins the unique key. This request must not apply it again."""
+    results: list[SyncPushResult] = []
+    for event in request.events:
+        existing = db.scalar(select(SyncEvent).where(SyncEvent.idempotency_key == event.idempotency_key))
+        if existing is None:
+            return None
+        if existing.payload_hash != canonical_hash(event.payload):
+            raise ApiError(
+                409,
+                "idempotency_conflict",
+                "Idempotency key was already used with a different payload.",
+                details={"idempotency_key": event.idempotency_key},
+            )
+        results.append(SyncPushResult(idempotency_key=event.idempotency_key, status="duplicate"))
+    return results
 
 
 def _apply_event(db: Session, ctx: SyncContext, event: SyncEventIn, settings: Settings) -> SyncPushResult:
@@ -498,7 +533,7 @@ def _apply_event(db: Session, ctx: SyncContext, event: SyncEventIn, settings: Se
                 "Idempotency key was already used with a different payload.",
                 details={"idempotency_key": event.idempotency_key},
             )
-        return SyncPushResult(idempotency_key=event.idempotency_key, status="duplicate")
+        return _result_for(db, event.idempotency_key, duplicate=True)
 
     _reject_practice_replay(db, event)
     entity_id = _dispatch(db, settings, event, ctx)
@@ -514,7 +549,16 @@ def _apply_event(db: Session, ctx: SyncContext, event: SyncEventIn, settings: Se
         )
     )
     db.flush()
-    return SyncPushResult(idempotency_key=event.idempotency_key, status="applied")
+    return _result_for(db, event.idempotency_key, duplicate=False)
+
+
+def _result_for(db: Session, idempotency_key: str, *, duplicate: bool) -> SyncPushResult:
+    from app.models.restaurant import TableSessionConflict
+
+    conflict = db.scalar(select(TableSessionConflict).where(TableSessionConflict.idempotency_key == idempotency_key))
+    if conflict is not None:
+        return SyncPushResult(idempotency_key=idempotency_key, status="awaiting_review", conflict_id=conflict.id)
+    return SyncPushResult(idempotency_key=idempotency_key, status="duplicate" if duplicate else "applied")
 
 
 def _reject_practice_replay(db: Session, event: SyncEventIn) -> None:
@@ -540,6 +584,8 @@ def _check_device_scope(event: SyncEventIn, ctx: SyncContext) -> None:
     own = str(ctx.device.store_id)
     if event.entity_type == "store" and str(event.payload.get("id")) != own:
         raise SyncRejected("A register can only upsert its own store.")
+    if event.entity_type == "laundry_order" and str(event.payload.get("intake_store_id")) != own:
+        raise SyncRejected("This register can only record activity for its own store.")
     if event.entity_type in STORE_BOUND and str(event.payload.get("store_id")) != own:
         raise SyncRejected("This register can only record activity for its own store.")
 
@@ -548,6 +594,7 @@ ENTITY_CAPABILITIES: dict[str, Capability] = {
     "repair_ticket": Capability.REPAIRS,
     "serial_number": Capability.SERIAL_TRACKING,
     "open_order": Capability.OPEN_ORDERS,
+    "laundry_order": Capability.LAUNDRY_OPERATIONS,
 }
 TENDER_CAPABILITIES: dict[str, Capability] = {
     "on_account": Capability.B2B_CREDIT,

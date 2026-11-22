@@ -161,7 +161,7 @@ function MonthCalendar({
           <ChevronRight className="h-4 w-4" aria-hidden="true" />
         </button>
       </div>
-      <div className="grid grid-cols-7 gap-0.5 text-center text-[11px] font-medium text-charcoal/50 dark:text-zinc-400">
+      <div className="grid grid-cols-7 gap-0.5 text-center text-[0.6875rem] font-medium text-charcoal/50 dark:text-zinc-400">
         {weekdays.map((label, index) => (
           <span key={`${label}-${index}`}>{label}</span>
         ))}
@@ -341,7 +341,7 @@ export function AxizDatePicker({
     if (!rangeMessage(next, minIso, maxIso, true)) commit(next);
   }
 
-  const shell = className || (variant === "compact" ? `${fieldShell} h-9 text-[13px]` : fieldShell);
+  const shell = className || (variant === "compact" ? `${fieldShell} h-9 text-[0.8125rem]` : fieldShell);
   const clock = timePart(parsed && parsed.length > 10 ? parsed : current);
   const [hour, minute] = clock.split(":");
   const popover = (

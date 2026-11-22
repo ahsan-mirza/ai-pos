@@ -35,7 +35,7 @@ function WarrantyChip({ expires }: { expires: string }) {
   return (
     <span
       title={`Warranty ${covered ? "until" : "ended"} ${end.toLocaleDateString()}`}
-      className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
+      className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[0.625rem] font-semibold uppercase tracking-wide ${
         covered ? "bg-charcoal text-white dark:bg-white dark:text-zinc-900" : "bg-surface text-charcoal/60 ring-1 ring-line"
       }`}
     >
@@ -64,7 +64,7 @@ export function ReturnLineCard({
   return (
     <li
       className={`rounded-2xl border p-4 transition ${
-        selected ? "border-primary bg-white dark:bg-zinc-900 shadow-[0_0_0_1px_rgb(var(--primary-rgb))]" : "border-line dark:border-zinc-800 bg-surface dark:bg-zinc-800/60"
+        selected ? "border-primary bg-white dark:bg-zinc-900 shadow-[0_0_0_0.0625rem_rgb(var(--primary-rgb))]" : "border-line dark:border-zinc-800 bg-surface dark:bg-zinc-800/60"
       } ${exhausted ? "opacity-60" : ""}`}
     >
       <div className="flex items-start gap-3">
@@ -84,12 +84,12 @@ export function ReturnLineCard({
                 <WarrantyChip expires={item.warranty_expires_at} />
               ) : null}
               {item.final_sale ? (
-                <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-800 dark:bg-amber-900/40 dark:text-amber-200">
+                <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[0.625rem] font-semibold uppercase tracking-wide text-amber-800 dark:bg-amber-900/40 dark:text-amber-200">
                   Final sale
                 </span>
               ) : null}
               {item.gift_card ? (
-                <span className="rounded-full bg-surface px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-charcoal/60 ring-1 ring-line">
+                <span className="rounded-full bg-surface px-2 py-0.5 text-[0.625rem] font-semibold uppercase tracking-wide text-charcoal/60 ring-1 ring-line">
                   Gift card · not returnable
                 </span>
               ) : null}

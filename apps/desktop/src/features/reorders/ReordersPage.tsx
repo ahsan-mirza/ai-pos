@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { PosButton } from "../../components/shell/posControls";
 import { PageFrame } from "../../components/shell/RegisterShell";
 import { useShellPage } from "../../components/shell/ShellContext";
 import { RetailRequestError, retailCall } from "../../lib/retailClient";
@@ -110,10 +111,10 @@ export function ReordersPage({ session }: { session: CashierSession }) {
             {current.stock_note ? <p className="text-sm text-amber-700">{current.stock_note}</p> : null}
             {current.sales_order_number ? <p className="text-sm">Draft order {current.sales_order_number}</p> : null}
             <div className="flex flex-wrap gap-2">
-              <button type="button" disabled={busy} className="rounded-full bg-primary-500 px-4 py-2 text-sm font-semibold text-white disabled:opacity-40" onClick={() => void act(current.id, "order", { user_id: session.user.id })}>Create order</button>
-              <button type="button" disabled={busy} className="rounded-full border px-4 py-2 text-sm" onClick={() => void act(current.id, "snooze", { hours: 4 })}>Snooze</button>
-              <button type="button" disabled={busy} className="rounded-full border px-4 py-2 text-sm" onClick={() => void act(current.id, "skip", { reason: "Skipped at the register" })}>Skip this one</button>
-              <button type="button" disabled={busy} className="rounded-full border px-4 py-2 text-sm" onClick={() => void act(current.id, "complete")}>Delivered</button>
+              <PosButton disabled={busy} onClick={() => void act(current.id, "order", { user_id: session.user.id })}>Create order</PosButton>
+              <PosButton variant="secondary" disabled={busy} onClick={() => void act(current.id, "snooze", { hours: 4 })}>Snooze</PosButton>
+              <PosButton variant="secondary" disabled={busy} onClick={() => void act(current.id, "skip", { reason: "Skipped at the register" })}>Skip this one</PosButton>
+              <PosButton variant="secondary" disabled={busy} onClick={() => void act(current.id, "complete")}>Delivered</PosButton>
             </div>
           </article>
         ) : null}

@@ -83,14 +83,14 @@ export function ProductPhotos({
               <li key={photo.key} className="relative overflow-hidden rounded-2xl border border-zinc-200">
                 <img src={previews[photo.key]} alt="" className="aspect-square w-full object-cover" />
                 <div className="absolute inset-x-1 bottom-1 flex justify-end gap-1">
-                  {main ? <span className="rounded-full bg-orange-500 px-2 py-0.5 text-[10px] font-semibold text-white">Main</span> : (
-                    <button type="button" className="rounded-full bg-white px-2 py-0.5 text-[10px] font-semibold" onClick={() => onChange(photos, photo.key)}>
+                  {main ? <span className="rounded-full bg-orange-500 px-2 py-0.5 text-[0.625rem] font-semibold text-white">Main</span> : (
+                    <button type="button" className="rounded-full bg-white px-2 py-0.5 text-[0.625rem] font-semibold" onClick={() => onChange(photos, photo.key)}>
                       Main
                     </button>
                   )}
                   <button
                     type="button"
-                    className="rounded-full bg-white px-2 py-0.5 text-[10px] font-semibold"
+                    className="rounded-full bg-white px-2 py-0.5 text-[0.625rem] font-semibold"
                     onClick={() => {
                       const remaining = photos.filter((item) => item.key !== photo.key);
                       onChange(remaining, photo.key === mainKey ? (remaining[0]?.key ?? null) : mainKey);

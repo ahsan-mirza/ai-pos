@@ -39,7 +39,7 @@ html[lang="ar"] :is(button, input, select, textarea) {
 
 @layer components {
   .modal-backdrop {
-    @apply fixed inset-0 z-50 flex items-center justify-center bg-charcoal/40 p-4 backdrop-blur-[8px];
+    @apply fixed inset-0 z-50 flex items-center justify-center bg-charcoal/40 p-4 backdrop-blur-[0.5rem];
     animation: fade-in 180ms ease-out both;
   }
   .modal-card {
@@ -116,18 +116,18 @@ html[lang="ar"] :is(button, input, select, textarea) {
   }
 
   .kbd {
-    @apply inline-flex h-6 min-w-6 items-center justify-center rounded-md border border-zinc-200 bg-zinc-50 px-1.5 font-mono text-[11px] font-semibold text-zinc-500 dark:border-white/15 dark:bg-white/5 dark:text-white/60;
+    @apply inline-flex h-6 min-w-6 items-center justify-center rounded-md border border-zinc-200 bg-zinc-50 px-1.5 font-mono text-[0.6875rem] font-semibold text-zinc-500 dark:border-white/15 dark:bg-white/5 dark:text-white/60;
   }
   /* The cart is a full-screen sheet on phones, a slide-over on tablets and a fixed column on desktop. */
   .cart-sheet {
     animation: sheet-up 260ms cubic-bezier(0.22, 1, 0.36, 1) both;
   }
-  @media (min-width: 768px) {
+  @media (min-width: 48rem) {
     .cart-sheet {
       animation-name: sheet-left;
     }
   }
-  @media (min-width: 1024px) {
+  @media (min-width: 64rem) {
     .cart-sheet {
       animation: none;
     }
@@ -175,7 +175,7 @@ html[lang="ar"] :is(button, input, select, textarea) {
   }
   50% {
     border-color: rgb(251 191 36);
-    box-shadow: 0 0 22px 3px rgb(245 158 11 / 0.85);
+    box-shadow: 0 0 1.375rem 0.1875rem rgb(245 158 11 / 0.85);
   }
 }
 
@@ -187,7 +187,7 @@ html[lang="ar"] :is(button, input, select, textarea) {
   }
   50% {
     border-color: rgb(96 165 250);
-    box-shadow: 0 0 22px 3px rgb(59 130 246 / 0.85);
+    box-shadow: 0 0 1.375rem 0.1875rem rgb(59 130 246 / 0.85);
   }
 }
 
@@ -203,17 +203,17 @@ html[lang="ar"] :is(button, input, select, textarea) {
   .table-alert-waiter,
   .table-alert-bill {
     animation: none;
-    box-shadow: 0 0 18px 2px rgb(245 158 11 / 0.7);
+    box-shadow: 0 0 1.125rem 0.125rem rgb(245 158 11 / 0.7);
   }
   .table-alert-bill {
-    box-shadow: 0 0 18px 2px rgb(59 130 246 / 0.7);
+    box-shadow: 0 0 1.125rem 0.125rem rgb(59 130 246 / 0.7);
   }
 }
 
 @keyframes context-in {
   from {
     opacity: 0;
-    transform: translateY(6px);
+    transform: translateY(0.375rem);
   }
 }
 
@@ -253,7 +253,7 @@ html[lang="ar"] :is(button, input, select, textarea) {
   }
 }
 
-/* Cart lines are about 400px wide even on a desktop register, so labels stay stacked until the line itself is wide. */
+/* Cart lines are about 25rem wide even on a desktop register, so labels stay stacked until the line itself is wide. */
 .cart-item {
   container-type: inline-size;
 }
@@ -264,9 +264,9 @@ html[lang="ar"] :is(button, input, select, textarea) {
 
 .cart-action-label {
   position: absolute;
-  width: 1px;
-  height: 1px;
-  margin: -1px;
+  width: 0.0625rem;
+  height: 0.0625rem;
+  margin: -0.0625rem;
   overflow: hidden;
   clip: rect(0, 0, 0, 0);
   white-space: nowrap;
@@ -319,7 +319,7 @@ html[lang="ar"] :is(button, input, select, textarea) {
   }
 }
 
-/* Current-sale header. The cart column is about 400px wide even on a large register,
+/* Current-sale header. The cart column is about 25rem wide even on a large register,
    so the title, count, and cashier stay on one row there. The row stacks only when
    the viewport itself is a narrow phone: below the md sheet the cart is full-bleed
    and the back control is in the same header. */
@@ -387,7 +387,7 @@ html[lang="ar"] :is(button, input, select, textarea) {
   white-space: nowrap;
 }
 
-@media (max-width: 419px) {
+@media (max-width: 26.1875rem) {
   .drawer-header:has(.drawer-header-toolbar:not(:empty)) {
     flex-wrap: wrap;
     align-items: center;

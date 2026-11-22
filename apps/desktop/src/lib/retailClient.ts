@@ -7,11 +7,13 @@ import { inTauri } from "./tauri";
 export class RetailRequestError extends Error {
   readonly status: number;
   readonly code: string;
+  readonly requestId: string;
 
-  constructor(status: number, code: string, message: string) {
+  constructor(status: number, code: string, message: string, requestId = "") {
     super(message);
     this.status = status;
     this.code = code;
+    this.requestId = requestId;
   }
 
   get offline(): boolean {
@@ -32,8 +34,8 @@ export async function retailCall<T>(
     } catch (caught) {
       const raw = String(caught);
       try {
-        const parsed = JSON.parse(raw) as { status: number; code: string; message: string };
-        throw new RetailRequestError(parsed.status, parsed.code, parsed.message);
+        const parsed = JSON.parse(raw) as { status: number; code: string; message: string; request_id?: string };
+        throw new RetailRequestError(parsed.status, parsed.code, parsed.message, parsed.request_id ?? "");
       } catch (inner) {
         if (inner instanceof RetailRequestError) throw inner;
         throw new RetailRequestError(0, "offline", raw);
@@ -55,9 +57,15 @@ export async function retailCall<T>(
   } catch {
     throw new RetailRequestError(0, "offline", "The server is unreachable.");
   }
-  const value = (await response.json().catch(() => null)) as { error?: { code?: string; message?: string } } | null;
+  const requestId = response.headers.get("X-Request-Id") ?? "";
+  const value = (await response.json().catch(() => null)) as { error?: { code?: string; message?: string; request_id?: string } } | null;
   if (!response.ok) {
-    throw new RetailRequestError(response.status, value?.error?.code ?? "rejected", value?.error?.message ?? "Request failed.");
+    throw new RetailRequestError(
+      response.status,
+      value?.error?.code ?? "rejected",
+      value?.error?.message ?? "Request failed.",
+      value?.error?.request_id ?? requestId,
+    );
   }
   return value as T;
 }
@@ -81,7 +89,12 @@ export async function retailPage<T>(path: string): Promise<{ rows: T[]; total: n
   const value = (await response.json().catch(() => null)) as { error?: { code?: string; message?: string } } | T[] | null;
   if (!response.ok) {
     const error = value && !Array.isArray(value) ? value.error : undefined;
-    throw new RetailRequestError(response.status, error?.code ?? "rejected", error?.message ?? "Request failed.");
+    throw new RetailRequestError(
+      response.status,
+      error?.code ?? "rejected",
+      error?.message ?? "Request failed.",
+      response.headers.get("X-Request-Id") ?? "",
+    );
   }
   const rows = Array.isArray(value) ? value : [];
   const total = Number(response.headers.get("X-Total-Count"));
@@ -112,8 +125,8 @@ export async function retailUpload(path: string, file: File): Promise<unknown> {
     } catch (caught) {
       const raw = String(caught);
       try {
-        const parsed = JSON.parse(raw) as { status: number; code: string; message: string };
-        throw new RetailRequestError(parsed.status, parsed.code, parsed.message);
+        const parsed = JSON.parse(raw) as { status: number; code: string; message: string; request_id?: string };
+        throw new RetailRequestError(parsed.status, parsed.code, parsed.message, parsed.request_id ?? "");
       } catch (inner) {
         if (inner instanceof RetailRequestError) throw inner;
         throw new RetailRequestError(0, "offline", raw);

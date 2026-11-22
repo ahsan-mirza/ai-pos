@@ -1,4 +1,6 @@
+import { RefreshCw } from "lucide-react";
 import type { ReactNode } from "react";
+import { PosButton, PosIconButton, PosSearchInput } from "../../components/shell/posControls";
 import { inventoryTableClass, inventoryTableFrameClass } from "./layout";
 
 export function Banner({ tone, children }: { tone: "info" | "error" | "ok"; children: ReactNode }) {
@@ -45,6 +47,84 @@ export function Field({
 export const control =
   "h-12 w-full rounded-xl border border-zinc-300 bg-white px-3 text-base dark:border-zinc-700 dark:bg-zinc-900";
 
+export function FilterSearch({
+  value,
+  onChange,
+  placeholder,
+  className = "min-w-[12rem] max-w-xs flex-1",
+  onCommit,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  placeholder: string;
+  className?: string;
+  onCommit?: () => void;
+}) {
+  return <PosSearchInput className={className} value={value} onChange={onChange} placeholder={placeholder} onCommit={onCommit} />;
+}
+
+export const posSearchToolbarClass = "box-border flex w-full min-w-0 flex-nowrap items-center gap-3";
+export const posSearchToolbarSearchClass = "box-border min-w-[11.25rem] flex-1";
+export const posSearchToolbarStatusClass =
+  "box-border h-12 w-auto min-w-[11.25rem] max-w-[16rem] shrink rounded-xl border border-zinc-300 bg-white bg-[length:1rem_1rem] bg-[position:right_1rem_center] bg-no-repeat pl-3 pr-12 text-base text-zinc-900 appearance-none dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100";
+export const posSearchToolbarRefreshClass = "h-12 w-12 shrink-0 rounded-xl";
+
+const statusChevron =
+  "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2371717a' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E\")";
+
+/** Search, optional status filter, and icon-only refresh on one row. */
+export function PosSearchToolbar({
+  query,
+  onQuery,
+  placeholder,
+  statusValue,
+  onStatus,
+  statusLabel = "Status",
+  statusOptions,
+  onRefresh,
+  refreshing = false,
+  refreshDisabled = false,
+  onCommit,
+}: {
+  query: string;
+  onQuery: (value: string) => void;
+  placeholder: string;
+  statusValue?: string;
+  onStatus?: (value: string) => void;
+  statusLabel?: string;
+  statusOptions?: readonly { value: string; label: string }[];
+  onRefresh?: () => void;
+  refreshing?: boolean;
+  refreshDisabled?: boolean;
+  onCommit?: () => void;
+}) {
+  return (
+    <div className={posSearchToolbarClass}>
+      <FilterSearch className={posSearchToolbarSearchClass} placeholder={placeholder} value={query} onChange={onQuery} onCommit={onCommit} />
+      {statusOptions && onStatus ? (
+        <select
+          className={posSearchToolbarStatusClass}
+          style={{ backgroundImage: statusChevron }}
+          aria-label={statusLabel}
+          value={statusValue ?? ""}
+          onChange={(event) => onStatus(event.target.value)}
+        >
+          {statusOptions.map((option) => (
+            <option key={option.value || "all"} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+      ) : null}
+      {onRefresh ? (
+        <PosIconButton className={posSearchToolbarRefreshClass} label="Refresh results" title="Refresh" disabled={refreshDisabled} onClick={onRefresh}>
+          <RefreshCw size={18} aria-hidden="true" className={refreshing ? "animate-spin" : ""} />
+        </PosIconButton>
+      ) : null}
+    </div>
+  );
+}
+
 export function PrimaryButton({
   children,
   disabled,
@@ -59,28 +139,17 @@ export function PrimaryButton({
   form?: string;
 }) {
   return (
-    <button
-      type={type}
-      form={form}
-      disabled={disabled}
-      onClick={onClick}
-      className="h-12 rounded-xl bg-primary-500 px-4 text-sm font-semibold text-white disabled:opacity-40"
-    >
+    <PosButton type={type} form={form} disabled={disabled} onClick={onClick}>
       {children}
-    </button>
+    </PosButton>
   );
 }
 
 export function QuietButton({ children, onClick, disabled }: { children: ReactNode; onClick?: () => void; disabled?: boolean }) {
   return (
-    <button
-      type="button"
-      disabled={disabled}
-      onClick={onClick}
-      className="h-12 rounded-xl px-3 text-sm font-semibold text-zinc-700 ring-1 ring-zinc-300 disabled:opacity-40 dark:text-zinc-200 dark:ring-zinc-700"
-    >
+    <PosButton variant="secondary" disabled={disabled} onClick={onClick}>
       {children}
-    </button>
+    </PosButton>
   );
 }
 

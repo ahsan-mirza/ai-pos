@@ -102,11 +102,11 @@ export function CustomerBar({ customer, currency, disabled = false, pendingCents
                 .join(" · ")}
             </p>
             <div className="mt-1.5 flex flex-wrap gap-1.5">
-              <span className="rounded-full bg-primary px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white">
+              <span className="rounded-full bg-primary px-2 py-0.5 text-[0.625rem] font-semibold uppercase tracking-wide text-white">
                 {PRICE_TIER_LABELS[customer.price_tier]}
               </span>
               {wholesale ? (
-                <span className="rounded-full bg-zinc-100 dark:bg-white/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-zinc-700 dark:text-white/80">
+                <span className="rounded-full bg-zinc-100 dark:bg-white/10 px-2 py-0.5 text-[0.625rem] font-semibold uppercase tracking-wide text-zinc-700 dark:text-white/80">
                   {PAYMENT_TERMS_LABELS[customer.payment_terms]}
                 </span>
               ) : null}

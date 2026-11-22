@@ -59,7 +59,8 @@ def test_register_asks_manager_approves_and_sale_carries_the_approver(client) ->
     assert again.status_code == 409
 
     body = sale([line(CABLE, 10, 1200, listed=1500, override_by=polled["approver"]["id"])])
-    assert push(client, [event("remote-approved-sale", "sale", body)]).status_code == 200
+    accepted = push(client, [event("remote-approved-sale", "sale", body, occurred_at=_recent_sale_stamp())])
+    assert accepted.status_code == 200, accepted.text
     assert client.get("/api/v1/approvals", headers=headers).json() == []
 
 
@@ -87,16 +88,50 @@ def test_cashier_cannot_answer_and_expired_requests_close(client, session) -> No
     assert client.get("/api/v1/approvals", headers=headers).json() == []
 
 
+def _recent_sale_stamp() -> str:
+    """08:00 UTC on the sale clock's previous day. That is 12:00 in a UTC+4 business day."""
+    from app.core.clock import utcnow
+
+    sold = (utcnow() - timedelta(days=1)).replace(hour=8, minute=0, second=0, microsecond=0)
+    return sold.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def test_a_sale_older_than_the_sync_window_is_refused_and_a_recent_one_is_kept(client) -> None:
+    from app.core.clock import utcnow
+
+    seed(client)
+    aged = (utcnow() - timedelta(days=31)).replace(microsecond=0)
+    refused = push(
+        client,
+        [event("aged-sale", "sale", sale([line(CABLE, 1, 1500)]), occurred_at=aged.strftime("%Y-%m-%dT%H:%M:%SZ"))],
+    )
+    assert refused.status_code == 422
+    assert "older than 30 days" in refused.json()["error"]["message"]
+    kept = push(client, [event("kept-sale", "sale", sale([line(CABLE, 1, 1500)]), occurred_at=_recent_sale_stamp())])
+    assert kept.status_code == 200, kept.text
+    edge = (utcnow() - timedelta(days=30)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    on_the_line = push(client, [event("boundary-sale", "sale", sale([line(CABLE, 1, 1500)]), occurred_at=edge)])
+    assert on_the_line.status_code == 200, on_the_line.text
+    earlier = (utcnow() - timedelta(days=30) - timedelta(seconds=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    past_the_line = push(client, [event("boundary-minus", "sale", sale([line(CABLE, 1, 1500)]), occurred_at=earlier)])
+    assert past_the_line.status_code == 422
+    assert "older than 30 days" in past_the_line.json()["error"]["message"]
+
+
 def test_manager_dashboard_shows_today_by_branch_and_attention(client, session) -> None:
     seed(client)
     headers, _ = admin(client)
-    assert push(client, [event("dash-sale-1", "sale", sale([line(CABLE, 4, 1500)]))]).status_code == 200
-    assert push(client, [event("dash-sale-2", "sale", sale([line(CABLE, 2, 1500)]))]).status_code == 200
+    stamp = _recent_sale_stamp()
+    first = push(client, [event("dash-sale-1", "sale", sale([line(CABLE, 4, 1500)]), occurred_at=stamp)])
+    assert first.status_code == 200, first.text
+    second = push(client, [event("dash-sale-2", "sale", sale([line(CABLE, 2, 1500)]), occurred_at=stamp)])
+    assert second.status_code == 200, second.text
     _ask(client)
-    # Sales from the sync helper are stamped 2026-10-19 08:00 UTC; look at that day from Dubai (UTC+4).
+    # The sales are 08:00 UTC. A UTC+4 business day reads that as 12:00, so the dashboard clock is 15:00 UTC the same day.
+    sold = datetime.strptime(stamp, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=UTC)
     user = session.query(User).filter(User.username == "admin").one()
     principal = Principal(kind="user", scope="portal", user=user, permissions=frozenset(user.permissions))
-    board = manager_service.dashboard(session, principal, 240, now=datetime(2026, 10, 19, 15, 0, tzinfo=UTC))
+    board = manager_service.dashboard(session, principal, 240, now=sold.replace(hour=15))
     assert board.sales == 2
     assert board.net_cents == 9_000
     assert board.branches[0].store_code == "DT-01"

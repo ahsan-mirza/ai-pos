@@ -23,7 +23,7 @@ export interface DataTableColumn<T> {
   /** Renders `row[accessorKey]` when no `cell` renderer is given. */
   accessorKey?: keyof T & string;
   cell?: (row: T, index: number) => ReactNode;
-  /** CSS width, e.g. `"120px"`, `"20%"` or a number of pixels. */
+  /** CSS width, e.g. `"7.5rem"`, `"20%"` or a number of pixels. */
   width?: string | number;
   align?: ColumnAlign;
   /** Extra classes on every body cell (e.g. responsive `hidden lg:table-cell`). */
@@ -95,7 +95,7 @@ export interface DataTableProps<T> {
   /** `card` draws the rounded border; `flush` sits edge-to-edge inside a panel. */
   variant?: "card" | "flush";
   density?: "comfortable" | "compact";
-  /** Minimum table width before it scrolls horizontally, e.g. `"760px"`. */
+  /** Minimum table width before it scrolls horizontally, e.g. `"47.5rem"`. */
   minWidth?: string;
   /** Pins the header while the table's own container scrolls (`className` must give it a height). */
   stickyHeader?: boolean;
@@ -251,7 +251,7 @@ export function DataTable<T>({
           style={minWidth && view.rows.length > 0 ? { minWidth } : undefined}
         >
           <thead className={stickyHeader ? "sticky top-0 z-10" : undefined}>
-            <tr className="bg-surface/70 text-[11px] font-semibold uppercase tracking-wider text-[#6B7280] shadow-[inset_0_-1px_0_#DBDBDB] backdrop-blur dark:bg-zinc-900/90 dark:text-zinc-400 dark:shadow-[inset_0_-1px_0_#27272a]">
+            <tr className="bg-surface/70 text-[0.6875rem] font-semibold uppercase tracking-wider text-[#6B7280] shadow-[inset_0_-0.0625rem_0_#DBDBDB] backdrop-blur dark:bg-zinc-900/90 dark:text-zinc-400 dark:shadow-[inset_0_-0.0625rem_0_#27272a]">
               {columns.map((column, index) => (
                 <th
                   key={columnKey(column, index)}
@@ -278,7 +278,7 @@ export function DataTable<T>({
                       }}
                     >
                       {column.header}
-                      <span aria-hidden="true" className="text-[10px] text-charcoal/40 dark:text-zinc-500">
+                      <span aria-hidden="true" className="text-[0.625rem] text-charcoal/40 dark:text-zinc-500">
                         {sort?.id === columnKey(column, index) ? (sort.direction === "asc" ? "↑" : "↓") : "↕"}
                       </span>
                     </button>
@@ -352,11 +352,11 @@ export function DataTable<T>({
                       aria-selected={isRowActive ? active : undefined}
                       className={`transition-colors ${
                         onRowClick
-                          ? "cursor-pointer outline-none focus-visible:bg-primary/[0.04] focus-visible:shadow-[inset_3px_0_0_rgb(var(--primary-rgb))]"
+                          ? "cursor-pointer outline-none focus-visible:bg-primary/[0.04] focus-visible:shadow-[inset_0.1875rem_0_0_rgb(var(--primary-rgb))]"
                           : ""
                       } ${
                         active
-                          ? "bg-primary/[0.06] shadow-[inset_3px_0_0_rgb(var(--primary-rgb))]"
+                          ? "bg-primary/[0.06] shadow-[inset_0.1875rem_0_0_rgb(var(--primary-rgb))]"
                           : "hover:bg-surface/60 dark:hover:bg-white/[0.03]"
                       } ${rowClassName?.(row, index) ?? ""}`}
                     >
@@ -413,7 +413,7 @@ function EmptyState({ title, description, icon: Icon = Inbox, action }: DataTabl
 }
 
 const navButton =
-  "flex h-8 min-w-[2.25rem] shrink-0 items-center justify-center gap-1 rounded-lg border px-2 text-[13px] tabular-nums outline-none transition-colors focus-visible:ring-2 focus-visible:ring-primary/30 disabled:pointer-events-none disabled:opacity-35";
+  "flex h-8 min-w-[2.25rem] shrink-0 items-center justify-center gap-1 rounded-lg border px-2 text-[0.8125rem] tabular-nums outline-none transition-colors focus-visible:ring-2 focus-visible:ring-primary/30 disabled:pointer-events-none disabled:opacity-35";
 const idleButton =
   "border-transparent font-semibold text-zinc-600 hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-300 dark:hover:bg-white/5 dark:hover:text-white";
 const currentPage = "border-primary/30 bg-primary/10 font-bold text-primary";
@@ -452,7 +452,7 @@ export function PaginationFooter({
   return (
     <nav
       aria-label={t("Pagination")}
-      className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3 border-t border-zinc-200 bg-white px-6 py-3.5 text-[13px] text-zinc-500 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-400"
+      className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3 border-t border-zinc-200 bg-white px-6 py-3.5 text-[0.8125rem] text-zinc-500 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-400"
     >
       <p className="whitespace-nowrap tabular-nums" aria-live="polite">
         {t("Showing {from} to {to} of {count} entries", {

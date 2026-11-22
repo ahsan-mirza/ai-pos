@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 
 from app import tax_authority
 from app.core.capabilities import Capability, has_capability
+from app.core.clock import utcnow
 from app.core.config import Settings
 from app.core.errors import SyncRejected
 from app.core.permissions import Permission
@@ -332,10 +333,11 @@ def price_lines(
         treatment: str | None = None
         includes_tax = entered_includes_tax(product)
         if enforced and tax_policy is not None and customer_policy is not None:
-            rate = customer_policy.rate_for(product.tax_category)
+            rate = item.tax_rate_bps if item.tax_rate_bps is not None else customer_policy.rate_for(product.tax_category)
             expected = line_tax(charged, 1, rate, inclusive=includes_tax)
             standard_rate = tax_policy.rate_for(product.tax_category)
-            if rate != standard_rate:
+            # A queued sale names the rate it used. A later policy change must not reprice it.
+            if item.tax_rate_bps is None and rate != standard_rate:
                 treatment = customer_policy.treatment
                 standard = line_tax(charged, 1, standard_rate, inclusive=includes_tax)
                 # A register that did not know the customer's treatment charged standard VAT: keep it.
@@ -678,6 +680,7 @@ def record_sale(
     except_quote: uuid.UUID | None = None,
     device: Device | None = None,
     allow_deposit: bool = False,
+    allocation_event_key: str | None = None,
 ) -> Sale:
     store = require_store(db, data.store_id)
     if store.currency != data.currency:
@@ -693,13 +696,14 @@ def record_sale(
         raise SyncRejected("Sale already exists.")
     if db.scalar(select(Sale).where(Sale.client_sale_id == data.client_sale_id)) is not None:
         raise SyncRejected("Client sale id already exists.")
-    now = datetime.now(UTC)
+    wall = datetime.now(UTC)
     sold_at = register_time(
-        data.sold_at if data.sold_at is not None else now,
-        now=now,
+        data.sold_at if data.sold_at is not None else wall,
+        now=wall,
         message="The sale is dated in the future. Check the register's clock.",
     )
-    if sold_at < now - timedelta(days=settings.sale_max_age_days):
+    # The age window uses the injectable clock. Tests freeze it so a fixed sale date stays inside 30 days.
+    if sold_at < utcnow() - timedelta(days=settings.sale_max_age_days):
         raise SyncRejected(f"The sale is older than {settings.sale_max_age_days} days and needs a manual entry.")
     customer = require_customer(db, data.customer_id)
     tier = price_list_service.tier_for(data.sale_type, customer, db)
@@ -827,6 +831,12 @@ def record_sale(
             )
             if stocked and product.id not in dishes:
                 demand[product.id] = demand.get(product.id, 0) + line.item.quantity
+    from app.services.allocation_service import consume_for_sale
+
+    allocation_slices = consume_for_sale(db, data, device, idempotency_key=allocation_event_key)
+    for product_id, slices in allocation_slices.items():
+        if sum(quantity for quantity, _batch in slices) != demand.get(product_id):
+            raise SyncRejected("The allocation consumption does not match the sale quantity.")
     from app.services.pharmacy_lots import lot_controlled_ids
 
     # Lock inventory rows in product-id order so two sales of the same products cannot deadlock.
@@ -865,6 +875,25 @@ def record_sale(
         else:
             serial_ids.append(None)
     for product_id in sorted(demand):
+        slices = allocation_slices.get(product_id)
+        if slices:
+            if sum(quantity for quantity, _batch in slices) != demand[product_id]:
+                raise SyncRejected("The allocation consumption does not match the sale quantity.")
+            for quantity, batch_item_id in slices:
+                move_stock(
+                    db,
+                    product_id=product_id,
+                    store_id=data.store_id,
+                    quantity=-quantity,
+                    movement_type="SALE_OUT",
+                    reference_type="sale",
+                    reference_id=data.id,
+                    user_id=data.cashier_id,
+                    batch_item_id=batch_item_id,
+                )
+            continue
+        if allocation_slices:
+            raise SyncRejected("A stocked line has no allocation consumption.")
         move_stock(
             db,
             product_id=product_id,
@@ -911,7 +940,7 @@ def record_sale(
         tip_user_id=tip_user.id if tip_user is not None else None,
         tax_snapshot=snapshot_for(db, data.store_id, data.currency),
         created_at=sold_at,
-        updated_at=now,
+        updated_at=wall,
     )
     db.add(sale)
     for line, serial_id in zip(priced.lines, serial_ids, strict=True):

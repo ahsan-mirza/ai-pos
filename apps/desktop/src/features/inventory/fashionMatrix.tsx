@@ -11,7 +11,7 @@ import {
 import { Select } from "@ai-pos/ui";
 import { useMemo, useState } from "react";
 
-const cell = "h-9 w-full min-w-[88px] rounded-lg border border-zinc-200 bg-white px-2 text-xs";
+const cell = "h-9 w-full min-w-[5.5rem] rounded-lg border border-zinc-200 bg-white px-2 text-xs";
 
 /** Size and colour combinations. One included row becomes one product through the existing matrix API. */
 export function FashionMatrix({
@@ -88,7 +88,7 @@ export function FashionMatrix({
               Apply bulk where not edited
             </button>
           </div>
-          <table className="w-full min-w-[760px] text-left text-xs">
+          <table className="w-full min-w-[47.5rem] text-left text-xs">
             <thead>
               <tr className="uppercase tracking-wider text-zinc-500">
                 <th className="py-2">Sell</th>

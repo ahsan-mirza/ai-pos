@@ -190,6 +190,32 @@ def create_app() -> FastAPI:
     def health() -> dict[str, str]:
         return {"status": "ok"}
 
+    @app.get("/o83-harness-identity")
+    def o83_harness_identity() -> dict[str, str]:
+        """Disposable RLS harness only. Refuses every other database."""
+        import os
+
+        from sqlalchemy import text
+
+        from app.core.database import get_session_factory
+
+        allowed = os.environ.get("O83_RLS_HARNESS") == "1" or os.environ.get("O84_RLS_HARNESS") == "1"
+        if not allowed:
+            from app.core.errors import ApiError
+
+            raise ApiError(404, "not_found", "Not found.")
+        session = get_session_factory()()
+        try:
+            row = session.execute(text("SELECT current_user, current_database(), inet_server_port()")).one()
+        finally:
+            session.close()
+        expected = ("axizpos_o84", 55943) if os.environ.get("O84_RLS_HARNESS") == "1" else ("axizpos_o83", 55942)
+        if (row[1], int(row[2])) != expected:
+            from app.core.errors import ApiError
+
+            raise ApiError(404, "not_found", "Not found.")
+        return {"role": str(row[0]), "database": str(row[1]), "port": str(row[2])}
+
     @app.get("/ready")
     def ready(settings: Annotated[Settings, Depends(get_settings)]) -> JSONResponse:
         """Readiness: database and Redis answer, and the in-process worker is running when it is enabled.

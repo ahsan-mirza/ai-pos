@@ -177,6 +177,9 @@ pub fn exchange_ticket(ticket: &str) -> Result<TerminalConfig, DemoFault> {
         register_name: exchanged.register_name,
         device_token: exchanged.device_token,
         activated_at: auth::now_secs(),
+        tenant_id: String::new(),
+        entitlement_code: String::new(),
+        readiness: String::new(),
         demo: true,
     })
 }

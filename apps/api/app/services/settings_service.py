@@ -374,11 +374,15 @@ def report_currency(db: Session, requested: str | None) -> str:
 def settings_out(settings: BusinessSettings | SettingsSnapshot) -> BusinessSettingsOut:
     snapshot = settings if isinstance(settings, SettingsSnapshot) else snapshot_of(settings)
     from app.tenancy.context import current_tenant
+    from app.tenancy.registry import current_identity
 
     tenant = current_tenant()
+    # A single-tenant API has no control-plane row. The register still binds its
+    # profile to the same default identity slug it stored at activation.
+    store_code = tenant.slug if tenant is not None else current_identity().slug
     return BusinessSettingsOut(
         currency=snapshot.currency,
-        store_code=tenant.slug if tenant is not None else "",
+        store_code=store_code,
         country=snapshot.country,
         location=snapshot.location,
         timezone=snapshot.timezone,

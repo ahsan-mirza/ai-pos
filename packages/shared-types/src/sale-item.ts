@@ -26,6 +26,8 @@ export interface SaleItemUpsert {
   unit_price_cents: number;
   tax_cents: number;
   line_total_cents: number;
+  /** Basis points used when the line was priced. Absent on older queued sales. */
+  tax_rate_bps?: number | null;
   serial_value: string | null;
   serial_kind: SerialKind | null;
   unit_type?: UnitType;

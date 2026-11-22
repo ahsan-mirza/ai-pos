@@ -7,7 +7,7 @@ from pydantic import Field
 from app.schemas.payloads import ApiModel, ComboChoice, ModifierChoice
 
 ServiceType = Literal["DINE_IN", "TAKEAWAY", "DELIVERY"]
-OrderStatus = Literal["OPEN", "SETTLED", "VOID"]
+OrderStatus = Literal["OPEN", "SETTLED", "VOID", "REVIEW"]
 TableStatus = Literal["free", "seated", "ordered", "bill"]
 KitchenPhase = Literal["none", "queued", "preparing", "partial", "ready", "served"]
 PaymentPhase = Literal["none", "unpaid", "partial", "pending", "paid"]
@@ -210,6 +210,12 @@ class OrderSyncPayload(ApiModel):
     opened_by_id: UUID
     opened_at: datetime
     items: list[OrderSyncItem] = Field(default_factory=list, max_length=200)
+
+
+class TableConflictDecision(ApiModel):
+    user_id: UUID
+    decision: Literal["separate", "reassign", "void"]
+    table_id: UUID | None = None
 
 
 class DiningAreaIn(ApiModel):

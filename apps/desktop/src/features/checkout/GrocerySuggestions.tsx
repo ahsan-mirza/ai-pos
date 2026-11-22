@@ -41,7 +41,7 @@ export function GrocerySuggestions({
   if (items.length === 0) return null;
   return (
     <div className="space-y-1.5">
-      <p className="flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wide text-zinc-500 dark:text-white/50">
+      <p className="flex items-center gap-1 text-[0.6875rem] font-semibold uppercase tracking-wide text-zinc-500 dark:text-white/50">
         <Sparkles size={12} aria-hidden="true" className="text-primary" /> Often bought together
       </p>
       <div className="flex gap-1.5 overflow-x-auto">
@@ -54,8 +54,8 @@ export function GrocerySuggestions({
             className="min-w-[9.5rem] flex-1 rounded-2xl border border-zinc-200 px-3 py-2.5 text-left hover:border-primary disabled:opacity-50 dark:border-white/10"
           >
             <span className="block truncate text-xs font-semibold">{item.name}</span>
-            <span className="block truncate text-[11px] text-zinc-500 dark:text-white/50">{item.pitch}</span>
-            <span className="mt-0.5 block text-[11px] font-semibold tabular-nums text-primary">
+            <span className="block truncate text-[0.6875rem] text-zinc-500 dark:text-white/50">{item.pitch}</span>
+            <span className="mt-0.5 block text-[0.6875rem] font-semibold tabular-nums text-primary">
               {formatMoney(item.price_cents, item.currency)}
             </span>
           </button>

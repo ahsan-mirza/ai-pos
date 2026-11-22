@@ -32,7 +32,7 @@ const preset = {
         sans: ["var(--font-sans)", "sans-serif"],
       },
       borderRadius: {
-        card: "20px",
+        card: "var(--radius-card)",
       },
     },
   },

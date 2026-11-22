@@ -7,6 +7,50 @@ const ENVIRONMENTS: [&str; 4] = ["development", "dev", "production", "acceptance
 /// production for release builds. Development reads `.env`; dev and production read `.env.<name>`.
 fn main() {
     println!("cargo:rerun-if-env-changed=POS_ENV");
+    // Public keys only. Plural entries are key-id:base64,key-id:base64. The singular pair is one entry.
+    println!("cargo:rerun-if-env-changed=POS_ENTITLEMENT_KEY_ID");
+    println!("cargo:rerun-if-env-changed=POS_ENTITLEMENT_PUBLIC_KEY");
+    println!("cargo:rerun-if-env-changed=POS_ENTITLEMENT_PUBLIC_KEYS");
+    let mut key_id = env::var("POS_ENTITLEMENT_KEY_ID").unwrap_or_default();
+    let mut public_key = env::var("POS_ENTITLEMENT_PUBLIC_KEY").unwrap_or_default();
+    let public_keys = env::var("POS_ENTITLEMENT_PUBLIC_KEYS").unwrap_or_default();
+    let pos_env_early = env::var("POS_ENV").unwrap_or_default().trim().to_lowercase();
+    // A Tauri release spawn can drop the parent environment. An acceptance build may
+    // read the disposable public key from the temp directory. Production never does.
+    if pos_env_early == "acceptance" {
+        if let Ok(temp) = env::var("TEMP").or_else(|_| env::var("TMP")) {
+            let folder = if env::var("ACCEPTANCE_PROFILE").unwrap_or_default() == "restaurant" {
+                "axiz-o810"
+            } else {
+                "axiz-o85"
+            };
+            let dir = PathBuf::from(temp).join(folder);
+            if public_key.is_empty() {
+                if let Ok(material) = fs::read_to_string(dir.join("public.b64")) {
+                    public_key = material.trim().to_string();
+                }
+            }
+            if key_id.is_empty() {
+                if let Ok(id) = fs::read_to_string(dir.join("key-id.txt")) {
+                    key_id = id.trim().to_string();
+                }
+            }
+            if key_id.is_empty() && !public_key.is_empty() {
+                key_id = if folder == "axiz-o810" {
+                    "o810-accept-1".to_string()
+                } else {
+                    "o85-accept-1".to_string()
+                };
+            }
+            let _ = fs::write(
+                dir.join("baked.txt"),
+                format!("id={key_id}\npub_len={}\n", public_key.len()),
+            );
+        }
+    }
+    println!("cargo:rustc-env=POS_ENTITLEMENT_KEY_ID={key_id}");
+    println!("cargo:rustc-env=POS_ENTITLEMENT_PUBLIC_KEY={public_key}");
+    println!("cargo:rustc-env=POS_ENTITLEMENT_PUBLIC_KEYS={public_keys}");
     let release = env::var("PROFILE").is_ok_and(|profile| profile == "release");
     let pos_env = env::var("POS_ENV")
         .ok()
@@ -60,6 +104,9 @@ fn main() {
             env_path.display()
         );
     }
+    if release && pos_env == "production" && key_id.is_empty() && public_key.is_empty() && public_keys.is_empty() {
+        panic!("A production release needs POS_ENTITLEMENT_KEY_ID and POS_ENTITLEMENT_PUBLIC_KEY, or POS_ENTITLEMENT_PUBLIC_KEYS. No key was generated.");
+    }
 
     println!("cargo:rustc-env=POS_TENANT_URL_TEMPLATE={url_template}");
     println!("cargo:rustc-env=POS_TENANT_BASE_DOMAIN={base_domain}");
@@ -80,7 +127,21 @@ fn emit_acceptance() {
             "com.axizpos.inventory.acceptance",
             "http://127.0.0.1:18081",
         ),
-        other => panic!("ACCEPTANCE_PROFILE must be pharmacy or inventory; got {other:?}."),
+        "laundry" => (
+            "com.axizpos.laundry.acceptance",
+            "http://127.0.0.1:18082",
+        ),
+        "offline" => (
+            "com.axizpos.offline.acceptance",
+            "http://127.0.0.1:18084",
+        ),
+        "restaurant" => (
+            "com.axizpos.restaurant.acceptance",
+            "http://127.0.0.1:18089",
+        ),
+        other => panic!(
+            "ACCEPTANCE_PROFILE must be pharmacy, inventory, laundry, offline, or restaurant; got {other:?}."
+        ),
     };
     let url = env::var("ACCEPTANCE_TENANT_URL_TEMPLATE").unwrap_or_default();
     let domain = env::var("ACCEPTANCE_TENANT_BASE_DOMAIN").unwrap_or_default();

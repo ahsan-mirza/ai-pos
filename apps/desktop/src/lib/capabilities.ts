@@ -292,6 +292,21 @@ export function capabilitiesAvailable(): boolean {
   return current.available;
 }
 
+/** Why ordinary selling is held, if it is. A stale 24-hour lease is not a remote suspension. */
+export function subscriptionHold(now = Date.now()): "server" | "lease" | null {
+  const cached = scope ? readStored(scope) : null;
+  if (cached?.subscription_operational === false) return "server";
+  if (
+    cached?.subscription_operational === true &&
+    cached.subscription_seen_at &&
+    now - cached.subscription_seen_at > SUBSCRIPTION_LEASE_MS
+  ) {
+    return "lease";
+  }
+  if (subscriptionLocked) return "server";
+  return null;
+}
+
 /** New paid work stays closed when the server reported a block, or the last open snapshot is older than a day. */
 export function subscriptionIsLocked(): boolean {
   const cached = scope ? readStored(scope) : null;
@@ -319,11 +334,11 @@ function subscribe(listener: () => void): () => void {
 }
 
 export function useCapabilities(): RegisterCapabilities {
-  return useSyncExternalStore(subscribe, registerCapabilities);
+  return useSyncExternalStore(subscribe, registerCapabilities, registerCapabilities);
 }
 
 export function useSubscriptionLocked(): boolean {
-  return useSyncExternalStore(subscribe, subscriptionIsLocked);
+  return useSyncExternalStore(subscribe, subscriptionIsLocked, subscriptionIsLocked);
 }
 
 export function useCapability(capability: Capability): boolean {

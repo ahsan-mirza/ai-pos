@@ -1,22 +1,15 @@
 import { LanguageSwitch, useLocale } from "@ai-pos/ui";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { FlaskConical, Moon, MoreHorizontal, Sun } from "lucide-react";
-import { useEffect, useId, useState, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { OpenDrawerButton } from "../../features/audit/OpenDrawerButton";
 import { useCapabilities } from "../../lib/capabilities";
 import { useRegisterLayout } from "../RegisterLayout";
+import { drawerButtonClass } from "./settingsEntry";
+import { useShell } from "./ShellContext";
+import type { SyncState } from "./syncState";
 
-export interface SyncState {
-  tone: "synced" | "pending" | "offline" | "live";
-  label: string;
-  title: string;
-}
-
-const syncStyles: Record<SyncState["tone"], { className: string; dot: string }> = {
-  synced: { className: "text-emerald-700 dark:text-emerald-300", dot: "bg-emerald-500" },
-  live: { className: "text-emerald-700 dark:text-emerald-300", dot: "bg-emerald-500" },
-  pending: { className: "text-amber-700 dark:text-amber-300", dot: "bg-amber-500" },
-  offline: { className: "text-red-700 dark:text-red-300", dot: "bg-red-500" },
-};
+export type { SyncState };
 
 const themeEase: [number, number, number, number] = [0.22, 1, 0.36, 1];
 
@@ -58,9 +51,8 @@ function ThemeToggle() {
               />
             ) : null}
             <Icon
-              size={16}
               aria-hidden="true"
-              className={`relative ${active ? "text-primary-500" : "text-zinc-400 dark:text-zinc-500"}`}
+              className={`relative h-4 w-4 ${active ? "text-primary-500" : "text-zinc-400 dark:text-zinc-500"}`}
             />
           </button>
         );
@@ -71,7 +63,8 @@ function ThemeToggle() {
 
 /**
  * One-row workspace header shared by every register page. Checkout actions stay on the right, after
- * connection, language, and theme. The signed-in cashier stays in the sidebar.
+ * language and theme. Connection, sync, and activation stay in the bottom status bar.
+ * The signed-in cashier stays in the sidebar.
  */
 export function HeaderBar({
   sync,
@@ -81,15 +74,22 @@ export function HeaderBar({
   title: string;
   sync: SyncState;
   actions?: ReactNode;
-  /** Checkout customer search. Sits in the open space before sync and language. */
+  /** Checkout customer search. Sits in the open space before language and theme. */
   leading?: ReactNode;
 }) {
+  const headerRef = useRef<HTMLElement>(null);
+  const { setRegisterStatus, view, busy, drawerHeld } = useShell();
   const { t } = useLocale();
   const { practice } = useCapabilities();
   const reduced = useReducedMotion() === true;
   const [more, setMore] = useState(false);
   const moreId = useId();
-  const { className: syncClass, dot } = syncStyles[sync.tone];
+
+  useEffect(() => {
+    if (headerRef.current?.closest(".hidden")) return;
+    setRegisterStatus(sync);
+    return () => setRegisterStatus(null);
+  }, [view, sync.tone, sync.label, sync.title, setRegisterStatus]);
 
   useEffect(() => {
     if (!more) return;
@@ -103,27 +103,21 @@ export function HeaderBar({
   }, [more]);
 
   return (
-    <header className="relative z-30 flex h-14 shrink-0 items-center gap-2 border-b border-zinc-200 bg-white px-3 dark:border-zinc-800 dark:bg-zinc-900 min-[1280px]:gap-3 min-[1280px]:px-4">
+    <header ref={headerRef} className="relative z-30 flex h-14 shrink-0 items-center gap-2 border-b border-zinc-200 bg-white px-3 dark:border-zinc-800 dark:bg-zinc-900 min-[80rem]:gap-3 min-[80rem]:px-4">
       <div className="min-w-0 flex-1">{leading ? <div className="w-full min-w-[14rem] max-w-md">{leading}</div> : null}</div>
-      <div className="flex shrink-0 items-center gap-1.5 min-[1366px]:gap-2">
+      <div className="flex shrink-0 items-center gap-1.5 min-[85.375rem]:gap-2">
         {practice ? (
           <span
             title={t("Practice mode")}
             className="inline-flex h-10 shrink-0 items-center gap-1.5 rounded-full bg-amber-500/10 px-2.5 text-xs font-semibold text-amber-800 ring-1 ring-amber-500/25 dark:text-amber-300"
           >
             <FlaskConical size={14} aria-hidden="true" />
-            <span className="hidden min-[1440px]:inline">{t("Practice mode")}</span>
+            <span className="hidden min-[90rem]:inline">{t("Practice mode")}</span>
           </span>
         ) : null}
-        <span
-          title={sync.title}
-          className={`inline-flex h-10 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full bg-zinc-50 px-2.5 text-xs font-semibold ring-1 ring-zinc-200 dark:bg-zinc-800/70 dark:ring-zinc-700 ${syncClass}`}
-        >
-          <span aria-hidden="true" className={`h-2 w-2 rounded-full ${dot}`} />
-          {t(sync.label)}
-        </span>
         <LanguageSwitch compact />
         <ThemeToggle />
+        <OpenDrawerButton className={drawerButtonClass} disabled={busy || drawerHeld} iconOnly />
         {actions ? (
           <div data-header-actions className="relative flex items-center">
             <button
@@ -135,7 +129,7 @@ export function HeaderBar({
               onClick={() => setMore((open) => !open)}
               className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-zinc-200 bg-white text-zinc-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/50 md:hidden dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-200"
             >
-              <MoreHorizontal size={18} aria-hidden="true" />
+              <MoreHorizontal aria-hidden="true" className="h-[1.125rem] w-[1.125rem]" />
             </button>
             <AnimatePresence initial={false}>
               {more ? (

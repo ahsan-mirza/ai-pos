@@ -1,0 +1,18 @@
+{
+  "current_user": "ai_pos_app",
+  "session_user": "ai_pos_app",
+  "env_files": [
+    ".env.laundry-acceptance"
+  ],
+  "developer_env_loaded": false,
+  "missing_context_rows": 0,
+  "tenant_a_visible": 1,
+  "tenant_b_visible": 0,
+  "grocery_brands_before": 5,
+  "grocery_brands_after": 5,
+  "cross_tenant_update_sqlstate": null,
+  "cross_tenant_update_rows": 0,
+  "tenant_move_sqlstate": "42501",
+  "cross_tenant_insert_sqlstate": "42501",
+  "result": "PASSED"
+}

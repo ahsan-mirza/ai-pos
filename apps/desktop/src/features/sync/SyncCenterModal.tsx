@@ -2,6 +2,7 @@ import { Permission } from "@ai-pos/shared-types";
 import { CheckCircle2, Clock3, RefreshCw, Trash2, TriangleAlert, X } from "lucide-react";
 import { useCallback, useEffect, useId, useState } from "react";
 import { useConfirm } from "../../components/ConfirmDialog";
+import { PosButton, PosIconButton } from "../../components/shell/posControls";
 import { flushSync, listBatches, resolveBatch, type QueuedBatch } from "../../lib/tauri";
 import type { CashierSession } from "../auth/session";
 
@@ -147,8 +148,8 @@ export function SyncCenterModal({ session, onClose }: { session: CashierSession;
                 </div>
                 {batch.status === "rejected" ? (
                   <div className="flex shrink-0 gap-1">
-                    <button
-                      type="button"
+                    <PosButton
+                      size="sm"
                       disabled={busy}
                       onClick={() =>
                         void act(async () => {
@@ -157,15 +158,15 @@ export function SyncCenterModal({ session, onClose }: { session: CashierSession;
                           return "Sent again.";
                         })
                       }
-                      className="rounded-full bg-primary px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-40"
                     >
                       Retry
-                    </button>
-                    <button
-                      type="button"
+                    </PosButton>
+                    <PosIconButton
+                      variant="ghost"
+                      size="sm"
+                      label="Discard"
                       disabled={busy || !manager}
                       title={manager ? "Drop it for good" : "Only a manager can discard"}
-                      aria-label="Discard"
                       onClick={() => {
                         void (async () => {
                           const accepted = await confirm({
@@ -181,10 +182,9 @@ export function SyncCenterModal({ session, onClose }: { session: CashierSession;
                           });
                         })();
                       }}
-                      className="flex h-8 w-8 items-center justify-center rounded-full text-charcoal/50 dark:text-zinc-400 hover:bg-charcoal/10 dark:hover:bg-white/10 hover:text-charcoal disabled:opacity-30"
                     >
                       <Trash2 size={15} aria-hidden="true" />
-                    </button>
+                    </PosIconButton>
                   </div>
                 ) : null}
               </div>

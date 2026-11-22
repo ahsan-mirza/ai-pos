@@ -33,7 +33,7 @@ export function DemoCashiers({ onPick }: { onPick: (username: string, pin: strin
     <section className="mt-8 w-full max-w-3xl" aria-label="Demo cashiers">
       <div className="mb-3 flex items-center justify-between">
         <h2 className="text-sm font-semibold text-white/80">Demo cashiers</h2>
-        <span className="rounded-full bg-primary/20 px-3 py-1 text-[11px] font-semibold text-primary">Development only</span>
+        <span className="rounded-full bg-primary/20 px-3 py-1 text-[0.6875rem] font-semibold text-primary">Development only</span>
       </div>
       <ul className="grid gap-3 sm:grid-cols-2">
         {cashiers.map((user) => (
@@ -52,7 +52,7 @@ export function DemoCashiers({ onPick }: { onPick: (username: string, pin: strin
               </span>
               <span className="mt-2 flex flex-wrap gap-1">
                 {(permissionsFor.get(user.role) ?? []).map((permission) => (
-                  <span key={permission} className="rounded-full bg-white/10 px-2 py-0.5 font-mono text-[10px] text-white/70">
+                  <span key={permission} className="rounded-full bg-white/10 px-2 py-0.5 font-mono text-[0.625rem] text-white/70">
                     {permission}
                   </span>
                 ))}

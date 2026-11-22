@@ -139,7 +139,46 @@ def _subscription_block(tenant_id: str) -> dict[str, str] | None:
         }
 
 
+class O83HarnessMiddleware:
+    """Binds a tenant from a header only for the disposable O8.3 database."""
+
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+        raw = Request(scope).headers.get("x-o83-tenant")
+        if not raw:
+            await self.app(scope, receive, send)
+            return
+        from app.tenancy.context import TenantRef, use_tenant
+
+        with use_tenant(TenantRef(id=raw, slug="o83", name="o83", database_url="postgresql")):
+            await self.app(scope, receive, send)
+
+
+def _harness_database(settings: Settings) -> bool:
+    import os
+
+    from sqlalchemy.engine import make_url
+
+    parsed = make_url(settings.database_url)
+    if parsed.host != "127.0.0.1":
+        return False
+    if os.environ.get("O83_RLS_HARNESS") == "1" and parsed.port == 55942 and parsed.database == "axizpos_o83":
+        return True
+    if os.environ.get("O84_RLS_HARNESS") == "1" and parsed.port == 55943 and parsed.database == "axizpos_o84":
+        return True
+    if os.environ.get("O87_RLS_HARNESS") == "1" and parsed.port == 55970 and parsed.database == "axizpos_o87":
+        return True
+    return os.environ.get("O89_RLS_HARNESS") == "1" and parsed.port == 55971 and parsed.database == "axizpos_o89"
+
+
 def install(app: FastAPI, settings: Settings) -> None:
+    if _harness_database(settings):
+        app.add_middleware(O83HarnessMiddleware)
     if not settings.tenancy_enabled:
         return
     app.add_middleware(TenantContextMiddleware, settings=settings)

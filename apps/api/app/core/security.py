@@ -60,7 +60,27 @@ def hash_pin(pin: str, settings: Settings) -> str:
 
 
 def verify_pin(pin: str, encoded: str | None, settings: Settings) -> bool:
+    """Server PINs are scrypt. A register-provisioned PIN is an Argon2id PHC string in the same column."""
+    if encoded and encoded.startswith("$argon2id$"):
+        if not pin:
+            return False
+        return _verify_argon2_pin(pin, encoded)
+    if encoded and encoded.startswith("$"):
+        return False
     return verify_password(_peppered_pin(pin, settings), encoded)
+
+
+def _verify_argon2_pin(pin: str, encoded: str) -> bool:
+    try:
+        from argon2 import PasswordHasher
+        from argon2.exceptions import VerificationError
+    except ImportError:
+        return False
+    try:
+        PasswordHasher().verify(encoded, pin)
+    except VerificationError:
+        return False
+    return True
 
 
 def create_access_token(

@@ -24,6 +24,7 @@ from app.schemas.orders import (
     OrderMove,
     OrderOut,
     OrderUpdate,
+    TableConflictDecision,
 )
 from app.services import delivery_finance, guest_suggestion_service, order_service
 
@@ -38,7 +39,7 @@ def list_orders(
     db: Db,
     principal: CanOrder,
     store_id: uuid.UUID,
-    status: Literal["OPEN", "SETTLED", "VOID"] | None = None,
+    status: Literal["OPEN", "SETTLED", "VOID", "REVIEW"] | None = None,
     since: Annotated[datetime | None, Query()] = None,
 ) -> list[OrderOut]:
     return order_service.list_orders(db, principal, store_id=store_id, status=status, since=since)
@@ -47,6 +48,48 @@ def list_orders(
 @router.get("/cod-pending", response_model=list[OrderOut])
 def cod_pending(db: Db, principal: CanOrder, store_id: uuid.UUID) -> list[OrderOut]:
     return delivery_finance.pending_cod(db, principal, store_id=store_id)
+
+
+@router.get("/table-conflicts")
+def table_conflicts(db: Db, principal: CanOrder, store_id: uuid.UUID) -> list[dict]:
+    rows = order_service.list_table_conflicts(db, principal, store_id)
+    return [
+        {
+            "id": str(row.id),
+            "store_id": str(row.store_id),
+            "table_id": str(row.table_id) if row.table_id else None,
+            "primary_order_id": str(row.primary_order_id),
+            "conflicting_order_id": str(row.conflicting_order_id),
+            "origin_device_id": row.origin_device_id,
+            "origin_actor_id": str(row.origin_actor_id),
+            "reason": row.reason,
+            "status": row.status,
+            "decision": row.decision,
+            "primary": order_service.get_order(db, principal, row.primary_order_id).model_dump(mode="json"),
+            "conflicting": order_service.get_order(db, principal, row.conflicting_order_id).model_dump(mode="json"),
+        }
+        for row in rows
+    ]
+
+
+@router.post("/table-conflicts/{conflict_id}/resolve")
+def resolve_table_conflict(
+    conflict_id: uuid.UUID, payload: TableConflictDecision, db: Db, principal: CanOrder
+) -> dict:
+    row = order_service.resolve_table_conflict(
+        db,
+        principal,
+        conflict_id,
+        user_id=payload.user_id,
+        decision=payload.decision,
+        table_id=payload.table_id,
+    )
+    return {
+        "id": str(row.id),
+        "status": row.status,
+        "decision": row.decision,
+        "conflicting_order_id": str(row.conflicting_order_id),
+    }
 
 
 @router.get("/suggestions", response_model=GuestSuggestionsOut)

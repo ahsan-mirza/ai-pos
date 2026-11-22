@@ -57,6 +57,7 @@ class Capability(StrEnum):
     DELIVERY_INTEGRATIONS = "delivery_integrations"
     FLEET_DISPATCH = "fleet_dispatch"
     PHARMACY_CATALOG = "pharmacy_catalog"
+    LAUNDRY_OPERATIONS = "laundry_operations"
 
 
 C = Capability
@@ -110,6 +111,7 @@ SPECS: dict[Capability, CapabilitySpec] = {
     C.DELIVERY_INTEGRATIONS: CapabilitySpec("Delivery Integrations", True),
     C.FLEET_DISPATCH: CapabilitySpec("Fleet dispatch", True, (C.SALES_ORDERS,)),
     C.PHARMACY_CATALOG: CapabilitySpec("Pharmacy catalogue", True),
+    C.LAUNDRY_OPERATIONS: CapabilitySpec("Laundry operations", True),
 }
 ORDER: tuple[Capability, ...] = tuple(SPECS)
 BUILT_TODAY: tuple[Capability, ...] = tuple(capability for capability in ORDER if SPECS[capability].available)
@@ -182,6 +184,7 @@ PROFILES: dict[str, tuple[Capability, ...]] = {
         C.DELIVERY_CHANNELS,
     ),
     "pharmacy": (C.LOYALTY, C.PROMOTIONS, C.FEFO, C.CARD_TERMINALS, C.PHARMACY_CATALOG),
+    "laundry": (C.LOYALTY, C.PROMOTIONS, C.WEIGHED_ITEMS, C.CARD_TERMINALS, C.LAUNDRY_OPERATIONS),
 }
 FOOD_AND_BEVERAGE = frozenset({"restaurant", "cafe", "quick_service"})
 PROFILE_LABELS: dict[str, str] = {
@@ -193,6 +196,7 @@ PROFILE_LABELS: dict[str, str] = {
     "cafe": "Cafe",
     "quick_service": "Quick Service",
     "pharmacy": "Medical Pharmacy",
+    "laundry": "Laundry",
 }
 
 # What a business of each type may switch on by itself once onboarding is done. Anything else needs IT support
@@ -285,6 +289,25 @@ COMPATIBLE: dict[str, frozenset[Capability]] = {
             C.SALES_INSIGHTS,
             C.AXIZ_REACH,
             C.UAE_EINVOICING,
+        )
+    ),
+    "laundry": frozenset(
+        (
+            C.LOYALTY,
+            C.PROMOTIONS,
+            C.WEIGHED_ITEMS,
+            C.CARD_TERMINALS,
+            C.LAUNDRY_OPERATIONS,
+            C.B2B_CREDIT,
+            C.SALES_ORDERS,
+            C.FLEET_DISPATCH,
+            C.FEFO,
+            C.GIFT_CARDS,
+            C.MULTI_CURRENCY,
+            C.DEEP_ANALYTICS,
+            C.AI_INSIGHTS,
+            C.SALES_INSIGHTS,
+            C.AXIZ_REACH,
         )
     ),
 }
@@ -487,6 +510,12 @@ SUB_TYPES: dict[str, dict[str, tuple[Capability, ...]]] = {
     },
     "pharmacy": {
         "community_pharmacy": PROFILES["pharmacy"],
+    },
+    "laundry": {
+        "laundry_shop": PROFILES["laundry"],
+        "laundry_dry_cleaner": PROFILES["laundry"],
+        "laundry_multi_branch": PROFILES["laundry"],
+        "laundry_commercial": PROFILES["laundry"],
     },
 }
 

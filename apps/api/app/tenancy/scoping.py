@@ -132,15 +132,29 @@ def _bypass_rls(state: ORMExecuteState) -> None:
     bypass_session_tenant(state.session.connection())
 
 
+def bind_request_scope(session: Session, store_id: object | None, device_id: object | None = None) -> None:
+    """Apply the authorized branch and terminal to this transaction and later ones on this request."""
+    from app.core.database import set_session_scope
+    from app.tenancy.context import bind_scope
+
+    bind_scope(store_id, device_id)
+    if session.get_bind() is None or session.get_bind().dialect.name != "postgresql":
+        return
+    set_session_scope(session.connection(), str(active_tenant_id()), None if store_id is None else str(store_id), None if device_id is None else str(device_id))
+
+
 def _set_rls(session: Session, _transaction: object, connection) -> None:
     if connection.dialect.name != "postgresql" or session.info.get(CONTROL_SESSION):
         return
-    from app.core.database import bypass_session_tenant, set_session_tenant
+    from app.core.database import set_session_scope
+    from app.tenancy.context import current_device_id, current_store_id
 
     if session.info.get(INCLUDE_ALL):
-        bypass_session_tenant(connection)
+        # Maintenance sessions still do not receive a bypass flag. Only a superuser
+        # or BYPASSRLS role can see every tenant, and request sessions cannot set this.
+        set_session_scope(connection, str(active_tenant_id()), None, None)
         return
-    set_session_tenant(connection, str(active_tenant_id()))
+    set_session_scope(connection, str(active_tenant_id()), current_store_id() or None, current_device_id() or None)
 
 
 def install() -> None:

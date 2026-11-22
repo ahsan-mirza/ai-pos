@@ -3,6 +3,7 @@ import { ApiRejectedError, ApiUnavailableError, loginPin, lookupReceipt, pushBat
 import {
   approveReturn,
   batchStatus,
+  bootstrapReadiness,
   enqueueReturn,
   flushSync,
   inTauri,
@@ -12,7 +13,7 @@ import {
 import type { CashierSession } from "../auth/session";
 import { loadCatalog } from "../checkout/catalog";
 import type { ChargeOutcome } from "../checkout/checkout";
-import { subscriptionIsLocked } from "../../lib/capabilities";
+import { capabilitiesAvailable, subscriptionHold, subscriptionIsLocked } from "../../lib/capabilities";
 import { applyLocalReturns, receiptFromQueuedSale } from "./returnMath";
 
 export interface LoadedReceipt {
@@ -77,7 +78,17 @@ export interface ReturnBatch {
 }
 
 export async function submitReturn(batch: ReturnBatch): Promise<ChargeOutcome> {
-  if (subscriptionIsLocked()) {
+  const hold = subscriptionHold();
+  let entitlementValid = false;
+  if (inTauri()) {
+    try {
+      const report = await bootstrapReadiness(capabilitiesAvailable(), hold === "server");
+      entitlementValid = report.entitlement_code === "VALID_PERMANENT_ENTITLEMENT";
+    } catch {
+      entitlementValid = false;
+    }
+  }
+  if (hold === "server" || (hold === "lease" && !entitlementValid) || (!inTauri() && subscriptionIsLocked())) {
     return {
       kind: "rejected",
       message: "New returns stay closed until the subscription is verified. Saved sales stay on this register.",

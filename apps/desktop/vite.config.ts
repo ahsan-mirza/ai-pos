@@ -5,12 +5,30 @@ import { defineConfig, loadEnv } from "vite";
 
 const acceptanceDir = fileURLToPath(new URL("./config/acceptance", import.meta.url));
 const inventoryAcceptanceDir = fileURLToPath(new URL("./config/inventory-acceptance", import.meta.url));
+const offlineAcceptanceDir = fileURLToPath(new URL("./config/offline-acceptance", import.meta.url));
+const restaurantAcceptanceDir = fileURLToPath(new URL("./config/restaurant-acceptance", import.meta.url));
 
 export default defineConfig(({ mode }) => {
   const inventoryAcceptance = mode === "inventory-acceptance";
-  const acceptance = mode === "acceptance" || inventoryAcceptance;
-  const envDir = inventoryAcceptance ? inventoryAcceptanceDir : acceptance ? acceptanceDir : "../../";
-  const acceptanceApi = inventoryAcceptance ? "http://127.0.0.1:18081" : "http://127.0.0.1:18080";
+  const offlineAcceptance = mode === "offline-acceptance";
+  const restaurantAcceptance = mode === "restaurant-acceptance";
+  const acceptance = mode === "acceptance" || inventoryAcceptance || offlineAcceptance || restaurantAcceptance;
+  const envDir = restaurantAcceptance
+    ? restaurantAcceptanceDir
+    : offlineAcceptance
+      ? offlineAcceptanceDir
+      : inventoryAcceptance
+        ? inventoryAcceptanceDir
+        : acceptance
+          ? acceptanceDir
+          : "../../";
+  const acceptanceApi = restaurantAcceptance
+    ? "http://127.0.0.1:18089"
+    : offlineAcceptance
+      ? "http://127.0.0.1:18084"
+      : inventoryAcceptance
+        ? "http://127.0.0.1:18081"
+        : "http://127.0.0.1:18080";
   const current = loadEnv(mode, envDir, "VITE_");
   const production = acceptance || mode === "production" ? current : loadEnv("production", envDir, "VITE_");
   // A local .env often has no store host, so the activation screen fell back to axizpos.com.

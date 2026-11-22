@@ -1,0 +1,22 @@
+{
+  "current_user": "ai_pos_app",
+  "session_user": "ai_pos_app",
+  "developer_env_loaded": false,
+  "forced": {
+    "laundry_orders": true,
+    "laundry_garments": true,
+    "laundry_bags": true,
+    "laundry_tags": true,
+    "laundry_tag_events": true,
+    "laundry_photos": true,
+    "laundry_order_events": true,
+    "laundry_deposits": true
+  },
+  "missing_context_orders": 0,
+  "tenant_a_orders": 6,
+  "tenant_b_orders": 0,
+  "cross_tenant_update_rows": 0,
+  "tenant_move_sqlstate": "42501",
+  "cross_tenant_insert_sqlstate": "42501",
+  "result": "PASSED"
+}

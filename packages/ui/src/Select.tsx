@@ -35,7 +35,7 @@ export interface SelectProps<T extends string> {
   /** Marks the trigger `aria-invalid` so a form can focus the first rejected field. */
   invalid?: boolean;
   className?: string;
-  /** `sm` is the 36px toolbar trigger used in the app header. */
+  /** `sm` is the 2.25rem toolbar trigger used in the app header. */
   size?: "md" | "sm";
   icon?: LucideIcon;
 }
@@ -294,7 +294,7 @@ export function Select<T extends string>({
             : "border-gray-200 bg-gray-50 hover:border-gray-300 dark:border-zinc-700 dark:bg-zinc-900"
         } ${
           size === "sm"
-            ? `h-9 rounded-xl pe-8 text-[13px] ${Icon ? "ps-9" : "ps-3"}`
+            ? `h-9 rounded-xl pe-8 text-[0.8125rem] ${Icon ? "ps-9" : "ps-3"}`
             : `h-11 rounded-2xl pe-10 text-sm ${Icon ? "ps-11" : "ps-4"}`
         } ${open ? "border-orange-500 ring-2 ring-orange-500" : "hover:border-gray-300"}`}
       >
@@ -331,7 +331,7 @@ export function Select<T extends string>({
                 bottom: placement.bottom,
                 maxHeight: placement.maxHeight,
               }}
-              className={`fixed z-[90] flex min-w-[200px] flex-col overflow-hidden rounded-2xl border border-gray-100 bg-white p-1.5 font-sans shadow-xl transition duration-150 ease-out motion-reduce:transition-none dark:border-zinc-800 dark:bg-zinc-900 ${
+              className={`fixed z-[90] flex min-w-[12.5rem] flex-col overflow-hidden rounded-2xl border border-gray-100 bg-white p-1.5 font-sans shadow-xl transition duration-150 ease-out motion-reduce:transition-none dark:border-zinc-800 dark:bg-zinc-900 ${
                 placement.top !== undefined ? "origin-top" : "origin-bottom"
               } ${shown ? "scale-100 opacity-100" : "scale-95 opacity-0"}`}
             >

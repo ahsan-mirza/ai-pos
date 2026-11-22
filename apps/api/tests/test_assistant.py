@@ -314,10 +314,10 @@ def test_assistant_lives_in_the_navbar_not_the_sidebar() -> None:
     assert 'to: "/assistant"' not in nav
     assert 'to: "/insights"' in nav
     assert '"/assistant"' in nav
-    assert "AI Assistant" in header
+    assert "Axiz AI Business Copilot" in header
     assert "Ask your business" in header
     drawer = (root / "apps/web/src/features/assistant/AssistantDrawer.tsx").read_text(encoding="utf-8")
-    assert "Your intelligent business assistant" in drawer
+    assert "This assistant is still in training." in drawer
     assert "Welcome, ${name}" in drawer
     assert "qwen3" not in drawer
     assert "moduleLabel" not in drawer

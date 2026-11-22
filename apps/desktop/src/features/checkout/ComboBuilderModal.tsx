@@ -104,12 +104,12 @@ export function ComboBuilderModal({ product, slots, currency, onClose, onConfirm
               <fieldset key={slot.id}>
                 <legend className="mb-2 flex w-full items-baseline justify-between text-sm font-semibold">
                   <span>
-                    <span className="mr-2 inline-flex h-5 w-5 items-center justify-center rounded-full bg-zinc-900 text-[11px] text-white dark:bg-white dark:text-zinc-900">
+                    <span className="mr-2 inline-flex h-5 w-5 items-center justify-center rounded-full bg-zinc-900 text-[0.6875rem] text-white dark:bg-white dark:text-zinc-900">
                       {index + 1}
                     </span>
                     {slot.name}
                   </span>
-                  <span className="text-[11px] font-medium text-charcoal/50 dark:text-zinc-400">
+                  <span className="text-[0.6875rem] font-medium text-charcoal/50 dark:text-zinc-400">
                     {slot.min_select > 0 ? "Required" : "Optional"}
                     {slot.max_select > 1 ? ` · up to ${slot.max_select}` : ""}
                   </span>

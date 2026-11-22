@@ -16,6 +16,7 @@ import {
   Store,
   Truck,
   UtensilsCrossed,
+  WashingMachine,
   type LucideIcon,
 } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -41,6 +42,7 @@ const ICONS: Record<string, LucideIcon> = {
   cafe: Coffee,
   quick_service: Sandwich,
   pharmacy: Pill,
+  laundry: WashingMachine,
 };
 
 const MODEL_ICONS: Record<string, LucideIcon> = {

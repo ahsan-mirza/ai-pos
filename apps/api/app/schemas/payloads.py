@@ -3,7 +3,7 @@ from datetime import date, datetime
 from typing import Annotated, Literal, Self
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_validator, model_serializer, model_validator
 
 EntityType = Literal[
     "store",
@@ -17,6 +17,7 @@ EntityType = Literal[
     "time_entry",
     "customer",
     "open_order",
+    "laundry_order",
 ]
 PaymentMethod = Literal[
     "cash",
@@ -209,6 +210,8 @@ class SaleItemPayload(ApiModel):
     unit_price_cents: int = Field(ge=0)
     tax_cents: int = Field(ge=0)
     line_total_cents: int = Field(ge=0)
+    # Rate the register used. A later settings change must not reprice this line.
+    tax_rate_bps: int | None = Field(default=None, ge=0, le=10_000)
     serial_value: str | None = None
     serial_kind: SerialKind | None = None
     unit_type: UnitType = "PIECE"
@@ -307,6 +310,15 @@ class CreditOverridePayload(ApiModel):
     note: str = Field(default="", max_length=255)
 
 
+class AllocationConsumptionPayload(ApiModel):
+    """A terminal drawing its own signed allocation. Absent on ordinary online sales."""
+
+    allocation_id: UUID
+    sequence: int = Field(ge=1)
+    product_id: UUID
+    quantity: int = Field(ge=1)
+
+
 class SalePayload(ApiModel):
     """Older registers send one payment_method and no tenders; that is read as a single fully paid tender."""
 
@@ -344,6 +356,7 @@ class SalePayload(ApiModel):
     tip_user_id: UUID | None = None
     # The stylist who served the customer, when it is not the cashier; commissions credit them.
     sales_associate_id: UUID | None = None
+    allocations: list[AllocationConsumptionPayload] = Field(default_factory=list, max_length=100)
 
     @field_validator("currency")
     @classmethod
@@ -532,7 +545,15 @@ class SyncPushRequest(ApiModel):
 
 class SyncPushResult(ApiModel):
     idempotency_key: str
-    status: Literal["applied", "duplicate"]
+    status: Literal["applied", "duplicate", "awaiting_review"]
+    conflict_id: UUID | None = None
+
+    @model_serializer(mode="wrap")
+    def _omit_empty_conflict(self, handler):
+        data = handler(self)
+        if isinstance(data, dict) and data.get("conflict_id") is None:
+            data.pop("conflict_id", None)
+        return data
 
 
 class SyncPushResponse(ApiModel):

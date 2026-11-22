@@ -3,7 +3,8 @@ import { useMemo, useState } from "react";
 import { PageFrame } from "../../components/shell/RegisterShell";
 import type { CashierSession } from "../auth/session";
 import { useCapabilities } from "../../lib/capabilities";
-import { inventoryTabListClass, inventoryWorkspaceClass } from "./layout";
+import { InventoryTabNavigation } from "./InventoryTabNavigation";
+import { inventoryContentClass, inventoryWorkspaceClass } from "./layout";
 import type { WorkspaceAccess } from "./panels";
 import { inventoryTabs } from "./tabs";
 import {
@@ -66,31 +67,18 @@ export function InventoryPage({ session }: { session: CashierSession }) {
     >
       <div className={inventoryWorkspaceClass}>
         {tabs.length === 0 ? (
-          <p className="text-sm text-zinc-600 dark:text-zinc-300">This sign-in cannot open inventory management.</p>
+          <p className="p-4 text-sm text-zinc-600 dark:text-zinc-300">This sign-in cannot open inventory management.</p>
         ) : (
           <>
-            <div className={inventoryTabListClass} role="tablist" aria-label="Inventory sections">
-              {tabs.map((item) => (
-                <button
-                  key={item.id}
-                  type="button"
-                  role="tab"
-                  aria-selected={item.id === current}
-                  onClick={() => setTab(item.id)}
-                  className={`h-12 shrink-0 rounded-xl px-4 text-sm font-semibold ${
-                    item.id === current ? "bg-primary-500 text-white" : "bg-white text-zinc-700 ring-1 ring-zinc-200 dark:bg-zinc-900 dark:text-zinc-200 dark:ring-zinc-700"
-                  }`}
-                >
-                  {item.label}
-                </button>
-              ))}
+            <InventoryTabNavigation tabs={tabs} activeTab={current} onChange={setTab} />
+            <div className={inventoryContentClass}>
+              {!online ? (
+                <p className="rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-950">
+                  Showing this register only when a list was already loaded. Stock adjustments, receiving, counts, transfers and pharmacy lot actions need a live connection.
+                </p>
+              ) : null}
+              <Panel id={current} access={props} />
             </div>
-            {!online ? (
-              <p className="rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-950">
-                Showing this register only when a list was already loaded. Stock adjustments, receiving, counts, transfers and pharmacy lot actions need a live connection.
-              </p>
-            ) : null}
-            <Panel id={current} access={props} />
           </>
         )}
       </div>

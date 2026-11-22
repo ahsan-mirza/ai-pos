@@ -36,7 +36,7 @@ export function DrawerHeader({
         {count ? (
           <span
             className={`shrink-0 whitespace-nowrap rounded-full bg-zinc-100 font-semibold tabular-nums text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300 ${
-              compact ? "px-2 py-0.5 text-[11px] leading-4" : "px-2.5 py-1 text-xs"
+              compact ? "px-2 py-0.5 text-[0.6875rem] leading-4" : "px-2.5 py-1 text-xs"
             }`}
           >
             {count}

@@ -3,8 +3,10 @@ import { useEffect, useState, type ReactNode } from "react";
 import { AppVersionMark } from "./components/AppVersionMark";
 import { ConfirmProvider } from "./components/ConfirmDialog";
 import { useRegisterLayout, type CatalogDensity } from "./components/RegisterLayout";
+import { RegisterErrorBoundary } from "./components/RegisterErrorBoundary";
 import { RegisterShell } from "./components/shell/RegisterShell";
 import type { RegisterView } from "./components/shell/ShellContext";
+import { isSettingsHash } from "./components/shell/settingsEntry";
 import { needsActivation, terminal } from "./config/terminal";
 import { ActivationScreen } from "./features/activation/ActivationScreen";
 import { PinUnlock } from "./features/auth/PinUnlock";
@@ -15,6 +17,7 @@ import { InventoryPage } from "./features/inventory/InventoryPage";
 import { canOpenInventory } from "./features/inventory/tabs";
 import { CustomerDisplay } from "./features/display/CustomerDisplay";
 import { OrdersPage } from "./features/orders/OrdersPage";
+import { LaundryWorkspace } from "./features/laundry/LaundryWorkspace";
 import { RepairsPage } from "./features/repairs/RepairsPage";
 import { ReordersPage } from "./features/reorders/ReordersPage";
 import { ReturnsPage } from "./features/returns/ReturnsPage";
@@ -78,18 +81,35 @@ function RegisterApp() {
   const [ready, setReady] = useState(remembered !== null);
   const [activating, setActivating] = useState(false);
   const [demoNotice, setDemoNotice] = useState<string | null>(null);
-  const [view, setView] = useState<RegisterView>("checkout");
+  const [view, setView] = useState<RegisterView>(() => (isSettingsHash(window.location.hash) ? "settings" : "checkout"));
   const shiftState = useShift();
   const { foodAndBeverage, enabled, profile } = useCapabilities();
   const { density } = useRegisterLayout();
 
+  const laundryBusiness = profile === "laundry";
   useEffect(() => {
+    if (laundryBusiness && view === "checkout") {
+      setView("laundry");
+      return;
+    }
     if (view === "returns" && foodAndBeverage) setView("checkout");
     if (view === "orders" && !foodAndBeverage) setView("checkout");
     if (view === "repairs" && !enabled.has(Capability.Repairs)) setView("checkout");
     if (view === "reorders" && !enabled.has(Capability.CustomerReorders)) setView("checkout");
     if (view === "inventory" && session && !canOpenInventory(profile, enabled, session.user.permissions)) setView("checkout");
-  }, [enabled, foodAndBeverage, profile, session, view]);
+  }, [enabled, foodAndBeverage, laundryBusiness, profile, session, view]);
+
+  useEffect(() => {
+    const sync = () => {
+      if (isSettingsHash(window.location.hash)) setView("settings");
+    };
+    window.addEventListener("hashchange", sync);
+    window.addEventListener("popstate", sync);
+    return () => {
+      window.removeEventListener("hashchange", sync);
+      window.removeEventListener("popstate", sync);
+    };
+  }, []);
 
   useEffect(() => {
     if (!inTauri()) return;
@@ -166,7 +186,7 @@ function RegisterApp() {
         <VirtualKeyboardProvider>
         <RegisterShell session={session} view={view} onNavigate={setView} onLock={onLock}>
           {view === "inventory" ? <InventoryPage session={session} /> : null}
-          {view === "checkout" || view === "inventory" ? (
+          {!laundryBusiness && (view === "checkout" || view === "inventory") ? (
             <div className={view === "checkout" ? "contents" : "hidden"} inert={view === "inventory" ? true : undefined}>
               <CheckoutPage session={session} />
             </div>
@@ -179,6 +199,8 @@ function RegisterApp() {
             <OrdersPage session={session} />
           ) : view === "repairs" ? (
             <RepairsPage session={session} />
+          ) : view === "laundry" || (laundryBusiness && view === "checkout") ? (
+            <LaundryWorkspace session={session} onUnlocked={setSession} />
           ) : view === "reorders" && enabled.has(Capability.CustomerReorders) ? (
             <ReordersPage session={session} />
           ) : null}
@@ -188,10 +210,10 @@ function RegisterApp() {
     );
   }
   return (
-    <>
+    <RegisterErrorBoundary>
       {screen}
       <AppVersionMark />
       <UpdatePrompt />
-    </>
+    </RegisterErrorBoundary>
   );
 }

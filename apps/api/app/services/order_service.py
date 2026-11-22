@@ -4,6 +4,7 @@ Registers that open or add to an order while offline sync it as an `open_order` 
 
 An order is paid by one or more ordinary sales carrying `order_id`; it closes when every live line is paid."""
 
+import json
 import uuid
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
@@ -19,7 +20,7 @@ from app.core.errors import ApiError, SyncRejected
 from app.core.permissions import Permission
 from app.models.kitchen import KitchenTicket
 from app.models.product import Product
-from app.models.restaurant import DiningArea, DiningTable, OpenOrder, OpenOrderItem
+from app.models.restaurant import DiningArea, DiningTable, OpenOrder, OpenOrderItem, TableSessionConflict
 from app.models.store import Store
 from app.models.user import User
 from app.schemas.orders import (
@@ -189,6 +190,7 @@ def list_orders(
         statement = statement.where(OpenOrder.updated_at > since)
     elif status is None:
         statement = statement.where(OpenOrder.opened_at >= _now() - timedelta(days=1))
+        statement = statement.where(OpenOrder.status != "REVIEW")
     return orders_out(db, list(db.scalars(statement).all()))
 
 
@@ -989,6 +991,163 @@ def settle(db: Session, data: SalePayload, sale_id: uuid.UUID) -> None:
 # --- Offline sync -----------------------------------------------------------------------------------------
 
 
+def _hold_table_conflict(
+    db: Session,
+    data: OrderSyncPayload,
+    payload: dict[str, object],
+    ctx: SyncContext,
+    taken: OpenOrder,
+) -> uuid.UUID:
+    """Keep the second offline dine-in, off the table, and file one manager-review row for its idempotency key."""
+    if not ctx.idempotency_key:
+        raise SyncRejected("This table conflict has no idempotency key.")
+    existing = db.scalar(
+        select(TableSessionConflict).where(TableSessionConflict.idempotency_key == ctx.idempotency_key)
+    )
+    if existing is not None:
+        db.info["table_conflict_id"] = str(existing.id)
+        return existing.conflicting_order_id
+    order = OpenOrder(
+        id=data.id,
+        store_id=data.store_id,
+        number=_next_number(db, data.store_id),
+        service_type="DINE_IN",
+        status="REVIEW",
+        table_id=None,
+        covers=data.covers,
+        name=(data.name or "").strip() or None,
+        note=(data.note or "").strip() or None,
+        opened_by_id=data.opened_by_id,
+        revision=1,
+        opened_at=_aware(data.opened_at) or _now(),
+        updated_at=_now(),
+    )
+    db.add(order)
+    db.flush()
+    position = 0
+    for line in data.items:
+        if db.get(Product, line.product_id) is None:
+            continue
+        item = _item(order, line, position, data.opened_by_id)
+        item.sent_at = _aware(line.sent_at)
+        item.voided_at = _aware(line.voided_at)
+        item.void_reason = line.void_reason
+        order.items.append(item)
+        position += 1
+    conflict = TableSessionConflict(
+        tenant_id=order.tenant_id,
+        store_id=data.store_id,
+        table_id=data.table_id,
+        primary_order_id=taken.id,
+        conflicting_order_id=order.id,
+        idempotency_key=ctx.idempotency_key,
+        origin_device_id=ctx.device_id[:64],
+        origin_actor_id=data.opened_by_id,
+        primary_revision=taken.revision,
+        reason="Two offline orders used the same table.",
+        payload=json.dumps(payload, default=str, sort_keys=True),
+        status="submitted",
+    )
+    db.add(conflict)
+    db.flush()
+    audit.record(
+        db,
+        action_type="UPDATE",
+        action="order.table_conflict",
+        target_entity="TableSessionConflict",
+        target_entity_id=conflict.id,
+        store_id=order.store_id,
+        user_id=data.opened_by_id,
+        reason_notes=conflict.reason,
+        details={
+            "table_id": str(data.table_id),
+            "primary_order_id": str(taken.id),
+            "conflicting_order_id": str(order.id),
+            "device_id": ctx.device_id,
+        },
+    )
+    db.info["table_conflict_id"] = str(conflict.id)
+    return order.id
+
+
+def list_table_conflicts(db: Session, principal: Principal, store_id: uuid.UUID) -> list[TableSessionConflict]:
+    _scope(principal, store_id)
+    return list(
+        db.scalars(
+            select(TableSessionConflict)
+            .where(TableSessionConflict.store_id == store_id, TableSessionConflict.status == "submitted")
+            .order_by(TableSessionConflict.created_at)
+        ).all()
+    )
+
+
+def resolve_table_conflict(
+    db: Session,
+    principal: Principal,
+    conflict_id: uuid.UUID,
+    *,
+    user_id: uuid.UUID,
+    decision: str,
+    table_id: uuid.UUID | None,
+) -> TableSessionConflict:
+    """A manager keeps both orders, moves the second onto a free table, or voids it. Payments stay as they are."""
+    row = db.get(TableSessionConflict, conflict_id)
+    if row is None:
+        raise ApiError(404, "not_found", "That table conflict is not on this register.")
+    _scope(principal, row.store_id)
+    if row.status != "submitted":
+        return row
+    manager = db.get(User, user_id)
+    if manager is None or Permission.POS_VOID_SENT_ITEM.value not in manager.permissions:
+        raise ApiError(403, "forbidden", "A manager has to decide this table conflict.")
+    if principal.kind == "user" and principal.user is not None and principal.user.id != manager.id:
+        raise ApiError(403, "forbidden", "You can only decide a table conflict as yourself.")
+    if manager.id == row.origin_actor_id:
+        raise ApiError(403, "separation_of_duties", "The person who opened the conflicting order cannot decide it.")
+    order = db.get(OpenOrder, row.conflicting_order_id)
+    if order is None or order.status != "REVIEW":
+        raise ApiError(409, "conflict_closed", "That conflicting order is no longer waiting for review.")
+    if any(item.paid_sale_id is not None for item in order.items):
+        raise ApiError(409, "payment_kept", "A paid line on this order cannot be changed by the review.")
+    if decision == "void":
+        order.status = "VOID"
+        order.closed_at = _now()
+        order.table_id = None
+    elif decision == "separate":
+        order.status = "OPEN"
+        order.service_type = "TAKEAWAY"
+        order.table_id = None
+    elif decision == "reassign":
+        if table_id is None:
+            raise ApiError(422, "table_required", "Choose a free table for the second order.")
+        _table(db, table_id, order.store_id)
+        _reject_second_table_order(db, table_id, "DINE_IN")
+        order.status = "OPEN"
+        order.service_type = "DINE_IN"
+        order.table_id = table_id
+    else:
+        raise ApiError(422, "invalid_request", "That table conflict decision is not available.")
+    order.revision += 1
+    order.updated_at = _now()
+    row.status = "resolved"
+    row.decision = decision
+    row.decided_by_id = manager.id
+    row.decided_at = _now()
+    audit.record(
+        db,
+        action_type="UPDATE",
+        action="order.table_conflict_resolved",
+        target_entity="TableSessionConflict",
+        target_entity_id=row.id,
+        store_id=row.store_id,
+        user_id=manager.id,
+        reason_notes=decision,
+        details={"conflicting_order_id": str(order.id), "decision": decision},
+    )
+    db.commit()
+    return row
+
+
 def apply_open_order(db: Session, settings: Settings, payload: dict[str, object], ctx: SyncContext) -> uuid.UUID:
     data = parse_payload(OrderSyncPayload, payload)
     require_store(db, data.store_id)
@@ -1001,7 +1160,7 @@ def apply_open_order(db: Session, settings: Settings, payload: dict[str, object]
         if data.service_type == "DINE_IN" and data.table_id is not None:
             taken = _open_dine_in(db, data.table_id)
             if taken is not None:
-                raise SyncRejected("That table already has an open order. Reopen it instead of starting another.")
+                return _hold_table_conflict(db, data, payload, ctx, taken)
         order = OpenOrder(
             id=data.id,
             store_id=data.store_id,

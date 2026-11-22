@@ -23,6 +23,8 @@ class Device(TenantScoped, TimestampMixin, Base):
     name: Mapped[str] = mapped_column(String(80))
     key_hash: Mapped[str] = mapped_column(String(64))
     key_hint: Mapped[str] = mapped_column(String(12))
+    # SHA-256 of the register's Ed25519 public key. Empty until the register asks for a permanent entitlement.
+    device_public_key_thumbprint: Mapped[str | None] = mapped_column(String(64), nullable=True)
     last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     # The business-settings generation this register last applied. Behind the current generation means pending.
     entitlement_revision: Mapped[int | None] = mapped_column(Integer, nullable=True)

@@ -1,4 +1,4 @@
-import { PRICE_TIER_LABELS } from "@ai-pos/shared-types";
+import { PRICE_TIER_LABELS, SEARCH_DEBOUNCE_MS } from "@ai-pos/shared-types";
 import { useLocale } from "@ai-pos/ui";
 import { Plus, Search } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
@@ -38,7 +38,7 @@ export function CustomerSearchPopover({ disabled = false, onSelect, onQuickAdd }
         .catch(() => {
           if (!cancelled) setResults([]);
         });
-    }, 120);
+    }, SEARCH_DEBOUNCE_MS);
     return () => {
       cancelled = true;
       window.clearTimeout(timer);
@@ -71,7 +71,7 @@ export function CustomerSearchPopover({ disabled = false, onSelect, onQuickAdd }
         {t("Search customer")}
       </label>
       <Search
-        size={15}
+        size={18}
         aria-hidden="true"
         className="pointer-events-none absolute start-3 top-1/2 -translate-y-1/2 text-zinc-500 dark:text-white/50"
       />
@@ -148,7 +148,7 @@ export function CustomerSearchPopover({ disabled = false, onSelect, onQuickAdd }
                   </span>
                 </span>
                 <span
-                  className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
+                  className={`shrink-0 rounded-full px-2 py-0.5 text-[0.625rem] font-semibold uppercase tracking-wide ${
                     row.customer_type === "WHOLESALE" ? "bg-primary text-white" : "bg-surface text-charcoal/60"
                   }`}
                 >

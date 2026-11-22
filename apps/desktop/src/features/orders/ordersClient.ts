@@ -176,7 +176,15 @@ export const ordersApi = {
       into_order_id: into.id,
       into_revision: into.revision,
     }),
-  floor: (storeId: string) => call<Floor>("GET", `/api/v1/dining/floor?store_id=${storeId}`),
+  floor: async (storeId: string) => {
+    try {
+      return await call<Floor>("GET", `/api/v1/dining/floor?store_id=${storeId}`);
+    } catch (error) {
+      if (!(error instanceof OrderRequestError) || !error.offline || !inTauri()) throw error;
+      const core = await import("@tauri-apps/api/core");
+      return core.invoke<Floor>("local_dining_floor");
+    }
+  },
   tickets: (orderId: string) => call<KitchenTicket[]>("GET", `/api/v1/kds/orders/${orderId}/tickets`),
 };
 

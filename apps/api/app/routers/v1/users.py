@@ -7,13 +7,14 @@ from sqlalchemy.orm import Session
 
 from app.core.config import Settings, get_settings
 from app.core.database import get_db
-from app.core.deps import Principal, authorize
+from app.core.deps import Principal, authorize, require_device
 from app.core.errors import ApiError
 from app.core.permissions import Permission
 from app.models.user import User
 from app.schemas.auth import PasswordReset, PinReset, RegisterStaffOut, UserCreate, UserOut, UserUpdate
 from app.schemas.user_preference import CatalogueViewOut, CatalogueViewWrite
-from app.services import rbac_service, user_preference_service
+from app.schemas.payloads import ApiModel
+from app.services import rbac_service, staff_provision_service, user_preference_service
 
 router = APIRouter()
 
@@ -22,6 +23,7 @@ AtRegister = Annotated[
 ]
 CanRead = Annotated[Principal, Depends(authorize(Permission.USERS_READ))]
 CanCreate = Annotated[Principal, Depends(authorize(Permission.USERS_CREATE))]
+CanProvision = Annotated[Principal, Depends(authorize(Permission.USERS_CREATE, scopes=("portal", "pos")))]
 CanUpdate = Annotated[Principal, Depends(authorize(Permission.USERS_UPDATE))]
 CanDelete = Annotated[Principal, Depends(authorize(Permission.USERS_DELETE))]
 OwnCatalogue = Annotated[
@@ -78,6 +80,31 @@ def save_my_catalogue_view(payload: CatalogueViewWrite, db: Db, actor: OwnCatalo
         payload.product_catalogue_view,
         payload.updated_at,
     )
+
+
+class StaffProvisionIn(ApiModel):
+    event_id: str
+    operation: str
+    user_id: uuid.UUID
+    username: str = ""
+    full_name: str = ""
+    email: str = ""
+    store_id: uuid.UUID
+    role_name: str
+    pin_verifier: str | None = None
+    origin_terminal_id: str = ""
+    base_version: str = ""
+
+
+@router.post("/provision")
+def provision_staff(payload: StaffProvisionIn, db: Db, actor: CanProvision) -> dict[str, object]:
+    return staff_provision_service.provision(db, actor, payload.model_dump(mode="json"))
+
+
+@router.get("/staff-feed")
+def staff_feed(db: Db, _device: Annotated[Principal, Depends(require_device)]) -> dict[str, object]:
+    """Accepted staff for another register. This is not the product bootstrap."""
+    return {"staff": staff_provision_service.accepted_staff(db)}
 
 
 @router.get("/{user_id}", response_model=UserOut)

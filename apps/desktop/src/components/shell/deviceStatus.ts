@@ -104,7 +104,7 @@ export function apiIndicator(reachable: boolean, detail: string): Indicator {
     name: "Register API",
     light: reachable ? "green" : "red",
     status: reachable
-      ? detail || "The register can reach the AxizPOS API. Local hardware is checked on this machine."
+      ? detail || "The register can reach the AxizPOS API. This light does not mean the cashier is signed in or that laundry sync succeeded."
       : "The register cannot reach the AxizPOS API. Local printers, the scale, and the keyboard stay on their own status.",
     connection: "HTTPS",
     actions: [],

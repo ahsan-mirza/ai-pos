@@ -44,6 +44,8 @@ export interface CartLine {
   groupId: string | null;
   listPriceCents: number;
   unitPriceCents: number;
+  /** Price captured when the line was saved. A later menu change does not replace it. */
+  priceSnapshotCents?: number;
   priceSource: PriceSource;
   tier: PriceTier;
   moqShortfall: number;
@@ -131,6 +133,9 @@ export type CartAction =
       modifiers?: ModifierChoice[];
       components?: ComboChoice[];
       instruction?: string;
+      /** Restores a saved ticket line without minting a new id or a new price. */
+      lineId?: string;
+      priceSnapshotCents?: number;
     }
   | { type: "set_customization"; lineId: string; modifiers: ModifierChoice[]; quantity: number; instruction?: string }
   | { type: "duplicate_line"; lineId: string }
@@ -206,7 +211,7 @@ export function reprice(state: CartState): CartState {
   const tier = cartTier(state);
   const pricing = cachedPricing(state.customer?.id);
   const lines = state.lines.map((line) => {
-    if (line.product.is_open_price || line.giftCardCode) return line;
+    if (line.product.is_open_price || line.giftCardCode || line.priceSnapshotCents != null) return line;
     const pieces = piecesOf(state.lines, line.product.id);
     const base = resolveUnitPrice(line.product.price_cents, line.product.prices, tier, pieces);
     const resolved = resolveWithLists(
@@ -255,7 +260,6 @@ function newLine(product: ProductUpsert, quantity: number, unitType: UnitType, e
 
 function stockError(lines: CartLine[], product: ProductUpsert, pieces: number): string | null {
   if (
-    product.is_serialized ||
     product.is_service ||
     product.is_open_price ||
     product.has_recipe ||
@@ -264,6 +268,25 @@ function stockError(lines: CartLine[], product: ProductUpsert, pieces: number): 
   )
     return null;
   const others = piecesOf(lines, product.id);
+  const allocation = product as ProductUpsert & { allocation_remaining?: number | null };
+  if ("allocation_remaining" in allocation) {
+    const remaining = allocation.allocation_remaining;
+    const requested = others + pieces;
+    if (remaining == null) {
+      const status = (product as ProductUpsert & { allocation_status?: string }).allocation_status;
+      if (status === "failed") {
+        return "Allocation verification failed. Connect to the server and refresh this register.";
+      }
+      return "ALLOCATION NOT CONFIGURED. Connect to the server and request stock allocation.";
+    }
+    if (requested > remaining) {
+      const held = product.sold_by_weight ? formatWeight(remaining) : String(remaining);
+      const asked = product.sold_by_weight ? formatWeight(requested) : String(requested);
+      return `Available offline allocation: ${held}. Requested: ${asked}. Connect to the server and request additional stock allocation.`;
+    }
+    return null;
+  }
+  if (product.is_serialized) return null;
   if (others + pieces > product.stock_quantity) {
     const held = product.sold_by_weight ? formatWeight(product.stock_quantity) : String(product.stock_quantity);
     return `Only ${held} ${product.name} in stock.`;
@@ -322,11 +345,23 @@ export function applyCart(state: CartState, action: CartAction): CartResult {
       const modifiers = action.modifiers?.length ? action.modifiers : undefined;
       const components = action.components?.length ? action.components : undefined;
       const instruction = action.instruction?.trim().slice(0, 160) || undefined;
-      if (modifiers || components || instruction) {
+      if (action.lineId || modifiers || components || instruction) {
         const error = stockError(state.lines, product, packs);
         if (error) return refuse(state, error);
-        const line = newLine(product, packs, "PIECE", { modifiers, components, instruction });
-        return ok({ ...state, lines: [...state.lines, line] }, `${product.name} added.`);
+        const line = newLine(product, packs, "PIECE", {
+          ...(action.lineId ? { lineId: action.lineId } : {}),
+          ...(action.priceSnapshotCents != null
+            ? {
+                priceSnapshotCents: action.priceSnapshotCents,
+                unitPriceCents: action.priceSnapshotCents,
+                listPriceCents: action.priceSnapshotCents,
+              }
+            : {}),
+          modifiers,
+          components,
+          instruction,
+        });
+        return ok({ ...state, lines: [...state.lines, line] }, action.lineId ? null : `${product.name} added.`);
       }
       const existing = state.lines.find(
         (line) =>

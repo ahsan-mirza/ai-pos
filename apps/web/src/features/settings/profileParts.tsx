@@ -20,6 +20,7 @@ import {
   Sandwich,
   Shirt,
   ShoppingBasket,
+  WashingMachine,
   Smartphone,
   Store,
   UtensilsCrossed,
@@ -35,6 +36,7 @@ export const PROFILE_ICONS: Record<BusinessProfile, LucideIcon> = {
   cafe: Coffee,
   quick_service: Sandwich,
   pharmacy: Pill,
+  laundry: WashingMachine,
 };
 
 const PROFILE_GROUPS = Object.keys(PROFILE_GROUP_LABELS) as ProfileGroup[];

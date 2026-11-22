@@ -2,6 +2,7 @@
 
 import uuid
 from datetime import UTC, datetime, timedelta
+from zoneinfo import ZoneInfo
 
 import pytest
 from sqlalchemy import select
@@ -13,11 +14,13 @@ from app.models import BusinessSettings, Reservation, TableActivityEvent, User
 from app.services.settings_service import clear_settings_cache
 from app.tenancy.scoping import INCLUDE_ALL
 
-WHEN = "2026-11-02T12:00:00+04:00"
+def _at(hour: int, minute: int = 0, day_offset: int = 1) -> str:
+    """A Dubai wall time on a coming day. The old 2 November fixtures are now in the past."""
+    day = (datetime.now(UTC).astimezone(ZoneInfo("Asia/Dubai")) + timedelta(days=day_offset)).date()
+    return f"{day.isoformat()}T{hour:02d}:{minute:02d}:00+04:00"
 
 
-def _at(hour: int, day: int = 2) -> str:
-    return f"2026-11-{day:02d}T{hour:02d}:00:00+04:00"
+WHEN = _at(12)
 
 
 def _customer(client, token: str, name: str = "Noor", phone: str = "+971500000001", **extra) -> dict:
@@ -400,8 +403,8 @@ def test_an_offline_order_cannot_replace_the_seated_party(client) -> None:
             "items": [],
         },
     )
-    assert pushed.status_code == 422, pushed.text
-    assert pushed.json()["error"]["code"] == "sync_rejected"
+    assert pushed.status_code == 200, pushed.text
+    assert pushed.json()["results"][0]["status"] == "awaiting_review"
     order = client.get(f"/api/v1/orders/{seated['order_id']}", headers=device())
     assert order.json()["customer_id"] == customer["id"]
     assert order.json()["status"] == "OPEN"
@@ -413,9 +416,9 @@ def test_hours_notice_and_date_boundaries(client) -> None:
     early = _book(client, token, table, customer_id=customer["id"], starts_at=_at(8))
     assert early.status_code == 422
     assert early.json()["error"]["code"] == "reservation_rules"
-    late = _book(client, token, table, customer_id=customer["id"], starts_at="2026-11-02T23:30:00+04:00")
+    late = _book(client, token, table, customer_id=customer["id"], starts_at=_at(23, 30))
     assert late.status_code == 422
-    boundary = _book(client, token, table, customer_id=customer["id"], starts_at="2026-11-02T00:30:00+04:00")
+    boundary = _book(client, token, table, customer_id=customer["id"], starts_at=_at(0, 30))
     assert boundary.status_code == 422
     override = _book(
         client,

@@ -99,6 +99,7 @@ const BY_PROFILE: Record<Profile, readonly InventoryTab[]> = {
   [BusinessProfile.Cafe]: food,
   [BusinessProfile.QuickService]: food,
   [BusinessProfile.Pharmacy]: pharmacy,
+  [BusinessProfile.Laundry]: selling,
 };
 
 export function inventoryTabs(

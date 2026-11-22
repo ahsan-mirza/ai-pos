@@ -126,6 +126,7 @@ export const SyncEntityType = {
   SaleReturn: "sale_return",
   Customer: "customer",
   OpenOrder: "open_order",
+  LaundryOrder: "laundry_order",
 } as const;
 export type SyncEntityType = (typeof SyncEntityType)[keyof typeof SyncEntityType];
 

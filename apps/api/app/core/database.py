@@ -82,19 +82,35 @@ def create_database(server_url: str, name: str) -> bool:
 
 
 def set_session_tenant(connection, tenant_id: str) -> None:
-    """Tell Postgres which store this transaction may see. Ignored on SQLite."""
+    """Tell Postgres which tenant this transaction may see. Ignored on SQLite."""
+    set_session_scope(connection, tenant_id, None, None)
+
+
+def set_session_scope(connection, tenant_id: str, store_id: str | None, device_id: str | None) -> None:
+    """Bind tenant, store, and device for this transaction. Empty store or device fails closed.
+
+    Ignored on SQLite. These settings are not an authorization bypass. Policies do not
+    treat app.bypass_rls as permission to read another tenant.
+    """
     if connection.dialect.name != "postgresql":
         return
     connection.exec_driver_sql(  # raw-sql: allowed (RLS)
-        "SELECT set_config('app.tenant_id', %s, true)", (tenant_id,)
+        "SELECT set_config('app.tenant_id', %s, true), "
+        "set_config('app.store_id', %s, true), "
+        "set_config('app.device_id', %s, true)",
+        (tenant_id, store_id or "", device_id or ""),
     )
 
 
 def bypass_session_tenant(connection) -> None:
-    """Let a migration or a cross-tenant job read every store in this database. Ignored on SQLite."""
+    """Retained for migration callers. Row policies no longer open because this flag is set.
+
+    A superuser or a role with BYPASSRLS still bypasses FORCE ROW LEVEL SECURITY.
+    The application login must have neither. Ignored on SQLite.
+    """
     if connection.dialect.name != "postgresql":
         return
-    connection.exec_driver_sql("SELECT set_config('app.bypass_rls', 'on', true)")  # raw-sql: allowed (RLS)
+    connection.exec_driver_sql("SELECT set_config('app.bypass_rls', 'off', true)")  # raw-sql: allowed (RLS)
 
 
 def get_db() -> Iterator[Session]:
@@ -104,6 +120,9 @@ def get_db() -> Iterator[Session]:
     try:
         yield session
     finally:
+        from app.tenancy.context import clear_scope
+
+        clear_scope()
         session.close()
 
 

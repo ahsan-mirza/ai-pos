@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.models import AuditLog, ReturnItem, Sale, SerialNumber
 from app.schemas.payloads import SaleStatus, SerialStatus
+from app.core.clock import utcnow
 from app.services.identifiers import is_valid_imei
 from app.services.returns_service import prorated_tax, restocking_fee
 
@@ -133,7 +134,14 @@ def seed_catalog(client) -> None:
 
 
 def record_sale(
-    client, *, product_id: str, price: int, quantity: int = 1, serial: str | None = None, payment: str = "cash"
+    client,
+    *,
+    product_id: str,
+    price: int,
+    quantity: int = 1,
+    serial: str | None = None,
+    payment: str = "cash",
+    occurred_at: str | None = None,
 ) -> dict:
     tax = round(price * quantity * TAX_BPS / 10_000)
     sale_id = str(uuid.uuid4())
@@ -160,7 +168,7 @@ def record_sale(
             }
         ],
     }
-    response = push(client, "sale", payload)
+    response = push(client, "sale", payload, occurred_at=occurred_at)
     assert response.status_code == 200, response.text
     return payload
 
@@ -424,7 +432,7 @@ def test_card_sale_refunds_to_card_or_credit_only(client) -> None:
 
 def test_sale_older_than_the_sync_window_is_refused(client) -> None:
     seed_catalog(client)
-    stale = (datetime.now(UTC) - timedelta(days=31)).isoformat()
+    stale = (utcnow() - timedelta(days=31)).isoformat()
     response = push(client, "sale", {
         "id": str(uuid.uuid4()),
         "store_id": STORE_ID,

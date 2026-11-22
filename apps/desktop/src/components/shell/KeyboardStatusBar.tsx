@@ -1,8 +1,10 @@
 import { profileSpec } from "@ai-pos/shared-types";
+import { useLocale } from "@ai-pos/ui";
 import {
   ChefHat,
   CreditCard,
   Keyboard,
+  Loader2,
   Monitor,
   Printer,
   Scale,
@@ -22,8 +24,10 @@ import { printReceipt } from "../../features/printing/print";
 import { loadScaleConfig } from "../../features/settings/scaleConfig";
 import { useVirtualKeyboard } from "../../hooks/useVirtualKeyboard";
 import { ApiRejectedError, ApiUnavailableError, checkCardTerminal, peripheralSnapshot } from "../../lib/api";
-import { useCapabilities } from "../../lib/capabilities";
-import { exitDemo, inTauri, openCashDrawer, probePrinter, readScale, type PrinterProbe } from "../../lib/tauri";
+import { useAppVersion } from "../../lib/appVersion";
+import { capabilitiesAvailable, subscriptionHold, useCapabilities } from "../../lib/capabilities";
+import { noteSyncCounts, subscribeSyncActivity, type SyncSnapshot } from "../../lib/syncActivity";
+import { bootstrapReadiness, conflictCount, exitDemo, inTauri, openCashDrawer, pendingCount, probePrinter, readScale, rejectedCount, type PrinterProbe } from "../../lib/tauri";
 import { VirtualKeyboard } from "../common/VirtualKeyboard";
 import { useShell } from "./ShellContext";
 import {
@@ -35,6 +39,7 @@ import {
   type RemotePeripheral,
   type ScaleResult,
 } from "./deviceStatus";
+import { statusBarModel, type StatusTone } from "./statusBar";
 
 const ICONS: Record<IndicatorKind, LucideIcon> = {
   api: Wifi,
@@ -46,6 +51,20 @@ const ICONS: Record<IndicatorKind, LucideIcon> = {
   kds: ChefHat,
   table_apps: Tablet,
   card_terminal: CreditCard,
+};
+
+const STATUS_TEXT: Record<StatusTone, string> = {
+  live: "text-emerald-300",
+  pending: "text-amber-300",
+  offline: "text-red-300",
+  neutral: "text-slate-400",
+};
+
+const STATUS_DOT: Record<StatusTone, string> = {
+  live: "bg-emerald-400",
+  pending: "bg-amber-400",
+  offline: "bg-red-500",
+  neutral: "bg-slate-500",
 };
 
 const ACTION_LABEL: Record<IndicatorAction, string> = {
@@ -66,11 +85,13 @@ function when(value: string | null): string {
   return date.toLocaleString();
 }
 
-/** Bottom register bar: branch identity and compact connection lights. Details open above the bar. */
+/** Bottom register bar: branch identity, activation, connection, sync, and device lights. Details open above the bar. */
 export function KeyboardStatusBar() {
+  const { t } = useLocale();
+  const version = useAppVersion();
   const { status, enabled, layout, toggle, hide, press } = useVirtualKeyboard();
   const { profile } = useCapabilities();
-  const { session, navigate, catalogSummary } = useShell();
+  const { session, navigate, catalogSummary, registerStatus } = useShell();
   const activation = terminal();
   const spec = profileSpec(profile);
   const restaurantName = activation?.tenant_name || store.name;
@@ -80,9 +101,35 @@ export function KeyboardStatusBar() {
   const [displayLocal, setDisplayLocal] = useState<"open" | "closed" | "absent">("absent");
   const [remotes, setRemotes] = useState<RemotePeripheral[]>([]);
   const [apiUp, setApiUp] = useState(false);
+  const [apiKnown, setApiKnown] = useState(false);
   const [apiDetail, setApiDetail] = useState("Checking the register API.");
+  const [syncSnap, setSyncSnap] = useState<SyncSnapshot>({ syncing: false, pending: null, failed: null, conflicts: null });
   const [openId, setOpenId] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [readiness, setReadiness] = useState("");
+  const [readinessDetail, setReadinessDetail] = useState("");
+
+  useEffect(() => {
+    if (!inTauri()) return;
+    let stopped = false;
+    const load = () => {
+      void bootstrapReadiness(capabilitiesAvailable(), subscriptionHold() === "server")
+        .then((report) => {
+          if (stopped) return;
+          setReadiness(report.readiness);
+          setReadinessDetail(report.message);
+        })
+        .catch(() => {
+          if (!stopped) setReadiness("");
+        });
+    };
+    load();
+    const timer = window.setInterval(load, 10_000);
+    return () => {
+      stopped = true;
+      window.clearInterval(timer);
+    };
+  }, []);
 
   useEffect(() => {
     let stopped = false;
@@ -90,11 +137,13 @@ export function KeyboardStatusBar() {
       try {
         const items = await peripheralSnapshot();
         if (stopped) return;
+        setApiKnown(true);
         setApiUp(true);
-        setApiDetail("The register can reach the AxizPOS API. Local hardware is checked on this machine.");
+        setApiDetail("The register can reach the AxizPOS API. This light does not mean the cashier is signed in or that laundry sync succeeded.");
         setRemotes(items);
       } catch (error) {
         if (stopped) return;
+        setApiKnown(true);
         if (error instanceof ApiRejectedError) {
           setApiUp(true);
           setApiDetail(error.message);
@@ -187,6 +236,29 @@ export function KeyboardStatusBar() {
     };
   }, []);
 
+  useEffect(() => subscribeSyncActivity(setSyncSnap), []);
+
+  useEffect(() => {
+    if (!inTauri()) return;
+    let stopped = false;
+    const poll = () => {
+      void Promise.all([pendingCount(), rejectedCount(), conflictCount()])
+        .then(([pending, failed, conflicts]) => {
+          if (!stopped) noteSyncCounts({ pending, failed, conflicts });
+        })
+        .catch(() => undefined);
+    };
+    poll();
+    const timer = window.setInterval(poll, 5_000);
+    const again = () => poll();
+    window.addEventListener("online", again);
+    return () => {
+      stopped = true;
+      window.clearInterval(timer);
+      window.removeEventListener("online", again);
+    };
+  }, []);
+
   useEffect(() => {
     if (!openId) return;
     const close = (event: PointerEvent) => {
@@ -198,6 +270,22 @@ export function KeyboardStatusBar() {
     return () => document.removeEventListener("pointerdown", close);
   }, [openId]);
 
+  const bar = statusBarModel({
+    activated: activation?.activated === true,
+    demo: activation?.demo === true,
+    desktop: inTauri(),
+    sessionMode: session.mode,
+    apiKnown,
+    apiReachable: apiUp,
+    page: registerStatus,
+    syncing: syncSnap.syncing,
+    pending: syncSnap.pending,
+    failed: syncSnap.failed,
+    conflicts: syncSnap.conflicts,
+    catalogSummary,
+    readiness,
+    readinessDetail,
+  });
   const indicators = footerIndicators({
     apiUp,
     apiDetail,
@@ -270,19 +358,20 @@ export function KeyboardStatusBar() {
 
   return (
     <>
-      <footer className="relative flex h-9 shrink-0 flex-nowrap items-center justify-between gap-3 border-t border-slate-800 bg-slate-900 px-3">
+      <footer data-readiness={readiness || "unchecked"} className="relative grid h-9 shrink-0 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-3 border-t border-slate-800 bg-slate-900 px-3">
         <p
-          className="min-w-0 max-w-[34%] shrink truncate text-xs text-slate-300"
+          className="min-w-0 truncate text-xs text-slate-300"
           title={
-            activation?.demo
+            (activation?.demo
               ? `DEMO MODE — ${restaurantName}. Session active. ${catalogSummary ?? ""}`
-              : `${restaurantName} · ${spec.label} · ${store.code} · ${store.name}${activation?.register_code ? ` · ${activation.register_code}` : ""}`
+              : `${restaurantName} · ${spec.label} · ${store.code} · ${store.name}${activation?.register_code ? ` · ${activation.register_code}` : ""}`) +
+            (readiness ? ` · ${readiness}. A remote change applies after sync. Stock is not split between tills.` : "")
           }
         >
           {activation?.demo ? (
             <button
               type="button"
-              className="me-2 rounded bg-orange-500 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white"
+              className="me-2 rounded bg-orange-500 px-1.5 py-0.5 text-[0.625rem] font-bold uppercase tracking-wide text-white"
               onClick={() => {
                 if (!window.confirm("Leave this demo on this register? The demo token and this PC's demo data will be cleared.")) return;
                 void exitDemo().catch((error: unknown) => {
@@ -299,16 +388,39 @@ export function KeyboardStatusBar() {
           <span className="text-slate-500"> · </span>
           <span>{spec.shortLabel}</span>
         </p>
-        <p className="min-w-0 flex-1 truncate text-center text-[11px] font-semibold uppercase tracking-wider text-slate-400" role="status" title={catalogSummary ?? undefined}>
-          {catalogSummary}
-        </p>
         <div
-          className="flex min-w-0 max-w-[46%] shrink-0 flex-nowrap items-center justify-end gap-0.5 overflow-x-auto pe-14 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+          className="flex items-center justify-center gap-2 overflow-x-auto px-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+          role="status"
+          aria-live="polite"
+        >
+          {bar.chips.map((chip) => (
+            <span
+              key={chip.id}
+              title={chip.title}
+              data-status-chip={chip.id}
+              className={`inline-flex shrink-0 items-center gap-1 text-[0.6875rem] font-semibold uppercase tracking-wide ${STATUS_TEXT[chip.tone]}`}
+            >
+              {chip.spin ? (
+                <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />
+              ) : (
+                <span aria-hidden="true" className={`h-1.5 w-1.5 rounded-full ${STATUS_DOT[chip.tone]}`} />
+              )}
+              {t(chip.label, chip.vars)}
+            </span>
+          ))}
+          {bar.summary ? (
+            <span className="min-w-0 truncate text-[0.6875rem] font-semibold uppercase tracking-wider text-slate-500" title={bar.summary}>
+              {bar.summary}
+            </span>
+          ) : null}
+        </div>
+        <div
+          className="flex min-w-0 flex-nowrap items-center justify-end gap-0.5 justify-self-end overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
           role="group"
           aria-label="Device status"
           data-device-status="strip"
         >
-          {indicators.map((item) => {
+          {indicators.filter((item) => item.kind !== "api").map((item) => {
             const Icon = ICONS[item.kind];
             return (
               <button
@@ -329,6 +441,9 @@ export function KeyboardStatusBar() {
               </button>
             );
           })}
+          <span className="ms-2 shrink-0 text-xs tabular-nums text-slate-400" data-app-version={version}>
+            v{version}
+          </span>
         </div>
         {open ? (
           <div

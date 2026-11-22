@@ -1,4 +1,5 @@
-import { formatMoney, type ProductUpsert } from "@ai-pos/shared-types";
+import { type ProductUpsert } from "@ai-pos/shared-types";
+import { CurrencyAmount } from "../../components/CurrencyAmount";
 import { Building2, Info, Package, Plus } from "lucide-react";
 import type { ReactNode } from "react";
 import { stockPill } from "../../components/shell/tokens";
@@ -14,11 +15,22 @@ function stockClass(product: ProductUpsert): string {
   return stockPill[pill];
 }
 
+function PriceRange({ fromCents, toCents, currency }: { fromCents: number; toCents: number; currency: string }) {
+  if (fromCents === toCents) return <CurrencyAmount cents={fromCents} currency={currency} size="card" />;
+  return (
+    <span className="inline-flex items-end gap-1">
+      <CurrencyAmount cents={fromCents} currency={currency} size="card" />
+      <span className="mb-0.5 text-sm font-semibold text-zinc-400">–</span>
+      <CurrencyAmount cents={toCents} currency={currency} size="card" />
+    </span>
+  );
+}
+
 function Price({ product, currency, amount }: { product: ProductUpsert; currency: string; amount: number }) {
   return (
-    <span className="whitespace-nowrap text-sm font-bold tabular-nums text-zinc-900 dark:text-white">
-      {formatMoney(amount, currency)}
-      {product.sold_by_weight ? <span className="text-xs font-semibold text-zinc-500 dark:text-white/50"> /kg</span> : null}
+    <span className="inline-flex items-end gap-1 whitespace-nowrap text-zinc-900 dark:text-white">
+      <CurrencyAmount cents={amount} currency={currency} size="card" />
+      {product.sold_by_weight ? <span className="mb-0.5 text-xs font-semibold text-zinc-500 dark:text-white/50">/kg</span> : null}
     </span>
   );
 }
@@ -110,7 +122,7 @@ export function ProductListRow({
       </div>
       <Price product={product} currency={currency} amount={amount} />
       {stock ? (
-        <span title={stock} className={`inline-flex h-7 max-w-full items-center truncate rounded-full px-2 text-[11px] font-semibold tabular-nums ${stockClass(product)}`}>
+        <span title={stock} className={`inline-flex h-7 max-w-full items-center truncate rounded-full px-2 text-[0.6875rem] font-semibold tabular-nums ${stockClass(product)}`}>
           {stock}
         </span>
       ) : (
@@ -197,7 +209,7 @@ export function CompactProductCard({
         className="mt-1 flex min-w-0 items-center justify-between gap-2 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/70 disabled:opacity-50"
       >
         <Price product={product} currency={currency} amount={amount} />
-        {stock ? <span className="truncate text-[11px] font-semibold text-zinc-500 dark:text-white/50">{stock}</span> : null}
+        {stock ? <span className="truncate text-[0.6875rem] font-semibold text-zinc-500 dark:text-white/50">{stock}</span> : null}
       </button>
     </li>
   );
@@ -245,10 +257,6 @@ export function ModelListRow({
   onInfo: () => void;
 }) {
   const first = group.variants[0];
-  const price =
-    group.fromCents === group.toCents
-      ? formatMoney(group.fromCents, currency)
-      : `${formatMoney(group.fromCents, currency)} – ${formatMoney(group.toCents, currency)}`;
   const stock = group.stock <= 0 ? "Out of stock" : "In stock";
   return (
     <li className="grid min-h-16 min-w-0 grid-cols-1 items-center gap-2 rounded-xl border border-zinc-200 bg-white px-2 py-2 dark:border-zinc-800 dark:bg-zinc-900/40 sm:grid-cols-[minmax(0,1.6fr)_auto_auto_auto] sm:gap-3 sm:px-3">
@@ -261,8 +269,8 @@ export function ModelListRow({
           </p>
         </div>
       </div>
-      <span className="whitespace-nowrap text-sm font-bold tabular-nums">{price}</span>
-      <span className={`inline-flex h-7 items-center rounded-full px-2 text-[11px] font-semibold ${stockPill[group.stock <= 0 ? "out" : "in"]}`}>{stock}</span>
+      <PriceRange fromCents={group.fromCents} toCents={group.toCents} currency={currency} />
+      <span className={`inline-flex h-7 items-center rounded-full px-2 text-[0.6875rem] font-semibold ${stockPill[group.stock <= 0 ? "out" : "in"]}`}>{stock}</span>
       <ModelActions name={group.name} onOpen={onOpen} onInfo={onInfo} disabled={disabled} label="Choose" />
     </li>
   );
@@ -281,10 +289,6 @@ export function ModelCompactCard({
   onOpen: () => void;
   onInfo: () => void;
 }): ReactNode {
-  const price =
-    group.fromCents === group.toCents
-      ? formatMoney(group.fromCents, currency)
-      : `${formatMoney(group.fromCents, currency)} – ${formatMoney(group.toCents, currency)}`;
   return (
     <li className="flex min-h-[4.5rem] min-w-0 flex-col rounded-xl border border-zinc-200 bg-white p-2 dark:border-zinc-800 dark:bg-zinc-900/40">
       <div className="flex min-w-0 items-start gap-2">
@@ -304,8 +308,8 @@ export function ModelCompactCard({
         onClick={onOpen}
         className="mt-1 flex min-w-0 items-center justify-between gap-2 text-left text-sm font-bold tabular-nums focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/70"
       >
-        <span className="truncate">{price}</span>
-        <span className="shrink-0 text-[11px] font-semibold text-zinc-500">{group.stock <= 0 ? "Out of stock" : "In stock"}</span>
+        <PriceRange fromCents={group.fromCents} toCents={group.toCents} currency={currency} />
+        <span className="shrink-0 text-[0.6875rem] font-semibold text-zinc-500">{group.stock <= 0 ? "Out of stock" : "In stock"}</span>
       </button>
     </li>
   );

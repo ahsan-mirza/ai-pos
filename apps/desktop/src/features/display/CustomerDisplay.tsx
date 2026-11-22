@@ -1,4 +1,4 @@
-import { formatMoney } from "@ai-pos/shared-types";
+import { CurrencyAmount } from "../../components/CurrencyAmount";
 import { BrandLogo } from "@ai-pos/ui";
 import { CheckCircle2, ScanLine } from "lucide-react";
 import QRCode from "qrcode";
@@ -53,7 +53,7 @@ export function CustomerDisplay() {
 
   return (
     <main className="grid min-h-screen grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)] gap-6 bg-charcoal p-8 font-sans text-white">
-      <section className="flex min-h-0 flex-col rounded-[28px] bg-white/5 p-8">
+      <section className="flex min-h-0 flex-col rounded-[1.75rem] bg-white/5 p-8">
         <p className="text-sm font-semibold uppercase tracking-[0.18em] text-white/50">{state.storeName}</p>
         <ul className="mt-6 flex-1 space-y-4 overflow-y-auto">
           {state.lines.map((line, index) => (
@@ -62,22 +62,22 @@ export function CustomerDisplay() {
                 <span className="tabular-nums text-white/50">{line.quantity} × </span>
                 {line.name}
               </span>
-              <span className="shrink-0 font-semibold tabular-nums">{formatMoney(line.totalCents, state.currency)}</span>
+              <CurrencyAmount cents={line.totalCents} currency={state.currency} size="line" className="shrink-0" />
             </li>
           ))}
         </ul>
         <dl className="mt-6 space-y-2 border-t border-white/10 pt-6 text-xl">
           <div className="flex justify-between text-white/60">
             <dt>Subtotal</dt>
-            <dd className="tabular-nums">{formatMoney(state.subtotalCents, state.currency)}</dd>
+            <dd><CurrencyAmount cents={state.subtotalCents} currency={state.currency} size="summary" /></dd>
           </div>
           <div className="flex justify-between text-white/60">
             <dt>{state.vatIncluded ? "VAT included" : "VAT"}</dt>
-            <dd className="tabular-nums">{formatMoney(state.taxCents, state.currency)}</dd>
+            <dd><CurrencyAmount cents={state.taxCents} currency={state.currency} size="summary" /></dd>
           </div>
         </dl>
       </section>
-      <section className="flex flex-col items-center justify-center rounded-[28px] bg-white p-8 text-charcoal">
+      <section className="flex flex-col items-center justify-center rounded-[1.75rem] bg-white p-8 text-charcoal">
         {state.qr && qrImage ? (
           <>
             {state.qr.status === "PAID" ? (
@@ -102,8 +102,8 @@ export function CustomerDisplay() {
             <p className="mt-2 text-sm text-charcoal/50">المبلغ الإجمالي</p>
           </>
         )}
-        <p className="mt-8 text-7xl font-bold tracking-tight tabular-nums text-primary">
-          {formatMoney(state.qr?.amountCents ?? state.totalCents, state.currency)}
+        <p className="mt-8 text-primary">
+          <CurrencyAmount cents={state.qr?.amountCents ?? state.totalCents} currency={state.currency} size="hero" />
         </p>
       </section>
     </main>

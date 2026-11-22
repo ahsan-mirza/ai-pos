@@ -165,7 +165,7 @@ export function CashDrawerModal({ currency, onClose, onLogged }: CashDrawerModal
           }}
         >
           {mode === "cash_drop" ? (
-            <div className="grid grid-cols-[1fr_150px] gap-3">
+            <div className="grid grid-cols-[1fr_9.375rem] gap-3">
               <label className="text-sm font-medium" htmlFor="drop-amount">
                 Amount removed ({currency})
                 <input
@@ -234,7 +234,7 @@ export function CashDrawerModal({ currency, onClose, onLogged }: CashDrawerModal
 
           {recent.length > 0 ? (
             <div className="rounded-2xl bg-surface dark:bg-zinc-800/60 p-3">
-              <p className="px-1 text-[11px] font-semibold uppercase tracking-wider text-charcoal/50 dark:text-zinc-400">Recent on this register</p>
+              <p className="px-1 text-[0.6875rem] font-semibold uppercase tracking-wider text-charcoal/50 dark:text-zinc-400">Recent on this register</p>
               <ul className="mt-2 space-y-1.5">
                 {recent.map((row) => {
                   const dropped = (row.details?.amount_cents as number | undefined) ?? null;

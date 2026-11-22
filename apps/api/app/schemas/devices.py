@@ -62,6 +62,21 @@ class PosExchangeRequest(ApiModel):
 class TerminalActivate(ApiModel):
     activation_key: str = Field(min_length=8, max_length=32)
     machine_name: str = Field(default="", max_length=120)
+    # Standard base64 of the register's 32-byte Ed25519 public key. Empty keeps the O1 token-only exchange.
+    device_public_key: str = Field(default="", max_length=128)
+
+
+class SignedEntitlement(ApiModel):
+    """The exact payload string is what was signed. Clients verify those bytes and do not re-encode them."""
+
+    schema_version: int
+    key_id: str
+    payload: str
+    signature: str
+
+
+class EntitlementRequest(ApiModel):
+    device_public_key: str = Field(min_length=1, max_length=128)
 
 
 class TerminalActivation(ApiModel):
@@ -71,6 +86,7 @@ class TerminalActivation(ApiModel):
     tenant_name: str
     tenant_domain: str
     tenant_url: str
+    tenant_id: str = ""
     store_id: UUID
     store_code: str
     store_name: str
@@ -78,6 +94,7 @@ class TerminalActivation(ApiModel):
     register_code: str
     register_name: str
     device_token: str
+    entitlement: SignedEntitlement | None = None
 
 
 class DeviceSeries(ApiModel):

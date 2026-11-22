@@ -14,9 +14,9 @@ interface CartListProps extends SharedCardProps {
 /** The scrolling item list: it takes every pixel the payment sheet leaves free. */
 export function CartList({ rows, floorFor, ...card }: CartListProps) {
   return (
-    <ul aria-label="Cart items" className="custom-scrollbar flex flex-col gap-1 px-3 py-1.5 xl:min-h-[180px] xl:flex-1 xl:overflow-y-auto">
+    <ul aria-label="Cart items" className="custom-scrollbar flex flex-col gap-1 px-3 py-1.5 xl:min-h-0 xl:flex-1 xl:overflow-y-auto">
       {rows.length === 0 ? (
-        <li className="flex flex-1 flex-col items-center justify-center px-6 py-8 text-center">
+        <li className="flex flex-col items-center px-6 py-4 text-center">
           <ShoppingCart size={28} aria-hidden="true" className="text-zinc-300 dark:text-zinc-600" />
           <p className="mt-3 text-sm font-semibold text-zinc-700 dark:text-zinc-300">The cart is empty</p>
           <p className="mt-1 max-w-[16rem] text-xs text-zinc-500 dark:text-zinc-400">Scan a barcode or tap a product to start a sale.</p>

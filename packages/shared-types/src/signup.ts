@@ -474,6 +474,37 @@ export const SIGNUP_BUSINESS_CARDS: readonly SignupBusinessCard[] = [
       },
     ],
   },
+  {
+    profile: "laundry",
+    label: "Laundry",
+    description: "Garment care, wash-and-fold, and commercial laundry. Clothes in process are work orders, not stock.",
+    subTypes: [
+      {
+        id: "laundry_shop",
+        label: "Small laundry shop",
+        description: "Wash and fold, wash and iron, and pressing at one counter.",
+        modules: ["loyalty", "promotions", "weighed_items", "card_terminals", "laundry_operations"],
+      },
+      {
+        id: "laundry_dry_cleaner",
+        label: "Dry cleaner",
+        description: "Piece-rate dry cleaning, pressing, and alterations.",
+        modules: ["loyalty", "promotions", "weighed_items", "card_terminals", "laundry_operations"],
+      },
+      {
+        id: "laundry_multi_branch",
+        label: "Multi-branch laundry",
+        description: "Counters that can send work to a central plant, plus pickup and delivery.",
+        modules: ["loyalty", "promotions", "weighed_items", "card_terminals", "laundry_operations"],
+      },
+      {
+        id: "laundry_commercial",
+        label: "Commercial laundry",
+        description: "Hotel, hospital, and linen accounts counted by bag or bulk quantity.",
+        modules: ["loyalty", "promotions", "weighed_items", "card_terminals", "laundry_operations"],
+      },
+    ],
+  },
 ];
 
 export interface SignupCountry {

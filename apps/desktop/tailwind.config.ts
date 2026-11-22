@@ -20,6 +20,13 @@ export default {
   ],
   theme: {
     extend: {
+      screens: {
+        sm: "40rem",
+        md: "48rem",
+        lg: "64rem",
+        xl: "80rem",
+        "2xl": "96rem",
+      },
       colors: {
         // The register's single accent, set in POS Settings → Primary Accent Color (src/lib/theme.ts).
         // `accent` and `orange` are aliases of `primary` so no class can drift from the chosen color.

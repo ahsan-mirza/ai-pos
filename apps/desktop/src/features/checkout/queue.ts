@@ -8,6 +8,7 @@ import {
   type SaleTender,
   type SaleUpsert,
   type SyncEvent,
+  rateFor,
   type TaxPolicy,
 } from "@ai-pos/shared-types";
 import { lineCharge, manualDiscountCents, type CartLine, type CartState } from "./cart";
@@ -64,6 +65,7 @@ export function saleItems(lines: CartLine[], policy: TaxPolicy = businessTax()):
       unit_price_cents: line.unitPriceCents,
       tax_cents: tax.tax_cents,
       line_total_cents: tax.line_total_cents,
+      tax_rate_bps: rateFor(policy, line.product.tax_category),
       serial_value: line.serialValue,
       serial_kind: line.serialKind,
       unit_type: line.unitType,

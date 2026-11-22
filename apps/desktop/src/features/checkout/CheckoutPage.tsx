@@ -21,16 +21,15 @@ import {
   ChevronUp,
   FileText,
   Gift,
-  Inbox,
   PauseCircle,
   Percent,
   ReceiptText,
   ShoppingCart,
   Truck,
-  UtensilsCrossed,
   X,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { CurrencyAmount } from "../../components/CurrencyAmount";
 import { ManagerApprovalModal } from "../../components/ManagerApprovalModal";
 import { DrawerHeader } from "../../components/shell/Drawer";
 import type { SyncState } from "../../components/shell/HeaderBar";
@@ -42,8 +41,9 @@ import { ui } from "../../components/shell/tokens";
 import { useCapabilities } from "../../lib/capabilities";
 import { categoryChips, searchLabel, searchPlaceholder } from "../../lib/industry";
 import { retailCall } from "../../lib/retailClient";
-import { inTauri, openDocumentPdf, recordCashMovement, refreshSeries, type RegisterCustomer } from "../../lib/tauri";
-import { CashDrawerModal } from "../audit/CashDrawerModal";
+import { inTauri, openDocumentPdf, recordCashMovement, refreshSeries, terminalAllocationBalances, type RegisterCustomer } from "../../lib/tauri";
+import { allocationMap, withTerminalAllocation } from "./allocationBalance";
+import { OpenDrawerButton } from "../audit/OpenDrawerButton";
 import { logItemVoid } from "../audit/registerAudit";
 import type { CashierSession } from "../auth/session";
 import { printReceipt } from "../printing/print";
@@ -249,6 +249,8 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
   const { view: catalogueView, setView: chooseCatalogueView } = useCatalogueView(session.user.id);
   const { t } = useLocale();
   const [catalog, setCatalog] = useState<Catalog>(() => openingCatalog());
+  const [allocations, setAllocations] = useState<Map<string, number> | null>(null);
+  const [allocationFault, setAllocationFault] = useState(false);
   const [catalogLoaded, setCatalogLoaded] = useState(() => openingCatalog().products.length > 0);
   const [syncingCatalog, setSyncingCatalog] = useState(false);
   const [cart, setCart] = useState<CartState>(emptyCart);
@@ -280,7 +282,6 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
   const [quoteOpen, setQuoteOpen] = useState(false);
   const [branchCheck, setBranchCheck] = useState<{ product: ProductUpsert | null } | null>(null);
   const [details, setDetails] = useState<{ product: ProductUpsert; variants: ProductUpsert[]; title?: string; perVariant?: boolean } | null>(null);
-  const [drawerOpen, setDrawerOpen] = useState(false);
   const [heldOpen, setHeldOpen] = useState(false);
   const [lastReceipt, setLastReceipt] = useState<{ doc: ReceiptDoc; saleId: string } | null>(null);
   const [charging, setCharging] = useState(false);
@@ -321,6 +322,7 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
   const [tableSession, setTableSession] = useState<TableSession | null>(null);
   const [floorAreas, setFloorAreas] = useState<DiningArea[]>([]);
   const sessionRef = useRef<TableSession | null>(null);
+  const restoredTicket = useRef(false);
   const tableIdRef = useRef<string | null>(null);
   sessionRef.current = tableSession;
   // Restaurant: a tab handed over from Orders, its automatic service charge, and the tip on top.
@@ -391,7 +393,7 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
 
   useEffect(() => onDisplayReady(republishDisplay), []);
   useShellPage(charging, setNotice);
-  const { navigate, setCatalogSummary, view } = useShell();
+  const { setCatalogSummary, view } = useShell();
   const needsCredit = (plan.overLimitCents > 0 || plan.holdReason !== null) && creditApproval === null;
   const belowFloor = useMemo(() => linesBelowFloor(cart.lines, floors), [cart.lines, floors]);
   const deliveryChoice = food && orderMode === "delivery" && payment.choice !== "channel";
@@ -428,7 +430,7 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
   const gridEntries = useMemo(() => groupHits(visibleHits, catalog.products), [visibleHits, catalog.products]);
   const catalogSummary = useMemo(() => {
     if (searching) return "Searching…";
-    if (syncingCatalog && catalog.products.length > 0) return "Syncing catalogue…";
+    if (syncingCatalog) return "Syncing catalogue…";
     const count = `${visibleHits.length} ${visibleHits.length === 1 ? "product" : "products"}`;
     const match = debouncedQuery.trim() !== "" ? ` matching "${debouncedQuery.trim()}"` : "";
     const scope = category ? ` in ${category}` : "";
@@ -652,6 +654,38 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
   }, [food]);
 
   useEffect(() => {
+    if (!food || !catalogLoaded || restoredTicket.current) return;
+    restoredTicket.current = true;
+    void listSessions(store.id).then((rows) => {
+      if (sessionRef.current || cartRef.current.lines.length > 0) return;
+      const open = rows.find((row) => row.status === "OPEN" && row.items.some((item) => item.kitchen_status === "PENDING"));
+      if (!open) return;
+      let state = emptyCart;
+      for (const item of open.items) {
+        if (item.kitchen_status !== "PENDING") continue;
+        const product = dishProduct(item, catalog.products, store.id, currency);
+        const modifiers = modifiersOf(item);
+        const added = applyCart(state, {
+          type: "add_product",
+          product,
+          quantity: item.quantity,
+          lineId: item.id,
+          priceSnapshotCents: item.unit_price_cents,
+          ...(modifiers.length > 0 ? { modifiers } : {}),
+          ...(item.note ? { instruction: item.note } : {}),
+        });
+        if (!added.error) state = added.state;
+      }
+      if (state.lines.length === 0) return;
+      cartRef.current = state;
+      setCart(state);
+      sessionRef.current = open;
+      setTableSession(open);
+      setOrderMode(open.order_mode);
+    });
+  }, [food, catalogLoaded, currency, catalog.products]);
+
+  useEffect(() => {
     if (!food || sessionRef.current === null) return;
     const current = sessionRef.current;
     const next = mirrorCart(current, cart.lines);
@@ -692,8 +726,39 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
       .catch(() => undefined);
   }, [rentalsOn]);
 
+  useEffect(() => {
+    if (session.mode !== "offline" || !inTauri()) {
+      setAllocations(null);
+      setAllocationFault(false);
+      return;
+    }
+    let cancelled = false;
+    void terminalAllocationBalances()
+      .then((rows) => {
+        if (!cancelled) {
+          setAllocationFault(false);
+          setAllocations(allocationMap(rows));
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setAllocationFault(true);
+          setAllocations(new Map());
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [session.mode, catalogLoaded, pulse]);
+
+  const stamp = useCallback(
+    (product: ProductUpsert) => withTerminalAllocation(product, allocations, session.mode === "offline", allocationFault),
+    [allocations, allocationFault, session.mode],
+  );
+
   const select = useCallback(
-    (product: ProductUpsert, askQuantity = false, forceSell = false) => {
+    (raw: ProductUpsert, askQuantity = false, forceSell = false) => {
+      const product = stamp(raw);
       if (charging) return;
       const blocked = inactiveSaleMessage(product);
       if (blocked) {
@@ -731,7 +796,7 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
       }
       dispatch({ type: "add_product", product });
     },
-    [charging, dispatch, menu, rentalIds],
+    [charging, dispatch, menu, rentalIds, stamp],
   );
 
   const menuModules = capabilities.enabled.has(Capability.MenuModifiers);
@@ -901,7 +966,12 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
     }));
     const returned = catalog.products.find((product) => product.id === exchange.productId);
     const group = returned?.product_model_id ? modelGroup(returned.product_model_id, catalog.products) : null;
-    if (group) setPicker({ group, title: `Exchange ${exchange.productName}: choose the replacement` });
+    if (group) {
+      setPicker({
+        group: { ...group, variants: group.variants.map((variant) => stamp(variant)) },
+        title: `Exchange ${exchange.productName}: choose the replacement`,
+      });
+    }
     setNotice(`Exchange: store credit ${exchange.voucherCode} is applied to this sale.`);
     setExchange(null);
   }, [exchange, catalog.products, catalogLoaded]);
@@ -923,7 +993,7 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
           // Price labels carry the line price; the weight is derived from the per-kg price (within a gram).
           const grams =
             label.grams ?? (product.price_cents > 0 ? Math.round(((label.priceCents ?? 0) * 1000) / product.price_cents) : 0);
-          dispatch({ type: "add_weighed", product, grams });
+          dispatch({ type: "add_weighed", product: stamp(product), grams });
           setQuery("");
           return;
         }
@@ -944,7 +1014,7 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
         const kind = identifier.serial_kind ?? "serial";
         dispatch({
           type: "add_serials",
-          product: identifier.product,
+          product: stamp(identifier.product),
           serials: [{ value: kind === "serial" ? value.toUpperCase() : value, kind }],
         });
         setQuery("");
@@ -963,7 +1033,7 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
           : `${found.length} products match "${value}". Pick one below or keep typing.`,
       );
     },
-    [charging, dispatch, resolve, select, capabilities, catalog.products],
+    [charging, dispatch, resolve, select, capabilities, catalog.products, stamp],
   );
 
   const charge = async () => {
@@ -1117,18 +1187,6 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
         }
         actions={
           <>
-            {capabilities.enabled.has(Capability.OpenOrders) ? (
-              <button
-                type="button"
-                disabled={charging}
-                onClick={() => navigate("orders")}
-                title="Tables and open tabs shared by every register"
-                className={headerChip}
-              >
-                <UtensilsCrossed size={15} aria-hidden="true" />
-                {settlement ? `Paying ${settlement.label}` : t("Orders & Tables")}
-              </button>
-            ) : null}
             {wholesaleOn ? (
               <ModeSwitch mode={cart.mode} disabled={charging} onChange={(mode) => dispatch({ type: "set_mode", mode })} />
             ) : null}
@@ -1156,16 +1214,6 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
                 {t("Discount Sale")}
               </button>
             ) : null}
-            <button
-              type="button"
-              onClick={() => setDrawerOpen(true)}
-              disabled={charging}
-              aria-label={t("Cash drawer")}
-              title={t("Cash drawer")}
-              className={headerIcon}
-            >
-              <Inbox size={18} aria-hidden="true" />
-            </button>
             {lastReceipt ? (
               <button
                 type="button"
@@ -1229,7 +1277,7 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
               <span className="relative">
                 <ShoppingCart size={22} aria-hidden="true" />
                 {itemCount > 0 ? (
-                  <span className="absolute -right-2.5 -top-2 flex h-5 min-w-5 items-center justify-center rounded-full bg-white px-1 text-[11px] font-bold tabular-nums text-primary-600">
+                  <span className="absolute -right-2.5 -top-2 flex h-5 min-w-5 items-center justify-center rounded-full bg-white px-1 text-[0.6875rem] font-bold tabular-nums text-primary-600">
                     {itemCount}
                   </span>
                 ) : null}
@@ -1238,7 +1286,7 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
                 <span className="block text-xs font-medium text-white/80">{itemLabel}</span>
                 <span className="block text-sm font-semibold">{itemCount > 0 ? "Review & charge" : "Open sale"}</span>
               </span>
-              <span className="ml-auto text-xl font-bold tabular-nums">{formatMoney(dueCents, currency)}</span>
+              <CurrencyAmount cents={dueCents} currency={currency} size="pay" className="ml-auto text-white" />
               <ChevronUp size={20} aria-hidden="true" className="md:rotate-90" />
             </button>
           </div>
@@ -1302,7 +1350,7 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
                         setNotice(`${suggestion.name} is not on this register yet.`);
                         return;
                       }
-                      dispatch({ type: "add_product", product });
+                      dispatch({ type: "add_product", product: stamp(product) });
                     }}
                   />
                 </div>
@@ -1318,7 +1366,7 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
                         setNotice("Reload the catalogue to add a bag.");
                         return;
                       }
-                      dispatch({ type: "add_product", product: bag });
+                      dispatch({ type: "add_product", product: stamp(bag) });
                     }}
                     className="h-12 rounded-2xl border border-zinc-200 px-4 text-sm font-semibold dark:border-white/10"
                   >
@@ -1466,6 +1514,12 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
               </>
             }
             footer={
+              <div className="flex flex-col gap-2">
+                <OpenDrawerButton
+                  disabled={charging}
+                  onLogged={setNotice}
+                  className={`${ui.secondaryAction} h-11 w-full rounded-2xl`}
+                />
               <div className="flex gap-2">
                 {quotesOn ? (
                   <button
@@ -1473,7 +1527,7 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
                     disabled={cart.lines.length === 0 || charging || !online}
                     title={online ? "Reserve the stock and generate a PDF quotation" : "Quotes need a live connection to reserve stock."}
                     onClick={() => setQuoteOpen(true)}
-                    className={`${ui.secondaryAction} h-14 w-16 shrink-0 flex-col gap-0.5 rounded-2xl text-[11px]`}
+                    className={`${ui.secondaryAction} h-14 w-16 shrink-0 flex-col gap-0.5 rounded-2xl text-[0.6875rem]`}
                   >
                     <FileText size={18} aria-hidden="true" />
                     Quote
@@ -1485,7 +1539,7 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
                     disabled={cart.lines.length === 0 || charging || savingOrder || !online}
                     title={online ? "Save as a sales order to deliver and invoice later" : "Sales orders need a live connection."}
                     onClick={() => void saveAsSalesOrder()}
-                    className={`${ui.secondaryAction} h-14 w-16 shrink-0 flex-col gap-0.5 rounded-2xl text-[11px]`}
+                    className={`${ui.secondaryAction} h-14 w-16 shrink-0 flex-col gap-0.5 rounded-2xl text-[0.6875rem]`}
                   >
                     <Truck size={18} aria-hidden="true" />
                     Order
@@ -1496,7 +1550,7 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
                   disabled={charging}
                   title="Hold this sale or recall a held one"
                   onClick={() => setHeldOpen(true)}
-                  className={`${ui.secondaryAction} h-14 w-16 shrink-0 flex-col gap-0.5 rounded-2xl text-[11px]`}
+                  className={`${ui.secondaryAction} h-14 w-16 shrink-0 flex-col gap-0.5 rounded-2xl text-[0.6875rem]`}
                 >
                   <PauseCircle size={18} aria-hidden="true" />
                   {cart.lines.length > 0 ? "Hold" : "Recall"}
@@ -1516,23 +1570,27 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
                 <button
                   type="button"
                   disabled={chargeBlocked}
+                  aria-live="polite"
                   onClick={() => void (food ? payTable() : charge())}
-                  className={`${ui.primaryAction} min-w-[11rem] flex-[1.15] flex-col gap-0 rounded-full px-3 leading-none`}
+                  className={`${ui.primaryAction} min-w-0 flex-[1.15] rounded-2xl px-3`}
                 >
-                  <span className="whitespace-nowrap text-sm">
-                    {charging ? "Recording sale…" : food ? "Pay & checkout" : "Charge"}
-                  </span>
-                  {charging ? null : (
-                    <span className="whitespace-nowrap text-sm tabular-nums">{formatMoney(dueCents, currency)}</span>
+                  {charging ? (
+                    <span className="truncate">Recording sale…</span>
+                  ) : (
+                    <span className="inline-flex min-w-0 items-end justify-center gap-2">
+                      <span className="mb-2 text-sm leading-none">{t("Pay {amount}", { amount: "" }).trim()}</span>
+                      <CurrencyAmount cents={dueCents} currency={currency} size="pay" />
+                    </span>
                   )}
                 </button>
+              </div>
               </div>
             }
           />
         }
       >
         <div className="flex h-full min-h-0 min-w-0 flex-col">
-          <div className="shrink-0 space-y-3">
+          <div className="shrink-0 space-y-2">
           {cart.mode === "WHOLESALE" ? (
             <p className="rounded-xl border border-primary-500/20 bg-primary-500/10 px-4 py-3 text-sm text-zinc-700 dark:text-zinc-200">
               Wholesale pricing at <span className="font-semibold text-zinc-950 dark:text-white">{PRICE_TIER_LABELS[tier]}</span>
@@ -1713,20 +1771,24 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
           ) : null}
           </div>
 
-          <div className="custom-scrollbar min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-4">
+          <div className="custom-scrollbar min-h-0 flex-1 space-y-2 overflow-y-auto px-4 py-2">
           <div>
-            <SearchInput
-              id="product-search"
-              label={searchLabel(capabilities.profile)}
-              inputRef={searchRef}
-              value={query}
-              placeholder={searchPlaceholder(capabilities.profile)}
-              onChange={setQuery}
-              onSubmit={(value) => void submitSearch(value)}
-              onShortcut={closeCart}
-              actionLabel={food ? "Search menu" : "Search Catalog"}
-              shortcut={food ? null : "F2"}
-            />
+            <div className="flex items-center gap-3">
+              <div className="min-w-0 flex-1">
+                <SearchInput
+                  id="product-search"
+                  label={searchLabel(capabilities.profile)}
+                  inputRef={searchRef}
+                  value={query}
+                  placeholder={searchPlaceholder(capabilities.profile)}
+                  onChange={setQuery}
+                  onSubmit={(value) => void submitSearch(value)}
+                  onShortcut={closeCart}
+                  shortcut={food ? null : "F2"}
+                />
+              </div>
+              <CatalogueViewToggle value={catalogueView} onChange={chooseCatalogueView} />
+            </div>
             {notice ? (
               <p className="mt-2.5 text-sm text-zinc-600 dark:text-zinc-400" role="status">
                 {notice}
@@ -1734,8 +1796,6 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
             ) : null}
           </div>
 
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="min-w-0 flex-1">
           {(() => {
             const departmentKeys = capabilities.profile === "grocery" ? capabilities.modules.department_keys.keys : [];
             const preferred = departmentKeys.length
@@ -1754,9 +1814,6 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
               />
             );
           })()}
-            </div>
-            <CatalogueViewToggle value={catalogueView} onChange={chooseCatalogueView} />
-          </div>
 
           {catalog.message && catalog.products.length > 0 ? (
             <p className="rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-200" role="status">
@@ -1768,7 +1825,7 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
           ) : null}
           {!catalogLoaded && catalog.products.length === 0 ? <CatalogSkeleton density={density} view={catalogueView} /> : null}
           {catalogLoaded && visibleHits.length === 0 && !searching ? (
-            <div className="rounded-2xl border border-dashed border-zinc-300 p-8 text-center text-sm text-zinc-500 dark:border-zinc-700 dark:text-zinc-400">
+            <div className="rounded-2xl border border-dashed border-zinc-300 px-4 py-5 text-center text-sm text-zinc-500 dark:border-zinc-700 dark:text-zinc-400">
               <p>
                 {catalog.message
                   ? catalog.message
@@ -1792,7 +1849,10 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
           <ul className={catalogueLayoutClass(catalogueView)} data-catalogue-view={catalogueView}>
             {gridEntries.slice(0, GRID_LIMIT).map((entry) => {
               if (entry.kind === "model") {
-                const openModel = () => setPicker({ group: entry.group });
+                const openModel = () =>
+                  setPicker({
+                    group: { ...entry.group, variants: entry.group.variants.map((variant) => stamp(variant)) },
+                  });
                 const infoModel = () => {
                   const first = entry.group.variants[0];
                   if (!first) return;
@@ -1833,7 +1893,8 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
                   />
                 );
               }
-              const product = entry.hit.product;
+              const product = stamp(entry.hit.product);
+              const hit = { ...entry.hit, product };
               const preview = food ? null : tierPreview(product, tier);
               const amount = preview ? preview.base : product.price_cents;
               const openInfo = () => {
@@ -1846,7 +1907,7 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
                 return (
                   <ProductListRow
                     key={product.id}
-                    hit={entry.hit}
+                    hit={hit}
                     currency={currency}
                     amount={amount}
                     menu={food}
@@ -1861,7 +1922,7 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
                 return (
                   <CompactProductCard
                     key={product.id}
-                    hit={entry.hit}
+                    hit={hit}
                     currency={currency}
                     amount={amount}
                     menu={food}
@@ -1875,7 +1936,7 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
               return (
                 <ProductCard
                   key={product.id}
-                  hit={entry.hit}
+                  hit={hit}
                   preview={preview}
                   currency={currency}
                   disabled={charging}
@@ -2250,9 +2311,6 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
           products={catalog.products}
           onClose={() => setBranchCheck(null)}
         />
-      ) : null}
-      {drawerOpen ? (
-        <CashDrawerModal currency={currency} onClose={() => setDrawerOpen(false)} onLogged={setNotice} />
       ) : null}
       {heldOpen ? (
         <HeldCartsModal

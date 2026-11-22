@@ -25,9 +25,9 @@ function memoryStorage() {
 }
 
 describe("business profiles", () => {
-  it("ships the seven presets in two groups", () => {
+  it("ships the business presets and keeps food and beverage at three", () => {
     expect(Object.keys(PROFILE_PRESETS).sort()).toEqual(
-      ["cafe", "electronics_wholesale", "grocery", "pharmacy", "quick_service", "restaurant", "retail_fashion", "wholesale_retail"].sort(),
+      ["cafe", "electronics_wholesale", "grocery", "laundry", "pharmacy", "quick_service", "restaurant", "retail_fashion", "wholesale_retail"].sort(),
     );
     const groups = Object.values(PROFILE_PRESETS).map((profile) => profile.group);
     expect(groups.filter((group) => group === "food_beverage")).toHaveLength(3);

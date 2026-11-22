@@ -173,6 +173,13 @@ describe("catalogue view preference", () => {
 describe("catalogue presentation", () => {
   it("uses a responsive grid instead of a fixed column count", () => {
     expect(catalogueLayoutClass("grid")).toContain("auto-fill");
+    expect(catalogueLayoutClass("grid")).toContain("13.125rem");
+    expect(catalogueLayoutClass("grid")).toContain("gap-[0.875rem]");
+    expect(catalogueLayoutClass("grid")).toContain("content-start");
+    expect(catalogueLayoutClass("grid")).toContain("items-stretch");
+    expect(catalogueLayoutClass("grid")).toContain("min-w-0");
+    expect(catalogueLayoutClass("grid")).toContain("h-auto");
+    expect(catalogueLayoutClass("grid")).not.toContain("h-full");
     expect(catalogueLayoutClass("grid")).not.toContain("grid-cols-");
     expect(catalogueLayoutClass("compact")).toContain("auto-fill");
     expect(catalogueLayoutClass("compact")).not.toContain("grid-cols-");

@@ -2,6 +2,7 @@ import { formatMoney, variantAttributeLabel, type ProductUpsert } from "@ai-pos/
 import { Grid3x3, Package, X } from "lucide-react";
 import { useMemo, useState } from "react";
 import { stockPill } from "../../components/shell/tokens";
+import { allocationLabel } from "./allocationBalance";
 import { CatalogTile } from "./ProductCard";
 import { ProductPhoto } from "./ProductPhoto";
 import { findVariant, swatchFor, variantAxes, type ModelGroup } from "./variants";
@@ -22,13 +23,17 @@ export function ModelCard({
   const out = group.stock <= 0;
   const first = group.variants[0];
   const stockLabel = out ? "Out of stock" : "In stock";
+  const allocationNotes = group.variants
+    .map((variant) => allocationLabel(variant))
+    .filter((note): note is string => note != null);
+  const stockCaption = allocationNotes.length > 0 ? `${stockLabel}. ${allocationNotes.join(". ")}` : stockLabel;
   return (
     <CatalogTile
       imageSrc={group.variants.find((variant) => variant.thumb_url)?.thumb_url}
-      imageIcon={<Package size={28} aria-hidden="true" />}
+      imageIcon={<Package className="h-8 w-8" aria-hidden="true" />}
       imageDimmed={out}
       category={[first?.category ?? "Uncategorized", first?.season, first?.collection].filter(Boolean).join(" · ")}
-      marker={<Grid3x3 size={14} aria-label="Has sizes or colours" className="shrink-0 text-primary" />}
+      marker={<Grid3x3 aria-label="Has sizes or colours" className="h-3.5 w-3.5 shrink-0 text-primary" />}
       title={group.name}
       price={
         <span className="text-zinc-900 dark:text-white">
@@ -38,7 +43,7 @@ export function ModelCard({
         </span>
       }
       badge={
-        <span title={stockLabel} className={`inline-flex h-7 max-w-full shrink-0 items-center whitespace-nowrap rounded-full px-2 text-[11px] font-semibold tabular-nums ${stockPill[out ? "out" : "in"]}`}>
+        <span title={stockCaption} aria-label={stockCaption} className={`inline-flex h-7 max-w-full shrink-0 items-center whitespace-nowrap rounded-full px-2 text-[0.6875rem] font-semibold tabular-nums ${stockPill[out ? "out" : "in"]}`}>
           {stockLabel}
         </span>
       }
@@ -50,7 +55,7 @@ export function ModelCard({
           type="button"
           disabled={disabled}
           onClick={onOpen}
-          className="flex h-12 shrink-0 items-center justify-center border-t border-zinc-200 text-sm font-semibold text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/70 disabled:opacity-50 dark:border-zinc-800"
+          className="flex h-[var(--pos-product-footer-height)] max-h-[var(--pos-product-footer-height)] shrink-0 grow-0 items-center justify-center border-t border-zinc-200 text-[0.8125rem] font-semibold text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/70 disabled:opacity-50 dark:border-zinc-800"
         >
           Choose size & colour
         </button>
@@ -142,7 +147,7 @@ export function VariantPickerModal({
             <table className="w-full">
               <thead>
                 <tr>
-                  <th className="pb-2 pr-2 text-left text-[11px] font-semibold uppercase tracking-wider text-zinc-500">
+                  <th className="pb-2 pr-2 text-left text-[0.6875rem] font-semibold uppercase tracking-wider text-zinc-500">
                     {variantAttributeLabel(rowAxis.key)}
                   </th>
                   {(columnAxis?.values ?? [""]).map((column) => {
@@ -186,7 +191,11 @@ export function VariantPickerModal({
                           </td>
                         );
                       }
-                      const out = product.stock_quantity <= 0;
+                      const extra = product as ProductUpsert & { allocation_remaining?: number | null };
+                      const allocated = "allocation_remaining" in extra;
+                      const terminalRemaining = allocated ? (extra.allocation_remaining ?? null) : null;
+                      const out = allocated ? terminalRemaining == null || terminalRemaining <= 0 : product.stock_quantity <= 0;
+                      const shown = allocated ? (terminalRemaining ?? 0) : product.stock_quantity;
                       return (
                         <td key={column} className="p-1">
                           <button
@@ -194,14 +203,14 @@ export function VariantPickerModal({
                             disabled={out}
                             onClick={() => onPick(product)}
                             title={`${product.name} · ${product.sku}`}
-                            className={`flex h-16 w-full min-w-[84px] flex-col items-center justify-center rounded-xl border text-center transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 ${
+                            className={`flex h-16 w-full min-w-[5.25rem] flex-col items-center justify-center rounded-xl border text-center transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 ${
                               out
                                 ? "cursor-not-allowed border-zinc-200 bg-zinc-50 text-zinc-400 dark:border-zinc-800 dark:bg-white/[0.02]"
                                 : "border-zinc-200 hover:border-primary hover:bg-primary/5 dark:border-zinc-700"
                             }`}
                           >
-                            <span className="text-base font-bold tabular-nums">{out ? "0" : product.stock_quantity}</span>
-                            <span className="text-[10px] tabular-nums text-zinc-500 dark:text-white/50">
+                            <span className="text-base font-bold tabular-nums">{out ? "0" : shown}</span>
+                            <span className="text-[0.625rem] tabular-nums text-zinc-500 dark:text-white/50">
                               {out ? "out" : formatMoney(product.price_cents, currency)}
                             </span>
                           </button>

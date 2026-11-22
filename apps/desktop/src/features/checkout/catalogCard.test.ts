@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { catalogGridClass } from "../../components/RegisterLayout";
 import { cardKind, catalogCardClass, productCode, productDetail, stockTone, stockUnit } from "./catalogCard";
+import { productImageWellClass, productPhotoFrameHeight } from "./ProductPhoto";
 
 describe("catalogue card slots", () => {
   it("keeps a sku line and a two-line detail even when fields are missing", () => {
@@ -13,12 +14,15 @@ describe("catalogue card slots", () => {
 
   it("keeps a two-line name and a compact footer, without a sku or description line", () => {
     expect(catalogCardClass.name).toContain("line-clamp-2");
-    expect(catalogCardClass.name).toContain("min-h-10");
+    expect(catalogCardClass.name).toContain("min-h-5");
+    expect(catalogCardClass.name).toContain("0.9375rem");
     expect(catalogCardClass).not.toHaveProperty("code");
     expect(catalogCardClass).not.toHaveProperty("detail");
-    expect(catalogCardClass.footer).toContain("min-h-10");
-    expect(catalogCardClass.footer).toContain("flex-col");
-    expect(catalogCardClass.footer).toContain("mt-auto");
+    expect(catalogCardClass.priceRow).toContain("flex-wrap");
+    expect(catalogCardClass.priceRow).toContain("gap-2");
+    expect(catalogCardClass.priceRow).not.toContain("flex-col");
+    expect(productPhotoFrameHeight.standard).toContain("h-full");
+    expect(productImageWellClass).toContain("--pos-product-image-height");
   });
 
   it("follows the tenant business type and the branch reorder point", () => {

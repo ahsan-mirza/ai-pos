@@ -37,7 +37,7 @@ export function ServedByPicker({ storeId, cashierId, cashierName, associate, dis
   return (
     <label className="served-by text-zinc-500 dark:text-white/50">
       <UserRound size={14} aria-hidden="true" className="shrink-0" />
-      <span className="shrink-0 whitespace-nowrap text-[10px] font-semibold uppercase leading-none tracking-wider">Served by</span>
+      <span className="shrink-0 whitespace-nowrap text-[0.625rem] font-semibold uppercase leading-none tracking-wider">Served by</span>
       <div className="served-by-select">
         <Select
           size="sm"

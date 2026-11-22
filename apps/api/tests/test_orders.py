@@ -546,24 +546,33 @@ def test_occupied_table_reopens_the_same_order(client, session: Session) -> None
         "opened_at": "2026-10-31T09:00:00Z",
         "items": [line()],
     }
+    clash_event = {
+        "idempotency_key": f"order-{clash['id']}",
+        "entity_type": "open_order",
+        "operation": "upsert",
+        "payload": clash,
+        "occurred_at": "2026-10-31T09:00:00Z",
+    }
     synced = client.post(
         "/api/v1/sync/push",
         headers=device(),
-        json={
-            "device_id": "register-1",
-            "events": [
-                {
-                    "idempotency_key": f"order-{clash['id']}",
-                    "entity_type": "open_order",
-                    "operation": "upsert",
-                    "payload": clash,
-                    "occurred_at": "2026-10-31T09:00:00Z",
-                }
-            ],
-        },
+        json={"device_id": "register-1", "events": [clash_event]},
     )
-    assert synced.status_code == 422
-    assert "already has an open order" in synced.json()["error"]["message"]
+    assert synced.status_code == 200, synced.text
+    held = synced.json()["results"][0]
+    assert held["status"] == "awaiting_review" and held["conflict_id"]
+    replay = client.post(
+        "/api/v1/sync/push",
+        headers=device(),
+        json={"device_id": "register-1", "events": [clash_event]},
+    )
+    assert replay.status_code == 200, replay.text
+    assert replay.json()["results"][0]["conflict_id"] == held["conflict_id"]
+    assert replay.json()["results"][0]["status"] == "awaiting_review"
+    review = client.get(f"/api/v1/orders/{clash['id']}", headers=device())
+    assert review.status_code == 200, review.text
+    assert review.json()["status"] == "REVIEW"
+    assert review.json()["items"][0]["unit_price_cents"] == 1500
     assert client.get(f"/api/v1/orders/{order['id']}", headers=device()).json()["status"] == "OPEN"
 
     from types import SimpleNamespace

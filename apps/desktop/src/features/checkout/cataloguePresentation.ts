@@ -2,15 +2,15 @@ import { formatWeight, type ProductUpsert } from "@ai-pos/shared-types";
 import type { CatalogueView } from "./cataloguePreference";
 import { stockTone, stockUnit } from "./catalogCard";
 
-const stretch = "grid min-w-0 items-stretch [&>li]:h-full [&>li]:min-w-0";
+const cards = "grid min-w-0 content-start items-stretch [&>li]:h-auto [&>li]:min-w-0 [&>li]:w-full";
 
-/** Column count follows the width of the catalogue, not a fixed count per breakpoint. */
+/** Columns follow the catalogue width. A card starts at 13.125rem and does not inherit the pane height. */
 export function catalogueLayoutClass(view: CatalogueView): string {
   if (view === "list") return "flex min-w-0 flex-col gap-2";
   if (view === "compact") {
-    return `${stretch} gap-2 [grid-template-columns:repeat(auto-fill,minmax(min(100%,11.5rem),1fr))]`;
+    return `${cards} gap-[0.875rem] [grid-template-columns:repeat(auto-fill,minmax(min(100%,11.25rem),1fr))]`;
   }
-  return `${stretch} gap-3 [grid-template-columns:repeat(auto-fill,minmax(min(100%,15.5rem),1fr))]`;
+  return `${cards} gap-[0.875rem] [grid-template-columns:repeat(auto-fill,minmax(min(100%,13.125rem),1fr))]`;
 }
 
 /** SKU, barcode, and category, using only values the product already has. */

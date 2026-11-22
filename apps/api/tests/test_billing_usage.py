@@ -7,7 +7,7 @@ from datetime import UTC, datetime
 import pytest
 from sqlalchemy import event, func, select
 from sqlalchemy.orm.attributes import flag_modified
-from tests.governance_support import platform as platform_fixture  # noqa: F401
+from tests.governance_support import platform  # noqa: F401
 
 from app.console.billing import assign_free
 from app.console.usage import count_resources, present_metric

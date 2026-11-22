@@ -450,13 +450,13 @@ export function ReturnsPage({ session, openingInvoice = null }: ReturnsPageProps
         drawer={
             <aside
               aria-label="Refund summary"
-              className={`${drawerShell} max-h-[45vh] shrink-0 border-t lg:max-h-none lg:w-[400px] lg:border-l lg:border-t-0 xl:w-[440px]`}
+              className={`${drawerShell} max-h-[45vh] shrink-0 border-t lg:max-h-none lg:w-[25rem] lg:border-l lg:border-t-0 xl:w-[27.5rem]`}
             >
               <DrawerHeader
                 title="Refund Summary"
                 count={lines.length > 0 ? `${lines.length} item${lines.length === 1 ? "" : "s"}` : undefined}
                 badge={
-                  <span className="rounded-full bg-emerald-500/10 px-2.5 py-1 text-[11px] font-semibold tabular-nums text-emerald-700 ring-1 ring-emerald-500/20 dark:text-emerald-300">
+                  <span className="rounded-full bg-emerald-500/10 px-2.5 py-1 text-[0.6875rem] font-semibold tabular-nums text-emerald-700 ring-1 ring-emerald-500/20 dark:text-emerald-300">
                     {desktop ? `${report.pending} unsynced` : "Live"}
                   </span>
                 }
@@ -1119,7 +1119,7 @@ function RecentReturnsTable({
       <DataTable
         aria-label="Recent returns"
         className="mt-3"
-        minWidth="640px"
+        minWidth="40rem"
         columns={columns}
         data={entries}
         getRowId={(entry) => entry.id}

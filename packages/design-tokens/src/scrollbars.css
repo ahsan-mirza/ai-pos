@@ -13,7 +13,7 @@
 .bg-card:not([class*="dark:bg-"]),
 .bg-canvas:not([class*="dark:bg-"]),
 .bg-surface:not([class*="dark:bg-"]) {
-  --scrollbar-size: 6px;
+  --scrollbar-size: 0.375rem;
   --scrollbar-thumb: rgba(0, 0, 0, 0.15);
   --scrollbar-thumb-hover: rgba(0, 0, 0, 0.35);
 }
@@ -109,8 +109,8 @@ html {
 /* Chromium (incl. the Tauri WebView) and Safari. Standard scrollbar-* properties must stay unset here:
    Chromium 121+ ignores these pseudo-elements on any element that sets them. */
 ::-webkit-scrollbar {
-  width: var(--scrollbar-size, 6px);
-  height: var(--scrollbar-size, 6px);
+  width: var(--scrollbar-size, 0.375rem);
+  height: var(--scrollbar-size, 0.375rem);
   background: transparent;
 }
 
@@ -121,17 +121,17 @@ html {
 
 /* Keep the thumb clear of rounded container corners so it is never clipped. */
 ::-webkit-scrollbar-track:vertical {
-  margin-top: 6px;
-  margin-bottom: 6px;
+  margin-top: 0.375rem;
+  margin-bottom: 0.375rem;
 }
 
 ::-webkit-scrollbar-track:horizontal {
-  margin-left: 6px;
-  margin-right: 6px;
+  margin-left: 0.375rem;
+  margin-right: 0.375rem;
 }
 
 ::-webkit-scrollbar-thumb {
-  border-radius: 9999px;
+  border-radius: 999rem;
   background-color: var(--scrollbar-thumb);
   transition: background-color 150ms ease;
 }

@@ -204,12 +204,51 @@ describe("AxizTabs", () => {
     expect(list.className).not.toContain("px-4");
     const tab = screen.getByRole("tab", { name: "Section 1" });
     expect(tab.className).toContain("whitespace-nowrap");
-    expect(tab.className).toContain("flex-1");
     expect(tab.className).toContain("shrink-0");
+    expect(tab.className).not.toContain("flex-1");
     const underline = tab.querySelector("[data-axiz-underline]");
     expect(underline?.className).toContain("inset-x-0");
     expect(underline?.parentElement?.className).toContain("inline-flex");
     expect(underline?.parentElement?.className).toContain("h-full");
     expect(tab.className).toContain("outline-[var(--tab-focus)]");
+    expect(tab.className).toContain("h-12");
+    expect(list.className).toContain("overflow-y-hidden");
+    expect(list.className).not.toContain("flex-wrap");
+  });
+
+  it("brings the active tab into view when the selection changes", () => {
+    const scrollIntoView = vi.spyOn(Element.prototype, "scrollIntoView").mockImplementation(() => undefined);
+    const { rerender } = render(<AxizTabs ariaLabel="Sections" tabs={tabs} activeTab="stock" />);
+    const stock = screen.getByRole("tab", { name: "Stock" });
+    expect(scrollIntoView.mock.instances).toContain(stock);
+    scrollIntoView.mockClear();
+    rerender(<AxizTabs ariaLabel="Sections" tabs={tabs} activeTab="prices" />);
+    expect(scrollIntoView.mock.instances).toContain(screen.getByRole("tab", { name: "Price lists" }));
+    scrollIntoView.mockRestore();
+  });
+
+  it("offers a sideways control when the row is wider than the pane", () => {
+    const scrollWidth = Object.getOwnPropertyDescriptor(Element.prototype, "scrollWidth");
+    const clientWidth = Object.getOwnPropertyDescriptor(Element.prototype, "clientWidth");
+    Object.defineProperty(Element.prototype, "scrollWidth", { configurable: true, get: () => 900 });
+    Object.defineProperty(Element.prototype, "clientWidth", { configurable: true, get: () => 240 });
+    try {
+      render(
+        <AxizTabs
+          ariaLabel="Sections"
+          tabs={Array.from({ length: 12 }, (_, index) => ({ id: `tab-${index}`, label: `Section ${index + 1}` }))}
+          activeTab="tab-0"
+        />,
+      );
+      const list = screen.getByRole("tablist");
+      expect(list.className).toContain("overflow-x-auto");
+      expect(list.className).toContain("overflow-y-hidden");
+      expect(list.className).toContain("flex-nowrap");
+      expect(screen.getByRole("button", { name: "Show more tabs" })).toBeTruthy();
+      expect(screen.queryByRole("button", { name: "Show previous tabs" })).toBeNull();
+    } finally {
+      if (scrollWidth) Object.defineProperty(Element.prototype, "scrollWidth", scrollWidth);
+      if (clientWidth) Object.defineProperty(Element.prototype, "clientWidth", clientWidth);
+    }
   });
 });

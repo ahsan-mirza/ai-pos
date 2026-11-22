@@ -20,7 +20,7 @@ interface CheckoutSidebarProps {
 
 /**
  * Current-sale layout: the cart list takes all free height; the payment sheet is capped at 35% (it scrolls
- * inside when a tender needs more) and folds down to the total so long carts get almost the whole panel.
+ * inside when a tender needs more) and folds down to the summary so long carts get almost the whole panel.
  */
 export function CheckoutSidebar({ open, onDismiss, header, customer, cart, summary, payment, paymentLabel, notices, footer }: CheckoutSidebarProps) {
   const [folded, setFolded] = useState(false);
@@ -33,7 +33,7 @@ export function CheckoutSidebar({ open, onDismiss, header, customer, cart, summa
       <aside
         id="current-sale"
         aria-label="Current sale"
-        className={`${open ? "cart-sheet flex" : "hidden"} fixed inset-0 z-40 ${drawerShell} md:left-auto md:w-[min(100%,420px)] md:border-l md:shadow-2xl xl:static xl:z-auto xl:flex xl:w-[400px] xl:shadow-none 2xl:w-[440px]`}
+        className={`${open ? "cart-sheet flex" : "hidden"} fixed inset-0 z-40 ${drawerShell} md:left-auto md:w-[min(100%,26.25rem)] md:border-l md:shadow-2xl xl:static xl:z-auto xl:flex xl:w-[25rem] xl:shadow-none 2xl:w-[27.5rem]`}
       >
         {header}
 

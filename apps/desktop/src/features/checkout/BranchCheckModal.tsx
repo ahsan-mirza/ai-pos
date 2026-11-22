@@ -155,7 +155,7 @@ export function BranchCheckModal({
                     </span>
                     <span className="text-right">
                       <span className="block text-2xl font-semibold tabular-nums">{branch.quantity_available}</span>
-                      <span className="block text-[11px] text-charcoal/50 dark:text-zinc-400">available</span>
+                      <span className="block text-[0.6875rem] text-charcoal/50 dark:text-zinc-400">available</span>
                     </span>
                   </div>
                   <p className="mt-2 flex items-center gap-1 text-xs text-charcoal/60 dark:text-zinc-400">

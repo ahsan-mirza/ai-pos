@@ -44,6 +44,7 @@ export const Capability = {
   DeliveryIntegrations: "delivery_integrations",
   FleetDispatch: "fleet_dispatch",
   PharmacyCatalog: "pharmacy_catalog",
+  LaundryOperations: "laundry_operations",
 } as const;
 export type Capability = (typeof Capability)[keyof typeof Capability];
 
@@ -108,6 +109,7 @@ export const CAPABILITIES: readonly CapabilitySpec[] = [
   { id: "delivery_integrations", label: "Delivery Integrations", description: "Marketplace and aggregator connections for restaurant and cafe delivery orders. Orders still arrive through Delivery channels.", group: "food_beverage", available: true, requires: [] },
   { id: "fleet_dispatch", label: "Fleet dispatch", description: "Delivery dates, zones, vehicles, drivers, and a manual dispatch plan with capacity checks.", group: "selling", available: true, requires: ["sales_orders"] },
   { id: "pharmacy_catalog", label: "Pharmacy catalogue", description: "Medicine master, ingredients, dispensing class, and pharmacy product forms.", group: "inventory", available: true, requires: [] },
+  { id: "laundry_operations", label: "Laundry operations", description: "Laundry service catalog, garment types, price lists, and workflow templates. Garments in process are not stock for sale.", group: "service", available: true, requires: [] },
 ];
 
 const SPECS = new Map(CAPABILITIES.map((spec) => [spec.id, spec]));
@@ -131,10 +133,11 @@ export const BusinessProfile = {
   Cafe: "cafe",
   QuickService: "quick_service",
   Pharmacy: "pharmacy",
+  Laundry: "laundry",
 } as const;
 export type BusinessProfile = (typeof BusinessProfile)[keyof typeof BusinessProfile];
 
-export type ProfileGroup = "retail_trade" | "food_beverage";
+export type ProfileGroup = "retail_trade" | "food_beverage" | "services";
 
 export interface ProfileSpec {
   id: BusinessProfile;
@@ -151,6 +154,7 @@ export interface ProfileSpec {
 export const PROFILE_GROUP_LABELS: Record<ProfileGroup, string> = {
   retail_trade: "Retail & Trade",
   food_beverage: "Food & Beverage",
+  services: "Services",
 };
 
 /** Spelled out rather than "everything built": grocery and restaurant modules stay out of electronics shops. */
@@ -267,6 +271,15 @@ export const PROFILE_PRESETS: Record<BusinessProfile, ProfileSpec> = {
     description: "Community pharmacy catalogue with medicine identity, dispensing class, and pack rules.",
     group: "retail_trade",
     capabilities: ["loyalty", "promotions", "fefo", "card_terminals", "pharmacy_catalog"],
+  },
+  laundry: {
+    id: "laundry",
+    label: "Laundry",
+    shortLabel: "Laundry",
+    settingsLabel: "Laundry settings",
+    description: "Garment care, wash-and-fold, and commercial laundry. Clothes in process are work orders, not stock for sale.",
+    group: "services",
+    capabilities: ["loyalty", "promotions", "weighed_items", "card_terminals", "laundry_operations"],
   },
 };
 
@@ -454,6 +467,23 @@ export const PROFILE_ELIGIBLE: Record<BusinessProfile, readonly Capability[]> = 
     "sales_insights",
     "axiz_reach",
     "uae_einvoicing",
+  ],
+  laundry: [
+    "loyalty",
+    "promotions",
+    "weighed_items",
+    "card_terminals",
+    "laundry_operations",
+    "b2b_credit",
+    "sales_orders",
+    "fleet_dispatch",
+    "fefo",
+    "gift_cards",
+    "multi_currency",
+    "deep_analytics",
+    "ai_insights",
+    "sales_insights",
+    "axiz_reach",
   ],
 };
 

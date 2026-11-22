@@ -311,6 +311,11 @@ pub fn rejected_count(state: tauri::State<AppState>) -> Result<i64, String> {
 }
 
 #[tauri::command]
+pub fn conflict_count(state: tauri::State<AppState>) -> Result<i64, String> {
+    sync_center::conflict_count(&state.db)
+}
+
+#[tauri::command]
 pub fn list_table_sessions(
     state: tauri::State<AppState>,
     store_id: String,

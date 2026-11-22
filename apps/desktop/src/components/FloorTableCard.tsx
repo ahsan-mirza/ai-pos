@@ -12,7 +12,7 @@ import {
 import { useEffect, useState } from "react";
 import { useTableAlertFor } from "../features/alerts/TableAlertContext";
 
-export const floorTableGridClass = "grid grid-cols-[repeat(auto-fill,minmax(156px,1fr))] gap-2";
+export const floorTableGridClass = "grid grid-cols-[repeat(auto-fill,minmax(9.75rem,1fr))] gap-2";
 
 function minutesSince(iso: string | null, now: number): number {
   return iso ? Math.max(0, Math.floor((now - new Date(iso).getTime()) / 60_000)) : 0;
@@ -146,7 +146,7 @@ export function FloorTableCard({
             event.stopPropagation();
             acknowledge();
           }}
-          className="inline-flex h-4 items-center rounded-full bg-[var(--table-tone-fill)] px-2 text-[11px] font-semibold leading-none text-[var(--table-tone-ink)]"
+          className="inline-flex h-4 items-center rounded-full bg-[var(--table-tone-fill)] px-2 text-[0.6875rem] font-semibold leading-none text-[var(--table-tone-ink)]"
         >
           Acknowledge
         </button>

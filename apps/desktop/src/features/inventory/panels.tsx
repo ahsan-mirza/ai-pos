@@ -6,7 +6,8 @@ import {
   stockStatusLabel,
   type AdjustmentReason as Reason,
 } from "@ai-pos/shared-types";
-import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { beginRequest, useDebouncedSearch } from "../../components/shell/posControls";
 import { useConfirm } from "../../components/ConfirmDialog";
 import { activeStore } from "../checkout/currency";
 import {
@@ -28,7 +29,7 @@ import {
   type ReceiptDraft,
 } from "./documentLines";
 import { ProductDrawer } from "./productForm";
-import { Banner, Drawer, Field, PrimaryButton, QuietButton, Table, control } from "./ui";
+import { Banner, Drawer, Field, FilterSearch, PosSearchToolbar, PrimaryButton, QuietButton, Table, control } from "./ui";
 
 export interface WorkspaceAccess {
   online: boolean;
@@ -56,13 +57,23 @@ function useResource<T>(load: () => Promise<T>, enabled = true) {
   const [data, setData] = useState<T | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(enabled);
+  const gate = useRef({ current: 0 });
   const reload = useCallback(() => {
+    const current = beginRequest(gate.current);
     setLoading(true);
     setError(null);
     load()
-      .then((value) => setData(value))
-      .catch((caught) => setError(inventoryError(caught, "Could not load this list.")))
-      .finally(() => setLoading(false));
+      .then((value) => {
+        if (!current()) return;
+        setData(value);
+      })
+      .catch((caught) => {
+        if (!current()) return;
+        setError(inventoryError(caught, "Could not load this list."));
+      })
+      .finally(() => {
+        if (current()) setLoading(false);
+      });
   }, [load]);
   useEffect(() => {
     if (!enabled) {
@@ -106,12 +117,13 @@ function cents(value: string): number {
 export function StockPanel(access: WorkspaceAccess) {
   const confirm = useConfirm();
   const [q, setQ] = useState("");
+  const { debounced, flush } = useDebouncedSearch(q);
   const [status, setStatus] = useState("");
   const [adjust, setAdjust] = useState<StockRow | null>(null);
   const [history, setHistory] = useState<StockRow | null>(null);
   const load = useCallback(
-    () => inventoryApi.stock({ store_id: access.storeId, q, status: status || null }),
-    [access.storeId, q, status],
+    () => inventoryApi.stock({ store_id: access.storeId, q: debounced, status: status || null }),
+    [access.storeId, debounced, status],
   );
   const { data, error, loading, reload, setError } = useResource(load, access.online);
   const rows = data?.rows ?? [];
@@ -123,16 +135,24 @@ export function StockPanel(access: WorkspaceAccess) {
         <Kpi label="Out" value={String(data?.out_count ?? "—")} />
         <Kpi label="Scope" value={data?.consolidated ? "All stores" : "This store"} />
       </div>
-      <div className="flex flex-wrap gap-2">
-        <input className={`${control} max-w-xs`} placeholder="Search product, SKU or barcode" value={q} onChange={(event) => setQ(event.target.value)} />
-        <select className={`${control} max-w-xs`} value={status} onChange={(event) => setStatus(event.target.value)} aria-label="Stock status">
-          <option value="">All statuses</option>
-          <option value="low">Low stock</option>
-          <option value="out">Out of stock</option>
-          <option value="over">Overstock</option>
-        </select>
-        <QuietButton onClick={reload} disabled={!access.online}>Refresh</QuietButton>
-      </div>
+      <PosSearchToolbar
+        query={q}
+        onQuery={setQ}
+        placeholder="Search product, SKU or barcode"
+        statusValue={status}
+        onStatus={setStatus}
+        statusLabel="Stock status"
+        statusOptions={[
+          { value: "", label: "All statuses" },
+          { value: "low", label: "Low stock" },
+          { value: "out", label: "Out of stock" },
+          { value: "over", label: "Overstock" },
+        ]}
+        onRefresh={reload}
+        refreshing={loading}
+        refreshDisabled={!access.online}
+        onCommit={flush}
+      />
       {error ? <Banner tone="error">{error}</Banner> : null}
       {loading ? <p className="text-sm text-zinc-500">Loading stock…</p> : null}
       {!access.online ? <Banner tone="info">Stock figures need the live ledger. The open sale is unchanged.</Banner> : null}
@@ -304,22 +324,24 @@ function AdjustDrawer({
 
 export function ProductsPanel(access: WorkspaceAccess) {
   const [q, setQ] = useState("");
+  const { debounced, flush } = useDebouncedSearch(q);
   const [editing, setEditing] = useState<ProductRow | "new" | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const load = useCallback(async () => {
-    if (access.pharmacy) return inventoryApi.pharmacyProducts(q);
-    if (q.trim()) {
-      const hits = await inventoryApi.searchProducts(q.trim(), access.storeId);
+    if (access.pharmacy) return inventoryApi.pharmacyProducts(debounced);
+    if (debounced.trim()) {
+      const hits = await inventoryApi.searchProducts(debounced.trim(), access.storeId);
       return hits.map((hit) => hit.product);
     }
     return inventoryApi.products({ limit: 100, store_id: access.storeId });
-  }, [access.pharmacy, access.storeId, q]);
+  }, [access.pharmacy, access.storeId, debounced]);
   const { data, error, loading, reload } = useResource(load, access.online);
   return (
     <section className="space-y-3">
-      <div className="flex flex-wrap gap-2">
-        <input className={`${control} max-w-xs`} placeholder="Search products" value={q} onChange={(event) => setQ(event.target.value)} />
-        <QuietButton onClick={reload} disabled={!access.online}>Search</QuietButton>
+      <div className="flex min-w-0 flex-nowrap items-center gap-3">
+        <div className="min-w-0 flex-1">
+          <PosSearchToolbar query={q} onQuery={setQ} placeholder="Search products" onCommit={flush} />
+        </div>
         {access.pharmacyCatalogue ? <PrimaryButton onClick={() => setEditing("new")} disabled={!access.online}>Add product</PrimaryButton> : null}
       </div>
       {error ? <Banner tone="error">{error}</Banner> : null}
@@ -529,24 +551,30 @@ export function UnitsPanel(access: WorkspaceAccess) {
 
 export function PricingPanel(access: WorkspaceAccess) {
   const [q, setQ] = useState("");
+  const { debounced, flush } = useDebouncedSearch(q);
   const [price, setPrice] = useState("");
   const [selected, setSelected] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const load = useCallback(async () => {
     try {
-      return await inventoryApi.pricing(q);
+      return await inventoryApi.pricing(debounced);
     } catch {
-      const products = await inventoryApi.products({ limit: 100, store_id: access.storeId, q: q || null });
+      const products = await inventoryApi.products({ limit: 100, store_id: access.storeId, q: debounced || null });
       return { rows: products.map((product) => ({ product_id: product.id, sku: product.sku, name: product.name, retail_price_cents: product.price_cents })) };
     }
-  }, [access.storeId, q]);
-  const { data, error, reload } = useResource(load, access.online);
+  }, [access.storeId, debounced]);
+  const { data, error, loading, reload } = useResource(load, access.online);
   return (
     <section className="space-y-3">
-      <div className="flex flex-wrap gap-2">
-        <input className={`${control} max-w-xs`} placeholder="Search prices" value={q} onChange={(event) => setQ(event.target.value)} />
-        <QuietButton onClick={reload} disabled={!access.online}>Refresh</QuietButton>
-      </div>
+      <PosSearchToolbar
+        query={q}
+        onQuery={setQ}
+        placeholder="Search prices"
+        onRefresh={reload}
+        refreshing={loading}
+        refreshDisabled={!access.online}
+        onCommit={flush}
+      />
       {error ? <Banner tone="error">{error}</Banner> : null}
       {message ? <Banner tone="ok">{message}</Banner> : null}
       <Table headers={["Product", "SKU", "Selling price", ""]}>
@@ -1195,21 +1223,29 @@ export function TransfersPanel(access: WorkspaceAccess) {
 
 export function SerialsPanel(access: WorkspaceAccess) {
   const [q, setQ] = useState("");
+  const { debounced, flush } = useDebouncedSearch(q);
   const [result, setResult] = useState<Awaited<ReturnType<typeof inventoryApi.serials>> | null>(null);
   const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    const query = debounced.trim();
+    if (query.length < 4) {
+      setResult(null);
+      return;
+    }
+    if (!access.online) return;
+    let cancelled = false;
+    void inventoryApi.serials(query).then((rows) => {
+      if (!cancelled) setResult(rows);
+    }).catch((caught) => {
+      if (!cancelled) setError(inventoryError(caught, "No serial matched."));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [access.online, debounced]);
   return (
     <section className="space-y-3">
-      <form
-        className="flex gap-2"
-        onSubmit={(event) => {
-          event.preventDefault();
-          if (!access.online) return;
-          void inventoryApi.serials(q).then(setResult).catch((caught) => setError(inventoryError(caught, "No serial matched.")));
-        }}
-      >
-        <input className={`${control} max-w-xs`} placeholder="IMEI or serial" value={q} onChange={(event) => setQ(event.target.value)} />
-        <PrimaryButton type="submit" disabled={!access.online || q.trim().length < 4}>Search</PrimaryButton>
-      </form>
+      <FilterSearch className="max-w-md" placeholder="IMEI or serial" value={q} onChange={setQ} onCommit={flush} />
       {error ? <Banner tone="error">{error}</Banner> : null}
       {result?.hint ? <Banner tone="info">{result.hint}</Banner> : null}
       <Table headers={["Identifier", "Product", "Store", "Status"]}>

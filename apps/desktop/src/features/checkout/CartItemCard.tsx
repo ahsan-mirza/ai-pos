@@ -12,6 +12,7 @@ import {
   type UnitType,
 } from "@ai-pos/shared-types";
 import { useLocale } from "@ai-pos/ui";
+import { CurrencyAmount } from "../../components/CurrencyAmount";
 import { motion, useAnimation, useReducedMotion } from "framer-motion";
 import {
   ChevronDown,
@@ -239,20 +240,20 @@ export function CartItemCard({
               {row.product.name}
             </p>
           )}
-          {detail ? <p className="truncate font-mono text-[11px] leading-4 text-zinc-500 dark:text-white/50">{detail}</p> : null}
+          {detail ? <p className="truncate font-mono text-[0.6875rem] leading-4 text-zinc-500 dark:text-white/50">{detail}</p> : null}
         </div>
-        <p className="shrink-0 whitespace-nowrap text-sm font-bold leading-5">
+        <p className="flex shrink-0 items-end gap-1.5 whitespace-nowrap leading-5">
           {promoCents || manualCents ? (
-            <span className="mr-1.5 text-[11px] font-normal text-zinc-500 line-through dark:text-white/40">{formatMoney(gross, currency)}</span>
+            <span className="mb-0.5 text-[0.6875rem] font-normal text-zinc-500 line-through dark:text-white/40">{formatMoney(gross, currency)}</span>
           ) : null}
-          {formatMoney(total, currency)}
+          <CurrencyAmount cents={total} currency={currency} size="line" />
         </p>
       </div>
 
       <div className="mt-0.5 flex min-w-0 flex-nowrap items-center gap-1">
         {showBadge ? (
           <span
-            className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-bold uppercase leading-4 tracking-wide ${
+            className={`shrink-0 rounded px-1.5 py-0.5 text-[0.625rem] font-bold uppercase leading-4 tracking-wide ${
               overridden || first.priceSource !== "retail" ? "bg-primary text-white" : "bg-zinc-200/80 text-zinc-600 dark:bg-white/10 dark:text-white/70"
             }`}
           >
@@ -333,7 +334,7 @@ export function CartItemCard({
           </div>
         ) : null}
 
-        <span className="cart-unit-summary min-w-0 flex-1 truncate text-[11px] leading-4 text-zinc-500 dark:text-white/50" title={summary}>
+        <span className="cart-unit-summary min-w-0 flex-1 truncate text-[0.6875rem] leading-4 text-zinc-500 dark:text-white/50" title={summary}>
           {summary}
           {discounted ? (
             <span className="ml-1 line-through">{formatMoney(overridden ? first.listPriceCents : row.product.price_cents, currency)}</span>
@@ -396,7 +397,7 @@ export function CartItemCard({
       </div>
 
       {combo || instruction || giftCode || promoName || (manualCents > 0 && discountLabel) || moqHint || next !== null ? (
-        <p className="mt-0.5 flex flex-wrap items-center gap-x-2 text-[11px] leading-4 text-zinc-500 dark:text-white/50">
+        <p className="mt-0.5 flex flex-wrap items-center gap-x-2 text-[0.6875rem] leading-4 text-zinc-500 dark:text-white/50">
           {combo ? <span className="font-semibold text-zinc-700 dark:text-white/80">{combo}</span> : null}
           {instruction ? <span className="font-medium text-zinc-700 dark:text-white/80">“{instruction}”</span> : null}
           {giftCode ? <span className="font-mono font-semibold text-primary">{giftCode}</span> : null}
@@ -420,7 +421,7 @@ export function CartItemCard({
       {choices.length > 0 ? (
         <ul className="mt-0.5" aria-label={t("Modifiers for {name}", { name: row.product.name })}>
           {choices.map((choice) => (
-            <li key={`${choice.group_id}:${choice.option_id}`} className="flex items-baseline justify-between gap-2 text-[11px] leading-4">
+            <li key={`${choice.group_id}:${choice.option_id}`} className="flex items-baseline justify-between gap-2 text-[0.6875rem] leading-4">
               <span className="min-w-0 truncate font-medium text-zinc-800 dark:text-white/85">{choice.option || choice.group}</span>
               <span className="shrink-0 whitespace-nowrap tabular-nums text-zinc-500 dark:text-white/55">
                 {choice.price_delta_cents === 0
@@ -434,7 +435,7 @@ export function CartItemCard({
 
       {belowFloor && floorCents !== null ? (
         first.floorOverride ? (
-          <p className="mt-0.5 flex items-center gap-1.5 text-[11px] leading-4 text-zinc-600 dark:text-white/60">
+          <p className="mt-0.5 flex items-center gap-1.5 text-[0.6875rem] leading-4 text-zinc-600 dark:text-white/60">
             <ShieldCheck size={12} aria-hidden="true" className="text-primary" />
             {t("Below the {amount} margin floor, approved by {name}.", {
               amount: formatMoney(floorCents, currency),
@@ -446,7 +447,7 @@ export function CartItemCard({
             type="button"
             disabled={disabled}
             onClick={() => onApproveFloor?.(row)}
-            className="mt-1 flex w-full items-center gap-2 rounded-lg border border-primary/60 px-2 py-1 text-left text-[11px] font-medium leading-4 text-zinc-900 hover:bg-primary/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 dark:text-white"
+            className="mt-1 flex w-full items-center gap-2 rounded-lg border border-primary/60 px-2 py-1 text-left text-[0.6875rem] font-medium leading-4 text-zinc-900 hover:bg-primary/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 dark:text-white"
           >
             <ShieldAlert size={14} aria-hidden="true" className="shrink-0 text-primary" />
             {t("Below the margin floor of {amount}. Manager approval needed.", { amount: formatMoney(floorCents, currency) })}
@@ -455,7 +456,7 @@ export function CartItemCard({
       ) : null}
 
       {serialized && showSerials ? (
-        <ul className="mt-1 grid grid-cols-2 gap-1 font-mono text-[11px] text-zinc-600 dark:text-white/70">
+        <ul className="mt-1 grid grid-cols-2 gap-1 font-mono text-[0.6875rem] text-zinc-600 dark:text-white/70">
           {row.lines.map((line) => (
             <li key={line.lineId} className="truncate rounded-md bg-zinc-100 px-2 py-0.5 dark:bg-white/5">
               {line.serialValue}

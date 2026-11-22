@@ -5,7 +5,8 @@ const PREFIX = "ai-pos.customer-pricing.";
 const memory = new Map<string, CustomerPricing>();
 
 function storage(): Storage | null {
-  return typeof localStorage === "undefined" ? null : localStorage;
+  if (typeof localStorage === "undefined" || typeof localStorage.getItem !== "function") return null;
+  return localStorage;
 }
 
 /** The customer's own and group price lists as last fetched; used offline. */

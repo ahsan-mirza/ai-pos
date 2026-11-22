@@ -101,6 +101,17 @@ pub fn resolve(db: &Db, session: &Session, batch_id: &str, action: &str) -> Resu
     })
 }
 
+pub fn conflict_count(db: &Db) -> Result<i64, String> {
+    db.read(|conn| {
+        conn.query_row(
+            "SELECT COUNT(DISTINCT batch_id) FROM sync_queue WHERE status = 'conflict'",
+            [],
+            |row| row.get(0),
+        )
+        .map_err(|err| err.to_string())
+    })
+}
+
 pub fn rejected_count(db: &Db) -> Result<i64, String> {
     db.read(|conn| {
         conn.query_row(

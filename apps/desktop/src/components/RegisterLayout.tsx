@@ -5,7 +5,8 @@ export type CatalogDensity = "compact" | "comfortable" | "large";
 
 /** Cart stays a full-height sheet below this width so 1024×768 terminals are not split into two narrow columns. */
 export const POS_DOCKED_MIN_PX = 1280;
-export const POS_DOCKED_QUERY = `(min-width: ${POS_DOCKED_MIN_PX}px)`;
+/** 80rem matches POS_DOCKED_MIN_PX when the root font-size is the browser default of 16px. */
+export const POS_DOCKED_QUERY = "(min-width: 80rem)";
 
 interface RegisterLayoutValue {
   railCollapsed: boolean;
@@ -54,8 +55,8 @@ export function resolveDensity(storedValue: string | null): CatalogDensity {
 export function catalogGridClass(density: CatalogDensity): string {
   const stretch = "grid items-stretch [&>li]:min-w-0 [&>li]:h-full";
   if (density === "compact") return `${stretch} grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6`;
-  if (density === "large") return `${stretch} grid-cols-1 gap-4 min-[640px]:grid-cols-2 xl:grid-cols-3`;
-  return `${stretch} grid-cols-1 gap-3 min-[420px]:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5`;
+  if (density === "large") return `${stretch} grid-cols-1 gap-4 min-[40rem]:grid-cols-2 xl:grid-cols-3`;
+  return `${stretch} grid-cols-1 gap-3 min-[26.25rem]:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5`;
 }
 
 /** Register-wide layout preferences, remembered per device. Light and a comfortable catalog are the defaults. */
@@ -63,7 +64,7 @@ export function RegisterLayoutProvider({ children }: { children: ReactNode }) {
   const [railCollapsed, setRailCollapsed] = useState(() => {
     const saved = readKey(RAIL_KEY);
     if (saved === "1" || saved === "0") return saved === "1";
-    return typeof window !== "undefined" && window.innerWidth < POS_DOCKED_MIN_PX;
+    return typeof window !== "undefined" && !window.matchMedia(POS_DOCKED_QUERY).matches;
   });
   const [theme, setThemeState] = useState<RegisterTheme>(() => resolveTheme(readKey(THEME_KEY)));
   const [density, setDensityState] = useState<CatalogDensity>(() => resolveDensity(readKey(DENSITY_KEY)));
