@@ -2,6 +2,8 @@
 
 import uuid
 
+from sqlalchemy import func, select
+
 from app.core.errors import ApiError
 from app.models.inventory import StockMovement
 from app.services.offline_approval_service import (
@@ -11,7 +13,6 @@ from app.services.offline_approval_service import (
     request_conflict_adjustment,
     request_writeoff,
 )
-from sqlalchemy import func, select
 
 
 def test_writeoff_and_conflict_decisions_do_not_post(session) -> None:

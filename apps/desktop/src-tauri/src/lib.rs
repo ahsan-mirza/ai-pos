@@ -1,4 +1,5 @@
 mod acceptance;
+mod zoom;
 mod allocation;
 mod staff;
 mod audit;
@@ -18,6 +19,7 @@ mod media_cache;
 mod menu;
 mod payments;
 mod printer;
+mod printer_discovery;
 mod quotes;
 mod restaurant;
 mod retail;
@@ -1582,6 +1584,7 @@ pub fn run() {
             let identifier = app.config().identifier.clone();
             acceptance::assert_isolated(&identifier, &directory).map_err(std::io::Error::other)?;
             std::fs::create_dir_all(&directory)?;
+            zoom::prepare_activation(&directory).map_err(std::io::Error::other)?;
             let terminal_path = terminal::config_path(&directory);
             // Activated: that tenant's own database. Developer .env: the legacy shared file. Neither: activation.
             let (config, status, database) = match terminal::load(&terminal_path) {
@@ -1668,18 +1671,28 @@ pub fn run() {
             if let Some(parent) = database.parent() {
                 std::fs::create_dir_all(parent)?;
             }
-            let db = Db::open(&database).map_err(std::io::Error::other)?;
+            let db = std::sync::Arc::new(Db::open(&database).map_err(std::io::Error::other)?);
+            printer::watch(app.handle().clone(), db.clone());
+            let unlocked = zoom::sign_in(&db, &config, &directory).unwrap_or_else(|message| {
+                let _ = std::fs::write(directory.join("zoom-status.txt"), message);
+                None
+            });
+            if let Some((session, _)) = &unlocked {
+                if let Err(message) = zoom::open_shift(&db, session, &config.store_id, &directory) {
+                    let _ = std::fs::write(directory.join("zoom-status.txt"), message);
+                }
+            }
             let media_dir = directory.join("media");
             updates::watch(app.handle().clone(), config.clone());
             app.manage(AppState {
-                db: Arc::new(db),
+                db,
                 config,
                 media_dir,
                 terminal: status,
                 terminal_path,
                 flush_lock: Arc::new(Mutex::new(())),
-                session: Mutex::new(None),
-                user_token: Mutex::new(None),
+                session: Mutex::new(unlocked.as_ref().map(|(session, _)| session.clone())),
+                user_token: Mutex::new(unlocked.and_then(|(_, token)| token)),
                 provision_auth_block: Mutex::new(None),
                 demo_notice: Mutex::new(None),
                 demo_launch: Mutex::new(None),
@@ -1687,6 +1700,7 @@ pub fn run() {
                 checkout_approvals: Arc::new(Mutex::new(Default::default())),
             });
             keyboard_detector::start(app.handle().clone());
+            zoom::start(app.handle().clone());
             open_posdemo_from_args(app.handle(), &std::env::args().skip(1).collect::<Vec<_>>());
             Ok(())
         })
@@ -1753,6 +1767,7 @@ pub fn run() {
             erp::next_document_number,
             erp::printer_settings,
             erp::probe_printer,
+            erp::list_windows_printers,
             erp::save_printer_settings,
             erp::print_receipt,
             erp::open_cash_drawer,
@@ -1794,6 +1809,7 @@ pub fn run() {
             scale::scale_ports,
             scale::read_scale,
             menu::refresh_menu,
+            zoom::acceptance_zoom_report,
             restaurant::restaurant_request,
             retail::retail_request,
             retail::retail_upload,

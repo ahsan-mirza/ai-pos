@@ -3,7 +3,9 @@ import {
   PRICE_TIER_LABELS,
   Permission,
   formatMoney,
+  fromPriceCents,
   noMatchesMessage,
+  requiresPriceOption,
   parseEmbeddedBarcode,
   resolveUnitPrice,
   unpaidItems,
@@ -86,6 +88,7 @@ import {
   markSent,
   mirrorCart,
   modifiersOf,
+  priceOptionOf,
   openSession,
   packAddress,
   saveSession,
@@ -113,6 +116,7 @@ import { QuantityModal } from "./QuantityModal";
 import { WeighModal } from "./WeighModal";
 import { ComboBuilderModal } from "./ComboBuilderModal";
 import { ModifierPickerModal } from "./ModifierPickerModal";
+import { PriceOptionModal } from "./PriceOptionModal";
 import { combosFor, groupsFor, refreshMenu, useMenu } from "./menu";
 import { OrderRequestError, ordersApi, queueOfflineOrder, queueOrderVoid } from "../orders/ordersClient";
 import { serviceCharge, takeSettlement, type SettlementIntent } from "../orders/settlement";
@@ -223,11 +227,15 @@ function withPending(state: CartState, items: SessionItem[], products: ProductUp
     if (item.kitchen_status !== "PENDING") return current;
     const product = dishProduct(item, products, storeId, currencyCode);
     const modifiers = modifiersOf(item);
+    const priceOption = priceOptionOf(item);
     const added = applyCart(current, {
       type: "add_product",
       product,
+      priceSnapshotCents: item.unit_price_cents,
+      ...(priceOption ? { priceOption } : {}),
       ...(modifiers.length > 0 ? { modifiers } : {}),
       ...(item.note ? { instruction: item.note } : {}),
+      ...(item.skip_recipe ? { skipRecipe: true } : {}),
     });
     if (added.error) return current;
     if (item.quantity <= 1) return added.state;
@@ -273,6 +281,15 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
   const [quantityFor, setQuantityFor] = useState<ProductUpsert | null>(null);
   const [weighFor, setWeighFor] = useState<ProductUpsert | null>(null);
   const [modifierFor, setModifierFor] = useState<ProductUpsert | null>(null);
+  const [priceFor, setPriceFor] = useState<ProductUpsert | null>(null);
+  const [priceEdit, setPriceEdit] = useState<{
+    lineId: string;
+    quantity: number;
+    optionId: string;
+    choices: ModifierChoice[];
+    instruction: string;
+    skipRecipe?: boolean;
+  } | null>(null);
   const [modifierEdit, setModifierEdit] = useState<{ lineId: string; quantity: number; choices: ModifierChoice[]; instruction: string } | null>(null);
   const [comboFor, setComboFor] = useState<ProductUpsert | null>(null);
   const menu = useMenu();
@@ -665,14 +682,17 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
         if (item.kitchen_status !== "PENDING") continue;
         const product = dishProduct(item, catalog.products, store.id, currency);
         const modifiers = modifiersOf(item);
+        const priceOption = priceOptionOf(item);
         const added = applyCart(state, {
           type: "add_product",
           product,
           quantity: item.quantity,
           lineId: item.id,
           priceSnapshotCents: item.unit_price_cents,
+          ...(priceOption ? { priceOption } : {}),
           ...(modifiers.length > 0 ? { modifiers } : {}),
           ...(item.note ? { instruction: item.note } : {}),
+          ...(item.skip_recipe ? { skipRecipe: true } : {}),
         });
         if (!added.error) state = added.state;
       }
@@ -781,6 +801,11 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
         setComboFor(product);
         return;
       }
+      if (requiresPriceOption(product.price_options ?? menu.price_options?.[product.id]) || product.has_recipe) {
+        setPriceEdit(null);
+        setPriceFor(product);
+        return;
+      }
       if (groupsFor(menu, product.id).length > 0) {
         setModifierFor(product);
         return;
@@ -820,6 +845,7 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
               modifiers: item.modifiers ?? [],
               components: item.components ?? [],
               orderItemId: item.id,
+              skipRecipe: item.skip_recipe === true,
             },
           ]
         : [];
@@ -1391,10 +1417,31 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
                 onOverride={setOverrideRow}
                 onClearOverride={(item) => dispatch({ type: "clear_override", lineIds: item.lines.map((line) => line.lineId) })}
                 onAddSerials={(item) => setBulkFor(item.product)}
-                modifierMenu={(productId) => groupsFor(menu, productId).length > 0}
+                modifierMenu={(productId) => {
+                  const product = catalog.products.find((row) => row.id === productId);
+                  return (
+                    groupsFor(menu, productId).length > 0 ||
+                    requiresPriceOption(menu.price_options?.[productId]) ||
+                    Boolean(product?.has_recipe)
+                  );
+                }}
                 onCustomize={(item) => {
                   const line = item.lines[0];
-                  if (!line || line.orderItemId || groupsFor(menu, line.product.id).length === 0) return;
+                  if (!line || line.orderItemId) return;
+                  const options = line.product.price_options ?? menu.price_options?.[line.product.id];
+                  if (requiresPriceOption(options) || line.product.has_recipe || line.skipRecipe) {
+                    setPriceEdit({
+                      lineId: line.lineId,
+                      quantity: line.quantity,
+                      optionId: line.priceOption?.id ?? "",
+                      choices: line.modifiers ?? [],
+                      instruction: line.instruction ?? "",
+                      skipRecipe: line.skipRecipe,
+                    });
+                    setPriceFor(line.product);
+                    return;
+                  }
+                  if (groupsFor(menu, line.product.id).length === 0) return;
                   setModifierEdit({
                     lineId: line.lineId,
                     quantity: line.quantity,
@@ -1684,6 +1731,7 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
                     unit_price_cents: item.unit_price_cents,
                     modifiers_json: JSON.stringify(item.modifiers ?? []),
                     kitchen_status: "SENT_TO_KDS",
+                    skip_recipe: item.skip_recipe === true,
                   }));
                   const pending = (existing?.items ?? []).filter(
                     (item) => item.kitchen_status === "PENDING" && !sent.some((row) => row.id === item.id),
@@ -1705,6 +1753,7 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
                     components: item.components ?? [],
                     orderItemId: item.id,
                     instruction: item.note ?? undefined,
+                    skipRecipe: item.skip_recipe === true,
                   }));
                   const loaded =
                     ordered.length > 0 ? applyCart(emptyCart, { type: "load_order", lines: ordered }) : applyCart(emptyCart, { type: "clear" });
@@ -1893,10 +1942,15 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
                   />
                 );
               }
-              const product = stamp(entry.hit.product);
+              const raw = stamp(entry.hit.product);
+              const product = {
+                ...raw,
+                price_options: raw.price_options ?? menu.price_options?.[raw.id],
+              };
               const hit = { ...entry.hit, product };
               const preview = food ? null : tierPreview(product, tier);
-              const amount = preview ? preview.base : product.price_cents;
+              const from = food ? fromPriceCents(product.price_options ?? menu.price_options?.[product.id]) : null;
+              const amount = preview ? preview.base : (from ?? product.price_cents);
               const openInfo = () => {
                 const variants = product.product_model_id
                   ? catalog.products.filter((item) => item.product_model_id === product.product_model_id && item.is_active !== false)
@@ -1910,6 +1964,7 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
                     hit={hit}
                     currency={currency}
                     amount={amount}
+                    pricedFrom={from != null}
                     menu={food}
                     disabled={charging}
                     onSelect={() => select(product, true)}
@@ -1925,6 +1980,7 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
                     hit={hit}
                     currency={currency}
                     amount={amount}
+                    pricedFrom={from != null}
                     menu={food}
                     disabled={charging}
                     onSelect={() => select(product, true)}
@@ -1968,6 +2024,47 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
           onPick={(product) => {
             setPicker(null);
             select(product, true);
+          }}
+        />
+      ) : null}
+      {priceFor ? (
+        <PriceOptionModal
+          product={priceFor}
+          options={priceFor.price_options ?? menu.price_options?.[priceFor.id] ?? []}
+          groups={groupsFor(menu, priceFor.id)}
+          currency={currency}
+          hasRecipe={Boolean(priceFor.has_recipe)}
+          canSkipRecipe={session.user.permissions.includes(Permission.PosSkipRecipe)}
+          initial={priceEdit}
+          onClose={() => {
+            setPriceFor(null);
+            setPriceEdit(null);
+          }}
+          onConfirm={(option, modifiers, quantity, instruction, skipRecipe) => {
+            const priceOption = option ? { id: option.id, name: option.name, price_cents: option.price_cents } : undefined;
+            const saved = priceEdit
+              ? dispatch({
+                  type: "set_customization",
+                  lineId: priceEdit.lineId,
+                  modifiers,
+                  quantity,
+                  instruction,
+                  priceOption,
+                  skipRecipe,
+                })
+              : dispatch({
+                  type: "add_product",
+                  product: priceFor,
+                  modifiers,
+                  quantity,
+                  instruction,
+                  ...(priceOption ? { priceOption } : {}),
+                  skipRecipe,
+                });
+            if (saved) {
+              setPriceFor(null);
+              setPriceEdit(null);
+            }
           }}
         />
       ) : null}

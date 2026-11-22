@@ -140,7 +140,12 @@ def bind_request_scope(session: Session, store_id: object | None, device_id: obj
     bind_scope(store_id, device_id)
     if session.get_bind() is None or session.get_bind().dialect.name != "postgresql":
         return
-    set_session_scope(session.connection(), str(active_tenant_id()), None if store_id is None else str(store_id), None if device_id is None else str(device_id))
+    set_session_scope(
+        session.connection(),
+        str(active_tenant_id()),
+        None if store_id is None else str(store_id),
+        None if device_id is None else str(device_id),
+    )
 
 
 def _set_rls(session: Session, _transaction: object, connection) -> None:

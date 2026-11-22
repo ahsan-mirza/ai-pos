@@ -408,6 +408,30 @@ def products_out(db: Session, products: list[Product], store_id: uuid.UUID | Non
 
     currency = products[0].currency if products else ""
     lists = catalog_entries(db, set(ids), currency, store_id) if ids else {}
+    from app.models.menu import MenuPriceOption
+
+    option_rows = (
+        db.scalars(
+            select(MenuPriceOption)
+            .where(MenuPriceOption.product_id.in_(ids), MenuPriceOption.is_active.is_(True))
+            .order_by(MenuPriceOption.position, MenuPriceOption.name)
+        ).all()
+        if ids
+        else []
+    )
+    options_by_product: dict = {}
+    for option in option_rows:
+        options_by_product.setdefault(option.product_id, []).append(
+            {
+                "id": str(option.id),
+                "product_id": str(option.product_id),
+                "name": option.name,
+                "price_cents": option.price_cents,
+                "sku": option.sku,
+                "is_active": option.is_active,
+                "position": option.position,
+            }
+        )
     covers = product_image_service.cover_urls(db, products)
     out = []
     for product in products:
@@ -458,6 +482,9 @@ def products_out(db: Session, products: list[Product], store_id: uuid.UUID | Non
                 item_type=product.item_type,  # type: ignore[arg-type]
                 is_stock_tracked=product.is_stock_tracked,
                 price_lists=lists.get(product.id, []),
+                price_options=(
+                    options_by_product[product.id] if len(options_by_product.get(product.id, [])) >= 2 else []
+                ),
                 image_url=image_url,
                 thumb_url=thumb_url,
                 season=product.season,

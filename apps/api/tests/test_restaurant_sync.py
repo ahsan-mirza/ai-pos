@@ -48,7 +48,12 @@ def test_menu_reaches_both_branches_and_floor_stays_on_its_branch(client) -> Non
     group = client.post(
         "/api/v1/menu/modifier-groups",
         headers=headers,
-        json={"name": "Oat milk", "min_select": 0, "max_select": 1, "options": [{"name": "Oat", "price_delta_cents": 200}]},
+        json={
+            "name": "Oat milk",
+            "min_select": 0,
+            "max_select": 1,
+            "options": [{"name": "Oat", "price_delta_cents": 200}],
+        },
     )
     assert group.status_code == 201, group.text
     area = client.post(
@@ -63,7 +68,8 @@ def test_menu_reaches_both_branches_and_floor_stays_on_its_branch(client) -> Non
     downtown_body = downtown_pull.text
     assert "Oat milk" in downtown_body
     assert "Marina Room" not in downtown_body
-    assert any(change["operation"] == "omit" and change["dataset"] == "floor" for change in downtown_pull.json()["changes"])
+    downtown_changes = downtown_pull.json()["changes"]
+    assert any(change["operation"] == "omit" and change["dataset"] == "floor" for change in downtown_changes)
 
     marina_pull = client.get(
         "/api/v1/terminals/bootstrap/pull", headers=marina, params={"cursor": marina_cursor, "limit": 50}
@@ -147,4 +153,9 @@ def test_same_table_conflict_is_reviewed_once_and_does_not_merge_bills(client) -
     assert primary["status"] == "OPEN" and primary["table_id"] == table["id"]
     assert other["status"] == "OPEN" and other["service_type"] == "TAKEAWAY" and other["table_id"] is None
     assert other["items"][0]["id"] == second_item["id"]
-    assert client.get("/api/v1/orders/table-conflicts", headers=bearer(admin_token(client)), params={"store_id": STORE_ID}).json() == []
+    conflicts = client.get(
+        "/api/v1/orders/table-conflicts",
+        headers=bearer(admin_token(client)),
+        params={"store_id": STORE_ID},
+    )
+    assert conflicts.json() == []

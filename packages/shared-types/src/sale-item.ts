@@ -50,6 +50,10 @@ export interface SaleItemUpsert {
   age_check?: { confirmed: boolean; override_by_id?: string | null; reason?: string | null } | null;
   /** Menu modifiers; unit_price_cents and list_price_cents include their price deltas. */
   modifiers?: ModifierChoice[];
+  /** Serving option when the menu item has more than one base price. */
+  price_option_id?: string | null;
+  /** True only when this line was sold without consuming its recipe. */
+  skip_recipe?: boolean;
   /** Meal components of a combo line; unit_price_cents and list_price_cents include their surcharges. */
   components?: ComboChoice[];
 }

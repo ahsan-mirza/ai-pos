@@ -195,7 +195,7 @@ def create_app() -> FastAPI:
         """Disposable RLS harness only. Refuses every other database."""
         import os
 
-        from sqlalchemy import text
+        from sqlalchemy import text  # noqa: TID251 — current_user and server port have no ORM column
 
         from app.core.database import get_session_factory
 

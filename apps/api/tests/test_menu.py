@@ -191,3 +191,68 @@ def test_sales_price_modifiers_from_the_catalogue(client, session: Session) -> N
     assert recorded.status_code == 200, recorded.text
     stored = session.scalar(select(SaleItem).where(SaleItem.id == uuid.UUID(priced["items"][0]["id"])))
     assert stored.modifiers[0]["price_delta_cents"] == 250
+
+
+def test_priced_options_are_required_and_snapshotted(client, session: Session) -> None:
+    seed_catalog(client)
+    token = admin_token(client)
+    as_cafe(client, token)
+    created = client.put(
+        f"/api/v1/menu/products/{CABLE_ID}/price-options",
+        headers=bearer(token),
+        json={
+            "options": [
+                {"name": "Breakfast", "price_cents": 800},
+                {"name": "Lunch", "price_cents": 1200},
+                {"name": "Dinner", "price_cents": 1500},
+            ]
+        },
+    )
+    assert created.status_code == 200, created.text
+    options = created.json()
+    assert [option["name"] for option in options] == ["Breakfast", "Lunch", "Dinner"]
+    duplicate = client.put(
+        f"/api/v1/menu/products/{CABLE_ID}/price-options",
+        headers=bearer(token),
+        json={"options": [{"name": "Breakfast", "price_cents": 800}, {"name": "breakfast", "price_cents": 900}]},
+    )
+    assert duplicate.status_code == 422
+    menu = client.get("/api/v1/menu/register", headers=bearer(token)).json()
+    assert [option["name"] for option in menu["price_options"][CABLE_ID]] == ["Breakfast", "Lunch", "Dinner"]
+
+    missing = sale_with([], 800)
+    refused = push(client, "sale", missing)
+    assert refused.status_code == 422 and "priced option" in refused.json()["error"]["message"]
+
+    forged = sale_with([], 1)
+    forged["items"][0]["price_option_id"] = options[0]["id"]
+    assert push(client, "sale", forged).status_code == 422
+
+    good = sale_with([], 800)
+    good["items"][0]["price_option_id"] = options[0]["id"]
+    recorded = push(client, "sale", good)
+    assert recorded.status_code == 200, recorded.text
+    item = session.scalar(select(SaleItem).where(SaleItem.id == uuid.UUID(good["items"][0]["id"])))
+    assert item.price_option_name == "Breakfast"
+    assert item.price_option_cents == 800
+    assert item.unit_price_cents == 800
+
+    client.put(
+        f"/api/v1/menu/products/{CABLE_ID}/price-options",
+        headers=bearer(token),
+        json={
+            "options": [
+                {"id": options[0]["id"], "name": "Breakfast", "price_cents": 900},
+                {"id": options[1]["id"], "name": "Lunch", "price_cents": 1200},
+                {"id": options[2]["id"], "name": "Dinner", "price_cents": 1500},
+            ]
+        },
+    )
+    session.expire_all()
+    kept = session.scalar(select(SaleItem).where(SaleItem.id == uuid.UUID(good["items"][0]["id"])))
+    assert kept.price_option_cents == 800
+    assert kept.unit_price_cents == 800
+    replay = sale_with([], 800)
+    replay["items"][0]["price_option_id"] = options[0]["id"]
+    replayed = push(client, "sale", replay)
+    assert replayed.status_code == 200, replayed.text

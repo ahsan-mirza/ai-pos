@@ -22,6 +22,7 @@ export function kitchenTicketOps(ticket: KitchenTicket, firedAt: Date = new Date
     const modifiers = modifierSummary(item.modifiers);
     if (modifiers) ops.push({ kind: "text", text: `  ${modifiers}`, size: 24, bold: true });
     if (item.note) ops.push({ kind: "text", text: `  "${item.note}"`, size: 22 });
+    if (item.skip_recipe) ops.push({ kind: "text", text: "  No recipe ingredient consumption", size: 20 });
   }
   ops.push({ kind: "gap", height: 30 });
   return ops;

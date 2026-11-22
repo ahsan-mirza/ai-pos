@@ -4,9 +4,9 @@ from typing import get_args
 
 from sqlalchemy.orm import Session
 
+from app.core.clock import utcnow
 from app.models import AuditLog, ReturnItem, Sale, SerialNumber
 from app.schemas.payloads import SaleStatus, SerialStatus
-from app.core.clock import utcnow
 from app.services.identifiers import is_valid_imei
 from app.services.returns_service import prorated_tax, restocking_fee
 

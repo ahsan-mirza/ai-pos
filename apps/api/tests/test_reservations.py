@@ -14,6 +14,7 @@ from app.models import BusinessSettings, Reservation, TableActivityEvent, User
 from app.services.settings_service import clear_settings_cache
 from app.tenancy.scoping import INCLUDE_ALL
 
+
 def _at(hour: int, minute: int = 0, day_offset: int = 1) -> str:
     """A Dubai wall time on a coming day. The old 2 November fixtures are now in the past."""
     day = (datetime.now(UTC).astimezone(ZoneInfo("Asia/Dubai")) + timedelta(days=day_offset)).date()

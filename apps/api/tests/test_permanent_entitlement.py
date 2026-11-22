@@ -7,15 +7,14 @@ from pathlib import Path
 
 import pytest
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey, Ed25519PublicKey
-from sqlalchemy import func, inspect, select, text
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, func, inspect, select, text  # noqa: TID251
 from sqlalchemy.orm import Session
+from tests.test_inventory import DT, admin, seed
 
 from app.core.config import get_settings
 from app.models.audit_log import AuditLog
 from app.models.device import Device
 from app.services.entitlement_service import thumbprint
-from tests.test_inventory import DT, admin, seed
 
 # RFC 8032 section 7.1 TEST 1. Not a production signing key.
 RFC_SEED = bytes.fromhex("9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60")
@@ -38,7 +37,11 @@ def _public_b64() -> tuple[str, bytes]:
 
 
 def _register(client, headers, code: str = "E2") -> str:
-    created = client.post("/api/v1/devices", headers=headers, json={"store_id": DT, "code": code, "name": "Entitlement"})
+    created = client.post(
+        "/api/v1/devices",
+        headers=headers,
+        json={"store_id": DT, "code": code, "name": "Entitlement"},
+    )
     assert created.status_code == 201, created.text
     return created.json()["device"]["id"]
 
@@ -198,9 +201,8 @@ def test_throwaway_sqlite_can_add_the_thumbprint_column(tmp_path: Path) -> None:
     columns = {column["name"] for column in inspect(engine).get_columns("devices")}
     assert "device_public_key_thumbprint" in columns
     engine.dispose()
-    revision = (Path(__file__).resolve().parents[1] / "alembic" / "versions" / "20261122_0124_device_entitlement.py").read_text(
-        encoding="utf-8"
-    )
+    revision_path = Path(__file__).resolve().parents[1] / "alembic" / "versions" / "20261122_0124_device_entitlement.py"
+    revision = revision_path.read_text(encoding="utf-8")
     assert 'down_revision: str | None = "20261121_0123"' in revision
     assert "inventory_levels" not in revision
     assert "stock_movements" not in revision

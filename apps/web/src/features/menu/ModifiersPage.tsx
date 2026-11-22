@@ -1,4 +1,5 @@
 import { formatMoney, type ModifierGroup, type ModifierGroupInput, type Product } from "@ai-pos/shared-types";
+import { PriceOptionsPanel } from "./PriceOptionsPanel";
 import { actionHoverClass } from "@ai-pos/ui";
 import { ChefHat, Copy, Plus, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -428,6 +429,7 @@ export function ModifiersPage() {
           }}
         />
       ) : null}
+      <PriceOptionsPanel />
     </section>
   );
 }

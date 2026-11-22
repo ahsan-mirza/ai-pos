@@ -63,11 +63,51 @@ pub fn refresh(db: &Db, config: &DesktopConfig) -> Result<Value, String> {
                 .optional()
                 .map_err(|err| err.to_string())
             })?;
-            Ok(cached
-                .and_then(|raw| serde_json::from_str(&raw).ok())
-                .unwrap_or_else(|| serde_json::json!({ "groups": [], "products": {} })))
+            let cached = cached
+                .and_then(|raw| serde_json::from_str::<Value>(&raw).ok())
+                .unwrap_or_else(|| serde_json::json!({ "groups": [], "products": {} }));
+            Ok(overlay_price_options(db, cached))
         }
     }
+}
+
+/// Older menu documents omit priced options. The signed register_menu rows fill that gap offline.
+fn overlay_price_options(db: &Db, mut menu: Value) -> Value {
+    if menu.get("price_options").is_some() {
+        return menu;
+    }
+    let Ok(payloads) = db.config_payloads("menu") else {
+        return menu;
+    };
+    let mut grouped = serde_json::Map::new();
+    for text in payloads {
+        let Ok(value) = serde_json::from_str::<Value>(&text) else {
+            continue;
+        };
+        if value.get("kind").and_then(|item| item.as_str()) != Some("price_option") {
+            continue;
+        }
+        if !value.get("is_active").and_then(|item| item.as_bool()).unwrap_or(true) {
+            continue;
+        }
+        let Some(product_id) = value.get("product_id").and_then(|item| item.as_str()) else {
+            continue;
+        };
+        let list = grouped
+            .entry(product_id.to_string())
+            .or_insert_with(|| Value::Array(Vec::new()));
+        if let Some(rows) = list.as_array_mut() {
+            rows.push(value);
+        }
+    }
+    grouped.retain(|_, value| value.as_array().is_some_and(|rows| rows.len() >= 2));
+    if grouped.is_empty() {
+        return menu;
+    }
+    if let Some(object) = menu.as_object_mut() {
+        object.insert("price_options".to_string(), Value::Object(grouped));
+    }
+    menu
 }
 
 #[tauri::command]

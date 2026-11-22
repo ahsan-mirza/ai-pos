@@ -91,6 +91,8 @@ export function saleItems(lines: CartLine[], policy: TaxPolicy = businessTax()):
           }
         : {}),
       ...(line.modifiers?.length ? { modifiers: line.modifiers } : {}),
+      ...(line.priceOption ? { price_option_id: line.priceOption.id } : {}),
+      ...(line.skipRecipe ? { skip_recipe: true } : {}),
       ...(line.components?.length ? { components: line.components } : {}),
     };
   });

@@ -2,6 +2,7 @@ import uuid
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query, Response
+from pydantic import Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -11,6 +12,7 @@ from app.core.database import get_db
 from app.core.deps import REGISTER_SCOPES, Principal, authorize, require_device
 from app.core.pagination import Offset, set_total
 from app.core.permissions import Permission
+from app.models.terminal_allocation import TerminalAllocation
 from app.schemas.inventory import (
     AvailabilityOut,
     LevelUpdate,
@@ -34,11 +36,8 @@ from app.schemas.inventory import (
     TransferShip,
     TransferStatus,
 )
-from pydantic import Field
-
 from app.schemas.payloads import ApiModel, ProductOut, SerialStatus
 from app.schemas.product_history import ProductCosting
-from app.models.terminal_allocation import TerminalAllocation
 from app.services import allocation_service, inventory, product_history
 from app.services.settings_service import business_currency
 

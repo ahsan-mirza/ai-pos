@@ -61,6 +61,8 @@ export interface OrderItemInput {
   components?: ComboChoice[];
   seat?: number | null;
   note?: string | null;
+  /** True only when this line skips its recipe. Absent means the recipe still applies. */
+  skip_recipe?: boolean;
 }
 
 export interface OrderItem extends Required<Pick<OrderItemInput, "id" | "product_id" | "quantity" | "unit_price_cents">> {
@@ -74,6 +76,7 @@ export interface OrderItem extends Required<Pick<OrderItemInput, "id" | "product
   void_reason: string | null;
   paid_sale_id: string | null;
   kitchen_status: KitchenStatus | null;
+  skip_recipe?: boolean;
 }
 
 export interface Order {

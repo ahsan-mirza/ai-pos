@@ -50,7 +50,9 @@ pub fn migrate(conn: &Connection) -> Result<(), String> {
         ",
     )
     .map_err(|err| err.to_string())?;
-    add_note_column(conn)
+    add_note_column(conn)?;
+    add_price_option_column(conn)?;
+    add_skip_recipe_column(conn)
 }
 
 fn add_note_column(conn: &Connection) -> Result<(), String> {
@@ -70,6 +72,46 @@ fn add_note_column(conn: &Connection) -> Result<(), String> {
     Ok(())
 }
 
+fn add_price_option_column(conn: &Connection) -> Result<(), String> {
+    let mut info = conn
+        .prepare("PRAGMA table_info(table_session_items)")
+        .map_err(|err| err.to_string())?;
+    let present = info
+        .query_map([], |row| row.get::<_, String>(1))
+        .map_err(|err| err.to_string())?
+        .filter_map(Result::ok)
+        .any(|name| name == "price_option_json");
+    if present {
+        return Ok(());
+    }
+    conn.execute(
+        "ALTER TABLE table_session_items ADD COLUMN price_option_json TEXT",
+        [],
+    )
+    .map_err(|err| err.to_string())?;
+    Ok(())
+}
+
+fn add_skip_recipe_column(conn: &Connection) -> Result<(), String> {
+    let mut info = conn
+        .prepare("PRAGMA table_info(table_session_items)")
+        .map_err(|err| err.to_string())?;
+    let present = info
+        .query_map([], |row| row.get::<_, String>(1))
+        .map_err(|err| err.to_string())?
+        .filter_map(Result::ok)
+        .any(|name| name == "skip_recipe");
+    if present {
+        return Ok(());
+    }
+    conn.execute(
+        "ALTER TABLE table_session_items ADD COLUMN skip_recipe INTEGER NOT NULL DEFAULT 0",
+        [],
+    )
+    .map_err(|err| err.to_string())?;
+    Ok(())
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SessionItem {
     pub id: String,
@@ -82,6 +124,11 @@ pub struct SessionItem {
     pub kitchen_status: String,
     #[serde(default)]
     pub note: Option<String>,
+    #[serde(default)]
+    pub price_option_json: Option<String>,
+    /// True only when this line was added without consuming its recipe.
+    #[serde(default)]
+    pub skip_recipe: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -173,8 +220,8 @@ pub fn save(db: &Db, session: &TableSession) -> Result<TableSession, String> {
         for item in &session.items {
             tx.execute(
                 "INSERT INTO table_session_items (
-                    id, session_id, product_id, product_name, quantity, unit_price_cents, modifiers_json, kitchen_status, note
-                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+                    id, session_id, product_id, product_name, quantity, unit_price_cents, modifiers_json, kitchen_status, note, price_option_json, skip_recipe
+                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
                 params![
                     item.id,
                     session.id,
@@ -185,6 +232,8 @@ pub fn save(db: &Db, session: &TableSession) -> Result<TableSession, String> {
                     item.modifiers_json,
                     item.kitchen_status,
                     item.note,
+                    item.price_option_json,
+                    if item.skip_recipe { 1 } else { 0 },
                 ],
             )
             .map_err(|err| err.to_string())?;
@@ -258,7 +307,7 @@ fn session_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<TableSession> {
 fn items(conn: &Connection, session_id: &str) -> Result<Vec<SessionItem>, String> {
     let mut statement = conn
         .prepare(
-            "SELECT id, session_id, product_id, product_name, quantity, unit_price_cents, modifiers_json, kitchen_status, note
+            "SELECT id, session_id, product_id, product_name, quantity, unit_price_cents, modifiers_json, kitchen_status, note, price_option_json, skip_recipe
              FROM table_session_items WHERE session_id = ?1",
         )
         .map_err(|err| err.to_string())?;
@@ -274,10 +323,91 @@ fn items(conn: &Connection, session_id: &str) -> Result<Vec<SessionItem>, String
                 modifiers_json: row.get(6)?,
                 kitchen_status: row.get(7)?,
                 note: row.get(8)?,
+                price_option_json: row.get(9)?,
+                skip_recipe: row.get::<_, i64>(10)? != 0,
             })
         })
         .map_err(|err| err.to_string())?;
     mapped
         .collect::<Result<Vec<_>, _>>()
         .map_err(|err| err.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    use super::*;
+    use crate::db::Db;
+
+    #[test]
+    fn skip_recipe_survives_save_and_reload() {
+        let path = std::env::temp_dir().join(format!(
+            "aipos-skip-recipe-{}.sqlite",
+            SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos()
+        ));
+        let db = Db::open(&path).expect("open");
+        let session = TableSession {
+            id: "sess".into(),
+            tenant_id: "tenant".into(),
+            store_id: "store".into(),
+            table_number: "5".into(),
+            guest_count: 2,
+            guest_name: String::new(),
+            address: String::new(),
+            phone: String::new(),
+            order_mode: "dine_in".into(),
+            status: "OPEN".into(),
+            server_order_id: None,
+            server_revision: 0,
+            created_at: "2026-11-22T00:00:00Z".into(),
+            updated_at: "2026-11-22T00:00:00Z".into(),
+            items: vec![
+                SessionItem {
+                    id: "required".into(),
+                    session_id: "sess".into(),
+                    product_id: "dish".into(),
+                    product_name: "Grilled Chicken".into(),
+                    quantity: 1,
+                    unit_price_cents: 1200,
+                    modifiers_json: "[]".into(),
+                    kitchen_status: "PENDING".into(),
+                    note: None,
+                    price_option_json: None,
+                    skip_recipe: false,
+                },
+                SessionItem {
+                    id: "skipped".into(),
+                    session_id: "sess".into(),
+                    product_id: "dish".into(),
+                    product_name: "Grilled Chicken".into(),
+                    quantity: 2,
+                    unit_price_cents: 1200,
+                    modifiers_json: "[]".into(),
+                    kitchen_status: "PENDING".into(),
+                    note: None,
+                    price_option_json: None,
+                    skip_recipe: true,
+                },
+            ],
+        };
+        save(&db, &session).expect("save");
+        let loaded = list(&db, "store").expect("list");
+        let _ = std::fs::remove_file(&path);
+        assert_eq!(loaded.len(), 1);
+        let skipped = loaded[0]
+            .items
+            .iter()
+            .find(|item| item.id == "skipped")
+            .expect("skipped line");
+        let required = loaded[0]
+            .items
+            .iter()
+            .find(|item| item.id == "required")
+            .expect("required line");
+        assert!(!required.skip_recipe);
+        assert!(skipped.skip_recipe);
+        assert_eq!(skipped.unit_price_cents, 1200);
+        assert_eq!(skipped.quantity, 2);
+    }
 }

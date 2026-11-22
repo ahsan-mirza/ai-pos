@@ -26,6 +26,8 @@ export interface KitchenTicketItem {
   combo_name?: string | null;
   seat: number | null;
   note: string | null;
+  /** The register skipped recipe ingredient consumption for this line. */
+  skip_recipe?: boolean;
   /** Set when this line is ready while the rest of the ticket may still be cooking. */
   ready_at: string | null;
   voided_at: string | null;

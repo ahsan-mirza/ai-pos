@@ -1,4 +1,4 @@
-import { daysUntil, formatMoney, formatWeight, type ProductUpsert } from "@ai-pos/shared-types";
+import { daysUntil, formatMoney, formatWeight, fromPriceCents, type ProductUpsert } from "@ai-pos/shared-types";
 import { CurrencyAmount } from "../../components/CurrencyAmount";
 import { useLocale } from "@ai-pos/ui";
 import { motion, useReducedMotion } from "framer-motion";
@@ -164,6 +164,7 @@ export function ProductCard({ hit, preview, currency, disabled, hasModifiers = f
   const { t } = useLocale();
   const menu = cardKind(useCapabilities().profile) === "menu";
   const { product, match, serial_status: serialStatus } = hit;
+  const from = menu ? fromPriceCents(product.price_options) : null;
   const out = product.stock_quantity <= 0 && !product.has_recipe;
   const strike =
     preview != null
@@ -171,7 +172,7 @@ export function ProductCard({ hit, preview, currency, disabled, hasModifiers = f
       : product.compare_at_cents != null && product.compare_at_cents > product.price_cents
         ? formatMoney(product.compare_at_cents, currency)
         : null;
-  const amount = preview ? preview.base : product.price_cents;
+  const amount = preview ? preview.base : (from ?? product.price_cents);
   const priceClass = preview || strike ? "text-primary" : out ? "text-zinc-600 dark:text-white/60" : "text-zinc-900 dark:text-white";
   const marker =
     match === "identifier" ? (
@@ -224,6 +225,7 @@ export function ProductCard({ hit, preview, currency, disabled, hasModifiers = f
       footnote={preview ? `${preview.label}${preview.best ? ` · bulk ${preview.best}` : ""}` : null}
       price={
         <span className={`inline-flex items-end gap-1 ${priceClass}`}>
+          {from != null ? <span className="mb-0.5 text-xs font-semibold">From</span> : null}
           <CurrencyAmount cents={amount} currency={currency} size="card" />
           {product.sold_by_weight ? <span className="mb-0.5 text-xs font-semibold text-zinc-500 dark:text-white/50">/kg</span> : null}
         </span>

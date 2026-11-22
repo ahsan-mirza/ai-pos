@@ -76,6 +76,12 @@ class SaleItem(TenantScoped, Base):
     # Menu modifiers chosen for this line, as sold: [{"group_id", "group", "option_id", "option", "price_delta_cents"}].
     # unit_price_cents already includes the price deltas.
     modifiers: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    # The priced serving option chosen for this line. unit_price_cents already includes this base price.
+    price_option_id: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True), nullable=True)
+    price_option_name: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    price_option_cents: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # True only when an authorized cashier chose not to consume this line's recipe. Absent means the recipe applies.
+    skip_recipe: Mapped[bool] = mapped_column(Boolean, default=False)
     # Meal components chosen for a combo line, as sold: [{"slot_id", "slot", "product_id", "name", "surcharge_cents"}].
     # unit_price_cents already includes the surcharges; each component drew its own stock or recipe.
     components: Mapped[list | None] = mapped_column(JSON, nullable=True)

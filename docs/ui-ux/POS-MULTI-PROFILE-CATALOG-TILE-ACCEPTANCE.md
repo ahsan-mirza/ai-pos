@@ -12,7 +12,7 @@ This pass did not change stock math, `allocationLabel`, `withTerminalAllocation`
 
 Each profile fixture renders the real `ProductCard` after `bindCapabilityTenant` and `applyProfile` set that business profile. Allocation figures come from `withTerminalAllocation` on the product, which is the same function the register uses offline. Fashion groups use `modelGroup` and `ModelCard`. Laundry exclusion is a read of every `apps/desktop/src/features/laundry` source file.
 
-No disposable Grocery, Electronics, Fashion, or Restaurant window was opened. No screenshot was taken. Browser zoom at 100%, 125%, 150%, and 200% on the live catalogue was **NOT RUN**.
+The live zoom pass is recorded separately. It opened four disposable registers and did not use the laundry till.
 
 ## Card contract
 
@@ -65,8 +65,8 @@ From `apps/desktop`:
 
 Exit 0.
 
-## Not tested
+## Zoom follow-up
 
-- Browser zoom at 100%, 125%, 150%, and 200% on the desktop catalogue window.
-- A live Grocery, Electronics, Fashion, or Restaurant register. The open till is Laundry, and it was not switched or used for a sale.
-- Screenshots.
+Native WebView zoom of the four catalogues is recorded in [POS-MULTI-PROFILE-ZOOM-ACCEPTANCE.md](POS-MULTI-PROFILE-ZOOM-ACCEPTANCE.md). The Restaurant/Cafe pricing-option selector at the same zoom levels is recorded in [../restaurant/RESTAURANT-PRICING-SELECTOR-ZOOM-ACCEPTANCE.md](../restaurant/RESTAURANT-PRICING-SELECTOR-ZOOM-ACCEPTANCE.md).
+
+Restaurant and cafe priced serving options are recorded in [../restaurant/RESTAURANT-MENU-PRICING-VARIANTS.md](../restaurant/RESTAURANT-MENU-PRICING-VARIANTS.md). A menu card with two or more active options shows `From` and the lowest active price.

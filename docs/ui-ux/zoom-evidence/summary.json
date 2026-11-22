@@ -1,0 +1,144 @@
+[
+  {
+    "profile": "restaurant",
+    "port": 18093,
+    "identifier": "com.axizpos.restaurant.zoom",
+    "title": "AxizPOS Restaurant Zoom",
+    "levels": {
+      "100": {
+        "requested_percent": 100,
+        "dpr": 1.75,
+        "ratio": 1.0,
+        "scale": 1,
+        "font": "16px",
+        "font_unchanged": true,
+        "well": 112,
+        "footer": null,
+        "objectFit": null,
+        "overflow": false,
+        "screenshot": "docs\\ui-ux\\zoom-evidence\\restaurant-100.png",
+        "pass": true
+      },
+      "125": {
+        "requested_percent": 125,
+        "dpr": 2.1875,
+        "ratio": 1.25,
+        "scale": 1,
+        "font": "16px",
+        "font_unchanged": true,
+        "well": 112,
+        "footer": null,
+        "objectFit": null,
+        "overflow": false,
+        "screenshot": "docs\\ui-ux\\zoom-evidence\\restaurant-125.png",
+        "pass": true
+      },
+      "150": {
+        "requested_percent": 150,
+        "dpr": 2.625,
+        "ratio": 1.5,
+        "scale": 1,
+        "font": "16px",
+        "font_unchanged": true,
+        "well": 112,
+        "footer": null,
+        "objectFit": null,
+        "overflow": false,
+        "screenshot": "docs\\ui-ux\\zoom-evidence\\restaurant-150.png",
+        "pass": true
+      },
+      "200": {
+        "requested_percent": 200,
+        "dpr": 3.5,
+        "ratio": 2.0,
+        "scale": 1,
+        "font": "16px",
+        "font_unchanged": true,
+        "well": 112,
+        "footer": null,
+        "objectFit": null,
+        "overflow": false,
+        "screenshot": "docs\\ui-ux\\zoom-evidence\\restaurant-200.png",
+        "pass": true
+      }
+    },
+    "selector": {
+      "meal-100": {
+        "opened": true,
+        "default_selected": true,
+        "screenshot": "docs\\ui-ux\\zoom-evidence\\restaurant-meal-100.png"
+      },
+      "plate-100": {
+        "opened": true,
+        "default_selected": true,
+        "screenshot": "docs\\ui-ux\\zoom-evidence\\restaurant-plate-100.png"
+      },
+      "long-100": {
+        "opened": true,
+        "default_selected": true,
+        "screenshot": "docs\\ui-ux\\zoom-evidence\\restaurant-long-100.png"
+      },
+      "meal-125": {
+        "opened": true,
+        "default_selected": true,
+        "screenshot": "docs\\ui-ux\\zoom-evidence\\restaurant-meal-125.png"
+      },
+      "plate-125": {
+        "opened": true,
+        "default_selected": true,
+        "screenshot": "docs\\ui-ux\\zoom-evidence\\restaurant-plate-125.png"
+      },
+      "long-125": {
+        "opened": true,
+        "default_selected": true,
+        "screenshot": "docs\\ui-ux\\zoom-evidence\\restaurant-long-125.png"
+      },
+      "meal-150": {
+        "opened": true,
+        "default_selected": true,
+        "screenshot": "docs\\ui-ux\\zoom-evidence\\restaurant-meal-150.png"
+      },
+      "plate-150": {
+        "opened": true,
+        "default_selected": true,
+        "screenshot": "docs\\ui-ux\\zoom-evidence\\restaurant-plate-150.png"
+      },
+      "long-150": {
+        "opened": true,
+        "default_selected": true,
+        "screenshot": "docs\\ui-ux\\zoom-evidence\\restaurant-long-150.png"
+      },
+      "meal-200": {
+        "opened": true,
+        "default_selected": true,
+        "screenshot": "docs\\ui-ux\\zoom-evidence\\restaurant-meal-200.png"
+      },
+      "plate-200": {
+        "opened": true,
+        "default_selected": true,
+        "screenshot": "docs\\ui-ux\\zoom-evidence\\restaurant-plate-200.png"
+      },
+      "long-200": {
+        "opened": true,
+        "default_selected": true,
+        "screenshot": "docs\\ui-ux\\zoom-evidence\\restaurant-long-200.png"
+      },
+      "line": {
+        "added": true,
+        "screenshot": "docs\\ui-ux\\zoom-evidence\\restaurant-line-100.png"
+      }
+    },
+    "pid": 14648,
+    "identity": {
+      "pid": 14648,
+      "hwnd": 2428844,
+      "identifier": "com.axizpos.restaurant.zoom",
+      "title": "AxizPOS Restaurant Zoom",
+      "data_dir": "C:\\Users\\ahsan\\AppData\\Roaming\\com.axizpos.restaurant.zoom",
+      "profile": "restaurant"
+    },
+    "catalogue_seen": true,
+    "status_text": "shift-open",
+    "status": "PASS"
+  }
+]

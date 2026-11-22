@@ -1,0 +1,24 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "AxizPOS Grocery Zoom",
+  "identifier": "com.axizpos.grocery.zoom",
+  "build": {
+    "beforeBuildCommand": "pnpm exec vite build --mode zoom-grocery",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "AxizPOS Grocery Zoom",
+        "width": 1400,
+        "height": 900,
+        "resizable": true
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; connect-src 'self' http://127.0.0.1:18090 ipc: http://ipc.localhost; img-src 'self' data: http://asset.localhost asset: http://127.0.0.1:18090; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:"
+    }
+  },
+  "bundle": { "active": false }
+}

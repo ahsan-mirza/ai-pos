@@ -48,5 +48,5 @@ function subscribe(listener: () => void): () => void {
 }
 
 export function useMenu(): RegisterMenu {
-  return useSyncExternalStore(subscribe, () => current);
+  return useSyncExternalStore(subscribe, () => current, () => current);
 }

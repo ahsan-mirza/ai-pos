@@ -43,7 +43,7 @@ from app.schemas.orders import (
     OrderUpdate,
 )
 from app.schemas.payloads import SalePayload
-from app.services import audit, combo_service
+from app.services import audit, combo_service, menu_service
 from app.services.sync_service import SyncContext, register_handler
 from app.services.sync_validation import parse_payload, require_store
 
@@ -156,6 +156,10 @@ def orders_out(db: Session, orders: list[OpenOrder]) -> list[OrderOut]:
                     product_name=names.get(item.product_id, "Item"),
                     quantity=item.quantity,
                     unit_price_cents=item.unit_price_cents,
+                    price_option_id=item.price_option_id,
+                    price_option_name=item.price_option_name,
+                    price_option_cents=item.price_option_cents,
+                    skip_recipe=item.skip_recipe,
                     modifiers=item.modifiers or [],
                     components=item.components or [],
                     seat=item.seat,
@@ -289,25 +293,65 @@ def _reject_second_table_order(
     )
 
 
-def _item(order: OpenOrder, data: OrderItemIn, position: int, user_id: uuid.UUID | None) -> OpenOrderItem:
-    return OpenOrderItem(
+def _require_recipe_skip(actor: User | None, items: list) -> None:
+    if not any(getattr(item, "skip_recipe", False) for item in items):
+        return
+    if actor is None or Permission.POS_SKIP_RECIPE.value not in actor.permissions:
+        raise ApiError(403, "forbidden", "Skipping recipe ingredients needs permission.")
+
+
+def _item(
+    db: Session,
+    order: OpenOrder,
+    data: OrderItemIn,
+    position: int,
+    user_id: uuid.UUID | None,
+    option: dict | None = None,
+) -> OpenOrderItem:
+    row = OpenOrderItem(
         id=data.id,
         order_id=order.id,
         product_id=data.product_id,
         quantity=data.quantity,
         unit_price_cents=data.unit_price_cents,
+        price_option_id=uuid.UUID(option["id"]) if option else None,
+        price_option_name=option["name"] if option else None,
+        price_option_cents=option["price_cents"] if option else None,
         modifiers=[choice.model_dump(mode="json") for choice in data.modifiers] or None,
         components=[choice.model_dump(mode="json") for choice in data.components] or None,
         seat=data.seat,
         note=(data.note or "").strip() or None,
         position=position,
         added_by_id=user_id,
+        skip_recipe=data.skip_recipe,
     )
+    if data.skip_recipe and user_id is not None:
+        from app.services.audit import record as audit_record
+
+        audit_record(
+            db,
+            action_type="UPDATE",
+            action="recipe.skip",
+            target_entity="OpenOrderItem",
+            target_entity_id=data.id,
+            store_id=order.store_id,
+            user_id=user_id,
+            details={
+                "order_id": str(order.id),
+                "product_id": str(data.product_id),
+                "order_line_id": str(data.id),
+                "price_option_id": str(data.price_option_id) if data.price_option_id else None,
+                "ingredient_requirement": "not_required",
+                "quantity": data.quantity,
+            },
+        )
+    return row
 
 
-def _check_products(db: Session, items: list[OrderItemIn]) -> None:
+def _check_products(db: Session, items: list[OrderItemIn]) -> dict[uuid.UUID, dict]:
     ids = {item.product_id for item in items}
     found = {row.id: row for row in db.scalars(select(Product).where(Product.id.in_(ids))).all()} if ids else {}
+    chosen: dict[uuid.UUID, dict] = {}
     for item in items:
         product = found.get(item.product_id)
         if product is None:
@@ -316,9 +360,16 @@ def _check_products(db: Session, items: list[OrderItemIn]) -> None:
             raise ApiError(422, "invalid_request", f"{product.name} cannot go on a tab; sell it at checkout.")
         # The kitchen fires a meal's parts as soon as it is sent, so its picks are checked now, not at settlement.
         try:
-            combo_service.price_components(db, product, item.components)
+            combo_delta, _components = combo_service.price_components(db, product, item.components)
+            modifier_delta, _modifiers = menu_service.price_choices(db, product, item.modifiers)
+            option = menu_service.resolve_price_option(
+                db, product, item.price_option_id, item.unit_price_cents - modifier_delta - combo_delta
+            )
         except SyncRejected as exc:
             raise ApiError(422, "invalid_meal", exc.message) from exc
+        if option is not None:
+            chosen[item.id] = option
+    return chosen
 
 
 def create_order(db: Session, principal: Principal, data: OrderCreate, *, commit: bool = True) -> OrderOut:
@@ -332,7 +383,8 @@ def create_order(db: Session, principal: Principal, data: OrderCreate, *, commit
     actor = _actor(db, principal, data.user_id, data.store_id)
     _table(db, data.table_id, data.store_id)
     _reject_second_table_order(db, data.table_id, data.service_type)
-    _check_products(db, data.items)
+    chosen = _check_products(db, data.items)
+    _require_recipe_skip(actor, data.items)
     order = OpenOrder(
         id=data.id,
         store_id=data.store_id,
@@ -351,7 +403,7 @@ def create_order(db: Session, principal: Principal, data: OrderCreate, *, commit
     db.add(order)
     db.flush()
     for position, item in enumerate(data.items):
-        db.add(_item(order, item, position, actor.id))
+        db.add(_item(db, order, item, position, actor.id, chosen.get(item.id)))
     from app.services.reservation_service import attach_order, observe_order
 
     attach_order(db, order, data.customer_id)
@@ -505,14 +557,15 @@ def update_order(db: Session, principal: Principal, order_id: uuid.UUID, data: O
 def add_items(db: Session, principal: Principal, order_id: uuid.UUID, data: OrderItemsAdd) -> OrderOut:
     order = _writable(db, principal, order_id, data.revision)
     actor = _actor(db, principal, data.user_id, order.store_id)
-    _check_products(db, data.items)
+    chosen = _check_products(db, data.items)
+    _require_recipe_skip(actor, data.items)
     known = {item.id for item in order.items}
     position = max((item.position for item in order.items), default=-1) + 1
     added = 0
     for item in data.items:
         if item.id in known:
             continue
-        order.items.append(_item(order, item, position, actor.id))
+        order.items.append(_item(db, order, item, position, actor.id, chosen.get(item.id)))
         position += 1
         added += 1
     if added and order.table_id is not None:
@@ -1028,7 +1081,10 @@ def _hold_table_conflict(
     for line in data.items:
         if db.get(Product, line.product_id) is None:
             continue
-        item = _item(order, line, position, data.opened_by_id)
+        opener = db.get(User, data.opened_by_id)
+        if line.skip_recipe and (opener is None or Permission.POS_SKIP_RECIPE.value not in opener.permissions):
+            raise SyncRejected("Skipping recipe ingredients needs permission.")
+        item = _item(db, order, line, position, data.opened_by_id)
         item.sent_at = _aware(line.sent_at)
         item.voided_at = _aware(line.voided_at)
         item.void_reason = line.void_reason
@@ -1214,7 +1270,9 @@ def apply_open_order(db: Session, settings: Settings, payload: dict[str, object]
             continue
         if db.get(Product, line.product_id) is None:
             continue
-        item = _item(order, line, position, opener.id)
+        if line.skip_recipe and Permission.POS_SKIP_RECIPE.value not in opener.permissions:
+            raise SyncRejected("Skipping recipe ingredients needs permission.")
+        item = _item(db, order, line, position, opener.id)
         item.sent_at = _aware(line.sent_at)
         item.voided_at = _aware(line.voided_at)
         item.void_reason = line.void_reason

@@ -26,9 +26,10 @@ function PriceRange({ fromCents, toCents, currency }: { fromCents: number; toCen
   );
 }
 
-function Price({ product, currency, amount }: { product: ProductUpsert; currency: string; amount: number }) {
+function Price({ product, currency, amount, from = false }: { product: ProductUpsert; currency: string; amount: number; from?: boolean }) {
   return (
     <span className="inline-flex items-end gap-1 whitespace-nowrap text-zinc-900 dark:text-white">
+      {from ? <span className="mb-0.5 text-xs font-semibold">From</span> : null}
       <CurrencyAmount cents={amount} currency={currency} size="card" />
       {product.sold_by_weight ? <span className="mb-0.5 text-xs font-semibold text-zinc-500 dark:text-white/50">/kg</span> : null}
     </span>
@@ -86,6 +87,7 @@ export function ProductListRow({
   hit,
   currency,
   amount,
+  pricedFrom = false,
   menu,
   disabled,
   onSelect,
@@ -95,6 +97,7 @@ export function ProductListRow({
   hit: Hit;
   currency: string;
   amount: number;
+  pricedFrom?: boolean;
   menu: boolean;
   disabled: boolean;
   onSelect: () => void;
@@ -120,7 +123,7 @@ export function ProductListRow({
           {identity ? <p className="truncate text-xs text-zinc-500 dark:text-white/50">{identity}</p> : null}
         </div>
       </div>
-      <Price product={product} currency={currency} amount={amount} />
+      <Price product={product} currency={currency} amount={amount} from={pricedFrom} />
       {stock ? (
         <span title={stock} className={`inline-flex h-7 max-w-full items-center truncate rounded-full px-2 text-[0.6875rem] font-semibold tabular-nums ${stockClass(product)}`}>
           {stock}
@@ -152,6 +155,7 @@ export function CompactProductCard({
   hit,
   currency,
   amount,
+  pricedFrom = false,
   menu,
   disabled,
   onSelect,
@@ -161,6 +165,7 @@ export function CompactProductCard({
   hit: Hit;
   currency: string;
   amount: number;
+  pricedFrom?: boolean;
   menu: boolean;
   disabled: boolean;
   onSelect: () => void;
@@ -208,7 +213,7 @@ export function CompactProductCard({
         onClick={onSelect}
         className="mt-1 flex min-w-0 items-center justify-between gap-2 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/70 disabled:opacity-50"
       >
-        <Price product={product} currency={currency} amount={amount} />
+        <Price product={product} currency={currency} amount={amount} from={pricedFrom} />
         {stock ? <span className="truncate text-[0.6875rem] font-semibold text-zinc-500 dark:text-white/50">{stock}</span> : null}
       </button>
     </li>

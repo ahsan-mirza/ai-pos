@@ -8,13 +8,13 @@ from datetime import datetime
 from sqlalchemy import (
     JSON,
     Boolean,
-    Text,
     CheckConstraint,
     DateTime,
     ForeignKey,
     Index,
     Integer,
     String,
+    Text,
     Uuid,
     and_,
     column,
@@ -138,8 +138,13 @@ class OpenOrderItem(TenantScoped, Base):
     )
     product_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("products.id"))
     quantity: Mapped[int] = mapped_column(Integer)
-    # Price per unit when ordered, modifiers included; settlement re-prices from the catalogue.
+    # Price per unit when ordered, the chosen serving option and modifiers included.
     unit_price_cents: Mapped[int] = mapped_column(Integer)
+    price_option_id: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True), nullable=True)
+    price_option_name: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    price_option_cents: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # True only when this line was added with recipe consumption explicitly skipped.
+    skip_recipe: Mapped[bool] = mapped_column(Boolean, default=False)
     modifiers: Mapped[list | None] = mapped_column(JSON, nullable=True)
     # Meal components, as sent by the register (see SaleItem.components); priced again at settlement.
     components: Mapped[list | None] = mapped_column(JSON, nullable=True)
@@ -167,7 +172,9 @@ class TableSessionConflict(TenantScoped, TimestampMixin, Base):
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
     store_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("stores.id"), index=True)
-    table_id: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True), ForeignKey("dining_tables.id"), nullable=True)
+    table_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("dining_tables.id"), nullable=True
+    )
     primary_order_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("open_orders.id"))
     conflicting_order_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("open_orders.id"))
     idempotency_key: Mapped[str] = mapped_column(String(128))

@@ -376,6 +376,81 @@ describe("price includes tax", () => {
     expect(lineCharge(discounted.lines[0]!, policy)).toMatchObject({ net_cents: 8571, tax_cents: 429, line_total_cents: 9000 });
   });
 
+  it("requires an explicit serving option and keeps that price", () => {
+    const dish: ProductUpsert = {
+      ...cable,
+      id: "chicken",
+      name: "Grilled Chicken",
+      price_cents: 1000,
+      is_service: true,
+      is_stock_tracked: false,
+      item_type: "MADE_TO_ORDER",
+      stock_quantity: 0,
+      price_options: [
+        { id: "breakfast", product_id: "chicken", name: "Breakfast", price_cents: 800, is_active: true, position: 0 },
+        { id: "lunch", product_id: "chicken", name: "Lunch", price_cents: 1200, is_active: true, position: 1 },
+      ],
+    };
+    const blocked = applyCart(emptyCart, { type: "add_product", product: dish });
+    expect(blocked.error).toContain("needs a priced option");
+    expect(blocked.state.lines).toHaveLength(0);
+    const added = applyCart(emptyCart, {
+      type: "add_product",
+      product: dish,
+      priceOption: { id: "breakfast", name: "Breakfast", price_cents: 800 },
+      modifiers: [{ group_id: "g", option_id: "cheese", option: "Cheese", price_delta_cents: 150 }],
+    });
+    expect(added.error).toBeNull();
+    expect(added.state.lines[0]?.unitPriceCents).toBe(950);
+    expect(added.state.lines[0]?.priceOption?.id).toBe("breakfast");
+    const changed = applyCart(
+      { ...added.state, lines: added.state.lines.map((line) => ({ ...line, product: { ...dish, price_cents: 5000 } })) },
+      { type: "refresh_prices" },
+    );
+    expect(changed.state.lines[0]?.unitPriceCents).toBe(950);
+    const updated = applyCart(changed.state, {
+      type: "set_customization",
+      lineId: changed.state.lines[0]!.lineId,
+      quantity: 2,
+      modifiers: [],
+      priceOption: { id: "lunch", name: "Lunch", price_cents: 1200 },
+    });
+    expect(updated.state.lines[0]?.unitPriceCents).toBe(1200);
+    expect(updated.state.lines[0]?.quantity).toBe(2);
+  });
+
+  it("keeps ingredient choices on separate lines and does not change the price", () => {
+    const dish: ProductUpsert = {
+      ...cable,
+      id: "chicken",
+      name: "Grilled Chicken",
+      price_cents: 1200,
+      is_service: true,
+      has_recipe: true,
+      is_stock_tracked: false,
+      item_type: "MADE_TO_ORDER",
+      stock_quantity: 0,
+    };
+    const required = applyCart(emptyCart, { type: "add_product", product: dish });
+    const both = applyCart(required.state, { type: "add_product", product: dish, skipRecipe: true });
+    expect(both.state.lines).toHaveLength(2);
+    expect(both.state.lines[0]?.skipRecipe).toBeUndefined();
+    expect(both.state.lines[1]?.skipRecipe).toBe(true);
+    expect(both.state.lines[1]?.unitPriceCents).toBe(1200);
+    const more = applyCart(both.state, {
+      type: "set_customization",
+      lineId: both.state.lines[1]!.lineId,
+      quantity: 3,
+      modifiers: [{ group_id: "g", option_id: "cheese", option: "Cheese", price_delta_cents: 150 }],
+      skipRecipe: true,
+    });
+    expect(more.state.lines[1]?.quantity).toBe(3);
+    expect(more.state.lines[1]?.skipRecipe).toBe(true);
+    expect(more.state.lines[1]?.unitPriceCents).toBe(1350);
+    const again = applyCart(more.state, { type: "add_product", product: dish, skipRecipe: true });
+    expect(again.state.lines).toHaveLength(3);
+  });
+
   it("charges no tax on a zero-rated inclusive price", () => {
     const state = run({
       type: "add_product",

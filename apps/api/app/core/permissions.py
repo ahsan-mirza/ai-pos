@@ -52,6 +52,7 @@ class Permission(StrEnum):
     ACCOUNTING_MANAGE = "accounting:manage"
     POS_ORDERS = "pos:orders"
     POS_VOID_SENT_ITEM = "pos:void_sent_item"
+    POS_SKIP_RECIPE = "pos:skip_recipe"
     KDS_OPERATE = "kds:operate"
     SALES_ORDERS = "sales:orders"
     SALES_DISPATCH_OVERRIDE = "sales:dispatch_override"
@@ -184,6 +185,7 @@ PERMISSION_GROUPS: dict[str, list[tuple[Permission, str]]] = {
         (Permission.POS_TRADE_IN, "Buy used devices from customers as trade-ins"),
         (Permission.POS_ORDERS, "Open tables and tabs, and send orders to the kitchen"),
         (Permission.POS_VOID_SENT_ITEM, "Approve voiding items already sent to the kitchen"),
+        (Permission.POS_SKIP_RECIPE, "Sell one recipe item without consuming its ingredients"),
         (Permission.KDS_OPERATE, "Work kitchen display tickets (start, ready, bump, recall)"),
     ],
     "Finance": [
@@ -310,6 +312,7 @@ SYSTEM_ROLES: list[dict[str, object]] = [
                 Permission.POS_DRAWER_OVERRIDE,
                 Permission.POS_PRICE_OVERRIDE,
                 Permission.POS_CREDIT_SALE,
+                Permission.POS_SKIP_RECIPE,
                 Permission.PORTAL_ACCESS,
                 Permission.PORTAL_REPORTS_READ,
                 Permission.PORTAL_INVENTORY_MANAGE,

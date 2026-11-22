@@ -1,0 +1,77 @@
+{
+  "profile": "electronics",
+  "port": 18091,
+  "identifier": "com.axizpos.electronics.zoom",
+  "title": "AxizPOS Electronics Zoom",
+  "levels": {
+    "100": {
+      "requested_percent": 100,
+      "dpr": 1.75,
+      "ratio": 1.0,
+      "scale": 1,
+      "font": "16px",
+      "font_unchanged": true,
+      "well": 112,
+      "footer": 38,
+      "objectFit": null,
+      "overflow": false,
+      "screenshot": "docs\\ui-ux\\zoom-evidence\\electronics-100.png",
+      "pass": true
+    },
+    "125": {
+      "requested_percent": 125,
+      "dpr": 2.1875,
+      "ratio": 1.25,
+      "scale": 1,
+      "font": "16px",
+      "font_unchanged": true,
+      "well": 112,
+      "footer": 38,
+      "objectFit": null,
+      "overflow": false,
+      "screenshot": "docs\\ui-ux\\zoom-evidence\\electronics-125.png",
+      "pass": true
+    },
+    "150": {
+      "requested_percent": 150,
+      "dpr": 2.625,
+      "ratio": 1.5,
+      "scale": 1,
+      "font": "16px",
+      "font_unchanged": true,
+      "well": 112,
+      "footer": 38,
+      "objectFit": null,
+      "overflow": false,
+      "screenshot": "docs\\ui-ux\\zoom-evidence\\electronics-150.png",
+      "pass": true
+    },
+    "200": {
+      "requested_percent": 200,
+      "dpr": 3.5,
+      "ratio": 2.0,
+      "scale": 1,
+      "font": "16px",
+      "font_unchanged": true,
+      "well": 112,
+      "footer": 38,
+      "objectFit": null,
+      "overflow": false,
+      "screenshot": "docs\\ui-ux\\zoom-evidence\\electronics-200.png",
+      "pass": true
+    }
+  },
+  "selector": {},
+  "pid": 38248,
+  "identity": {
+    "pid": 38248,
+    "hwnd": 3544102,
+    "identifier": "com.axizpos.electronics.zoom",
+    "title": "AxizPOS Electronics Zoom",
+    "data_dir": "C:\\Users\\ahsan\\AppData\\Roaming\\com.axizpos.electronics.zoom",
+    "profile": "electronics"
+  },
+  "catalogue_seen": true,
+  "status_text": "shift-open",
+  "status": "PASS"
+}

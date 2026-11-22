@@ -4,7 +4,8 @@
   "identifier": "com.axizpos.offline.acceptance",
   "build": {
     "beforeDevCommand": "pnpm exec vite --mode offline-acceptance --port 1422 --strictPort",
-    "beforeBuildCommand": "pnpm build:offline-acceptance"
+    "beforeBuildCommand": "pnpm build:offline-acceptance",
+    "frontendDist": "../dist"
   },
   "app": {
     "windows": [

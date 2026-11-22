@@ -77,11 +77,50 @@ export interface ComboInput {
   }[];
 }
 
+/** One base price of a menu item. A modifier is a separate add-on, not one of these. */
+export interface MenuPriceOption {
+  id: string;
+  product_id: string;
+  name: string;
+  price_cents: number;
+  sku?: string | null;
+  is_active: boolean;
+  position: number;
+}
+
 /** GET /api/v1/menu/register: active groups and the groups each product offers, in order, plus meal slots. */
 export interface RegisterMenu {
   groups: ModifierGroup[];
   products: Record<string, string[]>;
   combos?: Record<string, ComboSlot[]>;
+  /** product id -> active priced options. Absent or shorter than two means one base price. */
+  price_options?: Record<string, MenuPriceOption[]>;
+}
+
+/** Active options in display order. Inactive rows are omitted. */
+export function activePriceOptions(options: readonly MenuPriceOption[] | undefined): MenuPriceOption[] {
+  return (options ?? []).filter((option) => option.is_active).sort((left, right) => left.position - right.position || left.name.localeCompare(right.name));
+}
+
+/** Two or more active options require an explicit cashier choice. */
+export function requiresPriceOption(options: readonly MenuPriceOption[] | undefined): boolean {
+  return activePriceOptions(options).length >= 2;
+}
+
+/** The lowest active option price, for a "From" label. Null when the item has one base price. */
+export function fromPriceCents(options: readonly MenuPriceOption[] | undefined): number | null {
+  const active = activePriceOptions(options);
+  const first = active[0];
+  if (active.length < 2 || first === undefined) return null;
+  return active.reduce((lowest, option) => Math.min(lowest, option.price_cents), first.price_cents);
+}
+
+/** Why a multi-price item cannot be added yet, or null when the choice is valid. */
+export function priceOptionError(options: readonly MenuPriceOption[] | undefined, selectedId: string | null): string | null {
+  const active = activePriceOptions(options);
+  if (active.length < 2) return null;
+  if (!selectedId) return "Choose an option.";
+  return active.some((option) => option.id === selectedId) ? null : "Choose an option.";
 }
 
 /** The default picks of a meal, so a cashier only changes what the customer asks to swap. */

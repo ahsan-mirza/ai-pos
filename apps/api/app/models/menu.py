@@ -65,6 +65,26 @@ class ProductModifierGroup(TenantScoped, Base):
     position: Mapped[int] = mapped_column(Integer, default=0)
 
 
+class MenuPriceOption(TenantScoped, TimestampMixin, Base):
+    """A base price of one menu item, such as Breakfast or a plate size. Not a modifier."""
+
+    __tablename__ = "menu_price_options"
+    __table_args__ = (
+        CheckConstraint("price_cents >= 0", name="price_nonnegative"),
+        tenant_unique("product_id", "name", name="uq_menu_price_options_product_name"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    product_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("products.id", ondelete="CASCADE"), index=True
+    )
+    name: Mapped[str] = mapped_column(String(80))
+    price_cents: Mapped[int] = mapped_column(Integer)
+    sku: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    position: Mapped[int] = mapped_column(Integer, default=0)
+
+
 class ComboSlot(TenantScoped, TimestampMixin, Base):
     """One choice in a meal, e.g. "Side": the cashier picks between min_select and max_select of its options."""
 

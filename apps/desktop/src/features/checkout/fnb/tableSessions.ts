@@ -16,6 +16,9 @@ export interface SessionItem {
   quantity: number;
   unit_price_cents: number;
   modifiers_json: string;
+  /** Chosen serving option, JSON `{id,name,price_cents}`. Older tickets omit it. */
+  price_option_json?: string | null;
+  skip_recipe?: boolean;
   kitchen_status: KitchenStatus;
   /** Preparation note. Older saved tickets omit it. */
   note?: string | null;
@@ -190,6 +193,8 @@ export function mirrorCart(session: TableSession, lines: CartLine[]): TableSessi
     quantity: line.quantity,
     unit_price_cents: line.unitPriceCents,
     modifiers_json: JSON.stringify(line.modifiers ?? []),
+    price_option_json: line.priceOption ? JSON.stringify(line.priceOption) : null,
+    skip_recipe: line.skipRecipe === true,
     kitchen_status: "PENDING",
     note: line.instruction?.trim().slice(0, 160) || null,
   }));
@@ -203,6 +208,17 @@ export function markSent(session: TableSession): TableSession {
       item.kitchen_status === "PENDING" ? { ...item, kitchen_status: "SENT_TO_KDS" } : item,
     ),
   };
+}
+
+export function priceOptionOf(item: SessionItem): { id: string; name: string; price_cents: number } | undefined {
+  if (!item.price_option_json) return undefined;
+  try {
+    const parsed = JSON.parse(item.price_option_json) as { id?: string; name?: string; price_cents?: number };
+    if (!parsed.id || !parsed.name || typeof parsed.price_cents !== "number") return undefined;
+    return { id: parsed.id, name: parsed.name, price_cents: parsed.price_cents };
+  } catch {
+    return undefined;
+  }
 }
 
 export function modifiersOf(item: SessionItem): ModifierChoice[] {
@@ -222,6 +238,8 @@ function asOrderItems(session: TableSession, ids: Set<string>) {
       quantity: item.quantity,
       unit_price_cents: item.unit_price_cents,
       modifiers: modifiersOf(item),
+      ...(priceOptionOf(item) ? { price_option_id: priceOptionOf(item)?.id } : {}),
+      ...(item.skip_recipe ? { skip_recipe: true } : {}),
       note: item.note?.trim().slice(0, 160) || null,
     }));
 }

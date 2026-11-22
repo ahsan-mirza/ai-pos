@@ -40,7 +40,6 @@ from app.routers.v1.grocery import router as grocery_router
 from app.routers.v1.insights import router as insights_router
 from app.routers.v1.integrations import router as integrations_router
 from app.routers.v1.inventory import router as inventory_router
-from app.routers.v1.offline_reviews import router as offline_reviews_router
 from app.routers.v1.kds import router as kds_router
 from app.routers.v1.kitchen_agent import router as kitchen_agent_router
 from app.routers.v1.labels import router as labels_router
@@ -57,6 +56,7 @@ from app.routers.v1.markdowns import router as markdowns_router
 from app.routers.v1.menu import router as menu_router
 from app.routers.v1.messaging import jobs_router
 from app.routers.v1.messaging import router as messaging_router
+from app.routers.v1.offline_reviews import router as offline_reviews_router
 from app.routers.v1.onboarding import router as onboarding_router
 from app.routers.v1.orders import router as orders_router
 from app.routers.v1.payables import router as payables_router

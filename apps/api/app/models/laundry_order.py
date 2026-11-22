@@ -121,7 +121,9 @@ class LaundryGarment(TenantScoped, TimestampMixin, Base):
     workflow_code: Mapped[str] = mapped_column(String(40), default="")
     sorting_category: Mapped[str] = mapped_column(String(40), default="")
     station: Mapped[str] = mapped_column(String(40), default="")
-    assigned_user_id: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    assigned_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("users.id"), nullable=True
+    )
     current_batch_id: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True), nullable=True, index=True)
     stage_entered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     rework_count: Mapped[int] = mapped_column(Integer, default=0)

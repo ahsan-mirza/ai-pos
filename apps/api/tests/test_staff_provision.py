@@ -2,12 +2,12 @@ import uuid
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
+from tests.test_sync import event, push
 
 from app.core.permissions import STORE_MANAGER_ROLE_ID
 from app.core.security import hash_password
 from app.models.staff_provisioning import StaffProvisioningEvent
 from app.models.user import User
-from tests.test_sync import event, push
 
 STORE = "00000000-0000-4000-8000-0000000000c1"
 VERIFIER = "$argon2id$v=19$m=65536,t=3,p=4$c29tZXNhbHQ$c2FtcGxldmVyaWZpZXI"
@@ -42,7 +42,11 @@ def test_a_register_cannot_grant_super_admin_and_a_cashier_cannot_provision(clie
     refused = client.post("/api/v1/users/provision", headers=admin, json=_body(role_name="Super Admin"))
     assert refused.status_code == 403
     assert refused.json()["error"]["code"] == "role_not_allowed"
-    platform = client.post("/api/v1/users/provision", headers=admin, json=_body(event_id="staff-event-0002", role_name="Platform Super Admin"))
+    platform = client.post(
+        "/api/v1/users/provision",
+        headers=admin,
+        json=_body(event_id="staff-event-0002", role_name="Platform Super Admin"),
+    )
     assert platform.status_code == 403
     cashier = client.post(
         "/api/v1/auth/login-pin",
@@ -63,7 +67,10 @@ def test_a_register_cannot_grant_super_admin_and_a_cashier_cannot_provision(clie
 
 
 def test_provisioning_is_idempotent_and_a_changed_payload_conflicts(client, session: Session) -> None:
-    seeded = push(client, [event("o7-store-b", "store", {"id": STORE, "code": "O7B", "name": "Staff B", "currency": "USD"})])
+    seeded = push(
+        client,
+        [event("o7-store-b", "store", {"id": STORE, "code": "O7B", "name": "Staff B", "currency": "USD"})],
+    )
     assert seeded.status_code == 200, seeded.text
     admin = _admin(client)
     body = _body(event_id="staff-event-1001", username="ida.cashier", email="ida.cashier@staff.local")
@@ -126,14 +133,24 @@ def test_store_scope_seat_limit_disable_and_feed(client, session: Session, monke
     other_branch = client.post(
         "/api/v1/users/provision",
         headers=manager,
-        json=_body(event_id="staff-event-2001", username="branch.cashier", email="branch.cashier@staff.local", store_id=OTHER),
+        json=_body(
+            event_id="staff-event-2001",
+            username="branch.cashier",
+            email="branch.cashier@staff.local",
+            store_id=OTHER,
+        ),
     )
     assert other_branch.status_code == 403
     assert other_branch.json()["error"]["code"] == "store_scope"
     promoted = client.post(
         "/api/v1/users/provision",
         headers=manager,
-        json=_body(event_id="staff-event-2002", username="peer.manager", email="peer.manager@staff.local", role_name="Store Manager"),
+        json=_body(
+            event_id="staff-event-2002",
+            username="peer.manager",
+            email="peer.manager@staff.local",
+            role_name="Store Manager",
+        ),
     )
     assert promoted.status_code == 403
     assert promoted.json()["error"]["code"] == "role_not_allowed"
@@ -195,14 +212,22 @@ def test_store_scope_seat_limit_disable_and_feed(client, session: Session, monke
 def test_online_pin_login_verifies_an_argon2_verifier_and_user_lists_do_not_return_it(client) -> None:
     from argon2 import PasswordHasher
 
-    seeded = push(client, [event("o7-store-e", "store", {"id": STORE, "code": "O7E", "name": "Staff E", "currency": "USD"})])
+    seeded = push(
+        client,
+        [event("o7-store-e", "store", {"id": STORE, "code": "O7E", "name": "Staff E", "currency": "USD"})],
+    )
     assert seeded.status_code == 200, seeded.text
     verifier = PasswordHasher().hash("2468")
     admin = _admin(client)
     created = client.post(
         "/api/v1/users/provision",
         headers=admin,
-        json=_body(event_id="staff-event-3001", username="argon.cashier", email="argon.cashier@staff.local", pin_verifier=verifier),
+        json=_body(
+            event_id="staff-event-3001",
+            username="argon.cashier",
+            email="argon.cashier@staff.local",
+            pin_verifier=verifier,
+        ),
     )
     assert created.status_code == 200, created.text
     signed = client.post(

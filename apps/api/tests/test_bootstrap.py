@@ -6,14 +6,14 @@ from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
+from tests.test_inventory import DT, admin, seed
+from tests.test_terminal_activation import _key
 
 from app.models import Base
 from app.models.bootstrap import BootstrapSession
 from app.models.device import Device
 from app.models.product import Product
 from app.services.bootstrap_service import allocate_seqs, note_retention
-from tests.test_inventory import DT, admin, seed
-from tests.test_terminal_activation import _key
 
 
 def _token(client, headers, code: str) -> tuple[str, str]:
@@ -96,8 +96,9 @@ def test_snapshot_pages_stay_frozen_and_pull_is_scoped(client, session: Session)
         params={"cursor": first_page["cursor"], "limit": 50},
     )
     assert pulled.status_code == 200, pulled.text
-    assert any(change["record_id"] == str(product.id) and change["operation"] == "upsert" for change in pulled.json()["changes"])
-    assert all(change["record"]["stock_authoritative"] is False for change in pulled.json()["changes"] if change["record"])
+    changes = pulled.json()["changes"]
+    assert any(change["record_id"] == str(product.id) and change["operation"] == "upsert" for change in changes)
+    assert all(change["record"]["stock_authoritative"] is False for change in changes if change["record"])
 
     _other_id, other_token = _token(client, headers, "B2")
     foreign = client.get(
@@ -320,13 +321,14 @@ def test_one_hundred_products_use_five_pages(client) -> None:
 
 
 def test_checkout_settings_stay_frozen_and_a_queued_rate_is_kept(client, session: Session) -> None:
+    from tests.test_inventory import CABLE, DT
+
     from app.core.errors import SyncRejected
     from app.models.business_settings import BusinessSettings
     from app.schemas.payloads import SaleItemPayload
     from app.services.sale_service import price_lines
     from app.services.tax import TaxPolicy, line_tax
     from app.tenancy.scoping import DEFAULT_TENANT_ID
-    from tests.test_inventory import CABLE, DT
 
     seed(client)
     headers = admin(client)
@@ -422,7 +424,13 @@ def test_checkout_settings_stay_frozen_and_a_queued_rate_is_kept(client, session
         pass
     else:
         raise AssertionError("a line without a snapshotted rate must match the current tax policy")
-    live = item.model_copy(update={"tax_rate_bps": None, "tax_cents": current.tax_cents, "line_total_cents": current.line_total_cents})
+    live = item.model_copy(
+        update={
+            "tax_rate_bps": None,
+            "tax_cents": current.tax_cents,
+            "line_total_cents": current.line_total_cents,
+        }
+    )
     accepted = price_lines(
         session,
         items=[live],

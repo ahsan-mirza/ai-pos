@@ -34,7 +34,7 @@ from app.models.bootstrap import (
 )
 from app.models.business_settings import BusinessSettings
 from app.models.device import Device
-from app.models.menu import ModifierGroup, ModifierOption, ProductModifierGroup
+from app.models.menu import MenuPriceOption, ModifierGroup, ModifierOption, ProductModifierGroup
 from app.models.product import Product
 from app.models.restaurant import DiningArea, DiningTable
 from app.tenancy.scoping import active_tenant_id
@@ -105,6 +105,17 @@ def _menu_body(obj: object) -> tuple[str, dict[str, Any]]:
             "is_active": bool(obj.is_active),
             "position": int(obj.position),
         }
+    if isinstance(obj, MenuPriceOption):
+        return str(obj.id), {
+            "id": str(obj.id),
+            "kind": "price_option",
+            "product_id": str(obj.product_id),
+            "name": obj.name,
+            "price_cents": int(obj.price_cents),
+            "sku": obj.sku,
+            "is_active": bool(obj.is_active),
+            "position": int(obj.position),
+        }
     link = obj
     assert isinstance(link, ProductModifierGroup)
     record_id = f"{link.product_id}:{link.group_id}"
@@ -156,9 +167,13 @@ def _pending_menu(session: Session) -> list[tuple[str, str, str, str | None]]:
     rows: list[tuple[str, str, str, str | None]] = []
     for operation, bucket in (("upsert", list(session.new) + list(session.dirty)), ("delete", list(session.deleted))):
         for obj in bucket:
-            if not isinstance(obj, (ModifierGroup, ModifierOption, ProductModifierGroup)):
+            if not isinstance(obj, (ModifierGroup, ModifierOption, ProductModifierGroup, MenuPriceOption)):
                 continue
-            if operation == "upsert" and obj in session.dirty and not session.is_modified(obj, include_collections=False):
+            if (
+                operation == "upsert"
+                and obj in session.dirty
+                and not session.is_modified(obj, include_collections=False)
+            ):
                 continue
             record_id, body = _menu_body(obj)
             rows.append(("menu", operation, record_id, None if operation == "delete" else _dump(body)))
@@ -171,7 +186,11 @@ def _pending_floor(session: Session) -> list[tuple[str, str, str, str | None]]:
         for obj in bucket:
             if not isinstance(obj, (DiningArea, DiningTable)):
                 continue
-            if operation == "upsert" and obj in session.dirty and not session.is_modified(obj, include_collections=False):
+            if (
+                operation == "upsert"
+                and obj in session.dirty
+                and not session.is_modified(obj, include_collections=False)
+            ):
                 continue
             record_id, body = _floor_body(session, obj, operation)
             rows.append(("floor", operation, record_id, _dump(body)))
@@ -364,7 +383,8 @@ def _freeze_config(db: Session, session: BootstrapSession, store_id: uuid.UUID) 
     """Copy this branch's floor and the tenant menu into the snapshot. Later edits are feed rows."""
     tenant_id = session.tenant_id
     position = 0
-    for group in db.scalars(select(ModifierGroup).where(ModifierGroup.tenant_id == tenant_id).order_by(ModifierGroup.id)):
+    groups = select(ModifierGroup).where(ModifierGroup.tenant_id == tenant_id).order_by(ModifierGroup.id)
+    for group in db.scalars(groups):
         record_id, body = _menu_body(group)
         db.add(
             BootstrapDatasetItem(
@@ -377,7 +397,8 @@ def _freeze_config(db: Session, session: BootstrapSession, store_id: uuid.UUID) 
             )
         )
         position += 1
-    for option in db.scalars(select(ModifierOption).where(ModifierOption.tenant_id == tenant_id).order_by(ModifierOption.id)):
+    options = select(ModifierOption).where(ModifierOption.tenant_id == tenant_id).order_by(ModifierOption.id)
+    for option in db.scalars(options):
         record_id, body = _menu_body(option)
         db.add(
             BootstrapDatasetItem(
@@ -391,9 +412,25 @@ def _freeze_config(db: Session, session: BootstrapSession, store_id: uuid.UUID) 
         )
         position += 1
     for link in db.scalars(
-        select(ProductModifierGroup).where(ProductModifierGroup.tenant_id == tenant_id).order_by(ProductModifierGroup.product_id)
+        select(ProductModifierGroup)
+        .where(ProductModifierGroup.tenant_id == tenant_id)
+        .order_by(ProductModifierGroup.product_id)
     ):
         record_id, body = _menu_body(link)
+        db.add(
+            BootstrapDatasetItem(
+                tenant_id=tenant_id,
+                session_id=session.id,
+                dataset="menu",
+                position=position,
+                record_id=record_id,
+                payload=_dump(body),
+            )
+        )
+        position += 1
+    priced = select(MenuPriceOption).where(MenuPriceOption.tenant_id == tenant_id).order_by(MenuPriceOption.id)
+    for option in db.scalars(priced):
+        record_id, body = _menu_body(option)
         db.add(
             BootstrapDatasetItem(
                 tenant_id=tenant_id,
@@ -448,7 +485,12 @@ def _freeze_config(db: Session, session: BootstrapSession, store_id: uuid.UUID) 
 
 def _own_session(db: Session, device: Device, session_id: uuid.UUID) -> BootstrapSession:
     row = db.get(BootstrapSession, session_id)
-    if row is None or row.tenant_id != active_tenant_id() or row.device_id != device.id or row.store_id != device.store_id:
+    if (
+        row is None
+        or row.tenant_id != active_tenant_id()
+        or row.device_id != device.id
+        or row.store_id != device.store_id
+    ):
         raise ApiError(404, "bootstrap_not_found", "That bootstrap session is not available to this register.")
     if row.schema_version != SCHEMA_VERSION:
         raise ApiError(409, "bootstrap_version", "This register does not understand that bootstrap version.")
@@ -629,7 +671,12 @@ def _read_cursor(device: Device, token: str) -> tuple[int, uuid.UUID]:
 
 def _session_for_cursor(db: Session, device: Device, session_id: uuid.UUID) -> BootstrapSession:
     row = db.get(BootstrapSession, session_id)
-    if row is None or row.tenant_id != active_tenant_id() or row.device_id != device.id or row.store_id != device.store_id:
+    if (
+        row is None
+        or row.tenant_id != active_tenant_id()
+        or row.device_id != device.id
+        or row.store_id != device.store_id
+    ):
         raise ApiError(403, "cursor_scope", "The pull cursor is not valid for this register.")
     latest = db.scalar(
         select(BootstrapSession)

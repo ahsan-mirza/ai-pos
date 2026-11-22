@@ -128,6 +128,7 @@ def _ticket_out(ticket: KitchenTicket, station: KitchenStation | None) -> Ticket
                 combo_name=item.combo_name,
                 seat=item.seat,
                 note=item.note,
+                skip_recipe=item.skip_recipe,
                 ready_at=item.ready_at,
                 voided_at=item.voided_at,
             )
@@ -426,6 +427,7 @@ class _Line:
     note: str | None = None
     components: list | None = None
     combo_name: str | None = None
+    skip_recipe: bool = False
 
 
 def _expand(db: Session, lines: list[_Line]) -> list[_Line]:
@@ -455,6 +457,7 @@ def _expand(db: Session, lines: list[_Line]) -> list[_Line]:
                     seat=line.seat,
                     note=line.note,
                     combo_name=names.get(line.product_id),
+                    skip_recipe=line.skip_recipe,
                 )
             )
     return out
@@ -530,6 +533,7 @@ def _fire(db: Session, source: _Source, lines: list[_Line]) -> None:
                     combo_name=line.combo_name,
                     seat=line.seat,
                     note=line.note,
+                    skip_recipe=line.skip_recipe,
                     position=position,
                 )
             )
@@ -565,6 +569,7 @@ def fire(db: Session, order: OpenOrder, items: list[OpenOrderItem]) -> None:
             seat=item.seat,
             note=item.note,
             components=item.components,
+            skip_recipe=item.skip_recipe,
         )
         for item in items
     ]
@@ -597,7 +602,10 @@ def fire_sale(db: Session, sale: Sale, sold_at: datetime) -> None:
     _fire(
         db,
         source,
-        [_Line(item.product_id, item.quantity, item.modifiers, components=item.components) for item in items],
+        [
+            _Line(item.product_id, item.quantity, item.modifiers, components=item.components, skip_recipe=item.skip_recipe)
+            for item in items
+        ],
     )
 
 

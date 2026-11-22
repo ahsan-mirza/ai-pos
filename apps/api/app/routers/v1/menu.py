@@ -14,6 +14,8 @@ from app.schemas.menu import (
     ModifierGroupOut,
     ModifierTemplateIn,
     ModifierTemplateOut,
+    PriceOptionOut,
+    PriceOptionsIn,
     ProductGroupsIn,
     RegisterMenu,
 )
@@ -65,6 +67,16 @@ def delete_group(group_id: uuid.UUID, db: Db, _: CanManage, detach: bool = Query
 @router.put("/products/{product_id}/modifier-groups", response_model=list[uuid.UUID])
 def set_product_groups(product_id: uuid.UUID, payload: ProductGroupsIn, db: Db, _: CanManage) -> list[uuid.UUID]:
     return menu_service.set_product_groups(db, product_id, payload)
+
+
+@router.get("/products/{product_id}/price-options", response_model=list[PriceOptionOut])
+def list_price_options(product_id: uuid.UUID, db: Db, _: CanRead) -> list[PriceOptionOut]:
+    return menu_service.list_price_options(db, product_id)
+
+
+@router.put("/products/{product_id}/price-options", response_model=list[PriceOptionOut])
+def replace_price_options(product_id: uuid.UUID, payload: PriceOptionsIn, db: Db, _: CanManage) -> list[PriceOptionOut]:
+    return menu_service.replace_price_options(db, product_id, payload)
 
 
 @router.get("/register", response_model=RegisterMenu)

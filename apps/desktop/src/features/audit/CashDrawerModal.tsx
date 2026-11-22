@@ -88,7 +88,11 @@ export function CashDrawerModal({ currency, onClose, onLogged }: CashDrawerModal
           });
         }
         const kicked = inTauri() ? await openCashDrawer().then(() => null, (failure: unknown) => String(failure)) : null;
-        onLogged(kicked ? `Logged to the audit trail, but the drawer did not open: ${kicked}` : "Drawer opened. Logged to the audit trail.");
+        onLogged(
+          kicked
+            ? `Logged to the audit trail, but the drawer kick failed: ${kicked}`
+            : "Drawer kick command submitted. Open or closed is not reported. Logged to the audit trail.",
+        );
       } else {
         await recordRegisterEvent({
           action_type: "CASH_DROP",

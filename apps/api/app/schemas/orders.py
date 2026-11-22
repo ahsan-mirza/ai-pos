@@ -21,6 +21,9 @@ class OrderItemIn(ApiModel):
     quantity: int = Field(ge=1, le=1000)
     unit_price_cents: int = Field(ge=0)
     modifiers: list[ModifierChoice] = Field(default_factory=list, max_length=30)
+    price_option_id: UUID | None = None
+    # Explicit exception for this line only. Absent keeps the recipe.
+    skip_recipe: bool = False
     # Meal components for a combo item; each fires to its own kitchen station.
     components: list[ComboChoice] = Field(default_factory=list, max_length=20)
     seat: int | None = Field(default=None, ge=1, le=99)
@@ -138,6 +141,10 @@ class OrderItemOut(ApiModel):
     quantity: int
     unit_price_cents: int
     modifiers: list[dict] = Field(default_factory=list)
+    price_option_id: UUID | None = None
+    price_option_name: str | None = None
+    price_option_cents: int | None = None
+    skip_recipe: bool = False
     components: list[dict] = Field(default_factory=list)
     seat: int | None
     note: str | None

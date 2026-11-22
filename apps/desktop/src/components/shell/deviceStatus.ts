@@ -121,25 +121,43 @@ export function unverified(item: Indicator): Indicator {
 }
 
 export function printerIndicator(probe: PrinterProbe): Indicator | null {
-  if (!probe.configured) return null;
+  if (!probe.configured) {
+    return row({
+      id: "receipt-printer",
+      kind: "receipt_printer",
+      label: "Printer",
+      name: "Receipt printer",
+      light: "red",
+      status: "Receipt printer not configured.",
+      connection: "None",
+      configured: 0,
+      actions: ["configure"],
+    });
+  }
   const failed = Boolean(probe.lastError) && (probe.lastOkAt == null || (probe.lastErrorAt ?? 0) >= probe.lastOkAt);
   let light: Light;
   let status: string;
   if (probe.printing) {
     light = "amber";
     status = "A receipt is being sent. This connection does not report paper level.";
-  } else if (!probe.reachable) {
+  } else if (probe.printerStatus === "missing") {
     light = "red";
-    status = probe.reachError || "The printer is unreachable.";
+    status = "Selected receipt printer not found. Select an installed receipt printer to enable cash drawer control.";
+  } else if (probe.compatibility === "unsupported" || probe.compatibility === "candidate" || probe.printerStatus === "candidate") {
+    light = "amber";
+    status = "This device is not verified as a supported receipt printer.";
+  } else if (!probe.reachable || probe.printerStatus === "offline" || probe.printerStatus === "unavailable") {
+    light = "red";
+    status = probe.reachError || "Receipt printer unavailable.";
   } else if (failed) {
     light = "amber";
     status = `The connection opened, and the last print failed. ${probe.lastError}`;
-  } else if (probe.lastOkAt) {
+  } else if (probe.printerStatus === "ready") {
     light = "green";
-    status = "The printer is reachable and a receipt was printed. Opening the port alone does not count as ready.";
+    status = "Receipt printer connected.";
   } else {
     light = "amber";
-    status = "The printer accepted a connection. It has not printed yet, so it is not marked ready.";
+    status = probe.reachError || "Receipt printer status is still being checked.";
   }
   return row({
     id: "receipt-printer",
@@ -161,19 +179,58 @@ export function printerIndicator(probe: PrinterProbe): Indicator | null {
   });
 }
 
+const DRAWER_UNKNOWN = "Open/closed state: Not reported.";
+
+export function drawerCanTest(probe: PrinterProbe): boolean {
+  return (
+    probe.configured &&
+    probe.drawerKick &&
+    probe.reachable &&
+    probe.printerStatus === "ready" &&
+    probe.supportsDrawerKick === true &&
+    probe.compatibility !== "unsupported" &&
+    probe.compatibility !== "candidate"
+  );
+}
+
 export function drawerIndicator(probe: PrinterProbe): Indicator | null {
-  if (!probe.configured || !probe.drawerKick) return null;
-  let light: Light = "gray";
-  let status = "Configured to kick through the receipt printer. A kick has not been confirmed, and the drawer does not report open or closed.";
-  if (!probe.reachable) {
-    light = "red";
-    status = "The receipt printer is unreachable, so the drawer cannot be kicked. Open or closed is not reported.";
+  if (!probe.configured) {
+    return row({
+      id: "cash-drawer",
+      kind: "cash_drawer",
+      label: "Drawer",
+      name: "Cash drawer",
+      light: "red",
+      status: `Receipt printer not configured. ${DRAWER_UNKNOWN}`,
+      connection: "Receipt printer",
+      configured: 0,
+      actions: ["configure"],
+    });
+  }
+  let light: Light = "red";
+  let status = `Drawer control is unavailable. ${DRAWER_UNKNOWN}`;
+  const actions: IndicatorAction[] = ["configure"];
+  if (!probe.drawerKick) {
+    light = "gray";
+    status = `Cash payments do not kick the drawer on this register. ${DRAWER_UNKNOWN}`;
+  } else if (probe.printerStatus === "missing") {
+    status = `Selected receipt printer not found. Select an installed receipt printer to enable cash drawer control. ${DRAWER_UNKNOWN}`;
+  } else if (!probe.reachable || probe.printerStatus === "offline" || probe.printerStatus === "unavailable") {
+    status = `Receipt printer unavailable, so the drawer cannot be kicked. ${DRAWER_UNKNOWN}`;
+  } else if (!probe.supportsDrawerKick) {
+    status = `This printer has no known drawer-kick profile. ${DRAWER_UNKNOWN}`;
   } else if (probe.lastKickError) {
     light = "amber";
-    status = `The last drawer kick failed. Open or closed is not reported. ${probe.lastKickError}`;
+    status = `Drawer command failed. ${DRAWER_UNKNOWN} ${probe.lastKickError}`;
+    actions.unshift("test_kick");
   } else if (probe.lastKickOkAt) {
+    light = "amber";
+    status = `Drawer command submitted. ${DRAWER_UNKNOWN}`;
+    actions.unshift("test_kick");
+  } else if (drawerCanTest(probe)) {
     light = "green";
-    status = "The last drawer kick was accepted by the printer. The drawer does not report whether it is open or closed.";
+    status = `Drawer control available through the selected printer. ${DRAWER_UNKNOWN}`;
+    actions.unshift("test_kick");
   }
   return row({
     id: "cash-drawer",
@@ -184,8 +241,9 @@ export function drawerIndicator(probe: PrinterProbe): Indicator | null {
     status,
     connection: "Receipt printer",
     lastOkAt: stamp(probe.lastKickOkAt),
-    lastError: probe.lastKickError,
-    actions: ["test_kick", "configure"],
+    lastError: probe.lastKickError || probe.reachError,
+    address: probe.address || null,
+    actions,
     configured: 1,
   });
 }

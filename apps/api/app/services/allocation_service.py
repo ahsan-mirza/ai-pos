@@ -112,7 +112,12 @@ def issue_allocation(
     level = _lock_level(db, product_id, store_id)
     if serial_number_id is not None:
         serial = db.get(SerialNumber, serial_number_id)
-        if serial is None or serial.product_id != product_id or serial.store_id != store_id or serial.status != "in_stock":
+        if (
+            serial is None
+            or serial.product_id != product_id
+            or serial.store_id != store_id
+            or serial.status != "in_stock"
+        ):
             raise ApiError(422, "serial_unavailable", "That serial is not in stock at this branch.")
         taken = db.scalar(
             select(TerminalAllocation.id).where(

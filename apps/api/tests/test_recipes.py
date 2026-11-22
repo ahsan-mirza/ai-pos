@@ -5,10 +5,10 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 from tests.test_batches import on_hand
 from tests.test_menu import choice, enable, extras_group, sale_with
-from tests.test_returns import CABLE_ID, STORE_ID, admin_token, bearer, push, seed_catalog
+from tests.test_returns import CABLE_ID, CASHIER_ID, STORE_ID, admin_id, admin_token, bearer, device, push, seed_catalog
 from tests.test_weighed import category
 
-from app.models import AuditLog, SaleItem
+from app.models import AuditLog, RecipeUsage, SaleItem, StockMovement
 
 
 def ingredient(client, token: str, name: str, *, quantity: int, by_weight: bool, category_id: str) -> dict:
@@ -152,4 +152,136 @@ def test_prepared_dishes_are_omitted_from_stock_and_report_buildable_portions(cl
     assert after["out_count"] == 1
     physical = client.get("/api/v1/inventory/stock", headers=headers, params={"store_id": STORE_ID}).json()
     assert all(row["item_type"] != "MADE_TO_ORDER" for row in physical["rows"])
+
+
+def _recipe(client, token: str) -> dict:
+    seed_catalog(client)
+    enable(client, token, "menu_modifiers", "recipes", "open_orders", "tables")
+    pantry = category(client, token)
+    milk = ingredient(client, token, "Milk", quantity=0, by_weight=False, category_id=pantry)
+    saved = client.put(
+        f"/api/v1/recipes/{CABLE_ID}",
+        headers=bearer(token),
+        json={"yield_quantity": 1, "lines": [{"ingredient_id": milk["id"], "quantity": 200}]},
+    )
+    assert saved.status_code == 200, saved.text
+    return milk
+
+
+def test_skip_recipe_is_refused_without_permission_and_draws_nothing_when_allowed(client, session: Session) -> None:
+    token = admin_token(client)
+    milk = _recipe(client, token)
+    blocked = sale_with([], 1500)
+    blocked["items"][0]["skip_recipe"] = True
+    refused = push(client, "sale", blocked)
+    assert refused.status_code == 422
+    assert "permission" in refused.json()["error"]["message"]
+    assert on_hand(session, milk["id"]) == 0
+
+    allowed = sale_with([], 1500)
+    allowed["cashier_id"] = admin_id(client)
+    allowed["items"][0]["skip_recipe"] = True
+    key = f"sale-{allowed['id']}"
+    assert push(client, "sale", allowed, key=key).status_code == 200
+    assert push(client, "sale", allowed, key=key).status_code == 200
+    session.expire_all()
+    assert on_hand(session, milk["id"]) == 0
+    item = session.get(SaleItem, uuid.UUID(allowed["items"][0]["id"]))
+    assert item is not None and item.skip_recipe is True and item.unit_price_cents == 1500 and item.quantity == 1
+    assert session.scalar(select(RecipeUsage).where(RecipeUsage.sale_id == item.sale_id)) is None
+    movements = session.scalars(select(StockMovement).where(StockMovement.movement_type == "RECIPE_OUT")).all()
+    assert movements == []
+    skipped = session.scalar(select(AuditLog).where(AuditLog.action == "recipe.skip"))
+    assert skipped is not None and skipped.details["ingredient_requirement"] == "not_required"
+    assert skipped.user_id is not None
+
+    # The same dish still draws when the line does not skip, and a shortfall does not refuse the sale.
+    drawn = sale_with([], 1500)
+    assert push(client, "sale", drawn).status_code == 200
+    session.expire_all()
+    usage = session.scalar(select(RecipeUsage).where(RecipeUsage.sale_id == uuid.UUID(drawn["id"])))
+    assert usage is not None and usage.quantity_drawn == 0 and usage.quantity_needed == 200
+
+
+def test_an_order_line_can_skip_its_recipe_only_for_an_authorized_user(client, session: Session) -> None:
+    token = admin_token(client)
+    milk = _recipe(client, token)
+    floor = client.post("/api/v1/dining/areas", headers=bearer(token), json={"store_id": STORE_ID, "name": "Terrace"})
+    assert floor.status_code == 201, floor.text
+    area = floor.json()["areas"][0]
+    tables = client.post(
+        "/api/v1/dining/tables", headers=bearer(token), json={"area_id": area["id"], "label": "T1", "seats": 4}
+    )
+    table = tables.json()["areas"][0]["tables"][0]
+    line = {
+        "id": str(uuid.uuid4()),
+        "product_id": CABLE_ID,
+        "quantity": 2,
+        "unit_price_cents": 1500,
+        "skip_recipe": True,
+    }
+    denied = client.post(
+        "/api/v1/orders",
+        headers=device(),
+        json={
+            "id": str(uuid.uuid4()),
+            "store_id": STORE_ID,
+            "table_id": table["id"],
+            "covers": 2,
+            "user_id": CASHIER_ID,
+            "items": [line],
+        },
+    )
+    assert denied.status_code == 403, denied.text
+    opened = client.post(
+        "/api/v1/orders",
+        headers=device(),
+        json={
+            "id": str(uuid.uuid4()),
+            "store_id": STORE_ID,
+            "table_id": table["id"],
+            "covers": 2,
+            "user_id": admin_id(client),
+            "items": [line],
+        },
+    )
+    assert opened.status_code == 201, opened.text
+    saved = opened.json()["items"][0]
+    assert saved["skip_recipe"] is True and saved["unit_price_cents"] == 1500 and saved["quantity"] == 2
+    assert on_hand(session, milk["id"]) == 0
+    again = client.get(f"/api/v1/orders/{opened.json()['id']}", headers=device())
+    assert again.status_code == 200 and again.json()["items"][0]["skip_recipe"] is True
+    extra = {**line, "id": str(uuid.uuid4())}
+    added = client.post(
+        f"/api/v1/orders/{opened.json()['id']}/items",
+        headers=device(),
+        json={"revision": opened.json()["revision"], "user_id": admin_id(client), "items": [extra]},
+    )
+    assert added.status_code == 200, added.text
+    assert added.json()["status"] == "OPEN"
+    assert [item["skip_recipe"] for item in added.json()["items"]] == [True, True]
+    blocked_add = client.post(
+        f"/api/v1/orders/{opened.json()['id']}/items",
+        headers=device(),
+        json={"revision": added.json()["revision"], "user_id": CASHIER_ID, "items": [{**line, "id": str(uuid.uuid4())}]},
+    )
+    assert blocked_add.status_code == 403
+    enable(client, token, "kds")
+    station = client.post(
+        "/api/v1/kds/stations",
+        headers=bearer(token),
+        json={"store_id": STORE_ID, "name": "Kitchen", "is_default": True},
+    )
+    assert station.status_code == 201, station.text
+    sent = client.post(
+        f"/api/v1/orders/{opened.json()['id']}/send",
+        headers=device(),
+        json={"revision": added.json()["revision"], "user_id": admin_id(client)},
+    )
+    assert sent.status_code == 200, sent.text
+    board = client.get(f"/api/v1/kds/stations/{station.json()['id']}/tickets", headers=device())
+    assert board.status_code == 200, board.text
+    flagged = [item for ticket in board.json()["tickets"] for item in ticket["items"] if item["skip_recipe"]]
+    assert flagged and flagged[0]["voided_at"] is None and flagged[0]["ready_at"] is None
+    assert on_hand(session, milk["id"]) == 0
 

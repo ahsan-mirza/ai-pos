@@ -9,6 +9,7 @@ import {
   type ComboChoice,
   type ModifierChoice,
   rateFor,
+  requiresPriceOption,
   resolveUnitPrice,
   resolveWithLists,
   unitFactor,
@@ -60,6 +61,10 @@ export interface CartLine {
   promotion?: { id: string; name: string; discountCents: number } | null;
   /** Menu modifiers; list and unit prices include their deltas. Lines with modifiers never merge. */
   modifiers?: ModifierChoice[];
+  /** The serving option chosen for a multi-price menu item. The price is the snapshot, not a later menu price. */
+  priceOption?: { id: string; name: string; price_cents: number };
+  /** True only when this line was added without consuming its recipe. */
+  skipRecipe?: boolean;
   /** Preparation note for the kitchen. It does not change the price. */
   instruction?: string;
   /** Meal components; list and unit prices include their surcharges. Meal lines never merge. */
@@ -133,11 +138,23 @@ export type CartAction =
       modifiers?: ModifierChoice[];
       components?: ComboChoice[];
       instruction?: string;
+      /** Required when the menu item has more than one active priced option. */
+      priceOption?: { id: string; name: string; price_cents: number };
+      /** Explicit choice to sell this line without consuming its recipe. */
+      skipRecipe?: boolean;
       /** Restores a saved ticket line without minting a new id or a new price. */
       lineId?: string;
       priceSnapshotCents?: number;
     }
-  | { type: "set_customization"; lineId: string; modifiers: ModifierChoice[]; quantity: number; instruction?: string }
+  | {
+      type: "set_customization";
+      lineId: string;
+      modifiers: ModifierChoice[];
+      quantity: number;
+      instruction?: string;
+      priceOption?: { id: string; name: string; price_cents: number };
+      skipRecipe?: boolean;
+    }
   | { type: "duplicate_line"; lineId: string }
   /** Settling a restaurant tab: the cart becomes the tab's unpaid lines, one cart line per tab line. */
   | {
@@ -149,6 +166,7 @@ export type CartAction =
         components?: ComboChoice[];
         orderItemId: string;
         instruction?: string;
+        skipRecipe?: boolean;
       }[];
     }
   /** One weighing (scale reading or label) of a sold-by-weight product: its own line, in grams. */
@@ -322,6 +340,7 @@ export function applyCart(state: CartState, action: CartAction): CartResult {
           components: line.components?.length ? line.components : undefined,
           orderItemId: line.orderItemId,
           instruction: line.instruction?.trim().slice(0, 160) || undefined,
+          skipRecipe: line.skipRecipe || undefined,
         }),
       );
       return ok({ ...emptyCart, mode: "RETAIL", lines }, `${lines.length} order line${lines.length === 1 ? "" : "s"} ready to pay.`);
@@ -345,21 +364,46 @@ export function applyCart(state: CartState, action: CartAction): CartResult {
       const modifiers = action.modifiers?.length ? action.modifiers : undefined;
       const components = action.components?.length ? action.components : undefined;
       const instruction = action.instruction?.trim().slice(0, 160) || undefined;
-      if (action.lineId || modifiers || components || instruction) {
+      const option = action.priceOption;
+      if (requiresPriceOption(product.price_options) && !option && action.priceSnapshotCents == null) {
+        return refuse(state, `${product.name} needs a priced option.`);
+      }
+      const optionUnit = option ? option.price_cents + modifierDelta(modifiers) + comboDelta(components) : null;
+      if (option && !action.lineId && !modifiers && !components && !instruction) {
+        const same = state.lines.find(
+          (line) =>
+            line.product.id === product.id &&
+            line.priceOption?.id === option.id &&
+            Boolean(line.skipRecipe) === Boolean(action.skipRecipe) &&
+            line.serialValue === null &&
+            !line.modifiers?.length &&
+            !line.components?.length &&
+            !line.instruction,
+        );
         const error = stockError(state.lines, product, packs);
         if (error) return refuse(state, error);
+        if (same) {
+          const lines = state.lines.map((line) =>
+            line.lineId === same.lineId ? { ...line, quantity: line.quantity + packs } : line,
+          );
+          return ok({ ...state, lines }, `${product.name} added.`);
+        }
+      }
+      const skipRecipe = action.skipRecipe === true;
+      if (action.lineId || modifiers || components || instruction || option || skipRecipe) {
+        const error = stockError(state.lines, product, packs);
+        if (error) return refuse(state, error);
+        const snapshot = action.priceSnapshotCents ?? optionUnit;
         const line = newLine(product, packs, "PIECE", {
           ...(action.lineId ? { lineId: action.lineId } : {}),
-          ...(action.priceSnapshotCents != null
-            ? {
-                priceSnapshotCents: action.priceSnapshotCents,
-                unitPriceCents: action.priceSnapshotCents,
-                listPriceCents: action.priceSnapshotCents,
-              }
+          ...(snapshot != null
+            ? { priceSnapshotCents: snapshot, unitPriceCents: snapshot, listPriceCents: snapshot }
             : {}),
+          ...(option ? { priceOption: option } : {}),
           modifiers,
           components,
           instruction,
+          ...(skipRecipe ? { skipRecipe: true } : {}),
         });
         return ok({ ...state, lines: [...state.lines, line] }, action.lineId ? null : `${product.name} added.`);
       }
@@ -367,6 +411,8 @@ export function applyCart(state: CartState, action: CartAction): CartResult {
         (line) =>
           line.product.id === product.id &&
           line.serialValue === null &&
+          !line.priceOption &&
+          !line.skipRecipe &&
           !line.modifiers?.length &&
           !line.components?.length &&
           !line.instruction,
@@ -435,9 +481,21 @@ export function applyCart(state: CartState, action: CartAction): CartResult {
       if (error) return refuse(state, error);
       const instruction = action.instruction?.trim().slice(0, 160) || undefined;
       const modifiers = action.modifiers.length ? action.modifiers : undefined;
-      const lines = state.lines.map((item) =>
-        item.lineId === line.lineId ? { ...item, quantity: action.quantity, modifiers, instruction } : item,
-      );
+      const option = action.priceOption ?? line.priceOption;
+      const lines = state.lines.map((item) => {
+        if (item.lineId !== line.lineId) return item;
+        const next = {
+          ...item,
+          quantity: action.quantity,
+          modifiers,
+          instruction,
+          priceOption: option,
+          skipRecipe: action.skipRecipe ?? item.skipRecipe,
+        };
+        if (!option) return next;
+        const unit = option.price_cents + modifierDelta(modifiers) + comboDelta(item.components);
+        return { ...next, unitPriceCents: unit, listPriceCents: unit, priceSnapshotCents: unit };
+      });
       return ok({ ...state, lines }, `${line.product.name} updated.`);
     }
     case "duplicate_line": {

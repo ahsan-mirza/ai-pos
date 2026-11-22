@@ -1,7 +1,7 @@
 """Strict medicine sale allocation. Grocery FEFO is covered in test_pharmacy_lots."""
 
 import uuid
-from datetime import UTC, date, datetime, timedelta
+from datetime import date, timedelta
 from types import SimpleNamespace
 
 from sqlalchemy import func, select

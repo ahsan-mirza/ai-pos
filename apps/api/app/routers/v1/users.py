@@ -12,8 +12,8 @@ from app.core.errors import ApiError
 from app.core.permissions import Permission
 from app.models.user import User
 from app.schemas.auth import PasswordReset, PinReset, RegisterStaffOut, UserCreate, UserOut, UserUpdate
-from app.schemas.user_preference import CatalogueViewOut, CatalogueViewWrite
 from app.schemas.payloads import ApiModel
+from app.schemas.user_preference import CatalogueViewOut, CatalogueViewWrite
 from app.services import rbac_service, staff_provision_service, user_preference_service
 
 router = APIRouter()

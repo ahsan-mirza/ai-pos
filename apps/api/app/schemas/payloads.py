@@ -225,6 +225,10 @@ class SaleItemPayload(ApiModel):
     promotion_id: UUID | None = None
     # Menu modifiers; unit_price_cents and list_price_cents include their price deltas.
     modifiers: list[ModifierChoice] = Field(default_factory=list, max_length=30)
+    # The serving option chosen when the menu item has more than one base price.
+    price_option_id: UUID | None = None
+    # Explicit exception: do not draw this line's recipe. Absent or false keeps the existing recipe draw.
+    skip_recipe: bool = False
     components: list[ComboChoice] = Field(default_factory=list, max_length=20)
     # Cashier discount after any promotion, before VAT, with a reason from pos_policy; discount_override names the
     # manager who approved it when it is above the cashier's own limit.
@@ -646,6 +650,8 @@ class ProductOut(ApiModel):
     is_stock_tracked: bool = True
     # Business-wide and this branch's price-list entries (customer and group lists come per customer).
     price_lists: list[PriceListEntryOut] = Field(default_factory=list)
+    # Active priced serving options. Empty means the item has one base price.
+    price_options: list[dict] = Field(default_factory=list)
     # Cover photo: the variant's own, else its model's photo for this colour, else the model's primary photo.
     image_url: str | None = None
     thumb_url: str | None = None

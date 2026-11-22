@@ -396,8 +396,10 @@ export function CartItemCard({
         </span>
       </div>
 
-      {combo || instruction || giftCode || promoName || (manualCents > 0 && discountLabel) || moqHint || next !== null ? (
+      {combo || instruction || first.priceOption || first.skipRecipe || giftCode || promoName || (manualCents > 0 && discountLabel) || moqHint || next !== null ? (
         <p className="mt-0.5 flex flex-wrap items-center gap-x-2 text-[0.6875rem] leading-4 text-zinc-500 dark:text-white/50">
+          {first.priceOption ? <span className="font-semibold text-zinc-700 dark:text-white/80">{first.priceOption.name}</span> : null}
+          {first.skipRecipe ? <span className="font-semibold text-zinc-700 dark:text-white/80">{t("Ingredients not required")}</span> : null}
           {combo ? <span className="font-semibold text-zinc-700 dark:text-white/80">{combo}</span> : null}
           {instruction ? <span className="font-medium text-zinc-700 dark:text-white/80">“{instruction}”</span> : null}
           {giftCode ? <span className="font-mono font-semibold text-primary">{giftCode}</span> : null}

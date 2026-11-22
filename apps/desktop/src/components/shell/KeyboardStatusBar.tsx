@@ -29,6 +29,7 @@ import { capabilitiesAvailable, subscriptionHold, useCapabilities } from "../../
 import { noteSyncCounts, subscribeSyncActivity, type SyncSnapshot } from "../../lib/syncActivity";
 import { bootstrapReadiness, conflictCount, exitDemo, inTauri, openCashDrawer, pendingCount, probePrinter, readScale, rejectedCount, type PrinterProbe } from "../../lib/tauri";
 import { VirtualKeyboard } from "../common/VirtualKeyboard";
+import { openHardwareSettings } from "./settingsEntry";
 import { useShell } from "./ShellContext";
 import {
   LIGHT_CLASS,
@@ -209,8 +210,17 @@ export function KeyboardStatusBar() {
     };
     void probe();
     const timer = window.setInterval(() => void probe(), 30_000);
+    let stopHardware = () => {};
+    void import("@tauri-apps/api/event").then(async ({ listen }) => {
+      const unlisten = await listen("printer-hardware-change", () => {
+        if (!stopped) void probe();
+      });
+      if (stopped) unlisten();
+      else stopHardware = unlisten;
+    });
     return () => {
       stopped = true;
+      stopHardware();
       window.clearInterval(timer);
     };
   }, []);
@@ -307,7 +317,8 @@ export function KeyboardStatusBar() {
         return;
       }
       if (action === "configure") {
-        navigate("settings");
+        if (_item.kind === "receipt_printer" || _item.kind === "cash_drawer") openHardwareSettings(navigate);
+        else navigate("settings");
         setOpenId(null);
         return;
       }
@@ -331,7 +342,7 @@ export function KeyboardStatusBar() {
       if (action === "test_kick") {
         await openCashDrawer();
         setPrinter(await probePrinter());
-        setNotice("Drawer kick sent. The drawer does not report open or closed.");
+        setNotice("Drawer kick command submitted. Open/closed state: Not reported.");
         return;
       }
       if (action === "read_scale") {
@@ -431,6 +442,11 @@ export function KeyboardStatusBar() {
                 aria-pressed={openId === item.id}
                 onClick={() => {
                   setNotice(null);
+                  if (item.kind === "receipt_printer" || item.kind === "cash_drawer") {
+                    openHardwareSettings(navigate);
+                    setOpenId(null);
+                    return;
+                  }
                   setOpenId((current) => (current === item.id ? null : item.id));
                 }}
                 className="inline-flex h-7 shrink-0 items-center gap-1.5 px-1.5 text-xs text-slate-300 hover:bg-slate-800"

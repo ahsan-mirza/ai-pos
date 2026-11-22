@@ -146,11 +146,55 @@ class ComboOut(ApiModel):
     slots: list[ComboSlotOut]
 
 
+class PriceOptionIn(ApiModel):
+    """One base price of a menu item. Omitted id creates a new option."""
+
+    id: UUID | None = None
+    name: str = Field(min_length=1, max_length=80)
+    price_cents: int = Field(ge=0, le=100_000_000)
+    sku: str | None = Field(default=None, max_length=64)
+    is_active: bool = True
+    position: int = Field(default=0, ge=0, le=1000)
+
+
+class PriceOptionsIn(ApiModel):
+    options: list[PriceOptionIn] = Field(default_factory=list, max_length=40)
+
+    @model_validator(mode="after")
+    def labels(self) -> Self:
+        seen: set[str] = set()
+        active = 0
+        for option in self.options:
+            label = option.name.strip().casefold()
+            if not label:
+                raise ValueError("A priced option needs a name.")
+            if label in seen:
+                raise ValueError("Two priced options on one item cannot share a name.")
+            seen.add(label)
+            if option.is_active:
+                active += 1
+        if active == 1:
+            raise ValueError("Add at least two priced options, or leave the list empty to keep the single price.")
+        return self
+
+
+class PriceOptionOut(ApiModel):
+    id: UUID
+    product_id: UUID
+    name: str
+    price_cents: int
+    sku: str | None = None
+    is_active: bool
+    position: int
+
+
 class RegisterMenu(ApiModel):
-    """Everything a register needs to offer modifiers and meals offline."""
+    """Everything a register needs to offer modifiers, meals, and priced options offline."""
 
     groups: list[ModifierGroupOut]
     # product_id -> ordered group ids
     products: dict[str, list[UUID]]
     # combo product_id -> its slots
     combos: dict[str, list[ComboSlotOut]] = Field(default_factory=dict)
+    # product_id -> active priced options, lowest display order first
+    price_options: dict[str, list[PriceOptionOut]] = Field(default_factory=dict)

@@ -5,6 +5,7 @@ from app.models.attribute import ProductAttributeDefinition, ProductAttributeVal
 from app.models.audit_log import AuditLog
 from app.models.banking import BankAccount, BankStatement, BankStatementLine
 from app.models.base import Base
+from app.models.batch import BatchAllocation, BatchItem, ImportMappingTemplate, PurchaseBatch, Supplier
 from app.models.bootstrap import (
     BootstrapDatasetItem,
     BootstrapSession,
@@ -13,7 +14,6 @@ from app.models.bootstrap import (
     CatalogChange,
     CatalogFeedCounter,
 )
-from app.models.batch import BatchAllocation, BatchItem, ImportMappingTemplate, PurchaseBatch, Supplier
 from app.models.branch_tax import BranchTaxProfile, LegalEntity
 from app.models.brand import Brand, ProductModel
 from app.models.business_settings import BusinessSettings
@@ -75,8 +75,17 @@ from app.models.laundry_production import (
 from app.models.loyalty import LoyaltyEntry
 from app.models.margin import MarginPolicy
 from app.models.markdown import MarkdownEvent, PriceChange
-from app.models.menu import ComboSlot, ComboSlotOption, ModifierGroup, ModifierOption, ProductModifierGroup
+from app.models.menu import (
+    ComboSlot,
+    ComboSlotOption,
+    MenuPriceOption,
+    ModifierGroup,
+    ModifierOption,
+    ProductModifierGroup,
+)
 from app.models.messaging import MessageTemplate, OutboundMessage
+from app.models.offline_approval import OfflineConflictAdjustment, OfflineWriteoffRequest
+from app.models.offline_review import ConflictAdjustmentRequest, LostTerminalRequest
 from app.models.payables import SupplierBill, SupplierBillLine, SupplierPayment, SupplierPaymentAllocation
 from app.models.payment_intent import PaymentIntent, PaymentRefund, PaymentTerminal
 from app.models.pharmacy import PharmacyProductDetails, ProductDocument, ProductIngredient, SubstitutionGroup
@@ -163,13 +172,11 @@ from app.models.scheduled_job import ScheduledJob
 from app.models.serial_number import SerialNumber
 from app.models.shift import CashMovement, RegisterShift
 from app.models.staff import CommissionRule, EmployeeProfile, PayrollLine, PayrollRun
-from app.models.offline_approval import OfflineConflictAdjustment, OfflineWriteoffRequest
 from app.models.staff_provisioning import StaffProvisioningEvent
 from app.models.stock_count import StockCount, StockCountLine
 from app.models.store import Store
 from app.models.store_credit import StoreCredit, StoreCreditRedemption
 from app.models.sync_event import SyncEvent
-from app.models.offline_review import ConflictAdjustmentRequest, LostTerminalRequest
 from app.models.terminal_allocation import TerminalAllocation, TerminalAllocationConsumption
 from app.models.time_entry import TimeEntry
 from app.models.trade_in import TradeIn
@@ -190,6 +197,12 @@ __all__ = [
     "BankStatement",
     "BankStatementLine",
     "Base",
+    "BootstrapDatasetItem",
+    "BootstrapSession",
+    "BootstrapSettingSnapshot",
+    "BootstrapSnapshotItem",
+    "CatalogChange",
+    "CatalogFeedCounter",
     "BatchAllocation",
     "BatchItem",
     "BatchItemEvent",
@@ -284,6 +297,7 @@ __all__ = [
     "MarginPolicy",
     "ComboSlot",
     "ComboSlotOption",
+    "MenuPriceOption",
     "ModifierGroup",
     "ModifierOption",
     "ProductModifierGroup",
@@ -378,6 +392,13 @@ __all__ = [
     "StockTransferLine",
     "StockTransferSerial",
     "Store",
+    "ConflictAdjustmentRequest",
+    "LostTerminalRequest",
+    "OfflineConflictAdjustment",
+    "OfflineWriteoffRequest",
+    "StaffProvisioningEvent",
+    "TerminalAllocation",
+    "TerminalAllocationConsumption",
     "StoreCredit",
     "SubstitutionGroup",
     "StoreCreditRedemption",

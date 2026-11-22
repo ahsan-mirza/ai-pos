@@ -1,6 +1,7 @@
 """Menu modifiers. The portal edits groups and links them to products; registers cache the menu and send each
 line's choices, which the server re-prices from this catalogue (names in the payload are informational)."""
 
+import json
 import uuid
 from collections import defaultdict
 from collections.abc import Sequence
@@ -10,12 +11,14 @@ from sqlalchemy.orm import Session
 
 from app.core.capabilities import FOOD_AND_BEVERAGE, Capability, resolve
 from app.core.errors import ApiError, SyncRejected
-from app.models.menu import ModifierGroup, ModifierOption, ProductModifierGroup
+from app.models.menu import MenuPriceOption, ModifierGroup, ModifierOption, ProductModifierGroup
 from app.models.product import Product
 from app.schemas.menu import (
     ModifierGroupIn,
     ModifierGroupOut,
     ModifierOptionOut,
+    PriceOptionOut,
+    PriceOptionsIn,
     ProductGroupsIn,
     RegisterMenu,
 )
@@ -330,7 +333,16 @@ def register_menu(db: Session) -> RegisterMenu:
         out.append(row)
     from app.services import combo_service
 
-    return RegisterMenu(groups=out, products=dict(products), combos=combo_service.register_combos(db))
+    priced: dict[str, list[PriceOptionOut]] = defaultdict(list)
+    active_options = select(MenuPriceOption).where(MenuPriceOption.is_active.is_(True))
+    for option in db.scalars(active_options.order_by(MenuPriceOption.position, MenuPriceOption.name)):
+        priced[str(option.product_id)].append(_price_out(option))
+    return RegisterMenu(
+        groups=out,
+        products=dict(products),
+        combos=combo_service.register_combos(db),
+        price_options={key: rows for key, rows in priced.items() if len(rows) >= 2},
+    )
 
 
 def price_choices(db: Session, product: Product, choices: list[ModifierChoice]) -> tuple[int, list[dict] | None]:
@@ -381,3 +393,141 @@ def price_choices(db: Session, product: Product, choices: list[ModifierChoice]) 
         for option in options
     ]
     return sum(option.price_delta_cents for options in picked.values() for option in options), snapshot or None
+
+
+def _price_out(option: MenuPriceOption) -> PriceOptionOut:
+    return PriceOptionOut(
+        id=option.id,
+        product_id=option.product_id,
+        name=option.name,
+        price_cents=option.price_cents,
+        sku=option.sku,
+        is_active=option.is_active,
+        position=option.position,
+    )
+
+
+def list_price_options(db: Session, product_id: uuid.UUID) -> list[PriceOptionOut]:
+    product = db.get(Product, product_id)
+    if product is None:
+        raise ApiError(404, "not_found", "Product was not found.")
+    rows = db.scalars(
+        select(MenuPriceOption)
+        .where(MenuPriceOption.product_id == product_id)
+        .order_by(MenuPriceOption.position, MenuPriceOption.name)
+    ).all()
+    return [_price_out(row) for row in rows]
+
+
+def replace_price_options(db: Session, product_id: uuid.UUID, data: PriceOptionsIn) -> list[PriceOptionOut]:
+    """Replace the item's priced options. A referenced option is deactivated instead of deleted."""
+    product = db.get(Product, product_id)
+    if product is None:
+        raise ApiError(404, "not_found", "Product was not found.")
+    if product.is_serialized or product.sold_by_weight or product.is_open_price:
+        raise ApiError(422, "invalid_request", "This product cannot have priced serving options.")
+    existing = {
+        row.id: row
+        for row in db.scalars(select(MenuPriceOption).where(MenuPriceOption.product_id == product_id)).all()
+    }
+    seen: set[uuid.UUID] = set()
+    for position, item in enumerate(data.options):
+        name = item.name.strip()
+        sku = (item.sku or "").strip() or None
+        if item.id is not None:
+            row = existing.get(item.id)
+            if row is None:
+                raise ApiError(422, "invalid_request", "A priced option does not belong to this item.")
+            row.name = name
+            row.price_cents = item.price_cents
+            row.sku = sku
+            row.is_active = item.is_active
+            row.position = position
+            seen.add(row.id)
+            continue
+        db.add(
+            MenuPriceOption(
+                id=uuid.uuid4(),
+                product_id=product_id,
+                name=name,
+                price_cents=item.price_cents,
+                sku=sku,
+                is_active=item.is_active,
+                position=position,
+            )
+        )
+    for row in existing.values():
+        if row.id in seen:
+            continue
+        if _option_is_referenced(db, row.id):
+            row.is_active = False
+            continue
+        db.delete(row)
+    db.commit()
+    return list_price_options(db, product_id)
+
+
+def _option_is_referenced(db: Session, option_id: uuid.UUID) -> bool:
+    from app.models.restaurant import OpenOrderItem
+    from app.models.sale_item import SaleItem
+
+    sold = db.scalar(select(SaleItem.id).where(SaleItem.price_option_id == option_id).limit(1))
+    ordered = db.scalar(select(OpenOrderItem.id).where(OpenOrderItem.price_option_id == option_id).limit(1))
+    return sold is not None or ordered is not None
+
+
+def published_option_prices(db: Session, option_id: uuid.UUID) -> set[int]:
+    """Prices this option has already been given in a signed catalogue snapshot or change feed."""
+    from app.models.bootstrap import BootstrapDatasetItem, CatalogChange
+
+    record = str(option_id)
+    raws = list(
+        db.scalars(
+            select(CatalogChange.payload)
+            .where(CatalogChange.dataset == "menu", CatalogChange.record_id == record)
+            .order_by(CatalogChange.seq.desc())
+            .limit(30)
+        ).all()
+    )
+    raws.extend(
+        db.scalars(
+            select(BootstrapDatasetItem.payload)
+            .where(BootstrapDatasetItem.dataset == "menu", BootstrapDatasetItem.record_id == record)
+            .limit(30)
+        ).all()
+    )
+    prices: set[int] = set()
+    for raw in raws:
+        if not raw:
+            continue
+        try:
+            body = json.loads(raw)
+        except json.JSONDecodeError:
+            continue
+        cents = body.get("price_cents") if isinstance(body, dict) else None
+        if body.get("kind") == "price_option" and isinstance(cents, int) and cents >= 0:
+            prices.add(cents)
+    return prices
+
+
+def resolve_price_option(
+    db: Session, product: Product, option_id: uuid.UUID | None, submitted_base: int
+) -> dict | None:
+    """The chosen base price, or None when the item has a single price.
+
+    A price is accepted when it is the option's current price or a price already published to registers.
+    Any other amount is rejected. The option must belong to this product.
+    """
+    rows = list(db.scalars(select(MenuPriceOption).where(MenuPriceOption.product_id == product.id)).all())
+    active = [row for row in rows if row.is_active]
+    if option_id is None:
+        if len(active) >= 2:
+            raise SyncRejected(f"{product.name} needs a priced option.")
+        return None
+    option = next((row for row in rows if row.id == option_id), None)
+    if option is None:
+        raise SyncRejected(f"The priced option on {product.name} is not on this menu.")
+    allowed = {int(option.price_cents), *published_option_prices(db, option.id)}
+    if submitted_base not in allowed:
+        raise SyncRejected(f"The price for {option.name} on {product.name} does not match the menu.")
+    return {"id": str(option.id), "name": option.name, "price_cents": submitted_base}

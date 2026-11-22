@@ -63,6 +63,14 @@ function withSavedLanguage(doc: ReceiptDoc): ReceiptDoc {
   };
 }
 
+/** Cash taken in, and the register policy, are both required. Card, failed, and cancelled sales pass kickDrawer false. */
+export function shouldKickDrawer(
+  options: { kickDrawer: boolean },
+  settings: Pick<PrinterSettings, "drawer_kick" | "transport">,
+): boolean {
+  return options.kickDrawer && settings.drawer_kick && settings.transport !== "none";
+}
+
 /** Prints a receipt on the configured printer; the drawer kicks only for cash taken in. */
 export async function printReceipt(doc: ReceiptDoc, options: { kickDrawer: boolean; manual?: boolean }): Promise<PrintOutcome> {
   const slip = withSavedLanguage(doc);
@@ -74,7 +82,7 @@ export async function printReceipt(doc: ReceiptDoc, options: { kickDrawer: boole
     return { printed: true, message: null };
   }
   if (!options.manual && !settings.auto_print) {
-    if (options.kickDrawer && settings.drawer_kick) await openCashDrawer().catch(() => undefined);
+    if (shouldKickDrawer(options, settings)) await openCashDrawer().catch(() => undefined);
     return { printed: false, message: null };
   }
   try {
@@ -83,7 +91,7 @@ export async function printReceipt(doc: ReceiptDoc, options: { kickDrawer: boole
       width: rendered.width,
       height: rendered.height,
       data: rendered.bits(),
-      kick_drawer: options.kickDrawer && settings.drawer_kick,
+      kick_drawer: shouldKickDrawer(options, settings),
     });
     return { printed: true, message: null };
   } catch (error) {

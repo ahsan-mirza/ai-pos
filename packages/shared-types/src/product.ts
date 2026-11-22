@@ -38,6 +38,8 @@ export interface ProductPricing {
   is_stock_tracked?: boolean;
   /** Business-wide and this branch's price-list entries; customer and group lists come per customer. */
   price_lists?: PriceListEntry[];
+  /** Active priced serving options. Two or more replace the single base price on a food menu. */
+  price_options?: import("./menu.js").MenuPriceOption[];
   /** Cover photo (the variant's own, its model's photo for this colour, or the model's primary photo). */
   image_url?: string | null;
   thumb_url?: string | null;
@@ -145,6 +147,7 @@ export function productSyncPayload(product: ProductUpsert): Omit<ProductUpsert, 
     item_type: _itemType,
     is_stock_tracked: _tracked,
     price_lists: _lists,
+    price_options: _priceOptions,
     image_url: _image,
     thumb_url: _thumb,
     season: _season,

@@ -3,27 +3,26 @@
 import base64
 import threading
 import uuid
-from datetime import UTC, datetime, timedelta
 
 import pytest
 from sqlalchemy import create_engine, func, select
 from sqlalchemy.orm import Session
+from tests.test_sync import event, push
 
 from app.core.config import get_settings
 from app.core.deps import Principal, hash_device_key
 from app.core.permissions import Permission
 from app.models import Base
 from app.models.batch import BatchItem, PurchaseBatch
-from app.models.user import User
 from app.models.device import Device
 from app.models.inventory import InventoryLevel, StockMovement
 from app.models.product import Product
 from app.models.serial_number import SerialNumber
 from app.models.store import Store
 from app.models.terminal_allocation import TerminalAllocation
+from app.models.user import User
 from app.services.allocation_service import issue_allocation
 from app.services.inventory import move_stock
-from tests.test_sync import event, push
 
 RFC_SEED = bytes.fromhex("9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60")
 STORE = "00000000-0000-4000-8000-0000000000b1"
@@ -48,7 +47,10 @@ def _admin(client) -> dict[str, str]:
 
 
 def _seed(client, *, stock: int = 100, serialized: bool = False, product_id: str = PRODUCT) -> None:
-    store = push(client, [event("o6-store", "store", {"id": STORE, "code": "O6", "name": "Allocation", "currency": "USD"})])
+    store = push(
+        client,
+        [event("o6-store", "store", {"id": STORE, "code": "O6", "name": "Allocation", "currency": "USD"})],
+    )
     assert store.status_code == 200, store.text
     product = push(
         client,
@@ -156,7 +158,8 @@ def test_allocations_cannot_exceed_or_overlap_branch_stock(client, session: Sess
     assert level is not None
     assert level.quantity_on_hand == 100
     assert level.quantity_reserved == 100
-    assert session.scalar(select(func.count()).select_from(StockMovement).where(StockMovement.product_id == uuid.UUID(PRODUCT))) == 1
+    movements = select(func.count()).select_from(StockMovement).where(StockMovement.product_id == uuid.UUID(PRODUCT))
+    assert session.scalar(movements) == 1
 
 
 def test_two_terminals_leave_twenty_five_unallocated(client, session: Session) -> None:
@@ -244,7 +247,8 @@ def test_a_failed_batch_does_not_consume_allocation(client, session: Session) ->
     row = session.get(TerminalAllocation, uuid.UUID(grant["id"]))
     assert row.quantity_consumed == 0
     assert row.last_sequence == 0
-    assert session.scalar(select(func.count()).select_from(StockMovement).where(StockMovement.movement_type == "SALE_OUT")) == 0
+    sales_out = select(func.count()).select_from(StockMovement).where(StockMovement.movement_type == "SALE_OUT")
+    assert session.scalar(sales_out) == 0
 
 
 def test_online_sale_and_adjustment_leave_reserved_units(client, session: Session) -> None:
@@ -452,8 +456,11 @@ def test_weighed_and_serial_allocations_stay_exact(client, session: Session) -> 
     till_a = _device(session, "A1", "aipos_o6_till_a_token_value")
     grant = _allocate(client, admin, till_a.id, 25_500)
     assert grant["unit"] == "g"
-    assert _push_sale(client, "aipos_o6_till_a_token_value", _sale(4_250, grant["id"], 1, total=4_250), "o6-grams").status_code == 200
-    over = _push_sale(client, "aipos_o6_till_a_token_value", _sale(21_251, grant["id"], 2, total=21_251), "o6-grams-over")
+    weighed = _push_sale(client, "aipos_o6_till_a_token_value", _sale(4_250, grant["id"], 1, total=4_250), "o6-grams")
+    assert weighed.status_code == 200
+    over = _push_sale(
+        client, "aipos_o6_till_a_token_value", _sale(21_251, grant["id"], 2, total=21_251), "o6-grams-over"
+    )
     assert over.status_code == 422
     session.expire_all()
     assert session.get(TerminalAllocation, uuid.UUID(grant["id"])).remaining == 21_250
@@ -471,7 +478,9 @@ def test_weighed_and_serial_allocations_stay_exact(client, session: Session) -> 
     session.add(serial)
     phone_level = session.scalar(select(InventoryLevel).where(InventoryLevel.product_id == uuid.UUID(phone)))
     if phone_level is None:
-        phone_level = InventoryLevel(product_id=uuid.UUID(phone), store_id=uuid.UUID(STORE), quantity_on_hand=2, quantity_reserved=0)
+        phone_level = InventoryLevel(
+            product_id=uuid.UUID(phone), store_id=uuid.UUID(STORE), quantity_on_hand=2, quantity_reserved=0
+        )
         session.add(phone_level)
     else:
         phone_level.quantity_on_hand = 2
@@ -561,7 +570,17 @@ def test_two_writers_cannot_reserve_the_same_units(tmp_path) -> None:
     store_id = uuid.uuid4()
     product_id = uuid.uuid4()
     setup.add(Store(id=store_id, code="O6", name="Allocation", currency="USD"))
-    setup.add(Product(id=product_id, sku="O6", barcode="O6", name="Item", category="General", price_cents=100, currency="USD"))
+    setup.add(
+        Product(
+            id=product_id,
+            sku="O6",
+            barcode="O6",
+            name="Item",
+            category="General",
+            price_cents=100,
+            currency="USD",
+        )
+    )
     setup.flush()
     devices = []
     for code in ("A1", "B1"):

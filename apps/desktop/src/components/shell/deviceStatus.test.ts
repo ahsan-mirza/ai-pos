@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { PrinterProbe } from "../../lib/tauri";
 import {
   customerDisplayIndicator,
+  drawerCanTest,
   drawerIndicator,
   footerIndicators,
   fromRemote,
@@ -23,8 +24,22 @@ const printer = (patch: Partial<PrinterProbe> = {}): PrinterProbe => ({
   lastErrorAt: null,
   lastKickOkAt: null,
   lastKickError: null,
+  lastKickAttemptAt: null,
   drawerKick: true,
   printing: false,
+  printerStatus: "ready",
+  driver: null,
+  port: null,
+  discoveredAt: null,
+  drawerOpenState: "not_reported",
+  compatibility: "compatible",
+  supportsDrawerKick: true,
+  connection: "Network",
+  discoveryOutcome: "kept",
+  previousAddress: "",
+  autoDiscover: true,
+  model: "",
+  driverVersion: null,
   ...patch,
 });
 
@@ -49,12 +64,19 @@ const remote = (patch: Partial<RemotePeripheral> = {}): RemotePeripheral => ({
 const keyboard = { hasPhysicalKeyboard: true, connectionType: "wired" as const, isTouchDevice: false };
 
 describe("footer device lights", () => {
-  it("does not mark a printer ready just because the port opened", () => {
-    expect(printerIndicator(printer({ configured: false }))).toBeNull();
-    expect(printerIndicator(printer())?.light).toBe("amber");
+  it("marks a ready printer connected and keeps a failed print amber", () => {
+    expect(printerIndicator(printer({ configured: false }))?.light).toBe("red");
+    expect(printerIndicator(printer({ configured: false }))?.status).toContain("not configured");
+    expect(printerIndicator(printer())?.light).toBe("green");
+    expect(printerIndicator(printer())?.status).toContain("Receipt printer connected");
     expect(printerIndicator(printer({ lastOkAt: 1_700_000_000 }))?.light).toBe("green");
     expect(printerIndicator(printer({ reachable: false, reachError: "unreachable" }))?.light).toBe("red");
     expect(printerIndicator(printer({ printing: true, lastOkAt: 1 }))?.light).toBe("amber");
+    const virtual = printerIndicator(printer({ compatibility: "unsupported", printerStatus: "unavailable", reachable: false, reachError: "This device is not verified as a supported receipt printer." }));
+    expect(virtual?.light).not.toBe("green");
+    expect(virtual?.status).toContain("not verified");
+    expect(drawerCanTest(printer({ compatibility: "unsupported", supportsDrawerKick: true }))).toBe(false);
+    expect(drawerCanTest(printer({ compatibility: "candidate", printerStatus: "candidate", supportsDrawerKick: false }))).toBe(false);
     const fault = printerIndicator(printer({ lastOkAt: 10, lastError: "paper", lastErrorAt: 11 }));
     expect(fault?.light).toBe("amber");
     expect(fault?.failed).toBe(1);
@@ -62,12 +84,24 @@ describe("footer device lights", () => {
   });
 
   it("does not claim the drawer is open or closed", () => {
-    expect(drawerIndicator(printer({ drawerKick: false }))).toBeNull();
-    expect(drawerIndicator(printer())?.light).toBe("gray");
+    expect(drawerIndicator(printer({ configured: false }))?.light).toBe("red");
+    expect(drawerIndicator(printer({ configured: false }))?.status).toContain("not configured");
+    expect(drawerIndicator(printer({ drawerKick: false }))?.light).toBe("gray");
+    expect(drawerIndicator(printer())?.light).toBe("green");
+    expect(drawerIndicator(printer())?.status).toContain("Not reported");
+    expect(drawerIndicator(printer({ supportsDrawerKick: false }))?.light).toBe("red");
+    expect(drawerIndicator(printer({ supportsDrawerKick: false }))?.actions).not.toContain("test_kick");
     expect(drawerIndicator(printer({ reachable: false }))?.light).toBe("red");
-    expect(drawerIndicator(printer({ lastKickOkAt: 20 }))?.status).toMatch(/does not report/i);
-    expect(drawerIndicator(printer({ lastKickOkAt: 20 }))?.light).toBe("green");
+    const submitted = drawerIndicator(printer({ lastKickOkAt: 20 }));
+    expect(submitted?.status).toMatch(/Not reported/);
+    expect(submitted?.status).toMatch(/submitted/i);
+    expect(submitted?.light).toBe("amber");
     expect(drawerIndicator(printer({ lastKickError: "refused" }))?.light).toBe("amber");
+    const missing = drawerIndicator(printer({ reachable: false, printerStatus: "missing", address: "Toshiba thermal" }));
+    expect(missing?.light).toBe("red");
+    expect(missing?.status).toContain("Selected receipt printer not found");
+    expect(missing?.actions).not.toContain("test_kick");
+    expect(missing?.status).toContain("Not reported");
   });
 
   it("keeps local hardware when the API is down and does not duplicate the keyboard as USB", () => {

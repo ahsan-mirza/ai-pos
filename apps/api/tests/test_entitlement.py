@@ -4,14 +4,15 @@ import base64
 import json
 
 import pytest
+from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
 from sqlalchemy import select
+from tests.test_inventory import admin, seed
+from tests.test_terminal_activation import _key, _register
 
 from app.core.config import get_settings
 from app.models.audit_log import AuditLog
-from tests.test_terminal_activation import _key, _register
-from tests.test_inventory import admin, seed
 
 SEED = bytes([7]) * 32
 KEY_ID = "o2-test-1"
@@ -41,7 +42,11 @@ def test_activation_issues_a_signed_permanent_entitlement(client, session, monke
     try:
         activated = client.post(
             "/api/v1/terminals/activate",
-            json={"activation_key": _key(client, headers, device_id), "machine_name": "O2-TILL", "device_public_key": public},
+            json={
+                "activation_key": _key(client, headers, device_id),
+                "machine_name": "O2-TILL",
+                "device_public_key": public,
+            },
         )
         assert activated.status_code == 200, activated.text
         body = activated.json()
@@ -61,7 +66,7 @@ def test_activation_issues_a_signed_permanent_entitlement(client, session, monke
             signed["payload"].encode("utf-8"),
         )
         tampered = signed["payload"] + " "
-        with pytest.raises(Exception):
+        with pytest.raises(InvalidSignature):
             Ed25519PrivateKey.from_private_bytes(SEED).public_key().verify(
                 base64.b64decode(signed["signature"]),
                 tampered.encode("utf-8"),

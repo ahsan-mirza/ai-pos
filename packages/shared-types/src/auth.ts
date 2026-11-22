@@ -79,6 +79,7 @@ export const Permission = {
   AuditRead: "audit:read",
   PosOrders: "pos:orders",
   PosVoidSentItem: "pos:void_sent_item",
+  PosSkipRecipe: "pos:skip_recipe",
   KdsOperate: "kds:operate",
   SalesOrders: "sales:orders",
   SalesDispatchOverride: "sales:dispatch_override",

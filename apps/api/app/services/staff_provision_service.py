@@ -46,7 +46,11 @@ def provision(
     if existing is not None:
         if existing.payload_hash != digest:
             raise ApiError(409, "provisioning_conflict", "This staff event was already sent with a different payload.")
-        return {"status": "duplicate", "event_id": event_id, "user_id": str(existing.user_id) if existing.user_id else None}
+        return {
+            "status": "duplicate",
+            "event_id": event_id,
+            "user_id": str(existing.user_id) if existing.user_id else None,
+        }
 
     try:
         user = _apply(db, actor, body, operation)

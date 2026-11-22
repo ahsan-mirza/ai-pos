@@ -464,6 +464,9 @@ function Board({
                         <p className="ml-7 font-bold text-amber-300">{modifierSummary(item.modifiers)}</p>
                       ) : null}
                       {item.note ? <p className="ml-7 italic text-zinc-300">“{item.note}”</p> : null}
+                      {item.skip_recipe ? (
+                        <p className="ml-7 text-xs font-semibold uppercase tracking-wide text-zinc-400">No recipe ingredient consumption</p>
+                      ) : null}
                       {!item.voided_at && !item.ready_at && ticket.status !== "READY" && ticket.status !== "BUMPED" ? (
                         <button
                           type="button"

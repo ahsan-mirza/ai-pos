@@ -156,7 +156,6 @@ def get_principal(
         user, scope = _user_from_token(token.strip(), db, settings)
         audit_context.bind_user(user.id, user.full_name, user.role.name if user.role else None, user.store_id)
         from app.services.addon_access import effective_permissions
-
         from app.tenancy.scoping import bind_request_scope
 
         bind_request_scope(db, user.store_id, None)

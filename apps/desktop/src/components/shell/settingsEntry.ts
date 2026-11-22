@@ -29,6 +29,14 @@ function clearSettingsHash(): void {
   window.dispatchEvent(new HashChangeEvent("hashchange"));
 }
 
+/** Printer and drawer status lights open the combined hardware section. */
+export function openHardwareSettings(navigate: (view: RegisterView) => void): void {
+  const base = `${window.location.pathname}${window.location.search}`;
+  window.history.pushState({ posView: "settings", section: "hardware" }, "", `${base}#/settings/hardware`);
+  window.dispatchEvent(new HashChangeEvent("hashchange"));
+  navigate("settings");
+}
+
 /** Sidebar gear. Every profile, including laundry, opens the shared store settings page. */
 export function openSettings(profile: string, navigate: (view: RegisterView) => void): void {
   void profile;

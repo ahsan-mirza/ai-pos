@@ -1,8 +1,9 @@
-import { Capability, capabilitySpec, profileSpec, type BusinessSettings, Permission } from "@ai-pos/shared-types";
+import { Capability, capabilitySpec, isSupportedCurrency, profileSpec, type BusinessSettings, Permission } from "@ai-pos/shared-types";
 import { useEffect, useState } from "react";
 import { useShell } from "../../components/shell/ShellContext";
 import { terminal } from "../../config/terminal";
 import { getBusinessSettings } from "../../lib/api";
+import { fetchBusinessCurrency, inTauri } from "../../lib/tauri";
 import { useAppVersion } from "../../lib/appVersion";
 import { useCapabilities } from "../../lib/capabilities";
 import { activeStore } from "../checkout/currency";
@@ -71,13 +72,41 @@ export function SettingsWorkspace() {
 
   useEffect(() => {
     let cancelled = false;
+    const fail = (caught: unknown) => {
+      if (!cancelled) setLoadError(caught instanceof Error ? caught.message : "Business settings could not be loaded.");
+    };
+    if (inTauri()) {
+      void fetchBusinessCurrency()
+        .then((snapshot) => {
+          if (cancelled || !snapshot.currency || !isSupportedCurrency(snapshot.currency)) return;
+          const tax = snapshot.tax;
+          const profile = snapshot.profile;
+          setSettings({
+            currency: snapshot.currency,
+            supported_currencies: [snapshot.currency],
+            updated_at: "",
+            updated_by_name: null,
+            legal_name: tax?.legal_name ?? null,
+            legal_name_ar: tax?.legal_name_ar ?? null,
+            trn: tax?.trn ?? null,
+            prices_include_vat: tax?.prices_include_vat,
+            standard_rate_bps: tax?.standard_rate_bps,
+            vat_registered: Boolean(tax?.trn),
+            business_profile: profile?.business_profile ?? undefined,
+            capabilities: profile?.capabilities,
+            planned_capabilities: profile?.planned_capabilities,
+          });
+        })
+        .catch(fail);
+      return () => {
+        cancelled = true;
+      };
+    }
     void getBusinessSettings()
       .then((next) => {
         if (!cancelled) setSettings(next);
       })
-      .catch((caught: unknown) => {
-        if (!cancelled) setLoadError(caught instanceof Error ? caught.message : "Business settings could not be loaded.");
-      });
+      .catch(fail);
     return () => {
       cancelled = true;
     };

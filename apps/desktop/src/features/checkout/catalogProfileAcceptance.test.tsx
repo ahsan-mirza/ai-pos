@@ -264,6 +264,17 @@ describe("shared catalogue card by business profile", () => {
     expect(plain).not.toContain("Branch stock");
     expect(plain).not.toContain("Out of stock");
     expect(plain).not.toContain("+ Modifiers");
+    const priced = show("restaurant", {
+      ...grill,
+      price_cents: 1500,
+      price_options: [
+        { id: "breakfast", product_id: "grill", name: "Breakfast", price_cents: 800, is_active: true, position: 0 },
+        { id: "dinner", product_id: "grill", name: "Dinner", price_cents: 1500, is_active: true, position: 1 },
+      ],
+    });
+    expect(priced).toContain("From");
+    expect(priced).toContain("8.00");
+    expect(priced).not.toContain("15.00");
   });
 
   it("keeps the catalogue grid in rem and the card from stretching to the pane", () => {

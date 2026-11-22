@@ -3,7 +3,7 @@ policy (fashion conditions, exchange-only window, final-sale items, refunds net 
 
 import json
 import uuid
-from datetime import UTC, date, datetime, timedelta
+from datetime import date, timedelta
 from pathlib import Path
 
 from sqlalchemy import select
@@ -276,7 +276,8 @@ def test_refunds_carry_their_share_of_the_discount(client) -> None:
     seed(client)
     _, admin_id = admin(client)
     sold = sale([discounted(CABLE, 1, 1500, 300, discount_override={"approved_by_id": admin_id, "note": "VIP"})])
-    assert status(push_sale(client, "disc-ret-sale", sold, when=utcnow().replace(microsecond=0).isoformat())) == (200, "applied")
+    sold_at = utcnow().replace(microsecond=0).isoformat()
+    assert status(push_sale(client, "disc-ret-sale", sold, when=sold_at)) == (200, "applied")
     body = receipt_for(client, sold["id"])
     assert body["items"][0]["discount_cents"] == 300
     override = {"approved_by_id": admin_id, "reasons": ["no_refund_permission"], "note": "Checked."}

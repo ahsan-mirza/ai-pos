@@ -77,6 +77,8 @@ class KitchenTicketItem(TenantScoped, Base):
     combo_name: Mapped[str | None] = mapped_column(String(160), nullable=True)
     seat: Mapped[int | None] = mapped_column(Integer, nullable=True)
     note: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    # The register skipped this line's recipe. The kitchen still cooks it.
+    skip_recipe: Mapped[bool] = mapped_column(Boolean, default=False)
     position: Mapped[int] = mapped_column(Integer, default=0)
     # Set when this line is ready, even if other lines on the same ticket are still cooking.
     ready_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

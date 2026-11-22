@@ -1,0 +1,23 @@
+{
+  "productName": "AxizPOS Printer Acceptance",
+  "identifier": "com.axizpos.printer.acceptance",
+  "build": {
+    "beforeDevCommand": "node -e \"process.exit(0)\"",
+    "devUrl": "http://127.0.0.1:1420"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "AxizPOS Printer Acceptance",
+        "width": 1280,
+        "height": 800,
+        "resizable": true,
+        "dragDropEnabled": false
+      }
+    ]
+  },
+  "bundle": {
+    "active": false
+  }
+}

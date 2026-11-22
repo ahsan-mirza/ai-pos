@@ -91,6 +91,8 @@ class PricedLine:
     price_list_id: uuid.UUID | None = None
     # The customer's treatment when it took this standard-rated line to 0%.
     tax_treatment: str | None = None
+    # Chosen serving option, snapshotted as sold.
+    price_option: dict | None = None
 
 
 @dataclass
@@ -333,7 +335,11 @@ def price_lines(
         treatment: str | None = None
         includes_tax = entered_includes_tax(product)
         if enforced and tax_policy is not None and customer_policy is not None:
-            rate = item.tax_rate_bps if item.tax_rate_bps is not None else customer_policy.rate_for(product.tax_category)
+            rate = (
+                item.tax_rate_bps
+                if item.tax_rate_bps is not None
+                else customer_policy.rate_for(product.tax_category)
+            )
             expected = line_tax(charged, 1, rate, inclusive=includes_tax)
             standard_rate = tax_policy.rate_for(product.tax_category)
             # A queued sale names the rate it used. A later policy change must not reprice it.
@@ -383,11 +389,14 @@ def price_lines(
             pack = uom_service.label(db, item.unit_type)
             raise SyncRejected(f"{product.name}: quantity must be a whole number of {pack}.")
 
+        if item.skip_recipe and (cashier is None or Permission.POS_SKIP_RECIPE.value not in cashier.permissions):
+            raise SyncRejected("Skipping recipe ingredients needs permission.")
         approver = None
         modifier_delta, modifiers = 0, None
         combo_delta, components = 0, None
         price_source: str | None = None
         price_list_id: uuid.UUID | None = None
+        price_option = None
         if item.gift_card_code is not None:
             pass
         elif product.is_open_price:
@@ -403,7 +412,11 @@ def price_lines(
                 if item.price_override is None:
                     raise SyncRejected(f"A manager must approve the price change on {product.name}.")
                 approver = override_approver(db, item.price_override, store_id)
-            resolved = price_list_service.resolve_for(
+            extras = modifier_delta + combo_delta
+            price_option = menu_service.resolve_price_option(db, product, item.price_option_id, listed - extras)
+            if price_option is not None:
+                price_source = "menu_option"
+            resolved = None if price_option is not None else price_list_service.resolve_for(
                 product,
                 tier,
                 pieces[product.id],
@@ -412,11 +425,10 @@ def price_lines(
                 store_id=store_id,
                 at=moment,
             )
-            extras = modifier_delta + combo_delta
-            if listed == resolved.price_cents + extras:
+            if resolved is not None and listed == resolved.price_cents + extras:
                 price_source = resolved.source
                 price_list_id = uuid.UUID(resolved.price_list_id) if resolved.price_list_id else None
-            elif listed - extras not in resolved.candidates:
+            elif resolved is not None and listed - extras not in resolved.candidates:
                 priced.mismatches.append(
                     {
                         "product_id": str(product.id),
@@ -454,6 +466,7 @@ def price_lines(
                 price_source=price_source,
                 price_list_id=price_list_id,
                 tax_treatment=treatment,
+                price_option=price_option,
             )
         )
     return priced
@@ -975,6 +988,10 @@ def record_sale(
                 final_sale=bool(line.product.is_final_sale),
                 modifiers=line.modifiers,
                 components=line.components,
+                price_option_id=uuid.UUID(line.price_option["id"]) if line.price_option else None,
+                price_option_name=line.price_option["name"] if line.price_option else None,
+                price_option_cents=line.price_option["price_cents"] if line.price_option else None,
+                skip_recipe=line.item.skip_recipe,
                 price_source=line.price_source,
                 price_list_id=line.price_list_id,
                 tax_treatment=line.tax_treatment,
@@ -1053,15 +1070,37 @@ def record_sale(
             )
     batch_ledger.link_sale(db, data.id)
     costing.cost_sale(db, data.id)
+    from app.services.audit import record as audit_record
+
+    for line in priced.lines:
+        if not line.item.skip_recipe:
+            continue
+        audit_record(
+            db,
+            action_type="UPDATE",
+            action="recipe.skip",
+            target_entity="SaleItem",
+            target_entity_id=line.item.id,
+            store_id=data.store_id,
+            user_id=cashier.id,
+            details={
+                "sale_id": str(data.id),
+                "product_id": str(line.item.product_id),
+                "order_line_id": str(line.item.id),
+                "price_option_id": str(line.item.price_option_id) if line.item.price_option_id else None,
+                "ingredient_requirement": "not_required",
+                "quantity": line.item.quantity,
+            },
+        )
     sold_dishes = [
         recipe_service.SoldDish(line.item.id, line.product, line.item.quantity, line.modifiers)
         for line in priced.lines
-        if line.product.id in dishes
+        if line.product.id in dishes and not line.item.skip_recipe
     ] + [
         recipe_service.SoldDish(line.item.id, part, line.item.quantity, None)
         for line in priced.lines
         for part in parts.get(line.item.id, ())
-        if part.id in dishes
+        if part.id in dishes and not line.item.skip_recipe
     ]
     if sold_dishes:
         from app.services import fnb_service

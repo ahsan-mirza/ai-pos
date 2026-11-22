@@ -3,12 +3,12 @@
 import uuid
 
 from sqlalchemy import func, select
+from tests.conftest import ADMIN_PASSWORD
 
 from app.core.security import hash_password
 from app.models.inventory import StockMovement
 from app.models.store import Store
 from app.models.user import User
-from tests.conftest import ADMIN_PASSWORD
 
 
 def _admin(client) -> dict[str, str]:

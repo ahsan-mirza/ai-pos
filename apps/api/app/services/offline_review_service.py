@@ -154,7 +154,11 @@ def submit_conflict_adjustment(
         or not reason.strip()
         or not request_key.strip()
     ):
-        raise ApiError(422, "invalid_review", "A conflict adjustment needs both payload hashes, a currency, and a reason.")
+        raise ApiError(
+            422,
+            "invalid_review",
+            "A conflict adjustment needs both payload hashes, a currency, and a reason.",
+        )
     store = _bind(db, principal, store_id)
     existing = db.scalar(
         select(ConflictAdjustmentRequest).where(ConflictAdjustmentRequest.request_key == request_key)

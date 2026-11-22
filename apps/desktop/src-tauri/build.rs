@@ -19,8 +19,11 @@ fn main() {
     // read the disposable public key from the temp directory. Production never does.
     if pos_env_early == "acceptance" {
         if let Ok(temp) = env::var("TEMP").or_else(|_| env::var("TMP")) {
-            let folder = if env::var("ACCEPTANCE_PROFILE").unwrap_or_default() == "restaurant" {
+            let acceptance_profile = env::var("ACCEPTANCE_PROFILE").unwrap_or_default();
+            let folder = if acceptance_profile == "restaurant" {
                 "axiz-o810"
+            } else if acceptance_profile.starts_with("zoom-") {
+                "axiz-zoom"
             } else {
                 "axiz-o85"
             };
@@ -38,6 +41,8 @@ fn main() {
             if key_id.is_empty() && !public_key.is_empty() {
                 key_id = if folder == "axiz-o810" {
                     "o810-accept-1".to_string()
+                } else if folder == "axiz-zoom" {
+                    "zoom-accept-1".to_string()
                 } else {
                     "o85-accept-1".to_string()
                 };
@@ -139,8 +144,12 @@ fn emit_acceptance() {
             "com.axizpos.restaurant.acceptance",
             "http://127.0.0.1:18089",
         ),
+        "zoom-grocery" => ("com.axizpos.grocery.zoom", "http://127.0.0.1:18090"),
+        "zoom-electronics" => ("com.axizpos.electronics.zoom", "http://127.0.0.1:18091"),
+        "zoom-fashion" => ("com.axizpos.fashion.zoom", "http://127.0.0.1:18092"),
+        "zoom-restaurant" => ("com.axizpos.restaurant.zoom", "http://127.0.0.1:18093"),
         other => panic!(
-            "ACCEPTANCE_PROFILE must be pharmacy, inventory, laundry, offline, or restaurant; got {other:?}."
+            "ACCEPTANCE_PROFILE must be pharmacy, inventory, laundry, offline, restaurant, or a zoom profile; got {other:?}."
         ),
     };
     let url = env::var("ACCEPTANCE_TENANT_URL_TEMPLATE").unwrap_or_default();

@@ -1,5 +1,5 @@
 import { Capability, formatMoney } from "@ai-pos/shared-types";
-import { AlertTriangle, Banknote, Check, Palette, Printer, RotateCcw, Search, ShoppingCart, Store } from "lucide-react";
+import { AlertTriangle, Banknote, Check, Palette, RotateCcw, Search, ShoppingCart, Store } from "lucide-react";
 import { useId, useState } from "react";
 import { useRegisterLayout } from "../../components/RegisterLayout";
 import { ui } from "../../components/shell/tokens";
@@ -7,6 +7,7 @@ import { DEFAULT_PRIMARY, PRIMARY_PRESETS, contrastWithWhite, normalizeHex, save
 import { useCapabilities } from "../../lib/capabilities";
 import { useBusinessCurrency } from "../checkout/currency";
 import { PrinterSettingsModal } from "../printing/PrinterSettingsModal";
+import { ReceiptHardwareCard } from "../printing/ReceiptHardwareCard";
 import { sampleReceipt } from "../printing/saleReceipt";
 import { ScaleSettingsCard } from "./ScaleSettingsCard";
 import { SettingsSectionCard } from "./settingsUi";
@@ -20,6 +21,7 @@ export function AppearancePanel({ cashier, part }: { cashier: string; part: "app
   const [color, setColor] = useState(() => storedPrimaryColor() ?? DEFAULT_PRIMARY);
   const [hexText, setHexText] = useState(color);
   const [printer, setPrinter] = useState(false);
+  const [hardwareTick, setHardwareTick] = useState(0);
   const [notice, setNotice] = useState<string | null>(null);
   const hexId = useId();
   const choose = (hex: string) => {
@@ -87,21 +89,10 @@ export function AppearancePanel({ cashier, part }: { cashier: string; part: "app
         </div>
       </SettingsSectionCard>
       </> : null}
-      {part === "hardware" ? <SettingsSectionCard>
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-start gap-3">
-            <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-zinc-100"><Printer size={20} /></span>
-            <div>
-              <h2 className="text-lg font-semibold">Receipt printer and cash drawer</h2>
-              <p className="text-sm text-zinc-500">Printer connection, paper width, auto-print and drawer kick. This register only.</p>
-            </div>
-          </div>
-          <button type="button" onClick={() => setPrinter(true)} className={`h-11 px-5 ${ui.secondaryAction}`}>Open printer settings</button>
-        </div>
-      </SettingsSectionCard> : null}
+      {part === "hardware" ? <ReceiptHardwareCard sample={sampleReceipt(cashier)} refreshToken={hardwareTick} onChangePrinter={() => setPrinter(true)} /> : null}
       {part === "hardware" && capabilities.enabled.has(Capability.WeighedItems) ? <ScaleSettingsCard /> : null}
       {notice ? <p role="status" className="rounded-xl bg-white px-4 py-3 text-sm">{notice}</p> : null}
-      {printer ? <PrinterSettingsModal sample={sampleReceipt(cashier)} onClose={() => setPrinter(false)} onSaved={(message) => { setPrinter(false); setNotice(message); }} /> : null}
+      {printer ? <PrinterSettingsModal sample={sampleReceipt(cashier)} onClose={() => { setPrinter(false); setHardwareTick((tick) => tick + 1); }} onSaved={(message) => { setPrinter(false); setNotice(message); setHardwareTick((tick) => tick + 1); }} /> : null}
     </div>
   );
 }

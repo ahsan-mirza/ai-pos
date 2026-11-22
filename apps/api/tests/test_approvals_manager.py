@@ -127,7 +127,8 @@ def test_manager_dashboard_shows_today_by_branch_and_attention(client, session) 
     second = push(client, [event("dash-sale-2", "sale", sale([line(CABLE, 2, 1500)]), occurred_at=stamp)])
     assert second.status_code == 200, second.text
     _ask(client)
-    # The sales are 08:00 UTC. A UTC+4 business day reads that as 12:00, so the dashboard clock is 15:00 UTC the same day.
+    # The sales are 08:00 UTC. A UTC+4 business day reads that as 12:00,
+    # so the dashboard clock is 15:00 UTC the same day.
     sold = datetime.strptime(stamp, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=UTC)
     user = session.query(User).filter(User.username == "admin").one()
     principal = Principal(kind="user", scope="portal", user=user, permissions=frozenset(user.permissions))

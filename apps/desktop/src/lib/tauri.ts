@@ -472,6 +472,39 @@ export interface PrinterSettings {
   drawer_kick: boolean;
   auto_print: boolean;
   copies: number;
+  /** 0 is drawer pin 2. 1 is drawer pin 5. */
+  drawer_pin?: number;
+  /** Pulse on-time in units of 2 ms. */
+  drawer_on?: number;
+  /** Pulse off-time in units of 2 ms. */
+  drawer_off?: number;
+  auto_discover?: boolean;
+  previous_address?: string;
+  saved_driver?: string;
+  saved_port?: string;
+  saved_model?: string;
+  user_selected?: boolean;
+  /** Windows object GUID when the spooler returned one. */
+  saved_identity?: string;
+}
+
+export interface InstalledPrinter {
+  name: string;
+  driver: string;
+  port: string;
+  status: number;
+  statusLabel: string;
+  unavailable: boolean;
+  compatibility: "compatible" | "candidate" | "unsupported" | "unavailable" | "not_found" | string;
+  supportsDrawerKick: boolean;
+  connection: string;
+  profileId: string;
+  manufacturer?: string;
+  /** Spooler object GUID when Windows returned one. */
+  identity?: string;
+  openable?: boolean;
+  /** ready, offline, unavailable, or virtual. */
+  availability?: string;
 }
 
 export interface RasterJob {
@@ -497,12 +530,30 @@ export interface PrinterProbe {
   lastErrorAt: number | null;
   lastKickOkAt: number | null;
   lastKickError: string | null;
+  lastKickAttemptAt: number | null;
   drawerKick: boolean;
   printing: boolean;
+  printerStatus: "not_configured" | "missing" | "offline" | "unavailable" | "ready" | string;
+  driver: string | null;
+  port: string | null;
+  discoveredAt: number | null;
+  drawerOpenState: "not_reported" | string;
+  compatibility: string;
+  supportsDrawerKick: boolean;
+  connection: string;
+  discoveryOutcome: string;
+  previousAddress: string;
+  autoDiscover: boolean;
+  model: string;
+  driverVersion: string | null;
 }
 
 export function probePrinter(): Promise<PrinterProbe> {
   return invoke<PrinterProbe>("probe_printer");
+}
+
+export function listWindowsPrinters(): Promise<InstalledPrinter[]> {
+  return invoke<InstalledPrinter[]>("list_windows_printers");
 }
 
 export function savePrinterSettings(settings: PrinterSettings): Promise<PrinterSettings> {

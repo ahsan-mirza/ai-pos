@@ -548,6 +548,14 @@ pub fn save_printer_settings(
 }
 
 #[tauri::command]
+pub async fn list_windows_printers(state: tauri::State<'_, AppState>) -> Result<Vec<printer::InstalledPrinter>, String> {
+    require_session(&state)?;
+    tauri::async_runtime::spawn_blocking(printer::list_windows_printers)
+        .await
+        .map_err(|err| err.to_string())?
+}
+
+#[tauri::command]
 pub async fn probe_printer(state: tauri::State<'_, AppState>) -> Result<printer::PrinterProbe, String> {
     require_session(&state)?;
     let db = state.db.clone();
