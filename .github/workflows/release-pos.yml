@@ -62,6 +62,9 @@ jobs:
         env:
           AXIZPOS_SIGN_THUMBPRINT: ${{ secrets.AXIZPOS_SIGN_THUMBPRINT }}
           TAURI_WINDOWS_SIGNTOOL_PATH: ${{ secrets.TAURI_WINDOWS_SIGNTOOL_PATH }}
+          POS_ENTITLEMENT_KEY_ID: ${{ secrets.POS_ENTITLEMENT_KEY_ID }}
+          POS_ENTITLEMENT_PUBLIC_KEY: ${{ secrets.POS_ENTITLEMENT_PUBLIC_KEY }}
+          POS_ENTITLEMENT_PUBLIC_KEYS: ${{ secrets.POS_ENTITLEMENT_PUBLIC_KEYS }}
         run: pnpm --filter @ai-pos/desktop build:win
 
       - name: Upload workflow artifact

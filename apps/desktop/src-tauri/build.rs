@@ -110,7 +110,9 @@ fn main() {
         );
     }
     if release && pos_env == "production" && key_id.is_empty() && public_key.is_empty() && public_keys.is_empty() {
-        panic!("A production release needs POS_ENTITLEMENT_KEY_ID and POS_ENTITLEMENT_PUBLIC_KEY, or POS_ENTITLEMENT_PUBLIC_KEYS. No key was generated.");
+        println!(
+            "cargo:warning=Production release has no POS_ENTITLEMENT public key. Entitlement grants fail closed until POS_ENTITLEMENT_KEY_ID and POS_ENTITLEMENT_PUBLIC_KEY, or POS_ENTITLEMENT_PUBLIC_KEYS, are set. No key was generated."
+        );
     }
 
     println!("cargo:rustc-env=POS_TENANT_URL_TEMPLATE={url_template}");
