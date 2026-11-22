@@ -263,7 +263,11 @@ def test_an_order_line_can_skip_its_recipe_only_for_an_authorized_user(client, s
     blocked_add = client.post(
         f"/api/v1/orders/{opened.json()['id']}/items",
         headers=device(),
-        json={"revision": added.json()["revision"], "user_id": CASHIER_ID, "items": [{**line, "id": str(uuid.uuid4())}]},
+        json={
+            "revision": added.json()["revision"],
+            "user_id": CASHIER_ID,
+            "items": [{**line, "id": str(uuid.uuid4())}],
+        },
     )
     assert blocked_add.status_code == 403
     enable(client, token, "kds")

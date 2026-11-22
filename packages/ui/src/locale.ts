@@ -46,6 +46,7 @@ const arabic: Record<string, string> = {
   "Kitchen display": "شاشة المطبخ",
   "Kitchen agent": "مساعد المطبخ",
   "Recipes & ingredients": "الوصفات والمكونات",
+  "Ingredients not required": "المكونات غير مطلوبة",
   "Menu modifiers": "إضافات القائمة",
   "Delivery Integrations": "تكاملات التوصيل",
   Finance: "المالية",

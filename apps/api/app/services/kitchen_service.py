@@ -603,7 +603,13 @@ def fire_sale(db: Session, sale: Sale, sold_at: datetime) -> None:
         db,
         source,
         [
-            _Line(item.product_id, item.quantity, item.modifiers, components=item.components, skip_recipe=item.skip_recipe)
+            _Line(
+                item.product_id,
+                item.quantity,
+                item.modifiers,
+                components=item.components,
+                skip_recipe=item.skip_recipe,
+            )
             for item in items
         ],
     )
