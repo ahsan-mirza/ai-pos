@@ -342,7 +342,11 @@ export function ProductsPanel(access: WorkspaceAccess) {
         <div className="min-w-0 flex-1">
           <PosSearchToolbar query={q} onQuery={setQ} placeholder="Search products" onCommit={flush} />
         </div>
-        {access.pharmacyCatalogue ? <PrimaryButton onClick={() => setEditing("new")} disabled={!access.online}>Add product</PrimaryButton> : null}
+        {access.pharmacyCatalogue ? (
+          <PrimaryButton onClick={() => setEditing("new")} disabled={!access.online}>
+            {access.fnb ? "Add menu item" : "Add product"}
+          </PrimaryButton>
+        ) : null}
       </div>
       {error ? <Banner tone="error">{error}</Banner> : null}
       {message ? <Banner tone="ok">{message}</Banner> : null}

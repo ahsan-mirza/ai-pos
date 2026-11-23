@@ -172,17 +172,91 @@ pub fn load(db: &Db) -> Result<PrinterSettings, String> {
     })
 }
 
-pub fn save(db: &Db, settings: &PrinterSettings) -> Result<PrinterSettings, String> {
+pub fn hardware_change_allowed(permissions: &[String]) -> bool {
+    permissions
+        .iter()
+        .any(|item| item == "devices:manage" || item == "settings:manage")
+}
+
+/// Checks a register configuration before it is written. A virtual Windows queue is allowed as a
+/// diagnostic preference. It is not treated as a connected receipt printer by the probe.
+pub fn prepare_settings(settings: &PrinterSettings) -> Result<PrinterSettings, String> {
     if !matches!(settings.transport.as_str(), "none" | "tcp" | "windows") {
-        return Err("Choose Network (TCP), Windows printer, or None.".into());
-    }
-    if settings.transport != "none" && settings.address.trim().is_empty() {
-        return Err("Enter the printer address or Windows printer name.".into());
+        return Err("Choose Network (LAN), Windows printer, or None.".into());
     }
     if !matches!(settings.paper_dots, 384 | 576) {
         return Err("Paper width must be 58 mm (384 dots) or 80 mm (576 dots).".into());
     }
-    let copies = settings.copies.clamp(1, 3);
+    if !(1..=3).contains(&settings.copies) {
+        return Err("Copies per sale must be 1, 2, or 3.".into());
+    }
+    checked_pulse(settings.drawer_pin, settings.drawer_on, settings.drawer_off)?;
+    let mut next = settings.clone();
+    next.address = settings.address.trim().to_string();
+    next.previous_address = settings.previous_address.trim().to_string();
+    match next.transport.as_str() {
+        "none" => {
+            if !next.address.is_empty() {
+                next.previous_address = next.address.clone();
+                next.address.clear();
+            }
+            next.user_selected = false;
+        }
+        "tcp" => validate_tcp(&next.address)?,
+        "windows" => {
+            if next.address.is_empty() {
+                return Err("Select a Windows printer.".into());
+            }
+        }
+        _ => {}
+    }
+    Ok(next)
+}
+
+fn validate_tcp(address: &str) -> Result<(), String> {
+    if address.is_empty() || address.chars().any(|c| c.is_whitespace()) {
+        return Err("Enter the printer IP address or hostname.".into());
+    }
+    let (host, port_text) = match address.rsplit_once(':') {
+        Some((host, port)) if !host.is_empty() && !host.contains(':') && port.chars().all(|c| c.is_ascii_digit()) => {
+            (host, Some(port))
+        }
+        Some(_) => return Err("Enter an IPv4 address or hostname, with an optional port.".into()),
+        None => (address, None),
+    };
+    if let Some(port) = port_text {
+        let parsed: u32 = port.parse().unwrap_or(0);
+        if parsed == 0 || parsed > 65535 {
+            return Err("The printer port must be a number from 1 to 65535.".into());
+        }
+    }
+    let labels: Vec<&str> = host.split('.').collect();
+    let ipv4 = labels.len() == 4
+        && labels.iter().all(|part| !part.is_empty() && part.parse::<u8>().is_ok() && part.len() <= 3);
+    let all_numeric = labels.iter().all(|part| !part.is_empty() && part.chars().all(|c| c.is_ascii_digit()));
+    if all_numeric {
+        if ipv4 {
+            return Ok(());
+        }
+        return Err("Enter a valid printer IP address or hostname.".into());
+    }
+    let hostname = !labels.is_empty()
+        && labels.iter().all(|label| {
+            !label.is_empty()
+                && label.len() <= 63
+                && label.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
+                && !label.starts_with('-')
+                && !label.ends_with('-')
+        });
+    if !hostname {
+        return Err("Enter a valid printer IP address or hostname.".into());
+    }
+    Ok(())
+}
+
+pub fn save(db: &Db, settings: &PrinterSettings) -> Result<PrinterSettings, String> {
+    let settings = prepare_settings(settings)?;
+    let copies = settings.copies;
     let (drawer_pin, drawer_on, drawer_off) = checked_pulse(settings.drawer_pin, settings.drawer_on, settings.drawer_off)?;
     db.transaction(|tx| {
         tx.execute(
@@ -232,6 +306,7 @@ pub struct RasterJob {
     pub kick_drawer: bool,
 }
 
+#[cfg(test)]
 const DRAWER_KICK: [u8; 5] = [0x1b, b'p', 0, 25, 250];
 const BAND_ROWS: u32 = 256;
 const KICK_GAP_SECS: i64 = 3;
@@ -1504,6 +1579,54 @@ mod tests {
         .unwrap();
         assert_eq!(load(&db).unwrap().address, "Receipt");
         assert_eq!(changed.drawer_pin, 0);
+        let mut invalid = changed.clone();
+        invalid.copies = 0;
+        match save(&db, &invalid) {
+            Err(err) => assert!(err.contains("Copies"), "{err}"),
+            Ok(_) => panic!("invalid copies were saved"),
+        }
+        assert_eq!(load(&db).unwrap().address, "Receipt");
+        assert_eq!(load(&db).unwrap().copies, 1);
+        let mut network = PrinterSettings {
+            transport: "tcp".into(),
+            address: "192.168.1.50".into(),
+            paper_dots: 384,
+            copies: 2,
+            ..PrinterSettings::default()
+        };
+        let lan = save(&db, &network).unwrap();
+        assert_eq!(lan.transport, "tcp");
+        assert_eq!(lan.address, "192.168.1.50");
+        assert_eq!(lan.paper_dots, 384);
+        network.address = "999.1.1.1".into();
+        assert!(save(&db, &network).is_err());
+        assert_eq!(load(&db).unwrap().address, "192.168.1.50");
+        let mut none = lan.clone();
+        none.transport = "none".into();
+        let cleared = save(&db, &none).unwrap();
+        assert_eq!(cleared.transport, "none");
+        assert_eq!(cleared.address, "");
+        assert_eq!(cleared.previous_address, "192.168.1.50");
+        let mut virtual_queue = PrinterSettings {
+            transport: "windows".into(),
+            address: "OneNote (Desktop) - Protected".into(),
+            paper_dots: 384,
+            copies: 2,
+            drawer_kick: false,
+            user_selected: true,
+            auto_discover: true,
+            ..PrinterSettings::default()
+        };
+        let kept = save(&db, &virtual_queue).unwrap();
+        assert_eq!(kept.address, "OneNote (Desktop) - Protected");
+        assert_eq!(kept.paper_dots, 384);
+        assert!(!kept.drawer_kick);
+        virtual_queue.address.clear();
+        assert!(save(&db, &virtual_queue).is_err());
+        assert_eq!(load(&db).unwrap().address, "OneNote (Desktop) - Protected");
+        assert!(hardware_change_allowed(&["devices:manage".into()]));
+        assert!(hardware_change_allowed(&["settings:manage".into()]));
+        assert!(!hardware_change_allowed(&["pos:access".into(), "pos:orders".into()]));
         let _ = std::fs::remove_file(&path);
         let queues = vec![queue("Receipt", 0)];
         let probed = find_queue("Toshiba thermal", &queues);

@@ -22,7 +22,11 @@ import {
   filterPrinters,
   foundMessage,
   selectionAfterRefresh,
+  networkAddressError,
+  saveFeedback,
   selectionWarning,
+  VIRTUAL_SAVED,
+  MISSING_SAVED,
 } from "./printerSelection";
 
 const sample = {} as ReceiptDoc;
@@ -213,6 +217,29 @@ describe("Windows printer dropdown", () => {
     expect(controlDisabled(html, "Test print")).toBe(true);
   });
 
+  it("saves an unsupported queue without calling it a connected receipt printer", () => {
+    expect(saveFeedback(settings({ address: pdf.name }), listed)).toBe(VIRTUAL_SAVED);
+    expect(saveFeedback(settings({ address: "Missing queue" }), listed)).toBe(MISSING_SAVED);
+    expect(saveFeedback(settings({ transport: "none", address: "" }), listed)).toContain("No receipt printer");
+    expect(saveFeedback(settings({ transport: "tcp", address: "192.168.1.50" }), listed)).toContain("Printer settings saved");
+    expect(networkAddressError("192.168.1.50")).toBeNull();
+    expect(networkAddressError("192.168.1.50:9100")).toBeNull();
+    expect(networkAddressError("999.1.1.1")).not.toBeNull();
+    expect(networkAddressError("10.0.0.5:0")).not.toBeNull();
+    expect(networkAddressError("")).not.toBeNull();
+    const blocked = modal(settings({ address: pdf.name }), listed);
+    expect(blocked).toContain("Save");
+    const saving = renderToStaticMarkup(
+      <PrinterSettingsModal sample={sample} onClose={() => undefined} onSaved={() => undefined} initialDraft={settings()} initialQueues={listed} initialBusy />,
+    );
+    expect(controlDisabled(saving, "Saving…")).toBe(true);
+    const denied = renderToStaticMarkup(
+      <PrinterSettingsModal sample={sample} onClose={() => undefined} onSaved={() => undefined} initialDraft={settings()} initialQueues={listed} canSave={false} />,
+    );
+    expect(denied).toContain("permission to manage this register");
+    expect(controlDisabled(denied, "Save")).toBe(true);
+  });
+
   it("identifies a virtual printer and does not treat it as a receipt printer", () => {
     const html = modal(settings({ address: pdf.name, saved_identity: "{pdf}" }), listed);
     expect(html).toContain("Virtual printer");
@@ -247,7 +274,10 @@ describe("Windows printer dropdown", () => {
     expect(lan).toContain("192.168.1.50");
     expect(lan).not.toContain("Select Windows printer");
     expect(lan).toContain("80 mm");
-    expect(lan).toContain("Print a receipt after every sale");
+    expect(lan).toContain("Ask before printing a sale receipt");
+    expect(lan).toContain("Pay always asks after the payment is saved");
+    expect(lan).not.toContain("Print a receipt after every sale");
+    expect(lan).toMatch(/Ask before printing a sale receipt[\s\S]*<input[^>]*disabled/);
     expect(lan).toContain("Test print");
     expect(lan).toContain("Cancel");
     expect(lan).toContain("Save");

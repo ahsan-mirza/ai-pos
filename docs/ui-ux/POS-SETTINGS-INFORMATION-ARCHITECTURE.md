@@ -20,7 +20,7 @@ Business settings describe how the business operates. System and register settin
 | Laundry services, workflows, stations, machines, quality, tags | Business | Business or branch | No. Laundry profile only. Reads `/api/v1/laundry/settings` and `/api/v1/laundry/production/workflows` where those calls already exist. |
 | Integrations | Business | Business-wide | No. Secrets are not shown. |
 | Notifications | Business | Business-wide | No. |
-| Audit trail | Business | Business-wide | No. Shows `updated_at` and `updated_by_name` from business settings. |
+| Audit trail | Business | Business-wide | No. Shows `updated_at` and `updated_by_name` from the business-settings row. A missing timestamp stays the empty state. The event list stays on the Business Pro audit page. |
 | Register and terminal | System | Register | No edit. Shows branch, register code, and activation. |
 | Hardware and peripherals | System | Register | Printer and scale settings already saved on this register. |
 | Connectivity and offline | System | Register | Read-only status from the open page. |

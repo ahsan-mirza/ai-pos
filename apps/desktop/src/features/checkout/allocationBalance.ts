@@ -12,6 +12,7 @@ function stockControlled(product: ProductUpsert): boolean {
     product.is_service ||
     product.is_open_price ||
     product.has_recipe ||
+    product.sell_without_recipe ||
     product.is_stock_tracked === false ||
     product.item_type === "MADE_TO_ORDER"
   );

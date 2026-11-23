@@ -159,6 +159,15 @@ struct RemoteSettings {
     /// Canonical tenant store code. Empty on a server that does not name the tenant.
     #[serde(default)]
     store_code: String,
+    /// Last change on the business-settings row. Absent means the page must not invent a time.
+    #[serde(default)]
+    updated_at: Option<String>,
+    #[serde(default)]
+    updated_by_name: Option<String>,
+    #[serde(default)]
+    country: Option<String>,
+    #[serde(default)]
+    location: Option<String>,
 }
 
 fn standard_rate() -> i64 {
@@ -354,6 +363,10 @@ fn fetch(config: &DesktopConfig, pending: Option<i64>) -> Result<(String, Value,
         "legal_name_ar": body.legal_name_ar,
         "tax_authority": body.tax_authority.unwrap_or_else(|| "fta".into()),
         "tax_configuration_required": body.tax_configuration_required,
+        "updated_at": body.updated_at,
+        "updated_by_name": body.updated_by_name,
+        "country": body.country,
+        "location": body.location,
     });
     let profile = body.capabilities.as_ref().map(|capabilities| {
         serde_json::json!({

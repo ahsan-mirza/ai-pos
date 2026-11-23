@@ -129,10 +129,11 @@ def wait_ready(proc: subprocess.Popen, log_path: Path, profile: str) -> None:
     raise SystemExit(f"Zoom API for {profile} did not become ready.")
 
 
-def capture(hwnd: int, path: Path) -> None:
-    user32.ShowWindow(hwnd, 9)
-    user32.SetWindowPos(hwnd, 0, 80, 80, 1400, 900, 0x0004)
-    time.sleep(0.2)
+def capture(hwnd: int, path: Path, move: bool = True, width: int = 1400, height: int = 900) -> None:
+    if move:
+        user32.ShowWindow(hwnd, 9)
+        user32.SetWindowPos(hwnd, 0, 40, 40, width, height, 0x0004)
+        time.sleep(0.35)
     rect = RECT()
     user32.GetWindowRect(hwnd, ctypes.byref(rect))
     width = max(1, rect.right - rect.left)

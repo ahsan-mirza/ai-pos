@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.core.deps import Principal, authorize
+from app.core.deps import REGISTER_SCOPES, Principal, authorize
 from app.core.permissions import Permission
 from app.schemas.menu import (
     ComboIn,
@@ -27,6 +27,10 @@ CanRead = Annotated[
     Principal, Depends(authorize(Permission.PORTAL_ACCESS, allow_device=True, scopes=("portal", "pos")))
 ]
 CanManage = Annotated[Principal, Depends(authorize(Permission.PORTAL_INVENTORY_MANAGE))]
+# The till saves portion prices with the same pos-scoped inventory token that creates the menu item.
+CanManagePrices = Annotated[
+    Principal, Depends(authorize(Permission.PORTAL_INVENTORY_MANAGE, scopes=REGISTER_SCOPES))
+]
 
 
 @router.get("/modifier-groups", response_model=list[ModifierGroupOut])
@@ -70,12 +74,14 @@ def set_product_groups(product_id: uuid.UUID, payload: ProductGroupsIn, db: Db, 
 
 
 @router.get("/products/{product_id}/price-options", response_model=list[PriceOptionOut])
-def list_price_options(product_id: uuid.UUID, db: Db, _: CanRead) -> list[PriceOptionOut]:
+def list_price_options(product_id: uuid.UUID, db: Db, _: CanManagePrices) -> list[PriceOptionOut]:
     return menu_service.list_price_options(db, product_id)
 
 
 @router.put("/products/{product_id}/price-options", response_model=list[PriceOptionOut])
-def replace_price_options(product_id: uuid.UUID, payload: PriceOptionsIn, db: Db, _: CanManage) -> list[PriceOptionOut]:
+def replace_price_options(
+    product_id: uuid.UUID, payload: PriceOptionsIn, db: Db, _: CanManagePrices
+) -> list[PriceOptionOut]:
     return menu_service.replace_price_options(db, product_id, payload)
 
 

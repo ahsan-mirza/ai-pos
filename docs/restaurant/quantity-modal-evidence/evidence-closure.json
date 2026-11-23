@@ -1,0 +1,51 @@
+{
+  "previous_pid_reused": false,
+  "delivery_capability": 200,
+  "floor": 201,
+  "channel": 201,
+  "identity": {
+    "executable": "D:\\Work\\ai-pos\\apps\\desktop\\src-tauri\\target\\zoom-shared\\debug\\ai-pos-desktop.exe",
+    "sha256": "793183653205cc8d38532da3e323334a7497ddbc2f9ff54501d3b13ab3537502",
+    "size": 31638528,
+    "api": "http://127.0.0.1:18093",
+    "database": "C:\\Users\\ahsan\\AppData\\Local\\Temp\\axiz-zoom\\restaurant\\axizpos_zoom_restaurant.sqlite",
+    "store_code": "rzoom",
+    "pid": 9696,
+    "hwnd": 3802388,
+    "identifier": "com.axizpos.restaurant.zoom",
+    "title": "AxizPOS Restaurant Zoom",
+    "data_dir": "C:\\Users\\ahsan\\AppData\\Roaming\\com.axizpos.restaurant.zoom"
+  },
+  "z1": {
+    "medium_in_page": true,
+    "amount_in_page": true,
+    "excerpt": "SERVICE\n\nCheckout\nOrders & Tables\nVoid & waste\n\nREGISTER\n\nKitchen display\nTime clock\nSale Shift\nSync Center\nCustomer display\nRestaurant settings\nZC\nZoom Cashier\nCashier\nLock Register\nEN\n|\nAR\nTakeaway tab\nDelivery order\nRider cash\n\nTable Z1 seated.\n\nAll sections\nAcceptance Floor\nAll\n1\nAvailable\n0\nOccupied\n1\nPreparing\n0\nPartially ready\n0\nReady\n0\nServed\n0\nPayment\n0\nOut of service\n0\nSearch table or order...\nOccupied\nZ1\n#1\n2 Guests\n3h 59m\nAED\u00a00.00\nTabs without a table\n\nNo open tabs.\n\nTable Z1\n#1\nOccupied\nAcceptance Floor\n2 guests\n\u00b7 4h\nKitchen: New\n\nOpened 11/22/2026, 8:56:48 PM \u00b7 Zoom Cashier\n\nADDING\n\n2 \u00d7 Daal Channa \u00b7 Medium Plate\nSeat\n\u2014\n1\n2\n3\n4\n5\n6\nFind a menu item\nDaal Channa\nAED\u00a03.00\nFresh Juice\nAED\u00a03.00\nGrilled Chicken\nAED\u00a018.00\nHouse Salad\nAED\u00a06.50\nMineral Water\nAED\u00a02.00\nSpecial Pasta\nAED\u00a010.00\nZoom Extra Long Product Name For Catalogue Card Pressure Testing Across The Shared Tile\nAED\u00a02,500.00\n\nOpen to pay\nAED\u00a00.00\n\nAdd More Items\nCheckout\nAdd to this order\nSend to kitchen\nMove\nSplit\nBill\n\nZoom Restaurant \u00b7 Restaurant\n\nACTIVATED\nOFFLINE\nSETUP INCOMPLETE\nPrinter\nDrawer\nKeyboard\nv0.1.4"
+  },
+  "saved_orders_after_dine_in": "pending",
+  "chicken_edit": {
+    "breakfast": true,
+    "cheese": true,
+    "total": true,
+    "dialog": "Choose an option\n\nGrilled Chicken\nServing option\nBreakfast\nAED\u00a08.00\nLunch\nAED\u00a012.00\nDinner\nAED\u00a015.00\nExtrasOptional\nExtra cheese\nAED\u00a01.50\nSpecial instructions\nQuantity\n\u2212\n+\n\nAED\u00a09.50\n\nCancel\nUpdate item\nAED\u00a019.00",
+    "quantity_view": true
+  },
+  "chicken_after_cancel": "Grilled Chicken AED 19.00 2 \u00d7 AED 9.50AED 18.00 Edit modifiers Copy Price Discount Remove Breakfast Extra cheese +AED 1.50",
+  "saved_orders": [
+    {
+      "service_type": "DINE_IN",
+      "table_label": "Z1",
+      "status": "OPEN",
+      "items": [
+        {
+          "name": "Daal Channa",
+          "quantity": 2,
+          "unit_price_cents": 500,
+          "price_option_id": "69c0309f-05de-4981-ad24-4910350e0df4",
+          "price_option_name": "Medium Plate",
+          "paid_sale_id": null
+        }
+      ]
+    }
+  ],
+  "status": "RECORDED"
+}

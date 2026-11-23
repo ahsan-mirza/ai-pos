@@ -77,6 +77,9 @@ export interface OrderItem extends Required<Pick<OrderItemInput, "id" | "product
   paid_sale_id: string | null;
   kitchen_status: KitchenStatus | null;
   skip_recipe?: boolean;
+  price_option_id?: string | null;
+  price_option_name?: string | null;
+  price_option_cents?: number | null;
 }
 
 export interface Order {
@@ -84,6 +87,8 @@ export interface Order {
   store_id: string;
   number: number;
   service_type: ServiceType;
+  /** Takeaway or delivery token. Absent on dine-in and on orders opened before tags were issued. */
+  display_tag?: string | null;
   status: OrderStatus;
   table_id: string | null;
   table_label: string | null;

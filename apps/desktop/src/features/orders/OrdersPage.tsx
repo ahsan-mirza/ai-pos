@@ -6,6 +6,7 @@ import {
   formatMoney,
   modifierDelta,
   modifierSummary,
+  requiresPriceOption,
   type ComboChoice,
   unpaidItems,
   type DeliveryChannel,
@@ -20,7 +21,7 @@ import {
 } from "@ai-pos/shared-types";
 import { FloorTableCard, serviceOf } from "../../components/FloorTableCard";
 import { FloorBoard, aggregateService, formatSeatedDuration, KITCHEN_LABEL as floorKitchenLabel, tableDisplayNumber } from "@ai-pos/ui";
-import { Banknote, ChefHat, CreditCard, Merge, Minus, MoveRight, Plus, Receipt, Search, Send, Split, Truck, Users, UtensilsCrossed, X } from "lucide-react";
+import { Banknote, ChefHat, CreditCard, Merge, Minus, MoveRight, Plus, Receipt, Search, Send, Split, Trash2, Truck, Users, UtensilsCrossed, X } from "lucide-react";
 import { useCallback, useEffect, useId, useMemo, useState } from "react";
 import { ManagerApprovalModal } from "../../components/ManagerApprovalModal";
 import { DrawerHeader } from "../../components/shell/Drawer";
@@ -34,6 +35,7 @@ import { activeStore, useBusinessCurrency } from "../checkout/currency";
 import { combosFor, groupsFor, refreshMenu, useMenu } from "../checkout/menu";
 import { ComboBuilderModal } from "../checkout/ComboBuilderModal";
 import { ModifierPickerModal } from "../checkout/ModifierPickerModal";
+import { PriceOptionModal } from "../checkout/PriceOptionModal";
 import { QuantityModal } from "../checkout/QuantityModal";
 import { verifyManager } from "../checkout/wholesaleClient";
 import { staffApi, type RegisterStaff } from "../../lib/retailClient";
@@ -43,6 +45,7 @@ import { SplitChecksModal } from "./SplitChecksModal";
 import { IncomingDeliveries, KeyInDeliveryModal } from "./IncomingDeliveries";
 import { TableConflictPanel } from "./TableConflictPanel";
 import { OrderRequestError, channelsApi, ordersApi, queueOfflineOrder } from "./ordersClient";
+import { sentIncrease } from "./tableQuantity";
 import { listenForTableEvents } from "./tableSync";
 import { startSettlement } from "./settlement";
 
@@ -213,11 +216,6 @@ function GuestCountModal({
   );
 }
 
-function lineLabel(item: OrderItem): string {
-  const extras = [comboSummary(item.components), modifierSummary(item.modifiers)].filter(Boolean).join(" · ");
-  return extras ? `${item.product_name} · ${extras}` : item.product_name;
-}
-
 interface DraftLine {
   id: string;
   product: ProductUpsert;
@@ -226,6 +224,7 @@ interface DraftLine {
   components: ComboChoice[];
   seat: number | null;
   note: string;
+  priceOption?: { id: string; name: string; price_cents: number } | null;
 }
 
 /** Restaurant floor: tables and open tabs shared by every register, with kitchen sending, voids, merges and pay. */
@@ -287,6 +286,7 @@ export function OrdersPage({ session }: { session: CashierSession }) {
   const [modifierFor, setModifierFor] = useState<ProductUpsert | null>(null);
   const [comboFor, setComboFor] = useState<ProductUpsert | null>(null);
   const [quantityFor, setQuantityFor] = useState<ProductUpsert | null>(null);
+  const [priceFor, setPriceFor] = useState<ProductUpsert | null>(null);
   const [voiding, setVoiding] = useState<{ item: OrderItem | null; reason: string } | null>(null);
   const [mergeFrom, setMergeFrom] = useState<Order | null>(null);
   const [moving, setMoving] = useState<Order | null>(null);
@@ -444,17 +444,27 @@ export function OrdersPage({ session }: { session: CashierSession }) {
     }
   }
 
-  function addDraft(product: ProductUpsert, modifiers: ModifierChoice[], components: ComboChoice[] = [], quantity = 1) {
+  function addDraft(
+    product: ProductUpsert,
+    modifiers: ModifierChoice[],
+    components: ComboChoice[] = [],
+    quantity = 1,
+    priceOption: { id: string; name: string; price_cents: number } | null = null,
+  ) {
     setDraft((current) => {
       const plain = modifiers.length === 0 && components.length === 0;
       const same = plain
         ? current.find(
             (line) =>
-              line.product.id === product.id && line.seat === seat && line.modifiers.length === 0 && line.components.length === 0,
+              line.product.id === product.id &&
+              line.seat === seat &&
+              (line.priceOption?.id ?? null) === (priceOption?.id ?? null) &&
+              line.modifiers.length === 0 &&
+              line.components.length === 0,
           )
         : undefined;
       if (same) return current.map((line) => (line === same ? { ...line, quantity: line.quantity + quantity } : line));
-      return [...current, { id: crypto.randomUUID(), product, quantity, modifiers, components, seat, note: "" }];
+      return [...current, { id: crypto.randomUUID(), product, quantity, modifiers, components, seat, note: "", priceOption }];
     });
   }
 
@@ -463,7 +473,9 @@ export function OrdersPage({ session }: { session: CashierSession }) {
       setNotice(`${product.name} is sold at checkout, not on a tab.`);
       return;
     }
+    const priced = product.price_options ?? menu.price_options?.[product.id];
     if (combosFor(menu, product.id).length > 0) setComboFor(product);
+    else if (requiresPriceOption(priced) && groupsFor(menu, product.id).length > 0) setPriceFor(product);
     else if (groupsFor(menu, product.id).length > 0) setModifierFor(product);
     else setQuantityFor(product);
   }
@@ -497,12 +509,36 @@ export function OrdersPage({ session }: { session: CashierSession }) {
   }
 
   async function changeQuantity(item: OrderItem, quantity: number) {
-    if (selected === null) return;
-    if (item.sent_at) {
-      setNotice("This item is already in the kitchen. Void it with a reason instead of changing the quantity.");
+    if (selected === null || item.sent_at) return;
+    if (!Number.isInteger(quantity) || quantity < 1 || quantity > 1000) {
+      setNotice("Quantity must be a whole number from 1 to 1000.");
       return;
     }
     await write(() => ordersApi.setQuantity(selected, item.id, userId, quantity));
+  }
+
+  async function increaseSent(item: OrderItem, quantity: number) {
+    if (selected === null || !item.sent_at) return;
+    const plan = sentIncrease(item.quantity, quantity);
+    if (!plan.ok) {
+      setNotice(
+        plan.reason === "reduce"
+          ? "A sent line cannot be reduced in place. Void the whole line with a reason, then add the quantity the table still wants. The kitchen ticket stays as it was."
+          : "Quantity must be a whole number from 1 to 1000.",
+      );
+      return;
+    }
+    const extra = plan.extra;
+    await write(async () => {
+      try {
+        return await ordersApi.increaseSent(selected, item.id, userId, quantity);
+      } catch (caught) {
+        if (caught instanceof OrderRequestError && caught.offline) {
+          throw new Error("This register is offline. A sent item cannot be increased until the kitchen can receive the extra quantity.");
+        }
+        throw caught;
+      }
+    }, `Added ${extra} more. Only that extra was sent to the kitchen.`);
   }
 
   async function addAndMaybeSend(send: boolean) {
@@ -511,8 +547,9 @@ export function OrdersPage({ session }: { session: CashierSession }) {
       id: line.id,
       product_id: line.product.id,
       quantity: line.quantity,
-      unit_price_cents: line.product.price_cents + modifierDelta(line.modifiers) + comboDelta(line.components),
+      unit_price_cents: (line.priceOption?.price_cents ?? line.product.price_cents) + modifierDelta(line.modifiers) + comboDelta(line.components),
       modifiers: line.modifiers,
+      ...(line.priceOption ? { price_option_id: line.priceOption.id } : {}),
       ...(line.components.length ? { components: line.components } : {}),
       seat: line.seat,
       ...(line.note.trim() ? { note: line.note.trim() } : {}),
@@ -682,37 +719,48 @@ export function OrdersPage({ session }: { session: CashierSession }) {
                   {selected.channel_name ? ` · ${selected.channel_name} ${selected.external_ref ?? ""}` : ""}
                   {selected.bill_requested_at ? " · Bill requested" : ""}
                 </p>
-                <ul className="space-y-1.5">
+                <ul className="space-y-2">
                   {selected.items.map((item) => {
                     const editable = !item.voided_at && !item.paid_sale_id && !item.sent_at;
+                    const extras = [comboSummary(item.components), modifierSummary(item.modifiers)].filter(Boolean).join(" · ");
                     return (
-                    <li key={item.id} className={`rounded-2xl border px-3 py-2 text-sm ${item.voided_at ? "border-dashed border-zinc-200 opacity-50 dark:border-white/10" : "border-zinc-200 bg-zinc-50 dark:border-white/[0.06] dark:bg-[#1A191D]"}`}>
-                      <div className="flex items-baseline justify-between gap-2">
-                        <span className={`min-w-0 truncate font-semibold ${item.voided_at ? "line-through" : ""}`}>{lineLabel(item)}</span>
+                    <li key={item.id} className={`rounded-2xl border px-3 py-2.5 text-sm ${item.voided_at ? "border-dashed border-zinc-200 opacity-50 dark:border-white/10" : "border-zinc-200 bg-zinc-50 dark:border-white/[0.06] dark:bg-[#1A191D]"}`}>
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className={`truncate font-semibold ${item.voided_at ? "line-through" : ""}`}>{item.product_name}</p>
+                          {item.price_option_name ? <p className="text-xs text-zinc-600 dark:text-zinc-300">{item.price_option_name}</p> : null}
+                          {extras ? <p className="text-xs text-zinc-500 dark:text-white/50">{extras}</p> : null}
+                        </div>
                         <span className="shrink-0 font-bold tabular-nums">{formatMoney(item.unit_price_cents * item.quantity, currency)}</span>
                       </div>
-                      <p className="mt-0.5 text-[0.6875rem] text-zinc-500 dark:text-white/50">
-                        {item.quantity} × {formatMoney(item.unit_price_cents, currency)}
+                      <p className="mt-1 text-xs text-zinc-500 dark:text-white/50">
+                        {formatMoney(item.unit_price_cents, currency)} × {item.quantity}
                         {item.note ? ` · ${item.note}` : ""}
                       </p>
-                      <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[0.6875rem] text-zinc-500 dark:text-white/50">
-                        <span className="rounded-full bg-primary/10 px-1.5 font-semibold text-primary">{itemStatus(item)}</span>
-                        {item.seat ? <span className="rounded-full bg-zinc-200/70 px-1.5 dark:bg-white/10">Seat {item.seat}</span> : null}
-                        {editable ? (
-                          <span className="ml-auto inline-flex items-center gap-1">
-                            <button type="button" aria-label={`Decrease ${item.product_name}`} disabled={busy || item.quantity <= 1} onClick={() => void changeQuantity(item, item.quantity - 1)} className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-zinc-200/80 dark:bg-white/10"><Minus size={12} aria-hidden="true" /></button>
-                            <span className="min-w-4 text-center font-semibold tabular-nums text-zinc-800 dark:text-white">{item.quantity}</span>
-                            <button type="button" aria-label={`Increase ${item.product_name}`} disabled={busy} onClick={() => void changeQuantity(item, item.quantity + 1)} className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-zinc-200/80 dark:bg-white/10"><Plus size={12} aria-hidden="true" /></button>
-                          </span>
-                        ) : null}
-                        {!item.voided_at && !item.paid_sale_id ? (
-                          <button type="button" disabled={busy} onClick={() => setVoiding({ item, reason: "[entry_mistake] " })} className={`${editable ? "" : "ml-auto "}font-semibold text-zinc-500 hover:text-red-600`}>
-                            {item.sent_at ? "Void" : "Remove"}
-                          </button>
-                        ) : null}
+                      <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-zinc-500 dark:text-white/50">
+                        <span className="rounded-full bg-primary/10 px-2 py-0.5 font-semibold text-primary">{itemStatus(item)}</span>
+                        {item.seat ? <span className="rounded-full bg-zinc-200/70 px-2 py-0.5 dark:bg-white/10">Seat {item.seat}</span> : null}
                       </div>
-                      {item.sent_at && !item.voided_at ? (
-                        <p className="mt-1 text-[0.6875rem] text-zinc-500 dark:text-white/50">Already in the kitchen. Void it with a reason to correct it. New items do not change this line.</p>
+                      {editable ? (
+                        <div className="mt-2 flex items-center gap-2">
+                          <button type="button" aria-label={`Decrease ${item.product_name}`} disabled={busy || item.quantity <= 1} onClick={() => void changeQuantity(item, item.quantity - 1)} className="inline-flex h-11 w-11 items-center justify-center rounded-full bg-zinc-200/80 dark:bg-white/10"><Minus size={16} aria-hidden="true" /></button>
+                          <span className="min-w-8 text-center text-base font-semibold tabular-nums text-zinc-800 dark:text-white">{item.quantity}</span>
+                          <button type="button" aria-label={`Increase ${item.product_name}`} disabled={busy} onClick={() => void changeQuantity(item, item.quantity + 1)} className="inline-flex h-11 w-11 items-center justify-center rounded-full bg-zinc-200/80 dark:bg-white/10"><Plus size={16} aria-hidden="true" /></button>
+                          <button type="button" disabled={busy} onClick={() => setVoiding({ item, reason: "[entry_mistake] " })} className="ml-auto font-semibold text-zinc-500 hover:text-red-600">Remove</button>
+                        </div>
+                      ) : null}
+                      {item.sent_at && !item.voided_at && !item.paid_sale_id ? (
+                        <div className="mt-2 space-y-2">
+                          <p className="text-xs text-zinc-500 dark:text-white/50">Already in the kitchen. Adding more sends only the extra. Reducing it still voids the whole line with a reason.</p>
+                          <div className="flex flex-wrap gap-2">
+                            <button type="button" disabled={busy} onClick={() => void increaseSent(item, item.quantity + 1)} className={`${ui.secondaryAction} h-11 rounded-2xl px-3 text-xs`}>
+                              <Plus size={14} aria-hidden="true" /> Add one more
+                            </button>
+                            <button type="button" disabled={busy} aria-label={`Void ${item.product_name}`} onClick={() => setVoiding({ item, reason: "[entry_mistake] " })} className={`${ui.secondaryAction} h-11 rounded-2xl px-3 text-xs text-red-700`}>
+                              <Trash2 size={14} aria-hidden="true" /> Void with reason
+                            </button>
+                          </div>
+                        </div>
                       ) : null}
                     </li>
                     );
@@ -727,7 +775,7 @@ export function OrdersPage({ session }: { session: CashierSession }) {
                         <li key={line.id} className="px-1">
                           <div className="flex items-center justify-between gap-2">
                             <span className="min-w-0 truncate">
-                              {line.quantity} × {line.product.name}
+                              {line.quantity} × {line.product.name}{line.priceOption ? ` · ${line.priceOption.name}` : ""}
                               {line.components.length ? ` · ${comboSummary(line.components)}` : ""}
                               {line.modifiers.length ? ` · ${modifierSummary(line.modifiers)}` : ""}
                               {line.seat ? ` · seat ${line.seat}` : ""}
@@ -797,6 +845,11 @@ export function OrdersPage({ session }: { session: CashierSession }) {
                     <CreditCard size={16} aria-hidden="true" /> Checkout
                   </button>
                 </div>
+                {!adding && kitchenOn && selected.items.some((item) => !item.sent_at && !item.voided_at) ? (
+                  <button type="button" disabled={busy} onClick={() => void sendToKitchen(selected)} className={`${ui.secondaryAction} h-12 w-full rounded-2xl text-sm`}>
+                    <Send size={15} aria-hidden="true" /> Send new items to kitchen
+                  </button>
+                ) : null}
                 {adding ? (
                   <div className={`grid gap-2 ${kitchenOn ? "grid-cols-2" : "grid-cols-1"}`}>
                     <button type="button" disabled={busy || draft.length === 0} onClick={() => void addAndMaybeSend(false)} className={`${ui.secondaryAction} h-11 rounded-2xl text-xs`}>
@@ -1078,10 +1131,38 @@ export function OrdersPage({ session }: { session: CashierSession }) {
       {quantityFor ? (
         <QuantityModal
           product={quantityFor}
+          currency={currency}
+          options={quantityFor.price_options ?? menu.price_options?.[quantityFor.id] ?? []}
           onClose={() => setQuantityFor(null)}
-          onConfirm={(quantity) => {
-            addDraft(quantityFor, [], [], quantity);
+          onConfirm={(quantity, option) => {
+            addDraft(
+              quantityFor,
+              [],
+              [],
+              quantity,
+              option ? { id: option.id, name: option.name, price_cents: option.price_cents } : null,
+            );
             return true;
+          }}
+        />
+      ) : null}
+      {priceFor ? (
+        <PriceOptionModal
+          product={priceFor}
+          options={priceFor.price_options ?? menu.price_options?.[priceFor.id] ?? []}
+          groups={groupsFor(menu, priceFor.id)}
+          currency={currency}
+          chooseIngredients={false}
+          onClose={() => setPriceFor(null)}
+          onConfirm={(option, choices, quantity) => {
+            addDraft(
+              priceFor,
+              choices,
+              [],
+              quantity,
+              option ? { id: option.id, name: option.name, price_cents: option.price_cents } : null,
+            );
+            setPriceFor(null);
           }}
         />
       ) : null}

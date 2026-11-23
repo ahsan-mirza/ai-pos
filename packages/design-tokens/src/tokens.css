@@ -50,6 +50,11 @@
   --pos-control-sm: 2rem;
   --pos-control-md: 2.5rem;
   --pos-control-lg: 3rem;
+  --pos-control-touch: 3.5rem;
+  --pos-control-line: 1.25;
+  --pos-focus-width: 0.125rem;
+  --pos-input-pad-x: 1rem;
+  --pos-input-pad-y: 0.75rem;
   --pos-icon-sm: 0.875rem;
   --pos-icon-md: 1rem;
   --pos-icon-lg: 1.25rem;
@@ -315,4 +320,27 @@ html[lang="ar"] {
   .form-grid > .form-span {
     grid-column: 1 / -1;
   }
+}
+
+/* Selected and focused strokes stay inside the border box. Vertical scrollers set
+   overflow-x to clip, which crops an outset ring or an offset outline. */
+.choice-control {
+  box-sizing: border-box;
+  min-height: var(--pos-control-touch);
+  line-height: var(--pos-control-line);
+  border-style: solid;
+  border-width: 1px;
+}
+
+.choice-control[aria-checked="true"],
+.choice-control[aria-pressed="true"] {
+  border-color: var(--primary);
+  background-color: rgb(var(--primary-rgb) / 0.1);
+  box-shadow: inset 0 0 0 var(--pos-focus-width) var(--primary);
+}
+
+.choice-control:focus-visible,
+.control-focus:focus-visible {
+  outline: var(--pos-focus-width) solid var(--primary);
+  outline-offset: calc(var(--pos-focus-width) * -1);
 }

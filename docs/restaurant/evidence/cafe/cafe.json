@@ -1,0 +1,31 @@
+{
+  "profile": "cafe",
+  "identity": {
+    "executable": "D:\\Work\\ai-pos\\apps\\desktop\\src-tauri\\target\\portion-cafe-build\\debug\\ai-pos-desktop.exe",
+    "sha256": "67990a3a24c8d6d57affa4a04bc77d7e2010125c60b7bc2782ca1a639d1c70b2",
+    "size": 31638528,
+    "identifier_expected": "com.axizpos.cafe.portion",
+    "api": "http://127.0.0.1:18095",
+    "database": "C:\\Users\\ahsan\\AppData\\Local\\Temp\\axiz-portion\\cafe\\axizpos_portion_cafe.sqlite",
+    "store_code": "portionc",
+    "business_profile": "cafe",
+    "currency": "AED",
+    "pid": 38612,
+    "hwnd": 6754838,
+    "identifier": "com.axizpos.cafe.portion",
+    "title": "AxizPOS Cafe Portion",
+    "data_dir": "C:\\Users\\ahsan\\AppData\\Roaming\\com.axizpos.cafe.portion"
+  },
+  "catalogue": true,
+  "no_default": true,
+  "small_qty2": true,
+  "medium_keeps_qty": true,
+  "full_qty3": true,
+  "cart": "Daal Channa AED 27.00 3 \u00d7 AED 9.00 Edit modifiers Price Discount Remove Full Plate Daal Channa AED 3.00 1 \u00d7 AED 3.00 Edit modifiers Price Discount Remove Small Plate",
+  "water_no_portion": true,
+  "minus_stays_one": true,
+  "water_cart": "Daal Channa AED 27.00 3 \u00d7 AED 9.00 Edit modifiers Price Discount Remove Full Plate Daal Channa AED 3.00 1 \u00d7 AED 3.00 Edit modifiers Price Discount Remove Small Plate Mineral Water AED 2.00 1 \u00d7 AED 2.00 Price Discount Remove",
+  "modifier": "NOT RUN",
+  "recipe": "NOT RUN",
+  "status": "RECORDED"
+}

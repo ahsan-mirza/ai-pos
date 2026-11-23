@@ -91,6 +91,7 @@ pub fn verified_balances(db: &Db, expected: &ExpectedBinding) -> Result<Vec<(Str
     Ok(balances)
 }
 
+#[cfg_attr(not(test), allow(dead_code))]
 pub fn sell(
     db: &Db,
     allocation_id: &str,

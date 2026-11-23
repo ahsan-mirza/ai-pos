@@ -71,7 +71,14 @@ export function shouldKickDrawer(
   return options.kickDrawer && settings.drawer_kick && settings.transport !== "none";
 }
 
-/** Prints a receipt on the configured printer; the drawer kicks only for cash taken in. */
+/**
+ * Prints a receipt on the configured printer. The drawer kicks only when the caller passes kickDrawer
+ * and the register policy allows it.
+ *
+ * Checkout asks after each settled payment and passes manual only when the cashier chooses Yes.
+ * auto_print does not print or skip that receipt. Refunds and other callers still honor auto_print
+ * when manual is omitted.
+ */
 export async function printReceipt(doc: ReceiptDoc, options: { kickDrawer: boolean; manual?: boolean }): Promise<PrintOutcome> {
   const slip = withSavedLanguage(doc);
   const settings = await loadPrinter();

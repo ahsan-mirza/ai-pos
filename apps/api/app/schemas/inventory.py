@@ -744,6 +744,8 @@ class ProductCreate(FashionAttributes):
     is_ingredient: bool = False
     # Prepared dishes are not stocked. Ingredients and packaged goods are.
     item_type: ItemType | None = None
+    # Restaurant and cafe: sell a made-to-order item without drawing its recipe.
+    sell_without_recipe: bool = False
     # Packs it sells in besides the piece (units of measure), e.g. ["CASE_24"].
     sellable_units: list[UnitType] = Field(default_factory=lambda: ["PIECE"], max_length=8)
     opening_store_id: UUID | None = None
@@ -803,6 +805,7 @@ class ProductUpdate(FashionAttributes):
     minimum_age: int | None = Field(default=None, ge=1, le=120)
     is_ingredient: bool | None = None
     item_type: ItemType | None = None
+    sell_without_recipe: bool | None = None
     sellable_units: list[UnitType] | None = Field(default=None, max_length=8)
     is_active: bool | None = None
     pharmacy: PharmacyWrite | None = None

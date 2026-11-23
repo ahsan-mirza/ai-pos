@@ -1,0 +1,79 @@
+[
+  {
+    "profile": "grocery",
+    "port": 18090,
+    "identifier": "com.axizpos.grocery.zoom",
+    "title": "AxizPOS Grocery Zoom",
+    "executable": "D:\\Work\\ai-pos\\apps\\desktop\\src-tauri\\target\\zoom-shared\\debug\\ai-pos-desktop.exe",
+    "database": "C:\\Users\\ahsan\\AppData\\Local\\Temp\\axiz-zoom\\grocery\\axizpos_zoom_grocery.sqlite",
+    "api": "http://127.0.0.1:18090",
+    "pid": 35032,
+    "hwnd": 2495214,
+    "data_dir": "C:\\Users\\ahsan\\AppData\\Roaming\\com.axizpos.grocery.zoom",
+    "opened": {
+      "Zoom Rice 1kg": {
+        "dialog": "Zoom Rice 1kg How many are you selling? Quantity \u2212 + Unit price $10.00 Quantity 1 Total $10.00 Cancel Add 1 \u2014 $10.00",
+        "has_portion": false,
+        "has_stepper": true,
+        "has_scale": false,
+        "has_serial": false,
+        "has_size": false
+      }
+    },
+    "status": "RECORDED"
+  },
+  {
+    "profile": "electronics",
+    "port": 18091,
+    "identifier": "com.axizpos.electronics.zoom",
+    "title": "AxizPOS Electronics Zoom",
+    "executable": "D:\\Work\\ai-pos\\apps\\desktop\\src-tauri\\target\\zoom-shared\\debug\\ai-pos-desktop.exe",
+    "database": "C:\\Users\\ahsan\\AppData\\Local\\Temp\\axiz-zoom\\electronics\\axizpos_zoom_electronics.sqlite",
+    "api": "http://127.0.0.1:18091",
+    "pid": 3200,
+    "hwnd": 14685398,
+    "data_dir": "C:\\Users\\ahsan\\AppData\\Roaming\\com.axizpos.electronics.zoom",
+    "opened": {
+      "Zoom USB Cable": {
+        "dialog": "Zoom USB Cable How many are you selling? Quantity \u2212 + Unit price $15.00 Quantity 1 Total $15.00 Cancel Add 1 \u2014 $15.00",
+        "has_portion": false,
+        "has_stepper": true,
+        "has_scale": false,
+        "has_serial": false,
+        "has_size": false
+      },
+      "Zoom Serialized Handset": {
+        "dialog": "Select IMEI / serial Zoom Serialized Handset IN STOCK HERE (0) No free units of this product are cached on this register. Scan the box to check it. Double-click a unit to add it at once Cancel Add to sale",
+        "has_portion": false,
+        "has_stepper": false,
+        "has_scale": false,
+        "has_serial": true,
+        "has_size": false
+      }
+    },
+    "status": "RECORDED"
+  },
+  {
+    "profile": "fashion",
+    "port": 18092,
+    "identifier": "com.axizpos.fashion.zoom",
+    "title": "AxizPOS Fashion Zoom",
+    "executable": "D:\\Work\\ai-pos\\apps\\desktop\\src-tauri\\target\\zoom-shared\\debug\\ai-pos-desktop.exe",
+    "database": "C:\\Users\\ahsan\\AppData\\Local\\Temp\\axiz-zoom\\fashion\\axizpos_zoom_fashion.sqlite",
+    "api": "http://127.0.0.1:18092",
+    "pid": 56560,
+    "hwnd": 1249978,
+    "data_dir": "C:\\Users\\ahsan\\AppData\\Roaming\\com.axizpos.fashion.zoom",
+    "opened": {
+      "Zoom Longline Shirt": {
+        "dialog": "Zoom Longline Shirt Tap a size and colour. Numbers are units in stock at this register's branch. COLOUR S M Navy 0 out 8 $54.00 Sand 8 $49.00 8 $54.00",
+        "has_portion": false,
+        "has_stepper": false,
+        "has_scale": false,
+        "has_serial": false,
+        "has_size": true
+      }
+    },
+    "status": "RECORDED"
+  }
+]

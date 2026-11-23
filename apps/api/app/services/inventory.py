@@ -479,6 +479,7 @@ def products_out(db: Session, products: list[Product], store_id: uuid.UUID | Non
                 nearest_expiry=expiries.get(product.id),
                 has_recipe=product.id in dishes,
                 is_ingredient=product.is_ingredient,
+                sell_without_recipe=bool(product.sell_without_recipe),
                 item_type=product.item_type,  # type: ignore[arg-type]
                 is_stock_tracked=product.is_stock_tracked,
                 price_lists=lists.get(product.id, []),
@@ -1381,6 +1382,10 @@ def create_product(db: Session, principal: Principal, data: ProductCreate, curre
     apply_item_type(db, product, kind)
     if product.item_type == "MADE_TO_ORDER" and data.opening_quantity:
         raise ApiError(422, "invalid_request", "Prepared dishes are not stocked. Track their ingredients instead.")
+    from app.services.recipe_mode import apply_sell_without_recipe, enforce_recipe_requirement
+
+    apply_sell_without_recipe(db, product, data.sell_without_recipe, sent=True)
+    enforce_recipe_requirement(db, product, creating=True, fields={"sell_without_recipe", "item_type", "is_active"})
     fashion_attributes.apply(product, data, only_sent=False)
     if product.plu_code and db.scalar(select(Product.id).where(Product.plu_code == product.plu_code)) is not None:
         message = f"PLU {product.plu_code} is already in use."
@@ -1585,6 +1590,15 @@ def update_product(
         else:
             kind = "RAW_INGREDIENT" if data.is_ingredient and not product.is_serialized else "PRE_PACKAGED"
         apply_item_type(db, product, kind)
+    from app.services.recipe_mode import apply_sell_without_recipe, enforce_recipe_requirement
+
+    apply_sell_without_recipe(
+        db,
+        product,
+        data.sell_without_recipe,
+        sent="sell_without_recipe" in data.model_fields_set,
+    )
+    enforce_recipe_requirement(db, product, creating=False, fields=set(data.model_fields_set))
     _update_weighing(db, product, data)
     if data.sellable_units is not None:
         product.sellable_units = uom_service.check_sellable(

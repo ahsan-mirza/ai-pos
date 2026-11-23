@@ -154,8 +154,8 @@ export function PinUnlock({
                             setError(null);
                             setPin("");
                           }}
-                          className={`flex min-h-16 w-full items-center gap-3 rounded-2xl border px-3 py-3 text-left transition ${
-                            active ? "border-primary ring-2 ring-primary" : panel
+                          className={`choice-control flex w-full items-center gap-3 rounded-2xl px-3 py-3 text-left transition ${
+                            active ? "border-primary" : panel
                           }`}
                         >
                           {card.avatar_url ? (

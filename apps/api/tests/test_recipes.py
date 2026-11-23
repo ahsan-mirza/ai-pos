@@ -168,18 +168,23 @@ def _recipe(client, token: str) -> dict:
     return milk
 
 
-def test_skip_recipe_is_refused_without_permission_and_draws_nothing_when_allowed(client, session: Session) -> None:
+def test_skip_recipe_follows_the_product_and_a_shortfall_still_sells(client, session: Session) -> None:
     token = admin_token(client)
     milk = _recipe(client, token)
+    prepared = client.patch(
+        f"/api/v1/products/{CABLE_ID}",
+        headers=bearer(token),
+        json={"sell_without_recipe": True},
+    )
+    assert prepared.status_code == 200 and prepared.json()["sell_without_recipe"] is True
     blocked = sale_with([], 1500)
-    blocked["items"][0]["skip_recipe"] = True
+    blocked["items"][0]["skip_recipe"] = False
     refused = push(client, "sale", blocked)
     assert refused.status_code == 422
-    assert "permission" in refused.json()["error"]["message"]
+    assert "menu item" in refused.json()["error"]["message"]
     assert on_hand(session, milk["id"]) == 0
 
     allowed = sale_with([], 1500)
-    allowed["cashier_id"] = admin_id(client)
     allowed["items"][0]["skip_recipe"] = True
     key = f"sale-{allowed['id']}"
     assert push(client, "sale", allowed, key=key).status_code == 200
@@ -195,7 +200,14 @@ def test_skip_recipe_is_refused_without_permission_and_draws_nothing_when_allowe
     assert skipped is not None and skipped.details["ingredient_requirement"] == "not_required"
     assert skipped.user_id is not None
 
-    # The same dish still draws when the line does not skip, and a shortfall does not refuse the sale.
+    managed = client.patch(
+        f"/api/v1/products/{CABLE_ID}",
+        headers=bearer(token),
+        json={"sell_without_recipe": False},
+    )
+    assert managed.status_code == 200, managed.text
+    # The saved line keeps its skip. A new line draws, and a shortfall does not refuse the sale.
+    assert session.get(SaleItem, uuid.UUID(allowed["items"][0]["id"])).skip_recipe is True
     drawn = sale_with([], 1500)
     assert push(client, "sale", drawn).status_code == 200
     session.expire_all()
@@ -203,9 +215,15 @@ def test_skip_recipe_is_refused_without_permission_and_draws_nothing_when_allowe
     assert usage is not None and usage.quantity_drawn == 0 and usage.quantity_needed == 200
 
 
-def test_an_order_line_can_skip_its_recipe_only_for_an_authorized_user(client, session: Session) -> None:
+def test_an_order_line_skips_its_recipe_only_when_the_product_says_so(client, session: Session) -> None:
     token = admin_token(client)
     milk = _recipe(client, token)
+    prepared = client.patch(
+        f"/api/v1/products/{CABLE_ID}",
+        headers=bearer(token),
+        json={"sell_without_recipe": True},
+    )
+    assert prepared.status_code == 200, prepared.text
     floor = client.post("/api/v1/dining/areas", headers=bearer(token), json={"store_id": STORE_ID, "name": "Terrace"})
     assert floor.status_code == 201, floor.text
     area = floor.json()["areas"][0]
@@ -218,7 +236,7 @@ def test_an_order_line_can_skip_its_recipe_only_for_an_authorized_user(client, s
         "product_id": CABLE_ID,
         "quantity": 2,
         "unit_price_cents": 1500,
-        "skip_recipe": True,
+        "skip_recipe": False,
     }
     denied = client.post(
         "/api/v1/orders",
@@ -232,7 +250,8 @@ def test_an_order_line_can_skip_its_recipe_only_for_an_authorized_user(client, s
             "items": [line],
         },
     )
-    assert denied.status_code == 403, denied.text
+    assert denied.status_code == 422 and "menu item" in denied.json()["error"]["message"]
+    line["skip_recipe"] = True
     opened = client.post(
         "/api/v1/orders",
         headers=device(),
@@ -241,7 +260,7 @@ def test_an_order_line_can_skip_its_recipe_only_for_an_authorized_user(client, s
             "store_id": STORE_ID,
             "table_id": table["id"],
             "covers": 2,
-            "user_id": admin_id(client),
+            "user_id": CASHIER_ID,
             "items": [line],
         },
     )
@@ -251,11 +270,11 @@ def test_an_order_line_can_skip_its_recipe_only_for_an_authorized_user(client, s
     assert on_hand(session, milk["id"]) == 0
     again = client.get(f"/api/v1/orders/{opened.json()['id']}", headers=device())
     assert again.status_code == 200 and again.json()["items"][0]["skip_recipe"] is True
-    extra = {**line, "id": str(uuid.uuid4())}
+    extra = {**line, "id": str(uuid.uuid4()), "skip_recipe": True}
     added = client.post(
         f"/api/v1/orders/{opened.json()['id']}/items",
         headers=device(),
-        json={"revision": opened.json()["revision"], "user_id": admin_id(client), "items": [extra]},
+        json={"revision": opened.json()["revision"], "user_id": CASHIER_ID, "items": [extra]},
     )
     assert added.status_code == 200, added.text
     assert added.json()["status"] == "OPEN"
@@ -265,11 +284,11 @@ def test_an_order_line_can_skip_its_recipe_only_for_an_authorized_user(client, s
         headers=device(),
         json={
             "revision": added.json()["revision"],
-            "user_id": CASHIER_ID,
-            "items": [{**line, "id": str(uuid.uuid4())}],
+            "user_id": admin_id(client),
+            "items": [{**line, "id": str(uuid.uuid4()), "skip_recipe": False}],
         },
     )
-    assert blocked_add.status_code == 403
+    assert blocked_add.status_code == 422
     enable(client, token, "kds")
     station = client.post(
         "/api/v1/kds/stations",

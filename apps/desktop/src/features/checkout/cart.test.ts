@@ -419,6 +419,32 @@ describe("price includes tax", () => {
     expect(updated.state.lines[0]?.quantity).toBe(2);
   });
 
+  it("adds a prepared dish that has no finished-goods stock", () => {
+    const dish: ProductUpsert = {
+      ...cable,
+      id: "daal",
+      name: "Daal Channa",
+      price_cents: 300,
+      stock_quantity: 0,
+      sell_without_recipe: true,
+      price_options: [
+        { id: "small", product_id: "daal", name: "Small Plate", price_cents: 300, is_active: true, position: 0 },
+        { id: "full", product_id: "daal", name: "Full Plate", price_cents: 900, is_active: true, position: 1 },
+      ],
+    };
+    const added = applyCart(emptyCart, {
+      type: "add_product",
+      product: dish,
+      priceOption: { id: "small", name: "Small Plate", price_cents: 300 },
+      skipRecipe: true,
+    });
+    expect(added.error).toBeNull();
+    expect(added.state.lines).toHaveLength(1);
+    expect(added.state.lines[0]?.priceOption).toMatchObject({ id: "small", name: "Small Plate", price_cents: 300 });
+    expect(added.state.lines[0]?.unitPriceCents).toBe(300);
+    expect(added.state.lines[0]?.skipRecipe).toBe(true);
+  });
+
   it("keeps ingredient choices on separate lines and does not change the price", () => {
     const dish: ProductUpsert = {
       ...cable,

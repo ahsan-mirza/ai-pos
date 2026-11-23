@@ -7,6 +7,7 @@ import type { ReactNode } from "react";
 import { useRegisterLayout } from "../../components/RegisterLayout";
 import { stockPill } from "../../components/shell/tokens";
 import { allocationLabel } from "./allocationBalance";
+import { catalogueTracked } from "./cataloguePresentation";
 import { cardKind, catalogCardClass, stockTone, stockUnit } from "./catalogCard";
 import { useCapabilities } from "../../lib/capabilities";
 import { PosIconButton } from "../../components/shell/posControls";
@@ -165,7 +166,8 @@ export function ProductCard({ hit, preview, currency, disabled, hasModifiers = f
   const menu = cardKind(useCapabilities().profile) === "menu";
   const { product, match, serial_status: serialStatus } = hit;
   const from = menu ? fromPriceCents(product.price_options) : null;
-  const out = product.stock_quantity <= 0 && !product.has_recipe;
+  const tracked = catalogueTracked(product);
+  const out = tracked && product.stock_quantity <= 0;
   const strike =
     preview != null
       ? formatMoney(product.price_cents, currency)
@@ -186,7 +188,6 @@ export function ProductCard({ hit, preview, currency, disabled, hasModifiers = f
     ) : product.sold_by_weight ? (
       <Scale aria-label="Sold by weight" className="h-3.5 w-3.5 shrink-0 text-zinc-500 dark:text-white/40" />
     ) : null;
-  const tracked = product.is_stock_tracked !== false && !product.is_service && !product.has_recipe;
   const tone = stockTone({ tracked, available: product.stock_quantity });
   const registerAllocation = allocationLabel(product);
   const stockText =

@@ -283,6 +283,9 @@ def intake(
             )
         )
     db.flush()
+    from app.services.order_tag_service import bind as bind_order_tag
+
+    bind_order_tag(db, order, None, actor_id=opener.id)
     if accepted:
         _fire(db, order)
     return order, True

@@ -389,8 +389,12 @@ def price_lines(
             pack = uom_service.label(db, item.unit_type)
             raise SyncRejected(f"{product.name}: quantity must be a whole number of {pack}.")
 
-        if item.skip_recipe and (cashier is None or Permission.POS_SKIP_RECIPE.value not in cashier.permissions):
-            raise SyncRejected("Skipping recipe ingredients needs permission.")
+        from app.services.recipe_mode import ingredient_mode_error
+
+        permissions = set(cashier.permissions) if cashier is not None else set()
+        mode_error = ingredient_mode_error(db, product, bool(item.skip_recipe), permissions)
+        if mode_error:
+            raise SyncRejected(mode_error)
         approver = None
         modifier_delta, modifiers = 0, None
         combo_delta, components = 0, None

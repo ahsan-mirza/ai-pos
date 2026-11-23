@@ -114,12 +114,16 @@ def orders_out(db: Session, orders: list[OpenOrder]) -> list[OrderOut]:
             sale_for[sale.order_id] = sale
     rider_ids = {order.rider_id for order in orders if order.rider_id is not None}
     riders = dict(db.execute(select(User.id, User.full_name).where(User.id.in_(rider_ids))).all()) if rider_ids else {}
+    from app.services.order_tag_service import tags_for
+
+    issued = tags_for(db, order_ids)
     return [
         OrderOut(
             id=order.id,
             store_id=order.store_id,
             number=order.number,
             service_type=order.service_type,  # type: ignore[arg-type]
+            display_tag=issued.get(order.id),
             status=order.status,  # type: ignore[arg-type]
             table_id=order.table_id,
             table_label=tables.get(order.table_id) if order.table_id else None,
@@ -293,11 +297,19 @@ def _reject_second_table_order(
     )
 
 
-def _require_recipe_skip(actor: User | None, items: list) -> None:
-    if not any(getattr(item, "skip_recipe", False) for item in items):
-        return
-    if actor is None or Permission.POS_SKIP_RECIPE.value not in actor.permissions:
-        raise ApiError(403, "forbidden", "Skipping recipe ingredients needs permission.")
+def _require_recipe_skip(db: Session, actor: User | None, items: list) -> None:
+    from app.services.recipe_mode import SKIP_PERMISSION, ingredient_mode_error
+
+    permissions = set(actor.permissions) if actor is not None else set()
+    for item in items:
+        product = db.get(Product, item.product_id)
+        if product is None:
+            continue
+        message = ingredient_mode_error(db, product, bool(getattr(item, "skip_recipe", False)), permissions)
+        if message == SKIP_PERMISSION:
+            raise ApiError(403, "forbidden", message)
+        if message:
+            raise ApiError(422, "ingredient_mode", message)
 
 
 def _item(
@@ -372,6 +384,11 @@ def _check_products(db: Session, items: list[OrderItemIn]) -> dict[uuid.UUID, di
     return chosen
 
 
+def _delivery_text(value: str | None, limit: int) -> str | None:
+    text = (value or "").strip()
+    return text[:limit] or None
+
+
 def create_order(db: Session, principal: Principal, data: OrderCreate, *, commit: bool = True) -> OrderOut:
     _scope(principal, data.store_id)
     existing = db.get(OpenOrder, data.id)
@@ -384,7 +401,7 @@ def create_order(db: Session, principal: Principal, data: OrderCreate, *, commit
     _table(db, data.table_id, data.store_id)
     _reject_second_table_order(db, data.table_id, data.service_type)
     chosen = _check_products(db, data.items)
-    _require_recipe_skip(actor, data.items)
+    _require_recipe_skip(db, actor, data.items)
     order = OpenOrder(
         id=data.id,
         store_id=data.store_id,
@@ -395,6 +412,8 @@ def create_order(db: Session, principal: Principal, data: OrderCreate, *, commit
         name=(data.name or "").strip() or None,
         note=(data.note or "").strip() or None,
         customer_id=data.customer_id,
+        delivery_phone=_delivery_text(data.delivery_phone, 40),
+        delivery_address=_delivery_text(data.delivery_address, 255),
         opened_by_id=actor.id,
         revision=1,
         opened_at=_now(),
@@ -404,6 +423,9 @@ def create_order(db: Session, principal: Principal, data: OrderCreate, *, commit
     db.flush()
     for position, item in enumerate(data.items):
         db.add(_item(db, order, item, position, actor.id, chosen.get(item.id)))
+    from app.services.order_tag_service import bind as bind_order_tag
+
+    bind_order_tag(db, order, data.display_tag, actor_id=actor.id)
     from app.services.reservation_service import attach_order, observe_order
 
     attach_order(db, order, data.customer_id)
@@ -537,6 +559,10 @@ def update_order(db: Session, principal: Principal, order_id: uuid.UUID, data: O
         order.note = (data.note or "").strip() or None
     if "customer_id" in fields:
         order.customer_id = data.customer_id
+    if "delivery_phone" in fields:
+        order.delivery_phone = _delivery_text(data.delivery_phone, 40)
+    if "delivery_address" in fields:
+        order.delivery_address = _delivery_text(data.delivery_address, 255)
     if data.service_type is not None and data.service_type != previous_type:
         _convert_service(
             db,
@@ -558,7 +584,7 @@ def add_items(db: Session, principal: Principal, order_id: uuid.UUID, data: Orde
     order = _writable(db, principal, order_id, data.revision)
     actor = _actor(db, principal, data.user_id, order.store_id)
     chosen = _check_products(db, data.items)
-    _require_recipe_skip(actor, data.items)
+    _require_recipe_skip(db, actor, data.items)
     known = {item.id for item in order.items}
     position = max((item.position for item in order.items), default=-1) + 1
     added = 0
@@ -609,6 +635,74 @@ def set_item_quantity(
         store_id=order.store_id,
         user_id=actor.id,
         details={"item_id": str(item.id), "product_id": str(item.product_id), "from": previous, "to": data.quantity},
+    )
+    _touch(order)
+    db.commit()
+    db.refresh(order)
+    return orders_out(db, [order])[0]
+
+
+def increase_sent_quantity(
+    db: Session, principal: Principal, order_id: uuid.UUID, item_id: uuid.UUID, data: ItemQuantity
+) -> OrderOut:
+    """Send only the extra quantity as a new kitchen round. The sent line and its ticket stay unchanged."""
+    order = _writable(db, principal, order_id, data.revision)
+    actor = _actor(db, principal, data.user_id, order.store_id)
+    item = next((line for line in order.items if line.id == item_id), None)
+    if item is None or item.voided_at is not None:
+        raise ApiError(404, "not_found", "That line is not on this order.")
+    if item.paid_sale_id is not None:
+        raise ApiError(409, "already_paid", "That line is already paid; refund it from Returns.")
+    if item.sent_at is None:
+        raise ApiError(409, "not_sent", "This line has not been sent. Change its quantity directly.")
+    if data.quantity < item.quantity:
+        raise ApiError(
+            409,
+            "sent_reduction_blocked",
+            "A sent line cannot be reduced in place. Void the whole line with a reason, then add the quantity the table still wants.",
+        )
+    if data.quantity == item.quantity:
+        return orders_out(db, [order])[0]
+    delta = data.quantity - item.quantity
+    position = max((line.position for line in order.items), default=-1) + 1
+    added = OpenOrderItem(
+        order_id=order.id,
+        product_id=item.product_id,
+        quantity=delta,
+        unit_price_cents=item.unit_price_cents,
+        price_option_id=item.price_option_id,
+        price_option_name=item.price_option_name,
+        price_option_cents=item.price_option_cents,
+        modifiers=item.modifiers,
+        components=item.components,
+        seat=item.seat,
+        note=item.note,
+        position=position,
+        added_by_id=actor.id,
+        skip_recipe=item.skip_recipe,
+        sent_at=_now(),
+    )
+    order.items.append(added)
+    db.flush()
+    for hook in ON_SEND:
+        hook(db, order, [added])
+    audit.record(
+        db,
+        action_type="UPDATE",
+        action="order.sent_quantity_increase",
+        target_entity="OpenOrder",
+        target_entity_id=order.id,
+        store_id=order.store_id,
+        user_id=actor.id,
+        details={
+            "item_id": str(item.id),
+            "added_item_id": str(added.id),
+            "product_id": str(item.product_id),
+            "price_option_id": str(item.price_option_id) if item.price_option_id else None,
+            "from": item.quantity,
+            "added": delta,
+            "skip_recipe": item.skip_recipe,
+        },
     )
     _touch(order)
     db.commit()
@@ -1079,11 +1173,16 @@ def _hold_table_conflict(
     db.flush()
     position = 0
     for line in data.items:
-        if db.get(Product, line.product_id) is None:
+        product = db.get(Product, line.product_id)
+        if product is None:
             continue
+        from app.services.recipe_mode import ingredient_mode_error
+
         opener = db.get(User, data.opened_by_id)
-        if line.skip_recipe and (opener is None or Permission.POS_SKIP_RECIPE.value not in opener.permissions):
-            raise SyncRejected("Skipping recipe ingredients needs permission.")
+        permissions = set(opener.permissions) if opener is not None else set()
+        mode_error = ingredient_mode_error(db, product, bool(line.skip_recipe), permissions)
+        if mode_error:
+            raise SyncRejected(mode_error)
         item = _item(db, order, line, position, data.opened_by_id)
         item.sent_at = _aware(line.sent_at)
         item.voided_at = _aware(line.voided_at)
@@ -1226,6 +1325,8 @@ def apply_open_order(db: Session, settings: Settings, payload: dict[str, object]
             covers=data.covers,
             name=(data.name or "").strip() or None,
             note=(data.note or "").strip() or None,
+            delivery_phone=_delivery_text(data.delivery_phone, 40),
+            delivery_address=_delivery_text(data.delivery_address, 255),
             opened_by_id=opener.id,
             revision=1,
             opened_at=_aware(data.opened_at) or _now(),
@@ -1235,6 +1336,11 @@ def apply_open_order(db: Session, settings: Settings, payload: dict[str, object]
         db.flush()
     elif order.store_id != data.store_id:
         raise SyncRejected("This order belongs to another store.")
+    elif order.status == "OPEN":
+        if "delivery_phone" in payload and not (order.delivery_phone or "").strip():
+            order.delivery_phone = _delivery_text(data.delivery_phone, 40)
+        if "delivery_address" in payload and not (order.delivery_address or "").strip():
+            order.delivery_address = _delivery_text(data.delivery_address, 255)
     if order.status == "OPEN" and "service_type" in payload and data.service_type != order.service_type:
         if data.name:
             order.name = data.name.strip() or order.name
@@ -1268,10 +1374,15 @@ def apply_open_order(db: Session, settings: Settings, payload: dict[str, object]
                 existing.void_reason = (line.void_reason or "Cancelled offline").strip()[:160]
                 voided_now.append(existing)
             continue
-        if db.get(Product, line.product_id) is None:
+        product = db.get(Product, line.product_id)
+        if product is None:
             continue
-        if line.skip_recipe and Permission.POS_SKIP_RECIPE.value not in opener.permissions:
-            raise SyncRejected("Skipping recipe ingredients needs permission.")
+        from app.services.recipe_mode import ingredient_mode_error
+
+        permissions = set(opener.permissions) if opener is not None else set()
+        mode_error = ingredient_mode_error(db, product, bool(line.skip_recipe), permissions)
+        if mode_error:
+            raise SyncRejected(mode_error)
         item = _item(db, order, line, position, opener.id)
         item.sent_at = _aware(line.sent_at)
         item.voided_at = _aware(line.voided_at)
@@ -1313,6 +1424,12 @@ def apply_open_order(db: Session, settings: Settings, payload: dict[str, object]
         observe_order(db, order, "item_voided", "An item was removed.", opener.id)
     if order.status == "VOID":
         observe_order(db, order, "order_cancelled", f"Order {order.number} cancelled.", opener.id)
+    from app.services.order_tag_service import bind as bind_order_tag
+
+    try:
+        bind_order_tag(db, order, data.display_tag, actor_id=opener.id)
+    except ApiError as exc:
+        raise SyncRejected(exc.message) from exc
     _touch(order)
     db.flush()
     return order.id

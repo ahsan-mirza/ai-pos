@@ -24,6 +24,10 @@ fn main() {
                 "axiz-o810"
             } else if acceptance_profile.starts_with("zoom-") {
                 "axiz-zoom"
+            } else if acceptance_profile.starts_with("portion-") {
+                "axiz-portion"
+            } else if acceptance_profile == "ordertags" {
+                "axiz-ordertags"
             } else {
                 "axiz-o85"
             };
@@ -43,6 +47,10 @@ fn main() {
                     "o810-accept-1".to_string()
                 } else if folder == "axiz-zoom" {
                     "zoom-accept-1".to_string()
+                } else if folder == "axiz-portion" {
+                    "portion-accept-1".to_string()
+                } else if folder == "axiz-ordertags" {
+                    "ordertags-accept-1".to_string()
                 } else {
                     "o85-accept-1".to_string()
                 };
@@ -150,8 +158,11 @@ fn emit_acceptance() {
         "zoom-electronics" => ("com.axizpos.electronics.zoom", "http://127.0.0.1:18091"),
         "zoom-fashion" => ("com.axizpos.fashion.zoom", "http://127.0.0.1:18092"),
         "zoom-restaurant" => ("com.axizpos.restaurant.zoom", "http://127.0.0.1:18093"),
+        "portion-restaurant" => ("com.axizpos.restaurant.portion", "http://127.0.0.1:18094"),
+        "portion-cafe" => ("com.axizpos.cafe.portion", "http://127.0.0.1:18095"),
+        "ordertags" => ("com.axizpos.ordertags.acceptance", "http://127.0.0.1:18096"),
         other => panic!(
-            "ACCEPTANCE_PROFILE must be pharmacy, inventory, laundry, offline, restaurant, or a zoom profile; got {other:?}."
+            "ACCEPTANCE_PROFILE must be pharmacy, inventory, laundry, offline, restaurant, a zoom profile, a portion profile, or ordertags; got {other:?}."
         ),
     };
     let url = env::var("ACCEPTANCE_TENANT_URL_TEMPLATE").unwrap_or_default();

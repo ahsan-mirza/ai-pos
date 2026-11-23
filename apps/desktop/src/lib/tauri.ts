@@ -432,6 +432,11 @@ export interface CurrencySnapshot {
     legal_name: string | null;
     legal_name_ar: string | null;
     tax_authority?: "fta" | "zatca";
+    /** Last change on the business-settings row. Empty when the server did not send one. */
+    updated_at?: string | null;
+    updated_by_name?: string | null;
+    country?: string | null;
+    location?: string | null;
   } | null;
   /** Null when the API has never sent a profile: every module stays on. */
   profile: {

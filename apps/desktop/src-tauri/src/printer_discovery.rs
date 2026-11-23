@@ -202,7 +202,8 @@ pub fn decide(saved: &SavedPrinter, devices: &[Discovered]) -> DiscoveryDecision
         }
     }
 
-    if saved.auto_discover {
+    // An explicit choice stays put when that queue disappears. Automatic selection is only for a name the cashier did not choose.
+    if saved.auto_discover && !saved.user_selected {
         let compatible: Vec<&Discovered> = devices
             .iter()
             .filter(|device| device.classed.compatibility == Compatibility::Compatible && !device.unavailable)
@@ -309,6 +310,16 @@ mod tests {
     fn the_queue_name_alone_does_not_make_a_printer_compatible() {
         let named = classify("Generic Text Driver", "USB001");
         assert_ne!(named.compatibility, Compatibility::Compatible);
+    }
+
+    #[test]
+    fn an_explicit_missing_printer_is_not_replaced() {
+        let devices = vec![device("TM-T20", "EPSON TM-T20 Receipt", "USB001", false)];
+        let mut chosen = saved("OneNote (Desktop) - Protected");
+        chosen.user_selected = true;
+        let decision = decide(&chosen, &devices);
+        assert_eq!(decision.address, "OneNote (Desktop) - Protected");
+        assert_ne!(decision.outcome, "auto");
     }
 
     #[test]

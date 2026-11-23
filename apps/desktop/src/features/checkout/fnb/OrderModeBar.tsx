@@ -14,7 +14,9 @@ import { FloorTableCard } from "../../../components/FloorTableCard";
 import { useBusinessCurrency } from "../currency";
 import { layoutFallback, type TableChoice } from "./TableSelectorGrid";
 import {
+  allocateOrderTag,
   FALLBACK_TABLES,
+  isPlaceholderTag,
   unpackAddress,
   type OrderMode,
   type TableSession,
@@ -326,7 +328,7 @@ export function OrderModeBar({
     setZone(meta.zone);
     setDriver(meta.driver);
     setPickup(meta.pickup);
-    setTag(orderMode === "takeaway" && tableNumber !== "Takeaway" ? (tableNumber ?? "") : "");
+    setTag(orderMode === "takeaway" || orderMode === "delivery" ? (isPlaceholderTag(tableNumber ?? "") ? "" : tableNumber ?? "") : "");
     setGuests(Number(guestCount) || 2);
   }, [ticketKey]);
 
@@ -455,6 +457,13 @@ export function OrderModeBar({
     try {
       const customer = await resolveGuest();
       if (!customer) return;
+      const sameTicket = session !== null && session.order_mode === mode;
+      const sessionId = session?.id ?? crypto.randomUUID();
+      let issued = sameTicket && !isPlaceholderTag(session.table_number) ? session.table_number : "";
+      if ((mode === "takeaway" || mode === "delivery") && issued === "") {
+        issued = await allocateOrderTag({ sessionId, storeId, mode });
+        setTag(issued);
+      }
       onTicket({
         guestName: customer.name,
         phone: customer.phone ?? phone.trim(),
@@ -462,7 +471,8 @@ export function OrderModeBar({
         zone,
         driver,
         pickup,
-        tag: tag.trim(),
+        tag: issued || tag.trim(),
+        sessionId,
       });
     } catch (caught) {
       setGuestError(caught instanceof Error ? caught.message : "Could not save this guest.");
@@ -739,7 +749,14 @@ export function OrderModeBar({
             </div>
             <label className={labelClass}>
               Order tag
-              <input value={tag} onChange={(event) => setTag(event.target.value)} placeholder="Token" className={`${field} mt-1`} />
+              <input
+                readOnly
+                aria-readonly="true"
+                tabIndex={-1}
+                value={tag || "Auto-generated"}
+                className={`${field} mt-1`}
+              />
+              <span className="mt-1 block text-xs font-medium text-zinc-500 dark:text-zinc-400">Auto-generated</span>
             </label>
             <label className={labelClass}>
               Pickup time
@@ -884,6 +901,11 @@ export function OrderModeBar({
                 onChange={setDriver}
                 options={[{ value: "", label: "Unassigned" }, ...drivers.map((item) => ({ value: item, label: item }))]}
               />
+            </label>
+            <label className={labelClass}>
+              Order tag
+              <input readOnly aria-readonly="true" tabIndex={-1} value={tag || "Auto-generated"} className={`${field} mt-1`} />
+              <span className="mt-1 block text-xs font-medium text-zinc-500 dark:text-zinc-400">Auto-generated</span>
             </label>
             <div className="md:col-span-2 flex justify-end">
               <button

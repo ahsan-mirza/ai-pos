@@ -148,7 +148,8 @@ export function ProductFormModal({
 }) {
   const { user, can } = useAuth();
   const catalogAdmin = can(Permission.PortalInventoryManage) && user?.store_id === null;
-  const { isFnB } = useTenant();
+  const { isFnB, businessType } = useTenant();
+  const menuRecipe = businessType === "restaurant" || businessType === "cafe";
   const { has, profile } = useCapabilities();
   const pharmacyOn = has(Capability.PharmacyCatalog);
   const { categories, reload: reloadCategories } = useCategories(pharmacyOn ? { activeOnly: true } : undefined);
@@ -199,6 +200,7 @@ export function ProductFormModal({
   const [itemType, setItemType] = useState<ItemTypeId>(
     product?.item_type ?? (isFnB ? ItemType.MadeToOrder : ItemType.PrePackaged),
   );
+  const [sellWithoutRecipe, setSellWithoutRecipe] = useState(product?.sell_without_recipe === true);
   // Standalone items carry their own season and collection; a model's variants take the model's.
   const fashionOn = has(Capability.VariantsMatrix);
   const [season, setSeason] = useState(product?.season ?? "");
@@ -670,9 +672,23 @@ export function ProductFormModal({
     const weighed = weighing
       ? { sold_by_weight: byWeight, plu_code: byWeight && plu.trim() ? plu.trim() : null, tare_grams: byWeight ? Number(tare) || 0 : 0 }
       : {};
+    if (
+      menuRecipe &&
+      itemType === ItemType.MadeToOrder &&
+      active &&
+      !sellWithoutRecipe &&
+      !(editing && product?.has_recipe)
+    ) {
+      setError("A recipe is required for this product. Add its raw ingredients before saving.");
+      return;
+    }
     const recipes =
       isFnB
-        ? { item_type: itemType, is_ingredient: itemType === ItemType.RawIngredient }
+        ? {
+            item_type: itemType,
+            is_ingredient: itemType === ItemType.RawIngredient,
+            ...(menuRecipe && itemType === ItemType.MadeToOrder ? { sell_without_recipe: sellWithoutRecipe } : {}),
+          }
         : recipesOn
           ? { is_ingredient: ingredient && !openPrice }
           : {};
@@ -1325,6 +1341,32 @@ export function ProductFormModal({
               if (next !== ItemType.PrePackaged) setSerialized(false);
             }}
           />
+          {menuRecipe && itemType === ItemType.MadeToOrder ? (
+            <div className="mt-4">
+              <h3 className="text-sm font-medium">Ingredient & Recipe Settings</h3>
+              <Toggle
+                label="Sell without recipe / ingredient consumption"
+                description="Enable this for items that are already prepared or whose raw ingredients are managed separately. These items can be sold without recipe validation or raw-ingredient deduction."
+                checked={sellWithoutRecipe}
+                onChange={(next) => {
+                  if (editing && next !== sellWithoutRecipe) {
+                    const confirmed = window.confirm(
+                      next
+                        ? "Future orders will sell this item without using its recipe. Saved tickets and sales stay as they are."
+                        : "Future orders will require this item's recipe. Saved tickets and sales stay as they are.",
+                    );
+                    if (!confirmed) return;
+                  }
+                  setSellWithoutRecipe(next);
+                }}
+              />
+              <p className="mt-1 text-xs text-charcoal/60">
+                {sellWithoutRecipe
+                  ? "Prepared item — no recipe consumption. An existing recipe stays saved and is not used on new orders."
+                  : "Recipe required for POS sale. Add its raw ingredients on Recipes. Portions share that recipe."}
+              </p>
+            </div>
+          ) : null}
         </div>
       ) : null}
       {recipesOn && !isFnB && !(editing ? product.is_serialized : serialized) && !openPrice ? (

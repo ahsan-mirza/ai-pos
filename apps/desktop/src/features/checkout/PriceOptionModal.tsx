@@ -10,8 +10,8 @@ import {
   type ProductUpsert,
 } from "@ai-pos/shared-types";
 import { Check, X } from "lucide-react";
-import { useEffect, useId, useMemo, useState } from "react";
-import { QuantityField, parseSellQuantity } from "./QuantityField";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { QuantityField, claimSubmit, parseSellQuantity } from "./QuantityField";
 
 interface PriceOptionDraft {
   quantity: number;
@@ -28,6 +28,8 @@ interface PriceOptionModalProps {
   currency: string;
   hasRecipe?: boolean;
   canSkipRecipe?: boolean;
+  /** Restaurant and cafe leave this false. The product setting chooses the ingredient mode. */
+  chooseIngredients?: boolean;
   initial?: PriceOptionDraft | null;
   onClose: () => void;
   onConfirm: (
@@ -59,6 +61,7 @@ export function PriceOptionModal({
   currency,
   hasRecipe = false,
   canSkipRecipe = false,
+  chooseIngredients = true,
   initial = null,
   onClose,
   onConfirm,
@@ -81,6 +84,7 @@ export function PriceOptionModal({
   const [skipRecipe, setSkipRecipe] = useState(Boolean(initial?.skipRecipe) && canSkipRecipe);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const savingRef = useRef(false);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -145,7 +149,7 @@ export function PriceOptionModal({
           className="flex min-h-0 flex-1 flex-col"
           onSubmit={(event) => {
             event.preventDefault();
-            if (saving) return;
+            if (savingRef.current || saving) return;
             if (needsServing) {
               const problem = priceOptionError(active, selectedId);
               if (problem || !selected) {
@@ -162,8 +166,15 @@ export function PriceOptionModal({
               setError("Enter a quantity of at least 1.");
               return;
             }
+            if (!claimSubmit(savingRef)) return;
             setSaving(true);
-            onConfirm(needsServing ? selected : null, choices, count, instruction.trim().slice(0, 160), hasRecipe && skipRecipe);
+            onConfirm(
+              needsServing ? selected : null,
+              choices,
+              count,
+              instruction.trim().slice(0, 160),
+              chooseIngredients && hasRecipe && skipRecipe,
+            );
           }}
         >
           <div className="custom-scrollbar min-h-0 flex-1 space-y-5 overflow-y-auto px-4 py-4">
@@ -183,7 +194,7 @@ export function PriceOptionModal({
                         setSelectedId(option.id);
                         setError(null);
                       }}
-                      className={`flex min-h-14 w-full items-center gap-3 rounded-2xl border px-4 py-3 text-left text-base font-semibold ${
+                      className={`choice-control flex w-full items-center gap-3 rounded-2xl px-4 py-3 text-left text-base font-semibold ${
                         checked ? "border-primary bg-primary/10" : "border-zinc-200 dark:border-zinc-700"
                       }`}
                     >
@@ -198,7 +209,7 @@ export function PriceOptionModal({
               </div>
             </fieldset>
             ) : null}
-            {hasRecipe ? (
+            {chooseIngredients && hasRecipe ? (
               <fieldset>
                 <legend className="mb-2 text-base font-semibold">Ingredient requirement</legend>
                 <div className="grid grid-cols-1 gap-2" role="radiogroup" aria-label="Ingredient requirement">
@@ -207,7 +218,7 @@ export function PriceOptionModal({
                     role="radio"
                     aria-checked={!skipRecipe}
                     onClick={() => setSkipRecipe(false)}
-                    className={`min-h-14 rounded-2xl border px-4 py-3 text-left ${
+                    className={`choice-control rounded-2xl px-4 py-3 text-left ${
                       !skipRecipe ? "border-primary bg-primary/10" : "border-zinc-200 dark:border-zinc-700"
                     }`}
                   >
@@ -221,7 +232,7 @@ export function PriceOptionModal({
                     aria-disabled={!canSkipRecipe}
                     disabled={!canSkipRecipe}
                     onClick={() => setSkipRecipe(true)}
-                    className={`min-h-14 rounded-2xl border px-4 py-3 text-left disabled:cursor-not-allowed disabled:opacity-60 ${
+                    className={`choice-control rounded-2xl px-4 py-3 text-left disabled:cursor-not-allowed disabled:opacity-60 ${
                       skipRecipe ? "border-primary bg-primary/10" : "border-zinc-200 dark:border-zinc-700"
                     }`}
                   >
@@ -255,7 +266,7 @@ export function PriceOptionModal({
                               type="button"
                               aria-pressed={pressed}
                               onClick={() => toggle(group, option.id)}
-                              className={`flex min-h-14 items-center justify-between gap-3 rounded-2xl border px-4 py-3 text-left ${
+                              className={`choice-control flex items-center justify-between gap-3 rounded-2xl px-4 py-3 text-left ${
                                 pressed ? "border-primary bg-primary/10" : "border-zinc-200 dark:border-zinc-700"
                               }`}
                             >

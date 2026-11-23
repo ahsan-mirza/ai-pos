@@ -193,6 +193,40 @@ def test_sales_price_modifiers_from_the_catalogue(client, session: Session) -> N
     assert stored.modifiers[0]["price_delta_cents"] == 250
 
 
+def test_register_pin_can_save_portion_prices(client) -> None:
+    """The till saves portions with the same pos-scoped token that creates the menu item."""
+    seed_catalog(client)
+    portal = admin_token(client)
+    as_cafe(client, portal)
+    pin = client.post(
+        "/api/v1/auth/login-pin",
+        json={"username": "admin", "pin": "2468"},
+        headers={"X-Api-Key": "test-api-key-value"},
+    )
+    assert pin.status_code == 200, pin.text
+    assert pin.json()["scope"] == "pos"
+    token = pin.json()["access_token"]
+    saved = client.put(
+        f"/api/v1/menu/products/{CABLE_ID}/price-options",
+        headers=bearer(token),
+        json={
+            "options": [
+                {"name": "Small Plate", "price_cents": 300},
+                {"name": "Full Plate", "price_cents": 900},
+            ]
+        },
+    )
+    assert saved.status_code == 200, saved.text
+    assert [option["name"] for option in saved.json()] == ["Small Plate", "Full Plate"]
+    modifiers = client.post(
+        "/api/v1/menu/modifier-groups",
+        headers=bearer(token),
+        json={"name": "Milk", "min_select": 0, "max_select": 1, "options": [{"name": "Oat", "price_delta_cents": 0}]},
+    )
+    assert modifiers.status_code == 403
+    assert modifiers.json()["error"]["message"] == "This token cannot be used for this action."
+
+
 def test_priced_options_are_required_and_snapshotted(client, session: Session) -> None:
     seed_catalog(client)
     token = admin_token(client)

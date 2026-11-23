@@ -435,6 +435,60 @@ def test_offline_type_change_syncs_until_the_kitchen_has_the_order(client) -> No
     assert client.get(f"/api/v1/orders/{order['id']}", headers=device()).json()["service_type"] == "DINE_IN"
 
 
+def test_sent_increase_adds_only_the_extra_round(client, session: Session) -> None:
+    """A sent line stays on its ticket. The extra quantity is a new sent line."""
+    token, table = setup(client)
+    enable(client, token, "kds")
+    station = client.post(
+        "/api/v1/kds/stations",
+        headers=bearer(token),
+        json={"store_id": STORE_ID, "name": "Pass", "is_default": True},
+    )
+    assert station.status_code == 201, station.text
+    order = open_order(client, table, line(3))
+    original_id = order["items"][0]["id"]
+    sent = client.post(
+        f"/api/v1/orders/{order['id']}/send",
+        headers=device(),
+        json={"revision": order["revision"], "user_id": CASHIER_ID},
+    )
+    assert sent.status_code == 200, sent.text
+    order = sent.json()
+    original_sent = next(item["sent_at"] for item in order["items"] if item["id"] == original_id)
+    reduced = client.post(
+        f"/api/v1/orders/{order['id']}/items/{original_id}/increase",
+        headers=device(),
+        json={"revision": order["revision"], "user_id": CASHIER_ID, "quantity": 2},
+    )
+    assert reduced.status_code == 409
+    assert reduced.json()["error"]["code"] == "sent_reduction_blocked"
+    direct = client.post(
+        f"/api/v1/orders/{order['id']}/items/{original_id}/quantity",
+        headers=device(),
+        json={"revision": order["revision"], "user_id": CASHIER_ID, "quantity": 4},
+    )
+    assert direct.status_code == 409 and direct.json()["error"]["code"] == "already_sent"
+    increased = client.post(
+        f"/api/v1/orders/{order['id']}/items/{original_id}/increase",
+        headers=device(),
+        json={"revision": order["revision"], "user_id": CASHIER_ID, "quantity": 5},
+    )
+    assert increased.status_code == 200, increased.text
+    order = increased.json()
+    original = next(item for item in order["items"] if item["id"] == original_id)
+    extra = next(item for item in order["items"] if item["id"] != original_id)
+    assert original["quantity"] == 3 and original["sent_at"] == original_sent
+    assert extra["quantity"] == 2 and extra["sent_at"] is not None
+    assert extra["unit_price_cents"] == original["unit_price_cents"]
+    from app.models.kitchen import KitchenTicketItem
+
+    tickets = session.scalars(select(KitchenTicketItem).where(KitchenTicketItem.order_item_id == uuid.UUID(original_id))).all()
+    assert tickets and all(row.quantity == 3 and row.voided_at is None for row in tickets)
+    extra_tickets = session.scalars(select(KitchenTicketItem).where(KitchenTicketItem.order_item_id == uuid.UUID(extra["id"]))).all()
+    assert extra_tickets and all(row.quantity == 2 for row in extra_tickets)
+    assert session.scalar(select(AuditLog).where(AuditLog.action == "order.sent_quantity_increase")) is not None
+
+
 def test_occupied_table_reopens_the_same_order(client, session: Session) -> None:
     """One occupied table keeps one dine-in order through reopen, extra items, partial pay, and cancel."""
     token, table = setup(client)
@@ -620,3 +674,124 @@ def test_occupied_table_reopens_the_same_order(client, session: Session) -> None
         select(AuditLog).where(AuditLog.action == "order.void", AuditLog.target_entity_id == uuid.UUID(again["id"]))
     )
     assert voided is not None
+
+
+def test_delivery_order_keeps_phone_and_address(client, session: Session) -> None:
+    setup(client)
+    order_id = str(uuid.uuid4())
+    created = client.post(
+        "/api/v1/orders",
+        headers=device(),
+        json={
+            "id": order_id,
+            "store_id": STORE_ID,
+            "service_type": "DELIVERY",
+            "covers": 1,
+            "name": "Portion Rider",
+            "user_id": CASHIER_ID,
+            "delivery_phone": " 0502223344 ",
+            "delivery_address": " 12 Acceptance Road ",
+            "items": [line()],
+        },
+    )
+    assert created.status_code == 201, created.text
+    body = created.json()
+    assert body["service_type"] == "DELIVERY"
+    assert (body["delivery_phone"], body["delivery_address"]) == ("0502223344", "12 Acceptance Road")
+    assert body["items"][0]["paid_sale_id"] is None
+
+    patched = client.patch(
+        f"/api/v1/orders/{order_id}",
+        headers=device(),
+        json={
+            "revision": body["revision"],
+            "user_id": CASHIER_ID,
+            "delivery_phone": "0509999888",
+            "delivery_address": "14 Acceptance Road",
+        },
+    )
+    assert patched.status_code == 200, patched.text
+    assert (patched.json()["delivery_phone"], patched.json()["delivery_address"]) == ("0509999888", "14 Acceptance Road")
+
+    replay = {
+        "id": order_id,
+        "store_id": STORE_ID,
+        "service_type": "DELIVERY",
+        "covers": 1,
+        "name": "Portion Rider",
+        "opened_by_id": CASHIER_ID,
+        "opened_at": "2026-11-22T21:00:00Z",
+        "delivery_phone": "0500000000",
+        "delivery_address": "Somewhere else",
+        "items": [],
+    }
+    replayed = client.post(
+        "/api/v1/sync/push",
+        headers=device(),
+        json={
+            "device_id": "register-1",
+            "events": [
+                {
+                    "idempotency_key": f"order-{order_id}-replay",
+                    "entity_type": "open_order",
+                    "operation": "upsert",
+                    "payload": replay,
+                    "occurred_at": "2026-11-22T21:01:00Z",
+                }
+            ],
+        },
+    )
+    assert replayed.status_code == 200, replayed.text
+    session.expire_all()
+    stored = session.get(OpenOrder, uuid.UUID(order_id))
+    assert stored is not None
+    assert (stored.delivery_phone, stored.delivery_address) == ("0509999888", "14 Acceptance Road")
+
+    blank_id = str(uuid.uuid4())
+    first = {
+        "id": blank_id,
+        "store_id": STORE_ID,
+        "service_type": "DELIVERY",
+        "covers": 1,
+        "name": "Later",
+        "opened_by_id": CASHIER_ID,
+        "opened_at": "2026-11-22T21:02:00Z",
+        "items": [{**line(), "sent_at": "2026-11-22T21:02:00Z"}],
+    }
+    client.post(
+        "/api/v1/sync/push",
+        headers=device(),
+        json={
+            "device_id": "register-1",
+            "events": [
+                {
+                    "idempotency_key": f"order-{blank_id}",
+                    "entity_type": "open_order",
+                    "operation": "upsert",
+                    "payload": first,
+                    "occurred_at": "2026-11-22T21:02:00Z",
+                }
+            ],
+        },
+    )
+    filled = {**first, "items": first["items"], "delivery_phone": "0501111222", "delivery_address": "9 Road"}
+    client.post(
+        "/api/v1/sync/push",
+        headers=device(),
+        json={
+            "device_id": "register-1",
+            "events": [
+                {
+                    "idempotency_key": f"order-{blank_id}-2",
+                    "entity_type": "open_order",
+                    "operation": "upsert",
+                    "payload": filled,
+                    "occurred_at": "2026-11-22T21:03:00Z",
+                }
+            ],
+        },
+    )
+    session.expire_all()
+    later = session.get(OpenOrder, uuid.UUID(blank_id))
+    assert later is not None
+    assert (later.delivery_phone, later.delivery_address) == ("0501111222", "9 Road")

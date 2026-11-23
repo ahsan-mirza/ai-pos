@@ -2,7 +2,7 @@ import type { ModifierChoice, ServiceType } from "@ai-pos/shared-types";
 import { env } from "../../../config/env";
 import { inTauri } from "../../../lib/tauri";
 import type { CartLine } from "../cart";
-import { OrderRequestError, ordersApi, queueOfflineOrder } from "../../orders/ordersClient";
+import { OrderRequestError, call, ordersApi, queueOfflineOrder } from "../../orders/ordersClient";
 
 export type OrderMode = "dine_in" | "takeaway" | "delivery";
 export type KitchenStatus = "PENDING" | "SENT_TO_KDS" | "SERVED" | "VOIDED";
@@ -65,6 +65,26 @@ export interface TicketDetails {
   driver: string;
   pickup: string;
   tag: string;
+  /** Session id the tag was issued for. A new ticket uses this id so the tag is not minted again. */
+  sessionId?: string;
+}
+
+const PLACEHOLDER_TAGS = new Set(["", "Takeaway", "Delivery"]);
+const ISSUED_TAG = /^(TW|DL)(\d{3,6}|-[A-Z0-9]{2,8}-\d{3,6})$/;
+
+export function isPlaceholderTag(value: string): boolean {
+  return PLACEHOLDER_TAGS.has(value.trim());
+}
+
+export function isIssuedTag(value: string): boolean {
+  return ISSUED_TAG.test(value.trim());
+}
+
+/** An existing takeaway or delivery tag stays. A placeholder can take the tag just issued for this ticket. */
+export function keptServiceTag(existing: string, incoming: string, mode: OrderMode): string {
+  if (mode === "dine_in" || !isPlaceholderTag(existing)) return existing;
+  const next = incoming.trim();
+  return next && !isPlaceholderTag(next) ? next : existing;
 }
 
 /** Pack zone, driver and pickup into the address column so the register schema stays unchanged. */
@@ -109,6 +129,64 @@ function writeLocal(rows: TableSession[]): void {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(rows));
 }
 
+function serviceTypeName(mode: OrderMode): "TAKEAWAY" | "DELIVERY" | null {
+  if (mode === "takeaway") return "TAKEAWAY";
+  if (mode === "delivery") return "DELIVERY";
+  return null;
+}
+
+function browserTag(storeId: string, mode: OrderMode, sessionId: string): string {
+  const key = `ai-pos.order-tags.${storeId}.${mode}`;
+  let rows: Record<string, string> = {};
+  try {
+    rows = JSON.parse(localStorage.getItem(key) ?? "{}") as Record<string, string>;
+  } catch {
+    rows = {};
+  }
+  const current = rows[sessionId];
+  if (current) return current;
+  const prefix = mode === "delivery" ? "DL" : "TW";
+  const used = Object.values(rows);
+  const next = used.reduce((highest, tag) => {
+    const value = Number(tag.split("-").at(-1));
+    return Number.isFinite(value) ? Math.max(highest, value) : highest;
+  }, 0) + 1;
+  const tag = `${prefix}-WEB-${String(next).padStart(3, "0")}`;
+  rows[sessionId] = tag;
+  localStorage.setItem(key, JSON.stringify(rows));
+  return tag;
+}
+
+/** One tag per session. The server sequence wins while online. Offline tags keep a device suffix and are not rewritten later. */
+export async function allocateOrderTag(input: { sessionId: string; storeId: string; mode: OrderMode }): Promise<string> {
+  const service = serviceTypeName(input.mode);
+  if (!service) throw new Error("This order type keeps its table name.");
+  const existing = await invoke<string | null>("order_tag_for_session", { sessionId: input.sessionId });
+  if (existing) return existing;
+  try {
+    const issued = await call<{ tag: string }>("POST", "/api/v1/orders/tags", {
+      id: input.sessionId,
+      store_id: input.storeId,
+      service_type: service,
+    });
+    const remembered = await invoke<string>("allocate_order_tag", {
+      sessionId: input.sessionId,
+      storeId: input.storeId,
+      mode: input.mode,
+      tag: issued.tag,
+    });
+    return remembered ?? issued.tag;
+  } catch {
+    const local = await invoke<string>("allocate_order_tag", {
+      sessionId: input.sessionId,
+      storeId: input.storeId,
+      mode: input.mode,
+    });
+    if (local) return local;
+    return browserTag(input.storeId, input.mode, input.sessionId);
+  }
+}
+
 async function invoke<T>(command: string, args: Record<string, unknown>): Promise<T | null> {
   if (!inTauri()) return null;
   try {
@@ -150,10 +228,16 @@ export function openSession(input: {
   address?: string;
   phone?: string;
   existing?: TableSession | null;
+  id?: string;
 }): TableSession {
   if (input.existing && input.existing.status !== "CLOSED") {
+    const tableNumber =
+      input.mode === "dine_in" || input.existing.order_mode !== input.mode
+        ? input.tableNumber || input.existing.table_number
+        : keptServiceTag(input.existing.table_number, input.tableNumber, input.mode);
     return {
       ...input.existing,
+      table_number: tableNumber,
       guest_count: input.guestCount || input.existing.guest_count,
       guest_name: input.guestName ?? input.existing.guest_name,
       address: input.address ?? input.existing.address,
@@ -161,7 +245,7 @@ export function openSession(input: {
       order_mode: input.mode,
     };
   }
-  const id = crypto.randomUUID();
+  const id = input.id ?? crypto.randomUUID();
   const stamp = now();
   return {
     id,
@@ -229,6 +313,29 @@ export function modifiersOf(item: SessionItem): ModifierChoice[] {
   }
 }
 
+/** Delivery phone and street address travel with the order. Zone and driver stay in the local ticket. */
+export function orderHeader(session: TableSession): {
+  name: string;
+  covers: number;
+  deliveryPhone?: string;
+  deliveryAddress?: string;
+} {
+  const header = { name: session.guest_name || session.table_number, covers: session.guest_count };
+  if (session.order_mode !== "delivery") return header;
+  const phone = session.phone.trim().slice(0, 40);
+  const street = unpackAddress(session.address).address.trim().slice(0, 255);
+  return {
+    ...header,
+    ...(phone ? { deliveryPhone: phone } : {}),
+    ...(street ? { deliveryAddress: street } : {}),
+  };
+}
+
+function carriedTag(session: TableSession): { displayTag?: string } {
+  if (session.order_mode === "dine_in" || isPlaceholderTag(session.table_number)) return {};
+  return { displayTag: session.table_number };
+}
+
 function asOrderItems(session: TableSession, ids: Set<string>) {
   return session.items
     .filter((item) => ids.has(item.id))
@@ -263,8 +370,8 @@ export async function attachForPayment(
           userId,
           serviceType: serviceTypeOf(session.order_mode),
           tableId,
-          covers: session.guest_count,
-          name: session.guest_name || session.table_number,
+          ...orderHeader(session),
+          ...carriedTag(session),
           items,
         },
         session.id,
@@ -284,8 +391,8 @@ export async function attachForPayment(
           userId,
           serviceType: serviceTypeOf(session.order_mode),
           tableId,
-          covers: session.guest_count,
-          name: session.guest_name || session.table_number,
+          ...orderHeader(session),
+          ...carriedTag(session),
           openedAt: session.created_at,
           items,
         },
@@ -316,8 +423,8 @@ export async function dispatchKitchen(
           userId,
           serviceType: serviceTypeOf(session.order_mode),
           tableId,
-          covers: session.guest_count,
-          name: session.guest_name || session.table_number,
+          ...orderHeader(session),
+          ...carriedTag(session),
           items,
         },
         session.id,

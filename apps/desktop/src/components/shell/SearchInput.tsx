@@ -78,7 +78,8 @@ export function SearchInput({
       <label htmlFor={id} className={showLabel ? "mb-2 block text-sm font-semibold" : "sr-only"}>
         {label}
       </label>
-      <div className="flex h-14 overflow-hidden rounded-xl border border-zinc-200 bg-white shadow-sm transition-colors focus-within:border-primary-500 focus-within:ring-4 focus-within:ring-primary-500/15 dark:border-zinc-800 dark:bg-zinc-900/60">
+      <div className="rounded-xl shadow-sm transition-colors focus-within:ring-4 focus-within:ring-primary-500/15">
+      <div className="flex h-14 overflow-hidden rounded-xl border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-900/60 focus-within:border-primary-500">
         <div className="relative min-w-0 flex-1">
           <Icon
             aria-hidden="true"
@@ -145,6 +146,7 @@ export function SearchInput({
             <span className="hidden sm:inline">{busy ? "Working…" : actionLabel}</span>
           </button>
         ) : null}
+      </div>
       </div>
     </form>
   );

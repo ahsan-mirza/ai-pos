@@ -22,7 +22,13 @@ export function catalogueIdentity(product: { sku?: string | null; barcode?: stri
 }
 
 export function catalogueTracked(product: ProductUpsert): boolean {
-  return product.is_stock_tracked !== false && !product.is_service && !product.has_recipe && product.item_type !== "MADE_TO_ORDER";
+  return (
+    product.is_stock_tracked !== false &&
+    !product.is_service &&
+    !product.has_recipe &&
+    !product.sell_without_recipe &&
+    product.item_type !== "MADE_TO_ORDER"
+  );
 }
 
 /** The same stock line the grid card shows. Menu cards do not show a shelf count. */

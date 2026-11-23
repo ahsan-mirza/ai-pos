@@ -11,7 +11,6 @@ import {
 } from "../../lib/tauri";
 import { BROWSER_PRINTER, loadPrinter, printReceipt } from "./print";
 import {
-  CONNECTED,
   DISCOVERING,
   NONE_FOUND,
   acceptsSavedName,
@@ -20,8 +19,12 @@ import {
   connectionMessage,
   dedupePrinters,
   foundMessage,
+  networkAddressError,
   printerDetail,
+  queueOperational,
+  saveFeedback,
   selectionWarning,
+  CONNECTED,
 } from "./printerSelection";
 import type { ReceiptDoc } from "@ai-pos/receipt";
 
@@ -33,6 +36,9 @@ interface PrinterSettingsModalProps {
   initialDraft?: PrinterSettings;
   initialQueues?: InstalledPrinter[];
   initialLoading?: boolean;
+  /** Cashiers can view status. Changing the saved configuration needs register-management permission. */
+  canSave?: boolean;
+  initialBusy?: boolean;
 }
 
 const transports: { id: PrinterSettings["transport"]; label: string }[] = [
@@ -48,14 +54,18 @@ export function PrinterSettingsModal({
   initialDraft,
   initialQueues,
   initialLoading,
+  canSave = true,
+  initialBusy = false,
 }: PrinterSettingsModalProps) {
   const titleId = useId();
   const queueLabelId = useId();
   const desktop = inTauri();
   const request = useRef(0);
+  const saving = useRef(false);
+  const remembered = useRef({ tcp: "", windows: "" });
   const [draft, setDraft] = useState<PrinterSettings>(initialDraft ?? BROWSER_PRINTER);
   const [persisted, setPersisted] = useState(initialDraft?.address ?? "");
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState(initialBusy);
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [queues, setQueues] = useState<InstalledPrinter[]>(() => dedupePrinters(initialQueues ?? []));
@@ -80,8 +90,18 @@ export function PrinterSettingsModal({
   };
 
   useEffect(() => {
-    if (initialDraft) return;
+    const seed = (loaded: PrinterSettings) => {
+      if (loaded.transport === "tcp" || loaded.transport === "windows") remembered.current[loaded.transport] = loaded.address;
+      const previous = loaded.previous_address ?? "";
+      if (previous && networkAddressError(previous) === null) remembered.current.tcp ||= previous;
+      else if (previous) remembered.current.windows ||= previous;
+    };
+    if (initialDraft) {
+      seed(initialDraft);
+      return;
+    }
     void loadPrinter().then((loaded) => {
+      seed(loaded);
       setDraft(loaded);
       setPersisted(loaded.address);
     });
@@ -102,13 +122,41 @@ export function PrinterSettingsModal({
     setStatus(null);
   };
 
+  const switchTransport = (id: PrinterSettings["transport"]) => {
+    if (busy || id === draft.transport) return;
+    if (draft.transport === "tcp" || draft.transport === "windows") {
+      remembered.current[draft.transport] = draft.address;
+    }
+    const previous = draft.transport === "none" ? draft.previous_address ?? "" : draft.address.trim() || draft.previous_address || "";
+    patch({
+      transport: id,
+      address: id === "none" ? "" : remembered.current[id],
+      previous_address: previous,
+    });
+  };
+
   const persist = async (): Promise<PrinterSettings | null> => {
+    if (!canSave) {
+      setError("You can view printer status. Changing it needs permission to manage this register.");
+      return null;
+    }
     if (!desktop) {
       setError("Printer settings are stored on the register. Open the desktop app to change them.");
       return null;
     }
+    if (draft.transport === "tcp") {
+      const invalid = networkAddressError(draft.address);
+      if (invalid) {
+        setError(invalid);
+        return null;
+      }
+    }
     if (draft.transport === "windows" && !acceptsSavedName(draft.address, queues, persisted)) {
       setError(draft.address.trim() ? "Select an installed Windows printer." : "Select a printer.");
+      return null;
+    }
+    if (![1, 2, 3].includes(draft.copies)) {
+      setError("Copies per sale must be 1, 2, or 3.");
       return null;
     }
     setBusy(true);
@@ -125,29 +173,26 @@ export function PrinterSettingsModal({
   };
 
   const save = async (): Promise<boolean> => {
+    if (saving.current || busy) return false;
+    saving.current = true;
     const saved = await persist();
-    if (!saved) return false;
-    if (saved.transport === "windows") {
+    if (!saved) {
+      saving.current = false;
+      return false;
+    }
+    let message = saveFeedback(saved, queues);
+    const selected = queues.find((queue) => queue.name === saved.address.trim());
+    if (saved.transport === "windows" && queueOperational(selected)) {
       try {
         const probe = await probePrinter();
-        const message = connectionMessage(probe);
-        if (message === CONNECTED) {
-          setBusy(false);
-          onSaved(message);
-          onClose();
-          return true;
-        }
-        setError(message);
-        setBusy(false);
-        return false;
-      } catch (caught) {
-        setError(caught instanceof Error ? caught.message : String(caught));
-        setBusy(false);
-        return false;
+        if (connectionMessage(probe) === CONNECTED) message = CONNECTED;
+      } catch {
+        // The configuration is already stored. A later status check can report the printer.
       }
     }
     setBusy(false);
-    onSaved("Printer settings saved on this register.");
+    saving.current = false;
+    onSaved(message);
     onClose();
     return true;
   };
@@ -202,7 +247,7 @@ export function PrinterSettingsModal({
                 type="button"
                 role="tab"
                 aria-selected={draft.transport === id}
-                onClick={() => patch({ transport: id })}
+                onClick={() => switchTransport(id)}
                 className={`rounded-full px-3 py-2 text-sm font-semibold transition ${
                   draft.transport === id ? "bg-primary text-white" : "text-white/70 hover:text-white"
                 }`}
@@ -339,23 +384,33 @@ export function PrinterSettingsModal({
           </fieldset>
 
           <div className="space-y-2 rounded-2xl bg-surface dark:bg-zinc-800/60 p-3">
-            {(
-              [
-                ["auto_print", "Print a receipt after every sale"],
-                ["drawer_kick", "Open the cash drawer for cash payments"],
-              ] as const
-            ).map(([key, label]) => (
-              <label key={key} className="flex items-center justify-between gap-3 px-1 text-sm font-medium">
-                {label}
-                <input
-                  type="checkbox"
-                  checked={draft[key]}
-                  disabled={key === "drawer_kick" && drawerDisabled}
-                  onChange={(event) => patch({ [key]: event.target.checked })}
-                  className="h-5 w-5 accent-primary disabled:opacity-40"
-                />
-              </label>
-            ))}
+            <div className="flex items-start justify-between gap-3 px-1 text-sm font-medium">
+              <span>
+                Ask before printing a sale receipt
+                <span className="mt-1 block font-normal text-charcoal/60 dark:text-zinc-400">
+                  Pay always asks after the payment is saved. Yes prints that receipt. No skips printing. The answer is
+                  not saved, and this register cannot print or skip the next sale on its own.
+                </span>
+              </span>
+              <input
+                type="checkbox"
+                checked
+                disabled
+                readOnly
+                aria-label="Ask before printing a sale receipt"
+                className="mt-0.5 h-5 w-5 accent-primary"
+              />
+            </div>
+            <label className="flex items-center justify-between gap-3 px-1 text-sm font-medium">
+              Open the cash drawer for cash payments
+              <input
+                type="checkbox"
+                checked={draft.drawer_kick}
+                disabled={drawerDisabled}
+                onChange={(event) => patch({ drawer_kick: event.target.checked })}
+                className="h-5 w-5 accent-primary disabled:opacity-40"
+              />
+            </label>
             <label className="flex items-center justify-between gap-3 px-1 text-sm font-medium">
               Drawer connector
               <Select
@@ -395,6 +450,12 @@ export function PrinterSettingsModal({
             </p>
           ) : null}
 
+          {!canSave ? (
+            <p role="status" className="text-sm text-charcoal/70 dark:text-zinc-300">
+              You can view printer status. Changing it needs permission to manage this register.
+            </p>
+          ) : null}
+
           <div className="flex items-center justify-between gap-3 pt-2">
             <button
               type="button"
@@ -408,7 +469,7 @@ export function PrinterSettingsModal({
               <button type="button" onClick={onClose} disabled={busy} className="modal-cancel">
                 Cancel
               </button>
-              <button type="submit" disabled={busy} className="modal-save">
+              <button type="submit" disabled={busy || !canSave} className="modal-save">
                 {busy ? "Saving…" : "Save"}
               </button>
             </div>

@@ -43,12 +43,12 @@ import { ui } from "../../components/shell/tokens";
 import { useCapabilities } from "../../lib/capabilities";
 import { categoryChips, searchLabel, searchPlaceholder } from "../../lib/industry";
 import { retailCall } from "../../lib/retailClient";
-import { inTauri, openDocumentPdf, recordCashMovement, refreshSeries, terminalAllocationBalances, type RegisterCustomer } from "../../lib/tauri";
+import { inTauri, openCashDrawer, openDocumentPdf, recordCashMovement, refreshSeries, terminalAllocationBalances, type RegisterCustomer } from "../../lib/tauri";
 import { allocationMap, withTerminalAllocation } from "./allocationBalance";
 import { OpenDrawerButton } from "../audit/OpenDrawerButton";
 import { logItemVoid } from "../audit/registerAudit";
 import type { CashierSession } from "../auth/session";
-import { printReceipt } from "../printing/print";
+import { loadPrinter, printReceipt } from "../printing/print";
 import { asGiftReceipt, type ReceiptDoc } from "@ai-pos/receipt";
 import { exchangeByDate, saleReceipt } from "../printing/saleReceipt";
 import { onDisplayReady, publishDisplay, republishDisplay } from "../display/displayChannel";
@@ -89,8 +89,11 @@ import {
   mirrorCart,
   modifiersOf,
   priceOptionOf,
+  allocateOrderTag,
+  isPlaceholderTag,
   openSession,
   packAddress,
+  unpackAddress,
   saveSession,
   serviceTypeOf,
   type OrderMode,
@@ -120,6 +123,7 @@ import { PriceOptionModal } from "./PriceOptionModal";
 import { combosFor, groupsFor, refreshMenu, useMenu } from "./menu";
 import { OrderRequestError, ordersApi, queueOfflineOrder, queueOrderVoid } from "../orders/ordersClient";
 import { serviceCharge, takeSettlement, type SettlementIntent } from "../orders/settlement";
+import { receiptOutput, setReceiptOutput } from "../restaurant/splitReceipts";
 import { TipRow } from "../orders/TipRow";
 import { PriceOverrideModal } from "./PriceOverrideModal";
 import { CatalogSkeleton } from "./CatalogSkeleton";
@@ -137,6 +141,14 @@ import { buildSalesOrder, submitSalesOrder } from "./salesOrder";
 import { buildQuote, type ChargeRequest } from "./queue";
 import { SaleSummary } from "./SaleSummary";
 import { TenderPanel } from "./TenderPanel";
+import { ReceiptConfirmationModal } from "./ReceiptConfirmationModal";
+import {
+  buildReceiptPrompt,
+  canDownloadReceiptPdf,
+  kickDrawerForCashSale,
+  openReceiptPrompt,
+  type ReceiptPrompt,
+} from "./receiptConfirmation";
 import { emptyPayment, planTenders, splitEqually, tenderOptions, type PaymentDraft } from "./tenders";
 import { useProductSearch } from "./useProductSearch";
 import { useRejectedSyncCount, useSyncEngine } from "./useSyncEngine";
@@ -279,6 +291,14 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
   const [pendingSerial, setPendingSerial] = useState<ProductUpsert | null>(null);
   const [openPriceFor, setOpenPriceFor] = useState<ProductUpsert | null>(null);
   const [quantityFor, setQuantityFor] = useState<ProductUpsert | null>(null);
+  const [quantityEdit, setQuantityEdit] = useState<{
+    lineId: string;
+    quantity: number;
+    optionId: string;
+    choices: ModifierChoice[];
+    instruction: string;
+    skipRecipe?: boolean;
+  } | null>(null);
   const [weighFor, setWeighFor] = useState<ProductUpsert | null>(null);
   const [modifierFor, setModifierFor] = useState<ProductUpsert | null>(null);
   const [priceFor, setPriceFor] = useState<ProductUpsert | null>(null);
@@ -301,6 +321,7 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
   const [details, setDetails] = useState<{ product: ProductUpsert; variants: ProductUpsert[]; title?: string; perVariant?: boolean } | null>(null);
   const [heldOpen, setHeldOpen] = useState(false);
   const [lastReceipt, setLastReceipt] = useState<{ doc: ReceiptDoc; saleId: string } | null>(null);
+  const [receiptAsk, setReceiptAsk] = useState<ReceiptPrompt | null>(null);
   const [charging, setCharging] = useState(false);
   const [pulse, setPulse] = useState(0);
   const [cartOpen, setCartOpen] = useState(false);
@@ -333,6 +354,7 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
     (cart.mode === "RETAIL" && promotions.some((promo) => promo.coupon_code !== null));
   const capabilities = useCapabilities();
   const food = capabilities.foodAndBeverage;
+  const menuItems = capabilities.profile === "restaurant" || capabilities.profile === "cafe";
   const kitchenOn = capabilities.enabled.has(Capability.Kds);
   const [orderMode, setOrderMode] = useState<OrderMode>("dine_in");
   const [deliveryPay, setDeliveryPay] = useState<null | "now" | "credit" | "cod">(null);
@@ -706,6 +728,25 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
   }, [food, catalogLoaded, currency, catalog.products]);
 
   useEffect(() => {
+    const current = tableSession;
+    if (!food || current === null) return;
+    if (current.order_mode !== "takeaway" && current.order_mode !== "delivery") return;
+    if (!isPlaceholderTag(current.table_number)) return;
+    let cancelled = false;
+    void allocateOrderTag({ sessionId: current.id, storeId: current.store_id, mode: current.order_mode }).then(async (tag) => {
+      if (cancelled || sessionRef.current?.id !== current.id) return;
+      if (!isPlaceholderTag(sessionRef.current.table_number)) return;
+      const saved = await saveSession({ ...sessionRef.current, table_number: tag });
+      if (cancelled || sessionRef.current?.id !== saved.id) return;
+      sessionRef.current = saved;
+      setTableSession(saved);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [food, tableSession]);
+
+  useEffect(() => {
     if (!food || sessionRef.current === null) return;
     const current = sessionRef.current;
     const next = mirrorCart(current, cart.lines);
@@ -801,7 +842,14 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
         setComboFor(product);
         return;
       }
-      if (requiresPriceOption(product.price_options ?? menu.price_options?.[product.id]) || product.has_recipe) {
+      const priced = product.price_options ?? menu.price_options?.[product.id];
+      const portionOnly = requiresPriceOption(priced) && groupsFor(menu, product.id).length === 0 && !(!menuItems && product.has_recipe);
+      if (portionOnly) {
+        setQuantityEdit(null);
+        setQuantityFor(product);
+        return;
+      }
+      if (requiresPriceOption(priced) || (!menuItems && product.has_recipe)) {
         setPriceEdit(null);
         setPriceFor(product);
         return;
@@ -819,9 +867,13 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
         setQuantityFor(product);
         return;
       }
-      dispatch({ type: "add_product", product });
+      dispatch({
+        type: "add_product",
+        product,
+        ...(menuItems && product.sell_without_recipe === true ? { skipRecipe: true } : {}),
+      });
     },
-    [charging, dispatch, menu, rentalIds, stamp],
+    [charging, dispatch, menu, menuItems, rentalIds, stamp],
   );
 
   const menuModules = capabilities.enabled.has(Capability.MenuModifiers);
@@ -869,12 +921,16 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
     setTableSession(saved);
     tableIdRef.current = tableId;
     if (!saved.server_order_id) return saved;
+    const street = saved.order_mode === "delivery" ? unpackAddress(saved.address).address.trim() : "";
     const changes = {
       service_type: serviceTypeOf(saved.order_mode),
       table_id: tableId,
       name: saved.guest_name || null,
       note: saved.address || null,
       covers: saved.guest_count,
+      ...(saved.order_mode === "delivery"
+        ? { delivery_phone: saved.phone.trim() || null, delivery_address: street || null }
+        : {}),
       reason: "Changed at the register",
     };
     try {
@@ -896,6 +952,9 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
             covers: saved.guest_count,
             name: saved.guest_name || null,
             note: saved.address || null,
+            ...(saved.order_mode === "delivery"
+              ? { deliveryPhone: saved.phone.trim() || null, deliveryAddress: street || null }
+              : {}),
             openedAt: saved.created_at,
             items: [],
           },
@@ -1078,6 +1137,16 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
     if (chargeLock.current) return;
     chargeLock.current = true;
     setCharging(true);
+    const receiptGuests = Math.max(payment.choice === "split" ? (payment.guests?.length ?? 0) : 0, splitGuests.current);
+    const receiptChoice = receiptOutput();
+    const providerStatus =
+      payment.choice === "card" && payment.cardTerminal && payment.cardManual == null
+        ? (payment.cardIntent?.status ?? "PENDING")
+        : payment.choice === "qr"
+          ? (payment.qrIntent?.status ?? "PENDING")
+          : payment.choice === "bnpl"
+            ? (payment.bnplIntent?.status ?? "PENDING")
+            : null;
     const chargedCart = { ...cartRef.current, lines: withPromotions(cartRef.current, promotions, coupon, vouchers) };
     const request: ChargeRequest = {
       cart: chargedCart,
@@ -1132,11 +1201,41 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
       customer: cartRef.current.customer,
     });
     const takesCash = plan.tenders.some((tender) => tender.method === "cash" && tender.amount_cents > 0);
-    const printAfter = async (message: string) => {
-      setLastReceipt({ doc: receipt, saleId: typeof saleId === "string" ? saleId : "" });
+    const methodLabel =
+      payment.choice === "split"
+        ? "Split"
+        : [...new Set(plan.tenders.map((tender) => SALE_METHOD_LABELS[tender.method] ?? tender.method))].join(", ") ||
+          SALE_METHOD_LABELS[plan.paymentMethod];
+    const savedSaleId = typeof saleId === "string" ? saleId : "";
+    const askForReceipt = async (message: string, outcome: "recorded" | "queued") => {
+      setLastReceipt({ doc: receipt, saleId: savedSaleId });
       showThanks(`${receipt.number} · ${formatMoney(receipt.totalCents, currency)}`);
-      const printed = await printReceipt(receipt, { kickDrawer: takesCash });
-      setNotice(printed.message ? `${message} Receipt not printed: ${printed.message}` : message);
+      setReceiptOutput("combined");
+      await kickDrawerForCashSale(takesCash, false, { load: loadPrinter, kick: openCashDrawer });
+      setNotice(message);
+      const prompt = buildReceiptPrompt(
+        {
+          id: `${batch.batchId}:${outcome}:${receipt.number}`,
+          outcome,
+          blocker: plan.blocker,
+          providerStatus,
+          paidCents: plan.paidCents,
+          remainingCents: plan.onAccountCents,
+          changeCents: plan.changeCents,
+          totalCents: dueCents,
+          currency,
+          cod: plan.paymentMethod === "cod" || plan.tenders.some((tender) => tender.method === "cod"),
+          invoiceNumber: receipt.number,
+          customerName: receipt.customer,
+          methodLabel,
+          saleId: savedSaleId,
+          guestCount: receiptGuests,
+          receiptOutput: receiptChoice,
+          pdfAvailable: canDownloadReceiptPdf(inTauri(), savedSaleId, outcome),
+        },
+        receipt,
+      );
+      if (prompt) setReceiptAsk((current) => openReceiptPrompt(current, prompt));
     };
     const einvoiceNote =
       capabilities.enabled.has(Capability.UaeEinvoicing) && cartRef.current.customer?.trn_vat_number
@@ -1149,7 +1248,7 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
       }
       if (outcome.kind === "recorded") {
         resetSale();
-        await printAfter(summary + invoice + einvoiceNote);
+        await askForReceipt(summary + invoice + einvoiceNote, "recorded");
         await reloadCatalog();
       } else if (outcome.kind === "rejected") {
         batchRef.current = null;
@@ -1158,8 +1257,9 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
         await reloadCatalog();
       } else if (outcome.kind === "queued") {
         resetSale();
-        await printAfter(
+        await askForReceipt(
           `Saved on this register but not in Postgres yet.${invoice} It will sync when the API is reachable. (${outcome.message})${einvoiceNote}`,
+          "queued",
         );
       } else {
         setNotice(`Sale not recorded: ${outcome.message} Charge again to retry.`);
@@ -1422,14 +1522,30 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
                   return (
                     groupsFor(menu, productId).length > 0 ||
                     requiresPriceOption(menu.price_options?.[productId]) ||
-                    Boolean(product?.has_recipe)
+                    (!menuItems && Boolean(product?.has_recipe))
                   );
                 }}
                 onCustomize={(item) => {
                   const line = item.lines[0];
                   if (!line || line.orderItemId) return;
                   const options = line.product.price_options ?? menu.price_options?.[line.product.id];
-                  if (requiresPriceOption(options) || line.product.has_recipe || line.skipRecipe) {
+                  if (
+                    requiresPriceOption(options) &&
+                    groupsFor(menu, line.product.id).length === 0 &&
+                    !(!menuItems && (line.product.has_recipe || line.skipRecipe))
+                  ) {
+                    setQuantityEdit({
+                      lineId: line.lineId,
+                      quantity: line.quantity,
+                      optionId: line.priceOption?.id ?? "",
+                      choices: line.modifiers ?? [],
+                      instruction: line.instruction ?? "",
+                      skipRecipe: line.skipRecipe,
+                    });
+                    setQuantityFor(line.product);
+                    return;
+                  }
+                  if (requiresPriceOption(options) || (!menuItems && (line.product.has_recipe || line.skipRecipe))) {
                     setPriceEdit({
                       lineId: line.lineId,
                       quantity: line.quantity,
@@ -1608,29 +1724,29 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
                     disabled={charging || cart.lines.length === 0}
                     title={cart.lines.length === 0 ? "Add dishes before sending a round" : "Send this round to the kitchen"}
                     onClick={() => void sendRound()}
-                    className={`${ui.secondaryAction} h-14 min-w-0 flex-1 flex-col gap-0 rounded-full px-2 text-xs leading-tight`}
+                    className={`${ui.secondaryAction} h-14 min-w-0 flex-1 flex-col gap-0 rounded-full px-3 text-xs leading-tight`}
                   >
                     <span className="whitespace-nowrap">Send round</span>
                     <span className="whitespace-nowrap">to kitchen</span>
                   </button>
                 ) : null}
-                <button
-                  type="button"
-                  disabled={chargeBlocked}
-                  aria-live="polite"
-                  onClick={() => void (food ? payTable() : charge())}
-                  className={`${ui.primaryAction} min-w-0 flex-[1.15] rounded-2xl px-3`}
-                >
-                  {charging ? (
-                    <span className="truncate">Recording sale…</span>
-                  ) : (
-                    <span className="inline-flex min-w-0 items-end justify-center gap-2">
-                      <span className="mb-2 text-sm leading-none">{t("Pay {amount}", { amount: "" }).trim()}</span>
-                      <CurrencyAmount cents={dueCents} currency={currency} size="pay" />
-                    </span>
-                  )}
-                </button>
               </div>
+              <button
+                type="button"
+                disabled={chargeBlocked}
+                aria-live="polite"
+                onClick={() => void (food ? payTable() : charge())}
+                className={`${ui.primaryAction} rounded-2xl`}
+              >
+                {charging ? (
+                  <span className="truncate">Recording sale…</span>
+                ) : (
+                  <span className="inline-flex max-w-full items-end justify-center gap-2">
+                    <span className="shrink-0 pb-1.5 text-sm font-semibold leading-none">{t("Pay {amount}", { amount: "" }).trim()}</span>
+                    <CurrencyAmount cents={dueCents} currency={currency} size="pay" />
+                  </span>
+                )}
+              </button>
               </div>
             }
           />
@@ -1794,12 +1910,13 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
                 const opened = openSession({
                   storeId: store.id,
                   mode: orderMode,
-                  tableNumber: orderMode === "takeaway" ? details.tag || "Takeaway" : "Delivery",
+                  tableNumber: orderMode === "dine_in" ? previous?.table_number || "Table" : details.tag,
                   guestCount: 1,
                   guestName: details.guestName,
                   address: packAddress(details),
                   phone: details.phone,
                   existing: previous,
+                  id: details.sessionId,
                 });
                 void commitService(opened, null)
                   .then(() => {
@@ -2035,6 +2152,7 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
           currency={currency}
           hasRecipe={Boolean(priceFor.has_recipe)}
           canSkipRecipe={session.user.permissions.includes(Permission.PosSkipRecipe)}
+          chooseIngredients={!menuItems}
           initial={priceEdit}
           onClose={() => {
             setPriceFor(null);
@@ -2042,6 +2160,9 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
           }}
           onConfirm={(option, modifiers, quantity, instruction, skipRecipe) => {
             const priceOption = option ? { id: option.id, name: option.name, price_cents: option.price_cents } : undefined;
+            const ingredientSkip = menuItems
+              ? Boolean(priceEdit ? priceEdit.skipRecipe : priceFor.sell_without_recipe)
+              : skipRecipe;
             const saved = priceEdit
               ? dispatch({
                   type: "set_customization",
@@ -2050,7 +2171,7 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
                   quantity,
                   instruction,
                   priceOption,
-                  skipRecipe,
+                  skipRecipe: ingredientSkip,
                 })
               : dispatch({
                   type: "add_product",
@@ -2059,7 +2180,7 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
                   quantity,
                   instruction,
                   ...(priceOption ? { priceOption } : {}),
-                  skipRecipe,
+                  ...(ingredientSkip ? { skipRecipe: true } : {}),
                 });
             if (saved) {
               setPriceFor(null);
@@ -2081,7 +2202,14 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
           onConfirm={(modifiers, quantity, instruction) => {
             const saved = modifierEdit
               ? dispatch({ type: "set_customization", lineId: modifierEdit.lineId, modifiers, quantity, instruction })
-              : dispatch({ type: "add_product", product: modifierFor, modifiers, quantity, instruction });
+              : dispatch({
+                  type: "add_product",
+                  product: modifierFor,
+                  modifiers,
+                  quantity,
+                  instruction,
+                  ...(menuItems && modifierFor.sell_without_recipe === true ? { skipRecipe: true } : {}),
+                });
             if (saved) {
               setModifierFor(null);
               setModifierEdit(null);
@@ -2096,7 +2224,16 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
           currency={currency}
           onClose={() => setComboFor(null)}
           onConfirm={(components, quantity) => {
-            if (dispatch({ type: "add_product", product: comboFor, components, quantity })) setComboFor(null);
+            if (
+              dispatch({
+                type: "add_product",
+                product: comboFor,
+                components,
+                quantity,
+                ...(menuItems && comboFor.sell_without_recipe === true ? { skipRecipe: true } : {}),
+              })
+            )
+              setComboFor(null);
           }}
         />
       ) : null}
@@ -2113,8 +2250,39 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
       {quantityFor ? (
         <QuantityModal
           product={quantityFor}
-          onClose={() => setQuantityFor(null)}
-          onConfirm={(quantity) => dispatch({ type: "add_product", product: quantityFor, quantity })}
+          currency={currency}
+          options={quantityFor.price_options ?? menu.price_options?.[quantityFor.id] ?? []}
+          initialQuantity={quantityEdit?.quantity}
+          initialOptionId={quantityEdit?.optionId || null}
+          editing={quantityEdit !== null}
+          onClose={() => {
+            setQuantityFor(null);
+            setQuantityEdit(null);
+          }}
+          onConfirm={(quantity, option) => {
+            const priceOption = option ? { id: option.id, name: option.name, price_cents: option.price_cents } : undefined;
+            const ingredientSkip = menuItems
+              ? Boolean(quantityEdit ? quantityEdit.skipRecipe : quantityFor.sell_without_recipe)
+              : Boolean(quantityEdit?.skipRecipe);
+            if (quantityEdit) {
+              return dispatch({
+                type: "set_customization",
+                lineId: quantityEdit.lineId,
+                modifiers: quantityEdit.choices,
+                quantity,
+                instruction: quantityEdit.instruction,
+                priceOption,
+                skipRecipe: ingredientSkip,
+              });
+            }
+            return dispatch({
+              type: "add_product",
+              product: quantityFor,
+              quantity,
+              ...(priceOption ? { priceOption } : {}),
+              ...(ingredientSkip ? { skipRecipe: true } : {}),
+            });
+          }}
         />
       ) : null}
       {openPriceFor ? (
@@ -2426,6 +2594,27 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
             setNotice(`Recalled "${held.label}". Prices and stock are checked again when you charge.`);
           }}
           onClose={() => setHeldOpen(false)}
+        />
+      ) : null}
+      {receiptAsk ? (
+        <ReceiptConfirmationModal
+          key={receiptAsk.id}
+          prompt={receiptAsk}
+          onDismiss={() => setReceiptAsk(null)}
+          onPrinted={(message) => {
+            const promptId = receiptAsk.id;
+            let matched = false;
+            setReceiptAsk((current) => {
+              if (current?.id !== promptId) return current;
+              matched = true;
+              return null;
+            });
+            if (matched) setNotice(message);
+          }}
+          onPrint={(slip, options) => printReceipt(slip, options)}
+          onDownloadPdf={async () => {
+            await openDocumentPdf("invoice", receiptAsk.saleId, receiptAsk.invoiceNumber);
+          }}
         />
       ) : null}
     </>

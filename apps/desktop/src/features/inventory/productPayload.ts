@@ -39,6 +39,10 @@ export interface ProductFormState {
   specs: Record<string, string>;
   packs: string[];
   active: boolean;
+  /** Restaurant and cafe made-to-order items. Off means a recipe is required before the item can be sold. */
+  sellWithoutRecipe: boolean;
+  /** Loaded from the saved product. A new item has no recipe yet. */
+  hasRecipe: boolean;
   skuPrefix: string;
   skuManual: boolean;
   autoBarcode: boolean;
@@ -78,6 +82,8 @@ export const emptyProductForm = (storeId: string | null, fnb: boolean): ProductF
   specs: {},
   packs: [],
   active: true,
+  sellWithoutRecipe: false,
+  hasRecipe: false,
   skuPrefix: "",
   skuManual: false,
   autoBarcode: true,
@@ -257,6 +263,7 @@ export function productCreateBody(
     minimum_age: state.minimumAge.trim() === "" ? null : Number(state.minimumAge),
     is_ingredient: options.fnb ? state.itemType === ItemType.RawIngredient : state.ingredient && !state.openPrice,
     item_type: state.itemType,
+    sell_without_recipe: Boolean(options.fnb && state.itemType === ItemType.MadeToOrder && state.sellWithoutRecipe),
     sellable_units: piecesOnly ? ["PIECE"] : ["PIECE", ...state.packs.filter((code) => code !== "PIECE")],
     opening_store_id: state.storeId || null,
     opening_quantity:
@@ -299,6 +306,7 @@ export function productUpdateBody(
     minimum_age: state.minimumAge.trim() === "" ? null : Number(state.minimumAge),
     is_ingredient: options.fnb ? state.itemType === ItemType.RawIngredient : state.ingredient && !state.openPrice,
     item_type: state.itemType,
+    sell_without_recipe: Boolean(options.fnb && state.itemType === ItemType.MadeToOrder && state.sellWithoutRecipe),
     sellable_units: piecesOnly ? ["PIECE"] : ["PIECE", ...state.packs.filter((code) => code !== "PIECE")],
     is_active: state.active,
     ...fashion(state, options.fashion),
@@ -329,6 +337,7 @@ export const POS_PRODUCT_FIELDS = [
   "minimum_age",
   "is_ingredient",
   "item_type",
+  "sell_without_recipe",
   "sellable_units",
   "is_serialized",
   "opening_store_id",

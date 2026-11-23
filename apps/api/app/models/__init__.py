@@ -150,6 +150,8 @@ from app.models.restaurant import (
     DiningTable,
     OpenOrder,
     OpenOrderItem,
+    OrderTag,
+    OrderTagCounter,
     TableSessionConflict,
 )
 from app.models.return_item import ReturnItem
@@ -288,6 +290,8 @@ __all__ = [
     "TableSessionConflict",
     "OpenOrder",
     "OpenOrderItem",
+    "OrderTag",
+    "OrderTagCounter",
     "Reservation",
     "ReservationSettings",
     "ReservationStatusEvent",

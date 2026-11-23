@@ -1,0 +1,131 @@
+{
+  "profile": "ordertags",
+  "identity": {
+    "executable": "D:\\Work\\ai-pos\\acceptance\\ordertags\\target\\debug\\ai-pos-desktop.exe",
+    "sha256": "4e1603cc4f790d6efb9405b5512fbd69843502309ec7d23f6146fd2962675091",
+    "size": 31714304,
+    "identifier_expected": "com.axizpos.ordertags.acceptance",
+    "api": "http://127.0.0.1:18096",
+    "database": "C:\\Users\\ahsan\\AppData\\Local\\Temp\\axiz-ordertags\\axizpos_ordertags.sqlite",
+    "store_code": "tagreg",
+    "pid": 52196,
+    "hwnd": 8522532,
+    "identifier": "com.axizpos.ordertags.acceptance",
+    "title": "AxizPOS Order Tag Acceptance",
+    "data_dir": "C:\\Users\\ahsan\\AppData\\Roaming\\com.axizpos.ordertags.acceptance"
+  },
+  "first_tag": "TW001",
+  "first_readonly": true,
+  "tag_after_edit": "TW001",
+  "guest_after_edit": "Bilal",
+  "phone_after_edit": "0502222222",
+  "pickup_after_edit": "15:45",
+  "fields_after_edit": "Search customer= | Customer name=Bilal | Phone=0502222222 | Order tag=TW001:ro | Pickup time=15:45 | Search the menu\u2026= | Cash received=",
+  "payment_dialog": "Payment Successful\n\nInvoice TAGREG-TG1-000001\n\nCustomer\nBilal\nPayment method\nCard\nPayment received\nAED\u00a02.10\n\nWould you like to print the receipt?\n\nNo, Skip\nYes, Print Receipt",
+  "second_tag": "TW002",
+  "tags_differ": true,
+  "settings_opened": true,
+  "save_text": "SERVICE\n\nCheckout\nInventory & Stock\nOrders & Tables\nBill History\nCustomers\nExport Data\nVoid & waste\n\nREGISTER\n\nKitchen display\nTime clock\nSale Shift\nSync Center\nCustomer display\nRestaurant settings\nTO\nTag Owner\nSuper Admin\nLock Register\nEN\n|\nAR\nSettings\n\nEach section opens on its own.\n\nSearch settings\nBUSINESS SETTINGS\nOverview\nBusiness\nFinance\nTax & invoices\nSales rules\nProducts\nCustomers\nStaff & access\nModules\nWorkflows\nIntegrations\nAlerts\nAudit trail\nSYSTEM & REGISTER\nRegister\nPrinter & drawer\nConnectivity\nSecurity\nAppearance\nShortcuts\nSync & data\nUpdates\nDiagnostics\nReceipt Printer & Cash Drawer\n\nReceipt printer and the cash drawer connected through it, plus the scale on this register.\n\nOrder Tag Register\nRestaurant\n10 modules\n\nBranch Order Tag Register \u00b7 Activated \u00b7 TG1\n\nRegister-spec",
+  "sqlite_after_save": {
+    "path": "C:\\Users\\ahsan\\AppData\\Roaming\\com.axizpos.ordertags.acceptance\\tenants\\tagreg\\ai-pos.db",
+    "tags": [
+      {
+        "session_id": "75f49d92-ecd7-4ef9-a938-7c0ba992b6a8",
+        "tag": "TW001"
+      },
+      {
+        "session_id": "41fe497c-2693-493f-9510-fbc3d536c279",
+        "tag": "TW002"
+      }
+    ],
+    "sessions": [
+      {
+        "id": "75f49d92-ecd7-4ef9-a938-7c0ba992b6a8",
+        "mode": "takeaway",
+        "table_number": "TW001",
+        "guest": "Bilal",
+        "phone": "0502222222",
+        "status": "CLOSED"
+      },
+      {
+        "id": "41fe497c-2693-493f-9510-fbc3d536c279",
+        "mode": "takeaway",
+        "table_number": "TW002",
+        "guest": "Noor",
+        "phone": "0503333333",
+        "status": "OPEN"
+      }
+    ],
+    "printer": {
+      "transport": "windows",
+      "address": "OneNote (Desktop) - Protected",
+      "paper_dots": 384,
+      "copies": 2,
+      "drawer_kick": 1,
+      "auto_discover": 1,
+      "user_selected": 1,
+      "previous_address": ""
+    },
+    "settings_audits": [
+      {
+        "action": "register.printer_settings",
+        "action_type": "REGISTER_SETTINGS"
+      }
+    ]
+  },
+  "reopened_pressed": "EN,,58 mm",
+  "reopened_dialog": "Register settings\n\nReceipt printer and cash drawer for this register only.\n\nNetwork (LAN)\nWindows printer\nNone\nSelect Windows printer\nOneNote (Desktop) - Protected\nVirtual printer\n\nFound 6 Windows printers\n\nMicrosoft Virtual Print Class Driver \u00b7 Microsoft.Office.OneNoteVirtualPrinter_8wekyb3d8bbwe_onenote-psa:print-to-onenote_S-1-5-21-253993038-841543143-1956924832-1001 \u00b7 Virtual\n\nOneNote (Desktop) Virtual printer Send to Microsoft OneNote 16 Driver \u00b7 nul: \u00b7 Virtual\nOneNote (Desktop) - Protected",
+  "reopened_selects": "list=OneNote (Desktop) - Protected Virtual printer | Drawer connector=Pin 2 | Copies=2",
+  "restart_pid": 61352,
+  "restart_pressed": "EN,,58 mm",
+  "restart_dialog": "Register settings\n\nReceipt printer and cash drawer for this register only.\n\nNetwork (LAN)\nWindows printer\nNone\nSelect Windows printer\nOneNote (Desktop) - Protected\nVirtual printer\n\nFound 6 Windows printers\n\nMicrosoft Virtual Print Class Driver \u00b7 Microsoft.Office.OneNoteVirtualPrinter_8wekyb3d8bbwe_onenote-psa:print-to-onenote_S-1-5-21-253993038-841543143-1956924832-1001 \u00b7 Virtual\n\nOneNote (Desktop) Virtual printer Send to Microsoft OneNote 16 Driver \u00b7 nul: \u00b7 Virtual\nOneNote (Desktop) - Protected",
+  "restart_selects": "list=OneNote (Desktop) - Protected Virtual printer | Drawer connector=Pin 2 | Copies=2",
+  "sqlite_after_restart": {
+    "path": "C:\\Users\\ahsan\\AppData\\Roaming\\com.axizpos.ordertags.acceptance\\tenants\\tagreg\\ai-pos.db",
+    "tags": [
+      {
+        "session_id": "75f49d92-ecd7-4ef9-a938-7c0ba992b6a8",
+        "tag": "TW001"
+      },
+      {
+        "session_id": "41fe497c-2693-493f-9510-fbc3d536c279",
+        "tag": "TW002"
+      }
+    ],
+    "sessions": [
+      {
+        "id": "75f49d92-ecd7-4ef9-a938-7c0ba992b6a8",
+        "mode": "takeaway",
+        "table_number": "TW001",
+        "guest": "Bilal",
+        "phone": "0502222222",
+        "status": "CLOSED"
+      },
+      {
+        "id": "41fe497c-2693-493f-9510-fbc3d536c279",
+        "mode": "takeaway",
+        "table_number": "TW002",
+        "guest": "Noor",
+        "phone": "0503333333",
+        "status": "OPEN"
+      }
+    ],
+    "printer": {
+      "transport": "windows",
+      "address": "OneNote (Desktop) - Protected",
+      "paper_dots": 384,
+      "copies": 2,
+      "drawer_kick": 1,
+      "auto_discover": 1,
+      "user_selected": 1,
+      "previous_address": ""
+    },
+    "settings_audits": [
+      {
+        "action": "register.printer_settings",
+        "action_type": "REGISTER_SETTINGS"
+      }
+    ]
+  },
+  "status": "RECORDED"
+}

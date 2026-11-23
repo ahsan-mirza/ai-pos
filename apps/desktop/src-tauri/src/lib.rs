@@ -1780,6 +1780,8 @@ pub fn run() {
             erp::close_shift,
             erp::recent_shifts,
             erp::list_table_sessions,
+            erp::order_tag_for_session,
+            erp::allocate_order_tag,
             erp::save_table_session,
             erp::cache_table_event,
             erp::close_table_session,

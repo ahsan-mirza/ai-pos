@@ -4,7 +4,9 @@ Date: 22-11-2026
 
 Status: **PASSED WITH LIMITATIONS**.
 
-A menu item can keep one base price or carry several named base prices. The cashier must choose one option before a multi-price item is added. Modifiers stay add-ons on top of that choice. Live zoom of the selector was not run. Availability schedules were not added.
+A menu item can keep one base price or carry several named base prices. The cashier must choose one option before a multi-price item is added. Modifiers stay add-ons on top of that choice. Availability schedules were not added.
+
+Restaurant and cafe now also store a product-level ingredient mode. New lines follow that setting. The combined flow is in `RESTAURANT-PORTION-PRICING-ACCEPTANCE.md` and `RESTAURANT-PREPARED-ITEM-RECIPE-TOGGLE-ACCEPTANCE.md`.
 
 ## Model
 
@@ -31,13 +33,15 @@ A cashier token does not gain this permission. The route uses the existing inven
 
 `PriceOptionModal` opens before the item is added. No option is selected by default. Add stays blocked until one active option is chosen. Cancel leaves the cart unchanged. The chosen quantity is kept while the cashier changes the option. Modifier groups for that item appear after a base option is selected. The line unit price is the option price plus the existing modifier deltas. A second click while the confirm is in progress is ignored.
 
-A single-price item with no recipe still uses the existing add path, including the existing modifier dialog when the item has modifiers. A recipe-linked item opens this same dialog even when it has one price, so the cashier can choose Ingredients Required or Ingredients Not Required. See `RESTAURANT-INGREDIENT-REQUIREMENT-ACCEPTANCE.md`. The option price and the modifier deltas do not change because ingredient consumption was skipped.
+A single-price restaurant or cafe item adds immediately, including the existing modifier dialog when the item has modifiers. The till does not ask whether ingredients are required. That choice is `products.sell_without_recipe`, saved on the menu item. The line stores it as `skip_recipe`. The option price and the modifier deltas do not change because ingredient consumption was skipped.
+
+Other business types, including quick service, still open this dialog for a recipe-linked item so a permitted user can choose Ingredients Required or Ingredients Not Required. See `RESTAURANT-INGREDIENT-REQUIREMENT-ACCEPTANCE.md`.
 
 ## Cart, ticket, and sync
 
 The cart line stores the option id, name, and base price. `priceSnapshotCents` keeps a later catalogue price from replacing the line. Changing the option on an unpaid line recalculates from the newly chosen option price plus the current modifiers. The sale payload sends `price_option_id` on the existing sale item. There is no second sync queue.
 
-Open table tickets store the same snapshot in `table_session_items.price_option_json`. That column is added on the register database when the desktop schema migrates. A live register restart was not exercised in this pass. The ingredient choice is stored separately as `skip_recipe` and is not inferred from the price option. Recipes are not defined per price option. A Large plate and a Small plate use the same recipe unless a later model says otherwise.
+Open table tickets store the same snapshot in `table_session_items.price_option_json`. That column is added on the register database when the desktop schema migrates. A live register restart was not exercised in this pass. The ingredient mode is stored separately as `skip_recipe` and is not inferred from the price option. Recipes are one row per product. A Full Plate and a Small Plate use that same recipe, scaled by the line quantity and the recipe yield. Portion-specific ingredient quantities were not added.
 
 ## Server validation
 
@@ -75,7 +79,7 @@ The full API pytest suite was not run.
 
 ## Limitations
 
-- Catalogue zoom and selector zoom are BLOCKED and NOT RUN. See `docs/ui-ux/POS-MULTI-PROFILE-ZOOM-ACCEPTANCE.md`.
-- No live Restaurant window added a priced line, restarted, or synced that line.
+- Selector zoom was recorded later in `RESTAURANT-PRICING-SELECTOR-ZOOM-ACCEPTANCE.md`. This pricing pass still did not click a live Restaurant window, restart it, or sync a priced line.
+- Restaurant and cafe no longer ask the cashier to choose ingredients. The product toggle is authoritative for new lines.
 - Schedules are not implemented.
 - The Laundry till and production records were not modified.

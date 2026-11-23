@@ -31,6 +31,8 @@ export interface ProductPricing {
   minimum_age?: number | null;
   /** Recipes module: a dish drawn from its ingredients (it carries no stock of its own). */
   has_recipe?: boolean;
+  /** Restaurant and cafe: this dish is sold without drawing its recipe. Missing means recipe-managed. */
+  sell_without_recipe?: boolean;
   /** Recipes module: kept in stock for dishes only; registers do not sell it. */
   is_ingredient?: boolean;
   /** MADE_TO_ORDER dishes are prepared from ingredients and are not a shelf quantity. */

@@ -2,8 +2,6 @@
 //!
 //! A valid signature does not expire with the clock and does not assign stock to this terminal.
 
-use std::collections::BTreeMap;
-
 use base64::engine::general_purpose::STANDARD;
 use base64::Engine;
 use ed25519_dalek::{Signature, VerifyingKey, Verifier};
@@ -116,17 +114,21 @@ pub fn parse_trusted_key_list(raw: &str) -> Vec<TrustedKey> {
 
 /// Keys this process will accept. Tests add the dedicated test key. Release builds do not.
 pub fn trusted_keys() -> Vec<TrustedKey> {
-    let mut keys = production_trusted_keys();
     #[cfg(test)]
     {
         use ed25519_dalek::SigningKey;
+        let mut keys = production_trusted_keys();
         let signing = SigningKey::from_bytes(&[7u8; 32]);
         keys.push(TrustedKey {
             id: "o2-test-1".into(),
             public_key: signing.verifying_key(),
         });
+        return keys;
     }
-    keys
+    #[cfg(not(test))]
+    {
+        production_trusted_keys()
+    }
 }
 
 pub fn parse_public_key(raw: &str) -> Option<VerifyingKey> {
@@ -341,7 +343,10 @@ fn canonical_object(map: &Map<String, Value>) -> String {
 }
 
 #[cfg(test)]
-pub(crate) fn sign_for_test(seed: &[u8; 32], document: &BTreeMap<&str, Value>) -> (String, String, VerifyingKey) {
+pub(crate) fn sign_for_test(
+    seed: &[u8; 32],
+    document: &std::collections::BTreeMap<&str, Value>,
+) -> (String, String, VerifyingKey) {
     use ed25519_dalek::Signer;
     use ed25519_dalek::SigningKey;
     let signing = SigningKey::from_bytes(seed);
@@ -355,6 +360,7 @@ pub(crate) fn sign_for_test(seed: &[u8; 32], document: &BTreeMap<&str, Value>) -
 mod tests {
     use super::*;
     use ed25519_dalek::SigningKey;
+    use std::collections::BTreeMap;
 
     const SEED: [u8; 32] = [7u8; 32];
 

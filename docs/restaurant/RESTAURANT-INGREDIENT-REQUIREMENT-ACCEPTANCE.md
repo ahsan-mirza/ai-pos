@@ -6,6 +6,8 @@ Status: **PASSED WITH LIMITATIONS**.
 
 This status is separate from the four-profile zoom acceptance and from the pricing-variant status in `RESTAURANT-MENU-PRICING-VARIANTS.md`.
 
+Restaurant and cafe new lines no longer use the cashier choice described below. They follow `products.sell_without_recipe`. See `RESTAURANT-PREPARED-ITEM-RECIPE-TOGGLE-ACCEPTANCE.md`. Saved lines keep the `skip_recipe` value they were given. Quick service and any non-menu product still use the permission below.
+
 A recipe-linked menu item can be added with **Ingredients Required** or **Ingredients Not Required**. The choice belongs to that order line. It does not turn the recipe off for the item, and it does not change the line price.
 
 ## Existing flow

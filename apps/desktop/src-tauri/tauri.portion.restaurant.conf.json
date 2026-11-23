@@ -1,0 +1,24 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "AxizPOS Restaurant Portion",
+  "identifier": "com.axizpos.restaurant.portion",
+  "build": {
+    "beforeBuildCommand": "pnpm exec vite build --mode portion-restaurant",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "AxizPOS Restaurant Portion",
+        "width": 1400,
+        "height": 900,
+        "resizable": true
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; connect-src 'self' http://127.0.0.1:18094 ipc: http://ipc.localhost; img-src 'self' data: http://asset.localhost asset: http://127.0.0.1:18094; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:"
+    }
+  },
+  "bundle": { "active": false }
+}

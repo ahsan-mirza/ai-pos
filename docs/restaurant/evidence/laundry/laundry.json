@@ -1,0 +1,14 @@
+{
+  "identifier": "com.axizpos.laundry.acceptance",
+  "title": "AxizPOS Laundry Acceptance",
+  "pid": 57888,
+  "hwnd": 460040,
+  "data_dir": "C:\\Users\\ahsan\\AppData\\Roaming\\com.axizpos.laundry.acceptance",
+  "executable": "D:\\Work\\ai-pos\\apps\\desktop\\src-tauri\\target\\laundry-evidence\\debug\\ai-pos-desktop.exe",
+  "sha256": "cc0f6e8ed329f044496360cff91279465882c573e3f2b450c50a1652c59f2ac9",
+  "api": "http://127.0.0.1:18082",
+  "database": "acceptance/laundry/pgdata on 127.0.0.1:55821",
+  "unlocked": false,
+  "screen": "LAUNDRY TENANT A \u00b7 BRANCH A \u00b7 POS REGISTER\n\nUnlock register\n\nSelect your cashier and enter your POS PIN to continue.\n\nCashiers\n\nLA\nLaundry Admin\nSuper Admin\nUse username insteadNew activation\n\nLaundry Admin\n\n1\n2\n3\n4\n5\n6\n7\n8\n9\nClear\n0\nChecking\u2026\n\nv0.1.4",
+  "status": "BLOCKED"
+}

@@ -14,7 +14,7 @@ import { SettingsSectionCard } from "./settingsUi";
 
 const MIN_CONTRAST = 3;
 
-export function AppearancePanel({ cashier, part }: { cashier: string; part: "appearance" | "hardware" }) {
+export function AppearancePanel({ cashier, part, canConfigure = false }: { cashier: string; part: "appearance" | "hardware"; canConfigure?: boolean }) {
   const { theme, setTheme, density, setDensity, showImages, setShowImages } = useRegisterLayout();
   const capabilities = useCapabilities();
   const currency = useBusinessCurrency();
@@ -92,7 +92,7 @@ export function AppearancePanel({ cashier, part }: { cashier: string; part: "app
       {part === "hardware" ? <ReceiptHardwareCard sample={sampleReceipt(cashier)} refreshToken={hardwareTick} onChangePrinter={() => setPrinter(true)} /> : null}
       {part === "hardware" && capabilities.enabled.has(Capability.WeighedItems) ? <ScaleSettingsCard /> : null}
       {notice ? <p role="status" className="rounded-xl bg-white px-4 py-3 text-sm">{notice}</p> : null}
-      {printer ? <PrinterSettingsModal sample={sampleReceipt(cashier)} onClose={() => { setPrinter(false); setHardwareTick((tick) => tick + 1); }} onSaved={(message) => { setPrinter(false); setNotice(message); setHardwareTick((tick) => tick + 1); }} /> : null}
+      {printer ? <PrinterSettingsModal sample={sampleReceipt(cashier)} canSave={canConfigure} onClose={() => { setPrinter(false); setHardwareTick((tick) => tick + 1); }} onSaved={(message) => { setPrinter(false); setNotice(message); setHardwareTick((tick) => tick + 1); }} /> : null}
     </div>
   );
 }

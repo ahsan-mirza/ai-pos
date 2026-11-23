@@ -1,4 +1,4 @@
-import { Capability } from "@ai-pos/shared-types";
+import { Capability, Permission } from "@ai-pos/shared-types";
 import { useEffect, useState, type ReactNode } from "react";
 import { AppVersionMark } from "./components/AppVersionMark";
 import { ConfirmProvider } from "./components/ConfirmDialog";
@@ -20,6 +20,9 @@ import { OrdersPage } from "./features/orders/OrdersPage";
 import { LaundryWorkspace } from "./features/laundry/LaundryWorkspace";
 import { RepairsPage } from "./features/repairs/RepairsPage";
 import { ReordersPage } from "./features/reorders/ReordersPage";
+import { BillHistoryPage } from "./features/restaurant/BillHistoryPage";
+import { CustomerCreditPage } from "./features/restaurant/CustomerCreditPage";
+import { ExportDataPage } from "./features/restaurant/ExportDataPage";
 import { ReturnsPage } from "./features/returns/ReturnsPage";
 import { SettingsPage } from "./features/settings/SettingsPage";
 import { OpenShiftScreen } from "./features/shifts/OpenShiftScreen";
@@ -94,6 +97,10 @@ function RegisterApp() {
     }
     if (view === "returns" && foodAndBeverage) setView("checkout");
     if (view === "orders" && !foodAndBeverage) setView("checkout");
+    const reports = session?.user.permissions.includes(Permission.PortalReportsRead) === true;
+    const customers = session?.user.permissions.includes(Permission.CustomersManage) === true;
+    if ((view === "bills" || view === "exports") && (!foodAndBeverage || !reports)) setView("checkout");
+    if (view === "customers" && (!foodAndBeverage || !customers)) setView("checkout");
     if (view === "repairs" && !enabled.has(Capability.Repairs)) setView("checkout");
     if (view === "reorders" && !enabled.has(Capability.CustomerReorders)) setView("checkout");
     if (view === "inventory" && session && !canOpenInventory(profile, enabled, session.user.permissions)) setView("checkout");
@@ -197,6 +204,12 @@ function RegisterApp() {
             <SettingsPage />
           ) : view === "orders" ? (
             <OrdersPage session={session} />
+          ) : view === "bills" ? (
+            <BillHistoryPage />
+          ) : view === "customers" ? (
+            <CustomerCreditPage />
+          ) : view === "exports" ? (
+            <ExportDataPage storeId={session.user.store_id} canCustomers={session.user.permissions.includes(Permission.CustomersManage)} />
           ) : view === "repairs" ? (
             <RepairsPage session={session} />
           ) : view === "laundry" || (laundryBusiness && view === "checkout") ? (

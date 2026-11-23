@@ -203,7 +203,7 @@ export function VariantPickerModal({
                             disabled={out}
                             onClick={() => onPick(product)}
                             title={`${product.name} · ${product.sku}`}
-                            className={`flex h-16 w-full min-w-[5.25rem] flex-col items-center justify-center rounded-xl border text-center transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 ${
+                            className={`choice-control flex h-16 w-full min-w-[5.25rem] flex-col items-center justify-center rounded-xl text-center transition ${
                               out
                                 ? "cursor-not-allowed border-zinc-200 bg-zinc-50 text-zinc-400 dark:border-zinc-800 dark:bg-white/[0.02]"
                                 : "border-zinc-200 hover:border-primary hover:bg-primary/5 dark:border-zinc-700"

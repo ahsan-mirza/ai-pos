@@ -6,6 +6,11 @@ export const MISSING = "The previously configured printer is not installed. Sele
 export const OFFLINE = "This printer is installed but currently offline.";
 export const UNVERIFIED = "This device is not verified as a supported receipt printer.";
 export const CONNECTED = "Receipt printer connected successfully.";
+export const SAVED = "Printer settings saved on this register.";
+export const VIRTUAL_SAVED =
+  "Register settings saved. The selected Windows queue is a virtual printer and cannot be used for receipt printing or drawer control.";
+export const MISSING_SAVED =
+  "Register settings saved. The selected Windows queue is not installed and cannot be used for receipt printing or drawer control.";
 
 export function dedupePrinters(queues: readonly InstalledPrinter[]): InstalledPrinter[] {
   const seen = new Set<string>();
@@ -124,6 +129,52 @@ export function canTestDrawerFromProbe(probe: PrinterProbe | null): boolean {
     probe.compatibility !== "unsupported" &&
     probe.compatibility !== "candidate"
   );
+}
+
+/** A saved Windows queue is operational only when discovery classifies it as a ready compatible receipt printer. */
+export function queueOperational(queue: InstalledPrinter | undefined): boolean {
+  if (!queue) return false;
+  return queue.availability === "ready" && queue.compatibility === "compatible" && queue.openable !== false;
+}
+
+export function networkAddressError(address: string): string | null {
+  const value = address.trim();
+  if (value === "" || /\s/.test(value)) return "Enter the printer IP address or hostname.";
+  let host = value;
+  const split = value.lastIndexOf(":");
+  if (split >= 0) {
+    const portText = value.slice(split + 1);
+    if (!/^\d+$/.test(portText)) return "Enter an IPv4 address or hostname, with an optional port.";
+    const port = Number(portText);
+    if (!Number.isInteger(port) || port < 1 || port > 65535) return "The printer port must be a number from 1 to 65535.";
+    host = value.slice(0, split);
+  }
+  if (host === "" || host.includes(":")) return "Enter an IPv4 address or hostname, with an optional port.";
+  const labels = host.split(".");
+  if (labels.some((part) => part === "")) return "Enter a valid printer IP address or hostname.";
+  const numeric = labels.every((part) => /^\d{1,3}$/.test(part));
+  if (numeric) {
+    const ipv4 = labels.length === 4 && labels.every((part) => Number(part) <= 255);
+    return ipv4 ? null : "Enter a valid printer IP address or hostname.";
+  }
+  const hostname = labels.every((label) => label.length <= 63 && /^[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?$/.test(label));
+  return hostname ? null : "Enter a valid printer IP address or hostname.";
+}
+
+/** Persistence succeeded. The message says when the queue still cannot print or open the drawer. */
+export function saveFeedback(settings: Pick<PrinterSettings, "transport" | "address">, queues: readonly InstalledPrinter[]): string {
+  if (settings.transport === "none") return "Printer settings saved on this register. No receipt printer is connected.";
+  if (settings.transport === "tcp") return SAVED;
+  const queue = queues.find((item) => item.name === settings.address.trim());
+  if (!queue) return MISSING_SAVED;
+  if (queue.availability === "virtual" || queue.connection === "Virtual" || queue.compatibility === "unsupported") return VIRTUAL_SAVED;
+  if (queue.availability === "offline") {
+    return "Register settings saved. The selected Windows queue is offline and is not a connected receipt printer.";
+  }
+  if (!queueOperational(queue)) {
+    return "Register settings saved. The selected Windows queue is not verified as a receipt printer.";
+  }
+  return SAVED;
 }
 
 export function connectionMessage(probe: Pick<PrinterProbe, "printerStatus" | "reachable" | "compatibility" | "reachError">): string {

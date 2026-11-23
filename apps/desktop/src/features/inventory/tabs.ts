@@ -74,7 +74,12 @@ const electronics: InventoryTab[] = [
 
 const fashion: InventoryTab[] = selling;
 
-const food: InventoryTab[] = [...selling, recipes];
+const food: InventoryTab[] = [
+  tab("stock", "Ingredient stock", view),
+  tab("products", "Menu items", catalogue),
+  ...selling.slice(2),
+  recipes,
+];
 
 const pharmacy: InventoryTab[] = [
   tab("products", "Products", catalogue),

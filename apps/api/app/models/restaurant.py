@@ -189,6 +189,32 @@ class TableSessionConflict(TenantScoped, TimestampMixin, Base):
     decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
+class OrderTag(TenantScoped, Base):
+    """One cashier-facing tag for a takeaway or delivery order. The id is the order id the register minted."""
+
+    __tablename__ = "order_tags"
+    __table_args__ = (tenant_unique("store_id", "tag", name="uq_order_tags_store_tag"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True)
+    store_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("stores.id"), index=True)
+    service_type: Mapped[str] = mapped_column(String(10))
+    tag: Mapped[str] = mapped_column(String(24))
+    source: Mapped[str] = mapped_column(String(16))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class OrderTagCounter(TenantScoped, Base):
+    """Atomic per-store, per-service sequence. This is the server side of the same tag the register shows."""
+
+    __tablename__ = "order_tag_counters"
+    __table_args__ = (tenant_unique("store_id", "service_type", name="uq_order_tag_counters_scope"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    store_id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("stores.id"), index=True)
+    service_type: Mapped[str] = mapped_column(String(10))
+    last_value: Mapped[int] = mapped_column(Integer, default=0)
+
+
 class CodHandover(TenantScoped, Base):
     """Cash a cashier accepted from a rider. Rows are not edited; a correction is another handover or a reversal."""
 

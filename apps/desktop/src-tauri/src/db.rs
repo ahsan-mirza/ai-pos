@@ -64,6 +64,9 @@ pub struct ProductRow {
     /// Recipes module: a dish drawn from its ingredients (no stock check), and ingredients the register never sells.
     #[serde(default)]
     pub has_recipe: bool,
+    /// Restaurant and cafe dishes sold without drawing a recipe. Missing stays false.
+    #[serde(default)]
+    pub sell_without_recipe: bool,
     #[serde(default)]
     pub is_ingredient: bool,
     /// Business-wide and this branch's price-list entries, as the API returns them.
@@ -198,8 +201,8 @@ const PRODUCT_COLUMNS: &str = "id, store_id, sku, barcode, name, category, price
      stock_quantity, model_number, brand, min_order_quantity, sellable_units, prices_json, tax_category, \
      is_open_price, origin, is_service, product_model_id, model_name, variant_json, sold_by_weight, plu_code, \
      tare_grams, nearest_expiry, units_json, has_recipe, is_ingredient, price_lists_json, image_url, thumb_url, \
-     season, collection, gender, compare_at_cents, is_active, price_includes_tax";
-const PRODUCT_COLUMN_COUNT: usize = 38;
+     season, collection, gender, compare_at_cents, is_active, price_includes_tax, sell_without_recipe";
+const PRODUCT_COLUMN_COUNT: usize = 39;
 
 /// Writes the frozen checkout currency and tax into the same transaction as the catalogue or a pull.
 fn write_checkout_settings(tx: &Connection, text: &str) -> Result<(), String> {
@@ -411,6 +414,7 @@ impl Db {
     }
 
     /// Decrements one allocation and writes the queue row in the same SQLite transaction.
+    #[cfg_attr(not(test), allow(dead_code))]
     pub fn consume_allocation(
         &self,
         allocation_id: &str,
@@ -509,6 +513,7 @@ impl Db {
         })
     }
 
+    #[cfg_attr(not(test), allow(dead_code))]
     pub fn allocation_remaining(&self, allocation_id: &str) -> Result<Option<i64>, String> {
         self.read(|conn| {
             conn.query_row(
@@ -700,6 +705,7 @@ impl Db {
 
     /// Replaces the product cache only when the staged generation has the expected row count.
     /// `sync_queue` is not in this statement.
+    #[cfg_attr(not(test), allow(dead_code))]
     pub fn activate_bootstrap(
         &self,
         generation: i64,
@@ -776,6 +782,7 @@ impl Db {
     }
 
     /// Applies one pull batch and the new sequence in the same transaction.
+    #[cfg_attr(not(test), allow(dead_code))]
     pub fn apply_product_pull(
         &self,
         changes: &[(i64, String, String, Option<String>)],
@@ -879,6 +886,7 @@ impl Db {
         })
     }
 
+    #[cfg_attr(not(test), allow(dead_code))]
     pub fn bootstrap_last_seq(&self) -> Result<i64, String> {
         self.read(|conn| {
             conn.query_row("SELECT last_seq FROM bootstrap_state WHERE id = 1", [], |row| row.get(0))
@@ -886,6 +894,7 @@ impl Db {
         })
     }
 
+    #[cfg_attr(not(test), allow(dead_code))]
     pub fn register_config(&self, dataset: &str, record_id: &str) -> Result<Option<String>, String> {
         let table = match dataset {
             "menu" => "register_menu",
@@ -1441,6 +1450,7 @@ fn migrate(conn: &Connection) -> Result<(), String> {
         ("compare_at_cents", "INTEGER"),
         ("is_active", "INTEGER NOT NULL DEFAULT 1"),
         ("price_includes_tax", "INTEGER NOT NULL DEFAULT 0"),
+        ("sell_without_recipe", "INTEGER NOT NULL DEFAULT 0"),
     ] {
         if !has_column(conn, "products", column)? {
             conn.execute_batch(&format!(
@@ -1705,7 +1715,7 @@ fn insert_product(conn: &Connection, product: &ProductRow) -> Result<(), String>
         &format!(
             "INSERT INTO products ({PRODUCT_COLUMNS})
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22,
-                     ?23, ?24, ?25, ?26, ?27, ?28, ?29, ?30, ?31, ?32, ?33, ?34, ?35, ?36, ?37, ?38)"
+                     ?23, ?24, ?25, ?26, ?27, ?28, ?29, ?30, ?31, ?32, ?33, ?34, ?35, ?36, ?37, ?38, ?39)"
         ),
         params![
             product.id,
@@ -1745,7 +1755,8 @@ fn insert_product(conn: &Connection, product: &ProductRow) -> Result<(), String>
             product.gender,
             product.compare_at_cents,
             if product.is_active { 1 } else { 0 },
-            if product.price_includes_tax { 1 } else { 0 }
+            if product.price_includes_tax { 1 } else { 0 },
+            if product.sell_without_recipe { 1 } else { 0 }
         ],
     )
     .map_err(|err| err.to_string())?;
@@ -1801,6 +1812,7 @@ fn read_product(row: &rusqlite::Row<'_>) -> rusqlite::Result<ProductRow> {
         compare_at_cents: row.get(35)?,
         is_active: row.get::<_, i64>(36)? != 0,
         price_includes_tax: row.get::<_, i64>(37)? != 0,
+        sell_without_recipe: row.get::<_, i64>(38)? != 0,
     })
 }
 

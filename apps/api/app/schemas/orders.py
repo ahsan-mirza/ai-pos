@@ -39,9 +39,27 @@ class OrderCreate(ApiModel):
     name: str | None = Field(default=None, max_length=80)
     note: str | None = Field(default=None, max_length=255)
     customer_id: UUID | None = None
+    delivery_phone: str | None = Field(default=None, max_length=40)
+    delivery_address: str | None = Field(default=None, max_length=255)
     # The cashier working the order; registers authenticate as the device.
     user_id: UUID | None = None
+    # Set only when this register already showed a tag. The server keeps that tag; it does not mint a second one.
+    display_tag: str | None = Field(default=None, max_length=24)
     items: list[OrderItemIn] = Field(default_factory=list, max_length=200)
+
+
+class OrderTagIssue(ApiModel):
+    id: UUID
+    store_id: UUID
+    service_type: Literal["TAKEAWAY", "DELIVERY"]
+    display_tag: str | None = Field(default=None, max_length=24)
+
+
+class OrderTagOut(ApiModel):
+    id: UUID
+    store_id: UUID
+    service_type: Literal["TAKEAWAY", "DELIVERY"]
+    tag: str
 
 
 class OrderUpdate(ApiModel):
@@ -51,6 +69,8 @@ class OrderUpdate(ApiModel):
     name: str | None = Field(default=None, max_length=80)
     note: str | None = Field(default=None, max_length=255)
     customer_id: UUID | None = None
+    delivery_phone: str | None = Field(default=None, max_length=40)
+    delivery_address: str | None = Field(default=None, max_length=255)
     service_type: ServiceType | None = None
     # Set when seating an order that is moving to dine-in. Other type changes release the table.
     table_id: UUID | None = None
@@ -161,6 +181,7 @@ class OrderOut(ApiModel):
     store_id: UUID
     number: int
     service_type: ServiceType
+    display_tag: str | None = None
     status: OrderStatus
     table_id: UUID | None
     table_label: str | None
@@ -214,8 +235,11 @@ class OrderSyncPayload(ApiModel):
     covers: int = Field(default=0, ge=0, le=200)
     name: str | None = Field(default=None, max_length=80)
     note: str | None = Field(default=None, max_length=255)
+    delivery_phone: str | None = Field(default=None, max_length=40)
+    delivery_address: str | None = Field(default=None, max_length=255)
     opened_by_id: UUID
     opened_at: datetime
+    display_tag: str | None = Field(default=None, max_length=24)
     items: list[OrderSyncItem] = Field(default_factory=list, max_length=200)
 
 

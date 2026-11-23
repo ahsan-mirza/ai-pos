@@ -2,7 +2,7 @@
 //! and the table stays occupied until the bill is paid, including while the server is unreachable.
 //! Amounts are integer cents, matching every other money column on this register.
 
-use rusqlite::{params, Connection};
+use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 
 use crate::db::Db;
@@ -47,6 +47,19 @@ pub fn migrate(conn: &Connection) -> Result<(), String> {
             created_at TEXT NOT NULL DEFAULT (datetime('now'))
         );
         CREATE INDEX IF NOT EXISTS ix_table_sync_log_store ON table_sync_log(store_id, id);
+        CREATE TABLE IF NOT EXISTS order_tags (
+            session_id TEXT PRIMARY KEY,
+            store_id TEXT NOT NULL,
+            order_mode TEXT NOT NULL,
+            tag TEXT NOT NULL,
+            UNIQUE(store_id, tag)
+        );
+        CREATE TABLE IF NOT EXISTS order_tag_counters (
+            store_id TEXT NOT NULL,
+            order_mode TEXT NOT NULL,
+            last_value INTEGER NOT NULL,
+            PRIMARY KEY (store_id, order_mode)
+        );
         ",
     )
     .map_err(|err| err.to_string())?;
@@ -174,11 +187,169 @@ pub fn list(db: &Db, store_id: &str) -> Result<Vec<TableSession>, String> {
     })
 }
 
+pub fn tag_for(db: &Db, session_id: &str) -> Result<Option<String>, String> {
+    db.read(|conn| {
+        conn.query_row(
+            "SELECT tag FROM order_tags WHERE session_id = ?1",
+            params![session_id],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(|err| err.to_string())
+    })
+}
+
+/// Issues one tag for this session. A repeat returns the same tag. `presented` stores a tag the server already issued.
+pub fn allocate(
+    db: &Db,
+    session_id: &str,
+    store_id: &str,
+    mode: &str,
+    device_id: &str,
+    presented: Option<&str>,
+) -> Result<String, String> {
+    let session_id = session_id.trim();
+    let store_id = store_id.trim();
+    if session_id.is_empty() || store_id.is_empty() {
+        return Err("The order tag needs an order and a branch.".into());
+    }
+    let prefix = tag_prefix(mode)?;
+    db.transaction(|tx| {
+        if let Some(existing) = lookup_tag(tx, session_id)? {
+            if let Some(wanted) = presented.map(str::trim).filter(|value| !value.is_empty()) {
+                if wanted != existing {
+                    return Err("The order tag cannot be changed.".into());
+                }
+            }
+            return Ok(existing);
+        }
+        let tag = match presented.map(str::trim).filter(|value| !value.is_empty()) {
+            Some(wanted) => {
+                if !acceptable_tag(wanted) {
+                    return Err("Order tags are assigned by the register. A typed tag is not accepted.".into());
+                }
+                if !wanted.starts_with(prefix) {
+                    return Err("That tag belongs to a different order type.".into());
+                }
+                wanted.to_string()
+            }
+            None => {
+                let value = next_local_value(tx, store_id, mode)?;
+                format!("{prefix}-{}-{value:03}", device_suffix(device_id))
+            }
+        };
+        tx.execute(
+            "INSERT INTO order_tags (session_id, store_id, order_mode, tag) VALUES (?1, ?2, ?3, ?4)",
+            params![session_id, store_id, mode, tag],
+        )
+        .map_err(|err| {
+            if err.to_string().contains("UNIQUE") {
+                "That order tag is already used.".to_string()
+            } else {
+                err.to_string()
+            }
+        })?;
+        Ok(tag)
+    })
+}
+
+fn tag_prefix(mode: &str) -> Result<&'static str, String> {
+    match mode {
+        "takeaway" => Ok("TW"),
+        "delivery" => Ok("DL"),
+        _ => Err("This order type keeps its table name.".into()),
+    }
+}
+
+fn acceptable_tag(tag: &str) -> bool {
+    let server = tag.len() >= 5
+        && tag.len() <= 8
+        && (tag.starts_with("TW") || tag.starts_with("DL"))
+        && tag[2..].chars().all(|c| c.is_ascii_digit());
+    if server {
+        return true;
+    }
+    let mut parts = tag.split('-');
+    let prefix = parts.next();
+    let device = parts.next();
+    let value = parts.next();
+    prefix.is_some_and(|item| item == "TW" || item == "DL")
+        && device.is_some_and(|item| {
+            (2..=8).contains(&item.len()) && item.chars().all(|c| c.is_ascii_uppercase() || c.is_ascii_digit())
+        })
+        && value.is_some_and(|item| (3..=6).contains(&item.len()) && item.chars().all(|c| c.is_ascii_digit()))
+        && parts.next().is_none()
+}
+
+fn device_suffix(device_id: &str) -> String {
+    let mut chars: String = device_id
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric())
+        .take(4)
+        .collect();
+    chars.make_ascii_uppercase();
+    if chars.len() < 2 {
+        "LOCAL".into()
+    } else {
+        chars
+    }
+}
+
+fn lookup_tag(tx: &rusqlite::Transaction<'_>, session_id: &str) -> Result<Option<String>, String> {
+    tx.query_row(
+        "SELECT tag FROM order_tags WHERE session_id = ?1",
+        params![session_id],
+        |row| row.get(0),
+    )
+    .optional()
+    .map_err(|err| err.to_string())
+}
+
+fn next_local_value(tx: &rusqlite::Transaction<'_>, store_id: &str, mode: &str) -> Result<i64, String> {
+    tx.query_row(
+        "INSERT INTO order_tag_counters (store_id, order_mode, last_value) VALUES (?1, ?2, 1)
+         ON CONFLICT(store_id, order_mode) DO UPDATE SET last_value = last_value + 1
+         RETURNING last_value",
+        params![store_id, mode],
+        |row| row.get(0),
+    )
+    .map_err(|err| err.to_string())
+}
+
+fn enforce_service_tag(tx: &rusqlite::Transaction<'_>, session: &TableSession) -> Result<(), String> {
+    if session.order_mode != "takeaway" && session.order_mode != "delivery" {
+        return Ok(());
+    }
+    let incoming = session.table_number.trim();
+    if let Some(issued) = lookup_tag(tx, &session.id)? {
+        if incoming != issued {
+            return Err("The order tag cannot be changed.".into());
+        }
+        return Ok(());
+    }
+    let previous: Option<String> = tx
+        .query_row(
+            "SELECT table_number FROM table_sessions WHERE id = ?1",
+            params![session.id],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(|err| err.to_string())?;
+    if let Some(previous) = previous {
+        if incoming != previous.trim() {
+            return Err("The order tag cannot be changed.".into());
+        }
+        return Ok(());
+    }
+    Err("Order tags are assigned by the register.".into())
+}
+
 pub fn save(db: &Db, session: &TableSession) -> Result<TableSession, String> {
     if session.table_number.trim().is_empty() {
         return Err("Choose a table or a guest name.".into());
     }
     db.transaction(|tx| {
+        enforce_service_tag(tx, session)?;
         tx.execute(
             "INSERT INTO table_sessions (
                 id, tenant_id, store_id, table_number, guest_count, guest_name, address, phone, order_mode, status,
@@ -409,5 +580,65 @@ mod tests {
         assert!(skipped.skip_recipe);
         assert_eq!(skipped.unit_price_cents, 1200);
         assert_eq!(skipped.quantity, 2);
+    }
+
+    fn temp_db(name: &str) -> (Db, std::path::PathBuf) {
+        let path = std::env::temp_dir().join(format!(
+            "aipos-{name}-{}.sqlite",
+            SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos()
+        ));
+        let db = Db::open(&path).expect("open");
+        (db, path)
+    }
+
+    fn takeaway(id: &str, tag: &str) -> TableSession {
+        TableSession {
+            id: id.into(),
+            tenant_id: "tenant".into(),
+            store_id: "store".into(),
+            table_number: tag.into(),
+            guest_count: 1,
+            guest_name: "Amina".into(),
+            address: String::new(),
+            phone: "0500000000".into(),
+            order_mode: "takeaway".into(),
+            status: "OPEN".into(),
+            server_order_id: None,
+            server_revision: 0,
+            created_at: "2026-11-23T00:00:00Z".into(),
+            updated_at: "2026-11-23T00:00:00Z".into(),
+            items: vec![],
+        }
+    }
+
+    #[test]
+    fn order_tags_are_unique_stable_and_reject_a_typed_replacement() {
+        let (db, path) = temp_db("order-tags");
+        let first = allocate(&db, "order-1", "store", "takeaway", "device-aaaa", None).unwrap();
+        let second = allocate(&db, "order-2", "store", "takeaway", "device-aaaa", None).unwrap();
+        assert_ne!(first, second);
+        assert!(first.starts_with("TW-DEVI-"), "{first}");
+        assert_eq!(allocate(&db, "order-1", "store", "takeaway", "device-aaaa", None).unwrap(), first);
+        let mut session = takeaway("order-1", &first);
+        save(&db, &session).unwrap();
+        session.guest_name = "Noura".into();
+        session.phone = "0501111111".into();
+        session.address = "\u{1f}18:30".into();
+        save(&db, &session).unwrap();
+        let loaded = list(&db, "store").unwrap();
+        assert_eq!(loaded[0].table_number, first);
+        assert_eq!(loaded[0].guest_name, "Noura");
+        session.table_number = "TW999".into();
+        assert!(save(&db, &session).unwrap_err().contains("cannot be changed"));
+        assert!(allocate(&db, "order-1", "store", "takeaway", "device-aaaa", Some("TW002"))
+            .unwrap_err()
+            .contains("cannot be changed"));
+        assert!(allocate(&db, "order-3", "store", "takeaway", "device-aaaa", Some("TW1"))
+            .unwrap_err()
+            .contains("not accepted"));
+        let remembered = allocate(&db, "order-4", "store", "delivery", "device-bbbb", Some("DL001")).unwrap();
+        assert_eq!(remembered, "DL001");
+        assert_eq!(tag_for(&db, "order-4").unwrap().as_deref(), Some("DL001"));
+        let _ = std::fs::remove_file(path);
     }
 }

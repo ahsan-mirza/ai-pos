@@ -15,6 +15,7 @@ export const AuditActionType = {
   CashDrop: "CASH_DROP",
   ItemVoid: "ITEM_VOID",
   ExpiredStockSold: "EXPIRED_STOCK_SOLD",
+  RegisterSettings: "REGISTER_SETTINGS",
 } as const;
 export type AuditActionType = (typeof AuditActionType)[keyof typeof AuditActionType];
 
@@ -46,6 +47,7 @@ export const AUDIT_ACTION_LABELS: Record<AuditActionType, string> = {
   CASH_DROP: "Cash drop",
   ITEM_VOID: "Item void",
   EXPIRED_STOCK_SOLD: "Expired stock sold",
+  REGISTER_SETTINGS: "Register settings",
 };
 
 export type AuditClientDevice = "web" | "desktop" | "api" | "system";
@@ -127,7 +129,7 @@ export interface AuditLogQuery {
 /** Register-side actions that are queued offline and batch-synced to the ledger. */
 export type DesktopAuditActionType = Extract<
   AuditActionType,
-  "LOGIN_PIN" | "MANAGER_OVERRIDE" | "PRICE_OVERRIDE" | "DRAWER_OPEN" | "CASH_DROP" | "ITEM_VOID" | "REFUND_PROCESSED"
+  "LOGIN_PIN" | "MANAGER_OVERRIDE" | "PRICE_OVERRIDE" | "DRAWER_OPEN" | "CASH_DROP" | "ITEM_VOID" | "REFUND_PROCESSED" | "REGISTER_SETTINGS"
 >;
 
 export interface DesktopAuditEvent {

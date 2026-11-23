@@ -281,6 +281,7 @@ function stockError(lines: CartLine[], product: ProductUpsert, pieces: number): 
     product.is_service ||
     product.is_open_price ||
     product.has_recipe ||
+    product.sell_without_recipe ||
     product.is_stock_tracked === false ||
     product.item_type === "MADE_TO_ORDER"
   )

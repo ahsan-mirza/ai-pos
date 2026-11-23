@@ -2,6 +2,7 @@ import { comboSummary, formatMoney, modifierSummary, unpaidItems, type Order } f
 import { CreditCard, Minus, Plus, Users, X } from "lucide-react";
 import { useEffect, useId, useMemo, useState } from "react";
 import { MAX_GUESTS } from "../checkout/tenders";
+import { receiptOutput, setReceiptOutput, type ReceiptOutput } from "../restaurant/splitReceipts";
 
 interface SplitChecksModalProps {
   order: Order;
@@ -26,6 +27,7 @@ export function SplitChecksModal({ order, currency, onClose, onPayCheck, onPayEq
     Object.fromEntries(items.map((item) => [item.id, item.seat ? Math.max(0, seats.indexOf(item.seat)) : 0])),
   );
   const [guests, setGuests] = useState(() => Math.max(2, order.covers || seats.length));
+  const [output, setOutput] = useState<ReceiptOutput>(receiptOutput);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -125,6 +127,17 @@ export function SplitChecksModal({ order, currency, onClose, onPayCheck, onPayEq
             <Plus size={14} aria-hidden="true" />
           </button>
           <span className="text-xs text-zinc-500 dark:text-white/50">≈ {formatMoney(Math.ceil(order.open_cents / guests), currency)} each before tax</span>
+          <fieldset className="flex w-full flex-wrap gap-3 text-xs">
+            <legend className="font-semibold">Receipt output</legend>
+            <label className="inline-flex items-center gap-1">
+              <input type="radio" name="receipt-output" checked={output === "combined"} onChange={() => { setOutput("combined"); setReceiptOutput("combined"); }} />
+              One combined receipt
+            </label>
+            <label className="inline-flex items-center gap-1">
+              <input type="radio" name="receipt-output" checked={output === "separate"} onChange={() => { setOutput("separate"); setReceiptOutput("separate"); }} />
+              Separate receipt for each split
+            </label>
+          </fieldset>
           <button type="button" onClick={() => onPayEqually(guests)} className="ml-auto h-10 rounded-full bg-primary px-4 text-sm font-semibold text-white">
             Pay {guests} ways
           </button>

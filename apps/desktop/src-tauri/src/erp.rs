@@ -324,6 +324,47 @@ pub fn list_table_sessions(
     crate::table_sessions::list(&state.db, &store_id)
 }
 
+fn require_orders(state: &AppState) -> Result<crate::auth::Session, String> {
+    let session = require_session(state)?;
+    if session.user.permissions.iter().any(|item| item == "pos:orders") {
+        return Ok(session);
+    }
+    Err("You cannot assign order tags.".into())
+}
+
+#[tauri::command]
+pub fn order_tag_for_session(state: tauri::State<AppState>, session_id: String) -> Result<Option<String>, String> {
+    require_orders(&state)?;
+    crate::table_sessions::tag_for(&state.db, &session_id)
+}
+
+#[tauri::command]
+pub fn allocate_order_tag(
+    state: tauri::State<AppState>,
+    session_id: String,
+    store_id: String,
+    mode: String,
+    tag: Option<String>,
+) -> Result<String, String> {
+    let session = require_orders(&state)?;
+    if session
+        .user
+        .store_id
+        .as_deref()
+        .is_some_and(|home| !home.is_empty() && home != store_id)
+    {
+        return Err("You can only assign order tags for your own branch.".into());
+    }
+    crate::table_sessions::allocate(
+        &state.db,
+        &session_id,
+        &store_id,
+        &mode,
+        &state.config.device_id,
+        tag.as_deref(),
+    )
+}
+
 #[tauri::command]
 pub fn save_table_session(
     state: tauri::State<AppState>,
@@ -543,8 +584,51 @@ pub fn save_printer_settings(
     state: tauri::State<AppState>,
     settings: printer::PrinterSettings,
 ) -> Result<printer::PrinterSettings, String> {
-    require_session(&state)?;
-    printer::save(&state.db, &settings)
+    let session = require_session(&state)?;
+    if !printer::hardware_change_allowed(&session.user.permissions) {
+        return Err("You can view printer status. Changing it needs permission to manage this register.".into());
+    }
+    let previous = printer::load(&state.db)?;
+    let saved = printer::save(&state.db, &settings)?;
+    let _ = crate::audit::record(
+        &state.db,
+        &session,
+        &state.config.store_id,
+        crate::audit::AuditInput {
+            action_type: "REGISTER_SETTINGS".into(),
+            action: "register.printer_settings".into(),
+            target_entity: "RegisterSettings".into(),
+            target_entity_id: None,
+            reason_notes: None,
+            approver_id: None,
+            old_values: Some(serde_json::json!({
+                "transport": previous.transport,
+                "address": previous.address,
+                "paper_dots": previous.paper_dots,
+                "drawer_kick": previous.drawer_kick,
+                "auto_print": previous.auto_print,
+                "copies": previous.copies,
+                "drawer_pin": previous.drawer_pin,
+                "auto_discover": previous.auto_discover,
+            })),
+            new_values: Some(serde_json::json!({
+                "transport": saved.transport,
+                "address": saved.address,
+                "paper_dots": saved.paper_dots,
+                "drawer_kick": saved.drawer_kick,
+                "auto_print": saved.auto_print,
+                "copies": saved.copies,
+                "drawer_pin": saved.drawer_pin,
+                "auto_discover": saved.auto_discover,
+                "outcome": "saved",
+            })),
+            details: Some(serde_json::json!({
+                "source": "desktop",
+                "register_id": state.config.device_id,
+            })),
+        },
+    );
+    Ok(saved)
 }
 
 #[tauri::command]

@@ -209,6 +209,9 @@ class Product(TenantScoped, TimestampMixin, Base):
     is_service: Mapped[bool] = mapped_column(Boolean, default=False)
     # Recipes module: stocked only to make dishes; registers never sell it.
     is_ingredient: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Restaurant and cafe dishes: true sells the item without drawing its recipe.
+    # False is the default and does not mean the dish is prepared when no recipe exists.
+    sell_without_recipe: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     # MADE_TO_ORDER dishes are produced from a recipe and carry no stock of their own.
     # RAW_INGREDIENT and PRE_PACKAGED stay on the stock overview.
     item_type: Mapped[str] = mapped_column(String(20), default="PRE_PACKAGED")

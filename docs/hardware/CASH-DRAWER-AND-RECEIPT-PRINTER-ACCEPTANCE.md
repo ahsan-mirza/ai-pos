@@ -1,8 +1,16 @@
 # Cash drawer and receipt printer
 
-Date: 22-11-2026
+Date: 23-11-2026
 
-## This pass — Windows printer dropdown
+## Register settings save
+
+Save no longer treats an unverified Windows queue as a failed write. The settings row is stored first. A probe runs only for a ready, compatible, openable queue, and only to confirm the connected message. OneNote `(Desktop) - Protected` is kept as a virtual preference. It is not a connected receipt printer and it cannot kick the drawer.
+
+The isolated walk and the hash are in `docs/hardware/REGISTER-SETTINGS-SAVE-ACCEPTANCE.md`. Status for that pass: **PASSED WITH LIMITATIONS**. No drawer pulse was sent. `printer_status` on that register had no kick timestamp.
+
+## Earlier pass — Windows printer dropdown
+
+Date: 22-11-2026
 
 | Check | Result |
 | --- | --- |

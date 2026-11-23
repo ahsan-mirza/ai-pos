@@ -26,6 +26,8 @@ Shell pieces that now size icons with rem classes instead of a pixel `size` prop
 
 `PosButton` / `PosIconButton` heights stay on the Tailwind rem scale (`h-9`, `h-12`, `h-14`) and the `2rem` icon-button token.
 
+`--pos-control-touch` (`3.5rem`), `--pos-control-line`, and `--pos-focus-width` (`0.125rem`) size the shared `.choice-control` selected stroke. The stroke is an inset shadow so a clipping scrollport cannot crop it.
+
 ## Exceptions that stay in pixel or device units
 
 | Location | Why it stays |

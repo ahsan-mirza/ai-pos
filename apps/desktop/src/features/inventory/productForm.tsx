@@ -38,6 +38,7 @@ import {
 } from "./api";
 import { CreatableLookupField } from "./creatableLookup";
 import { compressImageToWebp } from "./imageFile";
+import { priceOptionsPayload, type PriceDraft } from "./menuEntry";
 import { SavedPhotoGallery } from "./photoGallery";
 import { FashionMatrix } from "./fashionMatrix";
 import { ProductPhotos, type PendingPhoto } from "./productPhotos";
@@ -137,6 +138,8 @@ function fromProduct(product: ProductDetail, fnb: boolean): ProductFormState {
     specs: { ...(product.specifications ?? {}), ...(product.variant_attributes ?? {}) },
     packs: (product.sellable_units ?? []).filter((code) => code !== "PIECE"),
     active: product.is_active !== false,
+    sellWithoutRecipe: product.sell_without_recipe === true,
+    hasRecipe: product.has_recipe === true,
     skuManual: true,
     nameTouched: true,
     autoBarcode: false,
@@ -171,6 +174,10 @@ export function ProductDrawer({
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [priceRows, setPriceRows] = useState<PriceDraft[]>([
+    { name: "", price: "", active: true },
+    { name: "", price: "", active: true },
+  ]);
   const catalogAdmin = access.manage && access.storeId === null;
   const patch = (part: Partial<ProductFormState>) => setState((current) => ({ ...current, ...part }));
   const patchPharmacy = (part: Partial<PharmacyDraft>) => setPharmacy((current) => ({ ...current, ...part }));
@@ -182,6 +189,25 @@ export function ProductDrawer({
     void inventoryApi.units().then(setUnits).catch(() => setUnits([]));
     void inventoryApi.stores().then(setStores).catch(() => setStores([]));
   }, [access.online]);
+
+  useEffect(() => {
+    if (!product || !access.fnb || !access.online) return;
+    void inventoryApi
+      .priceOptions(product.id)
+      .then((rows) => {
+        if (rows.length >= 2) {
+          setPriceRows(
+            rows.map((row) => ({
+              id: row.id,
+              name: row.name,
+              price: (row.price_cents / 100).toFixed(2),
+              active: row.is_active,
+            })),
+          );
+        }
+      })
+      .catch(() => undefined);
+  }, [product, access.fnb, access.online]);
 
   useEffect(() => {
     if (!access.online || state.brandId === "" || state.subCategoryId === "") {
@@ -301,6 +327,17 @@ export function ProductDrawer({
     });
     setErrors(nextErrors);
     if (Object.keys(nextErrors).length > 0) return;
+    const menuRecipe = access.profile === "restaurant" || access.profile === "cafe";
+    if (
+      menuRecipe &&
+      draft.itemType === ItemType.MadeToOrder &&
+      draft.active &&
+      !draft.sellWithoutRecipe &&
+      !draft.hasRecipe
+    ) {
+      setError("A recipe is required for this product. Add its raw ingredients before saving.");
+      return;
+    }
     setBusy(true);
     setError(null);
     const options = {
@@ -368,14 +405,17 @@ export function ProductDrawer({
         onSaved("Variants created.");
         return;
       }
+      const menuOptions = access.fnb && draft.itemType === ItemType.MadeToOrder ? priceOptionsPayload(priceRows, centsFromPrice) : null;
       if (product) {
         await inventoryApi.updateProduct(product.id, productUpdateBody(draft, options));
+        if (menuOptions) await inventoryApi.replacePriceOptions(product.id, menuOptions);
         if (photos.length > 0) await uploadPhotos(product.id);
-        onSaved(state.active ? "Product updated." : "Product archived. Historical sales stay on the ledger.");
+        onSaved(access.fnb ? "Menu item updated." : state.active ? "Product updated." : "Product archived. Historical sales stay on the ledger.");
       } else {
         const created = await inventoryApi.createProduct(productCreateBody(draft, options));
+        if (menuOptions) await inventoryApi.replacePriceOptions(created.id, menuOptions);
         if (photos.length > 0) await uploadPhotos(created.id);
-        onSaved(access.pharmacy ? "Medicine created." : "Product created.");
+        onSaved(access.pharmacy ? "Medicine created." : access.fnb ? "Menu item created." : "Product created.");
       }
     } catch (caught) {
       setError(inventoryError(caught, "The product was not saved."));
@@ -402,7 +442,7 @@ export function ProductDrawer({
 
   return (
     <FormModal
-      title={editing ? `Edit ${product.name}` : "New product"}
+      title={editing ? `Edit ${product.name}` : access.fnb ? "New menu item" : "New product"}
       subtitle={editing ? `${product.sku} · ${product.barcode ?? ""}` : "Products are shared by every branch; stock is per branch."}
       onClose={onClose}
       headerExtra={
@@ -730,6 +770,139 @@ export function ProductDrawer({
               <option value={ItemType.PrePackaged}>Pre-packaged</option>
             </select>
           </Field>
+        ) : null}
+        {access.fnb && state.itemType === ItemType.MadeToOrder ? (
+          <fieldset>
+            <legend className="text-sm font-medium">Pricing & Portions</legend>
+            <p className="text-xs text-zinc-500">Leave the rows blank for a single price. Two or more names, such as Small Plate and Full Plate, are separate portions of this one item. The till asks the cashier to choose a portion. Modifiers stay separate.</p>
+            <div className="mt-2 space-y-2">
+              {priceRows.map((row, index) => (
+                <div key={row.id ?? index} className="grid grid-cols-[minmax(0,1fr)_7rem_auto] items-center gap-2">
+                  <input
+                    className={control}
+                    aria-label={`Portion ${index + 1} name`}
+                    placeholder="Small Plate"
+                    value={row.name}
+                    onChange={(event) =>
+                      setPriceRows((current) => current.map((item, itemIndex) => (itemIndex === index ? { ...item, name: event.target.value } : item)))
+                    }
+                  />
+                  <input
+                    className={control}
+                    aria-label={`Portion ${index + 1} price`}
+                    inputMode="decimal"
+                    placeholder="0.00"
+                    value={row.price}
+                    onChange={(event) =>
+                      setPriceRows((current) => current.map((item, itemIndex) => (itemIndex === index ? { ...item, price: event.target.value } : item)))
+                    }
+                  />
+                  <div className="flex items-center gap-1">
+                    <label className="flex items-center gap-1 text-xs">
+                      <input
+                        type="checkbox"
+                        aria-label={`Portion ${index + 1} active`}
+                        checked={row.active !== false}
+                        onChange={(event) =>
+                          setPriceRows((current) =>
+                            current.map((item, itemIndex) => (itemIndex === index ? { ...item, active: event.target.checked } : item)),
+                          )
+                        }
+                      />
+                      Active
+                    </label>
+                    <button
+                      type="button"
+                      className="px-1 text-xs font-semibold"
+                      aria-label={`Move portion ${index + 1} up`}
+                      disabled={index === 0}
+                      onClick={() =>
+                        setPriceRows((current) => {
+                          if (index === 0) return current;
+                          const next = [...current];
+                          const [moved] = next.splice(index, 1);
+                          if (!moved) return current;
+                          next.splice(index - 1, 0, moved);
+                          return next;
+                        })
+                      }
+                    >
+                      Up
+                    </button>
+                    <button
+                      type="button"
+                      className="px-1 text-xs font-semibold"
+                      aria-label={`Move portion ${index + 1} down`}
+                      disabled={index === priceRows.length - 1}
+                      onClick={() =>
+                        setPriceRows((current) => {
+                          if (index >= current.length - 1) return current;
+                          const next = [...current];
+                          const [moved] = next.splice(index, 1);
+                          if (!moved) return current;
+                          next.splice(index + 1, 0, moved);
+                          return next;
+                        })
+                      }
+                    >
+                      Down
+                    </button>
+                    <button
+                      type="button"
+                      className="px-1 text-xs font-semibold"
+                      aria-label={`Remove portion ${index + 1}`}
+                      onClick={() => setPriceRows((current) => current.filter((_, itemIndex) => itemIndex !== index))}
+                    >
+                      Remove
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <button type="button" className="mt-2 text-sm font-semibold text-primary" onClick={() => setPriceRows((current) => [...current, { name: "", price: "", active: true }])}>
+              Add portion
+            </button>
+          </fieldset>
+        ) : null}
+        {(access.profile === "restaurant" || access.profile === "cafe") && state.itemType === ItemType.MadeToOrder ? (
+          <fieldset>
+            <legend className="text-sm font-medium">Ingredient & Recipe Settings</legend>
+            <label className="mt-2 flex items-start gap-2 text-sm">
+              <input
+                type="checkbox"
+                className="mt-1 h-5 w-5"
+                role="switch"
+                aria-checked={state.sellWithoutRecipe}
+                checked={state.sellWithoutRecipe}
+                onChange={(event) => {
+                  const next = event.target.checked;
+                  if (editing && next !== state.sellWithoutRecipe) {
+                    const confirmed = window.confirm(
+                      next
+                        ? "Future orders will sell this item without using its recipe. Saved tickets and sales stay as they are."
+                        : "Future orders will require this item's recipe. Saved tickets and sales stay as they are.",
+                    );
+                    if (!confirmed) return;
+                  }
+                  patch({ sellWithoutRecipe: next });
+                }}
+              />
+              <span>
+                <span className="font-medium">Sell without recipe / ingredient consumption</span>
+                <span className="mt-1 block text-xs text-zinc-500">
+                  Enable this for items that are already prepared or whose raw ingredients are managed separately. These items can be sold without recipe validation or raw-ingredient deduction.
+                </span>
+                <span className="mt-1 block text-xs font-medium">
+                  {state.sellWithoutRecipe ? "Prepared item — no recipe consumption" : "Recipe required for POS sale"}
+                </span>
+              </span>
+            </label>
+            {state.sellWithoutRecipe ? (
+              <p className="mt-2 text-xs text-zinc-500">This item bypasses recipe ingredient consumption. An existing recipe stays saved and is not used on new orders while this is on.</p>
+            ) : (
+              <p className="mt-2 text-xs text-zinc-500">Add the raw ingredients on Recipes. Portions share that recipe. The recipe stays in place if you later turn this on.</p>
+            )}
+          </fieldset>
         ) : null}
         {access.recipes && !access.fnb && !state.serialized && !state.openPrice ? (
           <label className="flex items-start gap-2 text-sm">

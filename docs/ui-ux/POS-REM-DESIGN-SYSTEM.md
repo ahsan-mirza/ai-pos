@@ -15,6 +15,9 @@ Tokens live in `packages/design-tokens/src/tokens.css` and are imported by the d
 | `--pos-radius-pill` | `999rem` |
 | `--pos-text-xs` … `--pos-text-2xl` | `0.6875rem` through `1.5rem` |
 | `--pos-control-sm` / `md` / `lg` | `2rem` / `2.5rem` / `3rem` |
+| `--pos-control-touch` | `3.5rem` |
+| `--pos-control-line` | `1.25` |
+| `--pos-focus-width` | `0.125rem` |
 | `--pos-icon-sm` / `md` / `lg` | `0.875rem` / `1rem` / `1.25rem` |
 | `--pos-product-image-height` | `7rem` |
 | `--pos-product-footer-height` | `2.375rem` |
@@ -24,6 +27,7 @@ Tailwind’s default spacing, type, and radius scales are already rem (`h-10` is
 Shared controls:
 
 - `PosButton` and `PosIconButton` in `apps/desktop/src/components/shell/posControls.tsx`. The product-card details control uses the icon button at `--pos-control-sm` (`2rem`) and a circular radius.
+- `.choice-control` draws the selected stroke inside the border box (`box-shadow: inset`). Portion chips, serving options, modifiers, the size/colour cells, and the cashier picker use it. `.control-focus` keeps the quantity stepper outline inside the control. Vertical scrollers clip an outset ring.
 - `PosSearchInput` keeps the leading search icon and the existing 150ms debounce.
 - The docked-cart breakpoint is `min-width: 80rem` (`POS_DOCKED_QUERY`). That matches a 1280px-wide layout when the root font-size is the browser default of 16px.
 

@@ -81,6 +81,9 @@ export interface OpenOrderInput {
   tableId?: string | null;
   covers?: number;
   name?: string | null;
+  deliveryPhone?: string | null;
+  deliveryAddress?: string | null;
+  displayTag?: string | null;
   items?: OrderItemInput[];
 }
 
@@ -96,12 +99,21 @@ export const ordersApi = {
       table_id: input.tableId ?? null,
       covers: input.covers ?? 0,
       name: input.name ?? null,
+      ...(input.deliveryPhone ? { delivery_phone: input.deliveryPhone } : {}),
+      ...(input.deliveryAddress ? { delivery_address: input.deliveryAddress } : {}),
+      ...(input.displayTag ? { display_tag: input.displayTag } : {}),
       items: input.items ?? [],
     }),
   addItems: (order: Order, userId: string, items: OrderItemInput[]) =>
     call<Order>("POST", `/api/v1/orders/${order.id}/items`, { revision: order.revision, user_id: userId, items }),
   setQuantity: (order: Order, itemId: string, userId: string, quantity: number) =>
     call<Order>("POST", `/api/v1/orders/${order.id}/items/${itemId}/quantity`, {
+      revision: order.revision,
+      user_id: userId,
+      quantity,
+    }),
+  increaseSent: (order: Order, itemId: string, userId: string, quantity: number) =>
+    call<Order>("POST", `/api/v1/orders/${order.id}/items/${itemId}/increase`, {
       revision: order.revision,
       user_id: userId,
       quantity,
@@ -117,6 +129,8 @@ export const ordersApi = {
       covers?: number;
       name?: string | null;
       note?: string | null;
+      delivery_phone?: string | null;
+      delivery_address?: string | null;
       service_type?: ServiceType;
       table_id?: string | null;
       reason?: string;
@@ -220,6 +234,9 @@ export async function queueOfflineOrder(
     covers: input.covers ?? 0,
     name: input.name ?? null,
     note: input.note ?? null,
+    ...(input.deliveryPhone ? { delivery_phone: input.deliveryPhone } : {}),
+    ...(input.deliveryAddress ? { delivery_address: input.deliveryAddress } : {}),
+    ...(input.displayTag ? { display_tag: input.displayTag } : {}),
     opened_by_id: input.userId,
     opened_at: input.openedAt ?? now,
     items: (input.items ?? []).map((item) => ({ ...item, sent_at: send ? now : null })),

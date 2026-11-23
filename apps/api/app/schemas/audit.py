@@ -23,6 +23,7 @@ AuditActionType = Literal[
     "CASH_DROP",
     "ITEM_VOID",
     "EXPIRED_STOCK_SOLD",
+    "REGISTER_SETTINGS",
 ]
 ClientDevice = Literal["web", "desktop", "api", "system"]
 
@@ -35,6 +36,7 @@ DesktopActionType = Literal[
     "CASH_DROP",
     "ITEM_VOID",
     "REFUND_PROCESSED",
+    "REGISTER_SETTINGS",
 ]
 # Item voids carry the voided line in `details`; manager approvals carry the permission that was granted.
 REASON_REQUIRED: frozenset[str] = frozenset({"PRICE_OVERRIDE", "DRAWER_OPEN", "CASH_DROP"})

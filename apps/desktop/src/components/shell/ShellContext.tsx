@@ -2,7 +2,7 @@ import { createContext, useContext, useEffect } from "react";
 import type { CashierSession } from "../../features/auth/session";
 import type { SyncState } from "./syncState";
 
-export type RegisterView = "checkout" | "returns" | "settings" | "orders" | "repairs" | "reorders" | "inventory" | "laundry";
+export type RegisterView = "checkout" | "returns" | "settings" | "orders" | "repairs" | "reorders" | "inventory" | "laundry" | "bills" | "customers" | "exports";
 
 export interface ShellValue {
   session: CashierSession;

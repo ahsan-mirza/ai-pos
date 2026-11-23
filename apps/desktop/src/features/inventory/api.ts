@@ -113,6 +113,13 @@ export const inventoryApi = {
   stores: () => retailCall<StoreRow[]>("GET", "/api/v1/stores?limit=200"),
   serials: (q: string) => retailCall<SerialSearch>("GET", `/api/v1/serials/search${query({ query: q, status: "any", limit: 25 })}`),
   recipes: () => retailCall<RecipeRow[]>("GET", "/api/v1/recipes"),
+  priceOptions: (productId: string) =>
+    retailCall<{ id: string; name: string; price_cents: number; is_active: boolean; position: number }[]>(
+      "GET",
+      `/api/v1/menu/products/${productId}/price-options`,
+    ),
+  replacePriceOptions: (productId: string, body: { options: { id?: string; name: string; price_cents: number; is_active: boolean; position: number }[] }) =>
+    retailCall<unknown>("PUT", `/api/v1/menu/products/${productId}/price-options`, body),
   pharmacyProduct: (id: string) => retailCall<PharmacyProductDetail>("GET", `/api/v1/pharmacy/products/${id}`),
   pharmacyProducts: async (q: string) => {
     const rows = await retailCall<(ProductRow & { product_id?: string })[]>("GET", `/api/v1/pharmacy/products${query({ q, limit: 50 })}`);

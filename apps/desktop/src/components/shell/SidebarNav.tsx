@@ -1,10 +1,13 @@
-import { Capability, profileSpec } from "@ai-pos/shared-types";
+import { Capability, Permission, profileSpec } from "@ai-pos/shared-types";
 import { BrandLogo, useLocale } from "@ai-pos/ui";
 import {
   Boxes,
   ChefHat,
   Clock,
+  Download,
   Lock,
+  Receipt,
+  Users,
   MonitorUp,
   PanelLeftClose,
   PanelLeftOpen,
@@ -42,10 +45,13 @@ interface SidebarNavProps {
   onLock: () => void;
 }
 
-const allPages: { id: RegisterView; label: string; icon: LucideIcon; capability?: Capability; audience?: "fnb" | "retail" }[] = [
+const allPages: { id: RegisterView; label: string; icon: LucideIcon; capability?: Capability; audience?: "fnb" | "retail"; permission?: string }[] = [
   { id: "checkout", label: "Checkout", icon: ShoppingCart },
   { id: "inventory", label: "Inventory & Stock", icon: Boxes },
   { id: "orders", label: "Orders & Tables", icon: UtensilsCrossed, audience: "fnb" },
+  { id: "bills", label: "Bill History", icon: Receipt, audience: "fnb", permission: Permission.PortalReportsRead },
+  { id: "customers", label: "Customers", icon: Users, audience: "fnb", permission: Permission.CustomersManage },
+  { id: "exports", label: "Export Data", icon: Download, audience: "fnb", permission: Permission.PortalReportsRead },
   { id: "orders", label: "Void & waste", icon: RotateCcw, audience: "fnb" },
   { id: "repairs", label: "Repairs", icon: Wrench, capability: Capability.Repairs },
   { id: "laundry", label: "Laundry", icon: WashingMachine, capability: Capability.LaundryOperations },
@@ -108,6 +114,7 @@ export function SidebarNav({ busy, onNavigate, onLock }: SidebarNavProps) {
   const laundryBusiness = profile === "laundry";
   const pages = allPages.filter((page) => {
     if (page.id === "inventory" && !canOpenInventory(profile, enabled, session.user.permissions)) return false;
+    if (page.permission !== undefined && !session.user.permissions.includes(page.permission)) return false;
     if (page.id === "laundry" && (laundryBusiness || visibleStations(session.user.permissions).length === 0)) return false;
     return allows(page.audience) && (page.capability === undefined || enabled.has(page.capability));
   });

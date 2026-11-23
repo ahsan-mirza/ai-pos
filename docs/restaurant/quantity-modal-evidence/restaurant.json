@@ -1,0 +1,72 @@
+{
+  "profile": "restaurant",
+  "touchscreen": "NOT RUN",
+  "executable": "D:\\Work\\ai-pos\\apps\\desktop\\src-tauri\\target\\zoom-shared\\debug\\ai-pos-desktop.exe",
+  "sha256": "667b72eabfe98e7ed07aa01ff75290d1a0fabfca14940b205357b5a9f24dfb32",
+  "size": 31628800,
+  "identity": {
+    "pid": 55400,
+    "hwnd": 24382772,
+    "identifier": "com.axizpos.restaurant.zoom",
+    "title": "AxizPOS Restaurant Zoom",
+    "data_dir": "C:\\Users\\ahsan\\AppData\\Roaming\\com.axizpos.restaurant.zoom",
+    "profile": "restaurant"
+  },
+  "database": "C:\\Users\\ahsan\\AppData\\Local\\Temp\\axiz-zoom\\restaurant\\axizpos_zoom_restaurant.sqlite",
+  "api": "http://127.0.0.1:18093",
+  "store_code": "rzoom",
+  "catalogue": true,
+  "no_default_portion": true,
+  "same_dialog": false,
+  "add_disabled_text": true,
+  "small_qty2": true,
+  "medium_keeps_qty": true,
+  "medium_qty3": true,
+  "full_qty3": true,
+  "one_line": true,
+  "cancel_keeps_cart": true,
+  "water_no_portion": true,
+  "water_qty3": true,
+  "two_lines": true,
+  "modifier_dialog": false,
+  "modifier_has_portions": true,
+  "zoom": {
+    "100": {
+      "requested_percent": 100,
+      "dpr": 1.75,
+      "scale": 1,
+      "font": "16px",
+      "overflow": false,
+      "dialog_open": true,
+      "screenshot": "docs\\restaurant\\quantity-modal-evidence\\zoom-100.png"
+    },
+    "125": {
+      "requested_percent": 125,
+      "dpr": 2.1875,
+      "scale": 1,
+      "font": "16px",
+      "overflow": false,
+      "dialog_open": true,
+      "screenshot": "docs\\restaurant\\quantity-modal-evidence\\zoom-125.png"
+    },
+    "150": {
+      "requested_percent": 150,
+      "dpr": 2.625,
+      "scale": 1,
+      "font": "16px",
+      "overflow": false,
+      "dialog_open": true,
+      "screenshot": "docs\\restaurant\\quantity-modal-evidence\\zoom-150.png"
+    },
+    "200": {
+      "requested_percent": 200,
+      "dpr": 3.5,
+      "scale": 1,
+      "font": "16px",
+      "overflow": false,
+      "dialog_open": true,
+      "screenshot": "docs\\restaurant\\quantity-modal-evidence\\zoom-200.png"
+    }
+  },
+  "status": "RECORDED"
+}

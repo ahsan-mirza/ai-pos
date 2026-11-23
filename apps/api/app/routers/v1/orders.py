@@ -20,13 +20,15 @@ from app.schemas.orders import (
     OrderAction,
     OrderCreate,
     OrderItemsAdd,
+    OrderTagIssue,
+    OrderTagOut,
     OrderMerge,
     OrderMove,
     OrderOut,
     OrderUpdate,
     TableConflictDecision,
 )
-from app.services import delivery_finance, guest_suggestion_service, order_service
+from app.services import delivery_finance, guest_suggestion_service, order_service, order_tag_service
 
 router = APIRouter()
 Db = Annotated[Session, Depends(get_db)]
@@ -110,6 +112,22 @@ def suggestions(
     )
 
 
+@router.post("/tags", response_model=OrderTagOut)
+def issue_order_tag(payload: OrderTagIssue, db: Db, principal: CanOrder) -> OrderTagOut:
+    order_service._scope(principal, payload.store_id)
+    actor = principal.user.id if principal.user is not None else None
+    tag = order_tag_service.assign(
+        db,
+        order_id=payload.id,
+        store_id=payload.store_id,
+        service_type=payload.service_type,
+        presented=payload.display_tag,
+        actor_id=actor,
+    )
+    db.commit()
+    return OrderTagOut(id=payload.id, store_id=payload.store_id, service_type=payload.service_type, tag=tag)
+
+
 @router.post("", response_model=OrderOut, status_code=201)
 def create_order(payload: OrderCreate, db: Db, principal: CanOrder) -> OrderOut:
     return order_service.create_order(db, principal, payload)
@@ -145,6 +163,13 @@ def set_item_quantity(
     order_id: uuid.UUID, item_id: uuid.UUID, payload: ItemQuantity, db: Db, principal: CanOrder
 ) -> OrderOut:
     return order_service.set_item_quantity(db, principal, order_id, item_id, payload)
+
+
+@router.post("/{order_id}/items/{item_id}/increase", response_model=OrderOut)
+def increase_sent_quantity(
+    order_id: uuid.UUID, item_id: uuid.UUID, payload: ItemQuantity, db: Db, principal: CanOrder
+) -> OrderOut:
+    return order_service.increase_sent_quantity(db, principal, order_id, item_id, payload)
 
 
 @router.post("/{order_id}/items/{item_id}/void", response_model=OrderOut)

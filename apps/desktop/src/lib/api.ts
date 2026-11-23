@@ -133,6 +133,7 @@ function toUpsert(row: Product): ProductUpsert {
     minimum_age: row.minimum_age ?? null,
     nearest_expiry: row.nearest_expiry ?? null,
     has_recipe: row.has_recipe ?? false,
+    sell_without_recipe: row.sell_without_recipe === true,
     is_ingredient: row.is_ingredient ?? false,
     item_type: row.item_type,
     is_stock_tracked: row.is_stock_tracked ?? true,

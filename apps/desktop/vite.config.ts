@@ -12,13 +12,16 @@ const zoomApis: Record<string, string> = {
   "zoom-electronics": "http://127.0.0.1:18091",
   "zoom-fashion": "http://127.0.0.1:18092",
   "zoom-restaurant": "http://127.0.0.1:18093",
+  "portion-restaurant": "http://127.0.0.1:18094",
+  "portion-cafe": "http://127.0.0.1:18095",
+  ordertags: "http://127.0.0.1:18096",
 };
 
 export default defineConfig(({ mode }) => {
   const inventoryAcceptance = mode === "inventory-acceptance";
   const offlineAcceptance = mode === "offline-acceptance";
   const restaurantAcceptance = mode === "restaurant-acceptance";
-  const zoomAcceptance = mode.startsWith("zoom-");
+  const zoomAcceptance = mode.startsWith("zoom-") || mode.startsWith("portion-") || mode === "ordertags";
   const acceptance = mode === "acceptance" || inventoryAcceptance || offlineAcceptance || restaurantAcceptance || zoomAcceptance;
   const envDir = zoomAcceptance
     ? fileURLToPath(new URL(`./config/${mode}`, import.meta.url))

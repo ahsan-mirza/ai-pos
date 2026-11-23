@@ -13,6 +13,7 @@ import { CurrencyPanel } from "./CurrencyPanel";
 import { LaundryOpsPage } from "./LaundryOpsPage";
 import { canManageStaff } from "./staffAccess";
 import { StaffAccessPanel } from "./StaffAccessPanel";
+import { settingsAuditSummary } from "./settingsAudit";
 import { readSettingsRail, searchSettings, settingsLocation, settingsSection, storeSettingsRail, visibleSettings } from "./settingsRoutes";
 import {
   SettingsLayout,
@@ -84,8 +85,10 @@ export function SettingsWorkspace() {
           setSettings({
             currency: snapshot.currency,
             supported_currencies: [snapshot.currency],
-            updated_at: "",
-            updated_by_name: null,
+            updated_at: tax?.updated_at?.trim() ?? "",
+            updated_by_name: tax?.updated_by_name ?? null,
+            country: tax?.country ?? null,
+            location: tax?.location ?? null,
             legal_name: tax?.legal_name ?? null,
             legal_name_ar: tax?.legal_name_ar ?? null,
             trn: tax?.trn ?? null,
@@ -184,7 +187,7 @@ export function SettingsWorkspace() {
           {active === "overview" ? <SettingsOverview business={business} system={system} onOpen={select} /> : null}
           {active === "currency" ? <CurrencyPanel settings={settings} canManage={canManage} onSaved={setSettings} /> : null}
           {active === "appearance" ? <AppearancePanel cashier={session.user.full_name} part="appearance" /> : null}
-          {active === "hardware" ? <AppearancePanel cashier={session.user.full_name} part="hardware" /> : null}
+          {active === "hardware" ? <AppearancePanel cashier={session.user.full_name} part="hardware" canConfigure={session.user.permissions.includes(Permission.DevicesManage) || session.user.permissions.includes(Permission.SettingsManage)} /> : null}
           {active === "business-profile" ? (
             <div className="space-y-4">
               <BusinessTypeCard />
@@ -235,7 +238,7 @@ export function SettingsWorkspace() {
           {active === "audit" ? (
             <SettingsReadOnlyNotice
               title="Audit trail"
-              detail={settings?.updated_at ? `Business settings were last changed ${settings.updated_at}${settings.updated_by_name ? ` by ${settings.updated_by_name}` : ""}. The full trail stays in Business Pro and is read-only.` : "No business-settings timestamp was returned. The trail is read-only."}
+              detail={settingsAuditSummary(settings?.updated_at, settings?.updated_by_name)}
             />
           ) : null}
           {active === "terminal" ? (

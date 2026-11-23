@@ -59,6 +59,7 @@ describe("inventory workspace tabs", () => {
   it("uses recipe stock for food profiles and leaves IMEI off", () => {
     for (const profile of [BusinessProfile.Restaurant, BusinessProfile.Cafe, BusinessProfile.QuickService]) {
       expect(ids(profile, [Capability.Recipes])).toContain("recipes");
+      expect(inventoryTabs(profile, new Set([Capability.Recipes]), manager).find((tab) => tab.id === "products")?.label).toBe("Menu items");
       expect(ids(profile, [Capability.SerialTracking])).not.toContain("serials");
       expect(ids(profile)).not.toContain("recipes");
     }

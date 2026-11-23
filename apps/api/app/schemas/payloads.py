@@ -646,6 +646,8 @@ class ProductOut(ApiModel):
     # Recipes module: a dish drawn from its ingredients (no stock of its own), and ingredients registers never sell.
     has_recipe: bool = False
     is_ingredient: bool = False
+    # Restaurant and cafe made-to-order items. False still consumes a recipe when one exists.
+    sell_without_recipe: bool = False
     item_type: str = "PRE_PACKAGED"
     is_stock_tracked: bool = True
     # Business-wide and this branch's price-list entries (customer and group lists come per customer).

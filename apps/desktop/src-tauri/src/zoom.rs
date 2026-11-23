@@ -239,6 +239,46 @@ const PROBE: &str = r#"(function(){
     wellHeight: well ? Math.round(well.getBoundingClientRect().height) : null,
     footerHeight: footer ? Math.round(footer.getBoundingClientRect().height) : null,
     dialog: dialog ? (dialog.innerText || '').slice(0, 4000) : '',
+    layout: (function(){
+      function box(el){
+        if (!el) return null;
+        var r = el.getBoundingClientRect();
+        return {x:Math.round(r.x), y:Math.round(r.y), w:Math.round(r.width), h:Math.round(r.height), bottom:Math.round(r.bottom), right:Math.round(r.right)};
+      }
+      function inside(b){
+        if (!b) return false;
+        return b.x >= -1 && b.y >= -1 && b.right <= window.innerWidth + 1 && b.bottom <= window.innerHeight + 1 && b.w > 8 && b.h > 8;
+      }
+      var buttons = dialog ? [].slice.call(dialog.querySelectorAll('button')) : [];
+      var add = buttons.find(function(el){ return (el.innerText||'').indexOf('Add')===0 || (el.innerText||'').indexOf('Update')===0; });
+      var cancel = buttons.find(function(el){ return (el.innerText||'').trim()==='Cancel'; });
+      var minus = dialog ? dialog.querySelector('[aria-label="Decrease quantity"]') : null;
+      var plus = dialog ? dialog.querySelector('[aria-label="Increase quantity"]') : null;
+      var qty = document.getElementById('sell-quantity') || document.getElementById('price-option-quantity');
+      var portions = dialog ? [].slice.call(dialog.querySelectorAll('[role="radio"]')).map(box) : [];
+      var cart = document.querySelector('[aria-label="Cart items"]');
+      var addBox = box(add), cancelBox = box(cancel);
+      return {
+        innerWidth: window.innerWidth,
+        innerHeight: window.innerHeight,
+        dialog: box(dialog),
+        add: addBox,
+        cancel: cancelBox,
+        minus: box(minus),
+        plus: box(plus),
+        quantity: box(qty),
+        addInside: inside(addBox),
+        cancelInside: inside(cancelBox),
+        minusInside: inside(box(minus)),
+        plusInside: inside(box(plus)),
+        quantityInside: inside(box(qty)),
+        portionsInside: portions.every(inside),
+        portionCount: portions.length,
+        dialogScrolls: dialog ? dialog.scrollHeight > dialog.clientHeight + 8 : false,
+        bodyScrolls: (function(){ if(!dialog) return false; var nodes=[].slice.call(dialog.querySelectorAll('div')); var scroller=nodes.find(function(el){return el.scrollHeight>el.clientHeight+8;}); return Boolean(scroller); })(),
+        cart: cart ? (cart.innerText||'').replace(/\s+/g,' ').slice(0, 800) : ''
+      };
+    })(),
     radios: [].slice.call(document.querySelectorAll('[role="radio"]')).slice(0, 8).map(function(el){
       var rect = el.getBoundingClientRect();
       var price = el.querySelectorAll('span')[1];
@@ -265,6 +305,15 @@ const PROBE: &str = r#"(function(){
       var hitText = hit ? ((hit.innerText || hit.className || hit.tagName || '') + '').replace(/\s+/g, ' ').slice(0, 80) : 'none';
       return hitText + ' || ' + clips.join(' > ');
     })(),
+    fields: [].slice.call(document.querySelectorAll('input,textarea')).slice(0, 40).map(function(el){
+      var label = el.closest('label');
+      var name = label ? (label.innerText || '').split('\n')[0].trim() : (el.getAttribute('aria-label') || el.placeholder || el.type || '');
+      return name + '=' + (el.value || '') + (el.readOnly ? ':ro' : '') + (el.disabled ? ':off' : '');
+    }).join(' | '),
+    selects: [].slice.call(document.querySelectorAll('button[aria-haspopup="listbox"]')).slice(0, 12).map(function(el){
+      return (el.getAttribute('aria-label') || 'list') + '=' + ((el.innerText || '').replace(/\s+/g, ' '));
+    }).join(' | '),
+    pressed: [].slice.call(document.querySelectorAll('[aria-pressed="true"]')).slice(0, 12).map(function(el){ return (el.innerText || '').replace(/\s+/g, ' ').trim(); }).join(','),
     text: (document.body && document.body.innerText || '').slice(0, 6000)
   };
   var internals = window.__TAURI_INTERNALS__;
@@ -282,10 +331,40 @@ fn action_script(action: &ActionFile) -> String {
     if action.op == "escape" {
         return "document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}))".into();
     }
+    if action.op == "scroll-dialog" {
+        return r#"(function(){var dialog=document.querySelector('[role="dialog"]');if(!dialog)return;var cancel=[].slice.call(dialog.querySelectorAll('button')).find(function(el){return (el.innerText||'').trim()==='Cancel';});if(cancel&&cancel.scrollIntoView)cancel.scrollIntoView({block:'end',inline:'nearest'});var nodes=[].slice.call(dialog.querySelectorAll('div'));var scroller=nodes.find(function(el){return el.scrollHeight>el.clientHeight+20;});if(scroller)scroller.scrollTop=scroller.scrollHeight;})()"#
+            .into();
+    }
+    if action.op == "fill-label" {
+        let text = serde_json::to_string(action.text.as_deref().unwrap_or("")).unwrap_or_else(|_| "\"\"".into());
+        return format!(
+            "(function(){{var spec={text};var cut=spec.indexOf('|');if(cut<0)return;var name=spec.slice(0,cut);var value=spec.slice(cut+1);var labels=[].slice.call(document.querySelectorAll('label'));var label=labels.find(function(el){{return (el.innerText||'').indexOf(name)>=0;}});if(!label)return;var input=label.querySelector('input,textarea');if(!input)return;var setter=Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype,'value').set;setter.call(input,value);input.dispatchEvent(new Event('input',{{bubbles:true}}));}})()"
+        );
+    }
+    if action.op == "fill-field" {
+        let text = serde_json::to_string(action.text.as_deref().unwrap_or("")).unwrap_or_else(|_| "\"\"".into());
+        return format!(
+            "(function(){{var spec={text};var cut=spec.indexOf('|');if(cut<0)return;var placeholder=spec.slice(0,cut);var value=spec.slice(cut+1);var input=[].slice.call(document.querySelectorAll('input')).find(function(el){{return el.getAttribute('placeholder')===placeholder;}});if(!input)return;var setter=Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype,'value').set;setter.call(input,value);input.dispatchEvent(new Event('input',{{bubbles:true}}));}})()"
+        );
+    }
     let text = serde_json::to_string(action.text.as_deref().unwrap_or("")).unwrap_or_else(|_| "\"\"".into());
+    if action.op == "fill" {
+        return format!(
+            "(function(){{var wanted={text};var input=document.getElementById('sell-quantity')||document.getElementById('price-option-quantity');if(!input)return;var setter=Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype,'value').set;setter.call(input,wanted);input.dispatchEvent(new Event('input',{{bubbles:true}}));}})()"
+        );
+    }
+    if action.op == "click-option" {
+        return format!(
+            "(function(){{var wanted={text};var nodes=[].slice.call(document.querySelectorAll('[role=\"option\"]'));var match=nodes.find(function(el){{return (el.innerText||'').indexOf(wanted)>=0;}});if(match)match.click();}})()"
+        );
+    }
+    if action.op == "double-add" {
+        return r#"(function(){var dialog=document.querySelector('[role="dialog"]');if(!dialog)return;var add=[].slice.call(dialog.querySelectorAll('button')).find(function(el){return (el.innerText||'').indexOf('Add')===0;});if(!add)return;add.click();add.click();})()"#
+            .into();
+    }
     format!(
-        "(function(){{var wanted={text};var nodes=[].slice.call(document.querySelectorAll('button,[role=radio],a'));\
-var node=nodes.find(function(el){{return (el.innerText||'').indexOf(wanted)>=0;}});if(node)node.click();}})()"
+        "(function(){{var wanted={text};var root=document;var index=0;if(wanted.indexOf('cart:')===0){{root=document.querySelector('[aria-label=\"Cart items\"]')||document;wanted=wanted.slice(5);var marker=wanted.match(/^(\\d+):/);if(marker){{index=Number(marker[1]);wanted=wanted.slice(marker[0].length);}}}}var nodes=[].slice.call(root.querySelectorAll('button,[role=button],[role=radio],a'));\
+var matches=nodes.filter(function(el){{var label=el.getAttribute('aria-label')||'';var title=el.getAttribute('title')||'';return label===wanted || title===wanted || (el.innerText||'').indexOf(wanted)>=0;}});if(matches[index])matches[index].click();}})()"
     )
 }
 
