@@ -19,6 +19,7 @@ const badgeStyles: Record<AuditActionType, string> = {
   CASH_DROP: "bg-charcoal/10 text-charcoal",
   ITEM_VOID: "bg-warning/10 text-warning",
   EXPIRED_STOCK_SOLD: "bg-danger/10 text-danger",
+  REGISTER_SETTINGS: "bg-charcoal/10 text-charcoal",
 };
 
 const dotStyles: Partial<Record<AuditActionType, string>> = {

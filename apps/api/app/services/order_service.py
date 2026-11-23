@@ -659,7 +659,8 @@ def increase_sent_quantity(
         raise ApiError(
             409,
             "sent_reduction_blocked",
-            "A sent line cannot be reduced in place. Void the whole line with a reason, then add the quantity the table still wants.",
+            "A sent line cannot be reduced in place. Void the whole line with a reason, "
+            "then add the quantity the table still wants.",
         )
     if data.quantity == item.quantity:
         return orders_out(db, [order])[0]

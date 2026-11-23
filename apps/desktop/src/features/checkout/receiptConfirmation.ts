@@ -26,7 +26,8 @@ export function printOptionsForConfirmation(): { kickDrawer: false; manual: true
   return { kickDrawer: false, manual: true };
 }
 
-export function drawerKickOnChoice(_choice: "print" | "skip" | "retry"): false {
+export function drawerKickOnChoice(choice: "print" | "skip" | "retry"): false {
+  void choice;
   return false;
 }
 

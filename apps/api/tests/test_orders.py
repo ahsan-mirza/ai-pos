@@ -482,9 +482,13 @@ def test_sent_increase_adds_only_the_extra_round(client, session: Session) -> No
     assert extra["unit_price_cents"] == original["unit_price_cents"]
     from app.models.kitchen import KitchenTicketItem
 
-    tickets = session.scalars(select(KitchenTicketItem).where(KitchenTicketItem.order_item_id == uuid.UUID(original_id))).all()
+    tickets = session.scalars(
+        select(KitchenTicketItem).where(KitchenTicketItem.order_item_id == uuid.UUID(original_id))
+    ).all()
     assert tickets and all(row.quantity == 3 and row.voided_at is None for row in tickets)
-    extra_tickets = session.scalars(select(KitchenTicketItem).where(KitchenTicketItem.order_item_id == uuid.UUID(extra["id"]))).all()
+    extra_tickets = session.scalars(
+        select(KitchenTicketItem).where(KitchenTicketItem.order_item_id == uuid.UUID(extra["id"]))
+    ).all()
     assert extra_tickets and all(row.quantity == 2 for row in extra_tickets)
     assert session.scalar(select(AuditLog).where(AuditLog.action == "order.sent_quantity_increase")) is not None
 
@@ -711,7 +715,10 @@ def test_delivery_order_keeps_phone_and_address(client, session: Session) -> Non
         },
     )
     assert patched.status_code == 200, patched.text
-    assert (patched.json()["delivery_phone"], patched.json()["delivery_address"]) == ("0509999888", "14 Acceptance Road")
+    assert (patched.json()["delivery_phone"], patched.json()["delivery_address"]) == (
+        "0509999888",
+        "14 Acceptance Road",
+    )
 
     replay = {
         "id": order_id,

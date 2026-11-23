@@ -20,11 +20,11 @@ from app.schemas.orders import (
     OrderAction,
     OrderCreate,
     OrderItemsAdd,
-    OrderTagIssue,
-    OrderTagOut,
     OrderMerge,
     OrderMove,
     OrderOut,
+    OrderTagIssue,
+    OrderTagOut,
     OrderUpdate,
     TableConflictDecision,
 )

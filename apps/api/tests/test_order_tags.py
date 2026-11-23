@@ -3,10 +3,10 @@
 import uuid
 
 from sqlalchemy import select
-
-from app.models import AuditLog
 from tests.test_orders import setup
 from tests.test_returns import CASHIER_ID, STORE_ID, device
+
+from app.models import AuditLog
 
 
 def issue(client, order_id: str, service: str = "TAKEAWAY", tag: str | None = None):
@@ -31,7 +31,8 @@ def test_tags_are_unique_stable_and_reject_a_typed_server_number(client, session
 
     forged = issue(client, str(uuid.uuid4()), tag="TW009")
     assert forged.status_code == 422
-    assert "typed" in forged.json()["error"]["message"].lower() or "assigned" in forged.json()["error"]["message"].lower()
+    message = forged.json()["error"]["message"].lower()
+    assert "typed" in message or "assigned" in message
 
     offline_id = str(uuid.uuid4())
     offline = issue(client, offline_id, tag="TW-AB12-001")
@@ -86,7 +87,9 @@ def test_tags_are_unique_stable_and_reject_a_typed_server_number(client, session
     assert updated.json()["display_tag"] == "TW001"
     assert updated.json()["number"] == created.json()["number"]
 
-    trail = session.scalar(select(AuditLog).where(AuditLog.action == "order.tag_issued", AuditLog.target_entity_id == uuid.UUID(first)))
+    trail = session.scalar(
+        select(AuditLog).where(AuditLog.action == "order.tag_issued", AuditLog.target_entity_id == uuid.UUID(first))
+    )
     assert trail is not None
     assert trail.new_values["tag"] == "TW001"
     issued = session.scalars(select(AuditLog).where(AuditLog.action == "order.tag_issued")).all()

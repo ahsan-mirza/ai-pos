@@ -167,7 +167,7 @@ describe("receipt confirmation after payment", () => {
   });
 
   it("retries printing without recording another payment", async () => {
-    let payments = 1;
+    const payments = 1;
     let calls = 0;
     const failed = await printConfirmationSlips([bill, bill], async () => {
       expect(payments).toBe(1);
