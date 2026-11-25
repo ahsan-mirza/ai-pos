@@ -759,7 +759,9 @@ TAX_FIELDS = (
 IDENTITY_FIELDS = ("legal_name", "legal_name_ar", "country", "location")
 
 
-def change_identity(db: Session, actor: User, data: BusinessIdentityUpdate, *, client_device: str) -> BusinessSettingsOut:
+def change_identity(
+    db: Session, actor: User, data: BusinessIdentityUpdate, *, client_device: str
+) -> BusinessSettingsOut:
     """Writes the tenant identity on the one business_settings row.
 
     The same payload is idempotent and does not bump the revision. A different payload must name the

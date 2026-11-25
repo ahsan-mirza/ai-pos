@@ -37,7 +37,16 @@ def ensure_categories(db: Session) -> None:
     present = {row.code for row in db.scalars(select(ExpenseCategory))}
     missing = [item for item in DEFAULT_CATEGORIES if item[0] not in present]
     for code, name, order in missing:
-        db.add(ExpenseCategory(code=code, name=name, name_key=name_key(name), description="", sort_order=order, is_active=True))
+        db.add(
+            ExpenseCategory(
+                code=code,
+                name=name,
+                name_key=name_key(name),
+                description="",
+                sort_order=order,
+                is_active=True,
+            )
+        )
     if missing:
         db.flush()
     linked = _link_legacy(db)

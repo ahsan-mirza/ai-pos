@@ -70,7 +70,6 @@ interface PrinterSettingsModalProps {
 const transports = connectionChoices;
 
 export function PrinterSettingsModal({
-  sample: _sample,
   onClose,
   onSaved,
   initialDraft,

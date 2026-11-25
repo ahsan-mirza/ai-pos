@@ -131,7 +131,15 @@ def test_cafe_can_omit_a_sku(client) -> None:
     token = admin_token(client)
     _switch(client, token, "cafe")
     category_id = _category(client, token)
-    created = _create(client, token, category_id, barcode="281000000201", name="House Coffee", item_type="MADE_TO_ORDER", sell_without_recipe=True)
+    created = _create(
+        client,
+        token,
+        category_id,
+        barcode="281000000201",
+        name="House Coffee",
+        item_type="MADE_TO_ORDER",
+        sell_without_recipe=True,
+    )
     assert created.status_code == 201, created.text
     assert created.json()["sku"] == ""
 

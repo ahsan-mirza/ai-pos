@@ -5,7 +5,6 @@ from collections import defaultdict
 from datetime import date
 
 from PIL import Image
-
 from tests.test_payables import supplier
 
 from test_foundations import set_tax
@@ -215,7 +214,13 @@ def test_custom_category_and_compressed_bill(client) -> None:
     rejected = client.post(
         "/api/v1/expenses",
         headers=headers,
-        json=expense(bill={"file_name": "note.txt", "content_type": "text/plain", "data_base64": base64.b64encode(b"hello").decode()}),
+        json=expense(
+            bill={
+                "file_name": "note.txt",
+                "content_type": "text/plain",
+                "data_base64": base64.b64encode(b"hello").decode(),
+            }
+        ),
     )
     assert rejected.status_code == 415
     stopped = client.post(f"/api/v1/expenses/categories/{category['id']}/deactivate", headers=headers)
@@ -224,7 +229,9 @@ def test_custom_category_and_compressed_bill(client) -> None:
     assert category["id"] not in {row["id"] for row in offered}
     blocked = client.post("/api/v1/expenses", headers=headers, json=expense(category_id=category["id"], category=None))
     assert blocked.status_code == 422 and blocked.json()["error"]["code"] == "category_inactive"
-    listed = client.get("/api/v1/expenses", headers=headers, params={"from": str(date.today()), "to": str(date.today())}).json()
+    listed = client.get(
+        "/api/v1/expenses", headers=headers, params={"from": str(date.today()), "to": str(date.today())}
+    ).json()
     kept = next(row for row in listed["items"] if row["id"] == body["id"])
     assert kept["category_name"] == "Fuel and gas"
 
@@ -235,7 +242,11 @@ def test_offline_client_key_posts_once(client) -> None:
     set_tax(client, headers)
     first = client.post("/api/v1/expenses", headers=headers, json=expense(client_key="offline-key-1", paid_from="BANK"))
     assert first.status_code == 201, first.text
-    second = client.post("/api/v1/expenses", headers=headers, json=expense(client_key="offline-key-1", description="Different text", paid_from="BANK"))
+    second = client.post(
+        "/api/v1/expenses",
+        headers=headers,
+        json=expense(client_key="offline-key-1", description="Different text", paid_from="BANK"),
+    )
     assert second.status_code == 201, second.text
     assert second.json()["id"] == first.json()["id"]
     assert second.json()["description"] == first.json()["description"]
