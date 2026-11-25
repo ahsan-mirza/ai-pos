@@ -17,6 +17,7 @@ from app.routers.v1.billing import router as billing_router
 from app.routers.v1.brands import models_router as product_models_router
 from app.routers.v1.brands import router as brands_router
 from app.routers.v1.catalogue import router as catalogue_router
+from app.routers.v1.catalogue_workbook import router as catalogue_workbook_router
 from app.routers.v1.categories import router as categories_router
 from app.routers.v1.channels import router as channels_router
 from app.routers.v1.cheques import router as cheques_router
@@ -132,6 +133,7 @@ api_router.include_router(roles_router, prefix="/roles", tags=["roles"])
 api_router.include_router(stores_router, prefix="/stores", tags=["stores"])
 api_router.include_router(products_router, prefix="/products", tags=["products"])
 api_router.include_router(catalogue_router, tags=["catalogue"])
+api_router.include_router(catalogue_workbook_router, tags=["catalogue"])
 api_router.include_router(units_router, prefix="/units", tags=["units of measure"])
 api_router.include_router(categories_router, prefix="/categories", tags=["categories"])
 api_router.include_router(brands_router, prefix="/brands", tags=["brands"])

@@ -1,6 +1,6 @@
 import { Permission } from "@ai-pos/shared-types";
 import { describe, expect, it } from "vitest";
-import { acceptStoredSession, REGISTER_SESSION_SECS, type CashierSession } from "./session";
+import { acceptStoredSession, browserCashier, REGISTER_SESSION_SECS, type CashierSession } from "./session";
 
 const STORE = "store-a";
 
@@ -34,6 +34,14 @@ describe("acceptStoredSession", () => {
   it("drops a session after the window and one for another store", () => {
     expect(acceptStoredSession(stored(), 10_000 + REGISTER_SESSION_SECS + 1, STORE)).toBeNull();
     expect(acceptStoredSession(stored(), 10_500, "store-b")).toBeNull();
+  });
+
+  it("does not treat a stored profile as signed in without an access token", () => {
+    const session = acceptStoredSession(stored(), 10_100, STORE);
+    expect(browserCashier(session, null)).toBeNull();
+    expect(browserCashier(session, "")).toBeNull();
+    expect(browserCashier(null, "token")).toBeNull();
+    expect(browserCashier(session, "token")?.user.username).toBe("ahsan");
   });
 
   it("drops a profile that can no longer unlock a register", () => {

@@ -6,6 +6,7 @@ import {
   type SupplierBill,
   type SupplierPayment,
   type SupplierPaymentMethod,
+  type ExpenseList,
   type SupplierStatement,
   type TaxCategory,
   type UnbilledReceipt,
@@ -956,9 +957,41 @@ function StatementModal({
             </tbody>
           </table>
           {statement.rows.length === 0 ? <p className="text-sm text-charcoal/60">No bills or payments yet.</p> : null}
+          <SupplierExpenses supplierId={supplierId} />
         </div>
       ) : null}
       <ErrorNote message={error} />
     </Modal>
+  );
+}
+
+function SupplierExpenses({ supplierId }: { supplierId: string }) {
+  const { currency } = useCurrency();
+  const [rows, setRows] = useState<ExpenseList["items"] | null>(null);
+  useEffect(() => {
+    const today = new Date();
+    const from = `${today.getUTCFullYear()}-01-01`;
+    const to = today.toISOString().slice(0, 10);
+    apiGet<ExpenseList>(`/api/v1/expenses?from=${from}&to=${to}&supplier_id=${supplierId}`)
+      .then((list) => setRows(list.items))
+      .catch(() => setRows(null));
+  }, [supplierId]);
+  if (rows === null) return null;
+  return (
+    <section>
+      <h3 className="font-semibold">Expenses</h3>
+      {rows.length === 0 ? <p className="mt-2 text-sm text-charcoal/60">No expenses for this supplier this year.</p> : null}
+      <ul className="mt-2 space-y-2 text-sm">
+        {rows.map((row) => (
+          <li key={row.id} className="flex justify-between gap-3 border-t border-line py-2">
+            <span>
+              <span className="font-medium">{row.number}</span> · {row.spent_on} · {row.category_name || row.category}
+              <span className="block text-xs text-charcoal/50">{row.description} · {row.paid_from}{row.has_bill ? " · bill" : ""} · {row.status}</span>
+            </span>
+            <span className="tabular-nums">{formatMoney(row.total_cents, row.currency || currency)}</span>
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }

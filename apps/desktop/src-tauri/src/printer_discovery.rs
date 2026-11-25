@@ -20,6 +20,47 @@ impl Compatibility {
     }
 }
 
+/// How a Windows queue can receive a receipt. Raw ESC/POS is only for a known receipt profile.
+/// A native Windows driver, including Toshiba's, gets a rendered page instead.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PrintTransport {
+    EscPos,
+    WindowsGdi,
+    None,
+}
+
+impl PrintTransport {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::EscPos => "escpos",
+            Self::WindowsGdi => "windows-gdi",
+            Self::None => "none",
+        }
+    }
+}
+
+pub const CANDIDATE_NOTICE: &str =
+    "Printer detected, but its receipt-printing profile has not been verified. Complete the printer test before using it for customer receipts.";
+pub const UNSUPPORTED_METHOD: &str = "This printer does not support the configured AxizPOS receipt-printing method.";
+pub const OFFLINE_NOTICE: &str = "The printer is installed but currently unavailable.";
+pub const QUEUE_CLOSED: &str = "Windows found the printer, but AxizPOS could not open its queue.";
+pub const RENDER_FAILED: &str = "The invoice was generated, but its printable content could not be rendered.";
+pub const TRANSMIT_FAILED: &str = "Receipt content was generated, but the printer did not accept the print job.";
+pub const SPOOLER_ACCEPTED: &str = "The printer job was submitted, but physical output has not yet been verified.";
+pub const MISSING_QUEUE: &str =
+    "The previously selected Windows printer is not installed. Refresh the printer list or select another device.";
+
+/// Candidate copy. A Toshiba Native driver names the queue and the driver instead of a generic warning.
+pub fn candidate_notice(name: &str, driver: &str) -> String {
+    let driver_l = driver.trim().to_ascii_lowercase();
+    if driver_l.contains("toshiba") && driver_l.contains("native") {
+        return format!(
+            "{name} was discovered using the {driver}. Receipt printing has not yet been verified. Run the printer test to confirm the supported print method."
+        );
+    }
+    CANDIDATE_NOTICE.to_string()
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Classified {
     pub compatibility: Compatibility,
@@ -55,7 +96,7 @@ const PROFILES: &[Profile] = &[
 
 pub fn connection_kind(port: &str) -> &'static str {
     let port = port.trim().to_ascii_lowercase();
-    if port.starts_with("usb") || port.starts_with("dot4") {
+    if port.starts_with("toshiba:") || port.starts_with("usb") || port.starts_with("dot4") {
         "USB"
     } else if port.starts_with("com") {
         "Serial"
@@ -123,6 +164,57 @@ pub fn classify(driver: &str, port: &str) -> Classified {
         supports_drawer_kick: false,
         profile_id: String::new(),
         connection,
+    }
+}
+
+/// Generic / Text Only prints characters and discards a picture, while still accepting the job.
+pub fn is_text_only_driver(driver: &str) -> bool {
+    let folded = driver.trim().to_ascii_lowercase();
+    folded.contains("text only") || folded.contains("generic text") || folded.contains("generic / text")
+}
+
+/// Vendor port monitors and "Native Windows Driver" expect a GDI page, not ESC/POS bytes.
+pub fn expects_rendered_job(driver: &str, port: &str) -> bool {
+    let driver_l = driver.trim().to_ascii_lowercase();
+    let port_l = port.trim().to_ascii_lowercase();
+    port_l.starts_with("toshiba:") || driver_l.contains("native windows driver")
+}
+
+/// Known receipt profiles use raw ESC/POS. Everything else that is still a real printer uses GDI.
+/// An unverified queue is not given raw commands.
+pub fn select_transport(driver: &str, port: &str) -> PrintTransport {
+    let classed = classify(driver, port);
+    if classed.compatibility == Compatibility::Unsupported {
+        return PrintTransport::None;
+    }
+    if expects_rendered_job(driver, port) {
+        return PrintTransport::WindowsGdi;
+    }
+    if classed.compatibility == Compatibility::Compatible {
+        return PrintTransport::EscPos;
+    }
+    PrintTransport::WindowsGdi
+}
+
+/// A driver that reports EMF or XPS confirms the rendered path. RAW does not override a native Windows driver.
+pub fn transport_for(driver: &str, port: &str, default_datatype: &str) -> PrintTransport {
+    let selected = select_transport(driver, port);
+    if selected == PrintTransport::None {
+        return selected;
+    }
+    let kind = default_datatype.trim().to_ascii_lowercase();
+    if kind.contains("emf") || kind.contains("xps") {
+        return PrintTransport::WindowsGdi;
+    }
+    selected
+}
+
+pub fn capability_summary(transport: PrintTransport, drawer: bool) -> String {
+    match transport {
+        PrintTransport::EscPos if drawer => "ESC/POS receipt graphics. Drawer kick is a separate verified profile.".into(),
+        PrintTransport::EscPos => "ESC/POS receipt graphics. Drawer kick is not verified.".into(),
+        PrintTransport::WindowsGdi => "Windows driver graphics. Raw ESC/POS is not sent. Drawer kick is not verified.".into(),
+        PrintTransport::None => "No supported receipt transport.".into(),
     }
 }
 
@@ -307,9 +399,52 @@ mod tests {
     }
 
     #[test]
+    fn toshiba_native_driver_stays_a_candidate_and_uses_gdi() {
+        let classed = classify("Toshiba Native Windows Driver", "Toshiba: 0_USB");
+        assert_eq!(classed.compatibility, Compatibility::Candidate);
+        assert!(!classed.supports_drawer_kick);
+        assert_eq!(classed.connection, "USB");
+        assert_eq!(classed.profile_id, "");
+        assert!(expects_rendered_job("Toshiba Native Windows Driver", "Toshiba: 0_USB"));
+        assert_eq!(
+            select_transport("Toshiba Native Windows Driver", "Toshiba: 0_USB"),
+            PrintTransport::WindowsGdi
+        );
+        assert_eq!(
+            transport_for("Toshiba Native Windows Driver", "Toshiba: 0_USB", "RAW"),
+            PrintTransport::WindowsGdi
+        );
+        assert_eq!(
+            transport_for("EPSON TM-T88V Receipt", "USB001", "NT EMF 1.008"),
+            PrintTransport::WindowsGdi
+        );
+        let notice = candidate_notice("Toshiba POS Printer (CR)", "Toshiba Native Windows Driver");
+        assert_eq!(
+            notice,
+            "Toshiba POS Printer (CR) was discovered using the Toshiba Native Windows Driver. Receipt printing has not yet been verified. Run the printer test to confirm the supported print method."
+        );
+        assert!(!notice.to_ascii_lowercase().contains("unsupported"));
+        assert_eq!(select_transport("EPSON TM-T88V Receipt", "USB001"), PrintTransport::EscPos);
+        assert_eq!(select_transport("Unknown Thermal", "USB002"), PrintTransport::WindowsGdi);
+        assert_eq!(select_transport("Microsoft Print To PDF", "PORTPROMPT:"), PrintTransport::None);
+        assert_eq!(select_transport("Canon Generic PCL6 Driver", "10.10.101.250"), PrintTransport::None);
+        assert!(capability_summary(PrintTransport::WindowsGdi, false).contains("Drawer kick is not verified"));
+        assert!(SPOOLER_ACCEPTED.contains("physical output has not yet been verified"));
+        assert!(RENDER_FAILED.contains("could not be rendered"));
+        assert!(TRANSMIT_FAILED.contains("did not accept"));
+        assert!(QUEUE_CLOSED.contains("could not open"));
+        assert!(OFFLINE_NOTICE.contains("unavailable"));
+        assert!(MISSING_QUEUE.contains("not installed"));
+        assert!(UNSUPPORTED_METHOD.contains("does not support"));
+    }
+
+    #[test]
     fn the_queue_name_alone_does_not_make_a_printer_compatible() {
         let named = classify("Generic Text Driver", "USB001");
         assert_ne!(named.compatibility, Compatibility::Compatible);
+        assert!(is_text_only_driver("Generic / Text Only"));
+        assert!(is_text_only_driver("Generic Text Driver"));
+        assert!(!is_text_only_driver("EPSON TM-T20 Receipt"));
     }
 
     #[test]

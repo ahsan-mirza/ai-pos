@@ -28,10 +28,15 @@ export interface Expense {
   number: string;
   store_id: string;
   store_code: string;
-  category: ExpenseCategory;
+  category: string;
+  category_id: string | null;
+  category_name: string;
   description: string;
   payee: string;
   payee_trn: string | null;
+  supplier_id: string | null;
+  supplier_name: string;
+  supplier_code: string;
   spent_on: string;
   net_cents: number;
   tax_cents: number;
@@ -39,6 +44,7 @@ export interface Expense {
   total_cents: number;
   currency: string;
   has_tax_invoice: boolean;
+  has_bill: boolean;
   paid_from: ExpensePaidFrom;
   reference: string;
   status: "RECORDED" | "VOID";
@@ -46,11 +52,37 @@ export interface Expense {
   void_reason: string;
 }
 
+export interface ExpenseSupplier {
+  id: string;
+  name: string;
+  code: string;
+  phone: string | null;
+  trn: string | null;
+  is_active: boolean;
+}
+
+export interface ExpenseCategoryOption {
+  id: string;
+  code: string;
+  name: string;
+  description: string;
+  is_active: boolean;
+  sort_order: number;
+}
+
+export interface ExpenseBill {
+  file_name: string;
+  content_type: string;
+  original_size_bytes: number;
+  size_bytes: number;
+  data_base64: string;
+}
+
 export interface ExpenseList {
   items: Expense[];
   total_cents: number;
   recoverable_tax_cents: number;
-  by_category: { category: ExpenseCategory; total_cents: number; count: number }[];
+  by_category: { category: string; category_name: string; total_cents: number; count: number }[];
 }
 
 export interface PettyCashEntry {

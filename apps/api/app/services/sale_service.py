@@ -982,7 +982,7 @@ def record_sale(
                 below_floor_approved_by_id=line.floor_approver.id if line.floor_approver is not None else None,
                 discount_cents=item.discount_cents,
                 product_name=line.product.name[:160],
-                sku=line.product.sku[:64],
+                sku=line.product.sku[:64] if line.product.sku else None,
                 variant_attributes=dict(line.product.variant_attributes or {}),
                 promotion_id=item.promotion_id,
                 manual_discount_cents=item.manual_discount_cents,

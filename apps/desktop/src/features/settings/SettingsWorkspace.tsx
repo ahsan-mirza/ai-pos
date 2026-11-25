@@ -1,15 +1,18 @@
-import { Capability, capabilitySpec, isSupportedCurrency, profileSpec, type BusinessSettings, Permission } from "@ai-pos/shared-types";
-import { useEffect, useState } from "react";
+import { acceptBusinessSettings, Capability, capabilitySpec, isSupportedCurrency, profileSpec, type BusinessSettings, Permission } from "@ai-pos/shared-types";
+import { useCallback, useEffect, useState } from "react";
 import { useShell } from "../../components/shell/ShellContext";
 import { terminal } from "../../config/terminal";
 import { getBusinessSettings } from "../../lib/api";
-import { fetchBusinessCurrency, inTauri } from "../../lib/tauri";
+import { fetchBusinessCurrency, inTauri, refreshRegisterPermissions } from "../../lib/tauri";
+import { refreshBrowserPermissions } from "../auth/session";
 import { useAppVersion } from "../../lib/appVersion";
 import { useCapabilities } from "../../lib/capabilities";
-import { activeStore } from "../checkout/currency";
+import { activeStore, useBusinessSettingsMeta } from "../checkout/currency";
 import { AppearancePanel } from "./AppearancePanel";
+import { BusinessIdentityPanel } from "./BusinessIdentityPanel";
 import { BusinessTypeCard } from "./BusinessTypeCard";
 import { CurrencyPanel } from "./CurrencyPanel";
+import { ExportDataPage } from "../restaurant/ExportDataPage";
 import { LaundryOpsPage } from "./LaundryOpsPage";
 import { canManageStaff } from "./staffAccess";
 import { StaffAccessPanel } from "./StaffAccessPanel";
@@ -34,11 +37,12 @@ function blank(value: string | null | undefined, empty = "Not set"): string {
 }
 
 export function SettingsWorkspace() {
-  const { session, registerStatus } = useShell();
+  const { session, registerStatus, onSession } = useShell();
   const { profile, enabled } = useCapabilities();
   const version = useAppVersion();
   const staff = canManageStaff(session.user.role_name, session.user.permissions);
-  const routes = visibleSettings(profile, staff);
+  const reports = session.user.permissions.includes(Permission.PortalReportsRead);
+  const routes = visibleSettings(profile, staff, reports);
   const business = routes.filter((item) => item.group === "business");
   const system = routes.filter((item) => item.group === "system");
   const [section, setSection] = useState(() => settingsSection(typeof window === "undefined" ? "" : window.location.hash));
@@ -54,6 +58,79 @@ export function SettingsWorkspace() {
   const canManage = session.user.permissions.includes(Permission.SettingsManage) && session.user.store_id === null;
   const store = activeStore();
   const activation = terminal();
+  const meta = useBusinessSettingsMeta();
+  const restrictedReason = session.user.store_id !== null
+    ? "A branch user cannot change the tenant business identity."
+    : "Your role cannot change business settings.";
+
+  const applyLoaded = useCallback((next: BusinessSettings) => {
+    setSettings((current) => (!current || acceptBusinessSettings(current, next) ? next : current));
+    setLoadError(null);
+  }, []);
+
+  useEffect(() => {
+    if (active !== "hardware" || session.mode === "offline") return;
+    let cancelled = false;
+    const apply = (permissions: string[]) => {
+      if (cancelled) return;
+      if (permissions.join("\n") === session.user.permissions.join("\n")) return;
+      onSession({ ...session, user: { ...session.user, permissions } });
+    };
+    if (inTauri()) {
+      void refreshRegisterPermissions().then(apply).catch(() => undefined);
+    } else {
+      void refreshBrowserPermissions().then((permissions) => {
+        if (permissions) apply(permissions);
+      });
+    }
+    return () => {
+      cancelled = true;
+    };
+  }, [active, onSession, session]);
+
+  const loadSettings = useCallback(() => {
+    if (session.mode === "offline") {
+      setLoadError("This register is offline. Showing the last settings it stored.");
+      return;
+    }
+    if (inTauri()) {
+      void fetchBusinessCurrency()
+        .then((snapshot) => {
+          if (!snapshot.currency || !isSupportedCurrency(snapshot.currency)) return;
+          const tax = snapshot.tax;
+          const profileSnapshot = snapshot.profile;
+          applyLoaded({
+            currency: snapshot.currency,
+            supported_currencies: [snapshot.currency],
+            updated_at: tax?.updated_at?.trim() ?? "",
+            updated_by_name: tax?.updated_by_name ?? null,
+            country: tax?.country ?? null,
+            location: tax?.location ?? null,
+            timezone: tax?.timezone || "Asia/Dubai",
+            legal_name: tax?.legal_name ?? null,
+            legal_name_ar: tax?.legal_name_ar ?? null,
+            entitlement_revision: tax?.entitlement_revision ?? profileSnapshot?.entitlement_revision ?? undefined,
+            trn: tax?.trn ?? null,
+            prices_include_vat: tax?.prices_include_vat,
+            standard_rate_bps: tax?.standard_rate_bps,
+            vat_registered: Boolean(tax?.enforced),
+            business_profile: profileSnapshot?.business_profile ?? undefined,
+            capabilities: profileSnapshot?.capabilities,
+            planned_capabilities: profileSnapshot?.planned_capabilities,
+            store_code: profileSnapshot?.tenant_id ?? undefined,
+          });
+        })
+        .catch((caught: unknown) => {
+          setLoadError(caught instanceof Error ? caught.message : "Business settings could not be loaded.");
+        });
+      return;
+    }
+    void getBusinessSettings()
+      .then(applyLoaded)
+      .catch((caught: unknown) => {
+        setLoadError(caught instanceof Error ? caught.message : "Business settings could not be loaded.");
+      });
+  }, [applyLoaded, session.mode]);
 
   useEffect(() => {
     const sync = () => {
@@ -72,48 +149,29 @@ export function SettingsWorkspace() {
   }, [routes]);
 
   useEffect(() => {
-    let cancelled = false;
-    const fail = (caught: unknown) => {
-      if (!cancelled) setLoadError(caught instanceof Error ? caught.message : "Business settings could not be loaded.");
-    };
-    if (inTauri()) {
-      void fetchBusinessCurrency()
-        .then((snapshot) => {
-          if (cancelled || !snapshot.currency || !isSupportedCurrency(snapshot.currency)) return;
-          const tax = snapshot.tax;
-          const profile = snapshot.profile;
-          setSettings({
-            currency: snapshot.currency,
-            supported_currencies: [snapshot.currency],
-            updated_at: tax?.updated_at?.trim() ?? "",
-            updated_by_name: tax?.updated_by_name ?? null,
-            country: tax?.country ?? null,
-            location: tax?.location ?? null,
-            legal_name: tax?.legal_name ?? null,
-            legal_name_ar: tax?.legal_name_ar ?? null,
-            trn: tax?.trn ?? null,
-            prices_include_vat: tax?.prices_include_vat,
-            standard_rate_bps: tax?.standard_rate_bps,
-            vat_registered: Boolean(tax?.trn),
-            business_profile: profile?.business_profile ?? undefined,
-            capabilities: profile?.capabilities,
-            planned_capabilities: profile?.planned_capabilities,
-          });
-        })
-        .catch(fail);
-      return () => {
-        cancelled = true;
+    loadSettings();
+    const timer = window.setInterval(loadSettings, 20_000);
+    return () => window.clearInterval(timer);
+  }, [loadSettings]);
+
+  useEffect(() => {
+    if (!meta.updatedAt && meta.entitlementRevision < 1) return;
+    setSettings((current) => {
+      if (!current) return current;
+      const next: BusinessSettings = {
+        ...current,
+        legal_name: meta.legalName,
+        legal_name_ar: meta.legalNameAr,
+        country: meta.country,
+        location: meta.location,
+        updated_at: meta.updatedAt || current.updated_at,
+        updated_by_name: meta.updatedByName,
+        timezone: meta.timezone,
+        entitlement_revision: meta.entitlementRevision || current.entitlement_revision,
       };
-    }
-    void getBusinessSettings()
-      .then((next) => {
-        if (!cancelled) setSettings(next);
-      })
-      .catch(fail);
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+      return acceptBusinessSettings(current, next) ? next : current;
+    });
+  }, [meta]);
 
   const select = (id: string) => {
     const next = settingsLocation(id);
@@ -187,19 +245,32 @@ export function SettingsWorkspace() {
           {active === "overview" ? <SettingsOverview business={business} system={system} onOpen={select} /> : null}
           {active === "currency" ? <CurrencyPanel settings={settings} canManage={canManage} onSaved={setSettings} /> : null}
           {active === "appearance" ? <AppearancePanel cashier={session.user.full_name} part="appearance" /> : null}
-          {active === "hardware" ? <AppearancePanel cashier={session.user.full_name} part="hardware" canConfigure={session.user.permissions.includes(Permission.DevicesManage) || session.user.permissions.includes(Permission.SettingsManage)} /> : null}
+          {active === "hardware" ? (
+            <AppearancePanel
+              cashier={session.user.full_name}
+              part="hardware"
+              canConfigure={
+                session.user.permissions.includes(Permission.PosAccess) ||
+                session.user.permissions.includes(Permission.DevicesManage) ||
+                session.user.permissions.includes(Permission.SettingsManage)
+              }
+            />
+          ) : null}
           {active === "business-profile" ? (
             <div className="space-y-4">
               <BusinessTypeCard />
+              <BusinessIdentityPanel
+                settings={settings}
+                canManage={canManage}
+                restrictedReason={restrictedReason}
+                offline={session.mode === "offline"}
+                onSaved={applyLoaded}
+                onReload={loadSettings}
+              />
               <SettingsSectionCard>
-                <h2 className="text-lg font-semibold">Business information</h2>
-                <dl className="mt-3 grid gap-3 sm:grid-cols-2 text-sm">
-                  <div><dt className="text-zinc-500">Legal name</dt><dd className="font-semibold">{blank(settings?.legal_name, "Not registered")}</dd></div>
-                  <div><dt className="text-zinc-500">Country</dt><dd className="font-semibold">{blank(settings?.country)}</dd></div>
-                  <div><dt className="text-zinc-500">Location</dt><dd className="font-semibold">{blank(settings?.location)}</dd></div>
-                  <div><dt className="text-zinc-500">Store code</dt><dd className="font-semibold">{blank(settings?.store_code ?? store.code)}</dd></div>
-                </dl>
-                <p className="mt-3 text-sm text-zinc-600">{PRO} Logo, hours, and contact edits are not available on this register.</p>
+                <h2 className="text-lg font-semibold">Store code</h2>
+                <p className="mt-2 text-sm font-semibold">{blank(settings?.store_code ?? store.code)}</p>
+                <p className="mt-2 text-sm text-zinc-600">Read only. The store code is the tenant sign-in code and is not a branch setting.</p>
               </SettingsSectionCard>
             </div>
           ) : null}
@@ -215,6 +286,9 @@ export function SettingsWorkspace() {
           {active === "catalogue" ? <SettingsReadOnlyNotice title="Products and inventory" detail={`${profileNote} ${PRO}`} /> : null}
           {active === "customers" ? (
             <SettingsReadOnlyNotice title="Customers and loyalty" detail={enabled.has(Capability.Loyalty) ? `Loyalty is enabled. Programme rules are ${PRO}` : "Loyalty is not enabled for this business. Customer lookup on the floor uses the existing customer list."} />
+          ) : null}
+          {active === "export" ? (
+            <ExportDataPage storeId={session.user.store_id} canCustomers={session.user.permissions.includes(Permission.CustomersManage)} />
           ) : null}
           {active === "staff" ? <StaffAccessPanel actorRole={session.user.role_name} /> : null}
           {active === "modules" ? (
@@ -238,7 +312,7 @@ export function SettingsWorkspace() {
           {active === "audit" ? (
             <SettingsReadOnlyNotice
               title="Audit trail"
-              detail={settingsAuditSummary(settings?.updated_at, settings?.updated_by_name)}
+              detail={settingsAuditSummary(settings?.updated_at, settings?.updated_by_name, settings?.timezone)}
             />
           ) : null}
           {active === "terminal" ? (

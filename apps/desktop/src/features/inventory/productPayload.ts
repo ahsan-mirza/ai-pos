@@ -91,8 +91,8 @@ export const emptyProductForm = (storeId: string | null, fnb: boolean): ProductF
   nameTouched: false,
 });
 
-export function resolvedSku(state: ProductFormState, editing: boolean): string {
-  const sku = editing || state.skuManual ? state.sku : skuFromParts(state.skuPrefix, state.name, state.specs);
+export function resolvedSku(state: ProductFormState, editing: boolean, optional = false): string {
+  const sku = optional || editing || state.skuManual ? state.sku : skuFromParts(state.skuPrefix, state.name, state.specs);
   return sku.replace(/-$/, "");
 }
 
@@ -115,11 +115,11 @@ function optionalText(value: string): string | null {
 
 export function validateProductForm(
   state: ProductFormState,
-  options: { editing: boolean; pharmacy: boolean; dispensingClass: string; autoBarcode?: boolean },
+  options: { editing: boolean; pharmacy: boolean; dispensingClass: string; autoBarcode?: boolean; skuOptional?: boolean },
 ): Record<string, string> {
   const errors: Record<string, string> = {};
   if (state.name.trim() === "") errors.name = "Name is required.";
-  if (!options.editing && resolvedSku(state, false).trim() === "") errors.sku = "SKU is required.";
+  if (!options.editing && !options.skuOptional && resolvedSku(state, false).trim() === "") errors.sku = "SKU is required.";
   if (!options.editing && state.barcode.trim() === "") {
     if (!options.autoBarcode) errors.barcode = "Barcode is required.";
   } else if (!options.editing && state.barcode.trim() !== "") {

@@ -2,7 +2,7 @@ import { createContext, useContext, useEffect } from "react";
 import type { CashierSession } from "../../features/auth/session";
 import type { SyncState } from "./syncState";
 
-export type RegisterView = "checkout" | "returns" | "settings" | "orders" | "repairs" | "reorders" | "inventory" | "laundry" | "bills" | "customers" | "exports";
+export type RegisterView = "checkout" | "returns" | "settings" | "orders" | "repairs" | "reorders" | "inventory" | "laundry" | "bills" | "customers" | "expenses";
 
 export interface ShellValue {
   session: CashierSession;
@@ -24,6 +24,8 @@ export interface ShellValue {
   setRegisterStatus: (status: SyncState | null) => void;
   /** Switches page, e.g. Returns hands an exchange over to Checkout. */
   navigate: (view: RegisterView) => void;
+  /** Replaces the unlocked cashier after the server reports a new permission list. */
+  onSession: (session: CashierSession) => void;
 }
 
 export const ShellContext = createContext<ShellValue | null>(null);

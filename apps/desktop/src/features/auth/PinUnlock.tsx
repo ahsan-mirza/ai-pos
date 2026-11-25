@@ -6,6 +6,7 @@ import { terminal } from "../../config/terminal";
 import { store } from "../checkout/catalog";
 import { loadCashiers, type CashierCard } from "./cashiers";
 import { DemoCashiers, demoCashiersEnabled } from "./DemoCashiers";
+import { unlockFailureMessage } from "../sync/connectivity";
 import { unlock, unlockSelected, type CashierSession } from "./session";
 
 const MAX_PIN = 4;
@@ -42,7 +43,7 @@ export function PinUnlock({
         if (!cancelled) setCashiers(cards);
       })
       .catch((caught: unknown) => {
-        if (!cancelled) setDirectoryError(caught instanceof Error ? caught.message : String(caught));
+        if (!cancelled) setDirectoryError(unlockFailureMessage(caught));
       });
     return () => {
       cancelled = true;
@@ -68,7 +69,7 @@ export function PinUnlock({
       const session = manual || selected === null ? await unlock(username, pin) : await unlockSelected(selected.id, pin);
       onUnlocked(session);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : String(caught));
+      setError(unlockFailureMessage(caught));
       setPin("");
     } finally {
       lock.current = false;

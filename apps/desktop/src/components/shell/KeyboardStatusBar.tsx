@@ -27,7 +27,7 @@ import { ApiRejectedError, ApiUnavailableError, checkCardTerminal, peripheralSna
 import { useAppVersion } from "../../lib/appVersion";
 import { capabilitiesAvailable, subscriptionHold, useCapabilities } from "../../lib/capabilities";
 import { noteSyncCounts, subscribeSyncActivity, type SyncSnapshot } from "../../lib/syncActivity";
-import { bootstrapReadiness, conflictCount, exitDemo, inTauri, openCashDrawer, pendingCount, probePrinter, readScale, rejectedCount, type PrinterProbe } from "../../lib/tauri";
+import { bootstrapReadiness, conflictCount, connectivityStatus, exitDemo, flushLocalExpenses, inTauri, openCashDrawer, pendingCount, probePrinter, readScale, rejectedCount, type PrinterProbe } from "../../lib/tauri";
 import { VirtualKeyboard } from "../common/VirtualKeyboard";
 import { openHardwareSettings } from "./settingsEntry";
 import { useShell } from "./ShellContext";
@@ -135,6 +135,23 @@ export function KeyboardStatusBar() {
   useEffect(() => {
     let stopped = false;
     const loadRemote = async () => {
+      if (inTauri()) {
+        try {
+          const status = await connectivityStatus();
+          if (stopped) return;
+          setApiKnown(true);
+          setApiUp(status.state === "online");
+          setApiDetail(status.message);
+          setRemotes([]);
+          if (status.state === "online") void flushLocalExpenses().catch(() => undefined);
+        } catch (error) {
+          if (stopped) return;
+          setApiKnown(true);
+          setApiUp(false);
+          setApiDetail(error instanceof Error ? error.message : "You're working offline. Local POS operations remain available. Pending changes will synchronize when a connection is restored.");
+        }
+        return;
+      }
       try {
         const items = await peripheralSnapshot();
         if (stopped) return;

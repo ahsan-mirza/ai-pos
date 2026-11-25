@@ -242,6 +242,55 @@ export function giftReceiptFromLookup(receipt: Receipt, cashier: string): Receip
   return asGiftReceipt(doc, receipt.sale_id, last.toISOString().slice(0, 10));
 }
 
+/** A diagnostic slip. It is not a sale, and the amounts are sample column data, not a second tax calculation. */
+export function diagnosticReceipt(input: {
+  queue: string;
+  driver: string;
+  port: string;
+  paper: string;
+  model?: string;
+  protocol?: string | null;
+}): ReceiptDoc {
+  const identity = registerIdentity();
+  const currency = businessCurrency();
+  const lines = [
+    identity.storeName,
+    identity.storeAddress,
+    identity.trn ? `TRN ${identity.trn}` : null,
+    `Printer: ${input.model?.trim() || input.queue || "Not selected"}`,
+    `Driver: ${input.driver || "Driver not reported"}`,
+    `Port: ${input.port || "Port not reported"}`,
+    `Paper: ${input.paper}`,
+    input.protocol === "escpos" ? "Protocol: ESC/POS" : null,
+    "Text rendering: TEST",
+  ].filter((line): line is string => Boolean(line && line.trim()));
+  return {
+    storeName: "AXIZPOS PRINTER TEST",
+    storeAddress: lines.join("\n"),
+    storePhone: identity.storePhone,
+    legalName: null,
+    legalNameAr: null,
+    trn: null,
+    title: "Printer test",
+    titleAr: null,
+    number: "TEST",
+    issuedAt: new Date(),
+    cashier: "Diagnostic",
+    customer: null,
+    reference: null,
+    lines: [{ name: "Sample item", detail: "Regular portion", quantity: 1, unitCents: 1_000, totalCents: 1_050 }],
+    subtotalCents: 1_000,
+    taxCents: 50,
+    totalCents: 1_050,
+    tenders: [{ label: "Cash", amountCents: 1_050 }],
+    changeCents: null,
+    currency,
+    language: "en",
+    footer: "Printer test. Not a sale.",
+    branding: null,
+  };
+}
+
 /** A two-line sample for the Test print button. */
 export function sampleReceipt(cashier: string): ReceiptDoc {
   const identity = registerIdentity();

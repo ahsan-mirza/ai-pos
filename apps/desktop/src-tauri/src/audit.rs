@@ -77,7 +77,7 @@ pub struct LocalAuditEvent {
     id: String,
     occurred_at: String,
     action_type: String,
-    action: String,
+    pub action: String,
     user_name: String,
     reason_notes: Option<String>,
     details: Value,

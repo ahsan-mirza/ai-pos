@@ -18,6 +18,7 @@ interface RegisterShellProps {
   view: RegisterView;
   onNavigate: (view: RegisterView) => void;
   onLock: () => void;
+  onSession: (session: CashierSession) => void;
   children: ReactNode;
 }
 
@@ -25,7 +26,7 @@ interface RegisterShellProps {
  * Edge-to-edge register frame. The sidebar is rendered once here, so every page shares the same instance,
  * width, and collapse state; pages render their workspace and drawer through <PageFrame>.
  */
-export function RegisterShell({ session, view, onNavigate, onLock, children }: RegisterShellProps) {
+export function RegisterShell({ session, view, onNavigate, onLock, onSession, children }: RegisterShellProps) {
   const { theme } = useRegisterLayout();
   const [busy, setBusy] = useState(false);
   const [drawerHeld, setDrawerHeld] = useState(false);
@@ -49,8 +50,9 @@ export function RegisterShell({ session, view, onNavigate, onLock, children }: R
       registerStatus,
       setRegisterStatus,
       navigate: onNavigate,
+      onSession,
     }),
-    [session, view, busy, drawerHeld, setNotifier, catalogSummary, registerStatus, onNavigate],
+    [session, view, busy, drawerHeld, setNotifier, catalogSummary, registerStatus, onNavigate, onSession],
   );
 
   useEffect(() => {

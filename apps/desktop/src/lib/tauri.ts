@@ -437,6 +437,8 @@ export interface CurrencySnapshot {
     updated_by_name?: string | null;
     country?: string | null;
     location?: string | null;
+    timezone?: string | null;
+    entitlement_revision?: number | null;
   } | null;
   /** Null when the API has never sent a profile: every module stays on. */
   profile: {
@@ -471,7 +473,7 @@ export function nextDocumentNumber(docType: "INV" | "CN" | "Z"): Promise<string 
 }
 
 export interface PrinterSettings {
-  transport: "none" | "tcp" | "windows";
+  transport: "none" | "tcp" | "windows" | "serial" | "ble";
   address: string;
   paper_dots: 384 | 576;
   drawer_kick: boolean;
@@ -491,6 +493,20 @@ export interface PrinterSettings {
   user_selected?: boolean;
   /** Windows object GUID when the spooler returned one. */
   saved_identity?: string;
+  /** windows, usb, network, wifi, bluetooth-classic, bluetooth-ble, or none. */
+  connection_kind?: string;
+  protocol?: string;
+  bluetooth_identity?: string;
+  /** Stored as candidate unless the printer is offline, missing, unsupported, or in error. */
+  verification?: string;
+}
+
+export interface BluetoothSerialPort {
+  device: string;
+  port: string;
+  pairing: string;
+  connection: string;
+  protocol: string;
 }
 
 export interface InstalledPrinter {
@@ -510,6 +526,11 @@ export interface InstalledPrinter {
   openable?: boolean;
   /** ready, offline, unavailable, or virtual. */
   availability?: string;
+  /** escpos, windows-gdi, or none. */
+  printTransport?: string;
+  defaultDatatype?: string;
+  driverVersion?: string;
+  capabilities?: string;
 }
 
 export interface RasterJob {
@@ -517,6 +538,18 @@ export interface RasterJob {
   height: number;
   data: number[];
   kick_drawer: boolean;
+  line_count?: number;
+  document_number?: string;
+  subtotal_cents?: number;
+  tax_cents?: number;
+  discount_cents?: number;
+  total_cents?: number;
+  /** Used by text-only Windows drivers, which drop a receipt picture. */
+  plain_text?: string;
+}
+
+export function refreshRegisterPermissions(): Promise<string[]> {
+  return invoke<string[]>("refresh_register_permissions");
 }
 
 export function printerSettings(): Promise<PrinterSettings> {
@@ -551,6 +584,8 @@ export interface PrinterProbe {
   autoDiscover: boolean;
   model: string;
   driverVersion: string | null;
+  printTransport?: string;
+  capabilities?: string;
 }
 
 export function probePrinter(): Promise<PrinterProbe> {
@@ -559,6 +594,58 @@ export function probePrinter(): Promise<PrinterProbe> {
 
 export function listWindowsPrinters(): Promise<InstalledPrinter[]> {
   return invoke<InstalledPrinter[]>("list_windows_printers");
+}
+
+export function listBluetoothPrinters(): Promise<BluetoothSerialPort[]> {
+  return invoke<BluetoothSerialPort[]>("list_bluetooth_printers");
+}
+
+export interface ConnectivityStatus {
+  state: "online" | "offline" | "reconnecting" | "not_activated";
+  kind: string;
+  server: string;
+  message: string;
+}
+
+export function connectivityStatus(): Promise<ConnectivityStatus> {
+  return invoke<ConnectivityStatus>("connectivity_status");
+}
+
+export interface LocalExpenseRow {
+  id: string;
+  idempotencyKey: string;
+  storeId: string;
+  payload: Record<string, unknown>;
+  status: "pending_sync" | "pending_review" | "synced" | "failed";
+  detail: string;
+  error: string;
+  attempts: number;
+  serverId: string;
+  totalCents: number;
+  paidFrom: string;
+  createdAt: number;
+}
+
+export function saveLocalExpense(draft: {
+  storeId: string;
+  payload: Record<string, unknown>;
+  totalCents: number;
+  paidFrom: string;
+  idempotencyKey: string;
+}): Promise<LocalExpenseRow> {
+  return invoke<LocalExpenseRow>("save_local_expense", { draft });
+}
+
+export function listLocalExpenses(storeId: string): Promise<LocalExpenseRow[]> {
+  return invoke<LocalExpenseRow[]>("list_local_expenses", { storeId });
+}
+
+export function rememberPettyBalance(storeId: string, balanceCents: number): Promise<void> {
+  return invoke("remember_petty_balance", { storeId, balanceCents });
+}
+
+export function flushLocalExpenses(): Promise<{ uploaded: number; pending: number; failed: number; message: string }> {
+  return invoke("flush_local_expenses");
 }
 
 export function savePrinterSettings(settings: PrinterSettings): Promise<PrinterSettings> {
@@ -952,4 +1039,19 @@ export function scalePorts(): Promise<string[]> {
 
 export function readScale(config: ScaleConfig): Promise<ScaleReading> {
   return invoke<ScaleReading>("read_scale", { config });
+}
+
+/** Native full-screen state of the main register window. */
+export function readWindowFullscreen(): Promise<boolean> {
+  return invoke<boolean>("window_fullscreen_state");
+}
+
+/** Enters or leaves native full-screen. The boolean is the window's state after the change. */
+export function setWindowFullscreen(fullscreen: boolean): Promise<boolean> {
+  return invoke<boolean>("window_set_fullscreen", { fullscreen });
+}
+
+/** Switches native full-screen and returns the window's state after the change. */
+export function toggleWindowFullscreen(): Promise<boolean> {
+  return invoke<boolean>("window_toggle_fullscreen");
 }

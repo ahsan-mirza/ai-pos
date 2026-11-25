@@ -551,9 +551,15 @@ export function OrderModeBar({
         <p className="mt-2 text-sm text-zinc-500 dark:text-zinc-400">{t("No sections are configured for this store.")}</p>
       ) : null}
       {mode === "takeaway" ? (
-        <p className="mt-2 text-sm text-zinc-500 dark:text-zinc-400">
-          {t("Search by name or phone. A new guest is added if nobody matches.")}
-        </p>
+        <div className="mt-2 flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
+          <p className="min-w-0 text-sm text-zinc-500 dark:text-zinc-400">
+            {t("Search by name or phone. A new guest is added if nobody matches.")}
+          </p>
+          <p className="shrink-0 text-sm text-zinc-900 dark:text-zinc-100">
+            <span className="font-medium text-zinc-500 dark:text-zinc-400">Order tag</span>
+            <span className="ms-2 font-semibold">{tag || "Auto-generated"}</span>
+          </p>
+        </div>
       ) : null}
       {mode === "delivery" ? (
         channels.length === 0 ? (
@@ -649,7 +655,7 @@ export function OrderModeBar({
 
         {mode === "takeaway" ? (
           <form
-            className="grid items-end gap-2 sm:grid-cols-2 xl:grid-cols-[1fr_1fr_8rem_9rem_auto]"
+            className="grid items-end gap-2 sm:grid-cols-2 xl:grid-cols-[1fr_1fr_9rem_auto]"
             onSubmit={(event) => {
               event.preventDefault();
               void startService();
@@ -747,17 +753,6 @@ export function OrderModeBar({
                 </ul>
               ) : null}
             </div>
-            <label className={labelClass}>
-              Order tag
-              <input
-                readOnly
-                aria-readonly="true"
-                tabIndex={-1}
-                value={tag || "Auto-generated"}
-                className={`${field} mt-1`}
-              />
-              <span className="mt-1 block text-xs font-medium text-zinc-500 dark:text-zinc-400">Auto-generated</span>
-            </label>
             <label className={labelClass}>
               Pickup time
               <input type="time" value={pickup} onChange={(event) => setPickup(event.target.value)} className={`${field} mt-1`} />

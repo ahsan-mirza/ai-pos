@@ -1,4 +1,5 @@
-import type { ReceiptDoc } from "@ai-pos/receipt";
+import { PAPER_DOTS, type ReceiptDoc } from "@ai-pos/receipt";
+import { diagnosticReceipt } from "./saleReceipt";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import type { InstalledPrinter, PrinterProbe, PrinterSettings } from "../../lib/tauri";
@@ -8,19 +9,28 @@ import {
   CONNECTED,
   DISCOVERING,
   MISSING,
+  CANDIDATE,
   NONE_FOUND,
   OFFLINE,
-  UNVERIFIED,
+  SPOOLER_ACCEPTED,
+  UNSUPPORTED_METHOD,
   acceptsSavedName,
   applySelection,
   canTestDrawer,
   canTestDrawerFromProbe,
   canTestPrint,
   canTestPrintFromProbe,
+  candidateMessage,
   connectionMessage,
   dedupePrinters,
+  diagnosticStages,
+  printableDots,
+  REGISTER_VIEW_ONLY,
+  testReceiptPrompt,
   filterPrinters,
   foundMessage,
+  inkBytes,
+  rejectEmptyRaster,
   selectionAfterRefresh,
   networkAddressError,
   saveFeedback,
@@ -190,7 +200,7 @@ describe("Windows printer dropdown", () => {
     expect(html).toContain("Toshiba thermal");
     expect(html).toContain("Not installed");
     expect(html).toContain(MISSING);
-    expect(controlDisabled(html, "Test print")).toBe(true);
+    expect(controlDisabled(html, "Print test receipt")).toBe(true);
     expect(canTestPrint(settings({ address: "Toshiba thermal" }), listed)).toBe(false);
     expect(canTestDrawer(settings({ address: "Toshiba thermal" }), listed)).toBe(false);
   });
@@ -214,7 +224,7 @@ describe("Windows printer dropdown", () => {
     expect(selectionWarning(offline.name, listed)).toBe(OFFLINE);
     expect(canTestPrint(settings({ address: offline.name }), listed)).toBe(false);
     expect(canTestDrawer(settings({ address: offline.name }), listed)).toBe(false);
-    expect(controlDisabled(html, "Test print")).toBe(true);
+    expect(controlDisabled(html, "Print test receipt")).toBe(true);
   });
 
   it("saves an unsupported queue without calling it a connected receipt printer", () => {
@@ -236,18 +246,35 @@ describe("Windows printer dropdown", () => {
     const denied = renderToStaticMarkup(
       <PrinterSettingsModal sample={sample} onClose={() => undefined} onSaved={() => undefined} initialDraft={settings()} initialQueues={listed} canSave={false} />,
     );
-    expect(denied).toContain("permission to manage this register");
+    expect(denied.match(/You can view printer status/g)).toHaveLength(1);
+    expect(denied).toContain(REGISTER_VIEW_ONLY);
+    expect(denied).not.toContain("needs permission to manage this register");
+    expect(controlDisabled(denied, "Windows printer")).toBe(false);
+    expect(controlDisabled(denied, "USB")).toBe(false);
+    expect(controlDisabled(denied, "Network / Wi-Fi")).toBe(false);
+    expect(controlDisabled(denied, "Bluetooth")).toBe(false);
+    expect(controlDisabled(denied, "None")).toBe(false);
+    expect(denied.match(/<button[^>]*data-connection="windows"[^>]*>/)?.[0]).toContain('tabindex="0"');
+    expect(denied.match(/<button[^>]*data-connection="none"[^>]*>/)?.[0]).toContain('tabindex="-1"');
+    const listboxes = [...denied.matchAll(/<button[^>]*aria-haspopup="listbox"[^>]*>/g)].map((match) => match[0].replace(/class="[^"]*"/g, ""));
+    expect(listboxes[0]?.includes("disabled")).toBe(false);
+    expect(listboxes[1]?.includes("disabled")).toBe(true);
+    expect(controlDisabled(denied, "Print test receipt")).toBe(true);
+    expect(printableDots("80 mm")).toBe(PAPER_DOTS["80mm"]);
+    expect(printableDots("58 mm")).toBe(384);
+    expect(testReceiptPrompt("Front")).toContain("does not create a sale");
+    expect(testReceiptPrompt("Front")).toContain("cash drawer");
     expect(controlDisabled(denied, "Save")).toBe(true);
   });
 
   it("identifies a virtual printer and does not treat it as a receipt printer", () => {
     const html = modal(settings({ address: pdf.name, saved_identity: "{pdf}" }), listed);
     expect(html).toContain("Virtual printer");
-    expect(html).toContain(UNVERIFIED);
-    expect(controlDisabled(html, "Test print")).toBe(true);
+    expect(html).toContain(UNSUPPORTED_METHOD);
+    expect(controlDisabled(html, "Print test receipt")).toBe(true);
     expect(canTestPrint(settings({ address: pdf.name }), listed)).toBe(false);
     expect(canTestDrawer(settings({ address: pdf.name }), listed)).toBe(false);
-    expect(connectionMessage(probe({ printerStatus: "unavailable", reachable: false, compatibility: "unsupported", reachError: UNVERIFIED }))).toBe(UNVERIFIED);
+    expect(connectionMessage(probe({ printerStatus: "unavailable", reachable: false, compatibility: "unsupported", reachError: UNSUPPORTED_METHOD }))).toBe(UNSUPPORTED_METHOD);
     expect(connectionMessage(probe())).toBe(CONNECTED);
   });
 
@@ -263,7 +290,7 @@ describe("Windows printer dropdown", () => {
     expect(html).toContain("Epson TM-T20");
     expect(html).toContain(foundMessage(1));
     expect(html).not.toContain(MISSING);
-    expect(controlDisabled(html, "Test print")).toBe(false);
+    expect(controlDisabled(html, "Print test receipt")).toBe(false);
     expect(canTestPrint(settings(), [epson])).toBe(true);
     expect(canTestDrawer(settings(), [epson])).toBe(true);
   });
@@ -278,7 +305,7 @@ describe("Windows printer dropdown", () => {
     expect(lan).toContain("Pay always asks after the payment is saved");
     expect(lan).not.toContain("Print a receipt after every sale");
     expect(lan).toMatch(/Ask before printing a sale receipt[\s\S]*<input[^>]*disabled/);
-    expect(lan).toContain("Test print");
+    expect(lan).toContain("Print test receipt");
     expect(lan).toContain("Cancel");
     expect(lan).toContain("Save");
     expect(canTestPrint(settings({ transport: "tcp", address: "192.168.1.50" }), [])).toBe(true);
@@ -303,7 +330,7 @@ describe("Windows printer dropdown", () => {
     expect(blocked).toContain(OFFLINE);
     expect(blocked).toMatch(/Test drawer kick/);
     expect(controlDisabled(blocked, "Test drawer kick")).toBe(true);
-    expect(controlDisabled(blocked, "Test print")).toBe(true);
+    expect(controlDisabled(blocked, "Print test receipt")).toBe(true);
     expect(canTestDrawerFromProbe(probe({ printerStatus: "offline", reachable: false }))).toBe(false);
     expect(canTestPrintFromProbe(probe({ printerStatus: "offline", reachable: false }))).toBe(false);
 
@@ -317,12 +344,12 @@ describe("Windows printer dropdown", () => {
           reachable: false,
           compatibility: "unsupported",
           supportsDrawerKick: false,
-          reachError: UNVERIFIED,
+          reachError: UNSUPPORTED_METHOD,
         })}
         initialQueues={[pdf]}
       />,
     );
-    expect(virtual).toContain(UNVERIFIED);
+    expect(virtual).toContain(UNSUPPORTED_METHOD);
     expect(virtual).toContain("Microsoft Print to PDF");
     expect(canTestDrawerFromProbe(probe({ compatibility: "unsupported", supportsDrawerKick: true, printerStatus: "ready" }))).toBe(false);
 
@@ -334,5 +361,73 @@ describe("Windows printer dropdown", () => {
     expect(canTestDrawerFromProbe(probe())).toBe(true);
     expect(canTestPrintFromProbe(probe())).toBe(true);
     expect(controlDisabled(ready, "Test drawer kick")).toBe(false);
+  });
+
+  it("keeps the Toshiba queue as a candidate and does not call it unsupported", () => {
+    const toshiba = queue({
+      name: "Toshiba POS Printer (CR)",
+      driver: "Toshiba Native Windows Driver",
+      port: "Toshiba: 0_USB",
+      statusLabel: "Candidate",
+      compatibility: "candidate",
+      supportsDrawerKick: false,
+      connection: "USB",
+      profileId: "",
+      manufacturer: "Toshiba",
+      availability: "ready",
+      printTransport: "windows-gdi",
+      capabilities: "Windows driver graphics. Raw ESC/POS is not sent. Drawer kick is not verified.",
+    });
+    const draft = settings({
+      address: toshiba.name,
+      saved_driver: toshiba.driver,
+      saved_port: toshiba.port,
+      drawer_pin: 1,
+      paper_dots: 576,
+    });
+    const html = modal(draft, [toshiba, pdf]);
+    const notice = candidateMessage(toshiba);
+    expect(notice).toBe(
+      "Toshiba POS Printer (CR) was discovered using the Toshiba Native Windows Driver. Receipt printing has not yet been verified. Run the printer test to confirm the supported print method.",
+    );
+    expect(html).toContain(notice);
+    expect(html).toContain("windows-gdi");
+    expect(html).toContain("Toshiba: 0_USB");
+    expect(html).not.toContain("does not support the configured");
+    expect(selectionWarning(toshiba.name, [toshiba])).toBe(notice);
+    expect(canTestPrint(draft, [toshiba])).toBe(true);
+    expect(canTestDrawer(draft, [toshiba])).toBe(false);
+    expect(controlDisabled(html, "Print test receipt")).toBe(false);
+    expect(controlDisabled(html, "Test drawer kick")).toBe(true);
+    expect(saveFeedback(draft, [toshiba])).toContain("Register settings saved");
+    expect(saveFeedback(draft, [toshiba])).toContain("not yet been verified");
+    expect(saveFeedback(draft, [toshiba])).not.toContain(CANDIDATE);
+    const slip = diagnosticReceipt({ queue: toshiba.name, driver: toshiba.driver, port: toshiba.port, paper: "80 mm" });
+    expect(slip.storeName).toBe("AXIZPOS PRINTER TEST");
+    expect(slip.storeAddress).toContain("Printer: Toshiba POS Printer (CR)");
+    expect(slip.storeAddress).toContain("Driver: Toshiba Native Windows Driver");
+    expect(slip.storeAddress).toContain("Port: Toshiba: 0_USB");
+    expect(slip.storeAddress).toContain("Paper: 80 mm");
+    expect(slip.storeAddress).toContain("Text rendering: TEST");
+    expect(slip.storeAddress).not.toContain("Protocol: ESC/POS");
+    const verified = diagnosticReceipt({ queue: "MTP-3", driver: "ESC/POS", port: "USB001", paper: "80 mm", model: "MTP-3", protocol: "escpos" });
+    expect(verified.storeAddress).toContain("Printer: MTP-3");
+    expect(verified.storeAddress).toContain("Protocol: ESC/POS");
+    expect(slip.lines[0]?.name).toBe("Sample item");
+    expect(slip.lines[0]?.detail).toBe("Regular portion");
+    expect(slip.totalCents).toBe(1_050);
+    expect(slip.footer).toContain("Not a sale");
+    expect(rejectEmptyRaster([])).toBeTruthy();
+    expect(rejectEmptyRaster([0, 0])).toBeTruthy();
+    expect(inkBytes([0, 0xff])).toBe(1);
+    expect(rejectEmptyRaster([0xff])).toBeNull();
+    const stages = diagnosticStages({ queue: toshiba, missing: false, rendered: true, ink: 12, submitted: true, lineCount: 1 });
+    expect(stages.find((item) => item.stage === "Printer profile identified")?.result).toBe("unverified");
+    expect(stages.find((item) => item.stage === "Print job submitted")?.result).toBe("passed");
+    expect(stages.find((item) => item.stage === "Physical text verified")?.result).toBe("not_run");
+    expect(SPOOLER_ACCEPTED).toContain("physical output has not yet been verified");
+    const preview = diagnosticStages({ queue: toshiba, missing: false, rendered: true, ink: 9472, submitted: false, lineCount: 1 });
+    expect(preview.find((item) => item.stage === "Print job submitted")?.result).toBe("not_run");
+    expect(preview.find((item) => item.stage === "Physical text verified")?.result).toBe("not_run");
   });
 });

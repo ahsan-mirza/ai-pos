@@ -1,17 +1,21 @@
 import {
   EXPENSE_CATEGORY_LABELS,
   formatMoney,
+  hasPermission,
+  Permission,
   type Expense,
   type ExpenseCategory,
+  type ExpenseCategoryOption,
   type ExpenseList,
   type ExpensePaidFrom,
+  type ExpenseSupplier,
   type PettyCash,
   type TaxCategory,
 } from "@ai-pos/shared-types";
 import { actionHoverClass, formatDate, formatDateTime } from "@ai-pos/ui";
-import { Plus, Wallet } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
-import { ErrorNote, FilterSelect, GhostButton, PrimaryButton, TextField } from "../../components/ui/Field";
+import { ImagePlus, Plus, Wallet } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { ErrorNote, FilterSelect, GhostButton, PrimaryButton, SelectField, TextField } from "../../components/ui/Field";
 import { Modal } from "../../components/ui/Modal";
 import { SegmentedControl } from "../../components/ui/SegmentedControl";
 import { Toast } from "../../components/ui/Toast";
@@ -31,8 +35,6 @@ const monthStart = () => {
 const shortDate = (value: string) => formatDate(value.slice(0, 10));
 
 const paidFromLabels: Record<ExpensePaidFrom, string> = { PETTY_CASH: "Petty cash", BANK: "Bank", CARD: "Card" };
-const categories = Object.keys(EXPENSE_CATEGORY_LABELS) as ExpenseCategory[];
-
 export function ExpensesPage() {
   const { user } = useAuth();
   const { currency } = useCurrency();
@@ -151,8 +153,9 @@ export function ExpensesPage() {
                     <td className="py-3">
                       <span className="block font-medium">{row.description}</span>
                       <span className="block text-xs text-charcoal/50">
-                        {EXPENSE_CATEGORY_LABELS[row.category]}
-                        {row.payee ? ` · ${row.payee}` : ""} · <span className="font-mono">{row.number}</span>
+                        {row.category_name || EXPENSE_CATEGORY_LABELS[row.category as ExpenseCategory] || row.category}
+                        {row.supplier_name ? ` · ${row.supplier_name}` : ""}
+                        {row.payee && row.payee !== row.supplier_name ? ` · ${row.payee}` : ""} · <span className="font-mono">{row.number}</span>
                         {row.status === "VOID" ? ` · void: ${row.void_reason}` : ""}
                       </span>
                     </td>
@@ -186,7 +189,7 @@ export function ExpensesPage() {
               {(data?.by_category ?? []).map((row) => (
                 <li key={row.category}>
                   <div className="flex items-baseline justify-between text-sm">
-                    <span>{EXPENSE_CATEGORY_LABELS[row.category]}</span>
+                    <span>{row.category_name || row.category}</span>
                     <span className="font-semibold tabular-nums">{money(row.total_cents)}</span>
                   </div>
                   <div className="mt-1 h-1.5 rounded-full bg-surface">
@@ -233,6 +236,70 @@ export function ExpensesPage() {
   );
 }
 
+function BillPicker({
+  bill,
+  onPick,
+  onClear,
+}: {
+  bill: { name: string; preview: string } | null;
+  onPick: (file: File) => void;
+  onClear: () => void;
+}) {
+  const input = useRef<HTMLInputElement>(null);
+  const [over, setOver] = useState(false);
+  const take = (file: File | undefined) => {
+    if (file) onPick(file);
+    if (input.current) input.current.value = "";
+  };
+  return (
+    <div>
+      <p className="mb-1.5 text-sm font-medium">Attach bill / tax invoice</p>
+      <input
+        ref={input}
+        className="sr-only"
+        type="file"
+        accept="image/jpeg,image/png,image/webp"
+        onChange={(event) => take(event.target.files?.[0])}
+      />
+      {bill ? (
+        <div className="flex gap-3 rounded-2xl border border-line bg-white p-3">
+          <img src={bill.preview} alt="" className="h-28 w-24 shrink-0 rounded-xl bg-surface object-cover" />
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm font-semibold">{bill.name}</p>
+            <p className="mt-1 text-xs text-charcoal/50">JPG, PNG or WebP. The copy is compressed when the expense is saved.</p>
+            <div className="mt-3 flex gap-2">
+              <button type="button" className="h-9 rounded-full bg-charcoal px-3 text-xs font-semibold text-white" onClick={() => input.current?.click()}>Replace</button>
+              <button type="button" className="h-9 rounded-full px-3 text-xs font-semibold text-charcoal/70 ring-1 ring-line" onClick={onClear}>Remove</button>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={() => input.current?.click()}
+          onDragOver={(event) => {
+            event.preventDefault();
+            setOver(true);
+          }}
+          onDragLeave={() => setOver(false)}
+          onDrop={(event) => {
+            event.preventDefault();
+            setOver(false);
+            take(event.dataTransfer.files[0]);
+          }}
+          className={`flex w-full flex-col items-center gap-2 rounded-2xl border border-dashed px-4 py-7 text-center ${over ? "border-orange-500 bg-orange-50" : "border-line bg-surface"}`}
+        >
+          <span className="flex h-11 w-11 items-center justify-center rounded-full bg-white text-charcoal shadow-sm ring-1 ring-line">
+            <ImagePlus size={20} aria-hidden="true" />
+          </span>
+          <span className="text-sm font-semibold">Drop the bill here, or browse</span>
+          <span className="text-xs text-charcoal/50">JPG, PNG or WebP</span>
+        </button>
+      )}
+    </div>
+  );
+}
+
 function ExpenseModal({
   storeId,
   pettyCents,
@@ -245,8 +312,14 @@ function ExpenseModal({
   onSaved: (expense: Expense) => void;
 }) {
   const { currency } = useCurrency();
-  const [category, setCategory] = useState<ExpenseCategory>("UTILITIES");
+  const { user } = useAuth();
+  const canAddSupplier = hasPermission(user, Permission.PayablesManage) || hasPermission(user, Permission.PortalInventoryManage);
+  const [categoryRows, setCategoryRows] = useState<ExpenseCategoryOption[]>([]);
+  const [category, setCategory] = useState("");
+  const [billFile, setBillFile] = useState<{ name: string; type: string; data: string; preview: string } | null>(null);
   const [description, setDescription] = useState("");
+  const [suppliers, setSuppliers] = useState<ExpenseSupplier[]>([]);
+  const [supplierId, setSupplierId] = useState("");
   const [payee, setPayee] = useState("");
   const [trn, setTrn] = useState("");
   const [spentOn, setSpentOn] = useState(iso(new Date()));
@@ -257,6 +330,23 @@ function ExpenseModal({
   const [reference, setReference] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    void apiGet<ExpenseSupplier[]>("/api/v1/expenses/suppliers").then(setSuppliers).catch(() => setSuppliers([]));
+    void apiGet<ExpenseCategoryOption[]>("/api/v1/expenses/categories")
+      .then((rows) => {
+        setCategoryRows(rows);
+        setCategory((current) => current || rows.find((row) => row.code === "UTILITIES")?.id || rows[0]?.id || "");
+      })
+      .catch(() => setCategoryRows([]));
+  }, []);
+  const selectedSupplier = suppliers.find((row) => row.id === supplierId) ?? null;
+  const chooseSupplier = (id: string) => {
+    const supplier = suppliers.find((row) => row.id === id) ?? null;
+    setSupplierId(id);
+    if (supplier === null) return;
+    setPayee((current) => (current.trim() === "" || current === selectedSupplier?.name ? supplier.name : current));
+    if (supplier.trn) setTrn((current) => (current === "" || current === (selectedSupplier?.trn ?? "") ? supplier.trn ?? "" : current));
+  };
   const cents = toCents(total);
   const vat = cents !== null && taxCategory === "STANDARD" ? Math.round((cents * 500) / 10500) : 0;
 
@@ -268,8 +358,10 @@ function ExpenseModal({
       onSaved(
         await apiPost<Expense>("/api/v1/expenses", {
           store_id: storeId,
-          category,
+          category_id: category,
+          bill: billFile ? { file_name: billFile.name, content_type: billFile.type, data_base64: billFile.data } : null,
           description: description.trim(),
+          supplier_id: supplierId || null,
           payee: payee.trim(),
           payee_trn: trn || null,
           spent_on: spentOn,
@@ -303,15 +395,43 @@ function ExpenseModal({
     >
       <div className="space-y-4">
         <div className="grid gap-4 md:grid-cols-2">
-          <FilterSelect
+          <SelectField
             label="Category"
             value={category}
-            options={categories.map((value) => ({ value, label: EXPENSE_CATEGORY_LABELS[value] }))}
+            searchable
+            createLabel="+ Add Expense Type"
+            options={categoryRows.map((row) => ({ value: row.id, label: row.name }))}
             onChange={setCategory}
+            onCreate={(name) => {
+              void apiPost<ExpenseCategoryOption>("/api/v1/expenses/categories", { name }).then((created) => {
+                setCategoryRows((rows) => (rows.some((row) => row.id === created.id) ? rows : [...rows, created]));
+                setCategory(created.id);
+              }).catch((caught: unknown) => setError(errorMessage(caught, "Could not add the category.")));
+            }}
           />
           <TextField label="Date" type="date" value={spentOn} onChange={(event) => setSpentOn(event.target.value)} />
         </div>
         <TextField label="What for" value={description} maxLength={200} placeholder="DEWA bill, October" onChange={(event) => setDescription(event.target.value)} />
+        <SelectField
+          label="Supplier"
+          value={supplierId}
+          searchable
+          createLabel="+ Add supplier"
+          options={[
+            { value: "", label: "No supplier" },
+            ...suppliers.map((row) => ({ value: row.id, label: `${row.name} · ${row.code}` })),
+          ]}
+          onChange={chooseSupplier}
+          onCreate={canAddSupplier ? (name) => {
+            void apiPost<{ id: string; name: string; code: string; phone: string | null; is_active: boolean }>("/api/v1/expenses/suppliers", { name }).then((created) => {
+              const row: ExpenseSupplier = { id: created.id, name: created.name, code: created.code, phone: created.phone, trn: null, is_active: created.is_active };
+              setSuppliers((rows) => (rows.some((item) => item.id === row.id) ? rows : [...rows, row]));
+              setSupplierId(row.id);
+              setPayee((current) => (current.trim() === "" ? row.name : current));
+            }).catch((caught: unknown) => setError(errorMessage(caught, "Could not add the supplier.")));
+          } : undefined}
+          hint={selectedSupplier?.trn ? `TRN ${selectedSupplier.trn}` : "Optional. Paid to stays a separate note."}
+        />
         <div className="grid gap-4 md:grid-cols-2">
           <TextField label="Paid to (optional)" value={payee} maxLength={120} onChange={(event) => setPayee(event.target.value)} />
           <TextField label="Total paid" inputMode="decimal" value={total} className="tabular-nums" onChange={(event) => setTotal(event.target.value)} />
@@ -349,6 +469,22 @@ function ExpenseModal({
         {paidFrom !== "PETTY_CASH" ? (
           <TextField label="Reference (optional)" value={reference} maxLength={64} onChange={(event) => setReference(event.target.value)} />
         ) : null}
+        <BillPicker
+          bill={billFile}
+          onPick={(file) => {
+            const reader = new FileReader();
+            reader.onload = () => {
+              const result = String(reader.result ?? "");
+              if (billFile?.preview) URL.revokeObjectURL(billFile.preview);
+              setBillFile({ name: file.name, type: file.type || "image/jpeg", data: result.split(",")[1] ?? "", preview: URL.createObjectURL(file) });
+            };
+            reader.readAsDataURL(file);
+          }}
+          onClear={() => {
+            if (billFile?.preview) URL.revokeObjectURL(billFile.preview);
+            setBillFile(null);
+          }}
+        />
       </div>
       <ErrorNote message={error} />
     </Modal>

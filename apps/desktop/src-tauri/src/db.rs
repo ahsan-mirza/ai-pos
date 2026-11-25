@@ -265,6 +265,7 @@ impl Db {
         crate::audit::migrate(&conn)?;
         crate::documents::migrate(&conn)?;
         crate::printer::migrate(&conn)?;
+        crate::local_expenses::migrate(&conn)?;
         crate::shifts::migrate(&conn)?;
         crate::held::migrate(&conn)?;
         crate::table_sessions::migrate(&conn)?;
@@ -1134,6 +1135,18 @@ impl Db {
         )
         .map_err(|err| err.to_string())?;
         tx.commit().map_err(|err| err.to_string())
+    }
+
+    /// Replaces the cached permission list after the server reports a role change. The PIN verifier stays.
+    pub fn replace_cached_permissions(&self, user_id: &str, permissions: &[String]) -> Result<(), String> {
+        let encoded = serde_json::to_string(permissions).map_err(|err| err.to_string())?;
+        self.lock()?
+            .execute(
+                "UPDATE cached_users SET permissions = ?1 WHERE user_id = ?2",
+                params![encoded, user_id],
+            )
+            .map_err(|err| err.to_string())?;
+        Ok(())
     }
 
     pub fn cached_user_by_id(&self, user_id: &str) -> Result<Option<CachedUser>, String> {

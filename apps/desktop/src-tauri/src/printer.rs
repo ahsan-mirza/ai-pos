@@ -47,7 +47,28 @@ pub fn migrate(conn: &Connection) -> Result<(), String> {
     add_column(conn, "printer_settings", "saved_model", "TEXT NOT NULL DEFAULT ''")?;
     add_column(conn, "printer_settings", "user_selected", "INTEGER NOT NULL DEFAULT 0")?;
     add_column(conn, "printer_settings", "saved_identity", "TEXT NOT NULL DEFAULT ''")?;
-    add_column(conn, "printer_status", "last_kick_attempt_at", "INTEGER")
+    add_column(conn, "printer_settings", "connection_kind", "TEXT NOT NULL DEFAULT ''")?;
+    add_column(conn, "printer_settings", "protocol", "TEXT NOT NULL DEFAULT ''")?;
+    add_column(conn, "printer_settings", "bluetooth_identity", "TEXT NOT NULL DEFAULT ''")?;
+    add_column(conn, "printer_settings", "verification", "TEXT NOT NULL DEFAULT 'candidate'")?;
+    add_column(conn, "printer_status", "last_kick_attempt_at", "INTEGER")?;
+    conn.execute_batch(
+        "
+        CREATE TABLE IF NOT EXISTS printer_jobs (
+            id TEXT PRIMARY KEY,
+            invoice_id TEXT NOT NULL DEFAULT '',
+            printer_id TEXT NOT NULL DEFAULT '',
+            transport TEXT NOT NULL DEFAULT '',
+            payload_type TEXT NOT NULL DEFAULT '',
+            created_at INTEGER NOT NULL,
+            status TEXT NOT NULL,
+            attempts INTEGER NOT NULL DEFAULT 1,
+            error TEXT NOT NULL DEFAULT '',
+            verification TEXT NOT NULL DEFAULT 'physical-not-verified'
+        );
+        ",
+    )
+    .map_err(|err| err.to_string())
 }
 
 fn add_column(conn: &Connection, table: &str, column: &str, definition: &str) -> Result<(), String> {
@@ -101,6 +122,18 @@ pub struct PrinterSettings {
     /// Windows object GUID when the spooler provides one. Empty when it does not.
     #[serde(default)]
     pub saved_identity: String,
+    /// windows, usb, network, wifi, bluetooth-classic, bluetooth-ble, or none.
+    #[serde(default)]
+    pub connection_kind: String,
+    /// escpos, windows-gdi, or unknown. Empty until the print path selects one.
+    #[serde(default)]
+    pub protocol: String,
+    /// Bluetooth device identity. Empty for Windows and network printers.
+    #[serde(default)]
+    pub bluetooth_identity: String,
+    /// candidate, offline, unsupported, missing, or connection-error. Never stored as verified from the client.
+    #[serde(default)]
+    pub verification: String,
 }
 
 fn default_auto() -> bool {
@@ -134,6 +167,10 @@ impl Default for PrinterSettings {
             saved_model: String::new(),
             user_selected: false,
             saved_identity: String::new(),
+            connection_kind: String::new(),
+            protocol: String::new(),
+            bluetooth_identity: String::new(),
+            verification: "candidate".into(),
         }
     }
 }
@@ -142,7 +179,8 @@ pub fn load(db: &Db) -> Result<PrinterSettings, String> {
     db.read(|conn| {
         conn.query_row(
             "SELECT transport, address, paper_dots, drawer_kick, auto_print, copies, drawer_pin, drawer_on, drawer_off,
-                    auto_discover, previous_address, saved_driver, saved_port, saved_model, user_selected, saved_identity
+                    auto_discover, previous_address, saved_driver, saved_port, saved_model, user_selected, saved_identity,
+                    connection_kind, protocol, bluetooth_identity, verification
              FROM printer_settings WHERE id = 1",
             [],
             |row| {
@@ -163,6 +201,10 @@ pub fn load(db: &Db) -> Result<PrinterSettings, String> {
                     saved_model: row.get(13)?,
                     user_selected: row.get::<_, i64>(14)? != 0,
                     saved_identity: row.get(15)?,
+                    connection_kind: row.get(16)?,
+                    protocol: row.get(17)?,
+                    bluetooth_identity: row.get(18)?,
+                    verification: row.get(19)?,
                 })
             },
         )
@@ -172,17 +214,48 @@ pub fn load(db: &Db) -> Result<PrinterSettings, String> {
     })
 }
 
+pub const REGISTER_MANAGE_REQUIRED: &str =
+    "You can view printer status. Register management permission is required to change printer settings.";
+
 pub fn hardware_change_allowed(permissions: &[String]) -> bool {
-    permissions
-        .iter()
-        .any(|item| item == "devices:manage" || item == "settings:manage")
+    permissions.iter().any(|item| {
+        item == "pos:access" || item == "devices:manage" || item == "settings:manage"
+    })
+}
+
+/// Rejects a settings write. The stored row is left as it was, and the denial is appended to the audit ledger.
+pub fn refuse_hardware_change(db: &Db, session: &crate::auth::Session, store_id: &str) -> String {
+    let previous = load(db).ok();
+    let _ = crate::audit::record(
+        db,
+        session,
+        store_id,
+        crate::audit::AuditInput {
+            action_type: "REGISTER_SETTINGS".into(),
+            action: "register.printer_settings".into(),
+            target_entity: "RegisterSettings".into(),
+            target_entity_id: None,
+            reason_notes: None,
+            approver_id: None,
+            old_values: previous.map(|row| {
+                serde_json::json!({
+                    "transport": row.transport,
+                    "address": row.address,
+                    "paper_dots": row.paper_dots,
+                })
+            }),
+            new_values: Some(serde_json::json!({ "outcome": "denied" })),
+            details: Some(serde_json::json!({ "source": "desktop" })),
+        },
+    );
+    REGISTER_MANAGE_REQUIRED.to_string()
 }
 
 /// Checks a register configuration before it is written. A virtual Windows queue is allowed as a
 /// diagnostic preference. It is not treated as a connected receipt printer by the probe.
 pub fn prepare_settings(settings: &PrinterSettings) -> Result<PrinterSettings, String> {
-    if !matches!(settings.transport.as_str(), "none" | "tcp" | "windows") {
-        return Err("Choose Network (LAN), Windows printer, or None.".into());
+    if !matches!(settings.transport.as_str(), "none" | "tcp" | "windows" | "serial" | "ble") {
+        return Err("Choose Windows, USB, Network / Wi-Fi, Bluetooth, or None.".into());
     }
     if !matches!(settings.paper_dots, 384 | 576) {
         return Err("Paper width must be 58 mm (384 dots) or 80 mm (576 dots).".into());
@@ -194,6 +267,15 @@ pub fn prepare_settings(settings: &PrinterSettings) -> Result<PrinterSettings, S
     let mut next = settings.clone();
     next.address = settings.address.trim().to_string();
     next.previous_address = settings.previous_address.trim().to_string();
+    next.bluetooth_identity = settings.bluetooth_identity.trim().to_string();
+    if next.transport == "none" || next.connection_kind.trim().is_empty() {
+        next.connection_kind = crate::printer_profile::default_connection(&next.transport).to_string();
+    }
+    next.connection_kind = next.connection_kind.trim().to_string();
+    if !crate::printer_profile::connection_pair_ok(&next.transport, &next.connection_kind) {
+        return Err("That connection does not match the selected printer type.".into());
+    }
+    next.verification = crate::printer_profile::stored_verification(&next.verification).to_string();
     match next.transport.as_str() {
         "none" => {
             if !next.address.is_empty() {
@@ -201,12 +283,31 @@ pub fn prepare_settings(settings: &PrinterSettings) -> Result<PrinterSettings, S
                 next.address.clear();
             }
             next.user_selected = false;
+            next.protocol.clear();
         }
-        "tcp" => validate_tcp(&next.address)?,
+        "tcp" => {
+            validate_tcp(&next.address)?;
+            if next.protocol.is_empty() {
+                next.protocol = "escpos".into();
+            }
+        }
         "windows" => {
             if next.address.is_empty() {
                 return Err("Select a Windows printer.".into());
             }
+            if next.connection_kind == "usb" && !next.saved_port.trim().is_empty() && !crate::printer_profile::port_is_usb(&next.saved_port) {
+                return Err("This queue is not a USB printer. Choose Windows printer for a driver queue, or Network / Wi-Fi for an address.".into());
+            }
+        }
+        "serial" => {
+            next.address = crate::printer_profile::normalize_com(&next.address)?;
+            next.protocol = "escpos".into();
+        }
+        "ble" => {
+            if next.address.is_empty() {
+                return Err("Select a Bluetooth Low Energy device.".into());
+            }
+            next.protocol = "unknown".into();
         }
         _ => {}
     }
@@ -262,8 +363,9 @@ pub fn save(db: &Db, settings: &PrinterSettings) -> Result<PrinterSettings, Stri
         tx.execute(
             "INSERT INTO printer_settings (
                 id, transport, address, paper_dots, drawer_kick, auto_print, copies, drawer_pin, drawer_on, drawer_off,
-                auto_discover, previous_address, saved_driver, saved_port, saved_model, user_selected, saved_identity
-             ) VALUES (1, ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)
+                auto_discover, previous_address, saved_driver, saved_port, saved_model, user_selected, saved_identity,
+                connection_kind, protocol, bluetooth_identity, verification
+             ) VALUES (1, ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20)
              ON CONFLICT(id) DO UPDATE SET transport = excluded.transport, address = excluded.address,
                 paper_dots = excluded.paper_dots, drawer_kick = excluded.drawer_kick,
                 auto_print = excluded.auto_print, copies = excluded.copies,
@@ -271,7 +373,9 @@ pub fn save(db: &Db, settings: &PrinterSettings) -> Result<PrinterSettings, Stri
                 auto_discover = excluded.auto_discover, previous_address = excluded.previous_address,
                 saved_driver = excluded.saved_driver, saved_port = excluded.saved_port,
                 saved_model = excluded.saved_model, user_selected = excluded.user_selected,
-                saved_identity = excluded.saved_identity",
+                saved_identity = excluded.saved_identity, connection_kind = excluded.connection_kind,
+                protocol = excluded.protocol, bluetooth_identity = excluded.bluetooth_identity,
+                verification = excluded.verification",
             params![
                 settings.transport,
                 settings.address.trim(),
@@ -289,6 +393,10 @@ pub fn save(db: &Db, settings: &PrinterSettings) -> Result<PrinterSettings, Stri
                 settings.saved_model.trim(),
                 settings.user_selected as i64,
                 settings.saved_identity.trim(),
+                settings.connection_kind.trim(),
+                settings.protocol.trim(),
+                settings.bluetooth_identity.trim(),
+                settings.verification.trim(),
             ],
         )
         .map_err(|err| err.to_string())?;
@@ -304,6 +412,22 @@ pub struct RasterJob {
     /// Packed 1-bit rows, most significant bit first, 1 = black. Each row is ceil(width / 8) bytes.
     pub data: Vec<u8>,
     pub kick_drawer: bool,
+    /// Safe invoice facts for the print diagnostic. Zero when the caller does not have them.
+    #[serde(default)]
+    pub line_count: u32,
+    #[serde(default)]
+    pub document_number: String,
+    #[serde(default)]
+    pub subtotal_cents: i64,
+    #[serde(default)]
+    pub tax_cents: i64,
+    #[serde(default)]
+    pub discount_cents: i64,
+    #[serde(default)]
+    pub total_cents: i64,
+    /// Plain receipt text. Text-only Windows drivers print this instead of the picture.
+    #[serde(default)]
+    pub plain_text: String,
 }
 
 #[cfg(test)]
@@ -313,6 +437,7 @@ const KICK_GAP_SECS: i64 = 3;
 const SPOOLER_TIMEOUT: Duration = Duration::from_secs(8);
 static PRINTING: AtomicBool = AtomicBool::new(false);
 static LAST_KICK_AT: AtomicI64 = AtomicI64::new(0);
+static LAST_DIAGNOSTIC: std::sync::Mutex<Option<PrintDiagnostic>> = std::sync::Mutex::new(None);
 
 /// ESC/POS drawer pulse. `pin` 0 is connector pin 2 and 1 is pin 5. Times are units of 2 ms.
 pub fn drawer_pulse(pin: u8, on_units: u8, off_units: u8) -> [u8; 5] {
@@ -353,6 +478,12 @@ pub struct InstalledPrinter {
     pub openable: bool,
     /// ready, offline, unavailable, or virtual.
     pub availability: String,
+    /// escpos, windows-gdi, or none.
+    pub print_transport: String,
+    /// Spooler default datatype when GetPrinterDriverW returned one. Empty when this pass did not read it.
+    pub default_datatype: String,
+    pub driver_version: String,
+    pub capabilities: String,
 }
 
 /// One row from EnumPrinters, plus optional OpenPrinter / GetPrinter / GetPrinterDriver facts.
@@ -367,6 +498,8 @@ pub struct EnumeratedQueue {
     pub identity: String,
     /// None when this pass did not call OpenPrinterW.
     pub opened: Option<bool>,
+    pub default_datatype: String,
+    pub driver_version: String,
 }
 
 const PRINTER_ATTRIBUTE_WORK_OFFLINE: u32 = 0x400;
@@ -409,6 +542,8 @@ pub fn map_enumerated_queue(raw: &EnumeratedQueue) -> Option<InstalledPrinter> {
         raw.opened,
     );
     let openable = raw.opened.unwrap_or(true);
+    let transport = crate::printer_discovery::transport_for(&raw.driver, &raw.port, &raw.default_datatype);
+    let drawer = classed.supports_drawer_kick && availability != "virtual" && !unavailable;
     Some(InstalledPrinter {
         name: name.to_string(),
         driver: raw.driver.clone(),
@@ -417,13 +552,21 @@ pub fn map_enumerated_queue(raw: &EnumeratedQueue) -> Option<InstalledPrinter> {
         status_label,
         unavailable,
         compatibility: classed.compatibility.as_str().to_string(),
-        supports_drawer_kick: classed.supports_drawer_kick && availability != "virtual" && !unavailable,
+        supports_drawer_kick: drawer,
         connection: classed.connection,
         profile_id: classed.profile_id,
         manufacturer: raw.manufacturer.trim().to_string(),
         identity: raw.identity.trim().to_string(),
         openable,
         availability,
+        print_transport: transport.as_str().to_string(),
+        default_datatype: raw.default_datatype.trim().to_string(),
+        driver_version: raw.driver_version.trim().to_string(),
+        capabilities: if crate::printer_discovery::is_text_only_driver(&raw.driver) {
+            "Text only. The receipt is sent as text, not as a picture. Drawer kick is not verified.".into()
+        } else {
+            crate::printer_discovery::capability_summary(transport, drawer)
+        },
     })
 }
 
@@ -441,7 +584,8 @@ pub fn queue_open_error(name: &str, opened: bool) -> Result<(), String> {
     if opened {
         Ok(())
     } else {
-        Err(format!("Windows printer \"{name}\" could not be opened."))
+        let _ = name;
+        Err(crate::printer_discovery::QUEUE_CLOSED.into())
     }
 }
 
@@ -469,6 +613,9 @@ pub fn plan_drawer_kick(
     if settings.transport == "none" {
         return Err("No receipt printer is configured. Open Register settings to add one.".into());
     }
+    if settings.transport == "serial" || settings.transport == "ble" {
+        return Err(crate::printer_profile::DRAWER_UNVERIFIED.into());
+    }
     if !kick_allowed(now, last_attempt, KICK_GAP_SECS) {
         return Err("Wait a moment before kicking the drawer again.".into());
     }
@@ -488,7 +635,7 @@ pub fn plan_drawer_kick(
         return Err(missing_printer_message(settings.address.trim()));
     };
     if queue.availability == "virtual" || queue.compatibility == "unsupported" {
-        return Err("This device is not verified as a supported receipt printer.".into());
+        return Err(crate::printer_discovery::UNSUPPORTED_METHOD.into());
     }
     if queue.unavailable || queue.availability == "offline" || queue.availability == "unavailable" {
         return Err(format!(
@@ -552,6 +699,30 @@ pub struct PrinterProbe {
     pub auto_discover: bool,
     pub model: String,
     pub driver_version: Option<String>,
+    /// escpos, windows-gdi, or none. Empty when no queue metadata is available.
+    pub print_transport: String,
+    pub capabilities: String,
+    pub diagnostic: Option<PrintDiagnostic>,
+}
+
+fn remember_job(db: &Db, invoice: &str, printer_id: &str, transport: &str, phase: &crate::printer_profile::JobPhase, error: Option<&str>) {
+    let now = now_secs();
+    let id = format!("{now}-{invoice}-{printer_id}");
+    let status = match phase {
+        crate::printer_profile::JobPhase::AcceptedUnverified => "accepted-unverified",
+        crate::printer_profile::JobPhase::Failed => "failed",
+        _ => "submitted",
+    };
+    let _ = db.transaction(|tx| {
+        tx.execute(
+            "INSERT INTO printer_jobs (
+                id, invoice_id, printer_id, transport, payload_type, created_at, status, attempts, error, verification
+             ) VALUES (?1, ?2, ?3, ?4, 'raster', ?5, ?6, 1, ?7, 'physical-not-verified')",
+            params![id, invoice, printer_id, transport, now, status, error.unwrap_or("")],
+        )
+        .map_err(|err| err.to_string())?;
+        Ok(())
+    });
 }
 
 fn remember_print(db: &Db, error: Option<&str>) {
@@ -623,11 +794,7 @@ fn status_row(db: &Db) -> (Option<i64>, Option<String>, Option<i64>, Option<i64>
 }
 
 fn probe_tcp(address: &str) -> Result<(), String> {
-    let target = if address.contains(':') {
-        address.to_string()
-    } else {
-        format!("{address}:9100")
-    };
+    let target = crate::printer_profile::tcp_endpoint(address)?;
     let socket = target
         .to_socket_addrs()
         .map_err(|err| format!("Printer address {target} is invalid: {err}"))?
@@ -674,13 +841,60 @@ fn finish_probe(
         auto_discover: settings.auto_discover,
         model: settings.saved_model.clone(),
         driver_version: None,
+        print_transport: crate::printer_discovery::select_transport(&settings.saved_driver, &settings.saved_port)
+            .as_str()
+            .to_string(),
+        capabilities: String::new(),
+        diagnostic: last_diagnostic(),
+    }
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PrintStage {
+    pub stage: String,
+    pub result: String,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PrintDiagnostic {
+    pub recorded_at: i64,
+    pub document_number: String,
+    pub line_count: u32,
+    pub subtotal_cents: i64,
+    pub tax_cents: i64,
+    pub discount_cents: i64,
+    pub total_cents: i64,
+    pub width: u32,
+    pub height: u32,
+    pub ink_bytes: usize,
+    pub payload_bytes: usize,
+    pub payload_type: String,
+    pub encoding: String,
+    pub queue: String,
+    pub driver: String,
+    pub port: String,
+    pub transport: String,
+    pub submitted: bool,
+    pub native_error: Option<String>,
+    pub stages: Vec<PrintStage>,
+}
+
+fn last_diagnostic() -> Option<PrintDiagnostic> {
+    LAST_DIAGNOSTIC.lock().ok().and_then(|slot| slot.clone())
+}
+
+fn store_diagnostic(diagnostic: PrintDiagnostic) {
+    if let Ok(mut slot) = LAST_DIAGNOSTIC.lock() {
+        *slot = Some(diagnostic);
     }
 }
 
 pub fn refresh_discovery(db: &Db) -> Result<crate::printer_discovery::DiscoveryDecision, String> {
     use crate::printer_discovery::{decide, Discovered, SavedPrinter};
     let settings = load(db)?;
-    if settings.transport == "tcp" {
+    if settings.transport == "tcp" || settings.transport == "serial" || settings.transport == "ble" {
         return Ok(DiscoveryKept::tcp(&settings));
     }
     let queues = known_windows_printers().unwrap_or_default();
@@ -741,7 +955,7 @@ impl DiscoveryKept {
             model: settings.saved_model.clone(),
             user_selected: settings.user_selected,
             outcome: "manual".into(),
-            drawer_supported: settings.drawer_kick,
+            drawer_supported: false,
             changed: false,
         }
     }
@@ -759,6 +973,11 @@ fn annotate(mut probe: PrinterProbe, decision: &crate::printer_discovery::Discov
         probe.driver = Some(queue.driver.clone());
         probe.port = Some(queue.port.clone());
         probe.model = if queue.driver.is_empty() { decision.model.clone() } else { queue.driver.clone() };
+        probe.print_transport = queue.print_transport.clone();
+        probe.capabilities = queue.capabilities.clone();
+        if !queue.driver_version.is_empty() {
+            probe.driver_version = Some(queue.driver_version.clone());
+        }
     } else if probe.printer_status == "missing" || probe.printer_status == "not_configured" {
         probe.compatibility = if probe.configured { "not_found".into() } else { "unsupported".into() };
         probe.supports_drawer_kick = false;
@@ -778,19 +997,57 @@ pub fn probe(db: &Db) -> Result<PrinterProbe, String> {
     if settings.transport == "tcp" {
         let reach = probe_tcp(&settings.address);
         let ok = reach.is_ok();
-        return Ok(annotate(
-            finish_probe(
-                settings,
-                history,
-                ok,
-                reach.err(),
-                if ok { "ready" } else { "unavailable" },
-                None,
-                None,
-            ),
-            &decision,
+        let mut probe = finish_probe(
+            settings,
+            history,
+            ok,
+            if ok { Some(crate::printer_profile::TCP_OPEN_NOTICE.into()) } else { reach.err() },
+            if ok { "candidate" } else { "unavailable" },
             None,
-        ));
+            None,
+        );
+        probe.compatibility = "candidate".into();
+        probe.supports_drawer_kick = false;
+        probe.print_transport = "escpos".into();
+        probe.connection = "Network".into();
+        probe.capabilities = crate::printer_profile::TCP_OPEN_NOTICE.into();
+        return Ok(annotate(probe, &decision, None));
+    }
+    if settings.transport == "serial" {
+        let opened = probe_serial(&settings.address);
+        let ok = opened.is_ok();
+        let mut probe = finish_probe(
+            settings,
+            history,
+            ok,
+            opened.err(),
+            if ok { "candidate" } else { "unavailable" },
+            None,
+            None,
+        );
+        probe.compatibility = "candidate".into();
+        probe.supports_drawer_kick = false;
+        probe.print_transport = "escpos".into();
+        probe.connection = "Bluetooth Classic".into();
+        probe.capabilities = "Paired Bluetooth serial port. Receipt printing is not verified, and the drawer is not kicked.".into();
+        return Ok(annotate(probe, &decision, None));
+    }
+    if settings.transport == "ble" {
+        let mut probe = finish_probe(
+            settings,
+            history,
+            false,
+            Some(crate::printer_profile::BLE_UNSUPPORTED.into()),
+            "unavailable",
+            None,
+            None,
+        );
+        probe.compatibility = "unsupported".into();
+        probe.supports_drawer_kick = false;
+        probe.print_transport = "none".into();
+        probe.connection = "Bluetooth Low Energy".into();
+        probe.capabilities = crate::printer_profile::BLE_UNSUPPORTED.into();
+        return Ok(annotate(probe, &decision, None));
     }
     if settings.transport != "windows" {
         return Ok(annotate(
@@ -829,7 +1086,7 @@ pub fn probe(db: &Db) -> Result<PrinterProbe, String> {
                 settings,
                 history,
                 false,
-                Some("This device is not verified as a supported receipt printer.".into()),
+                Some(crate::printer_discovery::UNSUPPORTED_METHOD.into()),
                 "unavailable",
                 Some(queue.driver.clone()),
                 Some(queue.port.clone()),
@@ -842,7 +1099,9 @@ pub fn probe(db: &Db) -> Result<PrinterProbe, String> {
         let offline = queue.availability == "offline" || queue.status & 0x80 != 0;
         let status = if offline { "offline" } else { "unavailable" };
         let message = if offline {
-            "This printer is installed but currently offline.".to_string()
+            crate::printer_discovery::OFFLINE_NOTICE.to_string()
+        } else if !queue.openable {
+            crate::printer_discovery::QUEUE_CLOSED.to_string()
         } else {
             format!("Windows printer \"{}\" is unavailable ({}).", queue.name, queue.status_label)
         };
@@ -863,13 +1122,19 @@ pub fn probe(db: &Db) -> Result<PrinterProbe, String> {
     let opened = probe_spooler(&queue.name);
     let ok = opened.is_ok();
     let (status, reach_error) = if !ok {
-        ("unavailable", opened.err())
+        let detail = opened.err().unwrap_or_default();
+        let message = if detail.is_empty() {
+            crate::printer_discovery::QUEUE_CLOSED.to_string()
+        } else {
+            format!("{} {detail}", crate::printer_discovery::QUEUE_CLOSED)
+        };
+        ("unavailable", Some(message))
     } else if queue.compatibility == "compatible" {
         ("ready", None)
     } else {
         (
             "candidate",
-            Some("This device is not verified as a supported receipt printer.".into()),
+            Some(crate::printer_discovery::candidate_notice(&queue.name, &queue.driver)),
         )
     };
     Ok(annotate(
@@ -887,11 +1152,25 @@ pub fn probe(db: &Db) -> Result<PrinterProbe, String> {
     ))
 }
 
-pub fn escpos_raster(job: &RasterJob, copies: u32, kick: &[u8]) -> Result<Vec<u8>, String> {
+pub fn ink_bytes(data: &[u8]) -> usize {
+    data.iter().filter(|byte| **byte != 0).count()
+}
+
+/// Rejects a raster that cannot be printed. An all-white image used to become a feed-and-cut with no text.
+pub fn validate_raster(job: &RasterJob) -> Result<(), String> {
     let row_bytes = job.width.div_ceil(8);
     if job.width == 0 || job.height == 0 || job.data.len() != (row_bytes * job.height) as usize {
         return Err("The receipt image is malformed.".into());
     }
+    if ink_bytes(&job.data) == 0 {
+        return Err(crate::printer_discovery::RENDER_FAILED.into());
+    }
+    Ok(())
+}
+
+pub fn escpos_raster(job: &RasterJob, copies: u32, kick: &[u8]) -> Result<Vec<u8>, String> {
+    validate_raster(job)?;
+    let row_bytes = job.width.div_ceil(8);
     let mut out = Vec::with_capacity(job.data.len() * copies as usize + 64);
     for copy in 0..copies.max(1) {
         out.extend_from_slice(&[0x1b, b'@']);
@@ -917,16 +1196,14 @@ pub fn send(settings: &PrinterSettings, bytes: &[u8]) -> Result<(), String> {
     match settings.transport.as_str() {
         "tcp" => send_tcp(&settings.address, bytes),
         "windows" => send_spooler(&settings.address, bytes),
+        "serial" => send_serial(&settings.address, bytes),
+        "ble" => Err(crate::printer_profile::BLE_UNSUPPORTED.into()),
         _ => Err("No receipt printer is configured. Open Register settings to add one.".into()),
     }
 }
 
 fn send_tcp(address: &str, bytes: &[u8]) -> Result<(), String> {
-    let target = if address.contains(':') {
-        address.to_string()
-    } else {
-        format!("{address}:9100")
-    };
+    let target = crate::printer_profile::tcp_endpoint(address)?;
     let socket = target
         .to_socket_addrs()
         .map_err(|err| format!("Printer address {target} is invalid: {err}"))?
@@ -941,6 +1218,159 @@ fn send_tcp(address: &str, bytes: &[u8]) -> Result<(), String> {
         .write_all(bytes)
         .map_err(|err| format!("Printing failed: {err}"))?;
     stream.flush().map_err(|err| err.to_string())
+}
+
+fn probe_serial(port: &str) -> Result<(), String> {
+    let normalized = crate::printer_profile::normalize_com(port)?;
+    close_serial(open_serial(&normalized)?)
+}
+
+#[cfg(windows)]
+fn close_serial(handle: windows_sys::Win32::Foundation::HANDLE) -> Result<(), String> {
+    use windows_sys::Win32::Foundation::CloseHandle;
+    unsafe { CloseHandle(handle) };
+    Ok(())
+}
+
+#[cfg(not(windows))]
+fn close_serial(_handle: ()) -> Result<(), String> {
+    Ok(())
+}
+
+fn send_serial(port: &str, bytes: &[u8]) -> Result<(), String> {
+    let normalized = crate::printer_profile::normalize_com(port)?;
+    let handle = open_serial(&normalized)?;
+    write_serial(handle, bytes)
+}
+
+#[cfg(windows)]
+fn open_serial(port: &str) -> Result<windows_sys::Win32::Foundation::HANDLE, String> {
+    use windows_sys::Win32::Devices::Communication::{SetCommTimeouts, COMMTIMEOUTS};
+    use windows_sys::Win32::Foundation::{CloseHandle, GENERIC_READ, GENERIC_WRITE, INVALID_HANDLE_VALUE};
+    use windows_sys::Win32::Storage::FileSystem::{CreateFileW, FILE_ATTRIBUTE_NORMAL, OPEN_EXISTING};
+
+    let path = format!(r"\\.\{port}");
+    let wide: Vec<u16> = path.encode_utf16().chain(std::iter::once(0)).collect();
+    let handle = unsafe {
+        CreateFileW(
+            wide.as_ptr(),
+            GENERIC_READ | GENERIC_WRITE,
+            0,
+            std::ptr::null(),
+            OPEN_EXISTING,
+            FILE_ATTRIBUTE_NORMAL,
+            std::ptr::null_mut(),
+        )
+    };
+    if handle == INVALID_HANDLE_VALUE || handle.is_null() {
+        return Err(format!("Bluetooth serial port {port} could not be opened. Pair the printer in Windows, then refresh."));
+    }
+    let timeouts = COMMTIMEOUTS {
+        ReadIntervalTimeout: 50,
+        ReadTotalTimeoutMultiplier: 0,
+        ReadTotalTimeoutConstant: 1000,
+        WriteTotalTimeoutMultiplier: 0,
+        WriteTotalTimeoutConstant: 8000,
+    };
+    let armed = unsafe { SetCommTimeouts(handle, &timeouts) };
+    if armed == 0 {
+        unsafe { CloseHandle(handle) };
+        return Err(format!("Bluetooth serial port {port} did not accept a write timeout."));
+    }
+    Ok(handle)
+}
+
+#[cfg(windows)]
+fn write_serial(handle: windows_sys::Win32::Foundation::HANDLE, bytes: &[u8]) -> Result<(), String> {
+    use windows_sys::Win32::Foundation::CloseHandle;
+    use windows_sys::Win32::Storage::FileSystem::WriteFile;
+
+    let result = unsafe {
+        let mut written = 0u32;
+        let ok = WriteFile(handle, bytes.as_ptr(), bytes.len() as u32, &mut written, std::ptr::null_mut());
+        CloseHandle(handle);
+        if ok == 0 || written as usize != bytes.len() {
+            Err("The Bluetooth printer did not accept the whole receipt. Physical printing has not been verified.".into())
+        } else {
+            Ok(())
+        }
+    };
+    result
+}
+
+#[cfg(not(windows))]
+fn open_serial(port: &str) -> Result<(), String> {
+    Err(format!("Bluetooth serial port {port} is only available on Windows."))
+}
+
+#[cfg(not(windows))]
+fn write_serial(_handle: (), _bytes: &[u8]) -> Result<(), String> {
+    Err("Bluetooth serial printing is only available on Windows.".into())
+}
+
+/// Paired Bluetooth Classic ports that Windows exposed as serial devices. No pairing and no bytes are sent.
+pub fn list_bluetooth_serial() -> Vec<crate::printer_profile::BluetoothSerial> {
+    bluetooth_com_names()
+        .into_iter()
+        .filter_map(|(device, com)| crate::printer_profile::bluetooth_serial_port(&device, &com))
+        .collect()
+}
+
+#[cfg(windows)]
+fn bluetooth_com_names() -> Vec<(String, String)> {
+    use windows_sys::Win32::Foundation::ERROR_NO_MORE_ITEMS;
+    use windows_sys::Win32::System::Registry::{
+        RegCloseKey, RegEnumValueW, RegOpenKeyExW, HKEY, HKEY_LOCAL_MACHINE, KEY_READ, REG_SZ,
+    };
+
+    let path: Vec<u16> = "HARDWARE\\DEVICEMAP\\SERIALCOMM".encode_utf16().chain(std::iter::once(0)).collect();
+    let mut key: HKEY = std::ptr::null_mut();
+    let opened = unsafe { RegOpenKeyExW(HKEY_LOCAL_MACHINE, path.as_ptr(), 0, KEY_READ, &mut key) };
+    if opened != 0 || key.is_null() {
+        return Vec::new();
+    }
+    let mut rows = Vec::new();
+    let mut index = 0u32;
+    loop {
+        let mut name = [0u16; 256];
+        let mut name_len = name.len() as u32;
+        let mut kind = 0u32;
+        let mut data = [0u16; 64];
+        let mut data_len = (data.len() * 2) as u32;
+        let status = unsafe {
+            RegEnumValueW(
+                key,
+                index,
+                name.as_mut_ptr(),
+                &mut name_len,
+                std::ptr::null_mut(),
+                &mut kind,
+                data.as_mut_ptr() as *mut u8,
+                &mut data_len,
+            )
+        };
+        if status == ERROR_NO_MORE_ITEMS {
+            break;
+        }
+        if status != 0 {
+            break;
+        }
+        index += 1;
+        if kind != REG_SZ || name_len == 0 {
+            continue;
+        }
+        let device = String::from_utf16_lossy(&name[..name_len as usize]);
+        let value_chars = (data_len as usize / 2).saturating_sub(1);
+        let com = String::from_utf16_lossy(&data[..value_chars.min(data.len())]);
+        rows.push((device, com.trim_end_matches('\0').to_string()));
+    }
+    unsafe { RegCloseKey(key) };
+    rows
+}
+
+#[cfg(not(windows))]
+fn bluetooth_com_names() -> Vec<(String, String)> {
+    Vec::new()
 }
 
 #[cfg(windows)]
@@ -1073,9 +1503,27 @@ fn wide_text(ptr: *const u16) -> String {
     }
 }
 
-/// Opens one queue, reads the driver manufacturer and object GUID, then closes it. No bytes are written.
+struct QueueInspection {
+    manufacturer: String,
+    identity: String,
+    opened: bool,
+    datatype: String,
+    driver_version: String,
+}
+
+pub fn format_driver_version(value: u64) -> String {
+    if value == 0 {
+        return String::new();
+    }
+    let major = (value >> 48) & 0xffff;
+    let minor = (value >> 32) & 0xffff;
+    let build = value & 0xffff_ffff;
+    format!("{major}.{minor}.{build}")
+}
+
+/// Opens one queue, reads the driver manufacturer, datatype, version, and object GUID, then closes it. No bytes are written.
 #[cfg(windows)]
-fn inspect_queue(name: &str) -> (String, String, bool) {
+fn inspect_queue(name: &str) -> QueueInspection {
     use windows_sys::Win32::Graphics::Printing::{
         ClosePrinter, GetPrinterDriverW, GetPrinterW, OpenPrinterW, DRIVER_INFO_6W, PRINTER_HANDLE, PRINTER_INFO_7W,
     };
@@ -1097,13 +1545,24 @@ fn inspect_queue(name: &str) -> (String, String, bool) {
     let mut handle = PRINTER_HANDLE::default();
     unsafe {
         if OpenPrinterW(printer.as_ptr(), &mut handle, std::ptr::null()) == 0 {
-            return (String::new(), String::new(), false);
+            return QueueInspection {
+                manufacturer: String::new(),
+                identity: String::new(),
+                opened: false,
+                datatype: String::new(),
+                driver_version: String::new(),
+            };
         }
-        let manufacturer = read_block(|buffer, size, needed| GetPrinterDriverW(handle, std::ptr::null(), 6, buffer, size, needed))
+        let driver = read_block(|buffer, size, needed| GetPrinterDriverW(handle, std::ptr::null(), 6, buffer, size, needed))
             .filter(|buffer| buffer.len() >= std::mem::size_of::<DRIVER_INFO_6W>())
-            .map(|buffer| {
-                let info = std::ptr::read_unaligned(buffer.as_ptr() as *const DRIVER_INFO_6W);
-                wide_text(info.pszMfgName)
+            .map(|buffer| std::ptr::read_unaligned(buffer.as_ptr() as *const DRIVER_INFO_6W));
+        let (manufacturer, datatype, driver_version) = driver
+            .map(|info| {
+                (
+                    wide_text(info.pszMfgName),
+                    wide_text(info.pDefaultDataType),
+                    format_driver_version(info.dwlDriverVersion),
+                )
             })
             .unwrap_or_default();
         let identity = read_block(|buffer, size, needed| GetPrinterW(handle, 7, buffer, size, needed))
@@ -1114,7 +1573,13 @@ fn inspect_queue(name: &str) -> (String, String, bool) {
             })
             .unwrap_or_default();
         ClosePrinter(handle);
-        (manufacturer, identity, true)
+        QueueInspection {
+            manufacturer,
+            identity,
+            opened: true,
+            datatype,
+            driver_version,
+        }
     }
 }
 
@@ -1152,16 +1617,20 @@ fn enumerate_windows_printers(inspect: bool) -> Result<Vec<InstalledPrinter>, St
                 manufacturer: String::new(),
                 identity: String::new(),
                 opened: None,
+                default_datatype: String::new(),
+                driver_version: String::new(),
             });
         }
         raw_rows
     };
     if inspect {
         for row in &mut printers {
-            let (manufacturer, identity, opened) = inspect_queue(&row.name);
-            row.manufacturer = manufacturer;
-            row.identity = identity;
-            row.opened = Some(opened);
+            let inspected = inspect_queue(&row.name);
+            row.manufacturer = inspected.manufacturer;
+            row.identity = inspected.identity;
+            row.opened = Some(inspected.opened);
+            row.default_datatype = inspected.datatype;
+            row.driver_version = inspected.driver_version;
         }
     }
     Ok(dedupe_printers(printers.iter().filter_map(map_enumerated_queue).collect()))
@@ -1177,25 +1646,166 @@ fn known_windows_printers() -> Result<Vec<InstalledPrinter>, String> {
     enumerate_windows_printers(false)
 }
 
+struct ResolvedPrint {
+    transport: crate::printer_discovery::PrintTransport,
+    queue: String,
+    driver: String,
+    port: String,
+}
+
+fn resolve_print(settings: &PrinterSettings) -> Result<ResolvedPrint, String> {
+    match settings.transport.as_str() {
+        "tcp" => Ok(ResolvedPrint {
+            transport: crate::printer_discovery::PrintTransport::EscPos,
+            queue: settings.address.trim().to_string(),
+            driver: "Network".into(),
+            port: crate::printer_profile::tcp_endpoint(&settings.address).unwrap_or_else(|_| "9100".into()),
+        }),
+        "serial" => Ok(ResolvedPrint {
+            transport: crate::printer_discovery::PrintTransport::EscPos,
+            queue: settings.address.trim().to_string(),
+            driver: "Bluetooth Classic".into(),
+            port: settings.address.trim().to_string(),
+        }),
+        "ble" => Err(crate::printer_profile::BLE_UNSUPPORTED.into()),
+        "windows" => {
+            let queues = known_windows_printers()?;
+            let queue = find_queue(&settings.address, &queues)
+                .cloned()
+                .ok_or_else(|| crate::printer_discovery::MISSING_QUEUE.to_string())?;
+            if queue.availability == "virtual" || queue.compatibility == "unsupported" || queue.print_transport == "none" {
+                return Err(crate::printer_discovery::UNSUPPORTED_METHOD.into());
+            }
+            if queue.availability == "offline" {
+                return Err(crate::printer_discovery::OFFLINE_NOTICE.into());
+            }
+            if !queue.openable {
+                return Err(crate::printer_discovery::QUEUE_CLOSED.into());
+            }
+            let transport = crate::printer_discovery::transport_for(&queue.driver, &queue.port, &queue.default_datatype);
+            if transport == crate::printer_discovery::PrintTransport::None {
+                return Err(crate::printer_discovery::UNSUPPORTED_METHOD.into());
+            }
+            Ok(ResolvedPrint {
+                transport,
+                queue: queue.name,
+                driver: queue.driver,
+                port: queue.port,
+            })
+        }
+        "none" => Err("No receipt printer is configured. Open Register settings to add one.".into()),
+        _ => Err("Unknown printer connection.".into()),
+    }
+}
+
+fn stage(name: &str, result: &str) -> PrintStage {
+    PrintStage {
+        stage: name.into(),
+        result: result.into(),
+    }
+}
+
+fn record_print(job: &RasterJob, resolved: &ResolvedPrint, payload_bytes: usize, payload_type: &str, submitted: bool, error: Option<&str>) {
+    let profile = match resolved.transport {
+        crate::printer_discovery::PrintTransport::EscPos => "passed",
+        crate::printer_discovery::PrintTransport::WindowsGdi => "unverified",
+        crate::printer_discovery::PrintTransport::None => "failed",
+    };
+    store_diagnostic(PrintDiagnostic {
+        recorded_at: now_secs(),
+        document_number: job.document_number.clone(),
+        line_count: job.line_count,
+        subtotal_cents: job.subtotal_cents,
+        tax_cents: job.tax_cents,
+        discount_cents: job.discount_cents,
+        total_cents: job.total_cents,
+        width: job.width,
+        height: job.height,
+        ink_bytes: ink_bytes(&job.data),
+        payload_bytes,
+        payload_type: payload_type.into(),
+        encoding: if payload_type == "escpos" { "ESC/POS" } else { "BGR24" }.into(),
+        queue: resolved.queue.clone(),
+        driver: resolved.driver.clone(),
+        port: resolved.port.clone(),
+        transport: resolved.transport.as_str().into(),
+        submitted,
+        native_error: error.map(str::to_string),
+        stages: vec![
+            stage("Printer discovered", "passed"),
+            stage("Queue opened", if submitted { "passed" } else { "unverified" }),
+            stage("Printer profile identified", profile),
+            stage("Invoice data loaded", if job.line_count > 0 || !job.document_number.is_empty() { "passed" } else { "not_run" }),
+            stage("Printable content generated", "passed"),
+            stage("Payload validated", "passed"),
+            stage("Print transport selected", "passed"),
+            stage("Print job submitted", if submitted { "passed" } else { "failed" }),
+            stage("Physical text verified", "not_run"),
+        ],
+    });
+}
+
 pub fn print_raster(db: &Db, job: &RasterJob) -> Result<(), String> {
+    if PRINTING.load(Ordering::Relaxed) {
+        return Err("A print job is already being sent. Wait for it to finish.".into());
+    }
+    validate_raster(job)?;
     let settings = load(db)?;
-    let mut kicking = job.kick_drawer && settings.drawer_kick && settings.transport != "none";
+    let resolved = match resolve_print(&settings) {
+        Ok(resolved) => resolved,
+        Err(message) => {
+            store_diagnostic(PrintDiagnostic {
+                recorded_at: now_secs(),
+                document_number: job.document_number.clone(),
+                line_count: job.line_count,
+                subtotal_cents: job.subtotal_cents,
+                tax_cents: job.tax_cents,
+                discount_cents: job.discount_cents,
+                total_cents: job.total_cents,
+                width: job.width,
+                height: job.height,
+                ink_bytes: ink_bytes(&job.data),
+                payload_bytes: 0,
+                payload_type: "rejected".into(),
+                encoding: String::new(),
+                queue: settings.address.clone(),
+                driver: settings.saved_driver.clone(),
+                port: settings.saved_port.clone(),
+                transport: "none".into(),
+                submitted: false,
+                native_error: Some(message.clone()),
+                stages: vec![
+                    stage("Printer discovered", "failed"),
+                    stage("Queue opened", "not_run"),
+                    stage("Printer profile identified", "not_run"),
+                    stage("Invoice data loaded", "passed"),
+                    stage("Printable content generated", "passed"),
+                    stage("Payload validated", "passed"),
+                    stage("Print transport selected", "failed"),
+                    stage("Print job submitted", "not_run"),
+                    stage("Physical text verified", "not_run"),
+                ],
+            });
+            return Err(message);
+        }
+    };
+    let mut kicking = job.kick_drawer
+        && settings.drawer_kick
+        && settings.transport != "serial"
+        && settings.transport != "ble"
+        && resolved.transport == crate::printer_discovery::PrintTransport::EscPos;
     let now = now_secs();
     if kicking && !kick_allowed(now, LAST_KICK_AT.load(Ordering::Relaxed), KICK_GAP_SECS) {
         kicking = false;
     }
     if kicking && settings.transport == "windows" {
-        let allowed = match known_windows_printers() {
-            Ok(queues) => find_queue(&settings.address, &queues)
-                .map(|queue| {
-                    queue.supports_drawer_kick
-                        && queue.compatibility == "compatible"
-                        && queue.availability == "ready"
-                        && queue.openable
-                })
-                .unwrap_or(false),
-            Err(_) => false,
-        };
+        let allowed = known_windows_printers()
+            .ok()
+            .and_then(|queues| find_queue(&settings.address, &queues).cloned())
+            .map(|queue| {
+                queue.supports_drawer_kick && queue.compatibility == "compatible" && queue.availability == "ready" && queue.openable
+            })
+            .unwrap_or(false);
         if !allowed {
             kicking = false;
         }
@@ -1207,11 +1817,79 @@ pub fn print_raster(db: &Db, job: &RasterJob) -> Result<(), String> {
         height: job.height,
         data: job.data.clone(),
         kick_drawer: kicking,
+        line_count: job.line_count,
+        document_number: job.document_number.clone(),
+        subtotal_cents: job.subtotal_cents,
+        tax_cents: job.tax_cents,
+        discount_cents: job.discount_cents,
+        total_cents: job.total_cents,
+        plain_text: job.plain_text.clone(),
     };
-    let bytes = escpos_raster(&printable, settings.copies, kick)?;
     PRINTING.store(true, Ordering::Relaxed);
-    let result = send(&settings, &bytes);
+    let result = match resolved.transport {
+        crate::printer_discovery::PrintTransport::EscPos => match escpos_raster(&printable, settings.copies, kick) {
+            Ok(bytes) => {
+                if !crate::printer_gdi::graphics_precede_cut(&bytes) {
+                    let message = crate::printer_discovery::RENDER_FAILED.to_string();
+                    record_print(&printable, &resolved, bytes.len(), "escpos", false, Some(&message));
+                    Err(message)
+                } else {
+                    let sent = send(&settings, &bytes);
+                    record_print(
+                        &printable,
+                        &resolved,
+                        bytes.len(),
+                        "escpos",
+                        sent.is_ok(),
+                        sent.as_ref().err().map(String::as_str),
+                    );
+                    sent
+                }
+            }
+            Err(message) => {
+                record_print(&printable, &resolved, 0, "escpos", false, Some(&message));
+                Err(message)
+            }
+        },
+        crate::printer_discovery::PrintTransport::WindowsGdi => {
+            let text_only = crate::printer_discovery::is_text_only_driver(&resolved.driver);
+            let payload_bytes = if text_only { printable.plain_text.len() } else { printable.data.len() };
+            let sent = if text_only {
+                let text = printable.plain_text.trim();
+                if text.is_empty() {
+                    Err("This printer only prints text, and this receipt had no text to send.".into())
+                } else {
+                    send_gdi_text(&resolved.queue, text, settings.copies)
+                }
+            } else {
+                send_gdi(&resolved.queue, &printable, settings.copies)
+            };
+            record_print(
+                &printable,
+                &resolved,
+                payload_bytes,
+                if text_only { "text" } else { "raster-image" },
+                sent.is_ok(),
+                sent.as_ref().err().map(String::as_str),
+            );
+            sent
+        }
+        crate::printer_discovery::PrintTransport::None => {
+            let message = crate::printer_discovery::UNSUPPORTED_METHOD.to_string();
+            record_print(&printable, &resolved, 0, "rejected", false, Some(&message));
+            Err(message)
+        }
+    };
     PRINTING.store(false, Ordering::Relaxed);
+    let phase = crate::printer_profile::advance_job(result.is_ok());
+    remember_job(
+        db,
+        &job.document_number,
+        &resolved.queue,
+        resolved.transport.as_str(),
+        &phase,
+        result.as_ref().err().map(String::as_str),
+    );
     if settings.transport != "none" {
         remember_print(db, result.as_ref().err().map(String::as_str));
         if result.is_ok() && kicking {
@@ -1220,6 +1898,42 @@ pub fn print_raster(db: &Db, job: &RasterJob) -> Result<(), String> {
         }
     }
     result
+}
+
+fn send_gdi_text(name: &str, text: &str, copies: u32) -> Result<(), String> {
+    let owned_name = name.to_string();
+    let owned_text = text.to_string();
+    let (sender, receiver) = std::sync::mpsc::channel();
+    std::thread::Builder::new()
+        .name("receipt-gdi-text".into())
+        .spawn(move || {
+            let _ = sender.send(crate::printer_gdi::print_gdi_text(&owned_name, &owned_text, copies));
+        })
+        .map_err(|err| err.to_string())?;
+    match receiver.recv_timeout(SPOOLER_TIMEOUT) {
+        Ok(result) => result,
+        Err(std::sync::mpsc::RecvTimeoutError::Timeout) => Err(spooler_timeout_message().into()),
+        Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => Err("The printer connection ended before a result.".into()),
+    }
+}
+
+fn send_gdi(name: &str, job: &RasterJob, copies: u32) -> Result<(), String> {
+    let owned_name = name.to_string();
+    let width = job.width;
+    let height = job.height;
+    let data = job.data.clone();
+    let (sender, receiver) = std::sync::mpsc::channel();
+    std::thread::Builder::new()
+        .name("receipt-gdi".into())
+        .spawn(move || {
+            let _ = sender.send(crate::printer_gdi::print_gdi(&owned_name, width, height, &data, copies));
+        })
+        .map_err(|err| err.to_string())?;
+    match receiver.recv_timeout(SPOOLER_TIMEOUT) {
+        Ok(result) => result,
+        Err(std::sync::mpsc::RecvTimeoutError::Timeout) => Err(spooler_timeout_message().into()),
+        Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => Err("The printer connection ended before a result.".into()),
+    }
 }
 
 pub fn kick_drawer(db: &Db) -> Result<(), String> {
@@ -1381,6 +2095,13 @@ mod tests {
             height: 300,
             data: vec![0xff; 2 * 300],
             kick_drawer: true,
+            line_count: 1,
+            document_number: "TEST".into(),
+            subtotal_cents: 1000,
+            tax_cents: 50,
+            discount_cents: 0,
+            total_cents: 1050,
+            plain_text: String::new(),
         };
         let bytes = escpos_raster(&job, 2, &DRAWER_KICK).unwrap();
         let bands = bytes
@@ -1398,8 +2119,77 @@ mod tests {
             height: 3,
             data: vec![0; 5],
             kick_drawer: false,
+            line_count: 0,
+            document_number: String::new(),
+            subtotal_cents: 0,
+            tax_cents: 0,
+            discount_cents: 0,
+            total_cents: 0,
+            plain_text: String::new(),
         };
         assert!(escpos_raster(&job, 1, &DRAWER_KICK).is_err());
+    }
+
+    #[test]
+    fn a_blank_raster_is_rejected_before_feed_and_cut() {
+        let job = RasterJob {
+            width: 8,
+            height: 8,
+            data: vec![0; 8],
+            kick_drawer: false,
+            line_count: 1,
+            document_number: "INV-1".into(),
+            subtotal_cents: 100,
+            tax_cents: 5,
+            discount_cents: 0,
+            total_cents: 105,
+            plain_text: String::new(),
+        };
+        let error = validate_raster(&job).unwrap_err();
+        assert!(error.contains("could not be rendered"));
+        assert!(escpos_raster(&job, 1, &[]).is_err());
+    }
+
+    #[test]
+    fn escpos_image_bytes_precede_the_cut() {
+        let job = RasterJob {
+            width: 8,
+            height: 8,
+            data: vec![0xff; 8],
+            kick_drawer: false,
+            line_count: 1,
+            document_number: "INV-1".into(),
+            subtotal_cents: 100,
+            tax_cents: 5,
+            discount_cents: 0,
+            total_cents: 105,
+            plain_text: String::new(),
+        };
+        let bytes = escpos_raster(&job, 1, &[]).unwrap();
+        assert!(crate::printer_gdi::graphics_precede_cut(&bytes));
+        assert!(bytes.len() > 16);
+    }
+
+    #[test]
+    fn toshiba_native_queue_is_a_candidate_on_the_gdi_transport() {
+        let mapped = map_enumerated_queue(&enumerated(
+            "Toshiba POS Printer (CR)",
+            "Toshiba Native Windows Driver",
+            "Toshiba: 0_USB",
+            0,
+            Some(true),
+        ))
+        .unwrap();
+        assert_eq!(mapped.compatibility, "candidate");
+        assert_eq!(mapped.status_label, "Candidate");
+        assert_eq!(mapped.connection, "USB");
+        assert_eq!(mapped.print_transport, "windows-gdi");
+        assert!(!mapped.supports_drawer_kick);
+        assert!(mapped.capabilities.contains("Raw ESC/POS is not sent"));
+        let refused = plan_drawer_kick(&windows_settings(&mapped.name), &[mapped], 100, 0).unwrap_err();
+        assert!(refused.contains("drawer-kick"));
+        assert_eq!(format_driver_version(0), "");
+        assert_eq!(format_driver_version(0x000a_0001_0000_0020), "10.1.32");
     }
 
     fn enumerated(name: &str, driver: &str, port: &str, status: u32, opened: Option<bool>) -> EnumeratedQueue {
@@ -1412,6 +2202,8 @@ mod tests {
             manufacturer: String::new(),
             identity: String::new(),
             opened,
+            default_datatype: String::new(),
+            driver_version: String::new(),
         }
     }
 
@@ -1425,6 +2217,8 @@ mod tests {
             manufacturer: String::new(),
             identity: String::new(),
             opened: Some(true),
+            default_datatype: String::new(),
+            driver_version: String::new(),
         })
         .expect("queue")
     }
@@ -1518,13 +2312,14 @@ mod tests {
         let closed = map_enumerated_queue(&enumerated("Front", "EPSON TM-T20 Receipt", "USB001", 0, Some(false))).unwrap();
         assert!(!closed.openable);
         assert_eq!(closed.status_label, "Unavailable");
-        assert!(queue_open_error(&closed.name, false).unwrap_err().contains("could not be opened"));
+        assert!(queue_open_error(&closed.name, false).unwrap_err().contains("could not open"));
         assert!(queue_open_error(&closed.name, true).is_ok());
 
         let candidate = map_enumerated_queue(&enumerated("Label", "Generic Text Driver", "USB003", 0, Some(true))).unwrap();
         assert_eq!(candidate.compatibility, "candidate");
         assert_eq!(candidate.status_label, "Candidate");
         assert!(!candidate.supports_drawer_kick);
+        assert!(candidate.capabilities.contains("Text only"));
 
         let mut pdf = enumerated("Microsoft Print to PDF", "Microsoft Print To PDF", "PORTPROMPT:", 0, Some(true));
         pdf.manufacturer = "Microsoft".into();
@@ -1539,7 +2334,7 @@ mod tests {
         let mut forced = virtual_printer.clone();
         forced.supports_drawer_kick = true;
         let refused = plan_drawer_kick(&windows_settings(&forced.name), &[forced], 100, 0).unwrap_err();
-        assert!(refused.contains("not verified"));
+        assert!(refused.contains("does not support"));
         assert!(!refused.contains("Epson"));
 
         let blank = map_enumerated_queue(&enumerated("  ", "EPSON TM-T20 Receipt", "USB001", 0, Some(true)));
@@ -1598,6 +2393,9 @@ mod tests {
         assert_eq!(lan.transport, "tcp");
         assert_eq!(lan.address, "192.168.1.50");
         assert_eq!(lan.paper_dots, 384);
+        assert_eq!(lan.connection_kind, "network");
+        assert_eq!(lan.protocol, "escpos");
+        assert_eq!(lan.verification, "candidate");
         network.address = "999.1.1.1".into();
         assert!(save(&db, &network).is_err());
         assert_eq!(load(&db).unwrap().address, "192.168.1.50");
@@ -1626,11 +2424,109 @@ mod tests {
         assert_eq!(load(&db).unwrap().address, "OneNote (Desktop) - Protected");
         assert!(hardware_change_allowed(&["devices:manage".into()]));
         assert!(hardware_change_allowed(&["settings:manage".into()]));
-        assert!(!hardware_change_allowed(&["pos:access".into(), "pos:orders".into()]));
+        assert!(hardware_change_allowed(&["pos:access".into(), "pos:orders".into()]));
+        assert!(!hardware_change_allowed(&["portal:reports_read".into()]));
         let _ = std::fs::remove_file(&path);
         let queues = vec![queue("Receipt", 0)];
         let probed = find_queue("Toshiba thermal", &queues);
         assert!(probed.is_none());
+    }
+
+    #[test]
+    fn a_session_without_register_access_cannot_replace_the_saved_printer() {
+        let path = std::env::temp_dir().join(format!(
+            "aipos-printer-deny-{}.sqlite",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let db = crate::db::Db::open(&path).unwrap();
+        let saved = save(&db, &windows_settings("Front counter")).unwrap();
+        let session = crate::auth::Session {
+            user: crate::auth::CashierProfile {
+                id: "cashier-1".into(),
+                username: "ahsan".into(),
+                full_name: "Ahsan".into(),
+                store_id: Some("store-a".into()),
+                role_name: "Reports Viewer".into(),
+                permissions: vec!["portal:reports_read".into()],
+                max_discount_bps: None,
+                addon_modules: Vec::new(),
+                addon_synced_at: 0,
+                avatar_url: None,
+            },
+            mode: "online",
+            unlocked_at: 10,
+        };
+        let message = refuse_hardware_change(&db, &session, "store-a");
+        assert_eq!(message, REGISTER_MANAGE_REQUIRED);
+        assert_eq!(load(&db).unwrap().address, saved.address);
+        let events = crate::audit::recent(&db, 5).unwrap();
+        assert!(events.iter().any(|event| event.action == "register.printer_settings"));
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn network_bluetooth_and_usb_profiles_stay_on_this_register() {
+        let path = std::env::temp_dir().join(format!(
+            "aipos-profiles-{}.sqlite",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let db = crate::db::Db::open(&path).unwrap();
+        let mut network = PrinterSettings {
+            transport: "tcp".into(),
+            address: "192.168.1.50".into(),
+            connection_kind: "wifi".into(),
+            verification: "verified".into(),
+            ..PrinterSettings::default()
+        };
+        let wifi = save(&db, &network).unwrap();
+        assert_eq!(wifi.connection_kind, "wifi");
+        assert_eq!(wifi.verification, "candidate");
+        assert_eq!(load(&db).unwrap().protocol, "escpos");
+        network.address = "10.0.0.8:9101".into();
+        assert!(save(&db, &network).is_ok());
+        let mut serial = PrinterSettings {
+            transport: "serial".into(),
+            address: "com5".into(),
+            connection_kind: "bluetooth-classic".into(),
+            ..PrinterSettings::default()
+        };
+        let paired = save(&db, &serial).unwrap();
+        assert_eq!(paired.address, "COM5");
+        assert_eq!(load(&db).unwrap().address, "COM5");
+        serial.address = "COM0".into();
+        assert!(save(&db, &serial).is_err());
+        assert_eq!(load(&db).unwrap().address, "COM5");
+        let kicked = plan_drawer_kick(&paired, &[], 100, 0).unwrap_err();
+        assert!(kicked.contains("not verified"));
+        let ble = PrinterSettings {
+            transport: "ble".into(),
+            address: "ble-device".into(),
+            connection_kind: "bluetooth-ble".into(),
+            verification: "verified".into(),
+            ..PrinterSettings::default()
+        };
+        let low_energy = save(&db, &ble).unwrap();
+        assert_eq!(low_energy.verification, "candidate");
+        assert_eq!(low_energy.protocol, "unknown");
+        assert!(plan_drawer_kick(&low_energy, &[], 100, 0).unwrap_err().contains("not verified"));
+        let mut usb = windows_settings("Front");
+        usb.connection_kind = "usb".into();
+        usb.saved_port = "192.168.1.9".into();
+        match save(&db, &usb) {
+            Err(message) => assert!(message.contains("not a USB"), "{message}"),
+            Ok(_) => panic!("a network port was saved as USB"),
+        }
+        usb.saved_port = "Toshiba: 0_USB".into();
+        let kept = save(&db, &usb).unwrap();
+        assert_eq!(kept.connection_kind, "usb");
+        assert_eq!(kept.address, "Front");
+        let _ = std::fs::remove_file(&path);
     }
 
     #[cfg(windows)]

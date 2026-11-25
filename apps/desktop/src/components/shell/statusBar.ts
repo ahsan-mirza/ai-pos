@@ -1,3 +1,4 @@
+import { OFFLINE_NOTICE } from "../../features/sync/connectivity";
 import type { SyncState } from "./syncState";
 
 export type StatusTone = "live" | "pending" | "offline" | "neutral";
@@ -76,7 +77,7 @@ function connectionChip(input: StatusBarInput): StatusChip {
     return {
       id: "connection",
       label: "Offline",
-      title: title || "The register cannot reach the AxizPOS API.",
+      title: title || OFFLINE_NOTICE,
       tone: "offline",
     };
   }

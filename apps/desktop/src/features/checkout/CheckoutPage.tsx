@@ -26,6 +26,7 @@ import {
   PauseCircle,
   Percent,
   ReceiptText,
+  Send,
   ShoppingCart,
   Truck,
   X,
@@ -1677,12 +1678,46 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
               </>
             }
             footer={
-              <div className="flex flex-col gap-2">
-                <OpenDrawerButton
-                  disabled={charging}
-                  onLogged={setNotice}
-                  className={`${ui.secondaryAction} h-11 w-full rounded-2xl`}
-                />
+              <div className="flex min-w-0 flex-col gap-2">
+                {food ? (
+                  <div className="flex min-w-0 gap-2">
+                    <OpenDrawerButton
+                      disabled={charging}
+                      onLogged={setNotice}
+                      label={t("Open Drawer")}
+                      className={`${ui.secondaryAction} h-11 min-w-0 flex-1 basis-0 rounded-xl px-2 text-xs`}
+                    />
+                    <button
+                      type="button"
+                      disabled={charging}
+                      title="Hold this sale or recall a held one"
+                      onClick={() => setHeldOpen(true)}
+                      className={`${ui.secondaryAction} h-11 min-w-0 flex-1 basis-0 rounded-xl px-2 text-xs`}
+                    >
+                      <PauseCircle size={16} aria-hidden="true" className="shrink-0" />
+                      <span className="min-w-0 truncate">{t("Recall")}</span>
+                    </button>
+                    {kitchenOn ? (
+                      <button
+                        type="button"
+                        disabled={charging || cart.lines.length === 0}
+                        title={cart.lines.length === 0 ? "Add dishes before sending a round" : "Send this round to the kitchen"}
+                        onClick={() => void sendRound()}
+                        className={`${ui.secondaryAction} h-11 min-w-0 flex-1 basis-0 rounded-xl px-2 text-xs`}
+                      >
+                        <Send size={16} aria-hidden="true" className="shrink-0" />
+                        <span className="min-w-0 truncate">{t("Send to Kitchen")}</span>
+                      </button>
+                    ) : null}
+                  </div>
+                ) : (
+                  <OpenDrawerButton
+                    disabled={charging}
+                    onLogged={setNotice}
+                    className={`${ui.secondaryAction} h-11 w-full rounded-2xl`}
+                  />
+                )}
+              {quotesOn || (salesOrdersOn && cart.mode === "WHOLESALE" && cart.customer !== null) || !food ? (
               <div className="flex gap-2">
                 {quotesOn ? (
                   <button
@@ -1708,6 +1743,7 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
                     Order
                   </button>
                 ) : null}
+                {food ? null : (
                 <button
                   type="button"
                   disabled={charging}
@@ -1718,19 +1754,9 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
                   <PauseCircle size={18} aria-hidden="true" />
                   {cart.lines.length > 0 ? "Hold" : "Recall"}
                 </button>
-                {food && kitchenOn ? (
-                  <button
-                    type="button"
-                    disabled={charging || cart.lines.length === 0}
-                    title={cart.lines.length === 0 ? "Add dishes before sending a round" : "Send this round to the kitchen"}
-                    onClick={() => void sendRound()}
-                    className={`${ui.secondaryAction} h-14 min-w-0 flex-1 flex-col gap-0 rounded-full px-3 text-xs leading-tight`}
-                  >
-                    <span className="whitespace-nowrap">Send round</span>
-                    <span className="whitespace-nowrap">to kitchen</span>
-                  </button>
-                ) : null}
+                )}
               </div>
+              ) : null}
               <button
                 type="button"
                 disabled={chargeBlocked}

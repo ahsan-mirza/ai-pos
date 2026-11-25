@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import Settings, get_settings
 from app.core.database import get_db
-from app.core.deps import Principal, authorize, get_principal
+from app.core.deps import REGISTER_SCOPES, Principal, authorize, get_principal
 from app.core.errors import ApiError
 from app.core.permissions import Permission
 from app.schemas.currencies import ConvertResult, RateBoard
@@ -15,6 +15,7 @@ from app.schemas.pos_policy import PosPolicy
 from app.schemas.receipt import ReceiptProfileOut, ReceiptSettings
 from app.schemas.settings import (
     AppearanceUpdate,
+    BusinessIdentityUpdate,
     BusinessSettingsOut,
     CurrencyUpdate,
     ProfileUpdate,
@@ -181,6 +182,18 @@ def update_receipt(
     if principal.user is None or principal.store_id is not None:
         raise ApiError(403, "forbidden", "Only a business-wide administrator can change the receipt layout.")
     return settings_service.change_receipt(db, principal.user, payload)
+
+
+@router.put("/identity", response_model=BusinessSettingsOut)
+def update_identity(
+    payload: BusinessIdentityUpdate,
+    db: Annotated[Session, Depends(get_db)],
+    principal: Annotated[Principal, Depends(authorize(Permission.SETTINGS_MANAGE, scopes=REGISTER_SCOPES))],
+) -> BusinessSettingsOut:
+    if principal.user is None or principal.store_id is not None:
+        raise ApiError(403, "forbidden", "Only a business-wide administrator can change the business identity.")
+    client_device = "desktop" if principal.scope == "pos" else "web"
+    return settings_service.change_identity(db, principal.user, payload, client_device=client_device)
 
 
 @router.put("/tax", response_model=BusinessSettingsOut)

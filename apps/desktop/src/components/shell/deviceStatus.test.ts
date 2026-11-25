@@ -72,9 +72,12 @@ describe("footer device lights", () => {
     expect(printerIndicator(printer({ lastOkAt: 1_700_000_000 }))?.light).toBe("green");
     expect(printerIndicator(printer({ reachable: false, reachError: "unreachable" }))?.light).toBe("red");
     expect(printerIndicator(printer({ printing: true, lastOkAt: 1 }))?.light).toBe("amber");
-    const virtual = printerIndicator(printer({ compatibility: "unsupported", printerStatus: "unavailable", reachable: false, reachError: "This device is not verified as a supported receipt printer." }));
+    const virtual = printerIndicator(printer({ compatibility: "unsupported", printerStatus: "unavailable", reachable: false, reachError: "This printer does not support the configured AxizPOS receipt-printing method." }));
     expect(virtual?.light).not.toBe("green");
-    expect(virtual?.status).toContain("not verified");
+    expect(virtual?.status).toContain("does not support");
+    const candidate = printerIndicator(printer({ compatibility: "candidate", printerStatus: "candidate", reachable: true, reachError: "Toshiba POS Printer (CR) was discovered using the Toshiba Native Windows Driver. Receipt printing has not yet been verified. Run the printer test to confirm the supported print method." }));
+    expect(candidate?.light).toBe("amber");
+    expect(candidate?.status).toContain("has not yet been verified");
     expect(drawerCanTest(printer({ compatibility: "unsupported", supportsDrawerKick: true }))).toBe(false);
     expect(drawerCanTest(printer({ compatibility: "candidate", printerStatus: "candidate", supportsDrawerKick: false }))).toBe(false);
     const fault = printerIndicator(printer({ lastOkAt: 10, lastError: "paper", lastErrorAt: 11 }));

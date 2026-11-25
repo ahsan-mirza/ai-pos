@@ -105,7 +105,7 @@ export function apiIndicator(reachable: boolean, detail: string): Indicator {
     light: reachable ? "green" : "red",
     status: reachable
       ? detail || "The register can reach the AxizPOS API. This light does not mean the cashier is signed in or that laundry sync succeeded."
-      : "The register cannot reach the AxizPOS API. Local printers, the scale, and the keyboard stay on their own status.",
+      : "You're working offline. Local POS operations remain available. Pending changes will synchronize when a connection is restored. Local printers, the scale, and the keyboard stay on their own status.",
     connection: "HTTPS",
     actions: [],
   });
@@ -143,9 +143,14 @@ export function printerIndicator(probe: PrinterProbe): Indicator | null {
   } else if (probe.printerStatus === "missing") {
     light = "red";
     status = "Selected receipt printer not found. Select an installed receipt printer to enable cash drawer control.";
-  } else if (probe.compatibility === "unsupported" || probe.compatibility === "candidate" || probe.printerStatus === "candidate") {
+  } else if (probe.compatibility === "unsupported") {
     light = "amber";
-    status = "This device is not verified as a supported receipt printer.";
+    status = "This printer does not support the configured AxizPOS receipt-printing method.";
+  } else if (probe.compatibility === "candidate" || probe.printerStatus === "candidate") {
+    light = "amber";
+    status =
+      probe.reachError ||
+      "Printer detected, but its receipt-printing profile has not been verified. Complete the printer test before using it for customer receipts.";
   } else if (!probe.reachable || probe.printerStatus === "offline" || probe.printerStatus === "unavailable") {
     light = "red";
     status = probe.reachError || "Receipt printer unavailable.";
@@ -165,8 +170,17 @@ export function printerIndicator(probe: PrinterProbe): Indicator | null {
     label: "Printer",
     name: "Receipt printer",
     light,
-    status: `${status} Receipts are sent immediately. This register does not keep a print queue.`,
-    connection: probe.transport === "tcp" ? "LAN" : probe.transport === "windows" ? "Windows spooler" : probe.transport,
+    status: `${status} Receipts are sent one at a time. A submitted job is not proof the paper printed.`,
+    connection:
+      probe.transport === "tcp"
+        ? "Network"
+        : probe.transport === "windows"
+          ? "Windows spooler"
+          : probe.transport === "serial"
+            ? "Bluetooth Classic"
+            : probe.transport === "ble"
+              ? "Bluetooth Low Energy"
+              : probe.transport,
     lastSeenAt: probe.reachable ? new Date().toISOString() : stamp(probe.lastOkAt),
     lastOkAt: stamp(probe.lastOkAt),
     lastError: probe.reachable ? probe.lastError : probe.reachError || probe.lastError,

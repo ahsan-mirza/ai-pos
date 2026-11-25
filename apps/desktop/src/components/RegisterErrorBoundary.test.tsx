@@ -51,6 +51,7 @@ describe("register screen recovery", () => {
       registerStatus: null,
       setRegisterStatus: () => undefined,
       navigate: () => undefined,
+      onSession: () => undefined,
     };
     const html = renderToStaticMarkup(
       <RegisterLayoutProvider>

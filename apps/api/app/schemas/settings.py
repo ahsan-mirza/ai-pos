@@ -84,6 +84,44 @@ class ProfileUpdate(BaseModel):
     complete_onboarding: bool = False
 
 
+class BusinessIdentityUpdate(BaseModel):
+    """Tenant identity only. Tax rates, currency, and the business type are not fields of this request."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    legal_name: str = Field(max_length=160)
+    legal_name_ar: str | None = Field(default=None, max_length=160)
+    country: str | None = None
+    location: str | None = Field(default=None, max_length=120)
+    expected_revision: int = Field(ge=1)
+
+    @field_validator("legal_name")
+    @classmethod
+    def _legal_name(cls, value: str) -> str:
+        text = value.strip()
+        if text == "":
+            raise ValueError("Enter the legal name.")
+        return text
+
+    @field_validator("legal_name_ar", "location")
+    @classmethod
+    def _optional_text(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        text = value.strip()
+        return text or None
+
+    @field_validator("country")
+    @classmethod
+    def _country(cls, value: str | None) -> str | None:
+        if value is None or not value.strip():
+            return None
+        code = value.strip().upper()
+        if code not in COUNTRY_CURRENCIES:
+            raise ValueError("Choose a country from the list.")
+        return code
+
+
 class AppearanceUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

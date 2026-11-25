@@ -64,6 +64,70 @@ interface TaxSnapshot {
   legal_name_ar?: string | null;
   tax_authority?: string | null;
   tax_configuration_required?: boolean;
+  updated_at?: string | null;
+  updated_by_name?: string | null;
+  country?: string | null;
+  location?: string | null;
+  timezone?: string | null;
+  entitlement_revision?: number | null;
+}
+
+export interface BusinessSettingsMeta {
+  legalName: string | null;
+  legalNameAr: string | null;
+  country: string | null;
+  location: string | null;
+  updatedAt: string;
+  updatedByName: string | null;
+  timezone: string;
+  entitlementRevision: number;
+}
+
+const emptyMeta: BusinessSettingsMeta = {
+  legalName: null,
+  legalNameAr: null,
+  country: null,
+  location: null,
+  updatedAt: "",
+  updatedByName: null,
+  timezone: "Asia/Dubai",
+  entitlementRevision: 0,
+};
+
+let meta: BusinessSettingsMeta = emptyMeta;
+
+function rememberIdentity(raw: TaxSnapshot): boolean {
+  const next: BusinessSettingsMeta = {
+    legalName: raw.legal_name ?? null,
+    legalNameAr: raw.legal_name_ar ?? null,
+    country: raw.country ?? null,
+    location: raw.location ?? null,
+    updatedAt: raw.updated_at?.trim() ?? "",
+    updatedByName: raw.updated_by_name ?? null,
+    timezone: raw.timezone?.trim() || "Asia/Dubai",
+    entitlementRevision: raw.entitlement_revision ?? 0,
+  };
+  const same =
+    meta.legalName === next.legalName &&
+    meta.legalNameAr === next.legalNameAr &&
+    meta.country === next.country &&
+    meta.location === next.location &&
+    meta.updatedAt === next.updatedAt &&
+    meta.updatedByName === next.updatedByName &&
+    meta.timezone === next.timezone &&
+    meta.entitlementRevision === next.entitlementRevision;
+  if (same) return false;
+  meta = next;
+  return true;
+}
+
+/** Last identity metadata applied from a settings response. The object identity changes only when a field does. */
+export function businessSettingsMeta(): BusinessSettingsMeta {
+  return meta;
+}
+
+export function useBusinessSettingsMeta(): BusinessSettingsMeta {
+  return useSyncExternalStore(subscribe, businessSettingsMeta, businessSettingsMeta);
 }
 
 let branchTaxBlocked = false;
@@ -87,8 +151,8 @@ function applyScopedProfile(raw: (ProfileSnapshot & { store_code?: string | null
   applyProfile({ ...raw, tenant_id: bound.tenantId, environment: bound.environment });
 }
 
-function applyTax(raw: TaxSnapshot | null | undefined): void {
-  if (!raw) return;
+function applyTax(raw: TaxSnapshot | null | undefined): boolean {
+  if (!raw) return false;
   taxPolicy = {
     enforced: Boolean(raw.enforced ?? raw.vat_registered),
     prices_include_vat: Boolean(raw.prices_include_vat),
@@ -101,6 +165,7 @@ function applyTax(raw: TaxSnapshot | null | undefined): void {
     taxAuthority: raw.tax_authority === "zatca" ? "zatca" : "fta",
   };
   branchTaxBlocked = Boolean(raw.tax_configuration_required);
+  return rememberIdentity(raw);
 }
 
 const branches: StoreUpsert[] = [seed.store, ...seed.branches];
@@ -117,11 +182,12 @@ export function activeStore(): StoreUpsert {
 
 export async function syncBusinessCurrency(): Promise<string> {
   let next: string | null = null;
+  let identityChanged = false;
   try {
     if (inTauri()) {
       const snapshot = await fetchBusinessCurrency();
       next = snapshot.currency;
-      applyTax(snapshot.tax);
+      identityChanged = applyTax(snapshot.tax);
       applyScopedProfile(snapshot.profile);
       if (snapshot.receipt) receipt = snapshot.receipt;
       // A cached or seeded profile is not a live settings response.
@@ -129,7 +195,7 @@ export async function syncBusinessCurrency(): Promise<string> {
     } else {
       const settings = await getBusinessSettings();
       next = settings.currency;
-      applyTax(settings);
+      identityChanged = applyTax(settings);
       applyScopedProfile(settings);
       receipt = await getReceiptProfile(home.id).catch(() => receipt);
       apiReachable = true;
@@ -138,8 +204,9 @@ export async function syncBusinessCurrency(): Promise<string> {
     apiReachable = false;
     // Offline with nothing cached: keep the last known currency.
   }
-  if (next !== null && next !== current) {
-    current = next;
+  const currencyChanged = next !== null && next !== current;
+  if (currencyChanged && next !== null) current = next;
+  if (currencyChanged || identityChanged) {
     for (const listener of listeners) listener();
   }
   return current;

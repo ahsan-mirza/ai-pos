@@ -8,12 +8,14 @@ export class RetailRequestError extends Error {
   readonly status: number;
   readonly code: string;
   readonly requestId: string;
+  readonly details: unknown;
 
-  constructor(status: number, code: string, message: string, requestId = "") {
+  constructor(status: number, code: string, message: string, requestId = "", details: unknown = null) {
     super(message);
     this.status = status;
     this.code = code;
     this.requestId = requestId;
+    this.details = details;
   }
 
   get offline(): boolean {
@@ -34,8 +36,8 @@ export async function retailCall<T>(
     } catch (caught) {
       const raw = String(caught);
       try {
-        const parsed = JSON.parse(raw) as { status: number; code: string; message: string; request_id?: string };
-        throw new RetailRequestError(parsed.status, parsed.code, parsed.message, parsed.request_id ?? "");
+        const parsed = JSON.parse(raw) as { status: number; code: string; message: string; request_id?: string; details?: unknown };
+        throw new RetailRequestError(parsed.status, parsed.code, parsed.message, parsed.request_id ?? "", parsed.details ?? null);
       } catch (inner) {
         if (inner instanceof RetailRequestError) throw inner;
         throw new RetailRequestError(0, "offline", raw);
@@ -125,8 +127,8 @@ export async function retailUpload(path: string, file: File): Promise<unknown> {
     } catch (caught) {
       const raw = String(caught);
       try {
-        const parsed = JSON.parse(raw) as { status: number; code: string; message: string; request_id?: string };
-        throw new RetailRequestError(parsed.status, parsed.code, parsed.message, parsed.request_id ?? "");
+        const parsed = JSON.parse(raw) as { status: number; code: string; message: string; request_id?: string; details?: unknown };
+        throw new RetailRequestError(parsed.status, parsed.code, parsed.message, parsed.request_id ?? "", parsed.details ?? null);
       } catch (inner) {
         if (inner instanceof RetailRequestError) throw inner;
         throw new RetailRequestError(0, "offline", raw);

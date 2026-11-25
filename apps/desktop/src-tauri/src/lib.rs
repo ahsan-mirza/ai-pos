@@ -5,6 +5,8 @@ mod staff;
 mod audit;
 mod auth;
 mod checkout_approvals;
+mod connectivity;
+mod local_expenses;
 mod customers;
 mod bootstrap;
 mod demo;
@@ -20,6 +22,8 @@ mod menu;
 mod payments;
 mod printer;
 mod printer_discovery;
+mod printer_gdi;
+mod printer_profile;
 mod quotes;
 mod restaurant;
 mod retail;
@@ -35,6 +39,7 @@ mod table_sessions;
 mod terminal;
 mod timeclock;
 mod updates;
+mod window_mode;
 
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
@@ -1570,6 +1575,84 @@ fn deliver_staff_provisioning(state: &tauri::State<AppState>) -> Result<String, 
     Ok(format!("{accepted} staff changes were accepted."))
 }
 
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ConnectivityStatus {
+    state: String,
+    kind: String,
+    server: String,
+    message: String,
+}
+
+#[tauri::command]
+fn connectivity_status(state: tauri::State<AppState>) -> Result<ConnectivityStatus, String> {
+    let kind = connectivity::endpoint_kind(&state.config.api_base_url, !cfg!(debug_assertions));
+    let activated = !state.config.api_base_url.contains("not-activated") && !state.config.api_key.is_empty();
+    let reachable = if connectivity::may_probe(kind) {
+        probe_server(&state.config.api_base_url)
+    } else {
+        false
+    };
+    let link = connectivity::link_state(activated, reachable, false);
+    let state_name = match link {
+        connectivity::LinkState::Online => "online",
+        connectivity::LinkState::Offline => "offline",
+        connectivity::LinkState::Reconnecting => "reconnecting",
+        connectivity::LinkState::NotActivated => "not_activated",
+    };
+    let kind_name = match kind {
+        connectivity::EndpointKind::Https => "https",
+        connectivity::EndpointKind::Development => "development",
+        connectivity::EndpointKind::Insecure => "insecure",
+        connectivity::EndpointKind::Invalid => "invalid",
+        connectivity::EndpointKind::Unactivated => "unactivated",
+    };
+    Ok(ConnectivityStatus {
+        state: state_name.into(),
+        kind: kind_name.into(),
+        server: state.config.api_base_url.clone(),
+        message: connectivity::link_message(link, kind).into(),
+    })
+}
+
+fn probe_server(url: &str) -> bool {
+    let client = reqwest::blocking::Client::builder()
+        .timeout(std::time::Duration::from_secs(2))
+        .build();
+    let Ok(client) = client else {
+        return false;
+    };
+    client
+        .get(format!("{}/health", url.trim_end_matches('/')))
+        .send()
+        .map(|response| response.status().is_success())
+        .unwrap_or(false)
+}
+
+#[tauri::command]
+fn save_local_expense(state: tauri::State<AppState>, draft: local_expenses::LocalExpenseDraft) -> Result<local_expenses::LocalExpense, String> {
+    let _ = state.session()?.ok_or_else(|| "Unlock the register first.".to_string())?;
+    local_expenses::save(&state.db, &draft)
+}
+
+#[tauri::command]
+fn list_local_expenses(state: tauri::State<AppState>, store_id: String) -> Result<Vec<local_expenses::LocalExpense>, String> {
+    let _ = state.session()?.ok_or_else(|| "Unlock the register first.".to_string())?;
+    local_expenses::list(&state.db, &store_id)
+}
+
+#[tauri::command]
+fn remember_petty_balance(state: tauri::State<AppState>, store_id: String, balance_cents: i64) -> Result<(), String> {
+    let _ = state.session()?.ok_or_else(|| "Unlock the register first.".to_string())?;
+    local_expenses::remember_petty(&state.db, &store_id, balance_cents)
+}
+
+#[tauri::command]
+fn flush_local_expenses(state: tauri::State<AppState>) -> Result<local_expenses::ExpenseFlush, String> {
+    let _ = state.session()?.ok_or_else(|| "Unlock the register first.".to_string())?;
+    let token = state.user_token.lock().map_err(|err| err.to_string())?.clone();
+    local_expenses::flush(&state.db, &state.config, token.as_deref())
+}
 
 pub fn run() {
     tauri::Builder::default()
@@ -1579,6 +1662,9 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
+            if let Err(message) = window_mode::start(app.handle()) {
+                eprintln!("ai-pos: full screen was not applied: {message}");
+            }
             DesktopConfig::load_env_file().map_err(std::io::Error::other)?;
             let directory = app.path().app_data_dir()?;
             let identifier = app.config().identifier.clone();
@@ -1765,9 +1851,16 @@ pub fn run() {
             recent_audit_events,
             erp::refresh_series,
             erp::next_document_number,
+            erp::refresh_register_permissions,
             erp::printer_settings,
             erp::probe_printer,
             erp::list_windows_printers,
+            erp::list_bluetooth_printers,
+            connectivity_status,
+            save_local_expense,
+            list_local_expenses,
+            remember_petty_balance,
+            flush_local_expenses,
             erp::save_printer_settings,
             erp::print_receipt,
             erp::open_cash_drawer,
@@ -1808,6 +1901,9 @@ pub fn run() {
             erp::foreign_currencies,
             erp::loyalty_settings,
             keyboard_detector::check_hardware_keyboard_status,
+            window_mode::window_fullscreen_state,
+            window_mode::window_set_fullscreen,
+            window_mode::window_toggle_fullscreen,
             scale::scale_ports,
             scale::read_scale,
             menu::refresh_menu,
@@ -1815,6 +1911,7 @@ pub fn run() {
             restaurant::restaurant_request,
             retail::retail_request,
             retail::retail_upload,
+            retail::retail_workbook,
             check_app_update,
             install_app_update
         ])

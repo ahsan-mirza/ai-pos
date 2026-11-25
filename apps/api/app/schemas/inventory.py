@@ -717,7 +717,17 @@ class TransferOut(ApiModel):
 
 
 class ProductCreate(FashionAttributes):
-    sku: str = Field(min_length=1, max_length=64)
+    sku: str | None = Field(default=None, max_length=64)
+
+    @field_validator("sku", mode="before")
+    @classmethod
+    def blank_sku(cls, value: object) -> str | None:
+        if value is None:
+            return None
+        if isinstance(value, str):
+            text = value.strip()
+            return text or None
+        return value
     barcode: str = Field(min_length=1, max_length=64)
     name: str = Field(min_length=1, max_length=200)
     model_number: str | None = Field(default=None, max_length=64)

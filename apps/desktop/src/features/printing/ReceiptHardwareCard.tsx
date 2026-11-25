@@ -5,12 +5,19 @@ import {
   inTauri,
   listWindowsPrinters,
   openCashDrawer,
+  printerSettings,
   probePrinter,
+  savePrinterSettings,
   type InstalledPrinter,
   type PrinterProbe,
+  type PrinterSettings,
 } from "../../lib/tauri";
+import { useBusinessCurrency } from "../checkout/currency";
+import { registerIdentity } from "./saleReceipt";
 import { printReceipt } from "./print";
-import { MISSING, OFFLINE, UNVERIFIED, canTestDrawerFromProbe, canTestPrintFromProbe } from "./printerSelection";
+import { MISSING, OFFLINE, SPOOLER_ACCEPTED, UNSUPPORTED_METHOD, candidateMessage, canTestDrawerFromProbe, canTestPrintFromProbe } from "./printerSelection";
+import { ReceiptPreviewPanel } from "./ReceiptPreviewPanel";
+import { detectionResult, layoutWidth, paperLabel, settingsPreviewReceipt, setupSteps } from "./settingsPreview";
 import type { ReceiptDoc } from "@ai-pos/receipt";
 
 function when(seconds: number | null | undefined): string {
@@ -19,23 +26,31 @@ function when(seconds: number | null | undefined): string {
 }
 
 export function ReceiptHardwareCard({
-  sample,
+  sample: _sample,
   onChangePrinter,
   refreshToken = 0,
   initialProbe = null,
   initialQueues = [],
+  initialPaperDots = 576,
+  canConfigure = false,
 }: {
   sample: ReceiptDoc;
   onChangePrinter: () => void;
   refreshToken?: number;
   initialProbe?: PrinterProbe | null;
   initialQueues?: InstalledPrinter[];
+  initialPaperDots?: 384 | 576;
+  canConfigure?: boolean;
 }) {
   const desktop = inTauri();
+  const currency = useBusinessCurrency();
   const [probe, setProbe] = useState<PrinterProbe | null>(initialProbe);
   const [queues, setQueues] = useState<InstalledPrinter[]>(initialQueues);
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [paperDots, setPaperDots] = useState<384 | 576>(layoutWidth(initialPaperDots));
+  const [stored, setStored] = useState<PrinterSettings | null>(null);
+  void _sample;
 
   const refresh = async () => {
     if (!desktop) return;
@@ -46,6 +61,16 @@ export function ReceiptHardwareCard({
     setProbe(nextProbe);
     setQueues(nextQueues);
   };
+
+  useEffect(() => {
+    if (!desktop) return;
+    void printerSettings()
+      .then((loaded) => {
+        setStored(loaded);
+        if (loaded.paper_dots === 384 || loaded.paper_dots === 576) setPaperDots(loaded.paper_dots);
+      })
+      .catch(() => undefined);
+  }, [desktop, refreshToken]);
 
   useEffect(() => {
     void refresh();
@@ -74,8 +99,10 @@ export function ReceiptHardwareCard({
     ? "Test drawer kick is available on the desktop register."
     : !probe?.configured
       ? "Receipt printer not configured."
-      : probe.compatibility === "unsupported" || probe.printerStatus === "candidate"
-        ? UNVERIFIED
+      : probe.compatibility === "unsupported"
+        ? UNSUPPORTED_METHOD
+        : probe.compatibility === "candidate" || probe.printerStatus === "candidate"
+          ? "Drawer kick has not been verified for this printer. Receipt printing can still be tested."
         : missing
           ? MISSING
           : probe.printerStatus === "offline"
@@ -88,11 +115,32 @@ export function ReceiptHardwareCard({
                   ? "Cash drawer kicks are turned off for this register."
                   : "";
 
+  const choosePaper = async (dots: 384 | 576) => {
+    setPaperDots(dots);
+    if (!desktop || !canConfigure || !stored) return;
+    try {
+      const saved = await savePrinterSettings({ ...stored, paper_dots: dots });
+      setStored(saved);
+      setNotice(`Paper width saved at ${paperLabel(dots)}. The preview uses that layout. Nothing was printed.`);
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : String(error));
+    }
+  };
+
   const testPrint = async () => {
     setBusy(true);
-    const outcome = await printReceipt(sample, { kickDrawer: false, manual: true });
+    if (desktop && canConfigure && stored && stored.paper_dots !== paperDots) {
+      try {
+        setStored(await savePrinterSettings({ ...stored, paper_dots: paperDots }));
+      } catch (error) {
+        setBusy(false);
+        setNotice(error instanceof Error ? error.message : String(error));
+        return;
+      }
+    }
+    const outcome = await printReceipt(settingsPreviewReceipt(registerIdentity(), currency), { kickDrawer: false, manual: true, systemDialog: true });
     setBusy(false);
-    setNotice(outcome.message || (outcome.printed ? "Test receipt sent." : "The printer did not print."));
+    setNotice(outcome.printed ? outcome.message || SPOOLER_ACCEPTED : outcome.message || "The printer did not print.");
     await refresh();
   };
 
@@ -149,9 +197,14 @@ export function ReceiptHardwareCard({
               {OFFLINE}
             </p>
           ) : null}
-          {!missing && probe?.printerStatus !== "offline" && (probe?.compatibility === "unsupported" || probe?.printerStatus === "candidate") ? (
+          {!missing && probe?.printerStatus !== "offline" && probe?.compatibility === "unsupported" ? (
+            <p role="alert" className="mt-3 text-sm font-medium text-red-600 dark:text-red-400">
+              {UNSUPPORTED_METHOD}
+            </p>
+          ) : null}
+          {!missing && probe?.printerStatus !== "offline" && (probe?.compatibility === "candidate" || probe?.printerStatus === "candidate") ? (
             <p role="status" className="mt-3 text-sm font-medium text-charcoal/70 dark:text-zinc-300">
-              {UNVERIFIED}
+              {candidateMessage({ name: probe.address, driver: probe.driver ?? selected?.driver ?? "" })}
             </p>
           ) : null}
           <div className="mt-4 flex flex-wrap gap-2">
@@ -159,7 +212,7 @@ export function ReceiptHardwareCard({
               Change printer
             </button>
             <button type="button" onClick={() => void testPrint()} disabled={busy || !canPrint} className={`h-11 px-4 ${ui.secondaryAction}`}>
-              Test print
+              Print test receipt
             </button>
           </div>
         </div>
@@ -203,6 +256,41 @@ export function ReceiptHardwareCard({
       {probe?.previousAddress && probe.previousAddress !== probe.address ? (
         <p className="mt-3 text-sm text-zinc-500">Previous configured printer: {probe.previousAddress}</p>
       ) : null}
+      <p role="status" className="mt-4 text-sm font-medium">
+        {detectionResult(probe, queues)}
+      </p>
+      <ol className="mt-4 space-y-2 text-sm" aria-label="Printer setup">
+        {setupSteps({
+          queue: probe?.configured ? probe.address : "",
+          driver: selected?.driver || probe?.driver || "",
+          port: selected?.port || probe?.port || "",
+          compatibility: probe?.compatibility || "",
+          transport: selected?.printTransport || probe?.printTransport || "",
+          drawerVerified: Boolean(kickSupported && probe?.compatibility === "compatible"),
+          paper: paperLabel(paperDots),
+          reachable: Boolean(probe?.reachable),
+        }).map((item) => (
+          <li key={item.step}>
+            <span className="font-semibold">Step {item.step} — {item.title}.</span> {item.detail}
+          </li>
+        ))}
+      </ol>
+      <div className="mt-4 flex flex-wrap gap-2" role="group" aria-label="Paper width">
+        {([576, 384] as const).map((dots) => (
+          <button
+            key={dots}
+            type="button"
+            aria-pressed={paperDots === dots}
+            onClick={() => void choosePaper(dots)}
+            className={`h-11 rounded-full px-4 text-sm font-semibold ${paperDots === dots ? "bg-primary text-white" : ui.secondaryAction}`}
+          >
+            {paperLabel(dots)}
+          </button>
+        ))}
+      </div>
+      <div className="mt-4">
+        <ReceiptPreviewPanel doc={settingsPreviewReceipt(registerIdentity(), currency)} width={paperDots} />
+      </div>
       {notice ? (
         <p role="status" className="mt-4 rounded-xl bg-zinc-50 px-4 py-3 text-sm dark:bg-zinc-800">
           {notice}
@@ -217,6 +305,7 @@ function statusLabel(probe: PrinterProbe): string {
   if (probe.printerStatus === "offline") return "Printer offline";
   if (probe.printerStatus === "unavailable") return "Printer unavailable";
   if (probe.printerStatus === "ready") return "Connected";
+  if (probe.printerStatus === "candidate") return "Candidate";
   if (probe.printerStatus === "not_configured") return "Not configured";
   return probe.reachError || "Unknown";
 }

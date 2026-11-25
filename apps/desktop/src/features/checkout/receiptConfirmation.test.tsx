@@ -274,6 +274,7 @@ describe("receipt confirmation dialog", () => {
     expect(html).toContain("Would you like to print the receipt?");
     expect(html).toContain("No, Skip");
     expect(html).toContain("Yes, Print Receipt");
+    expect(html).not.toContain("Receipt Preview");
     expect(html).not.toContain(PRINTER_UNAVAILABLE_MESSAGE);
   });
 

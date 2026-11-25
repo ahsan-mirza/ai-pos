@@ -232,6 +232,16 @@ function sameMembers(left: readonly string[] | undefined, right: readonly string
  * An older entitlement revision, or the same revision with an older timestamp, is ignored so a
  * settings poll that started before a save cannot put the previous modules back.
  */
+/** Client-side check for the tenant identity form. The API repeats it and is the authority. */
+export function businessIdentityError(input: { legalName: string; legalNameAr: string; location: string }): string | null {
+  const legal = input.legalName.trim();
+  if (legal === "") return "Enter the legal name.";
+  if (legal.length > 160) return "Legal name must be 160 characters or fewer.";
+  if (input.legalNameAr.trim().length > 160) return "Arabic legal name must be 160 characters or fewer.";
+  if (input.location.trim().length > 120) return "Location must be 120 characters or fewer.";
+  return null;
+}
+
 export function acceptBusinessSettings(current: BusinessSettings, next: BusinessSettings): boolean {
   // The portal cache is one slot. A different sign-in code is a different business, not an older poll.
   if (current.store_code && next.store_code && current.store_code !== next.store_code) return true;

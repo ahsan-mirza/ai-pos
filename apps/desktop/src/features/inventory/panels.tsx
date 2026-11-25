@@ -28,6 +28,7 @@ import {
   type DraftLine,
   type ReceiptDraft,
 } from "./documentLines";
+import { CatalogueWorkbookActions } from "./CatalogueWorkbookActions";
 import { ProductDrawer } from "./productForm";
 import { Banner, Drawer, Field, FilterSearch, PosSearchToolbar, PrimaryButton, QuietButton, Table, control } from "./ui";
 
@@ -338,10 +339,18 @@ export function ProductsPanel(access: WorkspaceAccess) {
   const { data, error, loading, reload } = useResource(load, access.online);
   return (
     <section className="space-y-3">
-      <div className="flex min-w-0 flex-nowrap items-center gap-3">
+      <div className="flex min-w-0 flex-wrap items-center gap-3">
         <div className="min-w-0 flex-1">
           <PosSearchToolbar query={q} onQuery={setQ} placeholder="Search products" onCommit={flush} />
         </div>
+        {access.manage ? (
+          <CatalogueWorkbookActions
+            online={access.online}
+            query={q}
+            onNotice={setMessage}
+            onChanged={reload}
+          />
+        ) : null}
         {access.pharmacyCatalogue ? (
           <PrimaryButton onClick={() => setEditing("new")} disabled={!access.online}>
             {access.fnb ? "Add menu item" : "Add product"}

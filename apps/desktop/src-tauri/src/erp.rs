@@ -575,6 +575,25 @@ fn require_session(state: &AppState) -> Result<crate::auth::Session, String> {
 }
 
 #[tauri::command]
+pub fn refresh_register_permissions(state: tauri::State<AppState>) -> Result<Vec<String>, String> {
+    let Some(mut session) = state.session()? else {
+        return Err("Unlock the register first.".into());
+    };
+    let token = state.user_token.lock().map_err(|err| err.to_string())?.clone();
+    let Some(token) = token else {
+        return Ok(session.user.permissions.clone());
+    };
+    let Some(permissions) = crate::auth::account_permissions(&state.config, &token, &session.user.id)? else {
+        return Ok(session.user.permissions.clone());
+    };
+    session.user.permissions = permissions.clone();
+    state.db.replace_cached_permissions(&session.user.id, &permissions)?;
+    state.db.save_register_session(&session.user, session.mode, session.unlocked_at)?;
+    *state.session.lock().map_err(|err| err.to_string())? = Some(session);
+    Ok(permissions)
+}
+
+#[tauri::command]
 pub fn printer_settings(state: tauri::State<AppState>) -> Result<printer::PrinterSettings, String> {
     printer::load(&state.db)
 }
@@ -586,7 +605,7 @@ pub fn save_printer_settings(
 ) -> Result<printer::PrinterSettings, String> {
     let session = require_session(&state)?;
     if !printer::hardware_change_allowed(&session.user.permissions) {
-        return Err("You can view printer status. Changing it needs permission to manage this register.".into());
+        return Err(printer::refuse_hardware_change(&state.db, &session, &state.config.store_id));
     }
     let previous = printer::load(&state.db)?;
     let saved = printer::save(&state.db, &settings)?;
@@ -629,6 +648,12 @@ pub fn save_printer_settings(
         },
     );
     Ok(saved)
+}
+
+#[tauri::command]
+pub async fn list_bluetooth_printers(state: tauri::State<'_, AppState>) -> Result<Vec<crate::printer_profile::BluetoothSerial>, String> {
+    require_session(&state)?;
+    Ok(printer::list_bluetooth_serial())
 }
 
 #[tauri::command]

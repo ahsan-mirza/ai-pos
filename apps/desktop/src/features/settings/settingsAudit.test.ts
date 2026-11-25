@@ -14,5 +14,16 @@ describe("settings audit summary", () => {
     expect(summary).toContain("by Portion Owner");
     expect(summary).toMatch(/\d{2}-\d{2}-\d{4} \d{2}:\d{2}/);
     expect(settingsAuditSummary("2026-11-22T15:09:03Z", "  ")).not.toContain("by");
+    expect(settingsAuditSummary("2026-11-22T15:09:03Z", null)).not.toContain("by");
+  });
+
+  it("shows the business timezone and keeps the stored instant unchanged", () => {
+    const summary = settingsAuditSummary("2026-11-22T20:15:00Z", "Portion Owner", "Asia/Dubai");
+    expect(summary).toContain("23-11-2026 00:15");
+    expect(summary).toContain("by Portion Owner");
+    expect(settingsAuditSummary("2026-11-22T20:15:00Z", null, "Asia/Dubai")).toContain("23-11-2026 00:15");
+    expect(settingsAuditSummary("2026-11-22T20:15:00Z", "Ada", "Not/AZone")).toBe(
+      "No business-settings timestamp was returned. The trail is read-only.",
+    );
   });
 });

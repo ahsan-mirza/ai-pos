@@ -1,7 +1,7 @@
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models import AuditLog, Product, Store
+from app.models import AuditLog, Product, Store, User
 from test_returns import (
     CABLE_ID,
     STORE_ID,
@@ -129,3 +129,124 @@ def test_reports_default_to_the_business_currency(client) -> None:
     assert summary["currency"] == "GBP"
     history = client.get("/api/v1/analytics/summary?currency=USD", headers=bearer(token)).json()
     assert history["currency"] == "USD"
+
+
+def change_identity(client, token: str, body: dict):
+    return client.put("/api/v1/settings/identity", headers=bearer(token), json=body)
+
+
+def test_pos_and_portal_update_the_same_business_identity(client, session: Session) -> None:
+    current = client.get("/api/v1/settings", headers=device()).json()
+    revision = current["entitlement_revision"]
+    rate = current["standard_rate_bps"]
+    pin = client.post("/api/v1/auth/login-pin", json={"username": "admin", "pin": "2468"}, headers=device())
+    assert pin.status_code == 200, pin.text
+    pos = pin.json()["access_token"]
+    payload = {
+        "legal_name": "Portion Identity",
+        "legal_name_ar": None,
+        "country": "SA",
+        "location": "Deira",
+        "expected_revision": revision,
+    }
+    saved = change_identity(client, pos, payload)
+    assert saved.status_code == 200, saved.text
+    body = saved.json()
+    assert body["legal_name"] == "Portion Identity"
+    assert body["country"] == "SA"
+    assert body["location"] == "Deira"
+    assert body["entitlement_revision"] == revision + 1
+    assert body["updated_by_name"] == "Root Admin"
+    assert body["standard_rate_bps"] == rate
+    assert body["updated_at"]
+
+    replay = change_identity(client, pos, payload)
+    assert replay.status_code == 200, replay.text
+    assert replay.json()["entitlement_revision"] == revision + 1
+
+    stale = change_identity(client, pos, {**payload, "location": "Karama"})
+    assert stale.status_code == 409
+    assert stale.json()["error"]["code"] == "stale_settings"
+    assert stale.json()["error"]["details"]["entitlement_revision"] == revision + 1
+
+    portal = admin_token(client)
+    moved = change_identity(
+        client,
+        portal,
+        {**payload, "location": "Karama", "expected_revision": revision + 1},
+    )
+    assert moved.status_code == 200, moved.text
+    assert moved.json()["entitlement_revision"] == revision + 2
+    assert client.get("/api/v1/settings", headers=device()).json()["location"] == "Karama"
+
+    session.expire_all()
+    logs = list(session.scalars(select(AuditLog).where(AuditLog.action == "settings.identity")))
+    by_source = {log.details["source"]: log for log in logs}
+    assert set(by_source) == {"pos", "business_pro"}
+    assert by_source["pos"].client_device == "desktop"
+    assert by_source["pos"].new_values["legal_name"] == "Portion Identity"
+    assert by_source["business_pro"].client_device == "web"
+    assert by_source["business_pro"].new_values["location"] == "Karama"
+
+
+def test_identity_rejects_bad_values_and_the_wrong_actor(client, session: Session) -> None:
+    current = client.get("/api/v1/settings", headers=device()).json()
+    revision = current["entitlement_revision"]
+    token = admin_token(client)
+    assert change_identity(client, token, {
+        "legal_name": "   ",
+        "country": "AE",
+        "location": "Deira",
+        "expected_revision": revision,
+    }).status_code == 422
+    assert change_identity(client, token, {
+        "legal_name": "Portion",
+        "country": "ZZ",
+        "location": "Deira",
+        "expected_revision": revision,
+    }).status_code == 422
+
+    cashier = client.post(
+        "/api/v1/auth/login-pin", json={"username": "cashier", "pin": "1357"}, headers=device()
+    ).json()["access_token"]
+    assert change_identity(client, cashier, {
+        "legal_name": "Cashier Edit",
+        "country": "AE",
+        "location": "Deira",
+        "expected_revision": revision,
+    }).status_code == 403
+    assert client.put("/api/v1/settings/identity", headers=device(), json={
+        "legal_name": "Device Edit",
+        "country": "AE",
+        "location": "Deira",
+        "expected_revision": revision,
+    }).status_code == 403
+
+    seed_catalog(client)
+    role = client.post(
+        "/api/v1/roles",
+        headers=bearer(token),
+        json={"name": "Branch Identity", "permissions": ["portal:access", "settings:manage"]},
+    ).json()
+    manager = portal_user(client, token, username="branch-identity", role_id=role["id"], store_id=STORE_ID)
+    assert change_identity(client, manager, {
+        "legal_name": "Branch Edit",
+        "country": "AE",
+        "location": "Deira",
+        "expected_revision": revision,
+    }).status_code == 403
+    assert client.get("/api/v1/settings", headers=device()).json()["legal_name"] == current["legal_name"]
+
+    admin = session.scalar(select(User).where(User.username == "admin"))
+    assert admin is not None
+    admin.is_active = False
+    session.commit()
+    assert client.post(
+        "/api/v1/auth/login-pin", json={"username": "admin", "pin": "2468"}, headers=device()
+    ).status_code in {401, 403}
+    assert change_identity(client, token, {
+        "legal_name": "Disabled Edit",
+        "country": "AE",
+        "location": "Deira",
+        "expected_revision": revision,
+    }).status_code == 401

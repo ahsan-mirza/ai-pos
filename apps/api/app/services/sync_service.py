@@ -192,6 +192,16 @@ def apply_product(db: Session, payload: dict[str, object], source: SyncSource = 
     store = require_store(db, data.store_id)
     if store.currency != data.currency:
         raise SyncRejected("Product currency must match the store currency.")
+    from app.services.sku_policy import stored_sku
+
+    try:
+        sku = stored_sku(db, data.sku)
+    except Exception as caught:
+        from app.core.errors import ApiError
+
+        if isinstance(caught, ApiError):
+            raise SyncRejected(caught.message) from caught
+        raise
     existing = db.get(Product, data.id)
     if existing is not None and source == "register":
         if existing.is_serialized != data.is_serialized:
@@ -204,7 +214,7 @@ def apply_product(db: Session, payload: dict[str, object], source: SyncSource = 
         if existing.brand_id is None and (data.brand or data.brand_id or data.product_model_id):
             _link_brand(db, existing, data)
         return data.id
-    sku_owner = db.scalar(select(Product).where(Product.sku == data.sku))
+    sku_owner = db.scalar(select(Product).where(Product.sku == sku)) if sku is not None else None
     barcode_owner = db.scalar(select(Product).where(Product.barcode == data.barcode))
     if sku_owner is not None and (existing is None or sku_owner.id != existing.id):
         raise SyncRejected("SKU is already in use.")
@@ -217,7 +227,7 @@ def apply_product(db: Session, payload: dict[str, object], source: SyncSource = 
         category, sub = _categories_for(db, data)
         product = Product(
             id=data.id,
-            sku=data.sku,
+            sku=sku,
             barcode=data.barcode,
             name=data.name,
             model_number=data.model_number,
@@ -249,7 +259,8 @@ def apply_product(db: Session, payload: dict[str, object], source: SyncSource = 
         return data.id
     if existing.is_serialized != data.is_serialized:
         raise SyncRejected("Serialized tracking cannot change after creation.")
-    existing.sku = data.sku
+    if sku is not None:
+        existing.sku = sku
     existing.barcode = data.barcode
     existing.name = data.name
     existing.price_cents = data.price_cents

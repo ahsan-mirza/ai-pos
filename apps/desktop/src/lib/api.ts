@@ -16,6 +16,7 @@ import type {
   TokenResponse,
 } from "@ai-pos/shared-types";
 import { env, previewHeaders } from "../config/env";
+import { OFFLINE_NOTICE } from "../features/sync/connectivity";
 
 export class ApiRejectedError extends Error {
   readonly status: number;
@@ -54,7 +55,8 @@ async function request(path: string, init: RequestInit = {}): Promise<Response> 
     });
   } catch (error) {
     if (error instanceof ApiUnavailableError) throw error;
-    throw new ApiUnavailableError(`Cannot reach the API at ${env.apiBaseUrl}. Check that the backend is running.`);
+    console.warn(`API request failed before a response from ${env.apiBaseUrl}.`);
+    throw new ApiUnavailableError(OFFLINE_NOTICE);
   }
   if (response.ok) return response;
   const message = await errorMessage(response);

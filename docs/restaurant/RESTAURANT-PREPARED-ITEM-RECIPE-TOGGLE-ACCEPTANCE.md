@@ -4,7 +4,7 @@ Date: 22-11-2026
 
 Status: **PASSED WITH LIMITATIONS**.
 
-A restaurant or cafe made-to-order item has one product setting, **Sell without recipe / ingredient consumption**. Cashiers do not choose it at the till and cannot override it. This status is only the ingredient mode. Portion prices are in `RESTAURANT-PORTION-PRICING-ACCEPTANCE.md`. The live register walk is in `RESTAURANT-NATIVE-END-TO-END-ACCEPTANCE.md`. Recipe draw, shortfall, and the remaining checkout gaps are in `RESTAURANT-CAFE-RECIPE-CHECKOUT-OFFLINE-ACCEPTANCE.md`.
+A restaurant or cafe made-to-order item has one product setting, **Sell without recipe / ingredient consumption**. Cashiers do not choose it at the till and cannot override it. This status is only the ingredient mode. Portion prices are in `RESTAURANT-PORTION-PRICING-ACCEPTANCE.md`. The live register walk is in `RESTAURANT-NATIVE-END-TO-END-ACCEPTANCE.md`. Recipe draw, shortfall, and the remaining checkout gaps are in `RESTAURANT-CAFE-RECIPE-CHECKOUT-OFFLINE-ACCEPTANCE.md`. Takeaway and delivery are in `RESTAURANT-TAKEAWAY-DELIVERY-OFFLINE-ACCEPTANCE.md`.
 
 ## Setting
 

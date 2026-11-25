@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from app.core.capabilities import Capability, require_capability
 from app.core.config import Settings, get_settings
 from app.core.database import get_db
-from app.core.deps import Principal, authorize
+from app.core.deps import REGISTER_SCOPES, Principal, authorize
 from app.core.pagination import Offset, set_total
 from app.core.permissions import Permission
 from app.schemas.dunning import DunningResult, StatementSend
@@ -40,7 +40,7 @@ router = APIRouter()
 CreditModule = Depends(require_capability(Capability.B2B_CREDIT))
 
 Db = Annotated[Session, Depends(get_db)]
-CanManage = Annotated[Principal, Depends(authorize(Permission.CUSTOMERS_MANAGE))]
+CanManage = Annotated[Principal, Depends(authorize(Permission.CUSTOMERS_MANAGE, scopes=REGISTER_SCOPES))]
 AtRegister = Annotated[
     Principal,
     Depends(authorize(Permission.POS_ACCESS, allow_device=True, scopes=("pos", "portal"))),

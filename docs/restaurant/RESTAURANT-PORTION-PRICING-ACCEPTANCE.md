@@ -4,7 +4,7 @@ Date: 22-11-2026
 
 Status: **PASSED WITH LIMITATIONS**.
 
-One restaurant or cafe menu item can carry several named portion prices. Portions are not separate products. Modifiers stay separate. This status is only the pricing behavior. The prepared-item toggle is in `RESTAURANT-PREPARED-ITEM-RECIPE-TOGGLE-ACCEPTANCE.md`. The live register walk is in `RESTAURANT-NATIVE-END-TO-END-ACCEPTANCE.md`. Recipe draw, shortfall, and the remaining checkout gaps are in `RESTAURANT-CAFE-RECIPE-CHECKOUT-OFFLINE-ACCEPTANCE.md`.
+One restaurant or cafe menu item can carry several named portion prices. Portions are not separate products. Modifiers stay separate. This status is only the pricing behavior. The prepared-item toggle is in `RESTAURANT-PREPARED-ITEM-RECIPE-TOGGLE-ACCEPTANCE.md`. The live register walk is in `RESTAURANT-NATIVE-END-TO-END-ACCEPTANCE.md`. Recipe draw, shortfall, and the remaining checkout gaps are in `RESTAURANT-CAFE-RECIPE-CHECKOUT-OFFLINE-ACCEPTANCE.md`. Takeaway and delivery are in `RESTAURANT-TAKEAWAY-DELIVERY-OFFLINE-ACCEPTANCE.md`.
 
 ## Product entry
 

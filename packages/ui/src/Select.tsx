@@ -29,6 +29,8 @@ export interface SelectProps<T extends string> {
    * The menu asks for a sub-category and brand first when `createHint` is set.
    */
   onCreate?: (name: string) => void;
+  /** Button label when the search matches nothing. Defaults to Add and the typed name. */
+  createLabel?: string;
   /** Shortest typed name that can be created. Category names need 2; a model name can be 1. */
   createMinLength?: number;
   createHint?: string;
@@ -127,6 +129,7 @@ export function Select<T extends string>({
   "aria-label": ariaLabel,
   searchable,
   onCreate,
+  createLabel,
   createMinLength = 2,
   createHint,
   invalid = false,
@@ -371,7 +374,7 @@ export function Select<T extends string>({
                     onClick={createNamed}
                   >
                     <Plus aria-hidden="true" className="h-4 w-4 shrink-0" />
-                    Add "{trimmed}"
+                    {createLabel ?? `Add "${trimmed}"`}
                   </button>
                 )
               ) : null}

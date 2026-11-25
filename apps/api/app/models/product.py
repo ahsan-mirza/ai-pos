@@ -47,17 +47,18 @@ def search_haystack(
 ) -> ColumnElement[str]:
     """Every searchable field, space separated, then model / SKU / barcode without separators ("ga05843us")."""
     model = func.coalesce(model_number, "")
+    code = func.coalesce(sku, "")
     parts: list[ColumnElement[str]] = [
         name,
         model,
         barcode,
-        sku,
+        code,
         category,
         func.coalesce(brand, ""),
         func.coalesce(season, ""),
         func.coalesce(collection, ""),
         _compact(model),
-        _compact(sku),
+        _compact(code),
         _compact(barcode),
         func.coalesce(generic_name, ""),
         func.coalesce(gtin, ""),
@@ -115,7 +116,7 @@ class Product(TenantScoped, TimestampMixin, Base):
     )
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    sku: Mapped[str] = mapped_column(String(64))
+    sku: Mapped[str | None] = mapped_column(String(64), nullable=True)
     barcode: Mapped[str] = mapped_column(String(64))
     name: Mapped[str] = mapped_column(String(200))
     model_number: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)

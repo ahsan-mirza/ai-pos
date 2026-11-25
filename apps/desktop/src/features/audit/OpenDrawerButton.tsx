@@ -12,12 +12,15 @@ export function OpenDrawerButton({
   className,
   disabled = false,
   iconOnly = false,
+  label,
   onLogged,
 }: {
   className: string;
   disabled?: boolean;
   /** Icon with an accessible name, and no visible label. */
   iconOnly?: boolean;
+  /** Visible label. Defaults to the shared "Open drawer" translation. */
+  label?: string;
   /** When omitted, the confirmation is shown beside the register. */
   onLogged?: (message: string) => void;
 }) {
@@ -42,8 +45,8 @@ export function OpenDrawerButton({
         title={t("Open the cash drawer")}
         onClick={() => setOpen(true)}
       >
-        <Inbox size={iconOnly ? 18 : 16} aria-hidden="true" />
-        {iconOnly ? null : t("Open drawer")}
+        <Inbox size={iconOnly ? 18 : 16} aria-hidden="true" className="shrink-0" />
+        {iconOnly ? null : <span className="min-w-0 truncate">{label ?? t("Open drawer")}</span>}
       </button>
       {open ? (
         <CashDrawerModal

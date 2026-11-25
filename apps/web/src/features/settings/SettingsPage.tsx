@@ -8,6 +8,7 @@ import { generalSections } from "./SettingsLayout";
 import { useCurrency } from "../../lib/currency";
 import { useStoreScope } from "../../lib/storeScope";
 import { AppearanceSettings } from "./AppearanceSettings";
+import { BusinessIdentitySettings } from "./BusinessIdentitySettings";
 import { BusinessProfileSettings } from "./BusinessProfileSettings";
 import { CurrencySettings } from "./CurrencySettings";
 import { ModuleSettingsPanel } from "./ModuleSettingsPanel";
@@ -136,7 +137,8 @@ export function SettingsPage() {
         </div>
       ) : null}
       {section === "business-profile" ? (
-        <div>
+        <div className="space-y-4">
+          <BusinessIdentitySettings />
           <BusinessProfileSettings />
         </div>
       ) : null}

@@ -28,7 +28,7 @@ from app.models.delivery import DeliveryConnection
 from app.models.device import DemoPosTicket, Device, DeviceActivation
 from app.models.document_sequence import DocumentSequence
 from app.models.einvoice import EInvoice, EInvoiceChain, TaxAuthorityCredential
-from app.models.expense import Expense, PettyCashEntry
+from app.models.expense import Expense, ExpenseAttachment, ExpenseCategory, PettyCashEntry
 from app.models.fleet import (
     DeliveryZone,
     DeliveryZoneSlot,
@@ -243,6 +243,8 @@ __all__ = [
     "EInvoiceChain",
     "ExchangeRate",
     "Expense",
+    "ExpenseAttachment",
+    "ExpenseCategory",
     "PettyCashEntry",
     "GoodsReceipt",
     "GoodsReceiptLine",

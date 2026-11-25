@@ -43,6 +43,18 @@ describe("product form payload", () => {
     expect(errors.category).toBeTruthy();
   });
 
+  it("lets a restaurant or cafe item omit the SKU and still requires one for grocery", () => {
+    const state = ready();
+    state.sku = "";
+    state.skuManual = true;
+    const menu = validateProductForm(state, { editing: false, pharmacy: false, dispensingClass: "", skuOptional: true });
+    expect(menu.sku).toBeUndefined();
+    expect(productCreateBody(state, options).sku).toBe("");
+    expect(resolvedSku(state, false, true)).toBe("");
+    const grocery = validateProductForm(state, { editing: false, pharmacy: false, dispensingClass: "" });
+    expect(grocery.sku).toBeTruthy();
+  });
+
   it("still requires a category or model for a pharmacy product", () => {
     const errors = validateProductForm(ready(), { editing: false, pharmacy: true, dispensingClass: "" });
     expect(errors.category).toBeUndefined();

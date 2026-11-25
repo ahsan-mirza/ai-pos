@@ -2,6 +2,7 @@ import { applyDocumentLocale, readLocale } from "@ai-pos/ui";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { RegisterLayoutProvider } from "./components/RegisterLayout";
+import { ScreenModeProvider } from "./components/shell/ScreenToggle";
 import { loadTerminal } from "./config/terminal";
 import "./index.css";
 
@@ -20,7 +21,9 @@ void loadTerminal()
     createRoot(root).render(
       <StrictMode>
         <RegisterLayoutProvider>
-          <App />
+          <ScreenModeProvider>
+            <App />
+          </ScreenModeProvider>
         </RegisterLayoutProvider>
       </StrictMode>,
     );

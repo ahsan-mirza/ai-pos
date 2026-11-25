@@ -440,6 +440,42 @@ fn interpret(response: reqwest::blocking::Response) -> Remote {
     Remote::Unreachable
 }
 
+/// Reads this cashier's permissions from the server. A missed call leaves the cached list unchanged.
+pub fn account_permissions(config: &DesktopConfig, token: &str, user_id: &str) -> Result<Option<Vec<String>>, String> {
+    let client = reqwest::blocking::Client::builder()
+        .timeout(Duration::from_secs(5))
+        .build()
+        .map_err(|err| err.to_string())?;
+    let response = match client
+        .get(format!("{}/api/v1/auth/me", config.api_base_url.trim_end_matches('/')))
+        .headers(config.auth_headers())
+        .header("Authorization", format!("Bearer {token}"))
+        .send()
+    {
+        Ok(response) => response,
+        Err(_) => return Ok(None),
+    };
+    if !response.status().is_success() {
+        return Ok(None);
+    }
+    let body: serde_json::Value = match response.json() {
+        Ok(body) => body,
+        Err(_) => return Ok(None),
+    };
+    if body.get("id").and_then(|item| item.as_str()) != Some(user_id) {
+        return Ok(None);
+    }
+    let Some(items) = body.get("permissions").and_then(|item| item.as_array()) else {
+        return Ok(None);
+    };
+    Ok(Some(
+        items
+            .iter()
+            .filter_map(|item| item.as_str().map(ToOwned::to_owned))
+            .collect(),
+    ))
+}
+
 pub(crate) fn hash_pin(pin: &str) -> Result<String, String> {
     let salt = SaltString::generate(&mut OsRng);
     Argon2::default()

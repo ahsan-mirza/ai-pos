@@ -11,6 +11,10 @@ describe("sent kitchen quantity", () => {
     expect(sentIncrease(3, 2)).toEqual({ ok: false, reason: "reduce" });
   });
 
+  it("leaves the ticket alone when the quantity does not change", () => {
+    expect(sentIncrease(2, 2)).toEqual({ ok: false, reason: "same" });
+  });
+
   it("refuses a quantity outside 1 to 1000", () => {
     expect(sentIncrease(1, 0).ok).toBe(false);
     expect(sentIncrease(1, 1001).ok).toBe(false);

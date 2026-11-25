@@ -298,6 +298,34 @@ export function receiptOps(doc: ReceiptDoc): ReceiptOp[] {
   return ops;
 }
 
+/** A monospaced slip for text-only Windows drivers, which drop pictures and still report success. */
+export function receiptPlainText(doc: ReceiptDoc, columns = 42): string {
+  const width = columns < 36 ? 32 : 42;
+  const clip = (value: string) => {
+    const text = value.replace(/\s+/g, " ").trim();
+    return text.length <= width ? text : text.slice(0, width);
+  };
+  const center = (value: string) => {
+    const text = clip(value);
+    const pad = Math.max(0, width - text.length);
+    return `${" ".repeat(Math.floor(pad / 2))}${text}`;
+  };
+  const pair = (left: string, right: string) => {
+    const end = clip(right);
+    const room = Math.max(1, width - end.length - 1);
+    const start = clip(left);
+    const head = start.length <= room ? start : start.slice(0, room);
+    return `${head}${" ".repeat(Math.max(1, width - head.length - end.length))}${end}`;
+  };
+  const lines: string[] = [];
+  for (const op of receiptOps(doc)) {
+    if (op.kind === "text" || op.kind === "band") lines.push(center(op.text));
+    else if (op.kind === "row") lines.push(pair(op.left, op.right));
+    else if (op.kind === "rule") lines.push((op.dashed ? "-" : "=").repeat(width));
+  }
+  return `${lines.join("\r\n")}\r\n\r\n\r\n`;
+}
+
 function formatIssued(value: Date): string {
   const pad = (part: number) => String(part).padStart(2, "0");
   return `${value.getFullYear()}-${pad(value.getMonth() + 1)}-${pad(value.getDate())} ${pad(value.getHours())}:${pad(value.getMinutes())}`;

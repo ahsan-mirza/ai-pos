@@ -1,6 +1,7 @@
-import { renderReceipt, slipDefault, slipLanguage, type ReceiptDoc } from "@ai-pos/receipt";
+import { receiptPlainText, renderReceipt, slipDefault, slipLanguage, type ReceiptDoc } from "@ai-pos/receipt";
 import { receiptProfile } from "../checkout/currency";
 import { inTauri, openCashDrawer, printRaster, printerSettings, type PrinterSettings } from "../../lib/tauri";
+import { RENDER_FAILED, SPOOLER_ACCEPTED, inkBytes } from "./printerSelection";
 
 export const BROWSER_PRINTER: PrinterSettings = {
   transport: "none",
@@ -64,11 +65,21 @@ function withSavedLanguage(doc: ReceiptDoc): ReceiptDoc {
 }
 
 /** Cash taken in, and the register policy, are both required. Card, failed, and cancelled sales pass kickDrawer false. */
+export interface PrintRequest {
+  kickDrawer: boolean;
+  manual?: boolean;
+  /** Opens the Windows print dialog only when no receipt printer is configured. Checkout never sets this. */
+  systemDialog?: boolean;
+}
 export function shouldKickDrawer(
   options: { kickDrawer: boolean },
   settings: Pick<PrinterSettings, "drawer_kick" | "transport">,
 ): boolean {
-  return options.kickDrawer && settings.drawer_kick && settings.transport !== "none";
+  return (
+    options.kickDrawer &&
+    settings.drawer_kick &&
+    (settings.transport === "tcp" || settings.transport === "windows")
+  );
 }
 
 /**
@@ -79,11 +90,14 @@ export function shouldKickDrawer(
  * auto_print does not print or skip that receipt. Refunds and other callers still honor auto_print
  * when manual is omitted.
  */
-export async function printReceipt(doc: ReceiptDoc, options: { kickDrawer: boolean; manual?: boolean }): Promise<PrintOutcome> {
+export async function printReceipt(doc: ReceiptDoc, options: PrintRequest): Promise<PrintOutcome> {
   const slip = withSavedLanguage(doc);
   const settings = await loadPrinter();
   if (settings.transport === "none") {
     if (!options.manual) return { printed: false, message: null };
+    if (!options.systemDialog) {
+      return { printed: false, message: "No receipt printer is configured. Open Register settings and choose a printer." };
+    }
     const rendered = await renderReceipt(slip, settings.paper_dots);
     printInBrowser(rendered.canvas);
     return { printed: true, message: null };
@@ -94,13 +108,24 @@ export async function printReceipt(doc: ReceiptDoc, options: { kickDrawer: boole
   }
   try {
     const rendered = await renderReceipt(slip, settings.paper_dots);
+    const data = rendered.bits();
+    if (data.length === 0 || inkBytes(data) === 0) {
+      return { printed: false, message: RENDER_FAILED };
+    }
     await printRaster({
       width: rendered.width,
       height: rendered.height,
-      data: rendered.bits(),
+      data,
       kick_drawer: shouldKickDrawer(options, settings),
+      line_count: slip.lines.length,
+      document_number: slip.number,
+      subtotal_cents: slip.subtotalCents,
+      tax_cents: slip.taxCents,
+      discount_cents: slip.youSavedCents ?? 0,
+      total_cents: slip.totalCents,
+      plain_text: receiptPlainText(slip, settings.paper_dots <= 384 ? 32 : 42),
     });
-    return { printed: true, message: null };
+    return { printed: true, message: slip.number ? `${SPOOLER_ACCEPTED} ${slip.number}.` : SPOOLER_ACCEPTED };
   } catch (error) {
     return { printed: false, message: error instanceof Error ? error.message : String(error) };
   }

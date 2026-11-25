@@ -2,7 +2,7 @@
 
 Date: 22-11-2026
 
-The continuation, including recipe draw and the remaining gaps, is in `RESTAURANT-CAFE-RECIPE-CHECKOUT-OFFLINE-ACCEPTANCE.md`.
+The continuation, including recipe draw and the remaining gaps, is in `RESTAURANT-CAFE-RECIPE-CHECKOUT-OFFLINE-ACCEPTANCE.md`. Takeaway and delivery reopen evidence is in `RESTAURANT-TAKEAWAY-DELIVERY-OFFLINE-ACCEPTANCE.md`.
 
 This is the live Windows register walk for portion pricing and the product-level prepared-item setting. API and mocked UI results stay in `RESTAURANT-PORTION-PRICING-ACCEPTANCE.md` and `RESTAURANT-PREPARED-ITEM-RECIPE-TOGGLE-ACCEPTANCE.md`. They are not treated as native acceptance.
 

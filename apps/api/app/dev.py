@@ -7,6 +7,10 @@ from app.core.config import get_settings
 
 def serve() -> None:
     settings = get_settings()
+    from app.tenancy.cli import migrate_all
+
+    # Every reload applies pending store revisions before the API accepts traffic.
+    migrate_all(settings=settings)
     uvicorn.run("app.main:app", host=settings.api_host, port=settings.api_port)
 
 

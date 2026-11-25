@@ -1,11 +1,13 @@
-import { formatMoney, type ModifierGroup, type ModifierGroupInput, type Product } from "@ai-pos/shared-types";
+import { Permission, formatMoney, type ModifierGroup, type ModifierGroupInput, type Product } from "@ai-pos/shared-types";
 import { PriceOptionsPanel } from "./PriceOptionsPanel";
 import { actionHoverClass } from "@ai-pos/ui";
 import { ChefHat, Copy, Plus, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ErrorNote, GhostButton, PrimaryButton, TextField } from "../../components/ui/Field";
 import { Modal } from "../../components/ui/Modal";
+import { CatalogueWorkbookActions } from "../catalogue/CatalogueWorkbookActions";
 import { apiDelete, apiGet, apiPost, apiPut } from "../../lib/api";
+import { useAuth } from "../../lib/auth";
 import { useCurrency } from "../../lib/currency";
 import { message } from "../customers/api";
 
@@ -242,6 +244,9 @@ function groupPayload(group: ModifierGroup, active = group.is_active): ModifierG
 /** Menu modifiers: groups of options (size, milk, extras) and the menu items that offer them. */
 export function ModifiersPage() {
   const { currency } = useCurrency();
+  const { can } = useAuth();
+  const manage = can(Permission.PortalInventoryManage);
+  const [notice, setNotice] = useState<string | null>(null);
   const [groups, setGroups] = useState<ModifierGroup[] | null>(null);
   const [products, setProducts] = useState<Product[]>([]);
   const [editing, setEditing] = useState<ModifierGroup | "new" | null>(null);
@@ -339,11 +344,15 @@ export function ModifiersPage() {
             </div>
           </div>
           <div className="flex flex-wrap gap-2">
+            {manage ? (
+              <CatalogueWorkbookActions query="" onNotice={setNotice} onChanged={() => void load()} />
+            ) : null}
             <GhostButton onClick={() => setShowTemplates(true)}>Add from template</GhostButton>
             <PrimaryButton onClick={() => setEditing("new")}>New group</PrimaryButton>
           </div>
         </div>
         <ErrorNote message={error} />
+        {notice ? <p role="status" className="mb-3 text-sm text-charcoal/70">{notice}</p> : null}
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
           {(groups ?? []).map((group) => {
             const activeOptions = group.options.filter((option) => option.is_active);

@@ -181,7 +181,8 @@ export function ProductFormModal({
     return axes;
   });
   const [variantRows, setVariantRows] = useState<VariantDraft[]>([]);
-  const sku = editing || skuManual ? skuTyped : skuFromParts(skuPrefix, name, specs);
+  const skuOptional = menuRecipe;
+  const sku = editing || skuManual || skuOptional ? skuTyped : skuFromParts(skuPrefix, name, specs);
   const [price, setPrice] = useState(product ? (product.price_cents / 100).toFixed(2) : "");
   const [active, setActive] = useState(product?.is_active !== false);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -320,7 +321,7 @@ export function ProductFormModal({
 
   const skuMessage = () => {
     if (editing) return "";
-    if (sku.replace(/-$/, "") === "") return "SKU is required.";
+    if (sku.replace(/-$/, "") === "") return skuOptional ? "" : "SKU is required.";
     if (skuTaken) return "SKU must be unique.";
     return "";
   };
@@ -1112,7 +1113,7 @@ export function ProductFormModal({
                 id="product-sku"
                 value={sku}
                 disabled={editing}
-                placeholder="Generated from the name"
+                placeholder={skuOptional ? "Optional" : "Generated from the name"}
                 maxLength={64}
                 spellCheck={false}
                 autoComplete="off"
@@ -1150,7 +1151,11 @@ export function ProductFormModal({
             </span>
           ) : (
             <span className="mt-1.5 block text-xs text-charcoal/50">
-              {editing ? "SKUs are fixed once a product exists." : "Letters, digits and dashes. Follows the name and variant until you edit it."}
+              {editing
+                ? "SKUs are fixed once a product exists."
+                : skuOptional
+                  ? "Optional. The product record identifies the item when this is blank."
+                  : "Letters, digits and dashes. Follows the name and variant until you edit it."}
             </span>
           )}
           {editing ? null : (

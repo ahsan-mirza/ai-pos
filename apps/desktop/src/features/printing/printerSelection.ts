@@ -1,10 +1,25 @@
 import type { InstalledPrinter, PrinterProbe, PrinterSettings } from "../../lib/tauri";
+import { BLE_UNSUPPORTED, TCP_OPEN_NOTICE } from "./printerConnections";
 
 export const DISCOVERING = "Discovering Windows printers...";
 export const NONE_FOUND = "No Windows printers were found. Connect or install a printer and refresh the list.";
-export const MISSING = "The previously configured printer is not installed. Select an available printer to reconnect.";
-export const OFFLINE = "This printer is installed but currently offline.";
-export const UNVERIFIED = "This device is not verified as a supported receipt printer.";
+export const MISSING = "The previously selected Windows printer is not installed. Refresh the printer list or select another device.";
+export const OFFLINE = "The printer is installed but currently unavailable.";
+export const REGISTER_VIEW_ONLY =
+  "You can view printer status. Register management permission is required to change printer settings.";
+export const PROFILE_UNVERIFIED =
+  "Printer detected, but its receipt-printing profile has not been verified. Complete the printer test before using it for customer receipts.";
+export const TEST_SUBMITTED = "Test receipt submitted. Please confirm that readable text printed correctly.";
+export const PRINT_FAILURE = "Receipt content was generated, but the printer did not accept the print job.";
+export const PHYSICAL_PENDING = "The printer job was submitted, but physical output has not yet been verified.";
+export const CANDIDATE = PROFILE_UNVERIFIED;
+export const UNSUPPORTED_METHOD = "This printer does not support the configured AxizPOS receipt-printing method.";
+export const QUEUE_CLOSED = "Windows found the printer, but AxizPOS could not open its queue.";
+export const RENDER_FAILED = "The invoice was generated, but its printable content could not be rendered.";
+export const TRANSMIT_FAILED = PRINT_FAILURE;
+export const SPOOLER_ACCEPTED = PHYSICAL_PENDING;
+/** Kept so older status text can still be recognised. New warnings use the specific sentences above. */
+export const UNVERIFIED = CANDIDATE;
 export const CONNECTED = "Receipt printer connected successfully.";
 export const SAVED = "Printer settings saved on this register.";
 export const VIRTUAL_SAVED =
@@ -70,16 +85,25 @@ export function applySelection(queue: InstalledPrinter): Pick<
   };
 }
 
+/** Names the Toshiba Native driver. Other candidates get the generic unverified sentence. */
+export function candidateMessage(queue: Pick<InstalledPrinter, "name" | "driver">): string {
+  const driver = queue.driver.trim();
+  const driverLower = driver.toLowerCase();
+  if (driverLower.includes("toshiba") && driverLower.includes("native")) {
+    return `${queue.name} was discovered using the ${driver}. Receipt printing has not yet been verified. Run the printer test to confirm the supported print method.`;
+  }
+  return CANDIDATE;
+}
+
 export function selectionWarning(address: string, queues: readonly InstalledPrinter[]): string | null {
   const trimmed = address.trim();
   if (trimmed === "") return null;
   const queue = queues.find((item) => item.name === trimmed);
   if (!queue) return MISSING;
   if (queue.availability === "offline") return OFFLINE;
-  if (queue.availability === "virtual" || queue.compatibility === "unsupported" || queue.compatibility === "candidate") return UNVERIFIED;
-  if (queue.availability === "unavailable" || queue.openable === false) {
-    return `Windows printer "${queue.name}" could not be opened.`;
-  }
+  if (queue.availability === "virtual" || queue.compatibility === "unsupported") return UNSUPPORTED_METHOD;
+  if (queue.compatibility === "candidate") return candidateMessage(queue);
+  if (queue.availability === "unavailable" || queue.openable === false) return QUEUE_CLOSED;
   return null;
 }
 
@@ -92,6 +116,8 @@ export function acceptsSavedName(address: string, queues: readonly InstalledPrin
 }
 
 export function canTestPrint(draft: Pick<PrinterSettings, "transport" | "address">, queues: readonly InstalledPrinter[]): boolean {
+  if (draft.transport === "ble") return false;
+  if (draft.transport === "serial") return true;
   if (draft.transport === "none" || draft.transport === "tcp") return true;
   const queue = queues.find((item) => item.name === draft.address.trim());
   if (!queue || queue.openable === false || queue.availability !== "ready") return false;
@@ -103,7 +129,7 @@ export function canTestDrawer(
   draft: Pick<PrinterSettings, "transport" | "address" | "drawer_kick">,
   queues: readonly InstalledPrinter[],
 ): boolean {
-  if (draft.transport === "none" || draft.drawer_kick === false) return false;
+  if (draft.transport === "none" || draft.transport === "serial" || draft.transport === "ble" || draft.drawer_kick === false) return false;
   if (draft.transport === "tcp") return true;
   const queue = queues.find((item) => item.name === draft.address.trim());
   if (!queue || queue.openable === false) return false;
@@ -112,7 +138,10 @@ export function canTestDrawer(
 
 export function canTestPrintFromProbe(probe: PrinterProbe | null): boolean {
   if (!probe || !probe.configured || probe.transport === "none") return true;
-  if (probe.transport === "tcp") return probe.reachable && probe.printerStatus === "ready";
+  if (probe.transport === "tcp" || probe.transport === "serial") {
+    return probe.reachable && (probe.printerStatus === "ready" || probe.printerStatus === "candidate");
+  }
+  if (probe.transport === "ble") return false;
   if (probe.printerStatus === "candidate" && probe.reachable && probe.compatibility !== "unsupported") return true;
   return probe.reachable && probe.printerStatus === "ready" && probe.compatibility === "compatible";
 }
@@ -164,23 +193,87 @@ export function networkAddressError(address: string): string | null {
 /** Persistence succeeded. The message says when the queue still cannot print or open the drawer. */
 export function saveFeedback(settings: Pick<PrinterSettings, "transport" | "address">, queues: readonly InstalledPrinter[]): string {
   if (settings.transport === "none") return "Printer settings saved on this register. No receipt printer is connected.";
-  if (settings.transport === "tcp") return SAVED;
+  if (settings.transport === "tcp") return `${SAVED} ${TCP_OPEN_NOTICE}`;
+  if (settings.transport === "serial") return `Register settings saved. ${CANDIDATE} Drawer kick is not verified.`;
+  if (settings.transport === "ble") return `Register settings saved. ${BLE_UNSUPPORTED}`;
   const queue = queues.find((item) => item.name === settings.address.trim());
   if (!queue) return MISSING_SAVED;
   if (queue.availability === "virtual" || queue.connection === "Virtual" || queue.compatibility === "unsupported") return VIRTUAL_SAVED;
   if (queue.availability === "offline") {
-    return "Register settings saved. The selected Windows queue is offline and is not a connected receipt printer.";
+    return `Register settings saved. ${OFFLINE}`;
+  }
+  if (queue.compatibility === "candidate") {
+    return `Register settings saved. ${candidateMessage(queue)} The queue is kept for diagnostics and is not marked operational.`;
+  }
+  if (queue.openable === false || queue.availability === "unavailable") {
+    return `Register settings saved. ${QUEUE_CLOSED}`;
   }
   if (!queueOperational(queue)) {
-    return "Register settings saved. The selected Windows queue is not verified as a receipt printer.";
+    return `Register settings saved. ${CANDIDATE}`;
   }
   return SAVED;
 }
 
-export function connectionMessage(probe: Pick<PrinterProbe, "printerStatus" | "reachable" | "compatibility" | "reachError">): string {
+export function connectionMessage(
+  probe: Pick<PrinterProbe, "printerStatus" | "reachable" | "compatibility" | "reachError" | "address" | "driver">,
+): string {
   if (probe.printerStatus === "ready" && probe.reachable && probe.compatibility === "compatible") return CONNECTED;
   if (probe.printerStatus === "missing") return MISSING;
   if (probe.printerStatus === "offline") return OFFLINE;
-  if (probe.printerStatus === "candidate" || probe.compatibility === "unsupported" || probe.compatibility === "candidate") return UNVERIFIED;
-  return probe.reachError || `Windows printer could not be opened.`;
+  if (probe.compatibility === "candidate" || probe.printerStatus === "candidate") {
+    return candidateMessage({ name: probe.address, driver: probe.driver ?? "" });
+  }
+  if (probe.compatibility === "unsupported") return UNSUPPORTED_METHOD;
+  if (!probe.reachable) return probe.reachError || QUEUE_CLOSED;
+  return probe.reachError || QUEUE_CLOSED;
+}
+
+/** ESC/POS 80 mm rolls use 576 printable dots at 203 dpi. 58 mm rolls use 384. A Windows driver DPI is not this width. */
+export function printableDots(paper: "58 mm" | "80 mm"): 384 | 576 {
+  return paper === "58 mm" ? 384 : 576;
+}
+
+export function testReceiptPrompt(printer: string): string {
+  const name = printer.trim() || "the selected printer";
+  return `Send one test receipt to ${name}? This does not create a sale or open the cash drawer.`;
+}
+
+export function inkBytes(data: readonly number[]): number {
+  return data.reduce((count, byte) => count + (byte === 0 ? 0 : 1), 0);
+}
+
+export function rejectEmptyRaster(data: readonly number[]): string | null {
+  if (data.length === 0 || inkBytes(data) === 0) return RENDER_FAILED;
+  return null;
+}
+
+export interface DiagnosticStage {
+  stage: string;
+  result: "passed" | "failed" | "unverified" | "not_run";
+}
+
+/** Software stages only. Physical text stays not_run until someone reads the paper. */
+export function diagnosticStages(input: {
+  queue: InstalledPrinter | undefined;
+  missing: boolean;
+  rendered: boolean;
+  ink: number;
+  submitted: boolean;
+  lineCount: number;
+}): DiagnosticStage[] {
+  const queue = input.queue;
+  const opened = Boolean(queue && queue.openable !== false && queue.availability !== "offline" && queue.availability !== "unavailable");
+  const profile = !queue ? "not_run" : queue.compatibility === "compatible" ? "passed" : queue.compatibility === "candidate" ? "unverified" : "failed";
+  const transport = !queue || queue.printTransport === "none" || queue.compatibility === "unsupported" ? "failed" : queue.printTransport ? "passed" : "unverified";
+  return [
+    { stage: "Printer discovered", result: queue ? "passed" : input.missing ? "failed" : "not_run" },
+    { stage: "Queue opened", result: !queue ? "not_run" : opened ? "passed" : "failed" },
+    { stage: "Printer profile identified", result: profile },
+    { stage: "Invoice data loaded", result: input.lineCount > 0 ? "passed" : input.rendered ? "failed" : "not_run" },
+    { stage: "Printable content generated", result: !input.rendered ? "not_run" : input.ink > 0 ? "passed" : "failed" },
+    { stage: "Payload validated", result: !input.rendered ? "not_run" : input.ink > 0 ? "passed" : "failed" },
+    { stage: "Print transport selected", result: !queue ? "not_run" : transport },
+    { stage: "Print job submitted", result: input.submitted ? "passed" : "not_run" },
+    { stage: "Physical text verified", result: "not_run" },
+  ];
 }

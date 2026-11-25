@@ -4,7 +4,7 @@ import { shouldKickDrawer } from "../printing/print";
 import { presentEqualSplit, type ReceiptOutput } from "../restaurant/splitReceipts";
 
 export const PRINTER_UNAVAILABLE_MESSAGE =
-  "Receipt printer is unavailable. Your payment was successful, but the receipt could not be printed.";
+  "Payment successful, but the receipt printer is unavailable. You can print this bill later from Bill History.";
 
 /** A sale is settled only after the register accepts it. Submitting the request is not success. */
 export function isSettledPayment(outcome: string): boolean {
@@ -224,7 +224,7 @@ export async function kickDrawerForCashSale(
   takesCash: boolean,
   alreadyKicked: boolean,
   deps: {
-    load: () => Promise<{ drawer_kick: boolean; transport: "none" | "tcp" | "windows" }>;
+    load: () => Promise<{ drawer_kick: boolean; transport: "none" | "tcp" | "windows" | "serial" | "ble" }>;
     kick: () => Promise<void>;
   },
 ): Promise<boolean> {

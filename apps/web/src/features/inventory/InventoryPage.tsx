@@ -10,6 +10,7 @@ import { apiGet } from "../../lib/api";
 import { ProductImage } from "../../components/ui/ProductImage";
 import { useAuth } from "../../lib/auth";
 import { useCurrency } from "../../lib/currency";
+import { CatalogueWorkbookActions } from "../catalogue/CatalogueWorkbookActions";
 import { inventoryApi, labelsApi, message } from "./api";
 import { ProductDetailDrawer } from "./ProductDetailDrawer";
 import { ImportWizardModal } from "./import/ImportWizardModal";
@@ -308,6 +309,11 @@ export function InventoryPage() {
           </div>
           {manage && source === "live" ? (
             <div className="flex flex-wrap gap-2">
+              <CatalogueWorkbookActions
+                query={debouncedQuery}
+                onNotice={setNotice}
+                onChanged={() => reload()}
+              />
               <button
                 type="button"
                 onClick={() => setImporting(true)}

@@ -311,7 +311,7 @@ def _database_name(url: str) -> str:
     return make_url(url).database or url
 
 
-def migrate_all(_: argparse.Namespace, settings: Settings) -> None:
+def migrate_all(_: argparse.Namespace | None = None, settings: Settings | None = None) -> None:
     """Upgrade every live store database, then the shared database.
 
     Each database moves forward from its stamped revision only. A database already at head is
@@ -324,7 +324,11 @@ def migrate_all(_: argparse.Namespace, settings: Settings) -> None:
 
     Shared stores are catalogued after that shared database is upgraded. Taxonomy reads
     business_settings, which fails when a new column such as purchased_capabilities is still missing.
+
+    The API calls this before it listens, so a restart applies revisions that the running code already expects.
     """
+    if settings is None:
+        settings = get_settings()
     with registry.control_session(settings) as db:
         slugs = [row.slug for row in db.scalars(select(Tenant).order_by(Tenant.slug)).all()]
     seen: set[str] = set()

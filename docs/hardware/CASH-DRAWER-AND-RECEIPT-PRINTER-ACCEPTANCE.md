@@ -166,6 +166,12 @@ The status bar shows Printer and Drawer separately. Green means the queue is rea
 
 `cargo test --offline --lib printer` previously reported 22 passed, 0 failed, including classification and the live enumeration. `pnpm exec vitest run src/components/shell/deviceStatus.test.ts src/features/printing/printPolicy.test.ts src/features/settings/settingsRoutes.test.ts` previously reported 3 files, 10 tests, 0 failed. Those counts are from the pass before the dropdown. The counts in "Tests for this pass" are the ones run after the dropdown.
 
+## Toshiba blank receipt — 25-11-2026
+
+The software change is recorded in `docs/hardware/BLANK-RECEIPT-PRINTING-ROOT-CAUSE-AND-FIX.md`.
+
+`Toshiba POS Printer (CR)` was not installed on this PC during this pass. No test page was sent. No drawer pulse was sent. Physical receipt output is **not run**. The queue stays a candidate until a printed page shows visible text. Drawer kick stays off for that driver.
+
 ## Limitations
 
 - The printer-acceptance window was not activated, so the dropdown was not confirmed against the live spooler.
@@ -173,3 +179,7 @@ The status bar shows Printer and Drawer separately. Green means the queue is rea
 - The drawer cable and kick port were not verified. No pulse was sent.
 - The register cannot read whether the drawer is open or closed.
 - This build was not installed over a production or Laundry register.
+
+## Connection profiles — 25-11-2026
+
+Drawer kick stays off during discovery, preview, test receipt, and Save. Bluetooth Classic and Bluetooth Low Energy do not kick. A DC 12V/1A label, including MTP-3, is not treated as a verified drawer. Open/closed remains Not reported. See `docs/hardware/UNIVERSAL-PRINTER-CONNECTIVITY-ACCEPTANCE.md`.

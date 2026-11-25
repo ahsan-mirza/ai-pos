@@ -8,7 +8,7 @@ use serde_json::{json, Value};
 
 use crate::AppState;
 
-const PREFIXES: [&str; 30] = [
+const PREFIXES: [&str; 33] = [
     "/api/v1/gift-cards",
     "/api/v1/customers",
     "/api/v1/quotes",
@@ -24,6 +24,7 @@ const PREFIXES: [&str; 30] = [
     "/api/v1/rentals",
     "/api/v1/inventory",
     "/api/v1/products",
+    "/api/v1/catalogue/workbook",
     "/api/v1/categories",
     "/api/v1/brands",
     "/api/v1/product-models",
@@ -39,6 +40,8 @@ const PREFIXES: [&str; 30] = [
     "/api/v1/laundry",
     "/api/v1/terminals",
     "/api/v1/sales",
+    "/api/v1/expenses",
+    "/api/v1/settings",
 ];
 
 fn safe(path: &str) -> bool {
@@ -94,7 +97,11 @@ fn api_refusal(status: u16, value: &Value, header_id: &str) -> String {
         .filter(|item| !item.is_empty())
         .or_else(|| value["error"]["request_id"].as_str().filter(|item| !item.is_empty()))
         .unwrap_or(header_id);
-    failure_with(status, code, message, request_id)
+    let mut body = serde_json::from_str::<Value>(&failure_with(status, code, message, request_id)).unwrap_or(Value::Null);
+    if value["error"]["details"].is_object() {
+        body["details"] = value["error"]["details"].clone();
+    }
+    body.to_string()
 }
 
 fn header_request_id(headers: &reqwest::header::HeaderMap) -> String {
@@ -296,6 +303,167 @@ pub async fn retail_upload(
     .map_err(|err| failure(0, "offline", &err.to_string()))?
 }
 
+fn encode_base64(input: &[u8]) -> String {
+    const TABLE: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = String::with_capacity((input.len() + 2) / 3 * 4);
+    for chunk in input.chunks(3) {
+        let first = chunk[0] as u32;
+        let second = chunk.get(1).copied().unwrap_or(0) as u32;
+        let third = chunk.get(2).copied().unwrap_or(0) as u32;
+        let packed = (first << 16) | (second << 8) | third;
+        out.push(TABLE[((packed >> 18) & 63) as usize] as char);
+        out.push(TABLE[((packed >> 12) & 63) as usize] as char);
+        out.push(if chunk.len() > 1 { TABLE[((packed >> 6) & 63) as usize] as char } else { '=' });
+        out.push(if chunk.len() > 2 { TABLE[(packed & 63) as usize] as char } else { '=' });
+    }
+    out
+}
+
+fn attachment_name(headers: &reqwest::header::HeaderMap) -> String {
+    headers
+        .get(reqwest::header::CONTENT_DISPOSITION)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.split("filename=").nth(1))
+        .map(|value| value.trim().trim_matches('"').to_string())
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| "AxizPOS_Product_Menu.xlsx".to_string())
+}
+
+fn workbook_key(value: &str) -> bool {
+    let length = value.len();
+    (8..=128).contains(&length)
+        && value
+            .chars()
+            .all(|char| char.is_ascii_alphanumeric() || "._:-".contains(char))
+}
+
+/// Excel download and upload for the product workbook. A validation refusal still returns the report.
+#[tauri::command]
+pub async fn retail_workbook(
+    state: tauri::State<'_, AppState>,
+    method: String,
+    path: String,
+    filename: Option<String>,
+    content_base64: Option<String>,
+    fields: Option<std::collections::HashMap<String, String>>,
+    idempotency_key: Option<String>,
+) -> Result<Value, String> {
+    let session = state
+        .session()?
+        .ok_or_else(|| failure(401, "locked", "Unlock the register first."))?;
+    let user_token = state
+        .user_token
+        .lock()
+        .map_err(|err| err.to_string())?
+        .clone();
+    if session.mode == "offline" || user_token.is_none() {
+        return Err(failure(
+            0,
+            "offline",
+            "Import and export need a connection to the server. Nothing was changed.",
+        ));
+    }
+    if !safe(&path) || !path.starts_with("/api/v1/catalogue/workbook") {
+        return Err(failure(400, "invalid_path", "That workbook request is not allowed from the register."));
+    }
+    if method != "GET" && method != "POST" {
+        return Err(failure(400, "invalid_method", "Unsupported method."));
+    }
+    if let Some(key) = &idempotency_key {
+        if !workbook_key(key) {
+            return Err(failure(422, "invalid_request", "Idempotency-Key is invalid."));
+        }
+    }
+    let bytes = match content_base64 {
+        Some(encoded) if method == "POST" => {
+            if encoded.len() > 14_000_000 {
+                return Err(failure(413, "file_too_large", "The workbook is larger than 10 MB."));
+            }
+            let decoded = decode_base64(&encoded).map_err(|_| {
+                failure(400, "invalid_file", "The workbook could not be read.")
+            })?;
+            if decoded.len() > 10 * 1024 * 1024 {
+                return Err(failure(413, "file_too_large", "The workbook is larger than 10 MB."));
+            }
+            Some(decoded)
+        }
+        _ => None,
+    };
+    let config = state.config.clone();
+    let safe_name: String = filename
+        .unwrap_or_else(|| "workbook.xlsx".to_string())
+        .chars()
+        .map(|char| if char.is_ascii_alphanumeric() || ".-_".contains(char) { char } else { '-' })
+        .take(80)
+        .collect();
+    tauri::async_runtime::spawn_blocking(move || {
+        let client = reqwest::blocking::Client::builder()
+            .timeout(Duration::from_secs(60))
+            .build()
+            .map_err(|err| failure(0, "offline", &err.to_string()))?;
+        let url = format!("{}{}", config.api_base_url, path);
+        let request = if method == "GET" {
+            client.get(&url)
+        } else {
+            let mut form = reqwest::blocking::multipart::Form::new();
+            if let Some(payload) = bytes {
+                let name = if safe_name.is_empty() { "workbook.xlsx".to_string() } else { safe_name };
+                let part = reqwest::blocking::multipart::Part::bytes(payload)
+                    .file_name(name)
+                    .mime_str("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+                    .map_err(|_| failure(415, "unsupported_file", "Upload an .xlsx workbook."))?;
+                form = form.part("file", part);
+            }
+            if let Some(fields) = fields {
+                for key in ["mode", "job_id", "confirm"] {
+                    if let Some(value) = fields.get(key) {
+                        form = form.text(key, value.clone());
+                    }
+                }
+            }
+            client.post(&url).multipart(form)
+        };
+        let request = request.headers(config.auth_headers());
+        let request = match &user_token {
+            Some(token) => request.header("Authorization", format!("Bearer {token}")),
+            None => request,
+        };
+        let request = match idempotency_key {
+            Some(key) => request.header("Idempotency-Key", key),
+            None => request,
+        };
+        let response = request
+            .send()
+            .map_err(|err| failure(0, "offline", &format!("The server is unreachable: {err}")))?;
+        let status = response.status();
+        let header_id = header_request_id(response.headers());
+        let disposition = attachment_name(response.headers());
+        let spreadsheet = response
+            .headers()
+            .get(reqwest::header::CONTENT_TYPE)
+            .and_then(|value| value.to_str().ok())
+            .unwrap_or("")
+            .contains("spreadsheetml");
+        let payload = response
+            .bytes()
+            .map_err(|err| failure(0, "offline", &err.to_string()))?;
+        if spreadsheet && status.is_success() {
+            return Ok(json!({
+                "status": status.as_u16(),
+                "filename": disposition,
+                "content_base64": encode_base64(&payload),
+            }));
+        }
+        let value: Value = serde_json::from_slice(&payload).unwrap_or(Value::Null);
+        if status.is_success() || (status.as_u16() == 422 && value.get("job_id").is_some()) {
+            return Ok(json!({ "status": status.as_u16(), "body": value }));
+        }
+        Err(api_refusal(status.as_u16(), &value, &header_id))
+    })
+    .await
+    .map_err(|err| failure(0, "offline", &err.to_string()))?
+}
+
 #[cfg(test)]
 mod tests {
     use super::{api_refusal, laundry_blocked, safe};
@@ -313,7 +481,12 @@ mod tests {
         assert!(!safe("/api/v1/reordersx"));
         assert!(safe("/api/v1/inventory/stock?store_id=s-1&status=low"));
         assert!(safe("/api/v1/products"));
+        assert!(safe("/api/v1/catalogue/workbook/template"));
+        assert!(safe("/api/v1/catalogue/workbook/export?q=rice"));
+        assert!(!safe("/api/v1/catalogue/photos"));
         assert!(safe("/api/v1/sales?limit=50"));
+        assert!(safe("/api/v1/expenses?from=2026-11-01&to=2026-11-25"));
+        assert!(safe("/api/v1/expenses/petty-cash/top-up"));
         assert!(safe("/api/v1/sales/123e4567-e89b-12d3-a456-426614174000"));
         assert!(!safe("/api/v1/sales-orders"));
         assert!(safe(
@@ -332,6 +505,9 @@ mod tests {
         assert!(!safe("/api/v1/users/123"));
         assert!(!safe("/api/v1/users/me"));
         assert!(!safe("/api/v1/gift-cards/../users"));
+        assert!(safe("/api/v1/settings"));
+        assert!(safe("/api/v1/settings/identity"));
+        assert!(!safe("/api/v1/settingsx"));
         assert!(!safe("/api/v1/gift-cardsx"));
     }
 

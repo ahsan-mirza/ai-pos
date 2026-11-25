@@ -8,6 +8,7 @@ describe("settings routes", () => {
     expect(settingsSection("#/settings/receipts")).toBe("hardware");
     expect(settingsSection("#/settings/vat")).toBe("tax");
     expect(settingsSection("#/settings/laundry-floor")).toBe("laundry-workflows");
+    expect(settingsSection("#/settings/exports")).toBe("export");
     expect(settingsSection("#/settings/missing")).toBe("overview");
     expect(settingsSection("#/laundry/settings")).toBe("overview");
   });
@@ -18,6 +19,9 @@ describe("settings routes", () => {
     expect(grocery).not.toContain("staff");
     expect(grocery).toContain("currency");
     expect(grocery).toContain("hardware");
+    expect(grocery).not.toContain("export");
+    expect(visibleSettings("cafe", false, false).map((item) => item.id)).not.toContain("export");
+    expect(visibleSettings("cafe", false, true).map((item) => item.id)).toContain("export");
     const laundry = visibleSettings("laundry", true).map((item) => item.id);
     expect(laundry).toEqual(expect.arrayContaining(["currency", "laundry-services", "staff", "appearance"]));
   });

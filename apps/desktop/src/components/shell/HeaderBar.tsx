@@ -5,6 +5,7 @@ import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { OpenDrawerButton } from "../../features/audit/OpenDrawerButton";
 import { useCapabilities } from "../../lib/capabilities";
 import { useRegisterLayout } from "../RegisterLayout";
+import { ScreenToggle } from "./ScreenToggle";
 import { drawerButtonClass } from "./settingsEntry";
 import { useShell } from "./ShellContext";
 import type { SyncState } from "./syncState";
@@ -117,6 +118,7 @@ export function HeaderBar({
         ) : null}
         <LanguageSwitch compact />
         <ThemeToggle />
+        <ScreenToggle />
         <OpenDrawerButton className={drawerButtonClass} disabled={busy || drawerHeld} iconOnly />
         {actions ? (
           <div data-header-actions className="relative flex items-center">

@@ -168,6 +168,44 @@ struct RemoteSettings {
     country: Option<String>,
     #[serde(default)]
     location: Option<String>,
+    /// IANA zone used to display the saved instant. The stored instant stays UTC.
+    #[serde(default = "default_timezone")]
+    timezone: String,
+}
+
+fn default_timezone() -> String {
+    "Asia/Dubai".into()
+}
+
+fn revision_of(value: &Value) -> i64 {
+    value
+        .get("entitlement_revision")
+        .and_then(Value::as_i64)
+        .unwrap_or(0)
+}
+
+/// True when the copy already on this register is newer than the response just fetched.
+fn keep_stored_revision(stored_revision: i64, incoming_revision: i64) -> bool {
+    stored_revision > incoming_revision && stored_revision > 0
+}
+
+fn tax_document(body: &RemoteSettings) -> Value {
+    serde_json::json!({
+        "enforced": body.vat_registered,
+        "prices_include_vat": body.prices_include_vat,
+        "standard_rate_bps": body.standard_rate_bps,
+        "trn": body.trn,
+        "legal_name": body.legal_name,
+        "legal_name_ar": body.legal_name_ar,
+        "tax_authority": body.tax_authority.clone().unwrap_or_else(|| "fta".into()),
+        "tax_configuration_required": body.tax_configuration_required,
+        "updated_at": body.updated_at,
+        "updated_by_name": body.updated_by_name,
+        "country": body.country,
+        "location": body.location,
+        "timezone": body.timezone,
+        "entitlement_revision": body.entitlement_revision,
+    })
 }
 
 fn standard_rate() -> i64 {
@@ -255,14 +293,30 @@ pub fn refresh(db: &Db, config: &DesktopConfig) -> Result<CurrencySnapshot, Stri
                             .and_then(Value::as_i64)
                             .unwrap_or(0);
                         if stored_tenant == config.tenant_slug
-                            && stored_revision > incoming_revision
-                            && stored_revision > 0
+                            && keep_stored_revision(stored_revision, incoming_revision)
                         {
                             profile = stored;
                         }
                     }
                 }
             }
+            let tax = {
+                let stored = cached(db)?.and_then(|(_, raw, _, _)| parse(raw.as_deref()));
+                let stored_profile = cached(db)?.and_then(|(_, _, raw, _)| parse(raw.as_deref()));
+                let stored_tenant = stored_profile.as_ref().map(profile_tenant).unwrap_or_default();
+                if let Some(stored) = stored {
+                    if !config.tenant_slug.is_empty()
+                        && stored_tenant == config.tenant_slug
+                        && keep_stored_revision(revision_of(&stored), revision_of(&tax))
+                    {
+                        stored
+                    } else {
+                        tax
+                    }
+                } else {
+                    tax
+                }
+            };
             let tax_json = tax.to_string();
             let profile_json = if accept_profile {
                 profile.as_ref().map(Value::to_string)
@@ -354,20 +408,7 @@ fn fetch(config: &DesktopConfig, pending: Option<i64>) -> Result<(String, Value,
     if code.len() != 3 || !code.chars().all(|c| c.is_ascii_uppercase()) {
         return Err("The API returned an invalid currency code.".into());
     }
-    let tax = serde_json::json!({
-        "enforced": body.vat_registered,
-        "prices_include_vat": body.prices_include_vat,
-        "standard_rate_bps": body.standard_rate_bps,
-        "trn": body.trn,
-        "legal_name": body.legal_name,
-        "legal_name_ar": body.legal_name_ar,
-        "tax_authority": body.tax_authority.unwrap_or_else(|| "fta".into()),
-        "tax_configuration_required": body.tax_configuration_required,
-        "updated_at": body.updated_at,
-        "updated_by_name": body.updated_by_name,
-        "country": body.country,
-        "location": body.location,
-    });
+    let tax = tax_document(&body);
     let profile = body.capabilities.as_ref().map(|capabilities| {
         serde_json::json!({
             "tenant_id": body.store_code,
@@ -383,4 +424,57 @@ fn fetch(config: &DesktopConfig, pending: Option<i64>) -> Result<(String, Value,
         })
     });
     Ok((code, tax, profile))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn decoded(body: serde_json::Value) -> RemoteSettings {
+        serde_json::from_value(body).unwrap()
+    }
+
+    #[test]
+    fn tax_document_keeps_the_saved_timestamp_actor_country_and_location() {
+        let tax = tax_document(&decoded(serde_json::json!({
+            "currency": "AED",
+            "updated_at": "2026-11-22T20:15:00Z",
+            "updated_by_name": "Portion Owner",
+            "country": "AE",
+            "location": "Deira",
+            "timezone": "Asia/Dubai",
+            "entitlement_revision": 11,
+            "legal_name": "Portion Trading",
+        })));
+        assert_eq!(tax["updated_at"], "2026-11-22T20:15:00Z");
+        assert_eq!(tax["updated_by_name"], "Portion Owner");
+        assert_eq!(tax["country"], "AE");
+        assert_eq!(tax["location"], "Deira");
+        assert_eq!(tax["timezone"], "Asia/Dubai");
+        assert_eq!(tax["entitlement_revision"], 11);
+        assert_eq!(tax["legal_name"], "Portion Trading");
+    }
+
+    #[test]
+    fn a_missing_timestamp_stays_null_and_an_invalid_one_is_not_replaced() {
+        let missing = tax_document(&decoded(serde_json::json!({ "currency": "USD" })));
+        assert!(missing["updated_at"].is_null());
+        assert!(missing["updated_by_name"].is_null());
+        assert!(missing["country"].is_null());
+        assert!(missing["location"].is_null());
+        assert_eq!(missing["timezone"], "Asia/Dubai");
+        let invalid = tax_document(&decoded(serde_json::json!({
+            "currency": "USD",
+            "updated_at": "not-a-time",
+        })));
+        assert_eq!(invalid["updated_at"], "not-a-time");
+    }
+
+    #[test]
+    fn an_older_snapshot_does_not_replace_a_newer_revision() {
+        assert!(keep_stored_revision(11, 10));
+        assert!(!keep_stored_revision(10, 11));
+        assert!(!keep_stored_revision(10, 10));
+        assert!(!keep_stored_revision(0, 0));
+    }
 }

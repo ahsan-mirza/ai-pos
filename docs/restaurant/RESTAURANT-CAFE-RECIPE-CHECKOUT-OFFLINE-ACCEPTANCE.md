@@ -29,12 +29,14 @@ Opening stock movement `8c09f21ceaeb4942a87042723b59c8e5` is still the Channa `A
 | 4 | Recipe-managed consumption | PASSED |
 | 5 | Ingredient shortfall | PASSED |
 | 6 | Cashier permissions and legacy skip permission | PASSED WITH LIMITATIONS |
-| 7 | Takeaway | IN PROGRESS |
-| 8 | Delivery | NOT RUN |
+| 7 | Takeaway | PASSED WITH LIMITATIONS |
+| 8 | Delivery | PASSED WITH LIMITATIONS |
 | 9 | Direct checkout | PASSED |
 | 10 | Restart persistence | PASSED WITH LIMITATIONS |
 | 11 | Offline replay | NOT RUN |
 | 12 | Cafe native acceptance | NOT RUN |
+
+Takeaway, delivery, and the 25-11-2026 reopen are in `RESTAURANT-TAKEAWAY-DELIVERY-OFFLINE-ACCEPTANCE.md`.
 
 The combined Restaurant/Cafe workflow stays **IN PROGRESS**.
 

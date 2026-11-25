@@ -5,12 +5,13 @@ import { ConfirmProvider } from "./components/ConfirmDialog";
 import { useRegisterLayout, type CatalogDensity } from "./components/RegisterLayout";
 import { RegisterErrorBoundary } from "./components/RegisterErrorBoundary";
 import { RegisterShell } from "./components/shell/RegisterShell";
+import { FullscreenHotkey } from "./components/shell/ScreenToggle";
 import type { RegisterView } from "./components/shell/ShellContext";
 import { isSettingsHash } from "./components/shell/settingsEntry";
 import { needsActivation, terminal } from "./config/terminal";
 import { ActivationScreen } from "./features/activation/ActivationScreen";
 import { PinUnlock } from "./features/auth/PinUnlock";
-import { acceptStoredSession, lock, restore, type CashierSession } from "./features/auth/session";
+import { acceptStoredSession, browserCashier, currentAccessToken, lock, restore, type CashierSession } from "./features/auth/session";
 import { clearCataloguePreferenceMemory } from "./features/checkout/cataloguePreference";
 import { CheckoutPage } from "./features/checkout/CheckoutPage";
 import { InventoryPage } from "./features/inventory/InventoryPage";
@@ -20,9 +21,9 @@ import { OrdersPage } from "./features/orders/OrdersPage";
 import { LaundryWorkspace } from "./features/laundry/LaundryWorkspace";
 import { RepairsPage } from "./features/repairs/RepairsPage";
 import { ReordersPage } from "./features/reorders/ReordersPage";
+import { ExpensesPage } from "./features/expenses/ExpensesPage";
 import { BillHistoryPage } from "./features/restaurant/BillHistoryPage";
 import { CustomerCreditPage } from "./features/restaurant/CustomerCreditPage";
-import { ExportDataPage } from "./features/restaurant/ExportDataPage";
 import { ReturnsPage } from "./features/returns/ReturnsPage";
 import { SettingsPage } from "./features/settings/SettingsPage";
 import { OpenShiftScreen } from "./features/shifts/OpenShiftScreen";
@@ -32,6 +33,7 @@ import { UpdatePrompt } from "./features/updates/UpdatePrompt";
 import { VirtualKeyboardProvider } from "./hooks/useVirtualKeyboard";
 import { env } from "./config/env";
 import { CatalogSkeleton } from "./features/checkout/CatalogSkeleton";
+import { syncBusinessCurrency } from "./features/checkout/currency";
 import { inTauri, openDemoSession, takeDemoNotice } from "./lib/tauri";
 
 const customerDisplay = new URLSearchParams(window.location.search).get("display") === "1";
@@ -69,13 +71,20 @@ function DemoWait({ message }: { message: string | null }) {
 }
 
 export function App() {
-  if (customerDisplay) return <CustomerDisplay />;
-  return <RegisterApp />;
+  return (
+    <>
+      <FullscreenHotkey />
+      {customerDisplay ? <CustomerDisplay /> : <RegisterApp />}
+    </>
+  );
 }
 
 function rememberedCashier(): CashierSession | null {
   if (inTauri() || typeof localStorage === "undefined") return null;
-  return acceptStoredSession(localStorage.getItem("axiz.pos.cashier"), Math.floor(Date.now() / 1000), env.storeId);
+  return browserCashier(
+    acceptStoredSession(localStorage.getItem("axiz.pos.cashier"), Math.floor(Date.now() / 1000), env.storeId),
+    currentAccessToken(),
+  );
 }
 
 function RegisterApp() {
@@ -99,8 +108,9 @@ function RegisterApp() {
     if (view === "orders" && !foodAndBeverage) setView("checkout");
     const reports = session?.user.permissions.includes(Permission.PortalReportsRead) === true;
     const customers = session?.user.permissions.includes(Permission.CustomersManage) === true;
-    if ((view === "bills" || view === "exports") && (!foodAndBeverage || !reports)) setView("checkout");
+    if (view === "bills" && (!foodAndBeverage || !reports)) setView("checkout");
     if (view === "customers" && (!foodAndBeverage || !customers)) setView("checkout");
+    if (view === "expenses" && session?.user.permissions.includes(Permission.ExpensesManage) !== true) setView("checkout");
     if (view === "repairs" && !enabled.has(Capability.Repairs)) setView("checkout");
     if (view === "reorders" && !enabled.has(Capability.CustomerReorders)) setView("checkout");
     if (view === "inventory" && session && !canOpenInventory(profile, enabled, session.user.permissions)) setView("checkout");
@@ -150,6 +160,19 @@ function RegisterApp() {
   }, []);
 
   useEffect(() => {
+    if (session === null || session.mode === "offline") return;
+    const timer = window.setInterval(() => {
+      void syncBusinessCurrency();
+    }, 20_000);
+    return () => window.clearInterval(timer);
+  }, [session]);
+
+  useEffect(() => {
+    if (inTauri() || session === null || currentAccessToken() !== null) return;
+    void lock().finally(() => setSession(null));
+  }, [session]);
+
+  useEffect(() => {
     if (session !== null) void reloadShift();
     const syncedAt = session?.user.addon_synced_at;
     applySignedInAddons(session === null ? null : (session.user.addon_modules ?? []), {
@@ -179,7 +202,7 @@ function RegisterApp() {
     screen = (
       <ConfirmProvider>
         <VirtualKeyboardProvider>
-          <RegisterShell session={session} view={view} onNavigate={setView} onLock={onLock}>
+          <RegisterShell session={session} view={view} onNavigate={setView} onLock={onLock} onSession={setSession}>
             <BootCatalog density={density} framed />
           </RegisterShell>
         </VirtualKeyboardProvider>
@@ -191,7 +214,7 @@ function RegisterApp() {
     screen = (
       <ConfirmProvider>
         <VirtualKeyboardProvider>
-        <RegisterShell session={session} view={view} onNavigate={setView} onLock={onLock}>
+        <RegisterShell session={session} view={view} onNavigate={setView} onLock={onLock} onSession={setSession}>
           {view === "inventory" ? <InventoryPage session={session} /> : null}
           {!laundryBusiness && (view === "checkout" || view === "inventory") ? (
             <div className={view === "checkout" ? "contents" : "hidden"} inert={view === "inventory" ? true : undefined}>
@@ -208,8 +231,8 @@ function RegisterApp() {
             <BillHistoryPage />
           ) : view === "customers" ? (
             <CustomerCreditPage />
-          ) : view === "exports" ? (
-            <ExportDataPage storeId={session.user.store_id} canCustomers={session.user.permissions.includes(Permission.CustomersManage)} />
+          ) : view === "expenses" ? (
+            <ExpensesPage session={session} />
           ) : view === "repairs" ? (
             <RepairsPage session={session} />
           ) : view === "laundry" || (laundryBusiness && view === "checkout") ? (

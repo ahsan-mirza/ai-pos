@@ -6,11 +6,12 @@ import uuid
 from collections import defaultdict
 from datetime import UTC, date, datetime
 
-from sqlalchemy import select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.core.deps import Principal
 from app.core.errors import ApiError
+from app.models.batch import Supplier
 from app.models.expense import Expense, PettyCashEntry
 from app.models.store import Store
 from app.models.user import User
@@ -19,11 +20,13 @@ from app.schemas.expenses import (
     ExpenseCreate,
     ExpenseList,
     ExpenseOut,
+    ExpenseSupplier,
     PettyCashCount,
     PettyCashEntryOut,
     PettyCashOut,
     PettyCashTopUp,
 )
+from app.services import expense_bills, expense_catalog
 from app.services.numbering import next_server_number
 from app.services.settings_service import business_currency, cached_settings
 from app.services.tax import div_half_up
@@ -50,16 +53,68 @@ def _names(db: Session, ids: set[uuid.UUID | None]) -> dict[uuid.UUID, str]:
     return {row.id: row.full_name for row in db.scalars(select(User).where(User.id.in_(wanted))).unique()}
 
 
-def _out(expense: Expense, stores: dict[uuid.UUID, str], names: dict[uuid.UUID, str], registered: bool) -> ExpenseOut:
+def _supplier_labels(db: Session, ids: set[uuid.UUID | None]) -> dict[uuid.UUID, tuple[str, str]]:
+    wanted = {item for item in ids if item}
+    if not wanted:
+        return {}
+    return {row.id: (row.name, row.code) for row in db.scalars(select(Supplier).where(Supplier.id.in_(wanted)))}
+
+
+def _chosen_supplier(db: Session, supplier_id: uuid.UUID | None) -> Supplier | None:
+    if supplier_id is None:
+        return None
+    supplier = db.get(Supplier, supplier_id)
+    if supplier is None:
+        raise ApiError(422, "supplier_invalid", "Select a valid supplier or clear the supplier selection.")
+    if not supplier.is_active:
+        raise ApiError(422, "supplier_inactive", "That supplier is inactive. Choose another supplier.")
+    return supplier
+
+
+def search_suppliers(db: Session, query: str | None) -> list[ExpenseSupplier]:
+    statement = select(Supplier).where(Supplier.is_active.is_(True)).order_by(Supplier.name).limit(50)
+    text = (query or "").strip().lower()
+    if text:
+        like = f"%{text}%"
+        statement = statement.where(
+            or_(
+                func.lower(Supplier.name).like(like),
+                func.lower(Supplier.code).like(like),
+                func.lower(func.coalesce(Supplier.phone, "")).like(like),
+                func.lower(func.coalesce(Supplier.trn, "")).like(like),
+            )
+        )
+    return [
+        ExpenseSupplier(id=row.id, name=row.name, code=row.code, phone=row.phone, trn=row.trn, is_active=row.is_active)
+        for row in db.scalars(statement)
+    ]
+
+
+def _out(
+    expense: Expense,
+    stores: dict[uuid.UUID, str],
+    names: dict[uuid.UUID, str],
+    registered: bool,
+    suppliers: dict[uuid.UUID, tuple[str, str]],
+    categories: dict[uuid.UUID, str],
+    bills: set[uuid.UUID],
+) -> ExpenseOut:
+    supplier_name, supplier_code = suppliers.get(expense.supplier_id, ("", "")) if expense.supplier_id else ("", "")
+    category_name = categories.get(expense.category_id, "") if expense.category_id else ""
     return ExpenseOut(
         id=expense.id,
         number=expense.number,
         store_id=expense.store_id,
         store_code=stores.get(expense.store_id, ""),
-        category=expense.category,  # type: ignore[arg-type]
+        category=expense.category,
+        category_id=expense.category_id,
+        category_name=category_name or expense_catalog.LABELS.get(expense.category, expense.category),
         description=expense.description,
         payee=expense.payee,
         payee_trn=expense.payee_trn,
+        supplier_id=expense.supplier_id,
+        supplier_name=supplier_name,
+        supplier_code=supplier_code,
         spent_on=expense.spent_on,
         net_cents=expense.net_cents,
         tax_cents=expense.tax_cents,
@@ -67,6 +122,7 @@ def _out(expense: Expense, stores: dict[uuid.UUID, str], names: dict[uuid.UUID, 
         total_cents=expense.total_cents,
         currency=expense.currency,
         has_tax_invoice=expense.has_tax_invoice,
+        has_bill=expense.id in bills,
         paid_from=expense.paid_from,  # type: ignore[arg-type]
         reference=expense.reference,
         status=expense.status,  # type: ignore[arg-type]
@@ -95,6 +151,20 @@ def _petty(db: Session, store_id: uuid.UUID, kind: str, amount: int, **extra) ->
 
 def record(db: Session, principal: Principal, data: ExpenseCreate) -> ExpenseOut:
     _scope(principal, data.store_id)
+    if data.client_key:
+        existing = db.scalar(select(Expense).where(Expense.client_key == data.client_key))
+        if existing is not None:
+            _scope(principal, existing.store_id)
+            store = db.get(Store, existing.store_id)
+            return _out(
+                existing,
+                {existing.store_id: store.code if store else ""},
+                _names(db, {existing.created_by_id}),
+                cached_settings(db).vat_registered,
+                _supplier_labels(db, {existing.supplier_id}),
+                expense_catalog.names_for(db, {existing.category_id}),
+                expense_bills.bill_ids(db, {existing.id}),
+            )
     store = db.get(Store, data.store_id)
     if store is None:
         raise ApiError(404, "not_found", "Store was not found.")
@@ -103,7 +173,11 @@ def record(db: Session, principal: Principal, data: ExpenseCreate) -> ExpenseOut
     else:
         rate = tax_policy_for(db).rate_for(data.tax_category)
         tax = div_half_up(data.total_cents * rate, 10_000 + rate)
-    if data.has_tax_invoice and tax and not data.payee_trn:
+    category = expense_catalog.resolve(db, category_id=data.category_id, code=data.category)
+    supplier = _chosen_supplier(db, data.supplier_id)
+    payee = data.payee.strip() or (supplier.name if supplier is not None else "")
+    payee_trn = data.payee_trn or (supplier.trn if supplier is not None and supplier.trn else None)
+    if data.has_tax_invoice and tax and not payee_trn:
         raise ApiError(422, "trn_required", "A tax invoice shows the supplier's TRN; enter it to recover the VAT.")
     if data.paid_from == "PETTY_CASH":
         balance = _petty_balance(db, store.id)
@@ -114,10 +188,12 @@ def record(db: Session, principal: Principal, data: ExpenseCreate) -> ExpenseOut
     expense = Expense(
         number=next_server_number(db, store.id, "EXP"),
         store_id=store.id,
-        category=data.category,
+        category=category.code,
+        category_id=category.id,
         description=data.description.strip(),
-        payee=data.payee.strip(),
-        payee_trn=data.payee_trn,
+        payee=payee,
+        payee_trn=payee_trn,
+        supplier_id=supplier.id if supplier is not None else None,
         spent_on=data.spent_on,
         net_cents=data.total_cents - tax,
         tax_cents=tax,
@@ -126,23 +202,38 @@ def record(db: Session, principal: Principal, data: ExpenseCreate) -> ExpenseOut
         has_tax_invoice=data.has_tax_invoice,
         paid_from=data.paid_from,
         reference=data.reference.strip(),
+        client_key=data.client_key,
         created_by_id=_user_id(principal),
     )
     db.add(expense)
-    db.flush()
-    if data.paid_from == "PETTY_CASH":
-        _petty(
-            db,
-            store.id,
-            "EXPENSE",
-            -data.total_cents,
-            expense_id=expense.id,
-            note=expense.description[:255],
-            user_id=_user_id(principal),
-        )
-    db.commit()
+    bill_path = None
+    try:
+        db.flush()
+        if data.paid_from == "PETTY_CASH":
+            _petty(
+                db,
+                store.id,
+                "EXPENSE",
+                -data.total_cents,
+                expense_id=expense.id,
+                note=expense.description[:255],
+                user_id=_user_id(principal),
+            )
+        if data.bill is not None:
+            bill_path = expense_bills.store(db, expense, data.bill, _user_id(principal))
+        db.commit()
+    except Exception:
+        db.rollback()
+        expense_bills.discard(bill_path)
+        raise
     return _out(
-        expense, {store.id: store.code}, _names(db, {expense.created_by_id}), cached_settings(db).vat_registered
+        expense,
+        {store.id: store.code},
+        _names(db, {expense.created_by_id}),
+        cached_settings(db).vat_registered,
+        _supplier_labels(db, {expense.supplier_id}),
+        expense_catalog.names_for(db, {expense.category_id}),
+        expense_bills.bill_ids(db, {expense.id}),
     )
 
 
@@ -173,6 +264,9 @@ def void(db: Session, principal: Principal, expense_id: uuid.UUID, reason: str) 
         {expense.store_id: store.code if store else ""},
         _names(db, {expense.created_by_id}),
         cached_settings(db).vat_registered,
+        _supplier_labels(db, {expense.supplier_id}),
+        expense_catalog.names_for(db, {expense.category_id}),
+        expense_bills.bill_ids(db, {expense.id}),
     )
 
 
@@ -184,6 +278,7 @@ def list_expenses(
     end: date,
     store_id: uuid.UUID | None,
     category: str | None,
+    supplier_id: uuid.UUID | None = None,
 ) -> ExpenseList:
     query = (
         select(Expense)
@@ -195,24 +290,45 @@ def list_expenses(
         query = query.where(Expense.store_id == scope)
     if category is not None:
         query = query.where(Expense.category == category)
+    if supplier_id is not None:
+        query = query.where(Expense.supplier_id == supplier_id)
+    expense_catalog.ensure_categories(db)
     rows = list(db.scalars(query.limit(1000)))
     stores = {row.id: row.code for row in db.scalars(select(Store))}
     names = _names(db, {row.created_by_id for row in rows})
+    suppliers = _supplier_labels(db, {row.supplier_id for row in rows})
+    categories = expense_catalog.names_for(db, {row.category_id for row in rows})
+    bills = expense_bills.bill_ids(db, {row.id for row in rows})
     registered = cached_settings(db).vat_registered
     live = [row for row in rows if row.status != "VOID"]
     totals: dict[str, list[int]] = defaultdict(lambda: [0, 0])
+    labels: dict[str, str] = {}
     for row in live:
         totals[row.category][0] += row.total_cents
         totals[row.category][1] += 1
+        labels[row.category] = categories.get(row.category_id, "") if row.category_id else ""
+        if not labels[row.category]:
+            labels[row.category] = expense_catalog.LABELS.get(row.category, row.category)
     return ExpenseList(
-        items=[_out(row, stores, names, registered) for row in rows],
+        items=[_out(row, stores, names, registered, suppliers, categories, bills) for row in rows],
         total_cents=sum(row.total_cents for row in live),
         recoverable_tax_cents=sum(recoverable_tax(row, registered) for row in live),
         by_category=sorted(
-            (CategoryTotal(category=key, total_cents=value[0], count=value[1]) for key, value in totals.items()),  # type: ignore[arg-type]
+            (
+                CategoryTotal(category=key, category_name=labels.get(key, key), total_cents=value[0], count=value[1])
+                for key, value in totals.items()
+            ),
             key=lambda row: -row.total_cents,
         ),
     )
+
+
+def get_expense(db: Session, principal: Principal, expense_id: uuid.UUID) -> Expense:
+    expense = db.get(Expense, expense_id)
+    if expense is None:
+        raise ApiError(404, "not_found", "Expense was not found.")
+    _scope(principal, expense.store_id)
+    return expense
 
 
 def petty_cash(db: Session, principal: Principal, store_id: uuid.UUID) -> PettyCashOut:

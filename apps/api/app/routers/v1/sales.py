@@ -6,14 +6,16 @@ from sqlalchemy.orm import Session
 
 from app.core.config import Settings, get_settings
 from app.core.database import get_db
-from app.core.deps import Principal, authorize
+from app.core.deps import REGISTER_SCOPES, Principal, authorize
 from app.core.permissions import Permission
 from app.schemas.payloads import SaleOut
 from app.services import catalog_service, invoice_pdf
 
 router = APIRouter()
 
-CanRead = Annotated[Principal, Depends(authorize(Permission.PORTAL_REPORTS_READ, allow_device=True))]
+CanRead = Annotated[
+    Principal, Depends(authorize(Permission.PORTAL_REPORTS_READ, allow_device=True, scopes=REGISTER_SCOPES))
+]
 
 
 @router.get("", response_model=list[SaleOut])

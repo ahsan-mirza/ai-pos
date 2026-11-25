@@ -114,7 +114,7 @@ def create_app() -> FastAPI:
         allow_credentials=False,
         allow_methods=["*"],
         allow_headers=["*"],
-        expose_headers=[TOTAL_COUNT_HEADER, "X-Request-Id"],
+        expose_headers=[TOTAL_COUNT_HEADER, "X-Request-Id", "Content-Disposition"],
     )
 
     @app.middleware("http")

@@ -70,7 +70,22 @@ def _apply(table: str, store: str | None = None, device: str | None = None) -> N
     op.execute(sa.text(f'CREATE POLICY tenant_isolation ON "{table}" {_predicate(table, store, device)}'))
 
 
+def _ensure_feed_counter() -> None:
+    """0125 gained this table after some databases had already stamped that revision."""
+    if "catalog_feed_counters" in sa.inspect(op.get_bind()).get_table_names():
+        return
+    op.create_table(
+        "catalog_feed_counters",
+        sa.Column("id", sa.Uuid(), primary_key=True),
+        sa.Column("tenant_id", sa.Uuid(), nullable=False),
+        sa.Column("value", sa.Integer(), nullable=False),
+        sa.Column("retain_after", sa.Integer(), nullable=False),
+        sa.UniqueConstraint("tenant_id"),
+    )
+
+
 def upgrade() -> None:
+    _ensure_feed_counter()
     if not _postgres():
         return
     for table in TENANT:

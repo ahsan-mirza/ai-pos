@@ -19,6 +19,8 @@ export interface SettingsRoute {
   profiles?: string[];
   /** Shown only when this register can edit staff. */
   staff?: boolean;
+  /** Shown only when this sign-in can read reports. */
+  reports?: boolean;
 }
 
 const RAIL_KEY = "ai-pos.pos-settings-rail";
@@ -44,12 +46,13 @@ export function storeSettingsRail(collapsed: boolean): void {
 
 export const SETTINGS_ROUTES: readonly SettingsRoute[] = [
   { id: "overview", label: "Settings overview", short: "Overview", description: "Business operations and this register.", group: "business", scope: "business", managed: false, keywords: ["home"] },
-  { id: "business-profile", label: "Business profile", short: "Business", description: "Legal name, address, business type, and branding.", group: "business", scope: "business", managed: true, keywords: ["legal", "address", "logo", "hours", "contact"] },
+  { id: "business-profile", label: "Business profile", short: "Business", description: "Legal name, country, and location. Business type stays with the platform.", group: "business", scope: "business", managed: false, keywords: ["legal", "address", "logo", "hours", "contact"] },
   { id: "currency", label: "Finance and currency", short: "Finance", description: "Business currency, exchange rates, and conversion estimates.", group: "business", scope: "business", managed: false, keywords: ["exchange", "rate", "money", "decimal"] },
   { id: "tax", label: "Tax and invoicing", short: "Tax & invoices", description: "VAT registration, tax-inclusive prices, and invoice identity.", group: "business", scope: "branch", managed: true, keywords: ["vat", "trn", "invoice", "branch tax"] },
   { id: "sales", label: "Sales and POS rules", short: "Sales rules", description: "Till rules, returns, and discounts.", group: "business", scope: "business", managed: true, keywords: ["till", "refund", "discount", "checkout"] },
   { id: "catalogue", label: "Products and inventory", short: "Products", description: "Catalogue, units, stock rules, and profile-specific items.", group: "business", scope: "business", managed: true, keywords: ["sku", "barcode", "expiry", "fefo", "weighed", "garment"] },
   { id: "customers", label: "Customers and loyalty", short: "Customers", description: "Customer rules and loyalty, when this business uses them.", group: "business", scope: "business", managed: true, keywords: ["loyalty", "points", "credit"] },
+  { id: "export", label: "Export data", short: "Export", description: "Download the latest sales and customer lists this sign-in may see.", group: "business", scope: "branch", managed: false, reports: true, profiles: ["restaurant", "cafe", "quick_service"], keywords: ["download", "json", "bills", "backup"] },
   { id: "staff", label: "Staff and permissions", short: "Staff & access", description: "Staff on this register and the roles they can be granted.", group: "business", scope: "branch", managed: false, staff: true, keywords: ["pin", "role", "cashier"] },
   { id: "modules", label: "Modules and add-ons", short: "Modules", description: "Modules this business has turned on.", group: "business", scope: "business", managed: true, keywords: ["addon", "subscription", "entitlement"] },
   { id: "workflows", label: "Workflows and operations", short: "Workflows", description: "Operating rules. Laundry production lives in its own pages.", group: "business", scope: "business", managed: true, keywords: ["approval", "workflow"] },
@@ -88,6 +91,7 @@ const ALIASES: Record<string, string> = {
   downloads: "updates",
   currencies: "currency",
   "laundry-floor": "laundry-workflows",
+  exports: "export",
 };
 
 const KNOWN = new Set(SETTINGS_ROUTES.map((item) => item.id));
@@ -106,10 +110,11 @@ export function settingsLocation(id: string): string {
   return `#/settings/${KNOWN.has(id) ? id : "overview"}`;
 }
 
-export function visibleSettings(profile: string, staff: boolean): SettingsRoute[] {
+export function visibleSettings(profile: string, staff: boolean, reports = false): SettingsRoute[] {
   return SETTINGS_ROUTES.filter((item) => {
     if (item.profiles && !item.profiles.includes(profile)) return false;
     if (item.staff && !staff) return false;
+    if (item.reports && !reports) return false;
     return true;
   });
 }

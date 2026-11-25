@@ -221,6 +221,7 @@ export {
   DEFAULT_MODULE_SETTINGS,
   SUPPORTED_CURRENCIES,
   acceptBusinessSettings,
+  businessIdentityError,
   isSupportedCurrency,
 } from "./settings.js";
 export {
@@ -514,7 +515,17 @@ export type {
   TradeInPayout,
 } from "./tradeIns.js";
 export { EXPENSE_CATEGORY_LABELS } from "./expenses.js";
-export type { Expense, ExpenseCategory, ExpenseList, ExpensePaidFrom, PettyCash, PettyCashEntry } from "./expenses.js";
+export type {
+  Expense,
+  ExpenseBill,
+  ExpenseCategory,
+  ExpenseCategoryOption,
+  ExpenseList,
+  ExpensePaidFrom,
+  ExpenseSupplier,
+  PettyCash,
+  PettyCashEntry,
+} from "./expenses.js";
 export { STOCK_COUNT_STATUS_LABELS } from "./stockCounts.js";
 export type {
   StockCount,

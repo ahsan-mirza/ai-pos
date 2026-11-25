@@ -26,6 +26,7 @@ from app.schemas.pos_policy import PosPolicy, resolve_pos_policy
 from app.schemas.receipt import ReceiptProfileOut, ReceiptSettings, ReceiptStore, resolve_receipt_settings
 from app.schemas.settings import (
     AppearanceUpdate,
+    BusinessIdentityUpdate,
     BusinessSettingsOut,
     ProfileUpdate,
     ReportingTimezoneUpdate,
@@ -753,6 +754,58 @@ TAX_FIELDS = (
     "country",
     "location",
 )
+
+
+IDENTITY_FIELDS = ("legal_name", "legal_name_ar", "country", "location")
+
+
+def change_identity(db: Session, actor: User, data: BusinessIdentityUpdate, *, client_device: str) -> BusinessSettingsOut:
+    """Writes the tenant identity on the one business_settings row.
+
+    The same payload is idempotent and does not bump the revision. A different payload must name the
+    revision the caller read. Country is stored as identity only; it does not retune VAT.
+    """
+    row = load_settings(db, lock=True)
+    after = {name: getattr(data, name) for name in IDENTITY_FIELDS}
+    before = {name: getattr(row, name) for name in IDENTITY_FIELDS}
+    if before == after:
+        return settings_out(row)
+    current = int(row.cache_generation or 1)
+    if data.expected_revision != current:
+        updated_at = row.updated_at.isoformat() if row.updated_at is not None else None
+        actor_name = row.updated_by.full_name if row.updated_by is not None else None
+        raise ApiError(
+            409,
+            "stale_settings",
+            "These business settings were changed by someone else. Reload them and save again.",
+            details={
+                "entitlement_revision": current,
+                "legal_name": row.legal_name,
+                "legal_name_ar": row.legal_name_ar,
+                "country": row.country,
+                "location": row.location,
+                "updated_at": updated_at,
+                "updated_by_name": actor_name,
+            },
+        )
+    for name, value in after.items():
+        setattr(row, name, value)
+    row.updated_by_id = actor.id
+    audit.record(
+        db,
+        action_type="UPDATE",
+        action="settings.identity",
+        target_entity="Settings",
+        target_entity_id=row.id,
+        user=actor,
+        old_values=before,
+        new_values=after,
+        details={"source": "pos" if client_device == "desktop" else "business_pro"},
+        client_device=client_device,
+    )
+    db.commit()
+    db.refresh(row)
+    return settings_out(row)
 
 
 def change_tax(db: Session, actor: User, data: TaxSettingsUpdate) -> BusinessSettingsOut:

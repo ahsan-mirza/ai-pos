@@ -89,7 +89,7 @@ export function AppearancePanel({ cashier, part, canConfigure = false }: { cashi
         </div>
       </SettingsSectionCard>
       </> : null}
-      {part === "hardware" ? <ReceiptHardwareCard sample={sampleReceipt(cashier)} refreshToken={hardwareTick} onChangePrinter={() => setPrinter(true)} /> : null}
+      {part === "hardware" ? <ReceiptHardwareCard sample={sampleReceipt(cashier)} refreshToken={hardwareTick} canConfigure={canConfigure} onChangePrinter={() => setPrinter(true)} /> : null}
       {part === "hardware" && capabilities.enabled.has(Capability.WeighedItems) ? <ScaleSettingsCard /> : null}
       {notice ? <p role="status" className="rounded-xl bg-white px-4 py-3 text-sm">{notice}</p> : null}
       {printer ? <PrinterSettingsModal sample={sampleReceipt(cashier)} canSave={canConfigure} onClose={() => { setPrinter(false); setHardwareTick((tick) => tick + 1); }} onSaved={(message) => { setPrinter(false); setNotice(message); setHardwareTick((tick) => tick + 1); }} /> : null}

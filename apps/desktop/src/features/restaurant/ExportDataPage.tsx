@@ -43,11 +43,8 @@ export function ExportDataPage({ storeId, canCustomers }: { storeId: string | nu
   }
 
   return (
-    <div className="mx-auto flex max-w-3xl flex-col gap-4 p-4">
-      <header>
-        <h1 className="text-xl font-semibold">Export Data</h1>
-        <p className="text-sm text-zinc-500">Scope for this sign-in: {scope}. Cashiers without report access do not see this page. The file contains no passwords, tokens, or database credentials.</p>
-      </header>
+    <div className="flex flex-col gap-4">
+      <p className="text-sm text-zinc-500">Scope for this sign-in: {scope}. The file contains no passwords, tokens, or database credentials.</p>
       <section className="rounded-2xl border border-zinc-200 p-4">
         <h2 className="font-semibold">Sales and bills</h2>
         <p className="mt-1 text-sm text-zinc-600">Latest completed bills returned by the sales API, with saved totals.</p>

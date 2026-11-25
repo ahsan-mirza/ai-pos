@@ -441,7 +441,7 @@ def products_out(db: Session, products: list[Product], store_id: uuid.UUID | Non
             ProductOut(
                 id=product.id,
                 store_id=store_id,
-                sku=product.sku,
+                sku=product.sku or "",
                 barcode=product.barcode,
                 name=product.name,
                 model_number=product.model_number,
@@ -537,7 +537,7 @@ def _stock_row(
     single = levels[0] if store is not None and levels else None
     return StockRow(
         product_id=product.id,
-        sku=product.sku,
+        sku=product.sku or "",
         name=product.name,
         brand=product.brand,
         model_number=product.model_number,
@@ -1143,7 +1143,7 @@ def _location(db: Session, settings: Settings, serial: SerialNumber) -> SerialLo
 
 
 def _brief(product: Product) -> ProductBrief:
-    return ProductBrief(id=product.id, sku=product.sku, name=product.name, is_serialized=product.is_serialized)
+    return ProductBrief(id=product.id, sku=product.sku or "", name=product.name, is_serialized=product.is_serialized)
 
 
 def availability(
@@ -1342,7 +1342,10 @@ def create_product(db: Session, principal: Principal, data: ProductCreate, curre
     from app.console.plan_limits import assert_room, count_of
 
     assert_room(count_of(db, Product), "products")
-    if db.scalar(select(Product.id).where(Product.sku == data.sku.strip())) is not None:
+    from app.services.sku_policy import stored_sku
+
+    sku = stored_sku(db, data.sku)
+    if sku is not None and db.scalar(select(Product.id).where(Product.sku == sku)) is not None:
         raise field_conflict("SKU is already in use.", sku="SKU is already in use.")
     if db.scalar(select(Product.id).where(Product.barcode == data.barcode.strip())) is not None:
         raise field_conflict("Barcode is already in use.", barcode="Barcode is already in use.")
@@ -1359,7 +1362,7 @@ def create_product(db: Session, principal: Principal, data: ProductCreate, curre
         product_name=data.name,
     )
     product = Product(
-        sku=data.sku.strip(),
+        sku=sku,
         barcode=data.barcode.strip(),
         name=data.name.strip(),
         model_number=(data.model_number or "").strip() or None,

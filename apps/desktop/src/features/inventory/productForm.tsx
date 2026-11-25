@@ -24,7 +24,9 @@ import {
   type TaxCategory,
   type VariantDraft,
 } from "@ai-pos/shared-types";
+import { ChevronDown, ChevronUp, Plus, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { ui } from "../../components/shell/tokens";
 import {
   inventoryApi,
   inventoryError,
@@ -244,7 +246,8 @@ export function ProductDrawer({
   const visibleModels = models.filter(
     (item) => item.brand_id === state.brandId && item.sub_category_id === state.subCategoryId,
   );
-  const skuValue = resolvedSku(state, editing);
+  const skuOptional = access.profile === "restaurant" || access.profile === "cafe";
+  const skuValue = resolvedSku(state, editing, skuOptional);
 
   function jump(id: string) {
     document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -303,7 +306,7 @@ export function ProductDrawer({
     const nextName = title !== "" ? title : state.name;
     patch({
       ...(title !== "" ? { name: nextName, nameTouched: true } : {}),
-      ...(!editing ? { skuManual: true, sku: skuFromParts(state.skuPrefix, nextName, {}) } : {}),
+      ...(!editing && !skuOptional ? { skuManual: true, sku: skuFromParts(state.skuPrefix, nextName, {}) } : {}),
     });
   }
 
@@ -324,6 +327,7 @@ export function ProductDrawer({
       pharmacy: access.pharmacy,
       dispensingClass: pharmacy.dispensing_class,
       autoBarcode: state.autoBarcode,
+      skuOptional,
     });
     setErrors(nextErrors);
     if (Object.keys(nextErrors).length > 0) return;
@@ -685,9 +689,142 @@ export function ProductDrawer({
           <Field label={state.weighed ? "Price per kg" : "Price"} required error={errors.price}>
             <input className={control} inputMode="decimal" value={state.price} onChange={(event) => patch({ price: event.target.value })} />
           </Field>
-          <Field label="SKU" required error={errors.sku} hint={editing ? "SKUs are fixed once a product exists." : "Letters, digits and dashes. Follows the name until you edit it."}>
+          {access.fnb && state.itemType === ItemType.MadeToOrder ? (
+            <fieldset className="sm:col-span-2">
+              <legend className="text-sm font-medium">Pricing & Portions</legend>
+              <p className="text-xs text-zinc-500">Leave the rows blank for a single price. Two or more names, such as Small Plate and Full Plate, are separate portions of this one item. The till asks the cashier to choose a portion. Modifiers stay separate.</p>
+              <div className="mt-2 space-y-2">
+                {priceRows.map((row, index) => (
+                  <div key={row.id ?? index} className="grid grid-cols-[minmax(0,1fr)_7rem_auto] items-center gap-2">
+                    <input
+                      className={control}
+                      aria-label={`Portion ${index + 1} name`}
+                      placeholder="Small Plate"
+                      value={row.name}
+                      onChange={(event) =>
+                        setPriceRows((current) => current.map((item, itemIndex) => (itemIndex === index ? { ...item, name: event.target.value } : item)))
+                      }
+                    />
+                    <input
+                      className={control}
+                      aria-label={`Portion ${index + 1} price`}
+                      inputMode="decimal"
+                      placeholder="0.00"
+                      value={row.price}
+                      onChange={(event) =>
+                        setPriceRows((current) => current.map((item, itemIndex) => (itemIndex === index ? { ...item, price: event.target.value } : item)))
+                      }
+                    />
+                    <div className="flex items-center gap-1">
+                      <label className="flex items-center gap-1 text-xs">
+                        <input
+                          type="checkbox"
+                          aria-label={`Portion ${index + 1} active`}
+                          checked={row.active !== false}
+                          onChange={(event) =>
+                            setPriceRows((current) =>
+                              current.map((item, itemIndex) => (itemIndex === index ? { ...item, active: event.target.checked } : item)),
+                            )
+                          }
+                        />
+                        Active
+                      </label>
+                      <button
+                        type="button"
+                        className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-zinc-600 hover:bg-zinc-100 disabled:opacity-40 dark:text-zinc-300 dark:hover:bg-white/10"
+                        aria-label={`Move portion ${index + 1} up`}
+                        disabled={index === 0}
+                        onClick={() =>
+                          setPriceRows((current) => {
+                            if (index === 0) return current;
+                            const next = [...current];
+                            const [moved] = next.splice(index, 1);
+                            if (!moved) return current;
+                            next.splice(index - 1, 0, moved);
+                            return next;
+                          })
+                        }
+                      >
+                        <ChevronUp size={16} aria-hidden="true" />
+                      </button>
+                      <button
+                        type="button"
+                        className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-zinc-600 hover:bg-zinc-100 disabled:opacity-40 dark:text-zinc-300 dark:hover:bg-white/10"
+                        aria-label={`Move portion ${index + 1} down`}
+                        disabled={index === priceRows.length - 1}
+                        onClick={() =>
+                          setPriceRows((current) => {
+                            if (index >= current.length - 1) return current;
+                            const next = [...current];
+                            const [moved] = next.splice(index, 1);
+                            if (!moved) return current;
+                            next.splice(index + 1, 0, moved);
+                            return next;
+                          })
+                        }
+                      >
+                        <ChevronDown size={16} aria-hidden="true" />
+                      </button>
+                      <button
+                        type="button"
+                        className="inline-flex h-9 w-9 items-center justify-center rounded-lg text-zinc-600 hover:bg-red-50 hover:text-red-700 dark:text-zinc-300 dark:hover:bg-red-500/10"
+                        aria-label={`Remove portion ${index + 1}`}
+                        onClick={() => setPriceRows((current) => current.filter((_, itemIndex) => itemIndex !== index))}
+                      >
+                        <Trash2 size={16} aria-hidden="true" />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <button type="button" className={`${ui.iconButton} mt-2`} aria-label="Add portion" onClick={() => setPriceRows((current) => [...current, { name: "", price: "", active: true }])}>
+                <Plus size={18} aria-hidden="true" />
+              </button>
+            </fieldset>
+          ) : null}
+          {(access.profile === "restaurant" || access.profile === "cafe") && state.itemType === ItemType.MadeToOrder ? (
+            <fieldset className="sm:col-span-2">
+              <legend className="text-sm font-medium">Ingredient & Recipe Settings</legend>
+              <label className="mt-2 flex items-start gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  className="mt-1 h-5 w-5"
+                  role="switch"
+                  aria-checked={state.sellWithoutRecipe}
+                  checked={state.sellWithoutRecipe}
+                  onChange={(event) => {
+                    const next = event.target.checked;
+                    if (editing && next !== state.sellWithoutRecipe) {
+                      const confirmed = window.confirm(
+                        next
+                          ? "Future orders will sell this item without using its recipe. Saved tickets and sales stay as they are."
+                          : "Future orders will require this item's recipe. Saved tickets and sales stay as they are.",
+                      );
+                      if (!confirmed) return;
+                    }
+                    patch({ sellWithoutRecipe: next });
+                  }}
+                />
+                <span>
+                  <span className="font-medium">Sell without recipe / ingredient consumption</span>
+                  <span className="mt-1 block text-xs text-zinc-500">
+                    Enable this for items that are already prepared or whose raw ingredients are managed separately. These items can be sold without recipe validation or raw-ingredient deduction.
+                  </span>
+                  <span className="mt-1 block text-xs font-medium">
+                    {state.sellWithoutRecipe ? "Prepared item — no recipe consumption" : "Recipe required for POS sale"}
+                  </span>
+                </span>
+              </label>
+              {state.sellWithoutRecipe ? (
+                <p className="mt-2 text-xs text-zinc-500">This item bypasses recipe ingredient consumption. An existing recipe stays saved and is not used on new orders while this is on.</p>
+              ) : (
+                <p className="mt-2 text-xs text-zinc-500">Add the raw ingredients on Recipes. Portions share that recipe. The recipe stays in place if you later turn this on.</p>
+              )}
+            </fieldset>
+          ) : null}
+          <Field label="SKU" required={!skuOptional} error={errors.sku} hint={editing ? "SKUs are fixed once a product exists." : skuOptional ? "Optional. The product record identifies the item when this is blank." : "Letters, digits and dashes. Follows the name until you edit it."}>
             <div className="flex min-w-0 flex-wrap gap-2">
-              <input className={`${control} min-w-0 flex-1`} value={skuValue} disabled={editing} placeholder="Generated from the name" onChange={(event) => patch({ skuManual: true, sku: cleanCode(event.target.value, 64) })} />
+              <input className={`${control} min-w-0 flex-1`} value={skuValue} disabled={editing} placeholder={skuOptional ? "Optional" : "Generated from the name"} onChange={(event) => patch({ skuManual: true, sku: cleanCode(event.target.value, 64) })} />
               {editing ? null : <button type="button" className="h-12 shrink-0 rounded-full bg-zinc-900 px-3 text-xs font-semibold text-white" onClick={() => patch({ skuManual: true, sku: skuFromParts(state.skuPrefix, state.name, state.specs) })}>Auto Generate</button>}
             </div>
             {editing ? null : <input className={`${control} mt-2`} value={state.skuPrefix} maxLength={8} placeholder="SKU prefix" onChange={(event) => patch({ skuPrefix: cleanCode(event.target.value, 8) })} />}
@@ -770,139 +907,6 @@ export function ProductDrawer({
               <option value={ItemType.PrePackaged}>Pre-packaged</option>
             </select>
           </Field>
-        ) : null}
-        {access.fnb && state.itemType === ItemType.MadeToOrder ? (
-          <fieldset>
-            <legend className="text-sm font-medium">Pricing & Portions</legend>
-            <p className="text-xs text-zinc-500">Leave the rows blank for a single price. Two or more names, such as Small Plate and Full Plate, are separate portions of this one item. The till asks the cashier to choose a portion. Modifiers stay separate.</p>
-            <div className="mt-2 space-y-2">
-              {priceRows.map((row, index) => (
-                <div key={row.id ?? index} className="grid grid-cols-[minmax(0,1fr)_7rem_auto] items-center gap-2">
-                  <input
-                    className={control}
-                    aria-label={`Portion ${index + 1} name`}
-                    placeholder="Small Plate"
-                    value={row.name}
-                    onChange={(event) =>
-                      setPriceRows((current) => current.map((item, itemIndex) => (itemIndex === index ? { ...item, name: event.target.value } : item)))
-                    }
-                  />
-                  <input
-                    className={control}
-                    aria-label={`Portion ${index + 1} price`}
-                    inputMode="decimal"
-                    placeholder="0.00"
-                    value={row.price}
-                    onChange={(event) =>
-                      setPriceRows((current) => current.map((item, itemIndex) => (itemIndex === index ? { ...item, price: event.target.value } : item)))
-                    }
-                  />
-                  <div className="flex items-center gap-1">
-                    <label className="flex items-center gap-1 text-xs">
-                      <input
-                        type="checkbox"
-                        aria-label={`Portion ${index + 1} active`}
-                        checked={row.active !== false}
-                        onChange={(event) =>
-                          setPriceRows((current) =>
-                            current.map((item, itemIndex) => (itemIndex === index ? { ...item, active: event.target.checked } : item)),
-                          )
-                        }
-                      />
-                      Active
-                    </label>
-                    <button
-                      type="button"
-                      className="px-1 text-xs font-semibold"
-                      aria-label={`Move portion ${index + 1} up`}
-                      disabled={index === 0}
-                      onClick={() =>
-                        setPriceRows((current) => {
-                          if (index === 0) return current;
-                          const next = [...current];
-                          const [moved] = next.splice(index, 1);
-                          if (!moved) return current;
-                          next.splice(index - 1, 0, moved);
-                          return next;
-                        })
-                      }
-                    >
-                      Up
-                    </button>
-                    <button
-                      type="button"
-                      className="px-1 text-xs font-semibold"
-                      aria-label={`Move portion ${index + 1} down`}
-                      disabled={index === priceRows.length - 1}
-                      onClick={() =>
-                        setPriceRows((current) => {
-                          if (index >= current.length - 1) return current;
-                          const next = [...current];
-                          const [moved] = next.splice(index, 1);
-                          if (!moved) return current;
-                          next.splice(index + 1, 0, moved);
-                          return next;
-                        })
-                      }
-                    >
-                      Down
-                    </button>
-                    <button
-                      type="button"
-                      className="px-1 text-xs font-semibold"
-                      aria-label={`Remove portion ${index + 1}`}
-                      onClick={() => setPriceRows((current) => current.filter((_, itemIndex) => itemIndex !== index))}
-                    >
-                      Remove
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-            <button type="button" className="mt-2 text-sm font-semibold text-primary" onClick={() => setPriceRows((current) => [...current, { name: "", price: "", active: true }])}>
-              Add portion
-            </button>
-          </fieldset>
-        ) : null}
-        {(access.profile === "restaurant" || access.profile === "cafe") && state.itemType === ItemType.MadeToOrder ? (
-          <fieldset>
-            <legend className="text-sm font-medium">Ingredient & Recipe Settings</legend>
-            <label className="mt-2 flex items-start gap-2 text-sm">
-              <input
-                type="checkbox"
-                className="mt-1 h-5 w-5"
-                role="switch"
-                aria-checked={state.sellWithoutRecipe}
-                checked={state.sellWithoutRecipe}
-                onChange={(event) => {
-                  const next = event.target.checked;
-                  if (editing && next !== state.sellWithoutRecipe) {
-                    const confirmed = window.confirm(
-                      next
-                        ? "Future orders will sell this item without using its recipe. Saved tickets and sales stay as they are."
-                        : "Future orders will require this item's recipe. Saved tickets and sales stay as they are.",
-                    );
-                    if (!confirmed) return;
-                  }
-                  patch({ sellWithoutRecipe: next });
-                }}
-              />
-              <span>
-                <span className="font-medium">Sell without recipe / ingredient consumption</span>
-                <span className="mt-1 block text-xs text-zinc-500">
-                  Enable this for items that are already prepared or whose raw ingredients are managed separately. These items can be sold without recipe validation or raw-ingredient deduction.
-                </span>
-                <span className="mt-1 block text-xs font-medium">
-                  {state.sellWithoutRecipe ? "Prepared item — no recipe consumption" : "Recipe required for POS sale"}
-                </span>
-              </span>
-            </label>
-            {state.sellWithoutRecipe ? (
-              <p className="mt-2 text-xs text-zinc-500">This item bypasses recipe ingredient consumption. An existing recipe stays saved and is not used on new orders while this is on.</p>
-            ) : (
-              <p className="mt-2 text-xs text-zinc-500">Add the raw ingredients on Recipes. Portions share that recipe. The recipe stays in place if you later turn this on.</p>
-            )}
-          </fieldset>
         ) : null}
         {access.recipes && !access.fnb && !state.serialized && !state.openPrice ? (
           <label className="flex items-start gap-2 text-sm">
