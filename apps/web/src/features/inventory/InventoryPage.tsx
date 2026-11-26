@@ -1,5 +1,5 @@
 import { actionHoverClass } from "@ai-pos/ui";
-import { Permission, activePriceOptions, formatMoney, noMatchesMessage, type Product } from "@ai-pos/shared-types";
+import { Permission, activePriceOptions, formatMoney, noMatchesMessage, type Product, type ProductSearchHit } from "@ai-pos/shared-types";
 import { Package, Pencil, Plus, Power, Printer, Search, Trash2, Upload } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
@@ -50,7 +50,7 @@ export function InventoryPage() {
               !search.hits.some((hit) => hit.product.id === product.id) &&
               Object.values(product.specifications ?? {}).some((value) => value.toLowerCase().includes(spec)),
           )
-          .map((product) => ({ product, match: "text" as const }));
+          .map((product): ProductSearchHit<Product> => ({ product, match: "text" }));
   const hits = [...search.hits, ...specHits].filter(({ product }) => {
     const portionMatch =
       !menuCatalog ||

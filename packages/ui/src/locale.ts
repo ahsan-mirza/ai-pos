@@ -162,6 +162,7 @@ const arabic: Record<string, string> = {
   Done: "تم",
   "Activate {code}": "تفعيل {code}",
   "Valid until {when}. The key works once. Generating a new key cancels this one.": "صالح حتى {when}. المفتاح يُستخدم مرة واحدة. إنشاء مفتاح جديد يلغي هذا المفتاح.",
+  "On the new till, enter this business code and key. The till creates its own device identity. A revoked key cannot be used again.": "في الصندوق الجديد، أدخل رمز النشاط والمفتاح. ينشئ الصندوق هوية جهازه الخاصة. لا يمكن استخدام مفتاح ملغى مرة أخرى.",
   "On the new register, enter this store code, then paste the key. The key works once.": "في الصندوق الجديد، أدخل رمز المتجر ثم الصق المفتاح. المفتاح يُستخدم مرة واحدة.",
   "On the new register, enter this restaurant code, then paste the key. The key works once.": "في الصندوق الجديد، أدخل رمز المطعم ثم الصق المفتاح. المفتاح يُستخدم مرة واحدة.",
   "On the new register, enter this café code, then paste the key. The key works once.": "في الصندوق الجديد، أدخل رمز المقهى ثم الصق المفتاح. المفتاح يُستخدم مرة واحدة.",
