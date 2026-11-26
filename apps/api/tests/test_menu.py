@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from tests.test_returns import CABLE_ID, CASHIER_ID, STORE_ID, admin_token, bearer, push, seed_catalog
 
 from app.core import capabilities as catalog
-from app.models import SaleItem
+from app.models import AuditLog, CatalogChange, SaleItem
 
 
 def enable(client, token: str, *names: str) -> None:
@@ -290,3 +290,178 @@ def test_priced_options_are_required_and_snapshotted(client, session: Session) -
     replay["items"][0]["price_option_id"] = options[0]["id"]
     replayed = push(client, "sale", replay)
     assert replayed.status_code == 200, replayed.text
+
+
+def test_portion_prices_keep_identity_history_and_reject_bad_writes(client, session: Session) -> None:
+    """Business Pro and the register write the same menu_price_options rows."""
+    seed_catalog(client)
+    token = admin_token(client)
+    as_cafe(client, token)
+    created = client.put(
+        f"/api/v1/menu/products/{CABLE_ID}/price-options",
+        headers=bearer(token),
+        json={
+            "options": [
+                {"name": "Small Plate", "price_cents": 300, "position": 0},
+                {"name": "Medium Plate", "price_cents": 500, "position": 1},
+                {"name": "Full Plate", "price_cents": 900, "position": 2},
+            ]
+        },
+    )
+    assert created.status_code == 200, created.text
+    options = created.json()
+    ids = [row["id"] for row in options]
+    assert [row["name"] for row in options] == ["Small Plate", "Medium Plate", "Full Plate"]
+    assert [row["price_cents"] for row in options] == [300, 500, 900]
+
+    listed = client.get("/api/v1/products", headers=bearer(token), params={"limit": 500})
+    assert listed.status_code == 200, listed.text
+    cable = next(row for row in listed.json() if row["id"] == CABLE_ID)
+    assert [row["id"] for row in cable["price_options"]] == ids
+
+    menu = client.get("/api/v1/menu/register", headers=bearer(token)).json()
+    assert [row["id"] for row in menu["price_options"][CABLE_ID]] == ids
+
+    session.expire_all()
+    changes = session.scalars(
+        select(CatalogChange).where(CatalogChange.dataset == "menu", CatalogChange.record_id.in_(ids))
+    ).all()
+    assert {row.record_id for row in changes} == set(ids)
+    audits = session.scalars(
+        select(AuditLog).where(
+            AuditLog.target_entity == "MenuPriceOption",
+            AuditLog.target_entity_id.in_([uuid.UUID(row) for row in ids]),
+        )
+    ).all()
+    assert {str(row.target_entity_id) for row in audits} == set(ids)
+
+    blank = client.put(
+        f"/api/v1/menu/products/{CABLE_ID}/price-options",
+        headers=bearer(token),
+        json={"options": [{"name": "  ", "price_cents": 100}, {"name": "Full Plate", "price_cents": 900}]},
+    )
+    assert blank.status_code == 422
+    assert "Option name is required" in blank.json()["error"]["message"]
+    negative = client.put(
+        f"/api/v1/menu/products/{CABLE_ID}/price-options",
+        headers=bearer(token),
+        json={"options": [{"name": "Small Plate", "price_cents": -1}, {"name": "Full Plate", "price_cents": 900}]},
+    )
+    assert negative.status_code == 422
+    inactive = client.put(
+        f"/api/v1/menu/products/{CABLE_ID}/price-options",
+        headers=bearer(token),
+        json={
+            "options": [
+                {"id": ids[0], "name": "Small Plate", "price_cents": 300, "is_active": False},
+                {"id": ids[2], "name": "Full Plate", "price_cents": 900, "is_active": False},
+            ]
+        },
+    )
+    assert inactive.status_code == 422
+    assert "stay active" in inactive.json()["error"]["message"]
+    single = client.put(
+        f"/api/v1/menu/products/{CABLE_ID}/price-options",
+        headers=bearer(token),
+        json={"options": [{"name": "Only Plate", "price_cents": 300}]},
+    )
+    assert single.status_code == 422
+
+    category = client.post("/api/v1/categories", headers=bearer(token), json={"name": f"Drinks {uuid.uuid4().hex[:6]}"})
+    assert category.status_code in (200, 201), category.text
+    water = client.post(
+        "/api/v1/inventory/products",
+        headers=bearer(token),
+        json={
+            "barcode": "281000000301",
+            "name": "Mineral Water",
+            "category_id": category.json()["id"],
+            "price_cents": 200,
+            "item_type": "PRE_PACKAGED",
+        },
+    )
+    assert water.status_code == 201, water.text
+    foreign = client.put(
+        f"/api/v1/menu/products/{water.json()['id']}/price-options",
+        headers=bearer(token),
+        json={
+            "options": [
+                {"id": ids[0], "name": "Small Plate", "price_cents": 300},
+                {"name": "Bottle", "price_cents": 200},
+            ]
+        },
+    )
+    assert foreign.status_code == 422
+    assert "does not belong" in foreign.json()["error"]["message"]
+    zero = client.put(
+        f"/api/v1/menu/products/{water.json()['id']}/price-options",
+        headers=bearer(token),
+        json={"options": [{"name": "Still", "price_cents": 0}, {"name": "Sparkling", "price_cents": 200}]},
+    )
+    assert zero.status_code == 200, zero.text
+    assert zero.json()[0]["price_cents"] == 0
+
+    cashier = client.post(
+        "/api/v1/auth/login-pin",
+        json={"username": "cashier", "pin": "1357"},
+        headers={"X-Api-Key": "test-api-key-value"},
+    )
+    assert cashier.status_code == 200, cashier.text
+    refused = client.put(
+        f"/api/v1/menu/products/{CABLE_ID}/price-options",
+        headers=bearer(cashier.json()["access_token"]),
+        json={"options": [{"name": "Small Plate", "price_cents": 1}, {"name": "Full Plate", "price_cents": 2}]},
+    )
+    assert refused.status_code == 403
+
+    good = sale_with([], 900)
+    good["items"][0]["price_option_id"] = ids[2]
+    assert push(client, "sale", good).status_code == 200, good
+    edited = client.put(
+        f"/api/v1/menu/products/{CABLE_ID}/price-options",
+        headers=bearer(token),
+        json={
+            "options": [
+                {"id": ids[0], "name": "Small Plate", "price_cents": 300},
+                {"id": ids[1], "name": "Medium Plate", "price_cents": 550},
+                {"id": ids[2], "name": "Full Plate", "price_cents": 900},
+            ]
+        },
+    )
+    assert edited.status_code == 200, edited.text
+    assert edited.json()[1]["id"] == ids[1] and edited.json()[1]["price_cents"] == 550
+    session.expire_all()
+    kept = session.scalar(select(SaleItem).where(SaleItem.id == uuid.UUID(good["items"][0]["id"])))
+    assert kept.price_option_id == uuid.UUID(ids[2])
+    assert kept.price_option_name == "Full Plate"
+    assert kept.price_option_cents == 900
+    assert kept.unit_price_cents == 900
+
+    dropped = client.put(
+        f"/api/v1/menu/products/{CABLE_ID}/price-options",
+        headers=bearer(token),
+        json={
+            "options": [
+                {"id": ids[0], "name": "Small Plate", "price_cents": 300},
+                {"id": ids[1], "name": "Medium Plate", "price_cents": 550},
+            ]
+        },
+    )
+    assert dropped.status_code == 200, dropped.text
+    retired = next(row for row in dropped.json() if row["id"] == ids[2])
+    assert retired["is_active"] is False
+    session.expire_all()
+    still = session.scalar(select(SaleItem).where(SaleItem.id == uuid.UUID(good["items"][0]["id"])))
+    assert still.price_option_cents == 900 and still.unit_price_cents == 900
+
+    cleared = client.put(
+        f"/api/v1/menu/products/{CABLE_ID}/price-options",
+        headers=bearer(token),
+        json={"options": []},
+    )
+    assert cleared.status_code == 200, cleared.text
+    assert [row for row in cleared.json() if row["is_active"]] == []
+    assert any(row["id"] == ids[2] and row["is_active"] is False for row in cleared.json())
+    again = client.get("/api/v1/products", headers=bearer(token), params={"limit": 500})
+    cable = next(row for row in again.json() if row["id"] == CABLE_ID)
+    assert cable["price_options"] == []

@@ -241,6 +241,29 @@ mod tests {
     }
 
     #[test]
+    fn a_product_edit_keeps_the_photo_and_the_stock_already_on_the_register() {
+        let (db, path) = open("merge");
+        let staged = r#"{"id":"p1","store_id":"branch-a","sku":"DAL-1","barcode":"628","name":"Daal","category":"Mains","price_cents":1500,"currency":"AED","is_serialized":false,"stock_quantity":9,"stock_authoritative":true,"image_url":"https://cdn.example/daal.webp"}"#;
+        db.stage_products(1, &[("p1".into(), staged.into())]).unwrap();
+        db.activate_bootstrap(1, 1, "cursor-1", None).unwrap();
+        let edit = r#"{"id":"p1","sku":null,"barcode":null,"name":"Daal Channa","category":"Mains","price_cents":1800,"currency":"AED","is_serialized":false,"is_active":true,"stock_quantity":0,"stock_authoritative":false}"#;
+        db.apply_catalogue_pull(
+            "branch-a",
+            &[(1, "products".into(), "upsert".into(), "p1".into(), Some(edit.into()))],
+            "cursor-2",
+        )
+        .unwrap();
+        let rows = db.list_products().unwrap();
+        let row = rows.iter().find(|item| item.id == "p1").expect("product");
+        assert_eq!(row.name, "Daal Channa");
+        assert_eq!(row.price_cents, 1800);
+        assert_eq!(row.stock_quantity, 9);
+        assert_eq!(row.sku, "DAL-1");
+        assert_eq!(row.image_url.as_deref(), Some("https://cdn.example/daal.webp"));
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
     fn a_conflict_stays_out_of_the_pending_queue_and_keeps_its_payload() {
         let (db, path) = open("conflict");
         db.enqueue(

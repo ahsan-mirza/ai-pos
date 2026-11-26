@@ -291,49 +291,84 @@ def _write_product_changes(session: Session, flush_context: object, instances: o
     try:
         menu_rows = _pending_menu(session)
         floor_rows = _pending_floor(session)
-        if not pending and not settings and not menu_rows and not floor_rows:
+        side = _pos_side_changes(session)
+        if not pending and not settings and not menu_rows and not floor_rows and not side:
             return
-        first = _seqs_in_flush(session, len(pending) + len(settings) + len(menu_rows) + len(floor_rows))
-        offset = 0
-        for operation, product in pending:
-            body = None if operation == "delete" else _dump(_change_record(product))
-            session.add(
-                CatalogChange(
-                    tenant_id=getattr(product, "tenant_id", None) or active_tenant_id(),
-                    seq=first + offset,
-                    dataset="products",
-                    record_id=str(product.id),
-                    operation=operation,
-                    payload=body,
+        last_seq: int | None = None
+        if pending or settings or menu_rows or floor_rows:
+            first = _seqs_in_flush(session, len(pending) + len(settings) + len(menu_rows) + len(floor_rows))
+            offset = 0
+            for operation, product in pending:
+                body = None if operation == "delete" else _dump(_change_record(product))
+                session.add(
+                    CatalogChange(
+                        tenant_id=getattr(product, "tenant_id", None) or active_tenant_id(),
+                        seq=first + offset,
+                        dataset="products",
+                        record_id=str(product.id),
+                        operation=operation,
+                        payload=body,
+                    )
                 )
-            )
-            offset += 1
-        for row in settings:
-            session.add(
-                CatalogChange(
-                    tenant_id=getattr(row, "tenant_id", None) or active_tenant_id(),
-                    seq=first + offset,
-                    dataset="checkout_settings",
-                    record_id="checkout",
-                    operation="settings",
-                    payload=_dump(_settings_record(row)),
+                offset += 1
+            for row in settings:
+                session.add(
+                    CatalogChange(
+                        tenant_id=getattr(row, "tenant_id", None) or active_tenant_id(),
+                        seq=first + offset,
+                        dataset="checkout_settings",
+                        record_id="checkout",
+                        operation="settings",
+                        payload=_dump(_settings_record(row)),
+                    )
                 )
-            )
-            offset += 1
-        for dataset, operation, record_id, body in menu_rows + floor_rows:
-            session.add(
-                CatalogChange(
-                    tenant_id=active_tenant_id(),
-                    seq=first + offset,
-                    dataset=dataset,
-                    record_id=record_id,
-                    operation=operation,
-                    payload=body,
+                offset += 1
+            for dataset, operation, record_id, body in menu_rows + floor_rows:
+                session.add(
+                    CatalogChange(
+                        tenant_id=active_tenant_id(),
+                        seq=first + offset,
+                        dataset=dataset,
+                        record_id=record_id,
+                        operation=operation,
+                        payload=body,
+                    )
                 )
-            )
-            offset += 1
+                offset += 1
+            last_seq = first + offset - 1
+        _announce_catalogue(session, last_seq)
     finally:
         session.info["bootstrap_recording"] = False
+
+
+def _pos_side_changes(session: Session) -> bool:
+    """Category, promotion, and stock edits that the product feed does not already record.
+
+    A category rename updates product rows with a bulk statement, so those products are not
+    dirty ORM objects and would not move the register on their own.
+    """
+    from app.models.category import Category, SubCategory
+    from app.models.inventory import InventoryLevel
+    from app.models.promotion import Promotion
+
+    watched = (Category, SubCategory, Promotion, InventoryLevel)
+    for obj in list(session.new) + list(session.deleted):
+        if isinstance(obj, watched):
+            return True
+    for obj in list(session.dirty):
+        if isinstance(obj, watched) and session.is_modified(obj, include_collections=False):
+            return True
+    return False
+
+
+def _announce_catalogue(session: Session, seq: int | None) -> None:
+    """Tell each of this tenant's registers after the commit. A rollback drops the queued event."""
+    from app.models.store import Store
+    from app.websockets import rooms
+
+    payload = {"type": "catalogue.changed", "seq": seq}
+    for store_id in session.scalars(select(Store.id)):
+        rooms.queue(session, rooms.pos_terminals_room(store_id), payload)
 
 
 def start_session(db: Session, device: Device) -> BootstrapSession:

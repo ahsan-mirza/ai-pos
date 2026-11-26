@@ -3,6 +3,7 @@ import { canTestDrawer, canTestPrint, saveFeedback } from "./printerSelection";
 import {
   BLE_UNSUPPORTED,
   activeConnection,
+  allowsRawEscpos,
   comPortError,
   isUsbQueue,
   labelProfile,
@@ -47,6 +48,20 @@ describe("printer connections", () => {
       connection_kind: "network",
     });
     expect(activeConnection(draft({ transport: "tcp", connection_kind: "wifi" }))).toBe("network");
+    expect(settingsForConnection("serial", { windows: "", tcp: "", serial: "COM4", bluetooth: "COM5" })).toMatchObject({
+      transport: "serial",
+      connection_kind: "serial",
+      address: "COM4",
+    });
+    expect(settingsForConnection("bluetooth", { windows: "", tcp: "", serial: "COM4", bluetooth: "COM5" })).toMatchObject({
+      transport: "serial",
+      connection_kind: "bluetooth-classic",
+      address: "COM5",
+    });
+    expect(activeConnection(draft({ transport: "serial", connection_kind: "serial", address: "COM4" }))).toBe("serial");
+    expect(activeConnection(draft({ transport: "serial", connection_kind: "bluetooth-classic", address: "COM5" }))).toBe(
+      "bluetooth",
+    );
   });
 
   it("treats MTP-3 as an unverified ESC/POS label and refuses an unknown BLE service", () => {
@@ -64,5 +79,12 @@ describe("printer connections", () => {
     expect(canTestDrawer(draft({ transport: "ble", address: "radio" }), [])).toBe(false);
     expect(saveFeedback(draft({ transport: "ble", address: "radio" }), [])).toContain("not a working receipt printer");
     expect(saveFeedback(draft({ transport: "tcp", address: "192.168.1.20" }), [])).toContain("does not prove");
+    expect(saveFeedback(draft({ transport: "serial", connection_kind: "serial", address: "COM4" }), [])).toContain("COM port");
+    expect(allowsRawEscpos(queue({ driver: "Unknown Thermal", port: "USB009", compatibility: "candidate" }))).toBe(true);
+    expect(allowsRawEscpos(queue({ driver: "Toshiba Native Windows Driver", port: "Toshiba: 0_USB", compatibility: "candidate" }))).toBe(
+      false,
+    );
+    expect(allowsRawEscpos(queue({ driver: "Generic / Text Only", port: "COM4", compatibility: "candidate" }))).toBe(false);
+    expect(allowsRawEscpos(queue({ driver: "EPSON TM-T88V Receipt", port: "USB001", compatibility: "compatible" }))).toBe(false);
   });
 });

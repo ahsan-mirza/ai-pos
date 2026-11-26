@@ -32,6 +32,8 @@ A brand-new item has no id yet, so it cannot own a recipe on the first save. The
 
 The recipe editor stays on Recipes. Turning the toggle on does not delete the recipe. Portions share that one recipe. The model has no portion-specific ingredient quantities. A Full Plate and a Small Plate scale the same recipe by line quantity and yield.
 
+The Business Pro menu item form keeps this toggle beside Pricing & Portions. A portion price change does not write a recipe or a stock movement. See `BUSINESS-PRO-RESTAURANT-CAFE-PORTION-PRICING-ACCEPTANCE.md`.
+
 ## Toggle on
 
 New lines are stored with `skip_recipe` true. The sale does not validate ingredient availability, does not reserve ingredients, and does not write `RECIPE_OUT` or `recipe_usages`. The existing `recipe.skip` audit still records the line. Price, modifiers, tax, quantity, and the selected portion are unchanged.

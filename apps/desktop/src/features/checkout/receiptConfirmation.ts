@@ -224,13 +224,18 @@ export async function kickDrawerForCashSale(
   takesCash: boolean,
   alreadyKicked: boolean,
   deps: {
-    load: () => Promise<{ drawer_kick: boolean; transport: "none" | "tcp" | "windows" | "serial" | "ble" }>;
+    load: () => Promise<{
+      drawer_kick: boolean;
+      transport: "none" | "tcp" | "windows" | "serial" | "ble";
+      open_on_non_cash?: boolean;
+    }>;
     kick: () => Promise<void>;
   },
 ): Promise<boolean> {
-  if (alreadyKicked || !takesCash) return alreadyKicked;
+  if (alreadyKicked) return true;
   const settings = await deps.load();
-  if (!shouldKickDrawer({ kickDrawer: true }, settings)) return false;
+  const requested = takesCash ? settings.drawer_kick : settings.open_on_non_cash === true;
+  if (!requested || !shouldKickDrawer({ kickDrawer: true }, settings)) return false;
   await deps.kick().catch(() => undefined);
   return true;
 }

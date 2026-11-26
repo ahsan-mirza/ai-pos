@@ -5,16 +5,18 @@ import { useEffect, useId, useRef, useState, type KeyboardEvent as ReactKeyboard
 import {
   inTauri,
   listBluetoothPrinters,
+  listSerialPorts,
   listWindowsPrinters,
   openCashDrawer,
   probePrinter,
   savePrinterSettings,
   type BluetoothSerialPort,
   type InstalledPrinter,
+  type SerialPort,
   type PrinterSettings,
 } from "../../lib/tauri";
-import { diagnosticReceipt } from "./saleReceipt";
-import { BROWSER_PRINTER, loadPrinter, printReceipt } from "./print";
+import { registerIdentity } from "./saleReceipt";
+import { BROWSER_PRINTER, loadPrinter, printExactReceipt } from "./print";
 import {
   DISCOVERING,
   NONE_FOUND,
@@ -40,12 +42,16 @@ import {
   CONNECTED,
   type DiagnosticStage,
 } from "./printerSelection";
+import { DRAWER_PROFILES, drawerProfile } from "./drawerProfiles";
 import {
   BLUETOOTH_EMPTY,
+  GENERIC_ESCPOS,
   MTP3_LABEL,
+  SERIAL_EMPTY,
   TCP_OPEN_NOTICE,
   USB_VIA_WINDOWS,
   activeConnection,
+  allowsRawEscpos,
   comPortError,
   connectionChoices,
   isUsbQueue,
@@ -53,6 +59,8 @@ import {
   settingsForConnection,
   type ConnectionChoice,
 } from "./printerConnections";
+import { layoutWidth, settingsPreviewReceipt } from "./settingsPreview";
+import { useBusinessCurrency } from "../checkout/currency";
 
 interface PrinterSettingsModalProps {
   sample: ReceiptDoc;
@@ -78,13 +86,15 @@ export function PrinterSettingsModal({
   canSave = true,
   initialBusy = false,
 }: PrinterSettingsModalProps) {
+  const currency = useBusinessCurrency();
   const titleId = useId();
   const queueLabelId = useId();
   const desktop = inTauri();
   const request = useRef(0);
   const saving = useRef(false);
-  const remembered = useRef({ tcp: "", windows: "", serial: "" });
+  const remembered = useRef({ tcp: "", windows: "", serial: "", bluetooth: "" });
   const [bluetoothPorts, setBluetoothPorts] = useState<BluetoothSerialPort[]>([]);
+  const [serialPorts, setSerialPorts] = useState<SerialPort[]>([]);
   const [draft, setDraft] = useState<PrinterSettings>(initialDraft ?? BROWSER_PRINTER);
   const [persisted, setPersisted] = useState(initialDraft?.address ?? "");
   const [busy, setBusy] = useState(initialBusy);
@@ -117,9 +127,11 @@ export function PrinterSettingsModal({
 
   useEffect(() => {
     const seed = (loaded: PrinterSettings) => {
-      if (loaded.transport === "tcp" || loaded.transport === "windows" || loaded.transport === "serial") {
+      if (loaded.transport === "tcp" || loaded.transport === "windows") {
         remembered.current[loaded.transport] = loaded.address;
       }
+      if (loaded.transport === "serial" && loaded.connection_kind === "serial") remembered.current.serial = loaded.address;
+      else if (loaded.transport === "serial") remembered.current.bluetooth = loaded.address;
       const previous = loaded.previous_address ?? "";
       if (previous && networkAddressError(previous) === null) remembered.current.tcp ||= previous;
       else if (previous) remembered.current.windows ||= previous;
@@ -138,10 +150,16 @@ export function PrinterSettingsModal({
 
   useEffect(() => {
     if (!desktop || draft.transport !== "serial") return;
+    if (draft.connection_kind === "serial") {
+      void listSerialPorts()
+        .then(setSerialPorts)
+        .catch(() => setSerialPorts([]));
+      return;
+    }
     void listBluetoothPrinters()
       .then(setBluetoothPorts)
       .catch(() => setBluetoothPorts([]));
-  }, [desktop, draft.transport]);
+  }, [desktop, draft.transport, draft.connection_kind]);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -159,9 +177,11 @@ export function PrinterSettingsModal({
 
   const switchTransport = (id: ConnectionChoice) => {
     if (busy || id === activeConnection(draft)) return;
-    if (draft.transport === "tcp" || draft.transport === "windows" || draft.transport === "serial") {
-      remembered.current[draft.transport] = draft.address;
-    }
+    const current = activeConnection(draft);
+    if (current === "network") remembered.current.tcp = draft.address;
+    if (current === "windows" || current === "usb") remembered.current.windows = draft.address;
+    if (current === "bluetooth") remembered.current.bluetooth = draft.address;
+    if (current === "serial") remembered.current.serial = draft.address;
     const previous = draft.transport === "none" ? draft.previous_address ?? "" : draft.address.trim() || draft.previous_address || "";
     patch({
       ...settingsForConnection(id, remembered.current),
@@ -204,7 +224,7 @@ export function PrinterSettingsModal({
       }
     }
     if (draft.transport === "serial") {
-      const invalid = comPortError(draft.address);
+      const invalid = comPortError(draft.address, draft.connection_kind === "serial" ? "serial" : "bluetooth");
       if (invalid) {
         setError(invalid);
         return null;
@@ -260,19 +280,8 @@ export function PrinterSettingsModal({
     return true;
   };
 
-  const paperLabel = draft.paper_dots === 384 ? "58 mm" : "80 mm";
   const selectedQueue = () => queues.find((queue) => queue.name === draft.address.trim());
-  const testDocument = () => {
-    const queue = selectedQueue();
-    return diagnosticReceipt({
-      queue: queue?.name || draft.address || "Not selected",
-      model: queue?.manufacturer?.trim() || draft.saved_model || queue?.name || draft.address || "Not selected",
-      driver: queue?.driver || draft.saved_driver || "",
-      port: queue?.port || draft.saved_port || "",
-      paper: paperLabel,
-      protocol: queue?.printTransport === "escpos" && queue.compatibility === "compatible" ? "escpos" : null,
-    });
-  };
+  const testDocument = () => settingsPreviewReceipt(registerIdentity(), currency);
 
   const showStages = (rendered: boolean, ink: number, submitted: boolean) => {
     const queue = selectedQueue();
@@ -312,7 +321,7 @@ export function PrinterSettingsModal({
     setBusy(true);
     setError(null);
     try {
-      const rendered = await renderReceipt(testDocument(), draft.paper_dots);
+      const rendered = await renderReceipt(testDocument(), layoutWidth(draft.paper_dots));
       const bits = rendered.bits();
       const ink = inkBytes(bits);
       setPreviewUrl(rendered.canvas.toDataURL("image/png"));
@@ -337,7 +346,7 @@ export function PrinterSettingsModal({
     const document = testDocument();
     let ink = 0;
     try {
-      const rendered = await renderReceipt(document, draft.paper_dots);
+      const rendered = await renderReceipt(document, layoutWidth(draft.paper_dots));
       ink = inkBytes(rendered.bits());
       setPreviewUrl(rendered.canvas.toDataURL("image/png"));
     } catch (caught) {
@@ -354,7 +363,7 @@ export function PrinterSettingsModal({
       printing.current = false;
       return;
     }
-    const outcome = await printReceipt(document, { kickDrawer: false, manual: true, systemDialog: draft.transport === "none" });
+    const outcome = await printExactReceipt(document, layoutWidth(draft.paper_dots));
     showStages(true, ink, outcome.printed);
     setBusy(false);
     printing.current = false;
@@ -464,7 +473,10 @@ export function PrinterSettingsModal({
                     onChange={(value) => {
                       const chosen = queues.find((queue) => queue.name === value);
                       if (!chosen) return;
-                      patch(applySelection(chosen));
+                      patch({
+                        ...applySelection(chosen),
+                        protocol: allowsRawEscpos(chosen) && draft.protocol === "escpos" ? "escpos" : "",
+                      });
                     }}
                     options={[
                       ...shownQueues.map((queue) => ({
@@ -506,6 +518,35 @@ export function PrinterSettingsModal({
               </p>
               {selected ? <p className="text-sm text-charcoal/60 dark:text-zinc-400">{printerDetail(selected)}</p> : null}
               {usbMode ? <p className="text-sm text-charcoal/60 dark:text-zinc-400">{USB_VIA_WINDOWS}</p> : null}
+              {selected && allowsRawEscpos(selected) ? (
+                <fieldset>
+                  <legend className="text-sm font-medium">Printing language</legend>
+                  <div className="mt-2 flex gap-2">
+                    {(
+                      [
+                        ["", "Windows driver"],
+                        ["escpos", "ESC/POS"],
+                      ] as const
+                    ).map(([protocol, label]) => (
+                      <button
+                        key={label}
+                        type="button"
+                        aria-pressed={(draft.protocol || "") === protocol}
+                        disabled={!canSave || busy}
+                        onClick={() => patch({ protocol, verification: "candidate" })}
+                        className={`rounded-full px-4 py-2 text-sm font-semibold transition ${
+                          (draft.protocol || "") === protocol
+                            ? "bg-charcoal text-white dark:bg-zinc-100 dark:text-zinc-900"
+                            : "bg-surface dark:bg-zinc-800/60 text-charcoal dark:text-zinc-100 hover:bg-charcoal/10 dark:hover:bg-white/10"
+                        }`}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                  {draft.protocol === "escpos" ? <p className="mt-2 text-sm text-charcoal/60 dark:text-zinc-400">{GENERIC_ESCPOS}</p> : null}
+                </fieldset>
+              ) : null}
               <ul className="sr-only">
                 {shownQueues.map((queue) => (
                   <li key={queue.name}>
@@ -574,6 +615,43 @@ export function PrinterSettingsModal({
                 Ethernet and Wi-Fi use this address. Port 9100 is the default raw port. {TCP_OPEN_NOTICE} The network is not scanned.
               </span>
             </label>
+          ) : draft.transport === "serial" && draft.connection_kind === "serial" ? (
+            <div className="space-y-2 text-sm">
+              <p>{SERIAL_EMPTY}</p>
+              {serialPorts.length > 0 ? (
+                <label className="block font-medium">
+                  COM port
+                  <select
+                    className="modal-input mt-1.5 font-normal"
+                    value={draft.address}
+                    disabled={!canSave || busy}
+                    onChange={(event) => patch({ transport: "serial", connection_kind: "serial", address: event.target.value, protocol: "escpos", verification: "candidate" })}
+                  >
+                    <option value="">Select a port</option>
+                    {serialPorts.map((item) => (
+                      <option key={item.port} value={item.port}>
+                        {item.port} · {item.device}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ) : (
+                <label className="block font-medium" htmlFor="serial-port">
+                  COM port
+                  <input
+                    id="serial-port"
+                    autoComplete="off"
+                    spellCheck={false}
+                    value={draft.address}
+                    disabled={!canSave || busy}
+                    onChange={(event) => patch({ transport: "serial", connection_kind: "serial", address: event.target.value, protocol: "escpos", verification: "candidate" })}
+                    placeholder="COM4"
+                    className="modal-input mt-1.5 font-normal"
+                  />
+                </label>
+              )}
+              <p className="text-charcoal/60 dark:text-zinc-400">{GENERIC_ESCPOS}</p>
+            </div>
           ) : draft.transport === "serial" || draft.transport === "ble" ? (
             <div className="space-y-2 text-sm">
               <p>{BLUETOOTH_EMPTY}</p>
@@ -684,13 +762,60 @@ export function PrinterSettingsModal({
               />
             </label>
             <label className="flex items-center justify-between gap-3 px-1 text-sm font-medium">
+              Open the cash drawer for card and other payments
+              <input
+                type="checkbox"
+                checked={draft.open_on_non_cash === true}
+                disabled={!canSave || drawerDisabled}
+                onChange={(event) => patch({ open_on_non_cash: event.target.checked })}
+                className="h-5 w-5 accent-primary disabled:opacity-40"
+              />
+            </label>
+            <label className="flex items-center justify-between gap-3 px-1 text-sm font-medium">
+              Cash drawer
+              <Select
+                size="sm"
+                className="w-72"
+                aria-label="Cash drawer"
+                disabled={!canSave}
+                value={draft.drawer_profile ?? ""}
+                onChange={(value) => {
+                  const profile = drawerProfile(value);
+                  patch({
+                    drawer_profile: value,
+                    ...(profile.lockedPin != null
+                      ? { drawer_pin: profile.lockedPin, drawer_on: profile.on, drawer_off: profile.off }
+                      : {}),
+                  });
+                }}
+                options={DRAWER_PROFILES.map((profile) => ({ value: profile.id, label: profile.label }))}
+              />
+            </label>
+            <label className="flex items-center justify-between gap-3 px-1 text-sm font-medium">
+              Printer drawer-port voltage
+              <Select
+                size="sm"
+                className="w-40"
+                aria-label="Printer drawer-port voltage"
+                disabled={!canSave}
+                value={draft.host_voltage ?? ""}
+                onChange={(value) => patch({ host_voltage: value })}
+                options={[
+                  { value: "", label: "Unconfirmed" },
+                  { value: "24", label: "24V" },
+                  { value: "12", label: "12V" },
+                ]}
+              />
+            </label>
+            <p className="px-1 text-sm text-charcoal/60 dark:text-zinc-400">{drawerProfile(draft.drawer_profile).note}</p>
+            <label className="flex items-center justify-between gap-3 px-1 text-sm font-medium">
               Drawer connector
               <Select
                 size="sm"
                 className="w-36"
                 aria-label="Drawer connector"
-                disabled={!canSave || drawerDisabled}
-                value={String(draft.drawer_pin ?? 0)}
+                disabled={!canSave || drawerDisabled || drawerProfile(draft.drawer_profile).lockedPin != null}
+                value={String(drawerProfile(draft.drawer_profile).lockedPin ?? draft.drawer_pin ?? 0)}
                 onChange={(value) => patch({ drawer_pin: Number(value) })}
                 options={[
                   { value: "0", label: "Pin 2" },

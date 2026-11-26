@@ -34,6 +34,38 @@ def test_two_tenants_see_only_their_own_brand(session):
         assert [row.tenant_id for row in rows] == [second]
 
 
+def test_price_option_rows_stay_inside_their_tenant(session):
+    from app.models.menu import MenuPriceOption
+    from app.models.product import Product
+
+    first, second = uuid.uuid4(), uuid.uuid4()
+    with use_tenant(_ref(first)):
+        product = Product(
+            name="Daal Channa",
+            barcode="281000009901",
+            category="Kitchen",
+            price_cents=600,
+            currency="AED",
+        )
+        session.add(product)
+        session.flush()
+        option = MenuPriceOption(product_id=product.id, name="Small Plate", price_cents=300, is_active=True, position=0)
+        session.add(option)
+        session.commit()
+        option_id = option.id
+
+    with use_tenant(_ref(second)):
+        assert session.get(MenuPriceOption, option_id) is None
+        stolen = session.execute(update(MenuPriceOption).where(MenuPriceOption.id == option_id).values(price_cents=1))
+        session.commit()
+        assert stolen.rowcount == 0
+
+    with use_tenant(_ref(first)):
+        session.expire_all()
+        kept = session.get(MenuPriceOption, option_id)
+        assert kept is not None and kept.price_cents == 300 and kept.name == "Small Plate"
+
+
 def test_scoped_session_cannot_update_another_tenants_brand(session):
     first, second = uuid.uuid4(), uuid.uuid4()
     with use_tenant(_ref(second)):

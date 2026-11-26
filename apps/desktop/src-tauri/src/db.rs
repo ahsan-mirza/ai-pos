@@ -857,6 +857,11 @@ impl Db {
                         .get("stock_authoritative")
                         .and_then(|item| item.as_bool())
                         .unwrap_or(true);
+                    if !authoritative && merge_product_identity(tx, id, &value)? {
+                        // A later edit names the product. The photo, stock, and other columns stay.
+                        next = *seq;
+                        continue;
+                    }
                     if !authoritative {
                         if let Ok(previous) = tx.query_row(
                             "SELECT stock_quantity FROM products WHERE id = ?1",
@@ -868,7 +873,16 @@ impl Db {
                             }
                         }
                     }
-                    let mut product: ProductRow = serde_json::from_value(value).map_err(|err| err.to_string())?;
+                    let mut product: ProductRow = match serde_json::from_value(value) {
+                        Ok(product) => product,
+                        // A partial feed row for a product this register has not stored yet. The next
+                        // full catalogue refresh writes it. Failing the page would stall every later change.
+                        Err(_) if !authoritative => {
+                            next = *seq;
+                            continue;
+                        }
+                        Err(err) => return Err(err.to_string()),
+                    };
                     if product.id != *id {
                         return Err("record id does not match the payload".to_string());
                     }
@@ -1714,6 +1728,38 @@ fn drop_bundled_demo(conn: &Connection) -> Result<(), String> {
     )
     .map_err(|err| err.to_string())?;
     Ok(())
+}
+
+/// Updates the fields a catalogue edit publishes. Stock, photos, and the rest of the row stay.
+fn merge_product_identity(tx: &Connection, id: &str, value: &serde_json::Value) -> Result<bool, String> {
+    let exists: Option<i64> = tx
+        .query_row("SELECT 1 FROM products WHERE id = ?1", params![id], |row| row.get(0))
+        .optional()
+        .map_err(|err| err.to_string())?;
+    if exists.is_none() {
+        return Ok(false);
+    }
+    let name = value.get("name").and_then(|item| item.as_str()).unwrap_or("");
+    if name.is_empty() {
+        return Err("missing product name".to_string());
+    }
+    let sku = value.get("sku").and_then(|item| item.as_str());
+    let barcode = value.get("barcode").and_then(|item| item.as_str());
+    let category = value.get("category").and_then(|item| item.as_str()).unwrap_or("");
+    let price = value
+        .get("price_cents")
+        .and_then(|item| item.as_i64())
+        .ok_or_else(|| "missing product price".to_string())?;
+    let currency = value.get("currency").and_then(|item| item.as_str()).unwrap_or("AED");
+    let serialized = value.get("is_serialized").and_then(|item| item.as_bool()).unwrap_or(false);
+    let active = value.get("is_active").and_then(|item| item.as_bool()).unwrap_or(true);
+    tx.execute(
+        "UPDATE products SET sku = COALESCE(?2, sku), barcode = COALESCE(?3, barcode), name = ?4,
+         category = ?5, price_cents = ?6, currency = ?7, is_serialized = ?8, is_active = ?9 WHERE id = ?1",
+        params![id, sku, barcode, name, category, price, currency, i64::from(serialized), i64::from(active)],
+    )
+    .map_err(|err| err.to_string())?;
+    Ok(true)
 }
 
 fn insert_product(conn: &Connection, product: &ProductRow) -> Result<(), String> {

@@ -15,6 +15,7 @@ from app.schemas.orders import (
     DeliveryOutcome,
     DeliveryProgress,
     GuestSuggestionsOut,
+    ItemDecrease,
     ItemQuantity,
     ItemVoid,
     OrderAction,
@@ -170,6 +171,13 @@ def increase_sent_quantity(
     order_id: uuid.UUID, item_id: uuid.UUID, payload: ItemQuantity, db: Db, principal: CanOrder
 ) -> OrderOut:
     return order_service.increase_sent_quantity(db, principal, order_id, item_id, payload)
+
+
+@router.post("/{order_id}/items/{item_id}/decrease", response_model=OrderOut)
+def decrease_sent_quantity(
+    order_id: uuid.UUID, item_id: uuid.UUID, payload: ItemDecrease, db: Db, principal: CanOrder
+) -> OrderOut:
+    return order_service.decrease_sent_quantity(db, principal, order_id, item_id, payload)
 
 
 @router.post("/{order_id}/items/{item_id}/void", response_model=OrderOut)

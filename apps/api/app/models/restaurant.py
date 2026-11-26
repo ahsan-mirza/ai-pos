@@ -152,6 +152,10 @@ class OpenOrderItem(TenantScoped, Base):
     note: Mapped[str | None] = mapped_column(String(160), nullable=True)
     position: Mapped[int] = mapped_column(Integer, default=0)
     added_by_id: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    # Set on a later kitchen round. The original sent line stays the parent and is not rewritten.
+    source_item_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("open_order_items.id"), nullable=True, index=True
+    )
     sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     voided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     void_reason: Mapped[str | None] = mapped_column(String(160), nullable=True)

@@ -51,6 +51,9 @@ pub fn migrate(conn: &Connection) -> Result<(), String> {
     add_column(conn, "printer_settings", "protocol", "TEXT NOT NULL DEFAULT ''")?;
     add_column(conn, "printer_settings", "bluetooth_identity", "TEXT NOT NULL DEFAULT ''")?;
     add_column(conn, "printer_settings", "verification", "TEXT NOT NULL DEFAULT 'candidate'")?;
+    add_column(conn, "printer_settings", "drawer_profile", "TEXT NOT NULL DEFAULT ''")?;
+    add_column(conn, "printer_settings", "host_voltage", "TEXT NOT NULL DEFAULT ''")?;
+    add_column(conn, "printer_settings", "open_on_non_cash", "INTEGER NOT NULL DEFAULT 0")?;
     add_column(conn, "printer_status", "last_kick_attempt_at", "INTEGER")?;
     conn.execute_batch(
         "
@@ -68,7 +71,11 @@ pub fn migrate(conn: &Connection) -> Result<(), String> {
         );
         ",
     )
-    .map_err(|err| err.to_string())
+    .map_err(|err| err.to_string())?;
+    add_column(conn, "printer_jobs", "connection", "TEXT NOT NULL DEFAULT ''")?;
+    add_column(conn, "printer_jobs", "protocol", "TEXT NOT NULL DEFAULT ''")?;
+    add_column(conn, "printer_jobs", "payload_bytes", "INTEGER NOT NULL DEFAULT 0")?;
+    Ok(())
 }
 
 fn add_column(conn: &Connection, table: &str, column: &str, definition: &str) -> Result<(), String> {
@@ -122,7 +129,7 @@ pub struct PrinterSettings {
     /// Windows object GUID when the spooler provides one. Empty when it does not.
     #[serde(default)]
     pub saved_identity: String,
-    /// windows, usb, network, wifi, bluetooth-classic, bluetooth-ble, or none.
+    /// windows, usb, network, wifi, serial, bluetooth-classic, bluetooth-ble, or none.
     #[serde(default)]
     pub connection_kind: String,
     /// escpos, windows-gdi, or unknown. Empty until the print path selects one.
@@ -134,6 +141,15 @@ pub struct PrinterSettings {
     /// candidate, offline, unsupported, missing, or connection-error. Never stored as verified from the client.
     #[serde(default)]
     pub verification: String,
+    /// Compatibility-list id. Empty until a cashier chooses a drawer profile.
+    #[serde(default)]
+    pub drawer_profile: String,
+    /// Confirmed printer drawer-port voltage: "12", "24", or empty when unconfirmed.
+    #[serde(default)]
+    pub host_voltage: String,
+    /// Card and other non-cash tenders stay closed unless this is explicitly on.
+    #[serde(default)]
+    pub open_on_non_cash: bool,
 }
 
 fn default_auto() -> bool {
@@ -171,6 +187,9 @@ impl Default for PrinterSettings {
             protocol: String::new(),
             bluetooth_identity: String::new(),
             verification: "candidate".into(),
+            drawer_profile: String::new(),
+            host_voltage: String::new(),
+            open_on_non_cash: false,
         }
     }
 }
@@ -180,7 +199,7 @@ pub fn load(db: &Db) -> Result<PrinterSettings, String> {
         conn.query_row(
             "SELECT transport, address, paper_dots, drawer_kick, auto_print, copies, drawer_pin, drawer_on, drawer_off,
                     auto_discover, previous_address, saved_driver, saved_port, saved_model, user_selected, saved_identity,
-                    connection_kind, protocol, bluetooth_identity, verification
+                    connection_kind, protocol, bluetooth_identity, verification, drawer_profile, host_voltage, open_on_non_cash
              FROM printer_settings WHERE id = 1",
             [],
             |row| {
@@ -205,6 +224,9 @@ pub fn load(db: &Db) -> Result<PrinterSettings, String> {
                     protocol: row.get(17)?,
                     bluetooth_identity: row.get(18)?,
                     verification: row.get(19)?,
+                    drawer_profile: row.get(20)?,
+                    host_voltage: row.get(21)?,
+                    open_on_non_cash: row.get::<_, i64>(22)? != 0,
                 })
             },
         )
@@ -255,7 +277,7 @@ pub fn refuse_hardware_change(db: &Db, session: &crate::auth::Session, store_id:
 /// diagnostic preference. It is not treated as a connected receipt printer by the probe.
 pub fn prepare_settings(settings: &PrinterSettings) -> Result<PrinterSettings, String> {
     if !matches!(settings.transport.as_str(), "none" | "tcp" | "windows" | "serial" | "ble") {
-        return Err("Choose Windows, USB, Network / Wi-Fi, Bluetooth, or None.".into());
+        return Err("Choose Windows, USB, Network / Wi-Fi, Bluetooth, Serial / COM, or None.".into());
     }
     if !matches!(settings.paper_dots, 384 | 576) {
         return Err("Paper width must be 58 mm (384 dots) or 80 mm (576 dots).".into());
@@ -264,6 +286,7 @@ pub fn prepare_settings(settings: &PrinterSettings) -> Result<PrinterSettings, S
         return Err("Copies per sale must be 1, 2, or 3.".into());
     }
     checked_pulse(settings.drawer_pin, settings.drawer_on, settings.drawer_off)?;
+    crate::cash_drawer::validate(&settings.drawer_profile, &settings.host_voltage)?;
     let mut next = settings.clone();
     next.address = settings.address.trim().to_string();
     next.previous_address = settings.previous_address.trim().to_string();
@@ -276,6 +299,8 @@ pub fn prepare_settings(settings: &PrinterSettings) -> Result<PrinterSettings, S
         return Err("That connection does not match the selected printer type.".into());
     }
     next.verification = crate::printer_profile::stored_verification(&next.verification).to_string();
+    next.drawer_profile = next.drawer_profile.trim().to_string();
+    next.host_voltage = next.host_voltage.trim().to_string();
     match next.transport.as_str() {
         "none" => {
             if !next.address.is_empty() {
@@ -297,6 +322,15 @@ pub fn prepare_settings(settings: &PrinterSettings) -> Result<PrinterSettings, S
             }
             if next.connection_kind == "usb" && !next.saved_port.trim().is_empty() && !crate::printer_profile::port_is_usb(&next.saved_port) {
                 return Err("This queue is not a USB printer. Choose Windows printer for a driver queue, or Network / Wi-Fi for an address.".into());
+            }
+            if next.protocol == "escpos"
+                && (crate::printer_discovery::expects_rendered_job(&next.saved_driver, &next.saved_port)
+                    || crate::printer_discovery::is_text_only_driver(&next.saved_driver))
+            {
+                return Err("This Windows driver does not accept raw ESC/POS. The receipt is rendered by Windows.".into());
+            }
+            if !next.protocol.is_empty() && !matches!(next.protocol.as_str(), "escpos" | "windows-gdi") {
+                return Err("That printing language is not supported for this printer.".into());
             }
         }
         "serial" => {
@@ -364,8 +398,8 @@ pub fn save(db: &Db, settings: &PrinterSettings) -> Result<PrinterSettings, Stri
             "INSERT INTO printer_settings (
                 id, transport, address, paper_dots, drawer_kick, auto_print, copies, drawer_pin, drawer_on, drawer_off,
                 auto_discover, previous_address, saved_driver, saved_port, saved_model, user_selected, saved_identity,
-                connection_kind, protocol, bluetooth_identity, verification
-             ) VALUES (1, ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20)
+                connection_kind, protocol, bluetooth_identity, verification, drawer_profile, host_voltage, open_on_non_cash
+             ) VALUES (1, ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23)
              ON CONFLICT(id) DO UPDATE SET transport = excluded.transport, address = excluded.address,
                 paper_dots = excluded.paper_dots, drawer_kick = excluded.drawer_kick,
                 auto_print = excluded.auto_print, copies = excluded.copies,
@@ -375,7 +409,8 @@ pub fn save(db: &Db, settings: &PrinterSettings) -> Result<PrinterSettings, Stri
                 saved_model = excluded.saved_model, user_selected = excluded.user_selected,
                 saved_identity = excluded.saved_identity, connection_kind = excluded.connection_kind,
                 protocol = excluded.protocol, bluetooth_identity = excluded.bluetooth_identity,
-                verification = excluded.verification",
+                verification = excluded.verification, drawer_profile = excluded.drawer_profile,
+                host_voltage = excluded.host_voltage, open_on_non_cash = excluded.open_on_non_cash",
             params![
                 settings.transport,
                 settings.address.trim(),
@@ -397,6 +432,9 @@ pub fn save(db: &Db, settings: &PrinterSettings) -> Result<PrinterSettings, Stri
                 settings.protocol.trim(),
                 settings.bluetooth_identity.trim(),
                 settings.verification.trim(),
+                settings.drawer_profile.trim(),
+                settings.host_voltage.trim(),
+                settings.open_on_non_cash as i64,
             ],
         )
         .map_err(|err| err.to_string())?;
@@ -432,9 +470,10 @@ pub struct RasterJob {
 
 #[cfg(test)]
 const DRAWER_KICK: [u8; 5] = [0x1b, b'p', 0, 25, 250];
-const BAND_ROWS: u32 = 256;
+/// One ESC/POS graphic band. 256 encodes as a zero low byte, and some printers then print only the leftover rows.
+const BAND_ROWS: u32 = 128;
 const KICK_GAP_SECS: i64 = 3;
-const SPOOLER_TIMEOUT: Duration = Duration::from_secs(8);
+const SPOOLER_TIMEOUT: Duration = Duration::from_secs(30);
 static PRINTING: AtomicBool = AtomicBool::new(false);
 static LAST_KICK_AT: AtomicI64 = AtomicI64::new(0);
 static LAST_DIAGNOSTIC: std::sync::Mutex<Option<PrintDiagnostic>> = std::sync::Mutex::new(None);
@@ -619,10 +658,10 @@ pub fn plan_drawer_kick(
     if !kick_allowed(now, last_attempt, KICK_GAP_SECS) {
         return Err("Wait a moment before kicking the drawer again.".into());
     }
-    let (pin, on_units, off_units) = checked_pulse(settings.drawer_pin, settings.drawer_on, settings.drawer_off)?;
-    let mut bytes = vec![0x1b, b'@'];
-    bytes.extend_from_slice(&drawer_pulse(pin, on_units, off_units));
     if settings.transport == "tcp" {
+        let pulse = crate::cash_drawer::require_pulse(settings, None)?;
+        let mut bytes = vec![0x1b, b'@'];
+        bytes.extend(pulse);
         return Ok(KickPlan {
             queue: settings.address.trim().to_string(),
             bytes,
@@ -646,9 +685,32 @@ pub fn plan_drawer_kick(
     if !queue.openable {
         return Err(queue_open_error(&queue.name, false).unwrap_err());
     }
-    if !queue.supports_drawer_kick || queue.compatibility != "compatible" {
+    let known = queue.supports_drawer_kick && queue.compatibility == "compatible";
+    if !known {
+        if crate::cash_drawer::lacks_kick_circuit(&queue.driver, &queue.port) && !settings.drawer_profile.trim().is_empty() {
+            let message = match crate::cash_drawer::require_pulse(
+                settings,
+                Some(crate::cash_drawer::KickHost {
+                    driver: &queue.driver,
+                    port: &queue.port,
+                }),
+            ) {
+                Ok(_) => "This printer has no known drawer-kick profile. Test drawer kick stays off.".into(),
+                Err(message) => message,
+            };
+            return Err(message);
+        }
         return Err("This printer has no known drawer-kick profile. Test drawer kick stays off.".into());
     }
+    let pulse = crate::cash_drawer::require_pulse(
+        settings,
+        Some(crate::cash_drawer::KickHost {
+            driver: &queue.driver,
+            port: &queue.port,
+        }),
+    )?;
+    let mut bytes = vec![0x1b, b'@'];
+    bytes.extend(pulse);
     Ok(KickPlan {
         queue: queue.name.clone(),
         bytes,
@@ -703,26 +765,65 @@ pub struct PrinterProbe {
     pub print_transport: String,
     pub capabilities: String,
     pub diagnostic: Option<PrintDiagnostic>,
+    /// Saved drawer profile id. Empty until a cashier chooses one.
+    #[serde(default)]
+    pub drawer_profile: String,
+    /// Confirmed drawer-port voltage, or empty when unconfirmed.
+    #[serde(default)]
+    pub host_voltage: String,
+    #[serde(default)]
+    pub open_on_non_cash: bool,
 }
 
-fn remember_job(db: &Db, invoice: &str, printer_id: &str, transport: &str, phase: &crate::printer_profile::JobPhase, error: Option<&str>) {
+static JOB_SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+
+/// One user-requested print. A later retry is a new row. An accepted row is not sent again, because the paper may already be out.
+pub fn record_print_job(
+    db: &Db,
+    invoice: &str,
+    printer_id: &str,
+    connection: &str,
+    protocol: &str,
+    transport: &str,
+    payload_type: &str,
+    payload_bytes: usize,
+    phase: &crate::printer_profile::JobPhase,
+    error: Option<&str>,
+) -> Result<(), String> {
+    if crate::printer_profile::retry_when_output_unknown() {
+        return Err("An unverified print is not sent again.".into());
+    }
     let now = now_secs();
-    let id = format!("{now}-{invoice}-{printer_id}");
+    let seq = JOB_SEQ.fetch_add(1, Ordering::Relaxed);
+    let id = format!("{now}-{seq}-{invoice}");
     let status = match phase {
         crate::printer_profile::JobPhase::AcceptedUnverified => "accepted-unverified",
         crate::printer_profile::JobPhase::Failed => "failed",
         _ => "submitted",
     };
-    let _ = db.transaction(|tx| {
+    db.transaction(|tx| {
         tx.execute(
             "INSERT INTO printer_jobs (
-                id, invoice_id, printer_id, transport, payload_type, created_at, status, attempts, error, verification
-             ) VALUES (?1, ?2, ?3, ?4, 'raster', ?5, ?6, 1, ?7, 'physical-not-verified')",
-            params![id, invoice, printer_id, transport, now, status, error.unwrap_or("")],
+                id, invoice_id, printer_id, transport, payload_type, created_at, status, attempts, error, verification,
+                connection, protocol, payload_bytes
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 1, ?8, 'physical-not-verified', ?9, ?10, ?11)",
+            params![
+                id,
+                invoice,
+                printer_id,
+                transport,
+                payload_type,
+                now,
+                status,
+                error.unwrap_or(""),
+                connection,
+                protocol,
+                payload_bytes as i64
+            ],
         )
         .map_err(|err| err.to_string())?;
         Ok(())
-    });
+    })
 }
 
 fn remember_print(db: &Db, error: Option<&str>) {
@@ -846,6 +947,9 @@ fn finish_probe(
             .to_string(),
         capabilities: String::new(),
         diagnostic: last_diagnostic(),
+        drawer_profile: settings.drawer_profile.clone(),
+        host_voltage: settings.host_voltage.clone(),
+        open_on_non_cash: settings.open_on_non_cash,
     }
 }
 
@@ -1014,7 +1118,8 @@ pub fn probe(db: &Db) -> Result<PrinterProbe, String> {
         return Ok(annotate(probe, &decision, None));
     }
     if settings.transport == "serial" {
-        let opened = probe_serial(&settings.address);
+        let kind = settings.connection_kind.clone();
+        let opened = probe_serial(&settings.address, &kind);
         let ok = opened.is_ok();
         let mut probe = finish_probe(
             settings,
@@ -1028,8 +1133,8 @@ pub fn probe(db: &Db) -> Result<PrinterProbe, String> {
         probe.compatibility = "candidate".into();
         probe.supports_drawer_kick = false;
         probe.print_transport = "escpos".into();
-        probe.connection = "Bluetooth Classic".into();
-        probe.capabilities = "Paired Bluetooth serial port. Receipt printing is not verified, and the drawer is not kicked.".into();
+        probe.connection = if kind == "serial" { "Serial".into() } else { "Bluetooth Classic".into() };
+        probe.capabilities = crate::printer_profile::serial_capability(&kind).into();
         return Ok(annotate(probe, &decision, None));
     }
     if settings.transport == "ble" {
@@ -1137,7 +1242,8 @@ pub fn probe(db: &Db) -> Result<PrinterProbe, String> {
             Some(crate::printer_discovery::candidate_notice(&queue.name, &queue.driver)),
         )
     };
-    Ok(annotate(
+    let explicit = settings.protocol.clone();
+    let mut probe = annotate(
         finish_probe(
             settings,
             history,
@@ -1149,7 +1255,22 @@ pub fn probe(db: &Db) -> Result<PrinterProbe, String> {
         ),
         &decision,
         Some(&queue),
-    ))
+    );
+    let selected = crate::printer_discovery::select_output(&queue.driver, &queue.port, &queue.default_datatype, &explicit);
+    if selected != crate::printer_discovery::PrintTransport::None {
+        probe.print_transport = selected.as_str().into();
+    }
+    if explicit == "escpos" && selected == crate::printer_discovery::PrintTransport::EscPos && queue.compatibility != "compatible" {
+        probe.capabilities = "Generic ESC/POS was selected for this model. It is not verified, and the drawer is not kicked.".into();
+        probe.supports_drawer_kick = false;
+    }
+    Ok(probe)
+}
+
+/// A settings sample is not a sale. It must not open the drawer even if the caller asks.
+pub fn sample_document(number: &str) -> bool {
+    let folded = number.trim().to_ascii_uppercase();
+    folded.starts_with("SAMPLE") || folded == "TEST" || folded.starts_with("TEST-")
 }
 
 pub fn ink_bytes(data: &[u8]) -> usize {
@@ -1193,12 +1314,18 @@ pub fn escpos_raster(job: &RasterJob, copies: u32, kick: &[u8]) -> Result<Vec<u8
 }
 
 pub fn send(settings: &PrinterSettings, bytes: &[u8]) -> Result<(), String> {
-    match settings.transport.as_str() {
-        "tcp" => send_tcp(&settings.address, bytes),
-        "windows" => send_spooler(&settings.address, bytes),
-        "serial" => send_serial(&settings.address, bytes),
-        "ble" => Err(crate::printer_profile::BLE_UNSUPPORTED.into()),
-        _ => Err("No receipt printer is configured. Open Register settings to add one.".into()),
+    let adapter = crate::printer_profile::adapter_for(&settings.transport, &settings.connection_kind);
+    match adapter {
+        crate::printer_profile::Adapter::NetworkTcp => send_tcp(&settings.address, bytes),
+        crate::printer_profile::Adapter::WindowsSpooler | crate::printer_profile::Adapter::UsbViaSpooler => {
+            send_spooler(&settings.address, bytes)
+        }
+        crate::printer_profile::Adapter::BluetoothClassic | crate::printer_profile::Adapter::SerialCom => {
+            send_serial(&settings.address, &settings.connection_kind, bytes)
+        }
+        crate::printer_profile::Adapter::BluetoothBle => Err(crate::printer_profile::BLE_UNSUPPORTED.into()),
+        crate::printer_profile::Adapter::Vendor => Err(crate::printer_profile::NO_VENDOR_ADAPTER.into()),
+        crate::printer_profile::Adapter::None => Err("No receipt printer is configured. Open Register settings to add one.".into()),
     }
 }
 
@@ -1220,9 +1347,9 @@ fn send_tcp(address: &str, bytes: &[u8]) -> Result<(), String> {
     stream.flush().map_err(|err| err.to_string())
 }
 
-fn probe_serial(port: &str) -> Result<(), String> {
+fn probe_serial(port: &str, connection_kind: &str) -> Result<(), String> {
     let normalized = crate::printer_profile::normalize_com(port)?;
-    close_serial(open_serial(&normalized)?)
+    close_serial(open_serial(&normalized, connection_kind)?)
 }
 
 #[cfg(windows)]
@@ -1237,14 +1364,14 @@ fn close_serial(_handle: ()) -> Result<(), String> {
     Ok(())
 }
 
-fn send_serial(port: &str, bytes: &[u8]) -> Result<(), String> {
+fn send_serial(port: &str, connection_kind: &str, bytes: &[u8]) -> Result<(), String> {
     let normalized = crate::printer_profile::normalize_com(port)?;
-    let handle = open_serial(&normalized)?;
-    write_serial(handle, bytes)
+    let handle = open_serial(&normalized, connection_kind)?;
+    write_serial(handle, connection_kind, bytes)
 }
 
 #[cfg(windows)]
-fn open_serial(port: &str) -> Result<windows_sys::Win32::Foundation::HANDLE, String> {
+fn open_serial(port: &str, connection_kind: &str) -> Result<windows_sys::Win32::Foundation::HANDLE, String> {
     use windows_sys::Win32::Devices::Communication::{SetCommTimeouts, COMMTIMEOUTS};
     use windows_sys::Win32::Foundation::{CloseHandle, GENERIC_READ, GENERIC_WRITE, INVALID_HANDLE_VALUE};
     use windows_sys::Win32::Storage::FileSystem::{CreateFileW, FILE_ATTRIBUTE_NORMAL, OPEN_EXISTING};
@@ -1263,7 +1390,7 @@ fn open_serial(port: &str) -> Result<windows_sys::Win32::Foundation::HANDLE, Str
         )
     };
     if handle == INVALID_HANDLE_VALUE || handle.is_null() {
-        return Err(format!("Bluetooth serial port {port} could not be opened. Pair the printer in Windows, then refresh."));
+        return Err(crate::printer_profile::serial_open_error(connection_kind, port));
     }
     let timeouts = COMMTIMEOUTS {
         ReadIntervalTimeout: 50,
@@ -1275,13 +1402,13 @@ fn open_serial(port: &str) -> Result<windows_sys::Win32::Foundation::HANDLE, Str
     let armed = unsafe { SetCommTimeouts(handle, &timeouts) };
     if armed == 0 {
         unsafe { CloseHandle(handle) };
-        return Err(format!("Bluetooth serial port {port} did not accept a write timeout."));
+        return Err(crate::printer_profile::serial_timeout_error(connection_kind, port));
     }
     Ok(handle)
 }
 
 #[cfg(windows)]
-fn write_serial(handle: windows_sys::Win32::Foundation::HANDLE, bytes: &[u8]) -> Result<(), String> {
+fn write_serial(handle: windows_sys::Win32::Foundation::HANDLE, connection_kind: &str, bytes: &[u8]) -> Result<(), String> {
     use windows_sys::Win32::Foundation::CloseHandle;
     use windows_sys::Win32::Storage::FileSystem::WriteFile;
 
@@ -1290,7 +1417,7 @@ fn write_serial(handle: windows_sys::Win32::Foundation::HANDLE, bytes: &[u8]) ->
         let ok = WriteFile(handle, bytes.as_ptr(), bytes.len() as u32, &mut written, std::ptr::null_mut());
         CloseHandle(handle);
         if ok == 0 || written as usize != bytes.len() {
-            Err("The Bluetooth printer did not accept the whole receipt. Physical printing has not been verified.".into())
+            Err(crate::printer_profile::serial_write_error(connection_kind))
         } else {
             Ok(())
         }
@@ -1299,13 +1426,31 @@ fn write_serial(handle: windows_sys::Win32::Foundation::HANDLE, bytes: &[u8]) ->
 }
 
 #[cfg(not(windows))]
-fn open_serial(port: &str) -> Result<(), String> {
-    Err(format!("Bluetooth serial port {port} is only available on Windows."))
+fn open_serial(port: &str, connection_kind: &str) -> Result<(), String> {
+    Err(crate::printer_profile::serial_platform_error(connection_kind, port))
 }
 
 #[cfg(not(windows))]
-fn write_serial(_handle: (), _bytes: &[u8]) -> Result<(), String> {
-    Err("Bluetooth serial printing is only available on Windows.".into())
+fn write_serial(_handle: (), connection_kind: &str, _bytes: &[u8]) -> Result<(), String> {
+    Err(crate::printer_profile::serial_write_error(connection_kind))
+}
+
+/// COM ports that are not Windows Bluetooth modems. Listing does not open the port or send bytes.
+pub fn list_serial_ports() -> Vec<crate::printer_profile::ComPort> {
+    bluetooth_com_names()
+        .into_iter()
+        .filter_map(|(device, com)| {
+            if crate::printer_profile::com_connection_kind(&device) != "serial" {
+                return None;
+            }
+            let port = crate::printer_profile::normalize_com(&com).ok()?;
+            Some(crate::printer_profile::ComPort {
+                device,
+                port,
+                connection: "serial".into(),
+            })
+        })
+        .collect()
 }
 
 /// Paired Bluetooth Classic ports that Windows exposed as serial devices. No pairing and no bytes are sent.
@@ -1664,7 +1809,11 @@ fn resolve_print(settings: &PrinterSettings) -> Result<ResolvedPrint, String> {
         "serial" => Ok(ResolvedPrint {
             transport: crate::printer_discovery::PrintTransport::EscPos,
             queue: settings.address.trim().to_string(),
-            driver: "Bluetooth Classic".into(),
+            driver: if settings.connection_kind == "serial" {
+                "Serial COM".into()
+            } else {
+                "Bluetooth Classic".into()
+            },
             port: settings.address.trim().to_string(),
         }),
         "ble" => Err(crate::printer_profile::BLE_UNSUPPORTED.into()),
@@ -1682,7 +1831,12 @@ fn resolve_print(settings: &PrinterSettings) -> Result<ResolvedPrint, String> {
             if !queue.openable {
                 return Err(crate::printer_discovery::QUEUE_CLOSED.into());
             }
-            let transport = crate::printer_discovery::transport_for(&queue.driver, &queue.port, &queue.default_datatype);
+            let transport = crate::printer_discovery::select_output(
+                &queue.driver,
+                &queue.port,
+                &queue.default_datatype,
+                &settings.protocol,
+            );
             if transport == crate::printer_discovery::PrintTransport::None {
                 return Err(crate::printer_discovery::UNSUPPORTED_METHOD.into());
             }
@@ -1789,29 +1943,28 @@ pub fn print_raster(db: &Db, job: &RasterJob) -> Result<(), String> {
             return Err(message);
         }
     };
-    let mut kicking = job.kick_drawer
-        && settings.drawer_kick
-        && settings.transport != "serial"
-        && settings.transport != "ble"
-        && resolved.transport == crate::printer_discovery::PrintTransport::EscPos;
     let now = now_secs();
-    if kicking && !kick_allowed(now, LAST_KICK_AT.load(Ordering::Relaxed), KICK_GAP_SECS) {
-        kicking = false;
-    }
-    if kicking && settings.transport == "windows" {
-        let allowed = known_windows_printers()
-            .ok()
-            .and_then(|queues| find_queue(&settings.address, &queues).cloned())
-            .map(|queue| {
-                queue.supports_drawer_kick && queue.compatibility == "compatible" && queue.availability == "ready" && queue.openable
-            })
-            .unwrap_or(false);
-        if !allowed {
-            kicking = false;
-        }
-    }
-    let pulse = drawer_pulse(settings.drawer_pin, settings.drawer_on, settings.drawer_off);
-    let kick: &[u8] = if kicking { &pulse } else { &[] };
+    let queues = if job.kick_drawer && settings.transport == "windows" {
+        known_windows_printers().unwrap_or_default()
+    } else {
+        Vec::new()
+    };
+    let planned = if job.kick_drawer && !sample_document(&job.document_number) {
+        plan_drawer_kick(&settings, &queues, now, LAST_KICK_AT.load(Ordering::Relaxed)).ok()
+    } else {
+        None
+    };
+    let mut kicking = planned.is_some();
+    let kick_owned = planned
+        .map(|plan| {
+            if plan.bytes.starts_with(&[0x1b, b'@']) {
+                plan.bytes[2..].to_vec()
+            } else {
+                plan.bytes
+            }
+        })
+        .unwrap_or_default();
+    let kick: &[u8] = if kicking { &kick_owned } else { &[] };
     let printable = RasterJob {
         width: job.width,
         height: job.height,
@@ -1872,6 +2025,14 @@ pub fn print_raster(db: &Db, job: &RasterJob) -> Result<(), String> {
                 sent.is_ok(),
                 sent.as_ref().err().map(String::as_str),
             );
+            if sent.is_ok() && kicking {
+                let mut pulse_bytes = vec![0x1b, b'@'];
+                pulse_bytes.extend_from_slice(kick);
+                if let Err(message) = send_spooler(&resolved.queue, &pulse_bytes) {
+                    remember_kick(db, Some(&message));
+                    kicking = false;
+                }
+            }
             sent
         }
         crate::printer_discovery::PrintTransport::None => {
@@ -1882,18 +2043,27 @@ pub fn print_raster(db: &Db, job: &RasterJob) -> Result<(), String> {
     };
     PRINTING.store(false, Ordering::Relaxed);
     let phase = crate::printer_profile::advance_job(result.is_ok());
-    remember_job(
+    let payload_type = match resolved.transport {
+        crate::printer_discovery::PrintTransport::EscPos => "escpos",
+        crate::printer_discovery::PrintTransport::WindowsGdi => "raster-image",
+        crate::printer_discovery::PrintTransport::None => "rejected",
+    };
+    let _ = record_print_job(
         db,
         &job.document_number,
         &resolved.queue,
+        &settings.connection_kind,
         resolved.transport.as_str(),
+        resolved.transport.as_str(),
+        payload_type,
+        job.data.len(),
         &phase,
         result.as_ref().err().map(String::as_str),
     );
     if settings.transport != "none" {
         remember_print(db, result.as_ref().err().map(String::as_str));
         if result.is_ok() && kicking {
-            LAST_KICK_AT.store(now, Ordering::Relaxed);
+            LAST_KICK_AT.store(now_secs(), Ordering::Relaxed);
             remember_kick(db, None);
         }
     }
@@ -2108,8 +2278,27 @@ mod tests {
             .windows(3)
             .filter(|w| w == &[0x1d, b'v', b'0'])
             .count();
-        assert_eq!(bands, 4);
+        assert_eq!(bands, 6);
         assert_eq!(bytes.windows(5).filter(|w| w == &DRAWER_KICK).count(), 1);
+        let heights = graphic_band_heights(&bytes);
+        assert!(heights.iter().all(|height| (1..=128).contains(height)), "{heights:?}");
+        assert_eq!(heights.iter().sum::<u32>(), 600);
+        assert!(sample_document("SAMPLE-1001"));
+        assert!(sample_document("TEST-000000"));
+        assert!(!sample_document("INV-1001"));
+    }
+
+    fn graphic_band_heights(bytes: &[u8]) -> Vec<u32> {
+        let mut heights = Vec::new();
+        let mut index = 0;
+        while index + 8 <= bytes.len() {
+            if bytes[index] == 0x1d && bytes[index + 1] == b'v' && bytes[index + 2] == b'0' {
+                let rows = u32::from(bytes[index + 6]) | (u32::from(bytes[index + 7]) << 8);
+                heights.push(rows);
+            }
+            index += 1;
+        }
+        heights
     }
 
     #[test]
@@ -2188,6 +2377,16 @@ mod tests {
         assert!(mapped.capabilities.contains("Raw ESC/POS is not sent"));
         let refused = plan_drawer_kick(&windows_settings(&mapped.name), &[mapped], 100, 0).unwrap_err();
         assert!(refused.contains("drawer-kick"));
+        let text_only = map_enumerated_queue(&enumerated("Generic / Text Only", "Generic / Text Only", "COM4:", 0, Some(true))).unwrap();
+        assert!(!text_only.supports_drawer_kick);
+        let refused_com = plan_drawer_kick(&windows_settings(&text_only.name), &[text_only.clone()], 100, 0).unwrap_err();
+        assert!(refused_com.contains("drawer-kick"));
+        let mut hp_on_com = windows_settings(&text_only.name);
+        hp_on_com.drawer_profile = "hp-vb400-bl1616".into();
+        hp_on_com.host_voltage = "24".into();
+        let circuit = plan_drawer_kick(&hp_on_com, &[text_only], 100, 0).unwrap_err();
+        assert!(circuit.contains("will not send a pulse"));
+        assert!(circuit.contains("24V"));
         assert_eq!(format_driver_version(0), "");
         assert_eq!(format_driver_version(0x000a_0001_0000_0020), "10.1.32");
     }
@@ -2231,6 +2430,14 @@ mod tests {
         }
     }
 
+    fn hp_settings(address: &str) -> PrinterSettings {
+        PrinterSettings {
+            drawer_profile: "hp-vb400-bl1616".into(),
+            host_voltage: "24".into(),
+            ..windows_settings(address)
+        }
+    }
+
     #[test]
     fn drawer_pulse_uses_the_configured_pin_and_timing() {
         assert_eq!(drawer_pulse(0, 25, 250), DRAWER_KICK);
@@ -2259,9 +2466,15 @@ mod tests {
     #[test]
     fn a_ready_queue_plans_one_pulse() {
         let queues = vec![queue("Receipt", 0)];
-        let plan = plan_drawer_kick(&windows_settings("Receipt"), &queues, 100, 0).unwrap();
+        let unconfigured = plan_drawer_kick(&windows_settings("Receipt"), &queues, 100, 0).unwrap_err();
+        assert!(unconfigured.contains("drawer profile"));
+        let plan = plan_drawer_kick(&hp_settings("Receipt"), &queues, 100, 0).unwrap();
         assert_eq!(plan.queue, "Receipt");
         assert_eq!(plan.bytes.windows(5).filter(|window| *window == DRAWER_KICK).count(), 1);
+        let mut twelve = hp_settings("Receipt");
+        twelve.host_voltage = "12".into();
+        let mismatch = plan_drawer_kick(&twelve, &queues, 100, 0).unwrap_err();
+        assert!(mismatch.contains("not interchangeable"));
     }
 
     #[test]
@@ -2526,6 +2739,61 @@ mod tests {
         let kept = save(&db, &usb).unwrap();
         assert_eq!(kept.connection_kind, "usb");
         assert_eq!(kept.address, "Front");
+        let com = PrinterSettings {
+            transport: "serial".into(),
+            address: "COM4".into(),
+            connection_kind: "serial".into(),
+            ..PrinterSettings::default()
+        };
+        let stored = save(&db, &com).unwrap();
+        assert_eq!(stored.connection_kind, "serial");
+        assert_eq!(stored.protocol, "escpos");
+        assert_eq!(stored.address, "COM4");
+        let mut rendered = windows_settings("Toshiba");
+        rendered.saved_driver = "Toshiba Native Windows Driver".into();
+        rendered.saved_port = "Toshiba: 0_USB".into();
+        rendered.protocol = "escpos".into();
+        match save(&db, &rendered) {
+            Err(refused) => assert!(refused.contains("does not accept raw ESC/POS"), "{refused}"),
+            Ok(_) => panic!("raw ESC/POS was saved for a Windows-rendered driver"),
+        }
+        let mut unknown = windows_settings("Counter");
+        unknown.saved_driver = "Unknown Thermal".into();
+        unknown.saved_port = "USB009".into();
+        unknown.protocol = "escpos".into();
+        let generic = save(&db, &unknown).unwrap();
+        assert_eq!(generic.protocol, "escpos");
+        unknown.protocol = "zpl".into();
+        assert!(save(&db, &unknown).is_err());
+        assert_eq!(load(&db).unwrap().protocol, "escpos");
+        record_print_job(
+            &db,
+            "INV-1",
+            "Counter",
+            "usb",
+            "escpos",
+            "escpos",
+            "escpos",
+            120,
+            &crate::printer_profile::JobPhase::AcceptedUnverified,
+            None,
+        )
+        .unwrap();
+        let status: String = db
+            .read(|conn| {
+                conn.query_row(
+                    "SELECT status || ' ' || verification || ' ' || connection || ' ' || CAST(payload_bytes AS TEXT) FROM printer_jobs",
+                    [],
+                    |row| row.get(0),
+                )
+                .map_err(|err| err.to_string())
+            })
+            .unwrap();
+        assert!(status.contains("accepted-unverified"), "{status}");
+        assert!(status.contains("physical-not-verified"), "{status}");
+        assert!(status.contains("usb"), "{status}");
+        assert!(status.contains("120"), "{status}");
+        assert!(!crate::printer_profile::retry_when_output_unknown());
         let _ = std::fs::remove_file(&path);
     }
 

@@ -39,6 +39,23 @@ describe("menu priced options", () => {
     ).toThrow(/stay active/);
   });
 
+  it("keeps portion ids when a price is edited", () => {
+    expect(
+      priceOptionsPayload(
+        [
+          { id: "small", name: "Small Plate", price: "3.00", active: true },
+          { id: "full", name: "Full Plate", price: "9.00", active: true },
+        ],
+        cents,
+      ),
+    ).toEqual({
+      options: [
+        { id: "small", name: "Small Plate", price_cents: 300, is_active: true, position: 0 },
+        { id: "full", name: "Full Plate", price_cents: 900, is_active: true, position: 1 },
+      ],
+    });
+  });
+
   it("saves two named prices separately from the base price", () => {
     expect(
       priceOptionsPayload(

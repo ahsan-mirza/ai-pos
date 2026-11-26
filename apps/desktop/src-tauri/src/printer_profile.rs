@@ -4,6 +4,10 @@
 //! Network and Wi-Fi share one TCP adapter. An open port is not a verified receipt printer.
 //! Bluetooth Classic is a Windows RFCOMM serial port created after the user pairs in Windows.
 //! Bluetooth Low Energy is refused until a documented GATT printing service is registered here.
+//!
+//! Several decisions are checked by unit tests and are not called on the print path yet.
+
+#![cfg_attr(not(test), allow(dead_code))]
 
 use serde::Serialize;
 
@@ -36,6 +40,7 @@ pub enum Adapter {
     NetworkTcp,
     BluetoothClassic,
     BluetoothBle,
+    SerialCom,
     Vendor,
     None,
 }
@@ -48,7 +53,8 @@ impl Adapter {
             Self::NetworkTcp => "NetworkTcpTransport",
             Self::BluetoothClassic => "BluetoothClassicTransport",
             Self::BluetoothBle => "BluetoothBleTransport",
-            Self::Vendor => "VendorPrinterTransport",
+            Self::SerialCom => "SerialComTransport",
+            Self::Vendor => "VendorSdkTransport",
             Self::None => "None",
         }
     }
@@ -59,16 +65,134 @@ pub fn adapter_name(adapter: Adapter) -> &'static str {
 }
 
 /// USB is the spooler adapter. The name UsbRawTransport is the extension point, and it does not bypass Windows.
+/// An empty serial kind stays Bluetooth Classic so older saved rows keep their adapter.
 pub fn adapter_for(transport: &str, connection_kind: &str) -> Adapter {
     match (transport, connection_kind) {
         ("windows", "usb") => Adapter::UsbViaSpooler,
         ("windows", _) => Adapter::WindowsSpooler,
         ("tcp", _) => Adapter::NetworkTcp,
+        ("serial", "serial") => Adapter::SerialCom,
         ("serial", _) => Adapter::BluetoothClassic,
         ("ble", _) => Adapter::BluetoothBle,
         ("vendor", _) => Adapter::Vendor,
         _ => Adapter::None,
     }
+}
+
+/// Windows-rendered output uses the driver adapter. Network printing is the TCP adapter under either name.
+pub fn transport_adapter(adapter: Adapter, protocol: &str) -> &'static str {
+    if protocol == "windows-gdi" && matches!(adapter, Adapter::WindowsSpooler | Adapter::UsbViaSpooler) {
+        "WindowsDriverRenderTransport"
+    } else {
+        adapter.name()
+    }
+}
+
+/// Languages this build can render. ZPL, CPCL, and TSPL are absent until a device needs them.
+pub fn supported_protocols() -> &'static [&'static str] {
+    &["escpos", "windows-gdi"]
+}
+
+/// Receipt printing and drawer kick are separate. Software never marks paper output as verified.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CapabilityReport {
+    pub document_printing: bool,
+    pub raw_printing: bool,
+    pub escpos: bool,
+    pub raster: bool,
+    pub cutter: &'static str,
+    pub drawer: &'static str,
+    pub physical_output: &'static str,
+}
+
+pub fn capability_report(protocol: &str, drawer_profile: bool) -> CapabilityReport {
+    let escpos = protocol == "escpos";
+    let rendered = protocol == "windows-gdi";
+    CapabilityReport {
+        document_printing: escpos || rendered,
+        raw_printing: escpos,
+        escpos,
+        raster: escpos || rendered,
+        cutter: if escpos { "not-verified" } else { "not-claimed" },
+        drawer: if drawer_profile { "profile" } else { "not-verified" },
+        physical_output: "not-verified",
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct GenericProfile {
+    pub id: &'static str,
+    pub protocol: &'static str,
+    pub verified: bool,
+    pub drawer: bool,
+}
+
+/// Unknown models use this only after the cashier selects the language. The brand name is not required.
+pub fn generic_profile(protocol: &str) -> Option<GenericProfile> {
+    match protocol {
+        "escpos" => Some(GenericProfile { id: "generic-escpos", protocol: "escpos", verified: false, drawer: false }),
+        "windows-gdi" => Some(GenericProfile {
+            id: "windows-driver",
+            protocol: "windows-gdi",
+            verified: false,
+            drawer: false,
+        }),
+        _ => None,
+    }
+}
+
+pub fn com_connection_kind(device_name: &str) -> &'static str {
+    let folded = device_name.to_ascii_lowercase();
+    if folded.contains("bthmodem") || folded.contains("bthenum") || folded.contains("bluetooth") {
+        "bluetooth-classic"
+    } else {
+        "serial"
+    }
+}
+
+pub fn serial_open_error(connection_kind: &str, port: &str) -> String {
+    if connection_kind == "serial" {
+        format!("Serial port {port} could not be opened. Check that the COM port is free and the printer is connected.")
+    } else {
+        format!("Bluetooth serial port {port} could not be opened. Pair the printer in Windows, then refresh.")
+    }
+}
+
+pub fn serial_timeout_error(connection_kind: &str, port: &str) -> String {
+    if connection_kind == "serial" {
+        format!("Serial port {port} did not accept a write timeout.")
+    } else {
+        format!("Bluetooth serial port {port} did not accept a write timeout.")
+    }
+}
+
+pub fn serial_write_error(connection_kind: &str) -> String {
+    if connection_kind == "serial" {
+        "The serial printer did not accept the whole receipt. Physical printing has not been verified.".into()
+    } else {
+        "The Bluetooth printer did not accept the whole receipt. Physical printing has not been verified.".into()
+    }
+}
+
+pub fn serial_platform_error(connection_kind: &str, port: &str) -> String {
+    if connection_kind == "serial" {
+        format!("Serial port {port} is only available on Windows.")
+    } else {
+        format!("Bluetooth serial port {port} is only available on Windows.")
+    }
+}
+
+pub fn serial_capability(connection_kind: &str) -> &'static str {
+    if connection_kind == "serial" {
+        "Serial COM port. ESC/POS is selected and not verified. Baud, parity, and stop bits stay on the Windows port settings. The drawer is not kicked."
+    } else {
+        "Paired Bluetooth serial port. Receipt printing is not verified, and the drawer is not kicked."
+    }
+}
+
+/// A spooler or socket acceptance is not paper proof, so an ambiguous job is not sent again.
+pub fn retry_when_output_unknown() -> bool {
+    false
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -158,6 +282,14 @@ pub fn normalize_com(value: &str) -> Result<String, String> {
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct ComPort {
+    pub device: String,
+    pub port: String,
+    pub connection: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct BluetoothSerial {
     pub device: String,
     pub port: String,
@@ -243,6 +375,7 @@ pub fn connection_pair_ok(transport: &str, connection_kind: &str) -> bool {
             | ("windows", "usb")
             | ("tcp", "network")
             | ("tcp", "wifi")
+            | ("serial", "serial")
             | ("serial", "bluetooth-classic")
             | ("ble", "bluetooth-ble")
     )
@@ -271,9 +404,32 @@ mod tests {
         assert_eq!(adapter_for("serial", "bluetooth-classic"), Adapter::BluetoothClassic);
         assert_eq!(adapter_for("ble", "bluetooth-ble"), Adapter::BluetoothBle);
         assert_eq!(adapter_for("none", "none"), Adapter::None);
+        assert_eq!(adapter_for("serial", "serial"), Adapter::SerialCom);
+        assert_eq!(adapter_for("serial", ""), Adapter::BluetoothClassic);
         assert_eq!(adapter_name(Adapter::NetworkTcp), "NetworkTcpTransport");
+        assert_eq!(adapter_name(Adapter::SerialCom), "SerialComTransport");
         assert_eq!(adapter_name(Adapter::BluetoothBle), "BluetoothBleTransport");
-        assert_eq!(adapter_name(Adapter::Vendor), "VendorPrinterTransport");
+        assert_eq!(adapter_name(Adapter::Vendor), "VendorSdkTransport");
+        assert_eq!(transport_adapter(Adapter::WindowsSpooler, "windows-gdi"), "WindowsDriverRenderTransport");
+        assert_eq!(transport_adapter(Adapter::NetworkTcp, "escpos"), "NetworkTcpTransport");
+        assert_eq!(supported_protocols(), &["escpos", "windows-gdi"]);
+        assert!(!supported_protocols().contains(&"zpl"));
+        let generic = generic_profile("escpos").unwrap();
+        assert_eq!(generic.id, "generic-escpos");
+        assert!(!generic.verified);
+        assert!(!generic.drawer);
+        assert!(generic_profile("zpl").is_none());
+        let report = capability_report("escpos", false);
+        assert!(report.document_printing);
+        assert_eq!(report.drawer, "not-verified");
+        assert_eq!(report.physical_output, "not-verified");
+        assert_eq!(capability_report("windows-gdi", false).raw_printing, false);
+        assert_eq!(com_connection_kind(r"\Device\Serial0"), "serial");
+        assert_eq!(com_connection_kind(r"\Device\BthModem0"), "bluetooth-classic");
+        assert!(serial_open_error("serial", "COM3").contains("Serial port"));
+        assert!(serial_platform_error("serial", "COM3").contains("only available on Windows"));
+        assert!(serial_capability("serial").contains("not verified"));
+        assert!(!retry_when_output_unknown());
         assert!(documented_vendor_protocols().is_empty());
         assert!(!automatic_network_scan());
         assert_eq!(default_raw_port(), 9100);

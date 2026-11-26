@@ -18,6 +18,8 @@ The register product form and the business portal product form share the invento
 
 The portal **Priced options** panel already edited the same rows, including the active flag. Cashiers do not have `portal:inventory_manage`, so they cannot change the prices.
 
+On 26-11-2026 the Business Pro add and edit menu item form gained **Pricing & Portions** for restaurant and cafe. It writes this same API. The modifiers screen still has the priced-options panel. See `BUSINESS-PRO-RESTAURANT-CAFE-PORTION-PRICING-ACCEPTANCE.md`.
+
 ## Till
 
 `CatalogTile` is unchanged. A single-price card shows its price. A multi-price card shows `From` and the lowest active portion price. The card does not select a portion. Restaurant and cafe cards still omit the branch-stock footer.

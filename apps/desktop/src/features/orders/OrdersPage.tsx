@@ -45,7 +45,7 @@ import { SplitChecksModal } from "./SplitChecksModal";
 import { IncomingDeliveries, KeyInDeliveryModal } from "./IncomingDeliveries";
 import { TableConflictPanel } from "./TableConflictPanel";
 import { OrderRequestError, channelsApi, ordersApi, queueOfflineOrder } from "./ordersClient";
-import { sentIncrease } from "./tableQuantity";
+import { presentOrderLines, type PresentedLine } from "./tableQuantity";
 import { listenForTableEvents } from "./tableSync";
 import { startSettlement } from "./settlement";
 
@@ -299,8 +299,6 @@ export function OrdersPage({ session }: { session: CashierSession }) {
   useDrawerHold(busy);
   const [seating, setSeating] = useState<DiningTable | null>(null);
   const [adding, setAdding] = useState(false);
-  const [adjustingId, setAdjustingId] = useState<string | null>(null);
-  const [adjustValue, setAdjustValue] = useState("");
   const [cashOpen, setCashOpen] = useState(false);
   const [riders, setRiders] = useState<RegisterStaff[]>([]);
   const [riderId, setRiderId] = useState("");
@@ -510,39 +508,44 @@ export function OrdersPage({ session }: { session: CashierSession }) {
     }
   }
 
-  async function changeQuantity(item: OrderItem, quantity: number) {
-    if (selected === null || item.sent_at) return;
-    if (!Number.isInteger(quantity) || quantity < 1 || quantity > 1000) {
-      setNotice("Quantity must be a whole number from 1 to 1000.");
+  async function stepQuantity(item: OrderItem, line: PresentedLine, direction: 1 | -1) {
+    if (selected === null || item.paid_sale_id) return;
+    const eventId = crypto.randomUUID();
+    if (!line.sent) {
+      const next = item.quantity + direction;
+      if (next < 1 || next > 1000) return;
+      await write(() => ordersApi.setQuantity(selected, item.id, userId, next, eventId));
       return;
     }
-    await write(() => ordersApi.setQuantity(selected, item.id, userId, quantity));
-  }
-
-  async function increaseSent(item: OrderItem, quantity: number) {
-    if (selected === null || !item.sent_at) return;
-    const plan = sentIncrease(item.quantity, quantity);
-    if (!plan.ok) {
-      setNotice(
-        plan.reason === "reduce"
-          ? "A sent line cannot be reduced in place. Void the whole line with a reason, then add the quantity the table still wants. The kitchen ticket stays as it was."
-          : plan.reason === "same"
-            ? "That quantity is already on this kitchen ticket. Enter a higher number to send only the extra."
-            : "Quantity must be a whole number from 1 to 1000.",
-      );
+    if (direction > 0) {
+      await write(async () => {
+        try {
+          return await ordersApi.increaseSent(selected, item.id, userId, line.net + 1, eventId);
+        } catch (caught) {
+          if (caught instanceof OrderRequestError && caught.offline) {
+            throw new Error("This register is offline. A sent item cannot be increased until the kitchen can receive the extra quantity.");
+          }
+          throw caught;
+        }
+      }, "Added 1 more. Only that extra was sent to the kitchen.");
       return;
     }
-    const extra = plan.extra;
     await write(async () => {
       try {
-        return await ordersApi.increaseSent(selected, item.id, userId, quantity);
+        return await ordersApi.decreaseSent(
+          selected,
+          item.id,
+          userId,
+          "[wrong_quantity] Quantity reduced at the table",
+          eventId,
+        );
       } catch (caught) {
         if (caught instanceof OrderRequestError && caught.offline) {
-          throw new Error("This register is offline. A sent item cannot be increased until the kitchen can receive the extra quantity.");
+          throw new Error("This register is offline. A sent extra cannot be cancelled until the kitchen can receive it.");
         }
         throw caught;
       }
-    }, `Added ${extra} more. Only that extra was sent to the kitchen.`);
+    }, "Removed 1 extra. The original kitchen ticket was not changed.");
   }
 
   async function addAndMaybeSend(send: boolean) {
@@ -724,103 +727,96 @@ export function OrdersPage({ session }: { session: CashierSession }) {
                   {selected.bill_requested_at ? " · Bill requested" : ""}
                 </p>
                 <ul className="space-y-2">
-                  {selected.items.map((item) => {
-                    const editable = !item.voided_at && !item.paid_sale_id && !item.sent_at;
-                    const extras = [comboSummary(item.components), modifierSummary(item.modifiers)].filter(Boolean).join(" · ");
+                  {presentOrderLines(selected.items.map((item) => ({
+                    id: item.id,
+                    quantity: item.quantity,
+                    sentAt: item.sent_at,
+                    voidedAt: item.voided_at,
+                    paid: item.paid_sale_id !== null,
+                    kitchen: item.kitchen_status,
+                    sourceId: item.source_item_id ?? null,
+                  }))).map((line) => {
+                    const item = selected.items.find((row) => row.id === line.rootId);
+                    if (!item) return null;
+                    const family = selected.items.filter(
+                      (row) => row.voided_at === null && (row.id === item.id || row.source_item_id === item.id),
+                    );
+                    const lineCents = family.reduce((sum, row) => sum + row.unit_price_cents * row.quantity, 0);
+                    const detail = [comboSummary(item.components), modifierSummary(item.modifiers)].filter(Boolean).join(" · ");
+                    const minusLabel =
+                      line.minus === "original"
+                        ? `Cannot reduce ${item.product_name} below the quantity sent to the kitchen`
+                        : line.minus === "served"
+                          ? `${item.product_name} extra is already served`
+                          : `Decrease ${item.product_name}`;
                     return (
-                    <li key={item.id} className={`rounded-2xl border px-3 py-2.5 text-sm ${item.voided_at ? "border-dashed border-zinc-200 opacity-50 dark:border-white/10" : "border-zinc-200 bg-zinc-50 dark:border-white/[0.06] dark:bg-[#1A191D]"}`}>
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="min-w-0">
-                          <p className={`truncate font-semibold ${item.voided_at ? "line-through" : ""}`}>{item.product_name}</p>
-                          {item.price_option_name ? <p className="text-xs text-zinc-600 dark:text-zinc-300">{item.price_option_name}</p> : null}
-                          {extras ? <p className="text-xs text-zinc-500 dark:text-white/50">{extras}</p> : null}
-                          <p className="mt-1 text-xs text-zinc-500 dark:text-white/50">
-                            {formatMoney(item.unit_price_cents, currency)} × {item.quantity}
-                            {item.note ? ` · ${item.note}` : ""}
-                          </p>
-                          <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-zinc-500 dark:text-white/50">
-                            <span className="rounded-full bg-primary/10 px-2 py-0.5 font-semibold text-primary">{itemStatus(item)}</span>
-                            {item.seat ? <span className="rounded-full bg-zinc-200/70 px-2 py-0.5 dark:bg-white/10">Seat {item.seat}</span> : null}
+                      <li key={line.key} className="rounded-2xl border border-zinc-200 bg-zinc-50 px-3 py-2.5 text-sm dark:border-white/[0.06] dark:bg-[#1A191D]">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <p className="truncate font-semibold">{item.product_name}</p>
+                            {item.price_option_name ? <p className="text-xs text-zinc-600 dark:text-zinc-300">{item.price_option_name}</p> : null}
+                            {detail ? <p className="text-xs text-zinc-500 dark:text-white/50">{detail}</p> : null}
+                            <p className="mt-1 text-xs text-zinc-500 dark:text-white/50">
+                              {formatMoney(item.unit_price_cents, currency)} × {line.net}
+                              {item.note ? ` · ${item.note}` : ""}
+                            </p>
                           </div>
-                        </div>
-                        <div className="flex shrink-0 flex-col items-end gap-2">
                           <span className="text-right">
                             <span className="block text-[0.625rem] font-semibold uppercase tracking-wide text-zinc-500 dark:text-white/50">Line total</span>
-                            <span className="block font-bold tabular-nums">{formatMoney(item.unit_price_cents * item.quantity, currency)}</span>
+                            <span className="block font-bold tabular-nums">{formatMoney(lineCents, currency)}</span>
                           </span>
-                          {item.sent_at && !item.voided_at && !item.paid_sale_id && adjustingId !== item.id ? (
-                            <div className="flex gap-1.5">
-                              <button
-                                type="button"
-                                disabled={busy}
-                                aria-label="Adjust quantity"
-                                title="Adjust quantity"
-                                onClick={() => {
-                                  setAdjustingId(item.id);
-                                  setAdjustValue(String(item.quantity + 1));
-                                }}
-                                className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-zinc-200 bg-white text-zinc-700 hover:bg-zinc-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/40 disabled:opacity-40 dark:border-zinc-800 dark:bg-zinc-900/60 dark:text-zinc-200 dark:hover:bg-zinc-800"
-                              >
-                                <Plus size={16} aria-hidden="true" />
-                              </button>
-                              <button
-                                type="button"
-                                disabled={busy}
-                                aria-label={`Void ${item.product_name}`}
-                                title="Void with reason"
-                                onClick={() => setVoiding({ item, reason: "[entry_mistake] " })}
-                                className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-zinc-200 bg-white text-red-700 hover:bg-red-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500/40 disabled:opacity-40 dark:border-zinc-800 dark:bg-zinc-900/60 dark:text-red-300 dark:hover:bg-red-500/10"
-                              >
-                                <Trash2 size={16} aria-hidden="true" />
-                              </button>
-                            </div>
-                          ) : null}
                         </div>
-                      </div>
-                      {editable ? (
                         <div className="mt-2 flex items-center gap-2">
-                          <button type="button" aria-label={`Decrease ${item.product_name}`} disabled={busy || item.quantity <= 1} onClick={() => void changeQuantity(item, item.quantity - 1)} className="inline-flex h-11 w-11 items-center justify-center rounded-full bg-zinc-200/80 dark:bg-white/10"><Minus size={16} aria-hidden="true" /></button>
-                          <span className="min-w-8 text-center text-base font-semibold tabular-nums text-zinc-800 dark:text-white">{item.quantity}</span>
-                          <button type="button" aria-label={`Increase ${item.product_name}`} disabled={busy} onClick={() => void changeQuantity(item, item.quantity + 1)} className="inline-flex h-11 w-11 items-center justify-center rounded-full bg-zinc-200/80 dark:bg-white/10"><Plus size={16} aria-hidden="true" /></button>
-                          <button type="button" disabled={busy} onClick={() => setVoiding({ item, reason: "[entry_mistake] " })} className="ml-auto font-semibold text-zinc-500 hover:text-red-600">Remove</button>
+                          <button
+                            type="button"
+                            aria-label={minusLabel}
+                            disabled={busy || line.minus !== "enabled"}
+                            onClick={() => void stepQuantity(item, line, -1)}
+                            className="inline-flex h-11 w-11 items-center justify-center rounded-full bg-zinc-200/80 disabled:opacity-40 dark:bg-white/10"
+                          >
+                            <Minus size={16} aria-hidden="true" />
+                          </button>
+                          <span className="min-w-8 text-center text-base font-semibold tabular-nums text-zinc-800 dark:text-white">{line.net}</span>
+                          <button
+                            type="button"
+                            aria-label={`Increase ${item.product_name}`}
+                            disabled={busy || item.paid_sale_id !== null}
+                            onClick={() => void stepQuantity(item, line, 1)}
+                            className="inline-flex h-11 w-11 items-center justify-center rounded-full bg-zinc-200/80 disabled:opacity-40 dark:bg-white/10"
+                          >
+                            <Plus size={16} aria-hidden="true" />
+                          </button>
+                          <button
+                            type="button"
+                            disabled={busy}
+                            aria-label={`Remove ${item.product_name}`}
+                            onClick={() => setVoiding({ item, reason: "[entry_mistake] " })}
+                            className="ml-auto inline-flex h-11 w-11 items-center justify-center rounded-full text-zinc-500 hover:text-red-600 disabled:opacity-40"
+                          >
+                            <Trash2 size={16} aria-hidden="true" />
+                          </button>
                         </div>
-                      ) : null}
-                      {item.sent_at && !item.voided_at && !item.paid_sale_id ? (
-                        <div className="mt-2 space-y-2">
-                          <p className="text-xs text-zinc-500 dark:text-white/50">Already in the kitchen. A higher quantity sends only the extra plates. Reducing this line still voids the whole ticket with a reason.</p>
-                          {adjustingId === item.id ? (
-                            <form
-                              className="flex flex-wrap items-end gap-2"
-                              onSubmit={(event) => {
-                                event.preventDefault();
-                                const next = Number(adjustValue);
-                                if (sentIncrease(item.quantity, next).ok) setAdjustingId(null);
-                                void increaseSent(item, next);
-                              }}
-                            >
-                              <label className="text-xs font-semibold text-zinc-600 dark:text-zinc-300">
-                                New quantity
-                                <input
-                                  value={adjustValue}
-                                  inputMode="numeric"
-                                  aria-label={`New quantity for ${item.product_name}`}
-                                  onChange={(event) => setAdjustValue(event.target.value.replace(/\D/g, "").slice(0, 4))}
-                                  className="mt-1 block h-11 w-24 rounded-xl border border-zinc-200 bg-white px-3 text-base font-semibold tabular-nums dark:border-white/10 dark:bg-zinc-900"
-                                />
-                              </label>
-                              <button type="submit" disabled={busy} className={`${ui.secondaryAction} h-11 rounded-2xl px-3 text-xs`}>
-                                Send extra
-                              </button>
-                              <button type="button" disabled={busy} onClick={() => setAdjustingId(null)} className={`${ui.secondaryAction} h-11 rounded-2xl px-3 text-xs`}>
-                                Cancel
-                              </button>
-                            </form>
-                          ) : null}
+                        <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-zinc-500 dark:text-white/50">
+                          <span className="rounded-full bg-primary/10 px-2 py-0.5 font-semibold text-primary">{itemStatus(item)}</span>
+                          {item.seat ? <span className="rounded-full bg-zinc-200/70 px-2 py-0.5 dark:bg-white/10">Seat {item.seat}</span> : null}
+                          {line.sent ? <span>Original sent: {line.originalSent}</span> : null}
+                          {line.additional > 0 ? <span>Additional: {line.additional}</span> : null}
                         </div>
-                      ) : null}
-                    </li>
+                        {line.minus === "served" ? (
+                          <p className="mt-1 text-xs text-zinc-500 dark:text-white/50">That extra is already served and cannot be removed with minus.</p>
+                        ) : null}
+                      </li>
                     );
                   })}
+                  {selected.items.filter((item) => item.voided_at !== null).map((item) => (
+                    <li key={item.id} className="rounded-2xl border border-dashed border-zinc-200 px-3 py-2 text-sm opacity-60 dark:border-white/10">
+                      <p className="truncate font-semibold line-through">{item.product_name}{item.price_option_name ? ` · ${item.price_option_name}` : ""}</p>
+                      <p className="text-xs text-zinc-500 dark:text-white/50">
+                        Cancelled · {item.quantity} × {formatMoney(item.unit_price_cents, currency)}
+                        {item.void_reason ? ` · ${item.void_reason}` : ""}
+                      </p>
+                    </li>
+                  ))}
                 </ul>
 
                 {draft.length > 0 ? (
@@ -1285,16 +1281,22 @@ export function OrdersPage({ session }: { session: CashierSession }) {
       ) : null}
 
       {voiding && selected ? (
-        voiding.item?.sent_at ? (
+        voiding.item?.sent_at &&
+        selected.items.some(
+          (line) =>
+            line.voided_at === null &&
+            line.kitchen_status === "bumped" &&
+            (line.id === voiding.item?.id || line.source_item_id === voiding.item?.id),
+        ) ? (
           <ManagerApprovalModal
-            reasons={[`Void ${voiding.item.quantity} × ${voiding.item.product_name} already sent to the kitchen`]}
-            subtitle="A manager allowed to void sent items must approve. Add the reason in the note."
+            reasons={[`Void served ${voiding.item.product_name}`]}
+            subtitle="This item was already served. A manager allowed to void sent items must approve."
             verify={(username, pin) => verifyManager(session, username, pin, Permission.PosVoidSentItem)}
             onClose={() => setVoiding(null)}
             onApproved={(approver, note) => {
               const item = voiding.item!;
               setVoiding(null);
-              void write(() => ordersApi.voidItem(selected, item.id, userId, note || "Voided after sending", approver.id), "Line voided.");
+              void write(() => ordersApi.voidItem(selected, item.id, userId, note || "Voided after serving", approver.id), "Line voided.");
             }}
           />
         ) : (
@@ -1304,7 +1306,7 @@ export function OrdersPage({ session }: { session: CashierSession }) {
               const item = voiding.item!;
               setVoiding(null);
               void write(
-                () => ordersApi.voidItem(selected, item.id, userId, (voiding.reason.trim() || "[entry_mistake] Removed before sending").slice(0, 160), null),
+                () => ordersApi.voidItem(selected, item.id, userId, (voiding.reason.trim() || "[entry_mistake] Removed from the table").slice(0, 160), null),
                 "Line removed.",
               );
             }}>

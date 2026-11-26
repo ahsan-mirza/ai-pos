@@ -75,6 +75,8 @@ export interface OrderItem extends Required<Pick<OrderItemInput, "id" | "product
   voided_at: string | null;
   void_reason: string | null;
   paid_sale_id: string | null;
+  /** The original sent line, when this row is only the extra quantity. */
+  source_item_id?: string | null;
   kitchen_status: KitchenStatus | null;
   skip_recipe?: boolean;
   price_option_id?: string | null;

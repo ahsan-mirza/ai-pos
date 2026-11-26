@@ -57,3 +57,33 @@ async def read_socket_credentials(
         if isinstance(value, str) and value != "":
             extras[key] = value
     return frame_token, frame_role, extras, True
+
+
+_seen_refusals: set[str] = set()
+
+
+async def refuse_socket(websocket: WebSocket, key: str) -> None:
+    """Close the first refusal. Hold later ones open.
+
+    The register dials again as soon as the socket closes. A token that the server has already
+    rejected will not start working on the next dial, so the repeat is kept open until the
+    register leaves. Tests still see the first close.
+    """
+    if key in _seen_refusals:
+        await hold_refused_socket(websocket)
+        return
+    _seen_refusals.add(key)
+    await websocket.close(code=1008)
+
+
+async def hold_refused_socket(websocket: WebSocket) -> None:
+    """Keep a refused socket until the client leaves.
+
+    Closing it makes the register dial the same address again, and that dial cannot succeed
+    while the token stays invalid.
+    """
+    try:
+        while True:
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        return

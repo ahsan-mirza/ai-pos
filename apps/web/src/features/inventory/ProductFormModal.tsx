@@ -16,6 +16,12 @@ import {
   type Gender,
   type SpecSchema,
   type ItemType as ItemTypeId,
+  type MenuPriceOption,
+  type PortionFieldError,
+  type PriceOptionPayload,
+  portionCents,
+  portionIssues,
+  priceOptionsPayload,
   type Product,
   type ProductImage,
   type ProductSearchHit,
@@ -27,7 +33,7 @@ import { useEffect, useRef, useState } from "react";
 import { ErrorNote, GhostButton, SelectField, TextField } from "../../components/ui/Field";
 import { Modal } from "../../components/ui/Modal";
 import { Toggle } from "../../components/ui/Toggle";
-import { apiGet, apiUpload } from "../../lib/api";
+import { apiGet, apiPut, apiUpload } from "../../lib/api";
 import { cleanCode } from "../../lib/codes";
 import { compressImageToWebp } from "../../lib/imageFile";
 import { useAuth } from "../../lib/auth";
@@ -42,6 +48,8 @@ import { SpecFields } from "./SpecFields";
 import { fieldErrors, useInvalidFocus, type FieldErrors } from "./formErrors";
 import { BarcodePrintFlow } from "./BarcodePrintFlow";
 import { PhotoGallery } from "./PhotoGallery";
+import { PricingPortionsFields } from "./PricingPortionsFields";
+import { blankPortions, portionsFromOptions, portionsSeededFromPrice, type PortionMode } from "./portionPricing";
 import { ProductImageDropzone, type PendingProductPhoto } from "./ProductImageDropzone";
 import { storeOptions, useBrands, useCategories, useModels, useStores } from "./shared";
 import { useUnits } from "./units";
@@ -202,6 +210,12 @@ export function ProductFormModal({
     product?.item_type ?? (isFnB ? ItemType.MadeToOrder : ItemType.PrePackaged),
   );
   const [sellWithoutRecipe, setSellWithoutRecipe] = useState(product?.sell_without_recipe === true);
+  const [portionMode, setPortionMode] = useState<PortionMode>((product?.price_options?.length ?? 0) >= 2 ? "portions" : "single");
+  const [priceRows, setPriceRows] = useState(() =>
+    (product?.price_options?.length ?? 0) >= 2 ? portionsFromOptions(product?.price_options ?? []) : blankPortions(),
+  );
+  const [savedPortionCount, setSavedPortionCount] = useState(product?.price_options?.length ?? 0);
+  const [portionErrors, setPortionErrors] = useState<PortionFieldError[]>([]);
   // Standalone items carry their own season and collection; a model's variants take the model's.
   const fashionOn = has(Capability.VariantsMatrix);
   const [season, setSeason] = useState(product?.season ?? "");
@@ -242,6 +256,44 @@ export function ProductFormModal({
   useEffect(() => {
     if (!nameTouched && model && name === "") setName(model.name);
   }, [model, name, nameTouched]);
+
+  const editingProductId = product?.id ?? null;
+  const portionTouched = useRef(false);
+  useEffect(() => {
+    if (!editingProductId || !menuRecipe) return;
+    let cancel = false;
+    void apiGet<MenuPriceOption[]>(`/api/v1/menu/products/${editingProductId}/price-options`)
+      .then((rows) => {
+        if (cancel) return;
+        setSavedPortionCount(rows.length);
+        if (portionTouched.current || rows.length < 2) return;
+        setPortionMode("portions");
+        setPriceRows(portionsFromOptions(rows));
+      })
+      .catch(() => undefined);
+    return () => {
+      cancel = true;
+    };
+  }, [editingProductId, menuRecipe]);
+
+  function selectPortionMode(next: PortionMode) {
+    if (next === portionMode) return;
+    portionTouched.current = true;
+    if (next === "single") {
+      const started = savedPortionCount > 0 || priceRows.some((row) => row.name.trim() !== "" || row.price.trim() !== "");
+      if (
+        started &&
+        !window.confirm(
+          "Switch to a single price? Portions already used on a sale or an open order stay on record and are turned off. Unused portions are removed. Invoices already saved keep the price that was charged.",
+        )
+      ) {
+        return;
+      }
+    }
+    if (next === "portions") setPriceRows((current) => portionsSeededFromPrice(current, price));
+    setPortionMode(next);
+    setPortionErrors([]);
+  }
 
   useEffect(() => {
     if (!fashionMatrix || !product?.product_model_id) return;
@@ -699,6 +751,37 @@ export function ProductFormModal({
         : {};
     const piecesOnly = (editing ? product.is_serialized : serialized) || byWeight || openPrice;
     const sellable_units = piecesOnly ? ["PIECE"] : ["PIECE", ...packs];
+    const portionsApply =
+      menuRecipe &&
+      itemType === ItemType.MadeToOrder &&
+      !openPrice &&
+      !byWeight &&
+      !(editing ? product.is_serialized : serialized);
+    let portionBody: { options: PriceOptionPayload[] } | null = null;
+    let clearPortions = false;
+    if (portionsApply && portionMode === "portions") {
+      const issues = portionIssues(priceRows);
+      if (issues.length > 0) {
+        setPortionErrors(issues);
+        setError(issues.find((issue) => issue.key === "list")?.message ?? "Check the pricing options.");
+        focusInvalid();
+        return;
+      }
+      const body = priceOptionsPayload(priceRows, portionCents);
+      if (body === null) {
+        const list = {
+          key: "list",
+          message: "A menu item with priced options needs at least two named prices. Switch to a single price to keep one amount.",
+        };
+        setPortionErrors([list]);
+        setError(list.message);
+        return;
+      }
+      setPortionErrors([]);
+      portionBody = body;
+    } else if (portionsApply && portionMode === "single" && savedPortionCount > 0) {
+      clearPortions = true;
+    }
     setBusy(true);
     setError(null);
     setServerFields({});
@@ -767,6 +850,14 @@ export function ProductFormModal({
         id = created.id;
         setPersistedId(created.id);
       }
+      if (id !== null && portionBody) {
+        const savedOptions = await apiPut<MenuPriceOption[]>(`/api/v1/menu/products/${id}/price-options`, portionBody);
+        setSavedPortionCount(savedOptions.length);
+        setPriceRows(savedOptions.length > 0 ? portionsFromOptions(savedOptions) : blankPortions());
+      } else if (id !== null && clearPortions) {
+        const savedOptions = await apiPut<MenuPriceOption[]>(`/api/v1/menu/products/${id}/price-options`, { options: [] });
+        setSavedPortionCount(savedOptions.length);
+      }
       if (id !== null && pendingPhotos.length > 0) {
         const chosen = pendingPhotos.find((item) => item.key === mainPhotoKey) ?? pendingPhotos[0];
         if (chosen) {
@@ -803,9 +894,13 @@ export function ProductFormModal({
   return (
     <>
     <Modal
-      title={editing ? `Edit ${product.name}` : model ? `New ${model.name} variant` : "New product"}
+      title={editing ? `Edit ${product.name}` : model ? `New ${model.name} variant` : menuRecipe ? "Add menu item" : "New product"}
       subtitle={
-        editing ? `${product.sku} · ${product.barcode}` : "Products are shared by every branch; stock is per branch."
+        editing
+          ? `${product.sku || "No SKU"} · ${product.barcode || "No barcode"}`
+          : menuRecipe
+            ? "One menu item can have a single price or several portions. Portions are not separate products."
+            : "Products are shared by every branch; stock is per branch."
       }
       onClose={onClose}
       width="xl"
@@ -1072,14 +1167,16 @@ export function ProductFormModal({
         />
         <div>
           <TextField
-            label={byWeight ? "Price per kg" : "Price"}
+            label={byWeight ? "Price per kg" : menuRecipe && itemType === ItemType.MadeToOrder && portionMode === "portions" ? "Base price" : "Price"}
             inputMode="decimal"
             value={price}
             error={fieldMessage("price", priceMessage())}
             hint={
-              product?.price_source && product.price_source !== "override"
-                ? "Inherited from the model. Changing it makes this an override."
-                : undefined
+              menuRecipe && itemType === ItemType.MadeToOrder && portionMode === "portions"
+                ? "Reports that use one amount keep this price. The register sells the portion the cashier picks."
+                : product?.price_source && product.price_source !== "override"
+                  ? "Inherited from the model. Changing it makes this an override."
+                  : undefined
             }
             onBlur={() => touch("price")}
             onChange={(event) => {
@@ -1105,6 +1202,19 @@ export function ProductFormModal({
             </span>
           </label>
         </div>
+        {menuRecipe && itemType === ItemType.MadeToOrder && !openPrice && !byWeight && !(editing ? product.is_serialized : serialized) ? (
+          <PricingPortionsFields
+            mode={portionMode}
+            rows={priceRows}
+            currency={currency}
+            errors={portionErrors}
+            onMode={selectPortionMode}
+            onRows={(rows) => {
+              setPriceRows(rows);
+              setPortionErrors([]);
+            }}
+          />
+        ) : null}
         <div>
           <label className="block text-sm font-medium" htmlFor="product-sku">
             SKU

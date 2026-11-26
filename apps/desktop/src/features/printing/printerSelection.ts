@@ -1,4 +1,5 @@
 import type { InstalledPrinter, PrinterProbe, PrinterSettings } from "../../lib/tauri";
+import { lacksKickCircuit, pulseProfileReady } from "./drawerProfiles";
 import { BLE_UNSUPPORTED, TCP_OPEN_NOTICE } from "./printerConnections";
 
 export const DISCOVERING = "Discovering Windows printers...";
@@ -126,14 +127,16 @@ export function canTestPrint(draft: Pick<PrinterSettings, "transport" | "address
 }
 
 export function canTestDrawer(
-  draft: Pick<PrinterSettings, "transport" | "address" | "drawer_kick">,
+  draft: Pick<PrinterSettings, "transport" | "address" | "drawer_kick" | "drawer_profile" | "host_voltage">,
   queues: readonly InstalledPrinter[],
 ): boolean {
   if (draft.transport === "none" || draft.transport === "serial" || draft.transport === "ble" || draft.drawer_kick === false) return false;
+  if (!pulseProfileReady(draft)) return false;
   if (draft.transport === "tcp") return true;
   const queue = queues.find((item) => item.name === draft.address.trim());
-  if (!queue || queue.openable === false) return false;
-  return queue.availability === "ready" && queue.compatibility === "compatible" && queue.supportsDrawerKick;
+  if (!queue || queue.openable === false || queue.availability !== "ready") return false;
+  if (lacksKickCircuit(queue)) return false;
+  return queue.compatibility === "compatible" && queue.supportsDrawerKick === true;
 }
 
 export function canTestPrintFromProbe(probe: PrinterProbe | null): boolean {
@@ -148,16 +151,17 @@ export function canTestPrintFromProbe(probe: PrinterProbe | null): boolean {
 
 export function canTestDrawerFromProbe(probe: PrinterProbe | null): boolean {
   if (!probe) return false;
-  return (
+  const reachable =
     probe.configured &&
     probe.transport !== "none" &&
     probe.drawerKick &&
     probe.reachable &&
     probe.printerStatus === "ready" &&
-    probe.supportsDrawerKick &&
-    probe.compatibility !== "unsupported" &&
-    probe.compatibility !== "candidate"
-  );
+    probe.compatibility !== "unsupported";
+  if (!reachable) return false;
+  if (!pulseProfileReady({ drawer_profile: probe.drawerProfile, host_voltage: probe.hostVoltage })) return false;
+  if (lacksKickCircuit(probe)) return false;
+  return probe.supportsDrawerKick === true && probe.compatibility === "compatible";
 }
 
 /** A saved Windows queue is operational only when discovery classifies it as a ready compatible receipt printer. */
@@ -191,9 +195,15 @@ export function networkAddressError(address: string): string | null {
 }
 
 /** Persistence succeeded. The message says when the queue still cannot print or open the drawer. */
-export function saveFeedback(settings: Pick<PrinterSettings, "transport" | "address">, queues: readonly InstalledPrinter[]): string {
+export function saveFeedback(
+  settings: Pick<PrinterSettings, "transport" | "address"> & { connection_kind?: string },
+  queues: readonly InstalledPrinter[],
+): string {
   if (settings.transport === "none") return "Printer settings saved on this register. No receipt printer is connected.";
   if (settings.transport === "tcp") return `${SAVED} ${TCP_OPEN_NOTICE}`;
+  if (settings.transport === "serial" && settings.connection_kind === "serial") {
+    return `Register settings saved. ${CANDIDATE} The COM port is not opened during save. Drawer kick is not verified.`;
+  }
   if (settings.transport === "serial") return `Register settings saved. ${CANDIDATE} Drawer kick is not verified.`;
   if (settings.transport === "ble") return `Register settings saved. ${BLE_UNSUPPORTED}`;
   const queue = queues.find((item) => item.name === settings.address.trim());

@@ -2,6 +2,8 @@
 
 Date: 25-11-2026
 
+26-11-2026: the later pass is `AXIZPOS-UNIVERSAL-PRINTER-CONNECTIVITY-ACCEPTANCE.md`. Serial / COM is now its own adapter. BLE and vendor SDK remain blocked. Physical output is still NOT RUN.
+
 Software status: **PASSED WITH LIMITATIONS**. No transport is marked physically passed. Nothing was deployed.
 
 On 25-11-2026 the installed queues were Generic / Text Only on COM4, Microsoft Print to PDF, and OneNote. None is MTP-3. The MTP-3 label was not applied. Generic / Text Only stays a Windows-rendered candidate, not raw ESC/POS. Physical output remains NOT RUN.

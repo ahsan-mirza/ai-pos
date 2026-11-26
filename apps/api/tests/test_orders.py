@@ -3,7 +3,7 @@ import uuid
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 from tests.test_menu import enable
-from tests.test_returns import CABLE_ID, CASHIER_ID, STORE_ID, admin_id, admin_token, bearer, device, push, seed_catalog
+from tests.test_returns import CABLE_ID, CASHIER_ID, STORE_ID, admin_token, bearer, device, push, seed_catalog
 
 from app.models import AuditLog, OpenOrder, Sale
 
@@ -114,26 +114,17 @@ def test_tab_lifecycle_with_revisions_voids_and_split_settlement(client, session
     assert seated["kitchen_ready"] == 0
 
     first = order["items"][0]["id"]
-    refused = client.post(
+    voided = client.post(
         f"/api/v1/orders/{order['id']}/items/{first}/void",
         headers=device(),
         json={"revision": order["revision"], "user_id": CASHIER_ID, "reason": "Customer changed mind"},
     )
-    assert refused.status_code == 403 and refused.json()["error"]["code"] == "approval_required"
-    voided = client.post(
-        f"/api/v1/orders/{order['id']}/items/{first}/void",
-        headers=device(),
-        json={
-            "revision": order["revision"],
-            "user_id": CASHIER_ID,
-            "reason": "Customer changed mind",
-            "approved_by_id": admin_id(client),
-        },
-    )
     assert voided.status_code == 200, voided.text
     order = voided.json()
     assert order["open_cents"] == 3000
-    assert session.scalar(select(AuditLog).where(AuditLog.action == "order.void_sent_item")) is not None
+    assert order["status"] == "OPEN"
+    entry = session.scalar(select(AuditLog).where(AuditLog.action == "order.void_sent_item"))
+    assert entry is not None and entry.approver_id is None and entry.user_id == uuid.UUID(CASHIER_ID)
 
     order = client.post(
         f"/api/v1/orders/{order['id']}/items",
@@ -479,6 +470,7 @@ def test_sent_increase_adds_only_the_extra_round(client, session: Session) -> No
     extra = next(item for item in order["items"] if item["id"] != original_id)
     assert original["quantity"] == 3 and original["sent_at"] == original_sent
     assert extra["quantity"] == 2 and extra["sent_at"] is not None
+    assert extra["source_item_id"] == original_id
     assert extra["unit_price_cents"] == original["unit_price_cents"]
     from app.models.kitchen import KitchenTicketItem
 

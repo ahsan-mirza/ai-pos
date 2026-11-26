@@ -1,4 +1,5 @@
 import type { PrinterProbe } from "../../lib/tauri";
+import { pulseProfileReady } from "../../features/printing/drawerProfiles";
 import type { KeyboardStatus } from "../../hooks/useVirtualKeyboard";
 
 export type Light = "green" | "red" | "gray" | "amber";
@@ -177,7 +178,9 @@ export function printerIndicator(probe: PrinterProbe): Indicator | null {
         : probe.transport === "windows"
           ? "Windows spooler"
           : probe.transport === "serial"
-            ? "Bluetooth Classic"
+            ? probe.connection === "Serial"
+              ? "Serial / COM"
+              : "Bluetooth Classic"
             : probe.transport === "ble"
               ? "Bluetooth Low Energy"
               : probe.transport,
@@ -196,14 +199,14 @@ export function printerIndicator(probe: PrinterProbe): Indicator | null {
 const DRAWER_UNKNOWN = "Open/closed state: Not reported.";
 
 export function drawerCanTest(probe: PrinterProbe): boolean {
+  const known = probe.supportsDrawerKick === true && probe.compatibility === "compatible";
   return (
     probe.configured &&
     probe.drawerKick &&
     probe.reachable &&
     probe.printerStatus === "ready" &&
-    probe.supportsDrawerKick === true &&
-    probe.compatibility !== "unsupported" &&
-    probe.compatibility !== "candidate"
+    known &&
+    pulseProfileReady({ drawer_profile: probe.drawerProfile, host_voltage: probe.hostVoltage })
   );
 }
 
@@ -231,6 +234,8 @@ export function drawerIndicator(probe: PrinterProbe): Indicator | null {
     status = `Selected receipt printer not found. Select an installed receipt printer to enable cash drawer control. ${DRAWER_UNKNOWN}`;
   } else if (!probe.reachable || probe.printerStatus === "offline" || probe.printerStatus === "unavailable") {
     status = `Receipt printer unavailable, so the drawer cannot be kicked. ${DRAWER_UNKNOWN}`;
+  } else if (!pulseProfileReady({ drawer_profile: probe.drawerProfile, host_voltage: probe.hostVoltage })) {
+    status = `Choose a cash drawer profile and confirm the drawer-port voltage before sending a pulse. ${DRAWER_UNKNOWN}`;
   } else if (!probe.supportsDrawerKick) {
     status = `This printer has no known drawer-kick profile. ${DRAWER_UNKNOWN}`;
   } else if (probe.lastKickError) {

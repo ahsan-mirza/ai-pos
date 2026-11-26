@@ -33,10 +33,23 @@ export function paperLabel(dots: number): "58 mm" | "80 mm" {
  * Amounts are fixed sample figures. They are not a second tax calculation.
  * Business name, address, tax number, logo, header, and footer come from the register identity.
  */
+export const SAMPLE_BANNER = "SAMPLE RECEIPT — NOT A SALE";
+
 export function settingsPreviewReceipt(identity: ReceiptIdentity, currency: string): ReceiptDoc {
   const title = receiptTitle(identity.trn, null, 5_575, identity.taxAuthority);
   const language = slipLanguage(identity.branding, null);
-  const footer = identity.branding?.footer_text?.trim() || "Sample receipt. Not a sale.";
+  const footer = identity.branding?.footer_text?.trim() || SAMPLE_BANNER;
+  const header = [SAMPLE_BANNER, identity.branding?.header_text?.trim()].filter(Boolean).join("\n");
+  const branding = {
+    logo_png: identity.branding?.logo_png ?? null,
+    language: identity.branding?.language ?? "store",
+    header_text: header,
+    header_text_ar: identity.branding?.header_text_ar ?? null,
+    footer_text: identity.branding?.footer_text ?? null,
+    footer_text_ar: identity.branding?.footer_text_ar ?? null,
+    email: identity.branding?.email ?? null,
+    website: identity.branding?.website ?? null,
+  };
   return {
     storeName: identity.storeName,
     storeAddress: identity.storeAddress,
@@ -44,7 +57,7 @@ export function settingsPreviewReceipt(identity: ReceiptIdentity, currency: stri
     legalName: identity.legalName,
     legalNameAr: identity.legalNameAr,
     trn: identity.trn,
-    branding: identity.branding ?? null,
+    branding,
     taxAuthority: identity.taxAuthority,
     ...title,
     number: "SAMPLE-1001",

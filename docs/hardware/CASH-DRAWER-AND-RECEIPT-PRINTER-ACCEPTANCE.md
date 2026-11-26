@@ -2,6 +2,8 @@
 
 Date: 23-11-2026
 
+26-11-2026: drawer kick stays independent of receipt printing. Serial / COM, Bluetooth Classic, and BLE do not kick. Discovery, preview, save, and the test receipt do not kick. A DC 12V / 1A cashbox rating is not treated as a sensed open. A pulse is sent only for a verified drawer profile and a matching drawer-port voltage. Generic / Text Only on a COM port is not a kick circuit. See `CASH-DRAWER-COMPATIBILITY.md`.
+
 ## Register settings save
 
 Save no longer treats an unverified Windows queue as a failed write. The settings row is stored first. A probe runs only for a ready, compatible, openable queue, and only to confirm the connected message. OneNote `(Desktop) - Protected` is kept as a virtual preference. It is not a connected receipt printer and it cannot kick the drawer.

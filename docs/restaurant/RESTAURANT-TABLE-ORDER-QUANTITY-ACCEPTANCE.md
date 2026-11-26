@@ -1,78 +1,84 @@
 # Restaurant and Cafe table-order quantities
 
-Date: 25-11-2026
+Date: 26-11-2026
 
-Overall: **PASSED WITH LIMITATIONS**
+Overall: **NOT PASSED**
 
-An occupied table keeps one open order. Adding dishes and changing an unsent quantity write that same order. A line already sent to the kitchen is not rewritten. A larger quantity becomes a new kitchen line for the extra plates only. A smaller quantity is refused; the existing void-with-reason flow still removes the whole sent line. No sale was settled. The live laundry register was not opened.
+Automated checks for plus, minus, and direct removal passed. The occupied-table screen was not clicked on a register, so the native acceptance in this note was not run. Nothing was deployed.
 
 | Workstream | Result |
 | --- | --- |
-| Add items to the occupied table | PASSED |
-| Unsent quantity adjustment | PASSED |
-| Sent quantity increase | PASSED |
-| Sent quantity decrease | PASSED WITH LIMITATIONS |
-| Kitchen ticket reconciliation | PASSED |
-| Inventory reconciliation | NOT RUN |
-| Offline support | PASSED WITH LIMITATIONS |
-| Native window screenshots | NOT RUN |
+| Plus on a sent line sends only the extra | Passed |
+| Minus stops at the original sent quantity | Passed |
+| Unsent plus, minus, and remove | Passed |
+| Sent removal without a manager PIN | Passed |
+| Served line still needs a manager | Passed |
+| Original kitchen ticket left in place | Passed |
+| Recipe and stock movements on these edits | Passed (none written) |
+| Native occupied-table walk | Not run |
+| Offline cancellation of a sent extra | Not run on a device |
 
-## What the order already did
+## Permission
 
-`POST /api/v1/orders/{id}/items` appends lines to the open order and leaves sent lines untouched. A second dine-in order for the same table is rejected with `table_occupied`, and the response names the existing order id.
+The cashier who can work the table already holds `pos:orders`. That grant covers adding items, changing an unsent quantity, sending only an extra plate, cancelling that extra, and removing an unsent or unserved line. The register records that cashier's user id, the action, and the time.
 
-`POST /api/v1/orders/{id}/items/{item_id}/quantity` changes a line that has not been sent. The quantity must be from 1 to 1000. A sent line returns `already_sent`.
+`pos:void_sent_item` stays the manager grant. It is still required to void a line the kitchen has marked served (`bumped`), and to cancel a whole order after it has been sent. A user id that does not hold `pos:orders` is rejected with 403. The buttons are not the authorization check.
 
-`POST /api/v1/orders/{id}/items/{item_id}/increase` is only for a sent line. The body is the new quantity of that line, not a second copy of the whole ticket. The original line and its kitchen ticket stay at the old quantity. The difference is a new order line, already marked sent, and only that line is fired to the kitchen. Asking for a lower quantity returns `sent_reduction_blocked`.
+## Unsent lines
 
-`POST /api/v1/orders/{id}/send` fires every unsent line once. Sending again with nothing left returns `nothing_to_send`.
+Plus adds one. Minus subtracts one and stops at 1. Remove asks for a short reason and drops the line. No kitchen ticket is created, and no ingredient movement is written. The open order stays open and the table stays occupied.
 
-Voiding a sent line still requires a reason and a manager who holds `pos:void_sent_item`. There is no partial void. A reduction of a sent line is the full void, then a new line for what the table still wants.
+A repeated request with the same `event_id` returns the quantity already saved.
 
-Recipe consumption stays on the sale, not on these open-order edits. Prepared items with `skip_recipe` keep that flag on the extra line. This pass did not replay stock movements.
+## Original sent quantity
 
-A sent increase is refused while the register is offline, because the extra ticket cannot be delivered. Adding unsent lines can still queue on the register.
+A line that has been sent keeps its quantity and its kitchen ticket. Plus does not add to that row.
 
-## What changed in the table panel
+The extra plates are a new order line whose `source_item_id` is the original line, and a new kitchen ticket for that difference only. The panel shows one card:
 
-Unsent lines already had minus and plus. Their status now reads “Not sent to kitchen”. The card shows the unit price, the quantity, and a line total.
+`net = original sent quantity + live extra quantity`
 
-A sent line no longer offers a one-step “add one more” button. **Adjust quantity** asks for the new whole quantity. A higher number sends only the extra. The same number, a lower number, and a value outside 1–1000 stay on the register and do not call the kitchen. **Void with reason** is unchanged.
+Minus is disabled while the net equals the original sent quantity. After plus, minus cancels one extra unit. It does not change the original ticket. When the extra line's quantity is greater than one, that line and its own ticket drop by one. When it is one, the extra line is voided and the kitchen is told; the ticket row stays, with `voided_at` set.
 
-New dishes still go through **Add More Items**, the existing portion and modifier dialogs, and **Add to this order**. They stay unsent until **Send new items to kitchen**. Closing the panel does not close the table.
+If that extra is already served, minus stays disabled. Removing a served line still opens the manager PIN dialog.
 
-## API evidence
+The reason stored for a minus step is `[wrong_quantity] Quantity reduced at the table`. Removing a whole unserved sent line asks for a reason on the register and does not ask for a manager PIN. The audit row is `order.void_sent_item` or `order.sent_quantity_decrease`, with the cashier as `user_id` and no approver.
 
-From the repository root:
+## Kitchen, recipes, and the bill
 
-`node scripts/python.mjs -m pytest tests/test_orders.py::test_sent_increase_adds_only_the_extra_round tests/test_orders.py::test_occupied_table_reopens_the_same_order -q --tb=line`
+Each plus fires one new round for the extra quantity. A retry with the same `event_id` does not fire another. A stale revision returns `stale_order`.
 
-2 passed, exit 0.
+These edits do not insert stock movements and do not change `inventory_levels.quantity_on_hand`. `skip_recipe` is copied onto the extra line. Ingredient use still happens when the table is paid, from the quantities that are still live. A voided extra is not on the bill, so it is not deducted. Cancelling a plate does not invent a return of ingredients that were never issued.
 
-`test_occupied_table_reopens_the_same_order` keeps one order id, rejects a second order for the table, grows an unsent line from its original quantity to 3, sends it, then adds a later line that stays unsent. Changing the sent line in place returns `already_sent`.
+The order id, guest count, and open status stay. Open to pay is the sum of the live lines. Paying the table is a separate action.
 
-`test_sent_increase_adds_only_the_extra_round` starts from quantity 3. A request for 2 is `sent_reduction_blocked`. A direct quantity edit is `already_sent`. A request for 5 leaves the original line and its kitchen ticket at 3 and writes a new ticket line for 2. The audit action is `order.sent_quantity_increase`.
+A sent plus or minus is refused while the register is offline, because the kitchen cannot be told. The order on the register is left as it was.
 
-## Desktop evidence
+## Automated results
+
+From `apps/api`, `APP_ENV=test`:
+
+`pytest tests/test_table_quantity.py tests/test_orders.py tests/test_order_cancel.py -q --tb=line`
+
+25 passed, exit 0.
 
 From `apps/desktop`:
 
 `pnpm exec vitest run src/features/orders/tableQuantity.test.ts --reporter=dot`
 
-1 file, 4 tests, 0 failed, exit 0. Going from 1 to 3 plans an extra of 2. A reduction, an unchanged quantity, and a quantity outside 1–1000 are refused before a request is sent.
+1 file, 9 tests, exit 0.
 
 `pnpm exec tsc -p tsconfig.json --noEmit` exit 0.
 
-## Examples
+`ruff check` on the touched API files exit 0.
 
-Unsent Daal Channa Small Plate, AED 3.00, quantity 2, line total AED 6.00. Plus makes quantity 3 and the line total AED 9.00. The portion id is unchanged. Minus returns it to 2. Quantity 0 is not offered; the minus control stops at 1.
+## Native acceptance
 
-Sent Daal Channa Full Plate, quantity 1. Adjust quantity to 3. The original ticket stays at 1. A new sent line of 2 is added. The open order total counts both lines. Adjust quantity to 1 or 0 does not change the ticket.
+Not run. The steps (open an occupied table, plus from 1 to 2, minus back to 1, remove another sent line with a reason and no PIN, confirm the kitchen ticket and that the table stays occupied) were not clicked on a Restaurant register. No screenshots were taken. The live laundry register was not opened.
 
-## Limitations
+## Remaining limitations
 
-- A sent line cannot be reduced by one plate. The cashier voids the whole line with a reason, then adds the quantity the table still wants.
-- The extra quantity is its own order line and its own kitchen ticket. The panel lists both lines rather than folding them into one card.
-- Native screenshots of the occupied-table panel were not taken in this pass.
-- Recipe and stock movements were not replayed. Open-order edits do not write inventory; sale-time recipe consumption is unchanged.
-- A sent increase is blocked while offline.
+- Minus on a sent line records a fixed reason instead of asking the cashier to type one. Remove still asks.
+- An extra added before `source_item_id` existed is shown as its own card. New extras fold into the original line.
+- A served extra cannot be removed with minus. The manager PIN path remains for that case and for cancelling the whole order.
+- Native confirmation on a register is still outstanding.

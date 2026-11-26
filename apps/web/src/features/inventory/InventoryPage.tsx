@@ -1,11 +1,12 @@
 import { actionHoverClass } from "@ai-pos/ui";
-import { Permission, formatMoney, noMatchesMessage, type Product } from "@ai-pos/shared-types";
+import { Permission, activePriceOptions, formatMoney, noMatchesMessage, type Product } from "@ai-pos/shared-types";
 import { Package, Pencil, Plus, Power, Printer, Search, Trash2, Upload } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { DataTable, type DataTableColumn } from "../../components/ui/DataTable";
 import { GhostButton, PrimaryButton, SearchField } from "../../components/ui/Field";
 import { Modal } from "../../components/ui/Modal";
+import { useTenant } from "../../context/TenantContext";
 import { apiGet } from "../../lib/api";
 import { ProductImage } from "../../components/ui/ProductImage";
 import { useAuth } from "../../lib/auth";
@@ -17,10 +18,13 @@ import { ImportWizardModal } from "./import/ImportWizardModal";
 import { ProductFormModal } from "./ProductFormModal";
 import { BrandModelFilters } from "./shared";
 import { IconButton } from "./StockPage";
+import { catalogPriceLabel, isMultiplePortionProduct } from "./portionPricing";
 import { useProductSearch } from "./useProductSearch";
 
 export function InventoryPage() {
   const { currency } = useCurrency();
+  const { businessType } = useTenant();
+  const menuCatalog = businessType === "restaurant" || businessType === "cafe";
   const [live, setLive] = useState<Product[] | null>(null);
   const [failed, setFailed] = useState(false);
   const products = useMemo(() => (live ?? []).map((product) => ({ ...product, currency })), [live, currency]);
@@ -33,6 +37,8 @@ export function InventoryPage() {
   const [pageSize, setPageSize] = useState(25);
   const [brandId, setBrandId] = useState<string | null>(null);
   const [modelId, setModelId] = useState<string | null>(null);
+  const [portionFilter, setPortionFilter] = useState<"all" | "single" | "portions">("all");
+  const [activityFilter, setActivityFilter] = useState<"all" | "active" | "inactive">("all");
   const search = useProductSearch(query, products, source === "live");
   const { debouncedQuery, searching, resolve } = search;
   const hits = search.hits.filter(({ product }) => {
@@ -40,8 +46,18 @@ export function InventoryPage() {
     const matchesSpec =
       spec === "" ||
       Object.values(product.specifications ?? {}).some((value) => value.toLowerCase().includes(spec));
+    const portionMatch =
+      !menuCatalog ||
+      portionFilter === "all" ||
+      (portionFilter === "portions" ? isMultiplePortionProduct(product) : !isMultiplePortionProduct(product));
+    const activityMatch =
+      !menuCatalog ||
+      activityFilter === "all" ||
+      (activityFilter === "active" ? product.is_active !== false : product.is_active === false);
     return (
       matchesSpec &&
+      portionMatch &&
+      activityMatch &&
       (brandId === null || product.brand_id === brandId) &&
       (modelId === null || product.product_model_id === modelId)
     );
@@ -215,7 +231,23 @@ export function InventoryPage() {
       id: "price",
       header: "Price",
       align: "right",
-      cell: ({ product }) => formatMoney(product.price_cents, product.currency),
+      cell: ({ product }) => {
+        const options = activePriceOptions(product.price_options);
+        const label = catalogPriceLabel(product);
+        if (options.length < 2) return label;
+        return (
+          <details onClick={(event) => event.stopPropagation()}>
+            <summary className="cursor-pointer">{label}</summary>
+            <ul className="mt-1 space-y-0.5 text-xs font-normal text-charcoal/70">
+              {options.map((option) => (
+                <li key={option.id}>
+                  {option.name} — {formatMoney(option.price_cents, product.currency)}
+                </li>
+              ))}
+            </ul>
+          </details>
+        );
+      },
     },
     {
       id: "stock",
@@ -298,12 +330,14 @@ export function InventoryPage() {
       >
         <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
           <div>
-            <h2 className="text-2xl font-semibold">Catalog</h2>
+            <h2 className="text-2xl font-semibold">{menuCatalog ? "Menu items" : "Catalog"}</h2>
             <p className="text-sm text-charcoal/60">
               {failed
                 ? "Products could not be loaded."
                 : source === "live"
-                  ? "One catalog for every branch. Stock shown is the total across your stores."
+                  ? menuCatalog
+                    ? "One menu for every branch. A portion is a price of the same item, not another product."
+                    : "One catalog for every branch. Stock shown is the total across your stores."
                   : "Loading products…"}
             </p>
           </div>
@@ -323,7 +357,7 @@ export function InventoryPage() {
               </button>
               <PrimaryButton onClick={() => setEditing("new")}>
                 <span className="inline-flex items-center gap-2">
-                  <Plus size={16} aria-hidden="true" /> New product
+                  <Plus size={16} aria-hidden="true" /> {menuCatalog ? "Add menu item" : "New product"}
                 </span>
               </PrimaryButton>
             </div>
@@ -361,6 +395,36 @@ export function InventoryPage() {
             placeholder="Filter specifications..."
             className="min-w-[min(100%,12rem)] grow basis-40"
           />
+          {menuCatalog ? (
+            <>
+              <label className="text-xs font-medium text-charcoal/70">
+                Price
+                <select
+                  aria-label="Price"
+                  className="mt-1 h-11 rounded-xl border border-line bg-white px-3 text-sm"
+                  value={portionFilter}
+                  onChange={(event) => setPortionFilter(event.target.value as "all" | "single" | "portions")}
+                >
+                  <option value="all">All prices</option>
+                  <option value="single">Single price</option>
+                  <option value="portions">Multiple portions</option>
+                </select>
+              </label>
+              <label className="text-xs font-medium text-charcoal/70">
+                Status
+                <select
+                  aria-label="Status"
+                  className="mt-1 h-11 rounded-xl border border-line bg-white px-3 text-sm"
+                  value={activityFilter}
+                  onChange={(event) => setActivityFilter(event.target.value as "all" | "active" | "inactive")}
+                >
+                  <option value="all">Active and inactive</option>
+                  <option value="active">Active</option>
+                  <option value="inactive">Inactive</option>
+                </select>
+              </label>
+            </>
+          ) : null}
           {source === "live" ? (
             <BrandModelFilters
               className="min-w-[9rem] grow basis-40"
@@ -400,7 +464,7 @@ export function InventoryPage() {
             pageSize,
             onPageChange: setPage,
             onPageSizeChange: setPageSize,
-            resetKey: [debouncedQuery, brandId, modelId],
+            resetKey: [debouncedQuery, brandId, modelId, portionFilter, activityFilter],
           }}
         />
         {editing !== null ? (

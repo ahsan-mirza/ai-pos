@@ -46,6 +46,7 @@ pub const OFFLINE_NOTICE: &str = "The printer is installed but currently unavail
 pub const QUEUE_CLOSED: &str = "Windows found the printer, but AxizPOS could not open its queue.";
 pub const RENDER_FAILED: &str = "The invoice was generated, but its printable content could not be rendered.";
 pub const TRANSMIT_FAILED: &str = "Receipt content was generated, but the printer did not accept the print job.";
+#[cfg_attr(not(test), allow(dead_code))]
 pub const SPOOLER_ACCEPTED: &str = "The printer job was submitted, but physical output has not yet been verified.";
 pub const MISSING_QUEUE: &str =
     "The previously selected Windows printer is not installed. Refresh the printer list or select another device.";
@@ -207,6 +208,24 @@ pub fn transport_for(driver: &str, port: &str, default_datatype: &str) -> PrintT
         return PrintTransport::WindowsGdi;
     }
     selected
+}
+
+/// An explicit ESC/POS choice applies only when the queue is not an office, virtual, text-only, or Windows-rendered driver.
+/// EMF and XPS stay on the driver. An empty choice keeps the discovered transport.
+pub fn select_output(driver: &str, port: &str, datatype: &str, explicit_protocol: &str) -> PrintTransport {
+    let base = transport_for(driver, port, datatype);
+    if base == PrintTransport::None || expects_rendered_job(driver, port) || is_text_only_driver(driver) {
+        return base;
+    }
+    let kind = datatype.trim().to_ascii_lowercase();
+    if kind.contains("emf") || kind.contains("xps") {
+        return PrintTransport::WindowsGdi;
+    }
+    match explicit_protocol.trim() {
+        "escpos" => PrintTransport::EscPos,
+        "windows-gdi" => PrintTransport::WindowsGdi,
+        _ => base,
+    }
 }
 
 pub fn capability_summary(transport: PrintTransport, drawer: bool) -> String {
@@ -426,6 +445,30 @@ mod tests {
         assert!(!notice.to_ascii_lowercase().contains("unsupported"));
         assert_eq!(select_transport("EPSON TM-T88V Receipt", "USB001"), PrintTransport::EscPos);
         assert_eq!(select_transport("Unknown Thermal", "USB002"), PrintTransport::WindowsGdi);
+        assert_eq!(
+            select_output("Unknown Thermal", "USB002", "RAW", "escpos"),
+            PrintTransport::EscPos
+        );
+        assert_eq!(
+            select_output("Unknown Thermal", "USB002", "RAW", ""),
+            PrintTransport::WindowsGdi
+        );
+        assert_eq!(
+            select_output("Toshiba Native Windows Driver", "Toshiba: 0_USB", "RAW", "escpos"),
+            PrintTransport::WindowsGdi
+        );
+        assert_eq!(
+            select_output("Generic / Text Only", "COM4", "", "escpos"),
+            PrintTransport::WindowsGdi
+        );
+        assert_eq!(
+            select_output("EPSON TM-T88V Receipt", "USB001", "NT EMF 1.008", "escpos"),
+            PrintTransport::WindowsGdi
+        );
+        assert_eq!(
+            select_output("Microsoft Print To PDF", "PORTPROMPT:", "RAW", "escpos"),
+            PrintTransport::None
+        );
         assert_eq!(select_transport("Microsoft Print To PDF", "PORTPROMPT:"), PrintTransport::None);
         assert_eq!(select_transport("Canon Generic PCL6 Driver", "10.10.101.250"), PrintTransport::None);
         assert!(capability_summary(PrintTransport::WindowsGdi, false).contains("Drawer kick is not verified"));

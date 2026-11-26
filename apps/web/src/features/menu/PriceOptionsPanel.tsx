@@ -1,4 +1,4 @@
-import { formatMoney, type MenuPriceOption, type Product } from "@ai-pos/shared-types";
+import { formatMoney, portionCents, priceOptionsPayload, type MenuPriceOption, type Product } from "@ai-pos/shared-types";
 import { useCallback, useEffect, useState } from "react";
 import { apiGet, apiPut } from "../../lib/api";
 import { useCurrency } from "../../lib/currency";
@@ -54,19 +54,15 @@ export function PriceOptionsPanel() {
 
   async function save() {
     if (!productId) return;
-    const options = rows.map((row, position) => ({
-      id: row.id,
-      name: row.name.trim(),
-      price_cents: Math.round(Number(row.price) * 100),
-      is_active: row.active,
-      position,
-    }));
-    if (options.some((option) => !option.name || !Number.isFinite(option.price_cents) || option.price_cents < 0)) {
-      setError("Each option needs a name and a price of zero or more.");
+    let options: { options: { id?: string; name: string; price_cents: number; is_active: boolean; position: number }[] };
+    try {
+      options = priceOptionsPayload(rows, portionCents) ?? { options: [] };
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Could not save priced options.");
       return;
     }
     try {
-      const saved = await apiPut<MenuPriceOption[]>(`/api/v1/menu/products/${productId}/price-options`, { options });
+      const saved = await apiPut<MenuPriceOption[]>(`/api/v1/menu/products/${productId}/price-options`, options);
       setRows(
         saved.map((option) => ({
           id: option.id,
@@ -88,7 +84,7 @@ export function PriceOptionsPanel() {
     <div className="rounded-card border border-line bg-white p-6">
       <h2 className="text-xl font-semibold">Priced options</h2>
       <p className="mt-1 text-sm text-charcoal/60">
-        Breakfast, plate size, or any other base price. These are not modifiers. Leave the list empty to keep the item's single price.
+        The same portions edited on the menu item. Leave the list empty to keep the item's single price. These are not modifiers.
       </p>
       <label className="mt-4 block text-sm font-medium">
         Menu item

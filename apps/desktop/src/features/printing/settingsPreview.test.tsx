@@ -100,6 +100,8 @@ describe("register settings receipt preview", () => {
     expect(doc.storeAddress).toBe("12 Creek Road");
     expect(doc.trn).toBe("100000000000003");
     expect(doc.footer).toBe("Thank you for visiting");
+    expect(doc.branding?.header_text).toContain("SAMPLE RECEIPT — NOT A SALE");
+    expect(doc.number.startsWith("SAMPLE")).toBe(true);
     expect(doc.lines.map((line) => `${line.name} ${line.detail}`).join(" ")).toContain("Regular portion");
     expect(doc.lines.map((line) => line.detail).join(" ")).toContain("Oat milk");
     expect(doc.lines.map((line) => line.detail).join(" ")).toContain("Half portion");
@@ -117,6 +119,7 @@ describe("register settings receipt preview", () => {
     expect(text).toContain("Cappuccino");
     expect(text).toContain("Chicken wrap");
     expect(text).toContain("SAMPLE-1001");
+    expect(text).toContain("SAMPLE RECEIPT — NOT A SALE");
     expect(text).toContain("100000000000003");
     expect(layoutWidth(384)).toBe(384);
     expect(layoutWidth(576)).toBe(576);

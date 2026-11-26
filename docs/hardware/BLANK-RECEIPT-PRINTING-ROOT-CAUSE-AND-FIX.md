@@ -2,6 +2,10 @@
 
 Date: 25-11-2026
 
+26-11-2026: generic ESC/POS for an unknown model does not override this path. `Toshiba Native Windows Driver` and a `Toshiba:` port still render with GDI. Paper confirmation remains NOT RUN. See `AXIZPOS-UNIVERSAL-PRINTER-CONNECTIVITY-ACCEPTANCE.md`.
+
+26-11-2026 partial-page cause: ESC/POS image bands of 256 rows encode the height low byte as 0, so some printers emit only the leftover rows. Bands are now at most 128 rows, and the cut stays after the last band. The Windows page length was also capped at 300 mm, which clipped a long slip to its top portion. The page now follows the raster height, and a driver that keeps a short page continues on the next page instead of scaling the slip down. Test Print uses the same sample slip as Receipt Preview. No paper check was run.
+
 Status: **BLOCKED** for physical acceptance. The software path is in place and covered by unit tests. A complete tax invoice was not seen on paper, so the issue is not marked passed.
 
 ## Screenshot findings

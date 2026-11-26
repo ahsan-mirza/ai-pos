@@ -34,6 +34,8 @@ const printer = (patch: Partial<PrinterProbe> = {}): PrinterProbe => ({
   drawerOpenState: "not_reported",
   compatibility: "compatible",
   supportsDrawerKick: true,
+  drawerProfile: "hp-vb400-bl1616",
+  hostVoltage: "24",
   connection: "Network",
   discoveryOutcome: "kept",
   previousAddress: "",
@@ -92,6 +94,8 @@ describe("footer device lights", () => {
     expect(drawerIndicator(printer({ drawerKick: false }))?.light).toBe("gray");
     expect(drawerIndicator(printer())?.light).toBe("green");
     expect(drawerIndicator(printer())?.status).toContain("Not reported");
+    expect(drawerIndicator(printer({ drawerProfile: "", hostVoltage: "" }))?.status).toContain("drawer-port voltage");
+    expect(drawerCanTest(printer({ drawerProfile: "", hostVoltage: "" }))).toBe(false);
     expect(drawerIndicator(printer({ supportsDrawerKick: false }))?.light).toBe("red");
     expect(drawerIndicator(printer({ supportsDrawerKick: false }))?.actions).not.toContain("test_kick");
     expect(drawerIndicator(printer({ reachable: false }))?.light).toBe("red");

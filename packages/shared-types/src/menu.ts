@@ -123,6 +123,112 @@ export function priceOptionError(options: readonly MenuPriceOption[] | undefined
   return active.some((option) => option.id === selectedId) ? null : "Choose an option.";
 }
 
+/** One portion row on the product form. An empty list keeps the product's single price. */
+export interface PriceDraft {
+  id?: string;
+  name: string;
+  price: string;
+  active?: boolean;
+}
+
+export interface PriceOptionPayload {
+  id?: string;
+  name: string;
+  price_cents: number;
+  is_active: boolean;
+  position: number;
+}
+
+export interface PortionFieldError {
+  key: string;
+  message: string;
+}
+
+/** Tenant money is stored in cents, so a portion price has at most two decimal places. Zero is allowed. */
+export function portionCents(price: string): number | null {
+  const trimmed = price.trim();
+  if (!/^\d+(\.\d{1,2})?$/.test(trimmed)) return null;
+  return Math.round(Number(trimmed) * 100);
+}
+
+/** Field messages for a multiple-portion list. An all-blank list has none: that is the single-price path. */
+export function portionIssues(
+  rows: readonly PriceDraft[],
+  cents: (price: string) => number | null = portionCents,
+): PortionFieldError[] {
+  const issues: PortionFieldError[] = [];
+  const started = rows.flatMap((row, index) => (row.name.trim() !== "" || row.price.trim() !== "" ? [index] : []));
+  for (const index of started) {
+    const row = rows[index];
+    if (row === undefined) continue;
+    if (row.name.trim() === "") issues.push({ key: `${index}.name`, message: "Option name is required." });
+    if (row.price.trim().startsWith("-")) issues.push({ key: `${index}.price`, message: "Price cannot be negative." });
+    else if (cents(row.price) === null) {
+      issues.push({ key: `${index}.price`, message: "Enter a price with up to two decimal places." });
+    }
+  }
+  if (started.length === 0) return issues;
+  const complete = started.filter((index) => {
+    const row = rows[index];
+    return row !== undefined && row.name.trim() !== "" && cents(row.price) !== null;
+  });
+  if (complete.length < 2) {
+    issues.push({
+      key: "list",
+      message: "A menu item with priced options needs at least two named prices. Clear them to keep the single price.",
+    });
+  }
+  if (complete.length >= 2 && !complete.some((index) => rows[index]?.active !== false)) {
+    issues.push({ key: "list", message: "At least one priced option must stay active." });
+  }
+  const seen = new Map<string, number>();
+  for (const index of complete) {
+    const name = rows[index]?.name.trim() ?? "";
+    const key = name.toLocaleLowerCase();
+    if (seen.has(key)) issues.push({ key: `${index}.name`, message: "Two priced options on one item cannot share a name." });
+    else seen.set(key, index);
+  }
+  return issues;
+}
+
+/** Priced options saved beside the menu item. One filled row is refused. An empty list keeps the single base price. */
+export function priceOptionsPayload(
+  rows: readonly PriceDraft[],
+  cents: (price: string) => number | null,
+): { options: PriceOptionPayload[] } | null {
+  const filled = rows
+    .map((row, index) => ({
+      id: row.id,
+      name: row.name.trim(),
+      price: cents(row.price),
+      active: row.active,
+      position: index,
+    }))
+    .filter((row) => row.name !== "" || row.price !== null);
+  if (filled.length === 0) return null;
+  if (filled.length < 2 || filled.some((row) => row.name === "" || row.price === null)) {
+    throw new Error("A menu item with priced options needs at least two named prices. Clear them to keep the single price.");
+  }
+  if (!filled.some((row) => row.active !== false)) {
+    throw new Error("At least one priced option must stay active.");
+  }
+  const names = new Set<string>();
+  for (const row of filled) {
+    const key = row.name.toLocaleLowerCase();
+    if (names.has(key)) throw new Error("Two priced options on one item cannot share a name.");
+    names.add(key);
+  }
+  return {
+    options: filled.map((row) => ({
+      ...(row.id ? { id: row.id } : {}),
+      name: row.name,
+      price_cents: row.price as number,
+      is_active: row.active !== false,
+      position: row.position,
+    })),
+  };
+}
+
 /** The default picks of a meal, so a cashier only changes what the customer asks to swap. */
 export function comboDefaults(slots: readonly ComboSlot[]): ComboChoice[] {
   return slots.flatMap((slot) => {

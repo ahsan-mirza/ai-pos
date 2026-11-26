@@ -14,7 +14,8 @@ import {
 } from "../../lib/tauri";
 import { useBusinessCurrency } from "../checkout/currency";
 import { registerIdentity } from "./saleReceipt";
-import { printReceipt } from "./print";
+import { printExactReceipt } from "./print";
+import { pulseProfileReady } from "./drawerProfiles";
 import { MISSING, OFFLINE, SPOOLER_ACCEPTED, UNSUPPORTED_METHOD, candidateMessage, canTestDrawerFromProbe, canTestPrintFromProbe } from "./printerSelection";
 import { ReceiptPreviewPanel } from "./ReceiptPreviewPanel";
 import { detectionResult, layoutWidth, paperLabel, settingsPreviewReceipt, setupSteps } from "./settingsPreview";
@@ -92,7 +93,8 @@ export function ReceiptHardwareCard({
 
   const missing = probe?.printerStatus === "missing";
   const selected = queues.find((queue) => queue.name === probe?.address);
-  const kickSupported = Boolean(selected?.supportsDrawerKick ?? probe?.supportsDrawerKick) && probe?.compatibility !== "unsupported";
+  const profileReady = pulseProfileReady({ drawer_profile: probe?.drawerProfile, host_voltage: probe?.hostVoltage });
+  const kickSupported = Boolean(selected?.supportsDrawerKick ?? probe?.supportsDrawerKick) && probe?.compatibility === "compatible";
   const canKick = canTestDrawerFromProbe(probe) && kickSupported;
   const canPrint = desktop && canTestPrintFromProbe(probe);
   const kickReason = !desktop
@@ -101,6 +103,8 @@ export function ReceiptHardwareCard({
       ? "Receipt printer not configured."
       : probe.compatibility === "unsupported"
         ? UNSUPPORTED_METHOD
+        : !profileReady
+          ? "Choose a cash drawer profile and confirm the printer drawer-port voltage. A command is not sent until both match."
         : probe.compatibility === "candidate" || probe.printerStatus === "candidate"
           ? "Drawer kick has not been verified for this printer. Receipt printing can still be tested."
         : missing
@@ -127,6 +131,8 @@ export function ReceiptHardwareCard({
     }
   };
 
+  const previewDoc = settingsPreviewReceipt(registerIdentity(), currency);
+
   const testPrint = async () => {
     setBusy(true);
     if (desktop && canConfigure && stored && stored.paper_dots !== paperDots) {
@@ -138,7 +144,7 @@ export function ReceiptHardwareCard({
         return;
       }
     }
-    const outcome = await printReceipt(settingsPreviewReceipt(registerIdentity(), currency), { kickDrawer: false, manual: true, systemDialog: true });
+    const outcome = await printExactReceipt(previewDoc, paperDots);
     setBusy(false);
     setNotice(outcome.printed ? outcome.message || SPOOLER_ACCEPTED : outcome.message || "The printer did not print.");
     await refresh();
@@ -289,7 +295,7 @@ export function ReceiptHardwareCard({
         ))}
       </div>
       <div className="mt-4">
-        <ReceiptPreviewPanel doc={settingsPreviewReceipt(registerIdentity(), currency)} width={paperDots} />
+        <ReceiptPreviewPanel doc={previewDoc} width={paperDots} />
       </div>
       {notice ? (
         <p role="status" className="mt-4 rounded-xl bg-zinc-50 px-4 py-3 text-sm dark:bg-zinc-800">

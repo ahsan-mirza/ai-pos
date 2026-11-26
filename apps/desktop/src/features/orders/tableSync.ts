@@ -32,6 +32,7 @@ export function listenForTableEvents(storeId: string, onEvent: (event: TableEven
   const open = (token: string) => {
     if (stopped) return;
     socket = new WebSocket(socketUrl(storeId));
+    const openedAt = Date.now();
     socket.onopen = () => {
       socket?.send(JSON.stringify({ type: "auth", token, role: "pos" }));
     };
@@ -44,8 +45,10 @@ export function listenForTableEvents(storeId: string, onEvent: (event: TableEven
         // A bad frame does not close the socket.
       }
     };
-    socket.onclose = () => {
-      if (!stopped) timer = window.setTimeout(() => void start(), 2000);
+    socket.onclose = (event) => {
+      // A refusal, or a socket the server drops immediately, will not succeed on the next dial.
+      const refused = event.code === 1008 || (event.code !== 1001 && Date.now() - openedAt < 1500);
+      if (!stopped && !refused) timer = window.setTimeout(() => void start(), 2000);
     };
   };
 

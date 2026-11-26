@@ -92,14 +92,25 @@ class ItemQuantity(ApiModel):
     revision: int
     user_id: UUID | None = None
     quantity: int = Field(ge=1, le=1000)
+    # The same id on a retry returns the order that the first request already saved.
+    event_id: UUID | None = None
+
+
+class ItemDecrease(ApiModel):
+    revision: int
+    user_id: UUID | None = None
+    reason: str = Field(min_length=3, max_length=160)
+    event_id: UUID | None = None
 
 
 class ItemVoid(ApiModel):
     revision: int
     user_id: UUID | None = None
     reason: str = Field(min_length=3, max_length=160)
-    # Required once the item has gone to the kitchen: a user holding pos:void_sent_item.
+    # Required only when the kitchen has already served the item, or when the whole order is cancelled
+    # after it was sent. An open table line that is still unserved uses the cashier's pos:orders grant.
     approved_by_id: UUID | None = None
+    event_id: UUID | None = None
 
 
 class OrderMove(ApiModel):
@@ -172,6 +183,8 @@ class OrderItemOut(ApiModel):
     voided_at: datetime | None
     void_reason: str | None
     paid_sale_id: UUID | None
+    # The original sent line this extra belongs to. Empty on the first send and on unsent lines.
+    source_item_id: UUID | None = None
     # Kitchen progress once the KDS module is on: "new", "preparing", "ready", "bumped".
     kitchen_status: str | None = None
 

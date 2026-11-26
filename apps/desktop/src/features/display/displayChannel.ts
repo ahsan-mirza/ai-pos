@@ -70,6 +70,15 @@ function authFrame(role: "pos" | "customer-display", link: TerminalLink): string
 
 let posSocket: WebSocket | null = null;
 let posStarting: Promise<void> | null = null;
+/** The server refused this register. Further dials would only repeat that refusal. */
+let posRefused = false;
+
+function serverRefused(event: CloseEvent, openedAt: number): boolean {
+  if (event.code === 1001) return false;
+  if (event.code === 1008) return true;
+  // A socket the server drops immediately will not succeed on the next dial.
+  return Date.now() - openedAt < 1500;
+}
 
 export interface SaleReturnNotice {
   eventId: string;
@@ -80,6 +89,20 @@ export interface SaleReturnNotice {
 
 const returnListeners = new Set<(event: SaleReturnNotice) => void>();
 const seenReturns = new Set<string>();
+let seenCatalogueSeq = 0;
+let catalogueSocketOpens = 0;
+
+function noteCatalogue(raw: unknown): void {
+  if (raw === null || typeof raw !== "object") return;
+  const event = raw as Record<string, unknown>;
+  if (event.type !== "catalogue.changed") return;
+  const seq = typeof event.seq === "number" ? event.seq : null;
+  if (seq !== null) {
+    if (seq <= seenCatalogueSeq) return;
+    seenCatalogueSeq = seq;
+  }
+  void import("../checkout/catalog").then((catalog) => catalog.requestCatalogueSync());
+}
 
 function noteReturn(raw: unknown): void {
   if (raw === null || typeof raw !== "object") return;
@@ -108,6 +131,7 @@ export function listenForSaleReturns(onEvent: (event: SaleReturnNotice) => void)
 
 /** Register socket. It joins `terminal:{id}` and the store room, and relays the cart to `customer-display:{id}`. */
 function ensurePosSocket(): Promise<void> {
+  if (posRefused) return Promise.resolve();
   if (posSocket && posSocket.readyState !== WebSocket.CLOSED) return Promise.resolve();
   if (posStarting) return posStarting;
   posStarting = (async () => {
@@ -115,20 +139,32 @@ function ensurePosSocket(): Promise<void> {
     if (!link) return;
     if (posSocket && posSocket.readyState !== WebSocket.CLOSED) return;
     const socket = new WebSocket(liveUrl("pos", link));
+    const openedAt = Date.now();
     posSocket = socket;
     socket.onopen = () => {
       socket.send(authFrame("pos", link));
       if (last) socket.send(JSON.stringify({ type: "customer-display:cart", state: last }));
+      catalogueSocketOpens += 1;
+      // The first open is startup, which already loads the catalogue. A later open is a reconnect.
+      if (catalogueSocketOpens > 1) {
+        void import("../checkout/catalog").then((catalog) => catalog.requestCatalogueSync());
+      }
     };
     socket.onmessage = (message) => {
       try {
-        noteReturn(JSON.parse(String(message.data)));
+        const parsed: unknown = JSON.parse(String(message.data));
+        noteReturn(parsed);
+        noteCatalogue(parsed);
       } catch {
         // A bad frame does not close the socket.
       }
     };
-    socket.onclose = () => {
+    socket.onclose = (event) => {
       if (posSocket === socket) posSocket = null;
+      if (serverRefused(event, openedAt)) {
+        posRefused = true;
+        return;
+      }
       if (returnListeners.size > 0) window.setTimeout(() => void ensurePosSocket(), 2000);
     };
   })().finally(() => {
@@ -138,6 +174,7 @@ function ensurePosSocket(): Promise<void> {
 }
 
 function publishRoom(state: DisplayState): void {
+  if (posRefused) return;
   if (posSocket?.readyState === WebSocket.OPEN) {
     posSocket.send(JSON.stringify({ type: "customer-display:cart", state }));
     return;
@@ -156,6 +193,7 @@ function subscribeRoom(onState: (state: DisplayState) => void): () => void {
     const link = await terminalLink();
     if (!link || stopped) return;
     socket = new WebSocket(liveUrl("customer-display", link));
+    const openedAt = Date.now();
     socket.onopen = () => {
       socket?.send(authFrame("customer-display", link));
     };
@@ -167,8 +205,9 @@ function subscribeRoom(onState: (state: DisplayState) => void): () => void {
         // A bad frame does not close the socket.
       }
     };
-    socket.onclose = () => {
-      if (!stopped) timer = window.setTimeout(() => void open(), 2000);
+    socket.onclose = (event) => {
+      if (stopped || serverRefused(event, openedAt)) return;
+      timer = window.setTimeout(() => void open(), 2000);
     };
   };
   void open();

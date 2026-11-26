@@ -730,7 +730,10 @@ export {
   modifierDelta,
   modifierSelectionError,
   modifierSummary,
+  portionCents,
+  portionIssues,
   priceOptionError,
+  priceOptionsPayload,
   requiresPriceOption,
 } from "./menu.js";
 export type {
@@ -739,6 +742,9 @@ export type {
   ComboSlot,
   ComboSlotOption,
   MenuPriceOption,
+  PortionFieldError,
+  PriceDraft,
+  PriceOptionPayload,
   ModifierGroup,
   ModifierGroupInput,
   ModifierOption,

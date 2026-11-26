@@ -77,7 +77,7 @@ import { CartList } from "./CartList";
 import { CategoryScroller } from "./CategoryScroller";
 import { GrocerySuggestions } from "./GrocerySuggestions";
 import { CheckoutSidebar } from "./CheckoutSidebar";
-import { loadCatalog, localCatalog, mergeCatalog, openingCatalog, store, useCatalogUpdates, type Catalog } from "./catalog";
+import { CATALOGUE_SYNC_EVENT, loadCatalog, localCatalog, mergeCatalog, openingCatalog, store, useCatalogUpdates, type Catalog } from "./catalog";
 import { CancelOrderDialog } from "./fnb/CancelOrderDialog";
 import { needsCancelApproval, sessionCancelStage } from "./fnb/cancelOrder";
 import { OrderModeBar } from "./fnb/OrderModeBar";
@@ -558,7 +558,11 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
   }, [reloadCatalog]);
 
   useEffect(() => {
-    void loadPromotions().then(setPromotions);
+    if (!promotionsOn) return;
+    const load = () => void loadPromotions().then(setPromotions);
+    load();
+    window.addEventListener(CATALOGUE_SYNC_EVENT, load);
+    return () => window.removeEventListener(CATALOGUE_SYNC_EVENT, load);
   }, [promotionsOn]);
 
   useEffect(() => {

@@ -217,7 +217,15 @@ describe("receipt confirmation after payment", () => {
     });
     expect(kicks).toBe(1);
     expect(await kickDrawerForCashSale(false, false, deps)).toBe(false);
-    expect(kicks).toBe(1);
+    const card = {
+      load: async () => ({ drawer_kick: true, transport: "windows" as const, open_on_non_cash: true }),
+      kick,
+    };
+    const cardKicked = await kickDrawerForCashSale(false, false, card);
+    expect(cardKicked).toBe(true);
+    expect(kicks).toBe(2);
+    await kickDrawerForCashSale(false, cardKicked, card);
+    expect(kicks).toBe(2);
   });
 
   it("uses the selected split receipt output", () => {

@@ -18,7 +18,7 @@ from app.models.kitchen import KitchenStation, KitchenTicket
 from app.routers.v1.fnb_table_orders import _socket_principal, _socket_session
 from app.services import kitchen_service, returns_service
 from app.websockets import rooms
-from app.websockets.handshake import read_socket_credentials
+from app.websockets.handshake import read_socket_credentials, refuse_socket
 
 router = APIRouter()
 
@@ -84,13 +84,13 @@ async def live_events(websocket: WebSocket) -> None:
     notify_room = ""
     catch_up: list[dict[str, object]] = []
     sessions = _socket_session(websocket)
+    refusal_key = ""
     try:
         db = next(sessions)
         principal = _socket_principal(db, token)
         if principal is None:
-            await websocket.close(code=1008)
-            return
-        if role == "kds":
+            refusal_key = f"live:{websocket.query_params.get('terminal_id') or role}"
+        elif role == "kds":
             try:
                 station_id = uuid.UUID(frame.get("station_id") or websocket.query_params.get("station_id") or "")
             except ValueError:
@@ -125,19 +125,23 @@ async def live_events(websocket: WebSocket) -> None:
                 await websocket.close(code=1008)
                 return
             if not _terminal_allowed(db, principal, terminal_id):
-                await websocket.close(code=1008)
-                return
-            register = db.get(Device, terminal_id)
-            if register is not None:
-                notify_room = rooms.pos_terminals_room(register.store_id)
-                if role == "pos":
-                    catch_up = returns_service.recent_return_events(db, register.store_id)
-            room = rooms.terminal_room(terminal_id) if role == "pos" else rooms.customer_display_room(terminal_id)
+                refusal_key = f"live:{terminal_id}"
+            else:
+                register = db.get(Device, terminal_id)
+                if register is not None:
+                    notify_room = rooms.pos_terminals_room(register.store_id)
+                    if role == "pos":
+                        catch_up = returns_service.recent_return_events(db, register.store_id)
+                room = rooms.terminal_room(terminal_id) if role == "pos" else rooms.customer_display_room(terminal_id)
     except ApiError:
         await websocket.close(code=1008)
         return
     finally:
         sessions.close()
+
+    if refusal_key:
+        await refuse_socket(websocket, refusal_key)
+        return
 
     if not accepted:
         await websocket.accept()

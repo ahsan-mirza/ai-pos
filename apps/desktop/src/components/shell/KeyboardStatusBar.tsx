@@ -386,9 +386,9 @@ export function KeyboardStatusBar() {
 
   return (
     <>
-      <footer data-readiness={readiness || "unchecked"} className="relative grid h-9 shrink-0 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-3 border-t border-slate-800 bg-slate-900 px-3">
+      <footer data-readiness={readiness || "unchecked"} className="relative flex h-9 shrink-0 items-center gap-4 overflow-hidden border-t border-slate-800 bg-slate-900 px-3">
         <p
-          className="min-w-0 truncate text-xs text-slate-300"
+          className="min-w-0 flex-1 truncate text-xs text-slate-300"
           title={
             (activation?.demo
               ? `DEMO MODE — ${restaurantName}. Session active. ${catalogSummary ?? ""}`
@@ -417,7 +417,7 @@ export function KeyboardStatusBar() {
           <span>{spec.shortLabel}</span>
         </p>
         <div
-          className="flex items-center justify-center gap-2 overflow-x-auto px-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+          className="flex min-w-0 max-w-[50%] shrink-0 items-center gap-3 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
           role="status"
           aria-live="polite"
         >
@@ -442,12 +442,13 @@ export function KeyboardStatusBar() {
             </span>
           ) : null}
         </div>
-        <div
-          className="flex min-w-0 flex-nowrap items-center justify-end gap-0.5 justify-self-end overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-          role="group"
-          aria-label="Device status"
-          data-device-status="strip"
-        >
+        <div className="flex min-w-0 flex-1 justify-end overflow-hidden">
+          <div
+            className="flex max-w-full items-center gap-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+            role="group"
+            aria-label="Device status"
+            data-device-status="strip"
+          >
           {indicators.filter((item) => item.kind !== "api").map((item) => {
             const Icon = ICONS[item.kind];
             return (
@@ -466,7 +467,7 @@ export function KeyboardStatusBar() {
                   }
                   setOpenId((current) => (current === item.id ? null : item.id));
                 }}
-                className="inline-flex h-7 shrink-0 items-center gap-1.5 px-1.5 text-xs text-slate-300 hover:bg-slate-800"
+                className="inline-flex h-7 shrink-0 items-center gap-1.5 px-2 text-xs text-slate-300 hover:bg-slate-800"
               >
                 <Icon className="h-3.5 w-3.5 shrink-0 text-slate-400" aria-hidden="true" />
                 <span className="hidden sm:inline">{item.label}</span>
@@ -474,9 +475,10 @@ export function KeyboardStatusBar() {
               </button>
             );
           })}
-          <span className="ms-2 shrink-0 text-xs tabular-nums text-slate-400" data-app-version={version}>
+          <span className="ms-1 shrink-0 border-l border-slate-700 ps-3 text-xs tabular-nums text-slate-400" data-app-version={version}>
             v{version}
           </span>
+        </div>
         </div>
         {open ? (
           <div

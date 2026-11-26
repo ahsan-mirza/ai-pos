@@ -10,8 +10,33 @@ use crate::printer_discovery::{self, RENDER_FAILED, TRANSMIT_FAILED};
 /// Packed 1-bit rows are 203 dots per inch. 384 dots is 58 mm paper and 576 dots is 80 mm paper.
 pub fn paper_size_tenths(width_dots: u32, height_dots: u32) -> (i16, i16) {
     let width = if width_dots <= 384 { 580 } else { 800 };
-    let length = ((height_dots as i64) * 254 / 203 + 150).clamp(400, 3_000);
+    // Tenths of a millimetre at 203 dpi, plus a short tail so the last line is not clipped.
+    // The previous 300 mm cap kept only the top of a long slip.
+    let length = ((height_dots as i64) * 254 / 203 + 150).clamp(400, 32_000);
     (width, length as i16)
+}
+
+/// Source rows for each driver page. A short page is continued, not scaled down to a quarter of the slip.
+pub fn page_slices(height: u32, rows_per_page: u32) -> Vec<(u32, u32)> {
+    let page = rows_per_page.max(1);
+    let mut slices = Vec::new();
+    let mut start = 0;
+    while start < height {
+        let rows = (height - start).min(page);
+        slices.push((start, rows));
+        start += rows;
+    }
+    slices
+}
+
+pub fn slice_packed(width: u32, packed: &[u8], start: u32, rows: u32) -> Result<Vec<u8>, String> {
+    let row_bytes = width.div_ceil(8) as usize;
+    let from = start as usize * row_bytes;
+    let to = from + rows as usize * row_bytes;
+    if rows == 0 || to > packed.len() {
+        return Err("The receipt image is malformed.".into());
+    }
+    Ok(packed[from..to].to_vec())
 }
 
 /// Destination size in driver pixels. The image keeps its physical width and stays inside the printable area.
@@ -28,12 +53,17 @@ pub fn gdi_destination(src_w: u32, src_h: u32, dpi: i32, printable: i32) -> (i32
 
 /// Expands MSB-first 1-bit rows (1 = black) into a top-down 24-bit BGR DIB.
 pub fn expand_bgr24(width: u32, height: u32, packed: &[u8]) -> Result<(usize, Vec<u8>), String> {
+    if !packed.iter().any(|byte| *byte != 0) {
+        return Err(RENDER_FAILED.into());
+    }
+    expand_rows(width, height, packed)
+}
+
+/// A white slice is valid. The whole receipt is rejected before the first slice.
+fn expand_rows(width: u32, height: u32, packed: &[u8]) -> Result<(usize, Vec<u8>), String> {
     let row_bytes = width.div_ceil(8) as usize;
     if width == 0 || height == 0 || packed.len() != row_bytes * height as usize {
         return Err("The receipt image is malformed.".into());
-    }
-    if !packed.iter().any(|byte| *byte != 0) {
-        return Err(RENDER_FAILED.into());
     }
     let stride = (width as usize * 3).div_ceil(4) * 4;
     let mut pixels = vec![255u8; stride * height as usize];
@@ -76,12 +106,14 @@ pub fn graphics_precede_cut(bytes: &[u8]) -> bool {
 pub fn print_gdi(name: &str, width: u32, height: u32, packed: &[u8], copies: u32) -> Result<(), String> {
     use windows_sys::Win32::Foundation::GetLastError;
     use windows_sys::Win32::Graphics::Gdi::{
-        CreateDCW, DeleteDC, GetDeviceCaps, SetStretchBltMode, BLACKONWHITE, HORZRES, LOGPIXELSX,
+        CreateDCW, DeleteDC, GetDeviceCaps, SetStretchBltMode, BLACKONWHITE, HORZRES, LOGPIXELSX, VERTRES,
     };
     use windows_sys::Win32::Graphics::Printing::{ClosePrinter, OpenPrinterW, PRINTER_HANDLE};
     use windows_sys::Win32::Storage::Xps::{EndDoc, EndPage, StartDocW, StartPage, DOCINFOW};
 
-    let (stride, pixels) = expand_bgr24(width, height, packed)?;
+    if !packed.iter().any(|byte| *byte != 0) {
+        return Err(RENDER_FAILED.into());
+    }
     let printer = wide(name);
     let winspool = wide("WINSPOOL");
     let document = wide("AxizPOS receipt");
@@ -114,19 +146,47 @@ pub fn print_gdi(name: &str, width: u32, height: u32, packed: &[u8], copies: u32
             SetStretchBltMode(hdc, BLACKONWHITE);
             let dpi = GetDeviceCaps(hdc, LOGPIXELSX as i32);
             let printable = GetDeviceCaps(hdc, HORZRES as i32);
+            let page_px = GetDeviceCaps(hdc, VERTRES as i32).max(1);
             let (dest_w, dest_h) = gdi_destination(width, height, dpi, printable);
-            let bottom_up = flip_bottom_up(height, stride, &pixels);
+            let rows_per_page = if dest_h <= page_px.saturating_add(8) {
+                height
+            } else {
+                ((u64::from(height) * u64::from(page_px as u32)) / u64::from(dest_h.max(1) as u32)).max(1) as u32
+            };
+            let slices = page_slices(height, rows_per_page);
             for _ in 0..copies.max(1) {
-                if StartPage(hdc) <= 0 {
-                    let _ = EndDoc(hdc);
-                    return Err(format!("{TRANSMIT_FAILED} Windows error {}.", GetLastError()));
-                }
-                let top = paint(hdc, width, height, stride, &pixels, dest_w, dest_h, true);
-                let painted = if top { true } else { paint(hdc, width, height, stride, &bottom_up, dest_w, dest_h, false) };
-                let _ = EndPage(hdc);
-                if !painted {
-                    let _ = EndDoc(hdc);
-                    return Err(format!("{TRANSMIT_FAILED} Windows error {}.", GetLastError()));
+                for (start, rows) in &slices {
+                    let slice = match slice_packed(width, packed, *start, *rows) {
+                        Ok(slice) => slice,
+                        Err(message) => {
+                            let _ = EndDoc(hdc);
+                            return Err(message);
+                        }
+                    };
+                    let (slice_stride, slice_pixels) = match expand_rows(width, *rows, &slice) {
+                        Ok(expanded) => expanded,
+                        Err(message) => {
+                            let _ = EndDoc(hdc);
+                            return Err(message);
+                        }
+                    };
+                    let slice_dest_h = ((i64::from(dest_h) * i64::from(*rows)) / i64::from(height.max(1))).max(1) as i32;
+                    if StartPage(hdc) <= 0 {
+                        let _ = EndDoc(hdc);
+                        return Err(format!("{TRANSMIT_FAILED} Windows error {}.", GetLastError()));
+                    }
+                    let bottom_up = flip_bottom_up(*rows, slice_stride, &slice_pixels);
+                    let top = paint(hdc, width, *rows, slice_stride, &slice_pixels, dest_w, slice_dest_h, true);
+                    let painted = if top {
+                        true
+                    } else {
+                        paint(hdc, width, *rows, slice_stride, &bottom_up, dest_w, slice_dest_h, false)
+                    };
+                    let _ = EndPage(hdc);
+                    if !painted {
+                        let _ = EndDoc(hdc);
+                        return Err(format!("{TRANSMIT_FAILED} Windows error {}.", GetLastError()));
+                    }
                 }
             }
             if EndDoc(hdc) <= 0 {
@@ -394,6 +454,12 @@ mod tests {
         assert_eq!(paper_size_tenths(384, 400).0, 580);
         assert_eq!(paper_size_tenths(576, 800).0, 800);
         assert!(paper_size_tenths(576, 800).1 > paper_size_tenths(576, 200).1);
+        assert!(paper_size_tenths(576, 4_000).1 > 3_000);
+        let slices = page_slices(1_000, 250);
+        assert_eq!(slices, vec![(0, 250), (250, 250), (500, 250), (750, 250)]);
+        assert_eq!(page_slices(1_000, 1_000), vec![(0, 1_000)]);
+        let packed = vec![0xffu8; 8];
+        assert_eq!(slice_packed(16, &packed, 1, 1).unwrap(), vec![0xff, 0xff]);
     }
 
     #[test]

@@ -165,6 +165,46 @@ def test_category_crud_and_rename_propagates(client) -> None:
     assert client.delete(f"/api/v1/categories/{accessories['id']}", headers=headers).status_code == 409
 
 
+def test_deleting_a_category_removes_its_margin_policy(client) -> None:
+    headers = admin(client)
+    created = client.post("/api/v1/categories", headers=headers, json={"name": "Seasonal"})
+    assert created.status_code == 201, created.text
+    category_id = created.json()["id"]
+    policy = client.put(
+        "/api/v1/margin/policies",
+        headers=headers,
+        json={"scope": "CATEGORY", "category_id": category_id, "min_margin_bps": 1500},
+    )
+    assert policy.status_code == 200, policy.text
+    deleted = client.delete(f"/api/v1/categories/{category_id}", headers=headers)
+    assert deleted.status_code == 204, deleted.text
+    names = [row["name"] for row in client.get("/api/v1/categories", headers=headers).json()]
+    assert "Seasonal" not in names
+
+
+def test_deleting_a_category_with_a_model_is_refused(client) -> None:
+    headers = admin(client)
+    created = client.post("/api/v1/categories", headers=headers, json={"name": "Handsets"})
+    assert created.status_code == 201, created.text
+    category_id = created.json()["id"]
+    with_sub = client.post(
+        f"/api/v1/categories/{category_id}/sub-categories", headers=headers, json={"name": "Phones"}
+    )
+    assert with_sub.status_code == 201, with_sub.text
+    sub_id = with_sub.json()["sub_categories"][0]["id"]
+    brand = client.post("/api/v1/brands", headers=headers, json={"name": "Northwind"})
+    assert brand.status_code == 201, brand.text
+    model = client.post(
+        "/api/v1/product-models",
+        headers=headers,
+        json={"brand_id": brand.json()["id"], "sub_category_id": sub_id, "name": "N1"},
+    )
+    assert model.status_code == 201, model.text
+    deleted = client.delete(f"/api/v1/categories/{category_id}", headers=headers)
+    assert deleted.status_code == 409
+    assert deleted.json()["error"]["code"] == "category_in_use"
+
+
 def test_sales_decrement_only_the_selling_branch(client) -> None:
     seed(client)
     headers = admin(client)

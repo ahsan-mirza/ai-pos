@@ -657,6 +657,12 @@ pub async fn list_bluetooth_printers(state: tauri::State<'_, AppState>) -> Resul
 }
 
 #[tauri::command]
+pub async fn list_serial_ports(state: tauri::State<'_, AppState>) -> Result<Vec<crate::printer_profile::ComPort>, String> {
+    require_session(&state)?;
+    Ok(printer::list_serial_ports())
+}
+
+#[tauri::command]
 pub async fn list_windows_printers(state: tauri::State<'_, AppState>) -> Result<Vec<printer::InstalledPrinter>, String> {
     require_session(&state)?;
     tauri::async_runtime::spawn_blocking(printer::list_windows_printers)

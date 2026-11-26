@@ -8,6 +8,7 @@ import { registerCapabilities } from "../../lib/capabilities";
 import { productFitsRegister } from "../../lib/industry";
 import { GIFT_CARD_SKU } from "./cart";
 import { activeStore, businessCurrency, syncBusinessCurrency } from "./currency";
+import { refreshMenu } from "./menu";
 
 /** Store identity only; its currency comes from `activeStore()` / `useBusinessCurrency()`. */
 export const store: StoreUpsert = activeStore();
@@ -153,9 +154,40 @@ export async function readCatalogRevision(): Promise<string | null> {
 
 const CATALOG_POLL_MS = 5_000;
 
+/** Checkout and Orders listen for this after a portal commit has been applied. */
+export const CATALOGUE_SYNC_EVENT = "pos-catalogue-sync";
+
+let catalogueSyncing = false;
+let catalogueSyncAgain = false;
+
+/**
+ * One refresh for a committed catalogue change. A second event during the refresh runs once more
+ * after it finishes, so a burst does not stack requests and a late event is not dropped.
+ * The sale queue is not read or written.
+ */
+export function requestCatalogueSync(): void {
+  if (catalogueSyncing) {
+    catalogueSyncAgain = true;
+    return;
+  }
+  catalogueSyncing = true;
+  catalogueSyncAgain = false;
+  void (async () => {
+    try {
+      await syncBusinessCurrency().catch(() => undefined);
+      await refreshMenu().catch(() => undefined);
+    } finally {
+      catalogueSyncing = false;
+      window.dispatchEvent(new CustomEvent(CATALOGUE_SYNC_EVENT));
+      if (catalogueSyncAgain) requestCatalogueSync();
+    }
+  })();
+}
+
 /**
  * While the register is online, reload the catalog only after the server cursor moves.
  * A failed check keeps the products already on screen and does not touch the offline sale queue.
+ * A `catalogue.changed` frame from the register socket refreshes immediately.
  */
 export function useCatalogUpdates(reload: () => void): void {
   useEffect(() => {
@@ -170,8 +202,9 @@ export function useCatalogUpdates(reload: () => void): void {
       }
       if (revision === seen) return;
       seen = revision;
-      reload();
+      requestCatalogueSync();
     };
+    const onSync = () => reload();
     void poll();
     const timer = window.setInterval(() => void poll(), CATALOG_POLL_MS);
     const again = () => void poll();
@@ -179,12 +212,14 @@ export function useCatalogUpdates(reload: () => void): void {
     window.addEventListener("online", again);
     window.addEventListener("focus", again);
     window.addEventListener("pos-return-processed", onReturn);
+    window.addEventListener(CATALOGUE_SYNC_EVENT, onSync);
     return () => {
       cancelled = true;
       window.clearInterval(timer);
       window.removeEventListener("online", again);
       window.removeEventListener("focus", again);
       window.removeEventListener("pos-return-processed", onReturn);
+      window.removeEventListener(CATALOGUE_SYNC_EVENT, onSync);
     };
   }, [reload]);
 }

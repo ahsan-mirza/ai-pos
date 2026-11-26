@@ -106,17 +106,26 @@ export const ordersApi = {
     }),
   addItems: (order: Order, userId: string, items: OrderItemInput[]) =>
     call<Order>("POST", `/api/v1/orders/${order.id}/items`, { revision: order.revision, user_id: userId, items }),
-  setQuantity: (order: Order, itemId: string, userId: string, quantity: number) =>
+  setQuantity: (order: Order, itemId: string, userId: string, quantity: number, eventId?: string) =>
     call<Order>("POST", `/api/v1/orders/${order.id}/items/${itemId}/quantity`, {
       revision: order.revision,
       user_id: userId,
       quantity,
+      ...(eventId ? { event_id: eventId } : {}),
     }),
-  increaseSent: (order: Order, itemId: string, userId: string, quantity: number) =>
+  increaseSent: (order: Order, itemId: string, userId: string, quantity: number, eventId?: string) =>
     call<Order>("POST", `/api/v1/orders/${order.id}/items/${itemId}/increase`, {
       revision: order.revision,
       user_id: userId,
       quantity,
+      ...(eventId ? { event_id: eventId } : {}),
+    }),
+  decreaseSent: (order: Order, itemId: string, userId: string, reason: string, eventId?: string) =>
+    call<Order>("POST", `/api/v1/orders/${order.id}/items/${itemId}/decrease`, {
+      revision: order.revision,
+      user_id: userId,
+      reason,
+      ...(eventId ? { event_id: eventId } : {}),
     }),
   send: (order: Order, userId: string) =>
     call<Order>("POST", `/api/v1/orders/${order.id}/send`, { revision: order.revision, user_id: userId }),
@@ -172,12 +181,13 @@ export const ordersApi = {
       status,
       reason,
     }),
-  voidItem: (order: Order, itemId: string, userId: string, reason: string, approvedById: string | null) =>
+  voidItem: (order: Order, itemId: string, userId: string, reason: string, approvedById: string | null, eventId?: string) =>
     call<Order>("POST", `/api/v1/orders/${order.id}/items/${itemId}/void`, {
       revision: order.revision,
       user_id: userId,
       reason,
       approved_by_id: approvedById,
+      ...(eventId ? { event_id: eventId } : {}),
     }),
   voidOrder: (order: Order, userId: string, reason: string, approvedById: string | null) =>
     call<Order>("POST", `/api/v1/orders/${order.id}/void`, { revision: order.revision, user_id: userId, reason, approved_by_id: approvedById }),

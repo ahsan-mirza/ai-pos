@@ -58,16 +58,19 @@ pub struct Planned {
 }
 
 /// Full-screen is applied on launch whether or not the API can be reached.
+#[cfg_attr(not(test), allow(dead_code))]
 pub fn startup_fullscreen(api_reachable: bool) -> bool {
     let _ = api_reachable;
     true
 }
 
 /// Windowed use is session-only. Nothing is stored for the next launch.
+#[cfg_attr(not(test), allow(dead_code))]
 pub fn persisted_windowed_preference() -> Option<&'static str> {
     None
 }
 
+#[cfg_attr(not(test), allow(dead_code))]
 pub fn launch_state(windowed: Frame) -> ScreenState {
     ScreenState {
         fullscreen: true,

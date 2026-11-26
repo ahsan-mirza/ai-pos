@@ -20,6 +20,7 @@ mod margin;
 mod media_cache;
 mod menu;
 mod payments;
+mod cash_drawer;
 mod printer;
 mod printer_discovery;
 mod printer_gdi;
@@ -1856,6 +1857,7 @@ pub fn run() {
             erp::probe_printer,
             erp::list_windows_printers,
             erp::list_bluetooth_printers,
+            erp::list_serial_ports,
             connectivity_status,
             save_local_expense,
             list_local_expenses,

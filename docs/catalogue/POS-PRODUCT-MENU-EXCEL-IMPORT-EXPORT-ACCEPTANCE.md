@@ -57,6 +57,8 @@ Rows that are not listed are left in place. Deactivate a portion with Active = N
 
 After the merge, a menu item cannot be left with exactly one active portion. Zero portion rows leave the base price as it is.
 
+Business Pro menu item editing and this workbook both write `menu_price_options`. The 26-11-2026 portion form did not change the sheet and did not re-run these workbook tests. Removing a portion stays on the menu form. See `docs/restaurant/BUSINESS-PRO-RESTAURANT-CAFE-PORTION-PRICING-ACCEPTANCE.md`.
+
 ## Modifiers
 
 Product ID, Product Name, Group ID, Group Name, Min Select, Max Select, Group Active, Option ID, Option Name, Price Adjustment, Default, Option Active.

@@ -1,13 +1,19 @@
 import re
 import uuid
 
-from sqlalchemy import func, select, update
+from sqlalchemy import delete as sql_delete
+from sqlalchemy import func, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.errors import ApiError, field_conflict
+from app.models.brand import ProductModel
 from app.models.category import Category, SubCategory
+from app.models.margin import MarginPolicy
 from app.models.product import Product
+from app.models.replenishment import SeasonalEvent
+from app.models.stock_count import StockCount
+from app.models.warranty import WarrantyPolicy, WarrantyRegistration
 from app.schemas.inventory import CategoryOut, CategoryUpdate, CategoryWrite, SubCategoryOut
 
 
@@ -228,10 +234,45 @@ def update_category(db: Session, category_id: uuid.UUID, data: CategoryUpdate) -
 
 def delete_category(db: Session, category_id: uuid.UUID) -> None:
     category = _category(db, category_id)
-    if db.scalar(select(func.count()).select_from(Product).where(Product.category_id == category.id)):
+    sub_ids = list(db.scalars(select(SubCategory.id).where(SubCategory.category_id == category.id)))
+    product_clause = [Product.category_id == category.id]
+    if sub_ids:
+        product_clause.append(Product.sub_category_id.in_(sub_ids))
+    if db.scalar(select(func.count()).select_from(Product).where(or_(*product_clause))):
         raise ApiError(409, "category_in_use", "Move this category's products before deleting it.")
+    if sub_ids and db.scalar(
+        select(func.count()).select_from(ProductModel).where(ProductModel.sub_category_id.in_(sub_ids))
+    ):
+        raise ApiError(409, "category_in_use", "Move this category's models before deleting it.")
+    _release_category_links(db, category.id)
     db.delete(category)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise ApiError(
+            409,
+            "category_in_use",
+            "This category is still used. Move what references it, then delete it.",
+        ) from exc
+
+
+def _release_category_links(db: Session, category_id: uuid.UUID) -> None:
+    """Drop rules that only exist for this category. History rows keep their record and lose the link."""
+    policy_ids = list(db.scalars(select(WarrantyPolicy.id).where(WarrantyPolicy.category_id == category_id)))
+    if policy_ids and db.scalar(
+        select(func.count()).select_from(WarrantyRegistration).where(WarrantyRegistration.policy_id.in_(policy_ids))
+    ):
+        raise ApiError(
+            409,
+            "category_in_use",
+            "This category is used by a warranty policy that already covers a sale.",
+        )
+    if policy_ids:
+        db.execute(sql_delete(WarrantyPolicy).where(WarrantyPolicy.id.in_(policy_ids)))
+    db.execute(sql_delete(MarginPolicy).where(MarginPolicy.category_id == category_id))
+    db.execute(update(SeasonalEvent).where(SeasonalEvent.category_id == category_id).values(category_id=None))
+    db.execute(update(StockCount).where(StockCount.category_id == category_id).values(category_id=None))
 
 
 def create_sub_category(db: Session, category_id: uuid.UUID, data: CategoryWrite) -> CategoryOut:
@@ -280,7 +321,17 @@ def delete_sub_category(db: Session, sub_id: uuid.UUID) -> CategoryOut:
     sub = _sub(db, sub_id)
     if db.scalar(select(func.count()).select_from(Product).where(Product.sub_category_id == sub.id)):
         raise ApiError(409, "sub_category_in_use", "Move this sub-category's products before deleting it.")
+    if db.scalar(select(func.count()).select_from(ProductModel).where(ProductModel.sub_category_id == sub.id)):
+        raise ApiError(409, "sub_category_in_use", "Move this sub-category's models before deleting it.")
     category_id = sub.category_id
     db.delete(sub)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise ApiError(
+            409,
+            "sub_category_in_use",
+            "This sub-category is still used. Move what references it, then delete it.",
+        ) from exc
     return _one(db, _category(db, category_id))

@@ -671,7 +671,12 @@ export function crumbsFor(pathname: string, ctx: NavContext): Crumb[] {
   const exact = singlePages[pathname];
   if (exact) return exact;
   const section = /^\/inventory\/([^/]+)/.exec(pathname)?.[1];
-  const page = section ? inventoryPages[section] : undefined;
+  const page =
+    section === "products" && (ctx.profile === "restaurant" || ctx.profile === "cafe")
+      ? "Menu items"
+      : section
+        ? inventoryPages[section]
+        : undefined;
   if (page) return [{ label: "Inventory", to: "/inventory" }, { label: page }];
   if (pathname.startsWith("/customers/")) {
     return [{ label: "Suppliers & CRM" }, { label: "Customers", to: "/customers" }, { label: "Statement" }];

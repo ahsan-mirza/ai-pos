@@ -615,6 +615,30 @@ def fire_sale(db: Session, sale: Sale, sold_at: datetime) -> None:
     )
 
 
+def amend_quantity(db: Session, item_id: uuid.UUID, quantity: int) -> None:
+    """Change only this line's kitchen ticket. A different order line keeps the original round."""
+    lines = db.scalars(
+        select(KitchenTicketItem).where(
+            KitchenTicketItem.order_item_id == item_id, KitchenTicketItem.voided_at.is_(None)
+        )
+    ).all()
+    if not lines:
+        return
+    now = _now()
+    seen: set[uuid.UUID] = set()
+    for line in lines:
+        line.quantity = quantity
+        if line.ticket_id in seen:
+            continue
+        seen.add(line.ticket_id)
+        ticket = db.get(KitchenTicket, line.ticket_id)
+        if ticket is None:
+            continue
+        ticket.updated_at = now
+        _announce(db, ticket, db.get(KitchenStation, ticket.station_id), "kitchen:order-updated")
+    db.flush()
+
+
 def void(db: Session, order: OpenOrder, items: list[OpenOrderItem]) -> None:
     """Strikes voided lines off their tickets; a ticket with nothing left is bumped off the screen."""
     ids = [item.id for item in items]

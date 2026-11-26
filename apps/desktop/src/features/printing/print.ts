@@ -22,7 +22,8 @@ export async function loadPrinter(): Promise<PrinterSettings> {
 }
 
 /** Opens the system print dialog with the rendered slip, for registers without a thermal printer. */
-function printInBrowser(canvas: HTMLCanvasElement): void {
+function printInBrowser(canvas: HTMLCanvasElement, width: number): void {
+  const paper = width <= 384 ? "58mm" : "80mm";
   const frame = document.createElement("iframe");
   frame.setAttribute("aria-hidden", "true");
   frame.style.cssText = "position:fixed;width:0;height:0;border:0;opacity:0";
@@ -30,7 +31,7 @@ function printInBrowser(canvas: HTMLCanvasElement): void {
   const page = frame.contentDocument!;
   page.open();
   page.write(
-    `<!doctype html><html><head><style>@page{margin:4mm}body{margin:0}img{width:72mm}</style></head><body><img src="${canvas.toDataURL("image/png")}"></body></html>`,
+    `<!doctype html><html><head><style>@page{margin:0}body{margin:0}img{width:${paper};height:auto}</style></head><body><img src="${canvas.toDataURL("image/png")}"></body></html>`,
   );
   page.close();
   const image = page.querySelector("img")!;
@@ -83,12 +84,46 @@ export function shouldKickDrawer(
 }
 
 /**
- * Prints a receipt on the configured printer. The drawer kicks only when the caller passes kickDrawer
- * and the register policy allows it.
- *
- * Checkout asks after each settled payment and passes manual only when the cashier chooses Yes.
- * auto_print does not print or skip that receipt. Refunds and other callers still honor auto_print
- * when manual is omitted.
+ * Prints the receipt already shown in Receipt Preview. The document and width are not rewritten,
+ * and the drawer is not kicked. This does not create a sale.
+ */
+export async function printExactReceipt(doc: ReceiptDoc, width: 384 | 576): Promise<PrintOutcome> {
+  const settings = await loadPrinter();
+  try {
+    const rendered = await renderReceipt(doc, width);
+    const data = rendered.bits();
+    if (data.length === 0 || inkBytes(data) === 0) {
+      return { printed: false, message: RENDER_FAILED };
+    }
+    if (settings.transport === "none") {
+      printInBrowser(rendered.canvas, width);
+      return { printed: true, message: "The system print dialog was opened. No sale was created." };
+    }
+    await printRaster({
+      width: rendered.width,
+      height: rendered.height,
+      data,
+      kick_drawer: false,
+      line_count: doc.lines.length,
+      document_number: doc.number,
+      subtotal_cents: doc.subtotalCents,
+      tax_cents: doc.taxCents,
+      discount_cents: doc.youSavedCents ?? 0,
+      total_cents: doc.totalCents,
+      plain_text: receiptPlainText(doc, width <= 384 ? 32 : 42),
+    });
+    return {
+      printed: true,
+      message: `${SPOOLER_ACCEPTED} ${rendered.width} by ${rendered.height} dots. Confirm the paper matches the preview.`,
+    };
+  } catch (error) {
+    return { printed: false, message: error instanceof Error ? error.message : String(error) };
+  }
+}
+
+/**
+ * Prints a saved sale receipt. The drawer kicks only when the caller passes kickDrawer
+ * and the register policy allows it. Sample preview text is not added here.
  */
 export async function printReceipt(doc: ReceiptDoc, options: PrintRequest): Promise<PrintOutcome> {
   const slip = withSavedLanguage(doc);
@@ -99,7 +134,7 @@ export async function printReceipt(doc: ReceiptDoc, options: PrintRequest): Prom
       return { printed: false, message: "No receipt printer is configured. Open Register settings and choose a printer." };
     }
     const rendered = await renderReceipt(slip, settings.paper_dots);
-    printInBrowser(rendered.canvas);
+    printInBrowser(rendered.canvas, settings.paper_dots);
     return { printed: true, message: null };
   }
   if (!options.manual && !settings.auto_print) {

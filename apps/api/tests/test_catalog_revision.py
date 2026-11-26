@@ -3,6 +3,37 @@
 import uuid
 
 from app.models.product import Product
+from app.models.store import Store
+from app.tenancy.scoping import DEFAULT_TENANT_ID
+
+
+def test_a_product_edit_is_announced_and_a_rollback_is_not(session):
+    from app.websockets.rooms import QUEUE
+
+    session.add(Store(code="A", name="Shop A", currency="AED", tenant_id=DEFAULT_TENANT_ID))
+    product = Product(
+        id=uuid.uuid4(),
+        sku="DAL-1",
+        barcode="1000000000099",
+        name="Daal",
+        category="Mains",
+        price_cents=1500,
+        currency="AED",
+    )
+    session.add(product)
+    session.commit()
+    assert not session.info.get(QUEUE)
+
+    product.name = "Daal Channa"
+    product.price_cents = 1800
+    session.flush()
+    queued = session.info[QUEUE]
+    assert queued
+    assert {payload["type"] for _, payload in queued} == {"catalogue.changed"}
+    assert all(isinstance(payload["seq"], int) for _, payload in queued)
+
+    session.rollback()
+    assert not session.info.get(QUEUE)
 
 
 def test_revision_moves_when_a_product_is_saved(client, session):

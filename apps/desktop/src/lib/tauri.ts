@@ -493,12 +493,18 @@ export interface PrinterSettings {
   user_selected?: boolean;
   /** Windows object GUID when the spooler returned one. */
   saved_identity?: string;
-  /** windows, usb, network, wifi, bluetooth-classic, bluetooth-ble, or none. */
+  /** windows, usb, network, wifi, serial, bluetooth-classic, bluetooth-ble, or none. */
   connection_kind?: string;
   protocol?: string;
   bluetooth_identity?: string;
   /** Stored as candidate unless the printer is offline, missing, unsupported, or in error. */
   verification?: string;
+  /** Compatibility-list id. Empty until a cashier chooses a drawer. */
+  drawer_profile?: string;
+  /** Confirmed printer drawer-port voltage: "12", "24", or empty. */
+  host_voltage?: string;
+  /** Card and other non-cash tenders stay closed unless this is on. */
+  open_on_non_cash?: boolean;
 }
 
 export interface BluetoothSerialPort {
@@ -586,6 +592,9 @@ export interface PrinterProbe {
   driverVersion: string | null;
   printTransport?: string;
   capabilities?: string;
+  drawerProfile?: string;
+  hostVoltage?: string;
+  openOnNonCash?: boolean;
 }
 
 export function probePrinter(): Promise<PrinterProbe> {
@@ -598,6 +607,16 @@ export function listWindowsPrinters(): Promise<InstalledPrinter[]> {
 
 export function listBluetoothPrinters(): Promise<BluetoothSerialPort[]> {
   return invoke<BluetoothSerialPort[]>("list_bluetooth_printers");
+}
+
+export interface SerialPort {
+  device: string;
+  port: string;
+  connection: string;
+}
+
+export function listSerialPorts(): Promise<SerialPort[]> {
+  return invoke<SerialPort[]>("list_serial_ports");
 }
 
 export interface ConnectivityStatus {

@@ -2,6 +2,8 @@
 
 Date: 25-11-2026
 
+26-11-2026: Printer & Drawer now includes Serial / COM beside Windows, USB, Network / Wi-Fi, Bluetooth, and None. The live sample is still only on this page. Choosing generic ESC/POS does not print during discovery. See `AXIZPOS-UNIVERSAL-PRINTER-CONNECTIVITY-ACCEPTANCE.md`.
+
 Software status: **PASSED WITH LIMITATIONS**. Physical printer acceptance: **NOT RUN**.
 
 Register changes require `devices:manage` or `settings:manage`. A cashier can still view status. The live preview remains on this page and still sends nothing to the printer. The 25-11-2026 permission and physical-print note is `PRINTER-PERMISSION-AND-PHYSICAL-PRINT-VERIFICATION-ACCEPTANCE.md`.

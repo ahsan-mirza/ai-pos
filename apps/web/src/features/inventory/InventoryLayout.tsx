@@ -35,7 +35,8 @@ const chrome = { "--chrome": "7rem" } as CSSProperties;
 
 export function InventoryLayout() {
   const { has } = useCapabilities();
-  const { allows } = useTenant();
+  const { allows, businessType } = useTenant();
+  const menuCatalog = businessType === "restaurant" || businessType === "cafe";
   const { pathname } = useLocation();
   const visible = tabs.filter((tab) => allows(tab.profiles) && (tab.capability === undefined || has(tab.capability)));
   const active = visible.find((tab) => pathname === tab.to || pathname.startsWith(`${tab.to}/`))?.to ?? "";
@@ -49,7 +50,7 @@ export function InventoryLayout() {
           activeTab={active}
           tabs={visible.map((tab) => ({
             id: tab.to,
-            label: tab.label,
+            label: menuCatalog && tab.to === "/inventory/products" ? "Menu items" : tab.label,
             icon: tab.ai ? <AiMark size={13} className="text-accent" /> : undefined,
           }))}
           renderTab={({ tab, tabProps }) => <NavLink to={tab.id} {...tabProps} />}

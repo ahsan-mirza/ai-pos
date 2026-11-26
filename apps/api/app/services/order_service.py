@@ -29,6 +29,7 @@ from app.schemas.orders import (
     DiningTableIn,
     DiningTableOut,
     FloorOut,
+    ItemDecrease,
     ItemQuantity,
     ItemVoid,
     OrderAction,
@@ -172,6 +173,7 @@ def orders_out(db: Session, orders: list[OpenOrder]) -> list[OrderOut]:
                     voided_at=item.voided_at,
                     void_reason=item.void_reason,
                     paid_sale_id=item.paid_sale_id,
+                    source_item_id=item.source_item_id,
                     kitchen_status=kitchen.get(item.id),
                 )
                 for item in order.items
@@ -609,7 +611,14 @@ def set_item_quantity(
     db: Session, principal: Principal, order_id: uuid.UUID, item_id: uuid.UUID, data: ItemQuantity
 ) -> OrderOut:
     """Change the quantity of a line that has not been sent. Kitchen lines keep their quantity until a void."""
-    order = _writable(db, principal, order_id, data.revision)
+    order = _order(db, principal, order_id, lock=True)
+    replay = _replayed(db, data.event_id, order)
+    if replay is not None:
+        return replay
+    if order.status != "OPEN":
+        raise ApiError(409, "order_closed", f"Order {order.number} is already {order.status.lower()}.")
+    if data.revision != order.revision:
+        raise ApiError(409, "stale_order", f"Order {order.number} changed on another register. Refresh and try again.")
     actor = _actor(db, principal, data.user_id, order.store_id)
     item = next((line for line in order.items if line.id == item_id), None)
     if item is None or item.voided_at is not None:
@@ -634,6 +643,7 @@ def set_item_quantity(
         target_entity_id=order.id,
         store_id=order.store_id,
         user_id=actor.id,
+        client_event_id=data.event_id,
         details={"item_id": str(item.id), "product_id": str(item.product_id), "from": previous, "to": data.quantity},
     )
     _touch(order)
@@ -642,45 +652,100 @@ def set_item_quantity(
     return orders_out(db, [order])[0]
 
 
+def _replayed(db: Session, event_id: uuid.UUID | None, order: OpenOrder) -> OrderOut | None:
+    """A repeated tap or a retried request keeps the order that was already saved."""
+    if event_id is None:
+        return None
+    from app.models.audit_log import AuditLog
+
+    found = db.scalar(select(AuditLog.id).where(AuditLog.client_event_id == event_id))
+    if found is None:
+        return None
+    return orders_out(db, [order])[0]
+
+
+def _root_line(order: OpenOrder, item: OpenOrderItem) -> OpenOrderItem:
+    seen: set[uuid.UUID] = set()
+    current = item
+    while current.source_item_id is not None and current.source_item_id not in seen:
+        seen.add(current.id)
+        parent = next((line for line in order.items if line.id == current.source_item_id), None)
+        if parent is None or parent.voided_at is not None:
+            break
+        current = parent
+    return current
+
+
+def _extras(order: OpenOrder, root: OpenOrderItem) -> list[OpenOrderItem]:
+    return [
+        line
+        for line in live_items(order)
+        if line.source_item_id == root.id and line.paid_sale_id is None
+    ]
+
+
+def _kitchen_mark(db: Session, item_id: uuid.UUID) -> str | None:
+    marks: dict[uuid.UUID, str] = {}
+    for hook in KITCHEN_STATUS:
+        marks.update(hook(db, [item_id]))
+    return marks.get(item_id)
+
+
+def _served(db: Session, item: OpenOrderItem) -> bool:
+    return item.sent_at is not None and _kitchen_mark(db, item.id) == "bumped"
+
+
 def increase_sent_quantity(
     db: Session, principal: Principal, order_id: uuid.UUID, item_id: uuid.UUID, data: ItemQuantity
 ) -> OrderOut:
     """Send only the extra quantity as a new kitchen round. The sent line and its ticket stay unchanged."""
-    order = _writable(db, principal, order_id, data.revision)
+    order = _order(db, principal, order_id, lock=True)
+    replay = _replayed(db, data.event_id, order)
+    if replay is not None:
+        return replay
+    if order.status != "OPEN":
+        raise ApiError(409, "order_closed", f"Order {order.number} is already {order.status.lower()}.")
+    if data.revision != order.revision:
+        raise ApiError(409, "stale_order", f"Order {order.number} changed on another register. Refresh and try again.")
     actor = _actor(db, principal, data.user_id, order.store_id)
     item = next((line for line in order.items if line.id == item_id), None)
     if item is None or item.voided_at is not None:
         raise ApiError(404, "not_found", "That line is not on this order.")
     if item.paid_sale_id is not None:
         raise ApiError(409, "already_paid", "That line is already paid; refund it from Returns.")
-    if item.sent_at is None:
+    root = _root_line(order, item)
+    if root.sent_at is None:
         raise ApiError(409, "not_sent", "This line has not been sent. Change its quantity directly.")
-    if data.quantity < item.quantity:
+    if root.paid_sale_id is not None:
+        raise ApiError(409, "already_paid", "That line is already paid; refund it from Returns.")
+    extras = _extras(order, root)
+    current = root.quantity + sum(line.quantity for line in extras)
+    if data.quantity < current:
         raise ApiError(
             409,
             "sent_reduction_blocked",
-            "A sent line cannot be reduced in place. Void the whole line with a reason, "
-            "then add the quantity the table still wants.",
+            "Minus only removes quantity added after the original kitchen ticket.",
         )
-    if data.quantity == item.quantity:
+    if data.quantity == current:
         return orders_out(db, [order])[0]
-    delta = data.quantity - item.quantity
+    delta = data.quantity - current
     position = max((line.position for line in order.items), default=-1) + 1
     added = OpenOrderItem(
         order_id=order.id,
-        product_id=item.product_id,
+        product_id=root.product_id,
         quantity=delta,
-        unit_price_cents=item.unit_price_cents,
-        price_option_id=item.price_option_id,
-        price_option_name=item.price_option_name,
-        price_option_cents=item.price_option_cents,
-        modifiers=item.modifiers,
-        components=item.components,
-        seat=item.seat,
-        note=item.note,
+        unit_price_cents=root.unit_price_cents,
+        price_option_id=root.price_option_id,
+        price_option_name=root.price_option_name,
+        price_option_cents=root.price_option_cents,
+        modifiers=root.modifiers,
+        components=root.components,
+        seat=root.seat,
+        note=root.note,
         position=position,
         added_by_id=actor.id,
-        skip_recipe=item.skip_recipe,
+        source_item_id=root.id,
+        skip_recipe=root.skip_recipe,
         sent_at=_now(),
     )
     order.items.append(added)
@@ -695,16 +760,106 @@ def increase_sent_quantity(
         target_entity_id=order.id,
         store_id=order.store_id,
         user_id=actor.id,
+        client_event_id=data.event_id,
         details={
-            "item_id": str(item.id),
+            "item_id": str(root.id),
             "added_item_id": str(added.id),
-            "product_id": str(item.product_id),
-            "price_option_id": str(item.price_option_id) if item.price_option_id else None,
-            "from": item.quantity,
+            "product_id": str(root.product_id),
+            "price_option_id": str(root.price_option_id) if root.price_option_id else None,
+            "from": current,
             "added": delta,
-            "skip_recipe": item.skip_recipe,
+            "skip_recipe": root.skip_recipe,
         },
     )
+    _touch(order)
+    db.commit()
+    db.refresh(order)
+    return orders_out(db, [order])[0]
+
+
+def decrease_sent_quantity(
+    db: Session, principal: Principal, order_id: uuid.UUID, item_id: uuid.UUID, data: ItemDecrease
+) -> OrderOut:
+    """Cancel one unit that was added after the original kitchen send. The original ticket is not rewritten."""
+    order = _order(db, principal, order_id, lock=True)
+    replay = _replayed(db, data.event_id, order)
+    if replay is not None:
+        return replay
+    if order.status != "OPEN":
+        raise ApiError(409, "order_closed", f"Order {order.number} is already {order.status.lower()}.")
+    if data.revision != order.revision:
+        raise ApiError(409, "stale_order", f"Order {order.number} changed on another register. Refresh and try again.")
+    actor = _actor(db, principal, data.user_id, order.store_id)
+    item = next((line for line in order.items if line.id == item_id), None)
+    if item is None or item.voided_at is not None:
+        raise ApiError(404, "not_found", "That line is not on this order.")
+    root = _root_line(order, item)
+    if root.sent_at is None:
+        raise ApiError(409, "not_sent", "This line has not been sent. Change its quantity directly.")
+    extras = [line for line in _extras(order, root) if not _served(db, line)]
+    if not extras:
+        served_extra = any(_served(db, line) for line in _extras(order, root))
+        if served_extra:
+            raise ApiError(
+                409,
+                "already_served",
+                "That extra is already served. Use the served-item correction instead of the quantity buttons.",
+            )
+        raise ApiError(
+            409,
+            "original_quantity",
+            "Minus stops at the quantity originally sent to the kitchen.",
+        )
+    target = max(extras, key=lambda line: (line.created_at, line.position))
+    reason = data.reason.strip()
+    if target.quantity > 1:
+        previous = target.quantity
+        target.quantity = previous - 1
+        from app.services import kitchen_service
+
+        kitchen_service.amend_quantity(db, target.id, target.quantity)
+        audit.record(
+            db,
+            action_type="UPDATE",
+            action="order.sent_quantity_decrease",
+            target_entity="OpenOrder",
+            target_entity_id=order.id,
+            store_id=order.store_id,
+            user_id=actor.id,
+            client_event_id=data.event_id,
+            reason_notes=reason,
+            details={
+                "item_id": str(root.id),
+                "extra_item_id": str(target.id),
+                "from": previous,
+                "removed": 1,
+                "skip_recipe": target.skip_recipe,
+            },
+        )
+    else:
+        target.voided_at = _now()
+        target.void_reason = reason
+        target.voided_by_id = actor.id
+        for hook in ON_VOID:
+            hook(db, order, [target])
+        audit.record(
+            db,
+            action_type="ITEM_VOID",
+            action="order.sent_quantity_decrease",
+            target_entity="OpenOrder",
+            target_entity_id=order.id,
+            store_id=order.store_id,
+            user_id=actor.id,
+            client_event_id=data.event_id,
+            reason_notes=reason,
+            details={
+                "item_id": str(root.id),
+                "extra_item_id": str(target.id),
+                "removed": 1,
+                "reason_code": _reason_code(reason),
+                "skip_recipe": target.skip_recipe,
+            },
+        )
     _touch(order)
     db.commit()
     db.refresh(order)
@@ -850,20 +1005,36 @@ def _fanout(order: OpenOrder, result: OrderOut, event_type: str, message: str, i
 
 
 def void_item(db: Session, principal: Principal, order_id: uuid.UUID, item_id: uuid.UUID, data: ItemVoid) -> OrderOut:
-    order = _writable(db, principal, order_id, data.revision)
+    order = _order(db, principal, order_id, lock=True)
+    replay = _replayed(db, data.event_id, order)
+    if replay is not None:
+        return replay
+    if order.status != "OPEN":
+        raise ApiError(409, "order_closed", f"Order {order.number} is already {order.status.lower()}.")
+    if data.revision != order.revision:
+        raise ApiError(409, "stale_order", f"Order {order.number} changed on another register. Refresh and try again.")
     actor = _actor(db, principal, data.user_id, order.store_id)
     item = next((line for line in order.items if line.id == item_id), None)
     if item is None or item.voided_at is not None:
         raise ApiError(404, "not_found", "That line is not on this order.")
     if item.paid_sale_id is not None:
         raise ApiError(409, "already_paid", "That line is already paid; refund it from Returns.")
-    approver = _void_approver(db, data.approved_by_id, order.store_id) if item.sent_at is not None else None
-    item.voided_at = _now()
-    item.void_reason = data.reason.strip()
-    item.voided_by_id = (approver or actor).id
-    if item.sent_at is not None:
+    root = _root_line(order, item)
+    targets = [root, *_extras(order, root)] if item.id == root.id else [item]
+    if any(line.paid_sale_id is not None for line in targets):
+        raise ApiError(409, "already_paid", "That line is already paid; refund it from Returns.")
+    needs_manager = any(_served(db, line) for line in targets if line.sent_at is not None)
+    approver = _void_approver(db, data.approved_by_id, order.store_id) if needs_manager else None
+    reason = data.reason.strip()
+    now = _now()
+    sent = [line for line in targets if line.sent_at is not None]
+    for line in targets:
+        line.voided_at = now
+        line.void_reason = reason
+        line.voided_by_id = (approver or actor).id
+    if sent:
         for hook in ON_VOID:
-            hook(db, order, [item])
+            hook(db, order, sent)
         audit.record(
             db,
             action_type="ITEM_VOID",
@@ -873,12 +1044,14 @@ def void_item(db: Session, principal: Principal, order_id: uuid.UUID, item_id: u
             store_id=order.store_id,
             user_id=actor.id,
             approver_id=approver.id if approver else None,
-            reason_notes=item.void_reason,
+            client_event_id=data.event_id,
+            reason_notes=reason,
             details={
                 "item_id": str(item.id),
+                "item_ids": [str(line.id) for line in targets],
                 "product_id": str(item.product_id),
-                "quantity": item.quantity,
-                "reason_code": _reason_code(item.void_reason),
+                "quantity": sum(line.quantity for line in targets),
+                "reason_code": _reason_code(reason),
             },
         )
     if order.table_id is not None:

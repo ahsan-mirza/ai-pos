@@ -1,7 +1,7 @@
 from typing import Self
 from uuid import UUID
 
-from pydantic import Field, model_validator
+from pydantic import Field, field_validator, model_validator
 
 from app.schemas.payloads import ApiModel, TaxCategory
 
@@ -156,6 +156,16 @@ class PriceOptionIn(ApiModel):
     is_active: bool = True
     position: int = Field(default=0, ge=0, le=1000)
 
+    @field_validator("name", mode="before")
+    @classmethod
+    def named(cls, value: object) -> object:
+        if not isinstance(value, str):
+            return value
+        cleaned = value.strip()
+        if not cleaned:
+            raise ValueError("Option name is required.")
+        return cleaned
+
 
 class PriceOptionsIn(ApiModel):
     options: list[PriceOptionIn] = Field(default_factory=list, max_length=40)
@@ -167,12 +177,14 @@ class PriceOptionsIn(ApiModel):
         for option in self.options:
             label = option.name.strip().casefold()
             if not label:
-                raise ValueError("A priced option needs a name.")
+                raise ValueError("Option name is required.")
             if label in seen:
                 raise ValueError("Two priced options on one item cannot share a name.")
             seen.add(label)
             if option.is_active:
                 active += 1
+        if self.options and active == 0:
+            raise ValueError("At least one priced option must stay active.")
         if active == 1:
             raise ValueError("Add at least two priced options, or leave the list empty to keep the single price.")
         return self

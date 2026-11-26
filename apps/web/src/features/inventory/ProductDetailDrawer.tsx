@@ -7,6 +7,7 @@ import {
   Permission,
   type PharmacyProductDetail,
   unitLabel,
+  activePriceOptions,
   formatMoney,
   type Availability,
   type Product,
@@ -21,6 +22,7 @@ import { Link } from "react-router-dom";
 import { useAuth } from "../../lib/auth";
 import { useCapabilities } from "../../lib/capabilities";
 import { apiGet } from "../../lib/api";
+import { catalogPriceLabel } from "./portionPricing";
 import {
   PurchasesTab,
   ResourceView,
@@ -145,8 +147,8 @@ export function DetailsTab({
           <div className="space-y-6">
             <div className="grid grid-cols-2 gap-3 xl:grid-cols-3">
               <Stat
-                label={`Retail price (${product.currency})`}
-                value={formatMoney(product.price_cents, product.currency)}
+                label={activePriceOptions(product.price_options).length >= 2 ? `From price (${product.currency})` : `Retail price (${product.currency})`}
+                value={catalogPriceLabel(product)}
                 tone="dark"
               />
               <Stat label="Last purchase price" value={money(lastPurchase)} hint="Latest receipt. Older receipts keep their own cost." />
@@ -495,10 +497,17 @@ export function ProductDetailDrawer({
                   </>
                 ) : null}
                 {" · "}
-                <span className="font-semibold text-charcoal">
-                  {formatMoney(product.price_cents, product.currency)}
-                </span>
+                <span className="font-semibold text-charcoal">{catalogPriceLabel(product)}</span>
               </p>
+              {activePriceOptions(product.price_options).length >= 2 ? (
+                <ul className="mt-2 space-y-0.5 text-xs text-charcoal/70">
+                  {activePriceOptions(product.price_options).map((option) => (
+                    <li key={option.id}>
+                      {option.name} — {formatMoney(option.price_cents, product.currency)}
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
             </div>
             <div className="flex shrink-0 items-center gap-2">
               {onEdit ? (

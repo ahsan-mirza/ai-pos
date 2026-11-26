@@ -30,6 +30,7 @@ from app.tenancy.context import CONTROL_SESSION
 
 AUDITED_TABLES: dict[str, str] = {
     "products": "Product",
+    "menu_price_options": "MenuPriceOption",
     "categories": "Category",
     "sub_categories": "SubCategory",
     "stores": "Store",

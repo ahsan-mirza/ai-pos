@@ -25,7 +25,7 @@ from app.services import fnb_table_service
 from app.services.settings_service import cached_settings
 from app.tenancy.context import use_tenant
 from app.websockets import rooms, table_sync
-from app.websockets.handshake import read_socket_credentials
+from app.websockets.handshake import read_socket_credentials, refuse_socket
 
 router = APIRouter()
 ws_router = APIRouter()
@@ -189,7 +189,7 @@ async def table_events(websocket: WebSocket, store_id: uuid.UUID) -> None:
     finally:
         sessions.close()
     if not allowed:
-        await websocket.close(code=1008)
+        await refuse_socket(websocket, f"tables:{store_id}:{role}")
         return
     await table_sync.connect(store_id, websocket, presence_key, role, accepted=accepted)
     if pos_room:
