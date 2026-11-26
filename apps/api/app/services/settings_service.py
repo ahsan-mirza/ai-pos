@@ -970,21 +970,30 @@ def note_offline_pending(device_id: str, raw: str | None) -> None:
     set_value(_offline_key(), json.dumps(current), 900)
 
 
-def offline_pending_total() -> int:
+def _offline_counts() -> dict[str, int]:
     found = get_value(_offline_key())
     if not found:
-        return 0
+        return {}
     try:
         loaded = json.loads(found)
     except json.JSONDecodeError:
-        return 0
+        return {}
     if not isinstance(loaded, dict):
-        return 0
-    return sum(
-        value
-        for value in loaded.values()
+        return {}
+    return {
+        str(key): value
+        for key, value in loaded.items()
         if isinstance(value, int) and not isinstance(value, bool) and value > 0
-    )
+    }
+
+
+def offline_pending_for(device_id: str) -> int:
+    """Sales this register last reported as still queued. The report expires after 15 minutes."""
+    return _offline_counts().get(device_id, 0)
+
+
+def offline_pending_total() -> int:
+    return sum(_offline_counts().values())
 
 
 def change_currency(db: Session, actor: User, currency: str) -> BusinessSettingsOut:

@@ -9,7 +9,6 @@ import {
   requiresPriceOption,
   type ComboChoice,
   unpaidItems,
-  type DeliveryChannel,
   type DiningTable,
   type Floor,
   type ModifierChoice,
@@ -21,7 +20,7 @@ import {
 } from "@ai-pos/shared-types";
 import { FloorTableCard, serviceOf } from "../../components/FloorTableCard";
 import { FloorBoard, aggregateService, formatSeatedDuration, KITCHEN_LABEL as floorKitchenLabel, tableDisplayNumber } from "@ai-pos/ui";
-import { Banknote, ChefHat, CreditCard, Merge, Minus, MoveRight, Plus, Receipt, Search, Send, Split, Trash2, Truck, Users, UtensilsCrossed, X } from "lucide-react";
+import { ChefHat, CreditCard, Merge, Minus, MoveRight, Plus, Receipt, Search, Send, Split, Trash2, Users, UtensilsCrossed, X } from "lucide-react";
 import { useCallback, useEffect, useId, useMemo, useState } from "react";
 import { ManagerApprovalModal } from "../../components/ManagerApprovalModal";
 import { DrawerHeader } from "../../components/shell/Drawer";
@@ -39,10 +38,9 @@ import { PriceOptionModal } from "../checkout/PriceOptionModal";
 import { QuantityModal } from "../checkout/QuantityModal";
 import { verifyManager } from "../checkout/wholesaleClient";
 import { staffApi, type RegisterStaff } from "../../lib/retailClient";
-import { DeliveryCashDialog } from "./DeliveryCashDialog";
 import { printKitchenTickets } from "./kitchenPrint";
 import { SplitChecksModal } from "./SplitChecksModal";
-import { IncomingDeliveries, KeyInDeliveryModal } from "./IncomingDeliveries";
+import { IncomingDeliveries } from "./IncomingDeliveries";
 import { TableConflictPanel } from "./TableConflictPanel";
 import { OrderRequestError, channelsApi, ordersApi, queueOfflineOrder } from "./ordersClient";
 import { presentOrderLines, type PresentedLine } from "./tableQuantity";
@@ -293,13 +291,10 @@ export function OrdersPage({ session }: { session: CashierSession }) {
   const [splitting, setSplitting] = useState(false);
   const splitOn = capabilities.enabled.has(Capability.SplitBills);
   const channelsOn = capabilities.enabled.has(Capability.DeliveryChannels);
-  const [channels, setChannels] = useState<DeliveryChannel[]>([]);
-  const [keyingIn, setKeyingIn] = useState(false);
   const [busy, setBusy] = useState(false);
   useDrawerHold(busy);
   const [seating, setSeating] = useState<DiningTable | null>(null);
   const [adding, setAdding] = useState(false);
-  const [cashOpen, setCashOpen] = useState(false);
   const [riders, setRiders] = useState<RegisterStaff[]>([]);
   const [riderId, setRiderId] = useState("");
   const [collectedDraft, setCollectedDraft] = useState("");
@@ -375,10 +370,6 @@ export function OrdersPage({ session }: { session: CashierSession }) {
     refreshCatalog();
     if (capabilities.enabled.has(Capability.MenuModifiers)) void refreshMenu();
   }, [capabilities.enabled, refreshCatalog]);
-
-  useEffect(() => {
-    if (channelsOn) void channelsApi.list().then(setChannels).catch(() => setChannels([]));
-  }, [channelsOn]);
 
   useEffect(() => {
     if (selected?.service_type !== "DELIVERY") return;
@@ -604,11 +595,6 @@ export function OrdersPage({ session }: { session: CashierSession }) {
     navigate("checkout");
   }
 
-  async function keyIn(channelId: string, externalRef: string, customerName: string | null) {
-    setKeyingIn(false);
-    await write(() => channelsApi.keyIn(channelId, externalRef, userId, customerName), "Delivery order opened. Add its items, then send.");
-  }
-
   const floorCards = useMemo(() => {
     if (floor === null) return [];
     return floor.areas.flatMap((area) =>
@@ -649,24 +635,13 @@ export function OrdersPage({ session }: { session: CashierSession }) {
       title="Orders & Tables"
       sync={{ tone: offline ? "offline" : "live", label: offline ? "Offline" : "Live", title: offline ? "Orders sync when the connection returns." : "Shared with every register." }}
       actions={
-        <div className="flex gap-2">
-          <button type="button" className={`${ui.secondaryAction} h-12 px-4`} disabled={busy} onClick={() => void openTab("TAKEAWAY", null)}>
-            <Plus size={16} aria-hidden="true" /> Takeaway tab
-          </button>
-          {!tablesOn ? (
+        !tablesOn ? (
+          <div className="flex gap-2">
             <button type="button" className={`${ui.secondaryAction} h-12 px-4`} disabled={busy} onClick={() => void openTab("DINE_IN", null)}>
               <UtensilsCrossed size={16} aria-hidden="true" /> Dine-in tab
             </button>
-          ) : null}
-          {channelsOn ? (
-            <button type="button" className={`${ui.secondaryAction} h-12 px-4`} disabled={busy} onClick={() => setKeyingIn(true)}>
-              <Truck size={16} aria-hidden="true" /> Delivery order
-            </button>
-          ) : null}
-          <button type="button" className={`${ui.secondaryAction} h-12 px-4`} disabled={busy} onClick={() => setCashOpen(true)}>
-            <Banknote size={16} aria-hidden="true" /> Rider cash
-          </button>
-        </div>
+          </div>
+        ) : null
       }
       drawer={
         <aside
@@ -1248,8 +1223,6 @@ export function OrdersPage({ session }: { session: CashierSession }) {
         />
       ) : null}
 
-      {keyingIn ? <KeyInDeliveryModal channels={channels} onClose={() => setKeyingIn(false)} onSubmit={(id, ref, name) => void keyIn(id, ref, name)} /> : null}
-
       {splitting && selected ? (
         <SplitChecksModal
           order={selected}
@@ -1262,21 +1235,6 @@ export function OrdersPage({ session }: { session: CashierSession }) {
           onPayEqually={(guests) => {
             setSplitting(false);
             pay(unpaid.map((item) => item.id), `order #${selected.number}, ${guests} ways`, guests);
-          }}
-        />
-      ) : null}
-
-      {cashOpen ? (
-        <DeliveryCashDialog
-          storeId={storeId}
-          userId={userId}
-          currency={currency}
-          verify={(username, pin) => verifyManager(session, username, pin, Permission.PosDrawerOverride)}
-          onClose={() => setCashOpen(false)}
-          onDone={(message) => {
-            setCashOpen(false);
-            setNotice(message);
-            void refresh();
           }}
         />
       ) : null}

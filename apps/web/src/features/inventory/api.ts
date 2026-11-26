@@ -1,3 +1,4 @@
+import type { CategoryModels } from "./categoryDelete";
 import type {
   CatalogAttributes,
   Availability,
@@ -113,6 +114,12 @@ export const categoriesApi = {
   create: (body: CategoryWrite) => apiPost<Category>("/api/v1/categories", body),
   update: (id: string, body: Partial<CategoryWrite>) => apiPatch<Category>(`/api/v1/categories/${id}`, body),
   remove: (id: string) => apiDelete(`/api/v1/categories/${id}`),
+  assignedModels: (id: string) => apiGet<CategoryModels>(`/api/v1/categories/${id}/assigned-models`),
+  moveAndDelete: (id: string, destinationCategoryId: string, eventId: string) =>
+    apiPost<unknown>(`/api/v1/categories/${id}/move-and-delete`, {
+      destination_category_id: destinationCategoryId,
+      event_id: eventId,
+    }),
   createSub: (categoryId: string, body: CategoryWrite) =>
     apiPost<Category>(`/api/v1/categories/${categoryId}/sub-categories`, body),
   updateSub: (id: string, body: Partial<CategoryWrite>) =>

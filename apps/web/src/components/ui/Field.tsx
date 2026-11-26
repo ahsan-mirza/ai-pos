@@ -244,11 +244,17 @@ export function SelectField<T extends string>({
 }
 
 /** Select in a list page's filter bar. */
-export function FilterSelect<T extends string>({ label, hint, className = "", ...props }: LabelledSelectProps<T>) {
+export function FilterSelect<T extends string>({
+  label,
+  hint,
+  hideLabel = false,
+  className = "",
+  ...props
+}: LabelledSelectProps<T> & { hideLabel?: boolean }) {
   const id = useId();
   return (
     <div className={className}>
-      <label id={`${id}-label`} htmlFor={id} className={filterLabel}>
+      <label id={`${id}-label`} htmlFor={id} className={hideLabel ? "sr-only" : filterLabel}>
         {label}
       </label>
       <Select {...props} id={id} labelledBy={`${id}-label`} />

@@ -5,10 +5,12 @@ import { useConfirm } from "../../components/ui/ConfirmDialog";
 import { DataTable, type DataTableColumn } from "../../components/ui/DataTable";
 import { ErrorNote, GhostButton, PrimaryButton, TextField } from "../../components/ui/Field";
 import { Modal } from "../../components/ui/Modal";
+import { Select } from "../../components/ui/Select";
 import { Toggle } from "../../components/ui/Toggle";
 import { useAuth } from "../../lib/auth";
 import { useAutoCode } from "../../lib/codes";
 import { categoriesApi, message } from "./api";
+import { destinationCategories, type AssignedModel } from "./categoryDelete";
 import { CatalogDrilldown, type CatalogPath } from "./CatalogDrilldown";
 import { codeError, fieldErrors, useInvalidFocus, type FieldErrors } from "./formErrors";
 import { useCategories } from "./shared";
@@ -26,6 +28,7 @@ export function CategoriesPage() {
   const [drill, setDrill] = useState<({ subId: string } & CatalogPath) | null>(null);
   const [editing, setEditing] = useState<Editing>(null);
   const [error, setError] = useState<string | null>(null);
+  const [moving, setMoving] = useState<{ category: Category; models: AssignedModel[] } | null>(null);
   const manage = can(Permission.PortalInventoryManage) && user?.store_id === null;
   const confirm = useConfirm();
   const selected = categories.find((item) => item.id === selectedId) ?? categories[0];
@@ -42,6 +45,17 @@ export function CategoriesPage() {
   };
 
   const removeCategory = async (category: Category) => {
+    try {
+      const preview = await categoriesApi.assignedModels(category.id);
+      if (preview.model_count > 0) {
+        setMoving({ category, models: preview.models });
+        setError(null);
+        return;
+      }
+    } catch (caught) {
+      setError(message(caught, "Could not delete the category."));
+      return;
+    }
     const accepted = await confirm({
       title: "Delete category",
       message: `Delete ${category.name} and its sub-categories?`,
@@ -215,6 +229,19 @@ export function CategoriesPage() {
       </div>
 
       {editing ? <CategoryModal editing={editing} onClose={() => setEditing(null)} onSaved={replace} /> : null}
+      {moving ? (
+        <MoveModelsModal
+          category={moving.category}
+          models={moving.models}
+          destinations={destinationCategories(categories, moving.category.id)}
+          onClose={() => setMoving(null)}
+          onMoved={async () => {
+            setMoving(null);
+            setSelectedId(null);
+            await reload();
+          }}
+        />
+      ) : null}
     </section>
   );
 }
@@ -333,6 +360,112 @@ function CategoryModal({
         <Toggle checked={active} onChange={setActive} label="Active" description="Inactive groups stay out of the product picker." />
       </div>
       <ErrorNote message={error} />
+    </Modal>
+  );
+}
+
+export function MoveModelsModal({
+  category,
+  models,
+  destinations,
+  onClose,
+  onMoved,
+}: {
+  category: Category;
+  models: AssignedModel[];
+  destinations: Category[];
+  onClose: () => void;
+  onMoved: () => Promise<void>;
+}) {
+  const [destinationId, setDestinationId] = useState("");
+  const [fields, setFields] = useState<FieldErrors>({});
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const formRef = useRef<HTMLDivElement>(null);
+  const focusInvalid = useInvalidFocus(formRef);
+  const eventId = useRef(crypto.randomUUID());
+  const destinationError = fields.destination_category_id;
+
+  const confirmMove = async () => {
+    if (!destinationId) {
+      setFields({ destination_category_id: "Choose a category." });
+      setError(null);
+      focusInvalid();
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      await categoriesApi.moveAndDelete(category.id, destinationId, eventId.current);
+      await onMoved();
+    } catch (caught) {
+      const apiFields = fieldErrors(caught);
+      if (Object.keys(apiFields).length > 0) {
+        setFields(apiFields);
+        focusInvalid();
+      } else setError(message(caught, "Could not move the models."));
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Modal
+      title={`Delete ${category.name}`}
+      subtitle="Models move into the matching sub-category on the destination, or its first active sub-category. Products, prices, and stock stay."
+      onClose={onClose}
+      footer={
+        <>
+          <GhostButton onClick={onClose}>Cancel</GhostButton>
+          <PrimaryButton disabled={busy || destinations.length === 0} onClick={() => void confirmMove()}>
+            Move Models & Delete Category
+          </PrimaryButton>
+        </>
+      }
+    >
+      <div ref={formRef} className="space-y-4">
+        <p className="text-sm text-charcoal/80">
+          {models.length === 1 ? "1 model is assigned." : `${models.length} models are assigned.`}
+        </p>
+        <ul className="max-h-48 space-y-1 overflow-y-auto rounded-xl border border-line px-3 py-2 text-sm">
+          {models.map((model) => (
+            <li key={model.id}>
+              <span className="font-medium">{model.brand_name}</span>
+              <span className="text-charcoal/70"> {model.name}</span>
+              <span className="text-charcoal/50"> · {model.sub_category_name}</span>
+            </li>
+          ))}
+        </ul>
+        <div>
+          <label id="move-destination-label" htmlFor="destination_category_id" className="text-sm font-medium">
+            Destination category
+          </label>
+          <div className="mt-1.5">
+            <Select
+              id="destination_category_id"
+              labelledBy="move-destination-label"
+              value={destinationId}
+              placeholder="Choose a category"
+              invalid={Boolean(destinationError)}
+              disabled={destinations.length === 0}
+              options={destinations.map((item) => ({ value: item.id, label: item.name }))}
+              onChange={(value) => {
+                setDestinationId(value);
+                setFields((current) => {
+                  if (!current.destination_category_id) return current;
+                  const next = { ...current };
+                  delete next.destination_category_id;
+                  return next;
+                });
+              }}
+            />
+          </div>
+          {destinationError ? <p className="mt-1 text-sm text-danger">{destinationError}</p> : null}
+          {destinations.length === 0 ? (
+            <p className="mt-1 text-sm text-danger">Create another active category before moving these models.</p>
+          ) : null}
+        </div>
+        <ErrorNote message={error} />
+      </div>
     </Modal>
   );
 }

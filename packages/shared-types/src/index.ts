@@ -10,7 +10,7 @@ export {
 } from "./businessCode.js";
 export type { BusinessCodeLocale, BusinessCodePhrase } from "./businessCode.js";
 export { DEFAULT_TAX_POLICY, TAX_TREATMENT_LABELS, divHalfUp, enteredIncludesTax, forCustomer, lineTax, rateFor, treatmentOf } from "./tax.js";
-export type { Device, DeviceActivationKey, DeviceCreate, DeviceKey } from "./devices.js";
+export type { Device, DeviceActivationKey, DeviceCreate, DeviceKey, RegisterCapacity } from "./devices.js";
 export type { LineTax, TaxCategory, TaxPolicy, TaxTreatment } from "./tax.js";
 export {
   AnalyticsTimeframe,

@@ -10,6 +10,15 @@ export interface Device {
   last_seen_at: string | null;
   revoked_at: string | null;
   created_at: string;
+  /** active, offline, pending, or revoked. */
+  activation_status: "active" | "offline" | "pending" | "revoked";
+  machine_name: string | null;
+}
+
+export interface RegisterCapacity {
+  used: number;
+  limit: number | null;
+  available: number | null;
 }
 
 /** The plaintext key is returned exactly once; it goes into the register's DEVICE_KEY. */

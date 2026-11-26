@@ -8,7 +8,14 @@ from app.core.database import get_db
 from app.core.deps import Principal, authorize, require_device
 from app.core.errors import ApiError
 from app.core.permissions import Permission
-from app.schemas.devices import ActivationKeyOut, DeviceCreate, DeviceKeyOut, DeviceOut, DeviceSelfOut
+from app.schemas.devices import (
+    ActivationKeyOut,
+    DeviceCreate,
+    DeviceKeyOut,
+    DeviceOut,
+    DeviceSelfOut,
+    RegisterCapacity,
+)
 from app.services import device_service
 
 router = APIRouter()
@@ -25,6 +32,12 @@ def list_devices(db: Db, principal: CanManage, store_id: uuid.UUID | None = None
 @router.post("", response_model=DeviceKeyOut, status_code=201)
 def create_device(payload: DeviceCreate, db: Db, principal: CanManage) -> DeviceKeyOut:
     return device_service.create_device(db, principal, payload)
+
+
+@router.get("/capacity", response_model=RegisterCapacity)
+def capacity(db: Db, principal: CanManage) -> RegisterCapacity:
+    _ = principal
+    return device_service.register_capacity(db)
 
 
 @router.get("/me", response_model=DeviceSelfOut)
@@ -47,3 +60,8 @@ def activation_key(device_id: uuid.UUID, db: Db, principal: CanManage) -> Activa
 @router.post("/{device_id}/revoke", response_model=DeviceOut)
 def revoke(device_id: uuid.UUID, db: Db, principal: CanManage) -> DeviceOut:
     return device_service.revoke(db, principal, device_id)
+
+
+@router.post("/{device_id}/release", response_model=DeviceOut)
+def release(device_id: uuid.UUID, db: Db, principal: CanManage) -> DeviceOut:
+    return device_service.release_device(db, principal, device_id)

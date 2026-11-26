@@ -14,6 +14,7 @@ import uuid
 from datetime import UTC, datetime
 
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey, Ed25519PublicKey
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
@@ -137,6 +138,18 @@ def issue(
     """Signs a permanent entitlement for this device. `rebind` is only for a fresh activation key."""
     public = decode_device_public_key(device_public_key)
     digest = thumbprint(public)
+    taken = db.scalar(
+        select(Device.id).where(
+            Device.device_public_key_thumbprint == digest,
+            Device.id != device.id,
+        )
+    )
+    if taken is not None:
+        raise ApiError(
+            409,
+            "device_binding",
+            "This device identity is already registered to another till.",
+        )
     current = device.device_public_key_thumbprint
     if current and current != digest and not rebind:
         raise ApiError(

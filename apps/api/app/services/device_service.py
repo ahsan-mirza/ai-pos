@@ -22,6 +22,7 @@ from app.schemas.devices import (
     DeviceOut,
     DeviceSelfOut,
     DeviceSeries,
+    RegisterCapacity,
     TerminalActivate,
     TerminalActivation,
 )
@@ -30,6 +31,47 @@ from app.services.numbering import DEVICE_SUFFIX, device_prefix
 from app.tenancy.registry import current_identity
 
 DEVICE_DOCS = ("INV", "CN", "Z")
+ONLINE_WINDOW = timedelta(minutes=10)
+
+
+def _active_register_count(db: Session) -> int:
+    return int(db.scalar(select(func.count()).select_from(Device).where(Device.revoked_at.is_(None))) or 0)
+
+
+def _require_register_seat(db: Session) -> None:
+    """The plan cap counts tills that are not revoked. A released till frees its seat only after commit."""
+    from app.console.plan_limits import limit_value
+
+    cap = limit_value("registers")
+    if cap is None or _active_register_count(db) < cap:
+        return
+    raise ApiError(
+        409,
+        "plan_limit",
+        f"This plan includes {cap} registers. Release an existing till or upgrade the package.",
+    )
+
+
+def _activation_status(device: Device) -> str:
+    if device.revoked_at is not None:
+        return "revoked"
+    seen = device.last_seen_at
+    if seen is None:
+        return "pending"
+    if seen.tzinfo is None:
+        seen = seen.replace(tzinfo=UTC)
+    if seen >= datetime.now(UTC) - ONLINE_WINDOW:
+        return "active"
+    return "offline"
+
+
+def _machine_name(db: Session, device_id: uuid.UUID) -> str | None:
+    return db.scalar(
+        select(DeviceActivation.used_by_machine)
+        .where(DeviceActivation.device_id == device_id, DeviceActivation.used_by_machine.is_not(None))
+        .order_by(DeviceActivation.used_at.desc())
+        .limit(1)
+    )
 
 
 def _new_key() -> tuple[str, str]:
@@ -58,6 +100,8 @@ def device_out(db: Session, device: Device) -> DeviceOut:
         last_seen_at=device.last_seen_at,
         revoked_at=device.revoked_at,
         created_at=device.created_at,
+        activation_status=_activation_status(device),
+        machine_name=_machine_name(db, device.id),
     )
 
 
@@ -82,11 +126,17 @@ def list_devices(db: Session, principal: Principal, store_id: uuid.UUID | None) 
     return [device_out(db, row) for row in db.scalars(statement).all()]
 
 
-def create_device(db: Session, principal: Principal, data: DeviceCreate) -> DeviceKeyOut:
-    from app.console.plan_limits import assert_room
+def register_capacity(db: Session) -> RegisterCapacity:
+    from app.console.plan_limits import limit_value
 
-    used = int(db.scalar(select(func.count()).select_from(Device).where(Device.revoked_at.is_(None))) or 0)
-    assert_room(used, "registers")
+    used = _active_register_count(db)
+    cap = limit_value("registers")
+    available = None if cap is None else max(cap - used, 0)
+    return RegisterCapacity(used=used, limit=cap, available=available)
+
+
+def create_device(db: Session, principal: Principal, data: DeviceCreate) -> DeviceKeyOut:
+    _require_register_seat(db)
     _scoped(principal, data.store_id)
     if db.get(Store, data.store_id) is None:
         raise ApiError(422, "unknown_store", "Store does not exist.")
@@ -121,6 +171,8 @@ def create_device(db: Session, principal: Principal, data: DeviceCreate) -> Devi
 
 def rotate_key(db: Session, principal: Principal, device_id: uuid.UUID) -> DeviceKeyOut:
     device = _get(db, principal, device_id)
+    if device.revoked_at is not None:
+        _require_register_seat(db)
     key, digest = _new_key()
     device.key_hash = digest
     device.key_hint = key[-6:]
@@ -138,21 +190,51 @@ def rotate_key(db: Session, principal: Principal, device_id: uuid.UUID) -> Devic
     return DeviceKeyOut(device=device_out(db, device), key=key)
 
 
-def revoke(db: Session, principal: Principal, device_id: uuid.UUID) -> DeviceOut:
+def _retire(db: Session, principal: Principal, device_id: uuid.UUID, *, action: str) -> DeviceOut:
+    """Stops the till and frees its package seat. Sales, sequences, and the device row stay."""
     device = _get(db, principal, device_id)
     if device.revoked_at is None:
-        device.revoked_at = datetime.now(UTC)
+        from app.services.settings_service import offline_pending_for
+
+        if offline_pending_for(str(device.id)) > 0:
+            verb = "releasing" if action == "device.release" else "revoking"
+            raise ApiError(
+                409,
+                "pending_offline",
+                f"This till still has unsynced transactions. Sync it before {verb} it.",
+            )
+        now = datetime.now(UTC)
+        device.revoked_at = now
+        db.execute(
+            update(DeviceActivation)
+            .where(DeviceActivation.device_id == device.id, DeviceActivation.used_at.is_(None))
+            .values(expires_at=now)
+        )
         audit.record(
             db,
             action_type="UPDATE",
-            action="device.revoke",
+            action=action,
             target_entity="Device",
             target_entity_id=device.id,
             user=principal.user,
+            store_id=device.store_id,
+            new_values={
+                "code": device.code,
+                "store_id": str(device.store_id),
+                "revoked_at": now.isoformat(),
+            },
         )
         db.commit()
         db.refresh(device)
     return device_out(db, device)
+
+
+def revoke(db: Session, principal: Principal, device_id: uuid.UUID) -> DeviceOut:
+    return _retire(db, principal, device_id, action="device.revoke")
+
+
+def release_device(db: Session, principal: Principal, device_id: uuid.UUID) -> DeviceOut:
+    return _retire(db, principal, device_id, action="device.release")
 
 
 ACTIVATION_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"  # no 0/O or 1/I to misread
@@ -225,6 +307,16 @@ def activate_terminal(db: Session, data: TerminalActivate) -> TerminalActivation
     store = db.get(Store, device.store_id) if device is not None else None
     if device is None or store is None:
         raise ApiError(401, "activation_invalid", "This activation key is wrong, already used, or expired.")
+    from app.services.settings_service import offline_pending_for
+
+    if offline_pending_for(str(device.id)) > 0:
+        raise ApiError(
+            409,
+            "pending_offline",
+            "This till still has unsynced transactions. Sync it before activating a replacement.",
+        )
+    if device.revoked_at is not None:
+        _require_register_seat(db)
     entitlement = None
     if data.device_public_key.strip():
         # Sign before the one-time key is consumed. A missing signing seed must not burn the key.

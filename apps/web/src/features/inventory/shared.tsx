@@ -58,12 +58,17 @@ export function useBrands(subCategoryId?: string | null) {
   return { brands, error, reload };
 }
 
-/** Models for a sub-category and/or brand; nothing is fetched until at least one filter is set. */
-export function useModels(subCategoryId: string | null, brandId: string | null) {
+/** Models for a sub-category and/or brand. An unscoped list loads only when `allowAll` is set. */
+export function useModels(
+  subCategoryId: string | null,
+  brandId: string | null,
+  options?: { allowAll?: boolean },
+) {
+  const allowAll = options?.allowAll === true;
   const [models, setModels] = useState<ProductModel[]>([]);
   const [error, setError] = useState<string | null>(null);
   const reload = useCallback(async () => {
-    if (!subCategoryId && !brandId) {
+    if (!subCategoryId && !brandId && !allowAll) {
       setModels([]);
       return;
     }
@@ -73,7 +78,7 @@ export function useModels(subCategoryId: string | null, brandId: string | null) 
     } catch (caught) {
       setError(message(caught, "Could not load models."));
     }
-  }, [subCategoryId, brandId]);
+  }, [subCategoryId, brandId, allowAll]);
   useEffect(() => {
     void reload();
   }, [reload]);
@@ -184,23 +189,25 @@ export function BrandModelFilters({
   className?: string;
 }) {
   const { brands } = useBrands(subCategoryId);
-  const { models } = useModels(brandId ? subCategoryId : null, brandId);
+  const { models } = useModels(subCategoryId, brandId, { allowAll: true });
+  const width = className ?? "field-sm";
   return (
     <>
       <FilterSelect
+        hideLabel
         label="Brand"
-        className={className ?? "min-w-[170px]"}
+        className={width}
         value={brandId ?? ""}
         options={[{ value: "", label: "All brands" }, ...brands.map((brand) => ({ value: brand.id, label: brand.name }))]}
         onChange={(next) => onChange(next === "" ? null : next, null)}
       />
       <FilterSelect
+        hideLabel
         label="Model"
-        className={className ?? "min-w-[210px]"}
+        className={width}
         value={modelId ?? ""}
-        disabled={brandId === null}
         options={[
-          { value: "", label: brandId ? "All models" : "Pick a brand first" },
+          { value: "", label: "All models" },
           ...models.map((model) => ({ value: model.id, label: model.name, hint: model.sub_category_name })),
         ]}
         onChange={(next) => onChange(brandId, next === "" ? null : next)}

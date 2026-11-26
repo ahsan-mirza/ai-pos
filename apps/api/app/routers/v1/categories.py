@@ -8,7 +8,7 @@ from app.core.database import get_db
 from app.core.deps import REGISTER_SCOPES, Principal, authorize
 from app.core.errors import ApiError
 from app.core.permissions import Permission
-from app.schemas.inventory import CategoryOut, CategoryUpdate, CategoryWrite
+from app.schemas.inventory import CategoryModelsOut, CategoryMoveDelete, CategoryOut, CategoryUpdate, CategoryWrite
 from app.services import category_service
 
 router = APIRouter()
@@ -44,6 +44,17 @@ def create_category(payload: CategoryWrite, db: Db, _: CanManage) -> CategoryOut
 @router.patch("/{category_id}", response_model=CategoryOut)
 def update_category(category_id: uuid.UUID, payload: CategoryUpdate, db: Db, _: CanManage) -> CategoryOut:
     return category_service.update_category(db, category_id, payload)
+
+
+@router.get("/{category_id}/assigned-models", response_model=CategoryModelsOut)
+def assigned_models(category_id: uuid.UUID, db: Db, _: CanManage) -> CategoryModelsOut:
+    return category_service.assigned_models(db, category_id)
+
+
+@router.post("/{category_id}/move-and-delete", status_code=204)
+def move_and_delete(category_id: uuid.UUID, payload: CategoryMoveDelete, db: Db, _: CanManage) -> Response:
+    category_service.move_models_and_delete(db, category_id, payload.destination_category_id, payload.event_id)
+    return Response(status_code=204)
 
 
 @router.delete("/{category_id}", status_code=204)

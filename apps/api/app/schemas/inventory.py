@@ -96,6 +96,23 @@ class CategoryWrite(ApiModel):
         return _code(value)
 
 
+class AssignedModelOut(ApiModel):
+    id: UUID
+    name: str
+    brand_name: str
+    sub_category_name: str
+
+
+class CategoryModelsOut(ApiModel):
+    model_count: int
+    models: list[AssignedModelOut]
+
+
+class CategoryMoveDelete(ApiModel):
+    destination_category_id: UUID
+    event_id: UUID | None = None
+
+
 class CategoryUpdate(ApiModel):
     name: str | None = Field(default=None, min_length=2, max_length=80)
     code: str | None = Field(default=None, max_length=32)

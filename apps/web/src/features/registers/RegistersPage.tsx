@@ -7,9 +7,10 @@ import {
   type Device,
   type DeviceActivationKey,
   type DeviceKey,
+  type RegisterCapacity,
 } from "@ai-pos/shared-types";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { Check, Copy, Download, KeyRound, MonitorSmartphone, Plus, RotateCw, ShieldOff, X } from "lucide-react";
+import { Check, Copy, Download, KeyRound, MonitorSmartphone, Plus, RotateCw, ShieldOff, Trash2, X } from "lucide-react";
 import { useCallback, useEffect, useId, useState } from "react";
 import { ErrorNote, GhostButton, PrimaryButton, SelectField, TextField } from "../../components/ui/Field";
 import { useConfirm } from "../../components/ui/ConfirmDialog";
@@ -21,19 +22,13 @@ import { useAuth } from "../../lib/auth";
 import { useCapabilities } from "../../lib/capabilities";
 import { formatDate, storeOptions, useStores } from "../inventory/shared";
 import { errorMessage } from "../users/api";
-
-function seen(device: Device): { label: string; live: boolean } {
-  if (device.revoked_at) return { label: "Revoked", live: false };
-  if (!device.last_seen_at) return { label: "Never connected", live: false };
-  const minutes = (Date.now() - new Date(device.last_seen_at).getTime()) / 60_000;
-  if (minutes < 10) return { label: "Online", live: true };
-  return { label: `Seen ${formatDate(device.last_seen_at)}`, live: false };
-}
+import { invoiceSeriesPreview, registerStatus, seatSummary } from "./status";
 
 export function RegistersPage() {
   const { user } = useAuth();
   const { stores } = useStores();
   const [devices, setDevices] = useState<Device[] | null>(null);
+  const [capacity, setCapacity] = useState<RegisterCapacity | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [issued, setIssued] = useState<DeviceKey | null>(null);
@@ -44,7 +39,12 @@ export function RegistersPage() {
 
   const load = useCallback(async () => {
     try {
-      setDevices(await apiGet<Device[]>("/api/v1/devices"));
+      const [rows, seats] = await Promise.all([
+        apiGet<Device[]>("/api/v1/devices"),
+        apiGet<RegisterCapacity>("/api/v1/devices/capacity"),
+      ]);
+      setDevices(rows);
+      setCapacity(seats);
       setError(null);
     } catch (caught) {
       setError(errorMessage(caught, "Could not load registers."));
@@ -55,25 +55,35 @@ export function RegistersPage() {
     void load();
   }, [load]);
 
-  const act = async (device: Device, action: "rotate" | "revoke") => {
+  const act = async (device: Device, action: "rotate" | "revoke" | "release") => {
     const accepted =
-      action === "revoke"
+      action === "release"
         ? await confirm({
-            title: "Revoke register",
-            message: `Revoke ${device.code}? It stops syncing until it gets a new key.`,
-            confirmLabel: "Revoke",
+            title: "Release till",
+            message: `Release ${device.code}? This retires the till and frees its package seat. Sales, invoices, cash movements, audit records, and invoice numbers stay.`,
+            confirmLabel: "Release till",
             tone: "danger",
           })
-        : await confirm({
-            title: "Issue a new key",
-            message: `Issue a new key for ${device.code}? The old key stops working immediately.`,
-            confirmLabel: "Issue key",
-            tone: "danger",
-          });
+        : action === "revoke"
+          ? await confirm({
+              title: "Revoke register",
+              message: `Revoke ${device.code}? It stops syncing until it gets a new key.`,
+              confirmLabel: "Revoke",
+              tone: "danger",
+            })
+          : await confirm({
+              title: "Issue a new key",
+              message: `Issue a new key for ${device.code}? The old key stops working immediately.`,
+              confirmLabel: "Issue key",
+              tone: "danger",
+            });
     if (!accepted) return;
     try {
       if (action === "rotate") setIssued(await apiPost<DeviceKey>(`/api/v1/devices/${device.id}/rotate`, {}));
-      else {
+      else if (action === "release") {
+        await apiPost<Device>(`/api/v1/devices/${device.id}/release`, {});
+        setToast(`${device.code} released. Its package seat is free.`);
+      } else {
         await apiPost<Device>(`/api/v1/devices/${device.id}/revoke`, {});
         setToast(`${device.code} revoked.`);
       }
@@ -93,7 +103,8 @@ export function RegistersPage() {
   };
 
   const rows = devices ?? [];
-  const online = rows.filter((device) => seen(device).live).length;
+  const online = rows.filter((device) => device.activation_status === "active").length;
+  const seats = capacity ? seatSummary(capacity) : null;
 
   return (
     <section className="space-y-4">
@@ -101,10 +112,10 @@ export function RegistersPage() {
         <article className="rounded-card bg-charcoal p-6 text-white">
           <p className="text-sm text-white/60">Registered tills</p>
           <p className="mt-4 text-4xl font-semibold tabular-nums">{rows.filter((device) => !device.revoked_at).length}</p>
-          <p className="mt-2 text-xs text-white/50">Each has its own key and invoice series</p>
+          <p className="mt-2 text-xs text-white/50">{seats ?? "Each has its own key and invoice series"}</p>
         </article>
         <article className="rounded-card bg-accent p-6 text-white">
-          <p className="text-sm text-white/80">Online now</p>
+          <p className="text-sm text-white/80">Active</p>
           <p className="mt-4 text-4xl font-semibold tabular-nums">{online}</p>
           <p className="mt-2 text-xs text-white/80">Synced in the last 10 minutes</p>
         </article>
@@ -122,6 +133,7 @@ export function RegistersPage() {
           <div>
             <h2 className="text-xl font-semibold">Registers</h2>
             <p className="text-sm text-charcoal/60">Keys replace the shared API key and bind each till to its branch.</p>
+            {capacity?.available === 0 ? <p className="mt-1 text-sm text-amber-800">{seats}</p> : null}
           </div>
           <div className="flex flex-wrap gap-2">
             <a
@@ -153,7 +165,7 @@ export function RegistersPage() {
             </thead>
             <tbody>
               {rows.map((device) => {
-                const state = seen(device);
+                const state = registerStatus(device.activation_status);
                 return (
                   <tr key={device.id} className={`border-t border-line ${device.revoked_at ? "opacity-50" : ""}`}>
                     <td className="py-3">
@@ -162,6 +174,9 @@ export function RegistersPage() {
                         {device.code}
                       </span>
                       <span className="block text-xs text-charcoal/50">{device.name}</span>
+                      {device.machine_name ? (
+                        <span className="block text-xs text-charcoal/50">{device.machine_name}</span>
+                      ) : null}
                     </td>
                     <td className="py-3">{device.store_code}</td>
                     <td className="py-3 font-mono text-xs">{device.invoice_prefix}-NNNNNN</td>
@@ -174,6 +189,9 @@ export function RegistersPage() {
                       >
                         {state.label}
                       </span>
+                      {device.activation_status === "offline" && device.last_seen_at ? (
+                        <span className="mt-1 block text-xs text-charcoal/50">Last seen {formatDate(device.last_seen_at)}</span>
+                      ) : null}
                     </td>
                     <td className="py-3 font-mono text-xs text-charcoal/60">…{device.key_hint}</td>
                     <td className="py-3">
@@ -207,6 +225,17 @@ export function RegistersPage() {
                             <ShieldOff size={15} aria-hidden="true" />
                           </button>
                         ) : null}
+                        {!device.revoked_at ? (
+                          <button
+                            type="button"
+                            title="Release this till and free its package seat"
+                            aria-label={`Release ${device.code}`}
+                            onClick={() => void act(device, "release")}
+                            className={`inline-flex h-9 items-center gap-1.5 rounded-full border border-line px-3 text-xs font-semibold ${actionHoverClass("danger")}`}
+                          >
+                            <Trash2 size={14} aria-hidden="true" /> Release
+                          </button>
+                        ) : null}
                       </div>
                     </td>
                   </tr>
@@ -223,6 +252,7 @@ export function RegistersPage() {
       {creating ? (
         <CreateRegisterModal
           stores={stores}
+          capacity={capacity}
           defaultStore={user?.store_id ?? stores[0]?.id ?? ""}
           onClose={() => setCreating(false)}
           onCreated={(result) => {
@@ -248,11 +278,13 @@ export function RegistersPage() {
 
 function CreateRegisterModal({
   stores,
+  capacity,
   defaultStore,
   onClose,
   onCreated,
 }: {
   stores: ReturnType<typeof useStores>["stores"];
+  capacity: RegisterCapacity | null;
   defaultStore: string;
   onClose: () => void;
   onCreated: (result: DeviceKey) => void;
@@ -265,7 +297,12 @@ function CreateRegisterModal({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const branch = stores.find((store) => store.id === storeId);
+  const series = invoiceSeriesPreview(branch?.code ?? "", code.trim() || "R01");
+  const full = capacity?.available === 0;
+
   const save = async () => {
+    if (full) return;
     setBusy(true);
     setError(null);
     try {
@@ -285,23 +322,37 @@ function CreateRegisterModal({
       footer={
         <>
           <GhostButton onClick={onClose}>Cancel</GhostButton>
-          <PrimaryButton disabled={busy || !storeId || !code.trim()} onClick={() => void save()}>
+          <PrimaryButton disabled={busy || full || !storeId || !code.trim()} onClick={() => void save()}>
             {busy ? "Registering…" : "Register and get activation key"}
           </PrimaryButton>
         </>
       }
     >
       <div className="space-y-4">
+        <p className="text-sm text-charcoal/70">{capacity ? seatSummary(capacity) : "Checking package seats…"}</p>
         <SelectField label="Branch" value={storeId} options={storeOptions(stores)} placeholder="Choose a branch" onChange={setStoreId} />
         <div className="grid gap-4 sm:grid-cols-2">
           <TextField
-            label="Code"
+            label="Register code"
             value={code}
             maxLength={12}
             hint="Letters and digits, e.g. R01"
             onChange={(event) => setCode(event.target.value.replace(/[^A-Za-z0-9]/g, "").toUpperCase())}
           />
-          <TextField label="Name" value={name} onChange={(event) => setName(event.target.value)} />
+          <TextField label="Register name" value={name} onChange={(event) => setName(event.target.value)} />
+        </div>
+        <div className="rounded-2xl bg-surface px-4 py-3 text-sm text-charcoal/70">
+          <p className="font-medium text-charcoal">Device identity</p>
+          <p className="mt-1">
+            Assigned when this till is activated on the new machine. It cannot be copied from another register.
+          </p>
+        </div>
+        <div className="rounded-2xl bg-surface px-4 py-3 text-sm text-charcoal/70">
+          <p className="font-medium text-charcoal">Invoice series</p>
+          <p className="mt-1 font-mono text-xs">{series}-000001</p>
+          <p className="mt-1">
+            Invoices, credit notes, and Z reports keep this series. Releasing the till does not reuse or erase those numbers.
+          </p>
         </div>
       </div>
       <ErrorNote message={error} />
@@ -489,6 +540,11 @@ function ActivationModal({
                 {t("Valid until {when}. The key works once. Generating a new key cancels this one.", {
                   when: formatDate(activation.expires_at),
                 })}
+              </p>
+              <p className="mt-2 text-xs leading-5 text-charcoal/60 sm:text-sm">
+                {t(
+                  "On the new till, enter this business code and key. The till creates its own device identity. A revoked key cannot be used again.",
+                )}
               </p>
             </div>
             <footer className="flex items-center justify-end border-t border-line px-4 py-3 sm:px-5">

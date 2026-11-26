@@ -4,7 +4,7 @@ import { Package, Pencil, Plus, Power, Printer, Search, Trash2, Upload } from "l
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { DataTable, type DataTableColumn } from "../../components/ui/DataTable";
-import { GhostButton, PrimaryButton, SearchField } from "../../components/ui/Field";
+import { FilterSelect, GhostButton, PrimaryButton, SearchField } from "../../components/ui/Field";
 import { Modal } from "../../components/ui/Modal";
 import { useTenant } from "../../context/TenantContext";
 import { apiGet } from "../../lib/api";
@@ -30,7 +30,6 @@ export function InventoryPage() {
   const products = useMemo(() => (live ?? []).map((product) => ({ ...product, currency })), [live, currency]);
   const source = live === null ? "loading" : "live";
   const [query, setQuery] = useState("");
-  const [specQuery, setSpecQuery] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [page, setPage] = useState(1);
@@ -41,11 +40,18 @@ export function InventoryPage() {
   const [activityFilter, setActivityFilter] = useState<"all" | "active" | "inactive">("all");
   const search = useProductSearch(query, products, source === "live");
   const { debouncedQuery, searching, resolve } = search;
-  const hits = search.hits.filter(({ product }) => {
-    const spec = specQuery.trim().toLowerCase();
-    const matchesSpec =
-      spec === "" ||
-      Object.values(product.specifications ?? {}).some((value) => value.toLowerCase().includes(spec));
+  const spec = debouncedQuery.trim().toLowerCase();
+  const specHits =
+    spec === ""
+      ? []
+      : products
+          .filter(
+            (product) =>
+              !search.hits.some((hit) => hit.product.id === product.id) &&
+              Object.values(product.specifications ?? {}).some((value) => value.toLowerCase().includes(spec)),
+          )
+          .map((product) => ({ product, match: "text" as const }));
+  const hits = [...search.hits, ...specHits].filter(({ product }) => {
     const portionMatch =
       !menuCatalog ||
       portionFilter === "all" ||
@@ -55,7 +61,6 @@ export function InventoryPage() {
       activityFilter === "all" ||
       (activityFilter === "active" ? product.is_active !== false : product.is_active === false);
     return (
-      matchesSpec &&
       portionMatch &&
       activityMatch &&
       (brandId === null || product.brand_id === brandId) &&
@@ -363,11 +368,11 @@ export function InventoryPage() {
             </div>
           ) : null}
         </div>
-        <div className="mb-5 flex flex-wrap items-end gap-3">
+        <div className="mb-5 flex min-w-0 flex-wrap items-center gap-3">
           <SearchField
             hideLabel
             id="inventory-search"
-            label="Search Product, Model, Barcode, or IMEI"
+            label="Search product, model, barcode or IMEI"
             autoComplete="off"
             spellCheck={false}
             value={query}
@@ -383,51 +388,40 @@ export function InventoryPage() {
                 setQuery("");
               }
             }}
-            placeholder="Search Product, Model, Barcode, or IMEI..."
-            className="min-w-[min(100%,18rem)] grow-[2] basis-[22rem]"
-          />
-          <SearchField
-            hideLabel
-            id="inventory-spec-search"
-            label="Filter by specification"
-            value={specQuery}
-            onChange={(event) => setSpecQuery(event.target.value)}
-            placeholder="Filter specifications..."
-            className="min-w-[min(100%,12rem)] grow basis-40"
+            placeholder="Search product, model, barcode or IMEI..."
+            className="min-w-0 max-w-full flex-1 basis-[var(--field-md)] !w-auto"
           />
           {menuCatalog ? (
             <>
-              <label className="text-xs font-medium text-charcoal/70">
-                Price
-                <select
-                  aria-label="Price"
-                  className="mt-1 h-11 rounded-xl border border-line bg-white px-3 text-sm"
-                  value={portionFilter}
-                  onChange={(event) => setPortionFilter(event.target.value as "all" | "single" | "portions")}
-                >
-                  <option value="all">All prices</option>
-                  <option value="single">Single price</option>
-                  <option value="portions">Multiple portions</option>
-                </select>
-              </label>
-              <label className="text-xs font-medium text-charcoal/70">
-                Status
-                <select
-                  aria-label="Status"
-                  className="mt-1 h-11 rounded-xl border border-line bg-white px-3 text-sm"
-                  value={activityFilter}
-                  onChange={(event) => setActivityFilter(event.target.value as "all" | "active" | "inactive")}
-                >
-                  <option value="all">Active and inactive</option>
-                  <option value="active">Active</option>
-                  <option value="inactive">Inactive</option>
-                </select>
-              </label>
+              <FilterSelect
+                hideLabel
+                label="Price"
+                className="w-[min(100%,var(--field-sm))] shrink-0"
+                value={portionFilter}
+                options={[
+                  { value: "all", label: "All prices" },
+                  { value: "single", label: "Single price" },
+                  { value: "portions", label: "Multiple portions" },
+                ]}
+                onChange={setPortionFilter}
+              />
+              <FilterSelect
+                hideLabel
+                label="Status"
+                className="w-[min(100%,var(--field-sm))] shrink-0"
+                value={activityFilter}
+                options={[
+                  { value: "all", label: "All statuses" },
+                  { value: "active", label: "Active" },
+                  { value: "inactive", label: "Inactive" },
+                ]}
+                onChange={setActivityFilter}
+              />
             </>
           ) : null}
           {source === "live" ? (
             <BrandModelFilters
-              className="min-w-[9rem] grow basis-40"
+              className="w-[min(100%,var(--field-sm))] shrink-0"
               subCategoryId={null}
               brandId={brandId}
               modelId={modelId}

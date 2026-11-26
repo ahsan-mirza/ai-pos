@@ -24,6 +24,17 @@ class DeviceOut(ApiModel):
     last_seen_at: datetime | None
     revoked_at: datetime | None
     created_at: datetime
+    # active, offline, pending, or revoked. Pending means the till has not connected yet.
+    activation_status: str
+    machine_name: str | None = None
+
+
+class RegisterCapacity(ApiModel):
+    """Package seats. `limit` and `available` are null when the plan does not cap registers."""
+
+    used: int
+    limit: int | None
+    available: int | None
 
 
 class DeviceKeyOut(ApiModel):
