@@ -1,6 +1,13 @@
 /** Cash-drawer profiles shared by the register settings. The desktop service is the source of the pulse. */
 
 export type DrawerMatrix = "supported" | "requires_adapter" | "not_supported";
+export type DrawerConnection = "printer" | "separate" | "none";
+
+/** Empty keeps the printer kick path used by registers saved before a connection was chosen. */
+export function drawerConnection(value: string | undefined): DrawerConnection {
+  if (value === "separate" || value === "none") return value;
+  return "printer";
+}
 
 export interface DrawerProfile {
   id: string;
@@ -14,6 +21,8 @@ export interface DrawerProfile {
   on?: number;
   off?: number;
   note: string;
+  /** Which connection can use this profile. */
+  connection: DrawerConnection | "any";
 }
 
 export const DRAWER_PROFILES: readonly DrawerProfile[] = [
@@ -24,6 +33,7 @@ export const DRAWER_PROFILES: readonly DrawerProfile[] = [
     pulse: false,
     matrix: "not_supported",
     note: "Choose the drawer that is connected to this register. No pulse is sent until the profile and the drawer-port voltage match.",
+    connection: "any",
   },
   {
     id: "hp-vb400-bl1616",
@@ -34,7 +44,8 @@ export const DRAWER_PROFILES: readonly DrawerProfile[] = [
     lockedPin: 0,
     on: 25,
     off: 250,
-    note: "Assembly 661672-001, spare 661843-001. Opens from a 24V receipt-printer drawer port. The drawer connector is RJ45; an Epson printer needs an RJ12-to-RJ45 cable. A 12V port is refused. Generic / Text Only and COM ports are refused because they do not supply the 24V kick circuit. Physical open is not confirmed from the command.",
+    note: "Assembly 661672-001, spare 661843-001. Opens from a 24V receipt-printer drawer port. The drawer connector is RJ45; an Epson printer needs an RJ12-to-RJ45 cable. It is not a USB device. A 12V port, including an MTP-3 drawer port labelled DC12V/1A, is refused. Physical open is not confirmed from the command.",
+    connection: "printer",
   },
   {
     id: "escpos-dk-24v",
@@ -43,6 +54,7 @@ export const DRAWER_PROFILES: readonly DrawerProfile[] = [
     pulse: true,
     matrix: "supported",
     note: "RJ11/RJ12 drawer kick through a receipt printer whose drawer port is 24V. Not interchangeable with a 12V drawer.",
+    connection: "printer",
   },
   {
     id: "escpos-dk-12v",
@@ -50,7 +62,8 @@ export const DRAWER_PROFILES: readonly DrawerProfile[] = [
     voltage: "12",
     pulse: true,
     matrix: "supported",
-    note: "RJ11/RJ12 drawer kick through a receipt printer whose drawer port is 12V. Not interchangeable with a 24V drawer.",
+    note: "RJ11/RJ12 drawer kick through a receipt printer whose drawer port is 12V. The MTP-3 drawer output is labelled DC12V/1A. Not interchangeable with a 24V drawer.",
+    connection: "printer",
   },
   {
     id: "usb-direct",
@@ -58,7 +71,8 @@ export const DRAWER_PROFILES: readonly DrawerProfile[] = [
     voltage: "",
     pulse: false,
     matrix: "not_supported",
-    note: "No verified USB cash-drawer driver is installed. The command stays off.",
+    note: "No verified USB cash-drawer controller is installed. An RJ11/RJ12 plug does not go into a PC USB port. The command stays off.",
+    connection: "separate",
   },
   {
     id: "serial-direct",
@@ -66,7 +80,8 @@ export const DRAWER_PROFILES: readonly DrawerProfile[] = [
     voltage: "",
     pulse: false,
     matrix: "not_supported",
-    note: "No verified serial open command is configured. A COM port is not treated as a drawer-kick circuit.",
+    note: "No verified serial open command is configured. Choosing a COM port does not open it and does not send a pulse.",
+    connection: "separate",
   },
   {
     id: "opos",
@@ -75,6 +90,7 @@ export const DRAWER_PROFILES: readonly DrawerProfile[] = [
     pulse: false,
     matrix: "not_supported",
     note: "No OPOS cash-drawer service is installed. AxizPOS will not claim the drawer opened.",
+    connection: "separate",
   },
   {
     id: "trigger-adapter",
@@ -83,8 +99,13 @@ export const DRAWER_PROFILES: readonly DrawerProfile[] = [
     pulse: false,
     matrix: "requires_adapter",
     note: "A compatible trigger adapter is required, and no verified adapter command is configured. The command stays off.",
+    connection: "separate",
   },
 ];
+
+export function profilesFor(connection: DrawerConnection): readonly DrawerProfile[] {
+  return DRAWER_PROFILES.filter((profile) => profile.connection === "any" || profile.connection === connection || connection === "none");
+}
 
 export function drawerProfile(id: string | undefined): DrawerProfile {
   const fallback = DRAWER_PROFILES[0];

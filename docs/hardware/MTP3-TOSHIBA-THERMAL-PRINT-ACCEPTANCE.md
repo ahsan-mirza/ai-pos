@@ -2,7 +2,7 @@
 
 Date: 26-11-2026
 
-Status: **NOT RUN** on paper. The earlier blank-page analysis is in `BLANK-RECEIPT-PRINTING-ROOT-CAUSE-AND-FIX.md`. This file does not mark MTP-3 compatible with every printer.
+Status: **NOT PASSED**. Paper was not printed in the 26-11-2026 position pass. The cause and the software change are in `MTP3-PRINT-POSITION-AND-PRINT-QUALITY-FIX.md`. The earlier blank-page analysis is in `BLANK-RECEIPT-PRINTING-ROOT-CAUSE-AND-FIX.md`. This file does not mark MTP-3 compatible with every printer.
 
 ## Label
 
@@ -41,3 +41,15 @@ That driver stays a Candidate. Raw ESC/POS is not sent to it, including when gen
 | Drawer pulse | NOT RUN. No pulse is sent for this candidate. |
 
 No photograph, firmware, driver version, or executable hash was taken.
+
+## Position pass, 26-11-2026
+
+The reported slip had the sample line near the bottom, a blank sheet above it, and faint characters. The renderer already had ink. The GDI path was splitting that image across forms and could shrink it when the driver reported a width in the wrong DPI. It now sends one page, bottom-up, at the top of a page the same height as the raster. No darkness command was added. The Toshiba driver still does not receive raw ESC/POS.
+
+| Check | Result |
+| --- | --- |
+| Hardware self-test | NOT RUN. This PC has no Toshiba queue. |
+| Text diagnostic | NOT RUN on paper. The payload is covered by `printer::tests`. |
+| Raster sample | NOT RUN on paper. |
+| Disposable invoice against the preview | NOT RUN |
+| Drawer | NOT RUN. The sample still does not kick. |

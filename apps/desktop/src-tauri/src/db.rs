@@ -552,14 +552,27 @@ impl Db {
 
     /// Oldest pending batch. A batch is one checkout and is pushed as one server transaction.
     pub fn next_pending_batch(&self) -> Result<Option<(String, Vec<QueuedEvent>)>, String> {
+        self.next_pending_except(&[])
+    }
+
+    /// Oldest pending batch that is not in `skip`. A batch that just failed stays pending, but this flush
+    /// moves on so a later sale or cash movement is not stuck behind it.
+    pub fn next_pending_except(&self, skip: &[String]) -> Result<Option<(String, Vec<QueuedEvent>)>, String> {
         let conn = self.lock()?;
-        let batch_id: Option<String> = conn
-            .query_row(
-                "SELECT batch_id FROM sync_queue WHERE status = 'pending'
-                 GROUP BY batch_id ORDER BY MIN(rowid) LIMIT 1",
-                [],
-                |row| row.get(0),
+        let placeholders = (1..=skip.len()).map(|index| format!("?{index}")).collect::<Vec<_>>().join(", ");
+        let sql = if skip.is_empty() {
+            "SELECT batch_id FROM sync_queue WHERE status = 'pending'
+             GROUP BY batch_id ORDER BY MIN(rowid) LIMIT 1"
+                .to_string()
+        } else {
+            format!(
+                "SELECT batch_id FROM sync_queue WHERE status = 'pending' AND batch_id NOT IN ({placeholders})
+                 GROUP BY batch_id ORDER BY MIN(rowid) LIMIT 1"
             )
+        };
+        let mut statement = conn.prepare(&sql).map_err(|err| err.to_string())?;
+        let batch_id: Option<String> = statement
+            .query_row(rusqlite::params_from_iter(skip.iter()), |row| row.get(0))
             .map(Some)
             .or_else(|err| match err {
                 rusqlite::Error::QueryReturnedNoRows => Ok(None),
@@ -1094,9 +1107,10 @@ impl Db {
 
     pub fn record_failure(&self, batch_id: &str, message: &str) -> Result<(), String> {
         let conn = self.lock()?;
+        let attempted_at = utc_stamp();
         conn.execute(
-            "UPDATE sync_queue SET attempts = attempts + 1, last_error = ?1 WHERE batch_id = ?2",
-            params![message, batch_id],
+            "UPDATE sync_queue SET attempts = attempts + 1, last_error = ?1, last_attempt_at = ?2 WHERE batch_id = ?3",
+            params![message, attempted_at, batch_id],
         )
         .map_err(|err| err.to_string())?;
         Ok(())
@@ -1415,6 +1429,7 @@ fn migrate(conn: &Connection) -> Result<(), String> {
             status TEXT NOT NULL,
             attempts INTEGER NOT NULL DEFAULT 0,
             last_error TEXT,
+            last_attempt_at TEXT,
             created_at TEXT NOT NULL
         );
         CREATE TABLE IF NOT EXISTS terminal_allocations (
@@ -1538,6 +1553,10 @@ fn migrate(conn: &Connection) -> Result<(), String> {
             "ALTER TABLE cached_users ADD COLUMN addon_modules TEXT NOT NULL DEFAULT '[]';",
         )
         .map_err(|err| err.to_string())?;
+    }
+    if !has_column(conn, "sync_queue", "last_attempt_at")? {
+        conn.execute_batch("ALTER TABLE sync_queue ADD COLUMN last_attempt_at TEXT;")
+            .map_err(|err| err.to_string())?;
     }
     if !has_column(conn, "sync_queue", "batch_id")? {
         conn.execute_batch(
@@ -1873,6 +1892,31 @@ fn read_product(row: &rusqlite::Row<'_>) -> rusqlite::Result<ProductRow> {
         price_includes_tax: row.get::<_, i64>(37)? != 0,
         sell_without_recipe: row.get::<_, i64>(38)? != 0,
     })
+}
+
+fn utc_stamp() -> String {
+    let secs = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|value| value.as_secs())
+        .unwrap_or(0);
+    let days = (secs / 86_400) as i64;
+    let tod = secs % 86_400;
+    let z = days + 719_468;
+    let era = if z >= 0 { z } else { z - 146_096 } / 146_097;
+    let doe = (z - era * 146_097) as u64;
+    let yoe = (doe - doe / 1_460 + doe / 36_524 - doe / 146_096) / 365;
+    let y = yoe as i64 + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let day = doy - (153 * mp + 2) / 5 + 1;
+    let month = if mp < 10 { mp + 3 } else { mp - 9 };
+    let year = if month <= 2 { y + 1 } else { y };
+    format!(
+        "{year:04}-{month:02}-{day:02}T{:02}:{:02}:{:02}Z",
+        tod / 3600,
+        (tod % 3600) / 60,
+        tod % 60
+    )
 }
 
 #[cfg(test)]

@@ -117,12 +117,7 @@ fn main() {
             env_path.display()
         );
     }
-    if release && pos_env == "production" && key_id.is_empty() && public_key.is_empty() && public_keys.is_empty() {
-        println!(
-            "cargo:warning=Production release has no POS_ENTITLEMENT public key. Entitlement grants fail closed until POS_ENTITLEMENT_KEY_ID and POS_ENTITLEMENT_PUBLIC_KEY, or POS_ENTITLEMENT_PUBLIC_KEYS, are set. No key was generated."
-        );
-    }
-
+    // An empty key list stays empty. Grants fail closed in entitlement.rs. No key is generated here.
     println!("cargo:rustc-env=POS_TENANT_URL_TEMPLATE={url_template}");
     println!("cargo:rustc-env=POS_TENANT_BASE_DOMAIN={base_domain}");
     tauri_build::build()

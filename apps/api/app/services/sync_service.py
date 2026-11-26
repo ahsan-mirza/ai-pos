@@ -468,6 +468,7 @@ def push_batch(
     *,
     source: SyncSource = "register",
     device: Device | None = None,
+    attempt_id: str | None = None,
 ) -> SyncPushResponse:
     if len(request.events) > settings.sync_max_batch_size:
         raise ApiError(413, "batch_too_large", "Sync batch exceeds the configured limit.")
@@ -482,6 +483,7 @@ def push_batch(
         raise ApiError(422, "duplicate_idempotency_key", "Batch contains repeated idempotency keys.")
 
     results: list[SyncPushResult] = []
+    event = None
     try:
         for event in request.events:
             ctx = SyncContext(
@@ -509,6 +511,26 @@ def push_batch(
             return SyncPushResponse(results=recovered)
         logger.exception("Sync batch conflicted with stored data.")
         raise ApiError(409, "conflict", "The batch conflicts with existing data.") from exc
+    except Exception as exc:
+        db.rollback()
+        failed = event
+        logger.exception(
+            "Sync attempt %s failed on %s %s",
+            attempt_id or "-",
+            failed.entity_type if failed is not None else "-",
+            failed.idempotency_key if failed is not None else "-",
+        )
+        reference = attempt_id if attempt_id and len(attempt_id) <= 80 and " " not in attempt_id else None
+        message = (
+            "The server failed while processing this synchronization batch. "
+            "Your original records are still waiting."
+        )
+        if reference:
+            message = f"{message} Reference: {reference}."
+        details: dict[str, object] = {}
+        if failed is not None:
+            details = {"idempotency_key": failed.idempotency_key, "entity_type": failed.entity_type}
+        raise ApiError(500, "internal_error", message, details=details or None) from exc
     return SyncPushResponse(results=results)
 
 

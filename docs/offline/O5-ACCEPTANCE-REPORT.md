@@ -11,6 +11,7 @@ O5 extends `sync_queue` and the existing idempotency hash. It does not replace t
 - After a unique-key `IntegrityError`, a batch whose keys already exist with the same hash returns `duplicate` instead of a generic 409. A different hash still returns `idempotency_conflict`.
 - 422 and 413 stay `rejected` and are not selected by `next_pending_batch`.
 - Network, 401, and 5xx stay `pending` and retry the original key.
+- A later pass keeps that rule and lets the next independent batch upload when one batch returns HTTP 500. See `SYNC-CENTER-PENDING-UPLOAD-ROOT-CAUSE-AND-FIX.md`. `sync_queue.last_attempt_at` records the last try.
 - The status bar shows a conflict chip when a conflict batch exists, including when the pending count is zero.
 - No reconciliation endpoint was added. Financial and stock adjustments remain **AWAITING APPROVAL**.
 
@@ -25,7 +26,7 @@ O5 extends `sync_queue` and the existing idempotency hash. It does not replace t
 - `apps/desktop/src/components/shell/statusBar.ts`, `KeyboardStatusBar.tsx`, `statusBar.test.ts`
 - The O5 documents in `docs/offline/`
 
-`sync_queue` columns are unchanged. Inventory services were not edited. Staff administration was not added. Pharmacy offline medicine checkout was not enabled. Card, QR, and pay-later still require a verified provider `PAID` result. `single_terminal_offline_stock_enabled` was not switched on.
+`sync_queue` later gained `last_attempt_at` for Sync Center. See the pending-upload report. Inventory services were not edited. Staff administration was not added. Pharmacy offline medicine checkout was not enabled. Card, QR, and pay-later still require a verified provider `PAID` result. `single_terminal_offline_stock_enabled` was not switched on.
 
 ## Executed tests
 

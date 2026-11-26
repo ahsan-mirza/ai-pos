@@ -66,3 +66,18 @@ def ingredient_mode_error(db: Session, product, requested: bool, permissions: se
     if requested and Permission.POS_SKIP_RECIPE.value not in permissions:
         return SKIP_PERMISSION
     return None
+
+
+def resolve_order_skip(db: Session, product, requested: bool | None, permissions: set[str]) -> tuple[bool, str | None]:
+    """The skip flag to store, and a refusal when the till tried to override the menu item.
+
+    A register that leaves the flag off follows the item. Sending the opposite of the item is refused.
+    """
+    if menu_profile(db) and product.item_type == "MADE_TO_ORDER":
+        expected = bool(product.sell_without_recipe)
+        if requested is None or bool(requested) == expected:
+            return expected, None
+        return expected, INGREDIENT_LOCKED
+    if requested and Permission.POS_SKIP_RECIPE.value not in permissions:
+        return False, SKIP_PERMISSION
+    return bool(requested), None

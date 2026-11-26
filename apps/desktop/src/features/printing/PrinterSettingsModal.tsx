@@ -42,7 +42,7 @@ import {
   CONNECTED,
   type DiagnosticStage,
 } from "./printerSelection";
-import { DRAWER_PROFILES, drawerProfile } from "./drawerProfiles";
+import { drawerConnection, drawerProfile, profilesFor } from "./drawerProfiles";
 import {
   BLUETOOTH_EMPTY,
   GENERIC_ESCPOS,
@@ -400,7 +400,9 @@ export function PrinterSettingsModal({
   const mtp3 = selectedQueueNow
     ? labelProfile(`${selectedQueueNow.name} ${selectedQueueNow.driver} ${selectedQueueNow.manufacturer ?? ""}`)
     : null;
+  const connection = drawerConnection(draft.drawer_connection);
   const kickDisabled = busy || !canTestDrawer(draft, queues);
+  const drawerPolicyDisabled = !canSave || connection === "none" || (connection === "printer" && drawerDisabled);
   const shownError = !canSave && error === REGISTER_VIEW_ONLY ? null : error;
 
   return (
@@ -595,7 +597,7 @@ export function PrinterSettingsModal({
                 />
               </label>
               <p className="text-sm text-charcoal/60 dark:text-zinc-400">
-                The cash drawer connects to the receipt printer drawer port. AxizPOS does not treat a separate USB device as a drawer.
+                Printer status is separate from the cash drawer. A missing printer does not turn off a separate drawer, and a missing drawer does not turn off receipt printing.
               </p>
             </div>
           ) : draft.transport === "tcp" ? (
@@ -752,11 +754,33 @@ export function PrinterSettingsModal({
               />
             </div>
             <label className="flex items-center justify-between gap-3 px-1 text-sm font-medium">
+              Drawer connection
+              <Select
+                size="sm"
+                className="w-56"
+                aria-label="Drawer connection"
+                disabled={!canSave}
+                value={connection}
+                onChange={(value) => {
+                  const profile = drawerProfile(draft.drawer_profile);
+                  patch({
+                    drawer_connection: value,
+                    ...(value !== "printer" && profile.connection === "printer" ? { drawer_profile: "" } : {}),
+                  });
+                }}
+                options={[
+                  { value: "printer", label: "Through receipt printer" },
+                  { value: "separate", label: "Separate device" },
+                  { value: "none", label: "None" },
+                ]}
+              />
+            </label>
+            <label className="flex items-center justify-between gap-3 px-1 text-sm font-medium">
               Open the cash drawer for cash payments
               <input
                 type="checkbox"
-                checked={draft.drawer_kick}
-                disabled={!canSave || drawerDisabled}
+                checked={connection !== "none" && draft.drawer_kick}
+                disabled={drawerPolicyDisabled}
                 onChange={(event) => patch({ drawer_kick: event.target.checked })}
                 className="h-5 w-5 accent-primary disabled:opacity-40"
               />
@@ -765,64 +789,109 @@ export function PrinterSettingsModal({
               Open the cash drawer for card and other payments
               <input
                 type="checkbox"
-                checked={draft.open_on_non_cash === true}
-                disabled={!canSave || drawerDisabled}
+                checked={connection !== "none" && draft.open_on_non_cash === true}
+                disabled={drawerPolicyDisabled}
                 onChange={(event) => patch({ open_on_non_cash: event.target.checked })}
                 className="h-5 w-5 accent-primary disabled:opacity-40"
               />
             </label>
-            <label className="flex items-center justify-between gap-3 px-1 text-sm font-medium">
-              Cash drawer
-              <Select
-                size="sm"
-                className="w-72"
-                aria-label="Cash drawer"
-                disabled={!canSave}
-                value={draft.drawer_profile ?? ""}
-                onChange={(value) => {
-                  const profile = drawerProfile(value);
-                  patch({
-                    drawer_profile: value,
-                    ...(profile.lockedPin != null
-                      ? { drawer_pin: profile.lockedPin, drawer_on: profile.on, drawer_off: profile.off }
-                      : {}),
-                  });
-                }}
-                options={DRAWER_PROFILES.map((profile) => ({ value: profile.id, label: profile.label }))}
-              />
-            </label>
-            <label className="flex items-center justify-between gap-3 px-1 text-sm font-medium">
-              Printer drawer-port voltage
-              <Select
-                size="sm"
-                className="w-40"
-                aria-label="Printer drawer-port voltage"
-                disabled={!canSave}
-                value={draft.host_voltage ?? ""}
-                onChange={(value) => patch({ host_voltage: value })}
-                options={[
-                  { value: "", label: "Unconfirmed" },
-                  { value: "24", label: "24V" },
-                  { value: "12", label: "12V" },
-                ]}
-              />
-            </label>
-            <p className="px-1 text-sm text-charcoal/60 dark:text-zinc-400">{drawerProfile(draft.drawer_profile).note}</p>
-            <label className="flex items-center justify-between gap-3 px-1 text-sm font-medium">
-              Drawer connector
-              <Select
-                size="sm"
-                className="w-36"
-                aria-label="Drawer connector"
-                disabled={!canSave || drawerDisabled || drawerProfile(draft.drawer_profile).lockedPin != null}
-                value={String(drawerProfile(draft.drawer_profile).lockedPin ?? draft.drawer_pin ?? 0)}
-                onChange={(value) => patch({ drawer_pin: Number(value) })}
-                options={[
-                  { value: "0", label: "Pin 2" },
-                  { value: "1", label: "Pin 5" },
-                ]}
-              />
-            </label>
+            {connection === "none" ? (
+              <p className="px-1 text-sm text-charcoal/60 dark:text-zinc-400">
+                Drawer kick is off. Receipt printer settings stay as they are. No drawer command is sent.
+              </p>
+            ) : null}
+            {connection === "printer" ? (
+              <>
+                <label className="flex items-center justify-between gap-3 px-1 text-sm font-medium">
+                  Cash drawer
+                  <Select
+                    size="sm"
+                    className="w-72"
+                    aria-label="Cash drawer"
+                    disabled={!canSave}
+                    value={draft.drawer_profile ?? ""}
+                    onChange={(value) => {
+                      const profile = drawerProfile(value);
+                      patch({
+                        drawer_profile: value,
+                        ...(profile.lockedPin != null
+                          ? { drawer_pin: profile.lockedPin, drawer_on: profile.on, drawer_off: profile.off }
+                          : {}),
+                      });
+                    }}
+                    options={profilesFor("printer").map((profile) => ({ value: profile.id, label: profile.label }))}
+                  />
+                </label>
+                <label className="flex items-center justify-between gap-3 px-1 text-sm font-medium">
+                  Printer drawer-port voltage
+                  <Select
+                    size="sm"
+                    className="w-40"
+                    aria-label="Printer drawer-port voltage"
+                    disabled={!canSave}
+                    value={draft.host_voltage ?? ""}
+                    onChange={(value) => patch({ host_voltage: value })}
+                    options={[
+                      { value: "", label: "Unconfirmed" },
+                      { value: "24", label: "24V" },
+                      { value: "12", label: "12V" },
+                    ]}
+                  />
+                </label>
+                <p className="px-1 text-sm text-charcoal/60 dark:text-zinc-400">{drawerProfile(draft.drawer_profile).note}</p>
+                <label className="flex items-center justify-between gap-3 px-1 text-sm font-medium">
+                  Drawer connector
+                  <Select
+                    size="sm"
+                    className="w-36"
+                    aria-label="Drawer connector"
+                    disabled={!canSave || drawerDisabled || drawerProfile(draft.drawer_profile).lockedPin != null}
+                    value={String(drawerProfile(draft.drawer_profile).lockedPin ?? draft.drawer_pin ?? 0)}
+                    onChange={(value) => patch({ drawer_pin: Number(value) })}
+                    options={[
+                      { value: "0", label: "Pin 2" },
+                      { value: "1", label: "Pin 5" },
+                    ]}
+                  />
+                </label>
+              </>
+            ) : null}
+            {connection === "separate" ? (
+              <>
+                <label className="flex items-center justify-between gap-3 px-1 text-sm font-medium">
+                  Controller
+                  <Select
+                    size="sm"
+                    className="w-56"
+                    aria-label="Drawer controller"
+                    disabled={!canSave}
+                    value={draft.drawer_controller_kind ?? ""}
+                    onChange={(value) => patch({ drawer_controller_kind: value, drawer_profile: "" })}
+                    options={[
+                      { value: "", label: "Not chosen" },
+                      { value: "usb", label: "USB controller" },
+                      { value: "serial", label: "Serial / COM" },
+                      { value: "network", label: "Network controller" },
+                      { value: "vendor", label: "Vendor controller" },
+                    ]}
+                  />
+                </label>
+                <label className="block px-1 text-sm font-medium">
+                  Controller address
+                  <input
+                    value={draft.drawer_controller_address ?? ""}
+                    disabled={!canSave}
+                    aria-label="Drawer controller address"
+                    placeholder={draft.drawer_controller_kind === "serial" ? "COM1" : "Host or device id"}
+                    onChange={(event) => patch({ drawer_controller_address: event.target.value })}
+                    className="mt-1 w-full rounded-xl border border-line bg-white px-3 py-2 text-sm dark:bg-zinc-900"
+                  />
+                </label>
+                <p className="px-1 text-sm text-charcoal/60 dark:text-zinc-400">
+                  No verified USB, serial, network, or vendor drawer command is installed. Save stores the choice and does not send a pulse. An RJ11/RJ12 drawer still needs a compatible controller. Open/closed: Not reported.
+                </p>
+              </>
+            ) : null}
             <label className="flex items-center justify-between gap-3 px-1 text-sm font-medium">
               Copies per sale
               <Select

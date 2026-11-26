@@ -271,14 +271,16 @@ def test_an_order_line_skips_its_recipe_only_when_the_product_says_so(client, se
     again = client.get(f"/api/v1/orders/{opened.json()['id']}", headers=device())
     assert again.status_code == 200 and again.json()["items"][0]["skip_recipe"] is True
     extra = {**line, "id": str(uuid.uuid4()), "skip_recipe": True}
+    followed = {key: value for key, value in extra.items() if key != "skip_recipe"}
+    followed["id"] = str(uuid.uuid4())
     added = client.post(
         f"/api/v1/orders/{opened.json()['id']}/items",
         headers=device(),
-        json={"revision": opened.json()["revision"], "user_id": CASHIER_ID, "items": [extra]},
+        json={"revision": opened.json()["revision"], "user_id": CASHIER_ID, "items": [extra, followed]},
     )
     assert added.status_code == 200, added.text
     assert added.json()["status"] == "OPEN"
-    assert [item["skip_recipe"] for item in added.json()["items"]] == [True, True]
+    assert [item["skip_recipe"] for item in added.json()["items"]] == [True, True, True]
     blocked_add = client.post(
         f"/api/v1/orders/{opened.json()['id']}/items",
         headers=device(),

@@ -61,7 +61,9 @@ enum PushError {
     /// The same key was stored with a different payload. The local event stays unchanged.
     Conflict { reason: String },
     /// Network, auth, or server failure. The batch stays queued.
-    Unavailable(String),
+    /// `halt` stops this flush: the connection or the login is down, so later batches would fail the same way.
+    /// A server error on one batch does not halt. Later sales and cash movements still upload.
+    Unavailable { reason: String, halt: bool },
 }
 
 /// Queue status for a push response. A lost response stays pending so the original key can be sent again.
@@ -184,12 +186,19 @@ pub fn flush(db: &Db, config: &DesktopConfig) -> Result<SyncReport, String> {
     let mut rejected = 0;
     let mut last_rejection: Option<String> = None;
     let mut unavailable: Option<String> = None;
+    let mut skipped: Vec<String> = Vec::new();
+    let mut blocked: Vec<String> = Vec::new();
+    let attempt = sync_attempt_id();
+    eprintln!(
+        "sync attempt {attempt} host {} endpoint /api/v1/sync/push",
+        sync_host(&config.api_base_url)
+    );
 
     for _ in 0..MAX_BATCHES_PER_FLUSH {
-        let Some((batch_id, events)) = db.next_pending_batch()? else {
+        let Some((batch_id, events)) = db.next_pending_except(&skipped)? else {
             break;
         };
-        match post_batch(config, &events) {
+        match post_batch(config, &events, &attempt) {
             Ok(response) => {
                 let queued = if response.results.iter().any(|result| result.status == "awaiting_review") {
                     "awaiting_review"
@@ -234,10 +243,14 @@ pub fn flush(db: &Db, config: &DesktopConfig) -> Result<SyncReport, String> {
                 rejected += 1;
                 last_rejection = Some(reason);
             }
-            Err(PushError::Unavailable(reason)) => {
+            Err(PushError::Unavailable { reason, halt }) => {
                 db.record_failure(&batch_id, &reason)?;
-                unavailable = Some(reason);
-                break;
+                if halt {
+                    unavailable = Some(reason);
+                    break;
+                }
+                blocked.push(batch_label(&events));
+                skipped.push(batch_id);
             }
         }
     }
@@ -251,15 +264,30 @@ pub fn flush(db: &Db, config: &DesktopConfig) -> Result<SyncReport, String> {
         None
     };
 
-    let message = match (unavailable, last_rejection, catalogue_note) {
-        (Some(reason), _, _) => format!("Not synced: {reason}"),
-        (None, Some(reason), _) => format!("{rejected} queued sale(s) rejected: {reason}"),
-        (None, None, Some(reason)) if synced > 0 => {
+    let still_waiting = {
+        let mut seen = Vec::new();
+        for label in &blocked {
+            if !seen.contains(label) {
+                seen.push(label.clone());
+            }
+        }
+        seen.join(", ")
+    };
+    let message = match (unavailable, last_rejection, catalogue_note, blocked.is_empty(), synced > 0) {
+        (Some(reason), _, _, _, _) => format!("Not synced: {reason}"),
+        (None, _, _, false, true) => format!(
+            "Some records synchronized. {still_waiting} still need attention. Reference: {attempt}."
+        ),
+        (None, _, _, false, false) => format!(
+            "Not synced: The server failed while processing this synchronization batch. Your original records are still waiting. Reference: {attempt}."
+        ),
+        (None, Some(reason), _, _, _) => format!("{rejected} queued sale(s) rejected: {reason}"),
+        (None, None, Some(reason), _, true) => {
             format!("Sales synced. Catalogue snapshot still incomplete: {reason}")
         }
-        (None, None, Some(reason)) => format!("Catalogue snapshot still incomplete: {reason}"),
-        (None, None, None) if synced > 0 => "Synced with the API.".to_string(),
-        (None, None, None) => "Queue is empty.".to_string(),
+        (None, None, Some(reason), _, false) => format!("Catalogue snapshot still incomplete: {reason}"),
+        (None, None, None, _, true) => "Synced with the API.".to_string(),
+        (None, None, None, _, false) => "Queue is empty.".to_string(),
     };
 
     Ok(SyncReport {
@@ -453,7 +481,7 @@ pub fn branch_availability(
     serde_json::from_str(&body).map_err(|err| err.to_string())
 }
 
-fn post_batch(config: &DesktopConfig, events: &[QueuedEvent]) -> Result<PushResponse, PushError> {
+fn post_batch(config: &DesktopConfig, events: &[QueuedEvent], attempt: &str) -> Result<PushResponse, PushError> {
     let payload = serde_json::json!({
         "device_id": config.device_id,
         "events": events.iter().map(|event| serde_json::json!({
@@ -465,31 +493,101 @@ fn post_batch(config: &DesktopConfig, events: &[QueuedEvent]) -> Result<PushResp
         })).collect::<Vec<_>>()
     });
     let response = client()
-        .map_err(PushError::Unavailable)?
+        .map_err(|_| PushError::Unavailable { reason: connection_failure(), halt: true })?
         .post(format!("{}/api/v1/sync/push", config.api_base_url))
         .headers(config.auth_headers())
+        .header("X-Sync-Attempt", attempt)
         .json(&payload)
         .send()
-        .map_err(|err| PushError::Unavailable(err.to_string()))?;
+        .map_err(|_| PushError::Unavailable { reason: connection_failure(), halt: true })?;
     let server_time = response
         .headers()
         .get(reqwest::header::DATE)
         .and_then(|value| value.to_str().ok())
         .and_then(http_date_to_iso);
     let status = response.status();
-    let body = response
-        .text()
-        .map_err(|err| PushError::Unavailable(err.to_string()))?;
+    let body = response.text().map_err(|_| PushError::Unavailable {
+        reason: server_failure(attempt),
+        halt: false,
+    })?;
     if status.is_success() {
-        return serde_json::from_str(&body).map_err(|err| PushError::Unavailable(err.to_string()));
+        return serde_json::from_str(&body).map_err(|_| PushError::Unavailable {
+            reason: server_failure(attempt),
+            halt: false,
+        });
     }
     let code = error_code(&body);
-    let reason = error_message(&body, status.as_u16());
+    let reason = failure_message(status.as_u16(), &code, &error_message(&body, status.as_u16()), attempt);
     match queue_status_for(status.as_u16(), &code) {
         "conflict" => Err(PushError::Conflict { reason }),
         "rejected" => Err(PushError::Rejected { reason, server_time }),
-        _ => Err(PushError::Unavailable(reason)),
+        _ => Err(PushError::Unavailable {
+            reason,
+            halt: halts_flush(status.as_u16(), &code),
+        }),
     }
+}
+
+fn sync_attempt_id() -> String {
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|value| value.as_nanos())
+        .unwrap_or(0);
+    format!("sync-{nanos:x}")
+}
+
+fn sync_host(url: &str) -> String {
+    url.trim_start_matches("https://")
+        .trim_start_matches("http://")
+        .split('/')
+        .next()
+        .unwrap_or("configured-server")
+        .to_string()
+}
+
+fn batch_label(events: &[QueuedEvent]) -> String {
+    events
+        .iter()
+        .find(|event| event.entity_type != "store" && event.entity_type != "product")
+        .or_else(|| events.first())
+        .map(|event| match event.entity_type.as_str() {
+            "sale" => "Sales",
+            "sale_return" => "Returns",
+            "cash_movement" => "Cash movements",
+            "register_shift" => "Shifts",
+            "customer" => "Customers",
+            other => other,
+        })
+        .unwrap_or("Records")
+        .to_string()
+}
+
+pub fn failure_message(status: u16, code: &str, server_message: &str, attempt: &str) -> String {
+    if status == 401 || status == 403 || code == "unauthorized" || code == "invalid_token" {
+        return "This register could not authenticate with the server. No pending records were removed.".into();
+    }
+    if status >= 500 || code == "internal_error" || code == "database_unavailable" {
+        return server_failure(attempt);
+    }
+    if server_message.trim().is_empty() {
+        return server_failure(attempt);
+    }
+    server_message.to_string()
+}
+
+fn connection_failure() -> String {
+    "Cannot connect to the configured server. Your records remain saved on this register and will retry when the connection returns.".into()
+}
+
+fn server_failure(attempt: &str) -> String {
+    format!(
+        "The server failed while processing this synchronization batch. Your original records are still waiting. Reference: {attempt}."
+    )
+}
+
+/// A dead connection or a refused login stops the flush. One bad record does not.
+pub fn halts_flush(status: u16, code: &str) -> bool {
+    matches!(status, 401 | 403) || code == "database_unavailable" || code == "database_outdated" || status == 503
 }
 
 fn error_code(body: &str) -> String {
@@ -732,7 +830,20 @@ fn error_message(body: &str, status: u16) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{http_date_to_iso, queue_status_for};
+    use super::{failure_message, halts_flush, http_date_to_iso, queue_status_for};
+
+    #[test]
+    fn a_server_error_names_the_attempt_and_does_not_stop_later_batches() {
+        let message = failure_message(500, "internal_error", "The server hit an unexpected error.", "sync-abc");
+        assert!(message.contains("Reference: sync-abc"));
+        assert!(!halts_flush(500, "internal_error"));
+        assert!(halts_flush(401, "unauthorized"));
+        assert!(halts_flush(503, "database_unavailable"));
+        assert_eq!(
+            failure_message(401, "unauthorized", "Sign in again.", "sync-abc"),
+            "This register could not authenticate with the server. No pending records were removed."
+        );
+    }
 
     #[test]
     fn a_payload_collision_is_not_a_successful_sync() {

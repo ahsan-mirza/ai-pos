@@ -218,6 +218,28 @@ def test_serialized_sale_validates_imei(client) -> None:
     assert imei in values
 
 
+def test_an_unexpected_sync_crash_rolls_back_and_names_the_attempt(client, monkeypatch) -> None:
+    def boom(*_args, **_kwargs):
+        raise RuntimeError("disk")
+
+    monkeypatch.setattr("app.services.sync_service.apply_sale", boom)
+    response = client.post(
+        "/api/v1/sync/push",
+        headers={**headers(), "X-Sync-Attempt": "sync-test"},
+        json={"device_id": "device-1", "events": [event("sale-crash", "sale", {"id": "not-used"})]},
+    )
+    assert response.status_code == 500, response.text
+    error = response.json()["error"]
+    assert error["code"] == "internal_error"
+    assert "Reference: sync-test." in error["message"]
+    assert "disk" not in error["message"]
+    assert error["details"]["entity_type"] == "sale"
+    assert error["details"]["idempotency_key"] == "sale-crash"
+    sales = client.get("/api/v1/sales", headers=headers())
+    assert sales.status_code == 200
+    assert sales.json() == []
+
+
 def sale_payload(
     *,
     quantity: int = 1,

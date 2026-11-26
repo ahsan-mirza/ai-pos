@@ -62,5 +62,7 @@ describe("cash drawer profiles", () => {
     expect(lacksKickCircuit(textOnly)).toBe(true);
     expect(canTestDrawer(settings({ address: textOnly.name }), [textOnly])).toBe(false);
     expect(canTestDrawer(settings({ transport: "serial", address: "COM4" }), [epson])).toBe(false);
+    expect(canTestDrawer(settings({ drawer_connection: "none" }), [epson])).toBe(false);
+    expect(canTestDrawer(settings({ drawer_connection: "separate", transport: "none" }), [epson])).toBe(false);
   });
 });

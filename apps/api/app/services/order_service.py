@@ -300,18 +300,19 @@ def _reject_second_table_order(
 
 
 def _require_recipe_skip(db: Session, actor: User | None, items: list) -> None:
-    from app.services.recipe_mode import SKIP_PERMISSION, ingredient_mode_error
+    from app.services.recipe_mode import SKIP_PERMISSION, resolve_order_skip
 
     permissions = set(actor.permissions) if actor is not None else set()
     for item in items:
         product = db.get(Product, item.product_id)
         if product is None:
             continue
-        message = ingredient_mode_error(db, product, bool(getattr(item, "skip_recipe", False)), permissions)
+        skip, message = resolve_order_skip(db, product, item.skip_recipe, permissions)
         if message == SKIP_PERMISSION:
             raise ApiError(403, "forbidden", message)
         if message:
             raise ApiError(422, "ingredient_mode", message)
+        item.skip_recipe = skip
 
 
 def _item(
@@ -1350,13 +1351,14 @@ def _hold_table_conflict(
         product = db.get(Product, line.product_id)
         if product is None:
             continue
-        from app.services.recipe_mode import ingredient_mode_error
+        from app.services.recipe_mode import resolve_order_skip
 
         opener = db.get(User, data.opened_by_id)
         permissions = set(opener.permissions) if opener is not None else set()
-        mode_error = ingredient_mode_error(db, product, bool(line.skip_recipe), permissions)
+        skip, mode_error = resolve_order_skip(db, product, line.skip_recipe, permissions)
         if mode_error:
             raise SyncRejected(mode_error)
+        line.skip_recipe = skip
         item = _item(db, order, line, position, data.opened_by_id)
         item.sent_at = _aware(line.sent_at)
         item.voided_at = _aware(line.voided_at)
@@ -1551,12 +1553,13 @@ def apply_open_order(db: Session, settings: Settings, payload: dict[str, object]
         product = db.get(Product, line.product_id)
         if product is None:
             continue
-        from app.services.recipe_mode import ingredient_mode_error
+        from app.services.recipe_mode import resolve_order_skip
 
         permissions = set(opener.permissions) if opener is not None else set()
-        mode_error = ingredient_mode_error(db, product, bool(line.skip_recipe), permissions)
+        skip, mode_error = resolve_order_skip(db, product, line.skip_recipe, permissions)
         if mode_error:
             raise SyncRejected(mode_error)
+        line.skip_recipe = skip
         item = _item(db, order, line, position, opener.id)
         item.sent_at = _aware(line.sent_at)
         item.voided_at = _aware(line.voided_at)

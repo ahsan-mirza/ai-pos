@@ -54,6 +54,10 @@ pub fn migrate(conn: &Connection) -> Result<(), String> {
     add_column(conn, "printer_settings", "drawer_profile", "TEXT NOT NULL DEFAULT ''")?;
     add_column(conn, "printer_settings", "host_voltage", "TEXT NOT NULL DEFAULT ''")?;
     add_column(conn, "printer_settings", "open_on_non_cash", "INTEGER NOT NULL DEFAULT 0")?;
+    add_column(conn, "printer_settings", "drawer_connection", "TEXT NOT NULL DEFAULT ''")?;
+    add_column(conn, "printer_settings", "drawer_controller_kind", "TEXT NOT NULL DEFAULT ''")?;
+    add_column(conn, "printer_settings", "drawer_controller_address", "TEXT NOT NULL DEFAULT ''")?;
+    add_column(conn, "printer_settings", "drawer_controller_protocol", "TEXT NOT NULL DEFAULT ''")?;
     add_column(conn, "printer_status", "last_kick_attempt_at", "INTEGER")?;
     conn.execute_batch(
         "
@@ -150,6 +154,18 @@ pub struct PrinterSettings {
     /// Card and other non-cash tenders stay closed unless this is explicitly on.
     #[serde(default)]
     pub open_on_non_cash: bool,
+    /// printer, separate, or none. Empty keeps the printer kick path.
+    #[serde(default)]
+    pub drawer_connection: String,
+    /// usb, serial, network, or vendor. Used only when the connection is separate.
+    #[serde(default)]
+    pub drawer_controller_kind: String,
+    /// COM port, host, or controller identity. Never opened during Save.
+    #[serde(default)]
+    pub drawer_controller_address: String,
+    /// Verified protocol id. Empty means the controller command is not cleared.
+    #[serde(default)]
+    pub drawer_controller_protocol: String,
 }
 
 fn default_auto() -> bool {
@@ -190,6 +206,10 @@ impl Default for PrinterSettings {
             drawer_profile: String::new(),
             host_voltage: String::new(),
             open_on_non_cash: false,
+            drawer_connection: String::new(),
+            drawer_controller_kind: String::new(),
+            drawer_controller_address: String::new(),
+            drawer_controller_protocol: String::new(),
         }
     }
 }
@@ -199,7 +219,8 @@ pub fn load(db: &Db) -> Result<PrinterSettings, String> {
         conn.query_row(
             "SELECT transport, address, paper_dots, drawer_kick, auto_print, copies, drawer_pin, drawer_on, drawer_off,
                     auto_discover, previous_address, saved_driver, saved_port, saved_model, user_selected, saved_identity,
-                    connection_kind, protocol, bluetooth_identity, verification, drawer_profile, host_voltage, open_on_non_cash
+                    connection_kind, protocol, bluetooth_identity, verification, drawer_profile, host_voltage, open_on_non_cash,
+                    drawer_connection, drawer_controller_kind, drawer_controller_address, drawer_controller_protocol
              FROM printer_settings WHERE id = 1",
             [],
             |row| {
@@ -227,6 +248,10 @@ pub fn load(db: &Db) -> Result<PrinterSettings, String> {
                     drawer_profile: row.get(20)?,
                     host_voltage: row.get(21)?,
                     open_on_non_cash: row.get::<_, i64>(22)? != 0,
+                    drawer_connection: row.get(23)?,
+                    drawer_controller_kind: row.get(24)?,
+                    drawer_controller_address: row.get(25)?,
+                    drawer_controller_protocol: row.get(26)?,
                 })
             },
         )
@@ -287,6 +312,7 @@ pub fn prepare_settings(settings: &PrinterSettings) -> Result<PrinterSettings, S
     }
     checked_pulse(settings.drawer_pin, settings.drawer_on, settings.drawer_off)?;
     crate::cash_drawer::validate(&settings.drawer_profile, &settings.host_voltage)?;
+    crate::drawer_manager::validate_connection(settings)?;
     let mut next = settings.clone();
     next.address = settings.address.trim().to_string();
     next.previous_address = settings.previous_address.trim().to_string();
@@ -301,6 +327,10 @@ pub fn prepare_settings(settings: &PrinterSettings) -> Result<PrinterSettings, S
     next.verification = crate::printer_profile::stored_verification(&next.verification).to_string();
     next.drawer_profile = next.drawer_profile.trim().to_string();
     next.host_voltage = next.host_voltage.trim().to_string();
+    next.drawer_connection = crate::drawer_manager::normalize_connection(&next.drawer_connection).to_string();
+    next.drawer_controller_kind = next.drawer_controller_kind.trim().to_string();
+    next.drawer_controller_address = next.drawer_controller_address.trim().to_string();
+    next.drawer_controller_protocol = next.drawer_controller_protocol.trim().to_string();
     match next.transport.as_str() {
         "none" => {
             if !next.address.is_empty() {
@@ -398,8 +428,9 @@ pub fn save(db: &Db, settings: &PrinterSettings) -> Result<PrinterSettings, Stri
             "INSERT INTO printer_settings (
                 id, transport, address, paper_dots, drawer_kick, auto_print, copies, drawer_pin, drawer_on, drawer_off,
                 auto_discover, previous_address, saved_driver, saved_port, saved_model, user_selected, saved_identity,
-                connection_kind, protocol, bluetooth_identity, verification, drawer_profile, host_voltage, open_on_non_cash
-             ) VALUES (1, ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23)
+                connection_kind, protocol, bluetooth_identity, verification, drawer_profile, host_voltage, open_on_non_cash,
+                drawer_connection, drawer_controller_kind, drawer_controller_address, drawer_controller_protocol
+             ) VALUES (1, ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22, ?23, ?24, ?25, ?26, ?27)
              ON CONFLICT(id) DO UPDATE SET transport = excluded.transport, address = excluded.address,
                 paper_dots = excluded.paper_dots, drawer_kick = excluded.drawer_kick,
                 auto_print = excluded.auto_print, copies = excluded.copies,
@@ -410,7 +441,10 @@ pub fn save(db: &Db, settings: &PrinterSettings) -> Result<PrinterSettings, Stri
                 saved_identity = excluded.saved_identity, connection_kind = excluded.connection_kind,
                 protocol = excluded.protocol, bluetooth_identity = excluded.bluetooth_identity,
                 verification = excluded.verification, drawer_profile = excluded.drawer_profile,
-                host_voltage = excluded.host_voltage, open_on_non_cash = excluded.open_on_non_cash",
+                host_voltage = excluded.host_voltage, open_on_non_cash = excluded.open_on_non_cash,
+                drawer_connection = excluded.drawer_connection, drawer_controller_kind = excluded.drawer_controller_kind,
+                drawer_controller_address = excluded.drawer_controller_address,
+                drawer_controller_protocol = excluded.drawer_controller_protocol",
             params![
                 settings.transport,
                 settings.address.trim(),
@@ -435,6 +469,10 @@ pub fn save(db: &Db, settings: &PrinterSettings) -> Result<PrinterSettings, Stri
                 settings.drawer_profile.trim(),
                 settings.host_voltage.trim(),
                 settings.open_on_non_cash as i64,
+                settings.drawer_connection.trim(),
+                settings.drawer_controller_kind.trim(),
+                settings.drawer_controller_address.trim(),
+                settings.drawer_controller_protocol.trim(),
             ],
         )
         .map_err(|err| err.to_string())?;
@@ -773,6 +811,14 @@ pub struct PrinterProbe {
     pub host_voltage: String,
     #[serde(default)]
     pub open_on_non_cash: bool,
+    /// printer, separate, or none. Independent of the receipt printer status.
+    #[serde(default)]
+    pub drawer_connection: String,
+    /// off, printer, blocked, or ready.
+    #[serde(default)]
+    pub drawer_status: String,
+    #[serde(default)]
+    pub drawer_controller_kind: String,
 }
 
 static JOB_SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
@@ -915,6 +961,9 @@ fn finish_probe(
     driver: Option<String>,
     port: Option<String>,
 ) -> PrinterProbe {
+    let drawer_connection = crate::drawer_manager::normalize_connection(&settings.drawer_connection).to_string();
+    let drawer_status = crate::drawer_manager::status_label(&settings).to_string();
+    let drawer_controller_kind = settings.drawer_controller_kind.clone();
     PrinterProbe {
         configured: settings.transport != "none",
         transport: settings.transport,
@@ -950,6 +999,9 @@ fn finish_probe(
         drawer_profile: settings.drawer_profile.clone(),
         host_voltage: settings.host_voltage.clone(),
         open_on_non_cash: settings.open_on_non_cash,
+        drawer_connection,
+        drawer_status,
+        drawer_controller_kind,
     }
 }
 
@@ -983,6 +1035,15 @@ pub struct PrintDiagnostic {
     pub submitted: bool,
     pub native_error: Option<String>,
     pub stages: Vec<PrintStage>,
+    pub row_bytes: u32,
+    pub first_ink_row: Option<u32>,
+    pub last_ink_row: Option<u32>,
+    pub raster_bytes: usize,
+    pub text_bytes: usize,
+    pub command_summary: String,
+    pub bytes_submitted: usize,
+    pub bytes_accepted: Option<usize>,
+    pub outcome: String,
 }
 
 fn last_diagnostic() -> Option<PrintDiagnostic> {
@@ -1313,6 +1374,119 @@ pub fn escpos_raster(job: &RasterJob, copies: u32, kick: &[u8]) -> Result<Vec<u8
     Ok(out)
 }
 
+/// Plain-text ESC/POS diagnostic. ASCII only. No raster, no density command, and no drawer pulse.
+#[cfg_attr(not(test), allow(dead_code))]
+pub fn escpos_text_receipt(lines: &[&str]) -> Vec<u8> {
+    let mut out = vec![0x1b, b'@', 0x1b, b'a', 0, 0x1b, b'3', 30];
+    for line in lines {
+        for byte in line.bytes() {
+            if byte.is_ascii() && byte != b'\n' && byte != b'\r' {
+                out.push(byte);
+            }
+        }
+        out.push(b'\n');
+    }
+    out.extend_from_slice(&[0x1b, b'd', 3, 0x1d, b'V', 66, 0]);
+    out
+}
+
+pub fn escpos_band_rows(bytes: &[u8]) -> Vec<u32> {
+    let mut heights = Vec::new();
+    let mut index = 0;
+    while index + 8 <= bytes.len() {
+        if bytes[index] == 0x1d && bytes[index + 1] == b'v' && bytes[index + 2] == b'0' {
+            heights.push(u32::from(bytes[index + 6]) | (u32::from(bytes[index + 7]) << 8));
+        }
+        index += 1;
+    }
+    heights
+}
+
+/// True when a feed command appears before the first raster or the first printable character.
+pub fn leading_feed(bytes: &[u8]) -> bool {
+    let image = bytes.windows(4).position(|window| window == [0x1d, b'v', b'0', 0]);
+    let text = bytes.iter().position(|byte| byte.is_ascii_alphanumeric());
+    let end = match (image, text) {
+        (Some(image), Some(text)) => image.min(text),
+        (Some(image), None) => image,
+        (None, Some(text)) => text,
+        (None, None) => bytes.len(),
+    };
+    bytes[..end].windows(2).any(|window| window == [0x1b, b'd'] || window == [0x1b, b'J'])
+}
+
+pub fn describe_escpos(bytes: &[u8]) -> String {
+    let bands = escpos_band_rows(bytes);
+    let rows: u32 = bands.iter().sum();
+    let cut = bytes.windows(3).any(|window| window == [0x1d, b'V', 66]);
+    format!(
+        "ESC/POS {} raster bands, {} rows, leading_feed={}, cut={}, {} bytes",
+        bands.len(),
+        rows,
+        leading_feed(bytes),
+        cut,
+        bytes.len()
+    )
+}
+
+pub fn describe_gdi(width: u32, height: u32) -> String {
+    format!("GDI one page {width}x{height} bottom-up at the top of the page. No form-feed split. No drawer pulse.")
+}
+
+pub fn ink_span(data: &[u8], width: u32, height: u32) -> (u32, Option<u32>, Option<u32>) {
+    let row_bytes = width.div_ceil(8);
+    if row_bytes == 0 || data.len() != (row_bytes * height) as usize {
+        return (row_bytes, None, None);
+    }
+    let mut first = None;
+    let mut last = None;
+    for row in 0..height {
+        let start = (row * row_bytes) as usize;
+        if data[start..start + row_bytes as usize].iter().any(|byte| *byte != 0) {
+            if first.is_none() {
+                first = Some(row);
+            }
+            last = Some(row);
+        }
+    }
+    (row_bytes, first, last)
+}
+
+pub fn failure_class(message: &str) -> &'static str {
+    let folded = message.to_ascii_lowercase();
+    if folded.contains("could not be rendered") {
+        "rendering"
+    } else if folded.contains("malformed") {
+        "payload"
+    } else if folded.contains("timeout") {
+        "timeout"
+    } else if folded.contains("spooler") || folded.contains("windows error") || folded.contains("did not accept") {
+        "spooler"
+    } else if folded.contains("unreachable")
+        || folded.contains("connection ended")
+        || folded.contains("could not be opened")
+        || folded.contains("disconnected")
+    {
+        "transport"
+    } else {
+        "transport"
+    }
+}
+
+pub fn submission_outcome(submitted: bool, error: Option<&str>) -> &'static str {
+    if submitted { "submitted" } else { failure_class(error.unwrap_or("")) }
+}
+
+/// `ok` is the WritePrinter return. A short write is a spooler failure even when the call returns success.
+pub fn spooler_accept(ok: bool, written: u32, length: usize, windows_error: u32) -> Result<usize, String> {
+    if ok && written as usize == length {
+        return Ok(written as usize);
+    }
+    Err(format!(
+        "The spooler accepted {written} of {length} bytes (Windows error {windows_error})."
+    ))
+}
+
 pub fn send(settings: &PrinterSettings, bytes: &[u8]) -> Result<(), String> {
     let adapter = crate::printer_profile::adapter_for(&settings.transport, &settings.connection_kind);
     match adapter {
@@ -1557,6 +1731,7 @@ fn send_spooler(name: &str, bytes: &[u8]) -> Result<(), String> {
 
 #[cfg(windows)]
 fn write_spooler(name: &str, bytes: &[u8]) -> Result<(), String> {
+    use windows_sys::Win32::Foundation::GetLastError;
     use windows_sys::Win32::Graphics::Printing::{
         ClosePrinter, EndDocPrinter, EndPagePrinter, OpenPrinterW, StartDocPrinterW,
         StartPagePrinter, WritePrinter, DOC_INFO_1W, PRINTER_HANDLE,
@@ -1594,10 +1769,8 @@ fn write_spooler(name: &str, bytes: &[u8]) -> Result<(), String> {
             );
             EndPagePrinter(handle);
             EndDocPrinter(handle);
-            if ok == 0 || written as usize != bytes.len() {
-                return Err("The spooler did not accept the whole receipt.".to_string());
-            }
-            Ok(())
+            let code = if ok == 0 || written as usize != bytes.len() { GetLastError() } else { 0 };
+            spooler_accept(ok != 0, written, bytes.len(), code).map(|_| ())
         })();
         ClosePrinter(handle);
         result
@@ -1859,12 +2032,21 @@ fn stage(name: &str, result: &str) -> PrintStage {
     }
 }
 
-fn record_print(job: &RasterJob, resolved: &ResolvedPrint, payload_bytes: usize, payload_type: &str, submitted: bool, error: Option<&str>) {
+fn record_print(
+    job: &RasterJob,
+    resolved: &ResolvedPrint,
+    payload_bytes: usize,
+    payload_type: &str,
+    submitted: bool,
+    error: Option<&str>,
+    summary: &str,
+) {
     let profile = match resolved.transport {
         crate::printer_discovery::PrintTransport::EscPos => "passed",
         crate::printer_discovery::PrintTransport::WindowsGdi => "unverified",
         crate::printer_discovery::PrintTransport::None => "failed",
     };
+    let (row_bytes, first_ink_row, last_ink_row) = ink_span(&job.data, job.width, job.height);
     store_diagnostic(PrintDiagnostic {
         recorded_at: now_secs(),
         document_number: job.document_number.clone(),
@@ -1896,6 +2078,15 @@ fn record_print(job: &RasterJob, resolved: &ResolvedPrint, payload_bytes: usize,
             stage("Print job submitted", if submitted { "passed" } else { "failed" }),
             stage("Physical text verified", "not_run"),
         ],
+        row_bytes,
+        first_ink_row,
+        last_ink_row,
+        raster_bytes: job.data.len(),
+        text_bytes: job.plain_text.len(),
+        command_summary: summary.to_string(),
+        bytes_submitted: payload_bytes,
+        bytes_accepted: if submitted { Some(payload_bytes) } else { None },
+        outcome: submission_outcome(submitted, error).into(),
     });
 }
 
@@ -1908,6 +2099,7 @@ pub fn print_raster(db: &Db, job: &RasterJob) -> Result<(), String> {
     let resolved = match resolve_print(&settings) {
         Ok(resolved) => resolved,
         Err(message) => {
+            let (row_bytes, first_ink_row, last_ink_row) = ink_span(&job.data, job.width, job.height);
             store_diagnostic(PrintDiagnostic {
                 recorded_at: now_secs(),
                 document_number: job.document_number.clone(),
@@ -1939,6 +2131,15 @@ pub fn print_raster(db: &Db, job: &RasterJob) -> Result<(), String> {
                     stage("Print job submitted", "not_run"),
                     stage("Physical text verified", "not_run"),
                 ],
+                row_bytes,
+                first_ink_row,
+                last_ink_row,
+                raster_bytes: job.data.len(),
+                text_bytes: job.plain_text.len(),
+                command_summary: "No payload was built.".into(),
+                bytes_submitted: 0,
+                bytes_accepted: None,
+                outcome: submission_outcome(false, Some(&message)).into(),
             });
             return Err(message);
         }
@@ -1984,9 +2185,10 @@ pub fn print_raster(db: &Db, job: &RasterJob) -> Result<(), String> {
             Ok(bytes) => {
                 if !crate::printer_gdi::graphics_precede_cut(&bytes) {
                     let message = crate::printer_discovery::RENDER_FAILED.to_string();
-                    record_print(&printable, &resolved, bytes.len(), "escpos", false, Some(&message));
+                    record_print(&printable, &resolved, bytes.len(), "escpos", false, Some(&message), &describe_escpos(&bytes));
                     Err(message)
                 } else {
+                    let summary = describe_escpos(&bytes);
                     let sent = send(&settings, &bytes);
                     record_print(
                         &printable,
@@ -1995,12 +2197,13 @@ pub fn print_raster(db: &Db, job: &RasterJob) -> Result<(), String> {
                         "escpos",
                         sent.is_ok(),
                         sent.as_ref().err().map(String::as_str),
+                        &summary,
                     );
                     sent
                 }
             }
             Err(message) => {
-                record_print(&printable, &resolved, 0, "escpos", false, Some(&message));
+                record_print(&printable, &resolved, 0, "escpos", false, Some(&message), "ESC/POS payload was not built.");
                 Err(message)
             }
         },
@@ -2017,6 +2220,11 @@ pub fn print_raster(db: &Db, job: &RasterJob) -> Result<(), String> {
             } else {
                 send_gdi(&resolved.queue, &printable, settings.copies)
             };
+            let summary = if text_only {
+                format!("GDI text, {} characters. No raster and no drawer pulse.", printable.plain_text.len())
+            } else {
+                describe_gdi(printable.width, printable.height)
+            };
             record_print(
                 &printable,
                 &resolved,
@@ -2024,6 +2232,7 @@ pub fn print_raster(db: &Db, job: &RasterJob) -> Result<(), String> {
                 if text_only { "text" } else { "raster-image" },
                 sent.is_ok(),
                 sent.as_ref().err().map(String::as_str),
+                &summary,
             );
             if sent.is_ok() && kicking {
                 let mut pulse_bytes = vec![0x1b, b'@'];
@@ -2037,7 +2246,7 @@ pub fn print_raster(db: &Db, job: &RasterJob) -> Result<(), String> {
         }
         crate::printer_discovery::PrintTransport::None => {
             let message = crate::printer_discovery::UNSUPPORTED_METHOD.to_string();
-            record_print(&printable, &resolved, 0, "rejected", false, Some(&message));
+            record_print(&printable, &resolved, 0, "rejected", false, Some(&message), "No payload was built.");
             Err(message)
         }
     };
@@ -2109,6 +2318,20 @@ fn send_gdi(name: &str, job: &RasterJob, copies: u32) -> Result<(), String> {
 pub fn kick_drawer(db: &Db) -> Result<(), String> {
     let _ = refresh_discovery(db);
     let settings = load(db)?;
+    if crate::drawer_manager::route(&settings.drawer_connection) == crate::drawer_manager::KickRoute::Off {
+        let message = "Cash drawer is off for this register.";
+        remember_kick(db, Some(message));
+        return Err(message.into());
+    }
+    if crate::drawer_manager::route(&settings.drawer_connection) == crate::drawer_manager::KickRoute::Separate {
+        let now = now_secs();
+        let message = match crate::drawer_manager::plan_separate(&settings, now, LAST_KICK_AT.load(Ordering::Relaxed)) {
+            Ok(()) => "No verified independent drawer command is installed. AxizPOS will not send a pulse.".to_string(),
+            Err(message) => message,
+        };
+        remember_kick(db, Some(&message));
+        return Err(message);
+    }
     let now = now_secs();
     let queues = if settings.transport == "windows" {
         known_windows_printers()?
@@ -2357,6 +2580,98 @@ mod tests {
         let bytes = escpos_raster(&job, 1, &[]).unwrap();
         assert!(crate::printer_gdi::graphics_precede_cut(&bytes));
         assert!(bytes.len() > 16);
+    }
+
+    fn marked_job(width: u32, height: u32, data: Vec<u8>) -> RasterJob {
+        RasterJob {
+            width,
+            height,
+            data,
+            kick_drawer: false,
+            line_count: 2,
+            document_number: "SAMPLE-1001".into(),
+            subtotal_cents: 5500,
+            tax_cents: 275,
+            discount_cents: 200,
+            total_cents: 5575,
+            plain_text: "Cappuccino\nTotal AED 55.75".into(),
+        }
+    }
+
+    #[test]
+    fn header_items_and_footer_survive_in_order_without_a_leading_feed() {
+        let width = 576u32;
+        let height = 300u32;
+        let row = (width / 8) as usize;
+        let mut data = vec![0u8; row * height as usize];
+        data[2 * row] = 0b1010_0101;
+        data[40 * row + 10] = 0xff;
+        data[280 * row + 70] = 0b1100_0011;
+        let job = marked_job(width, height, data.clone());
+        let (row_bytes, first, last) = ink_span(&job.data, width, height);
+        assert_eq!(row_bytes, 72);
+        assert_eq!(first, Some(2));
+        assert_eq!(last, Some(280));
+        assert_eq!(job.data.len(), 72 * 300);
+        let bytes = escpos_raster(&job, 1, &DRAWER_KICK).unwrap();
+        assert!(!bytes.windows(5).any(|window| window == DRAWER_KICK));
+        assert!(!leading_feed(&bytes));
+        assert_eq!(&bytes[..2], &[0x1b, b'@']);
+        let bands = escpos_band_rows(&bytes);
+        assert!(bands.iter().all(|rows| (1..=128).contains(rows)));
+        assert_eq!(bands.iter().sum::<u32>(), height);
+        let raster: usize = bands.iter().map(|rows| *rows as usize * row).sum();
+        assert_eq!(raster, data.len());
+        let header = bytes.iter().position(|byte| *byte == 0b1010_0101).unwrap();
+        let item = bytes.iter().position(|byte| *byte == 0xff).unwrap();
+        let footer = bytes.iter().position(|byte| *byte == 0b1100_0011).unwrap();
+        assert!(header < item && item < footer);
+        let cut = bytes.windows(3).position(|window| window == [0x1d, b'V', 66]).unwrap();
+        assert!(footer < cut);
+        assert!(describe_escpos(&bytes).contains("leading_feed=false"));
+        let narrow = marked_job(512, 2, vec![0xff; 64 * 2]);
+        let narrow_bytes = escpos_raster(&narrow, 1, &[]).unwrap();
+        let marker = narrow_bytes.windows(4).position(|window| window == [0x1d, b'v', b'0', 0]).unwrap();
+        assert_eq!(narrow_bytes[marker + 4], 64);
+        assert_eq!(narrow_bytes[marker + 5], 0);
+    }
+
+    #[test]
+    fn text_diagnostic_prints_every_line_and_does_not_kick() {
+        let bytes = escpos_text_receipt(&[
+            "AXIZPOS TEXT TEST",
+            "Printer: MTP-3",
+            "Paper: 80 mm",
+            "Line 1: 1234567890",
+            "Line 2: ABCDEFGHIJKLMN",
+            "Line 3: AED 10.00",
+            "END OF TEST",
+        ]);
+        for line in ["AXIZPOS TEXT TEST", "Printer: MTP-3", "Paper: 80 mm", "Line 1: 1234567890", "Line 2: ABCDEFGHIJKLMN", "Line 3: AED 10.00", "END OF TEST"] {
+            assert!(bytes.windows(line.len()).any(|window| window == line.as_bytes()), "{line} missing");
+        }
+        assert!(!leading_feed(&bytes));
+        assert!(!bytes.windows(2).any(|window| window == [0x1b, b'p']));
+        assert!(bytes.windows(3).any(|window| window == [0x1d, b'V', 66]));
+        let end = bytes.windows(11).position(|window| window == b"END OF TEST").unwrap();
+        let cut = bytes.windows(3).position(|window| window == [0x1d, b'V', 66]).unwrap();
+        assert!(end < cut);
+    }
+
+    #[test]
+    fn spooler_short_write_is_a_spooler_failure_and_disconnect_is_transport() {
+        assert_eq!(spooler_accept(true, 20, 20, 0).unwrap(), 20);
+        let short = spooler_accept(true, 4, 20, 0).unwrap_err();
+        assert!(short.contains("4 of 20"));
+        assert_eq!(failure_class(&short), "spooler");
+        assert_eq!(failure_class("The spooler refused the print job."), "spooler");
+        assert_eq!(failure_class(spooler_timeout_message()), "timeout");
+        assert_eq!(failure_class("The printer connection ended before a result."), "transport");
+        assert_eq!(failure_class("Printer at 192.0.2.40:9100 is unreachable: disconnected"), "transport");
+        assert_eq!(failure_class(crate::printer_discovery::RENDER_FAILED), "rendering");
+        assert_eq!(failure_class("The receipt image is malformed."), "payload");
+        assert_eq!(submission_outcome(true, None), "submitted");
+        assert_eq!(submission_outcome(false, Some(spooler_timeout_message())), "timeout");
     }
 
     #[test]

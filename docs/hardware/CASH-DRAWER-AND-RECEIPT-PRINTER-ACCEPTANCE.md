@@ -2,6 +2,8 @@
 
 Date: 23-11-2026
 
+26-11-2026: the cash drawer has its own connection. Through receipt printer, separate device, and none are stored on the register. Printer failure and drawer failure are separate. Independent USB, serial, network, and vendor kicks stay off until a verified controller command exists. Physical acceptance of the HP drawer and of a separate controller is **BLOCKED**. See `AXIZPOS-UNIVERSAL-CASH-DRAWER-ARCHITECTURE.md`, `AXIZPOS-CASH-DRAWER-INDEPENDENT-CONNECTION-ACCEPTANCE.md`, and `AXIZPOS-HP-CASH-DRAWER-ACCEPTANCE.md`.
+
 26-11-2026: drawer kick stays independent of receipt printing. Serial / COM, Bluetooth Classic, and BLE do not kick. Discovery, preview, save, and the test receipt do not kick. A DC 12V / 1A cashbox rating is not treated as a sensed open. A pulse is sent only for a verified drawer profile and a matching drawer-port voltage. Generic / Text Only on a COM port is not a kick circuit. See `CASH-DRAWER-COMPATIBILITY.md`.
 
 ## Register settings save

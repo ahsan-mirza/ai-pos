@@ -15,6 +15,7 @@ pub struct BatchRow {
     pub attempts: i64,
     pub last_error: Option<String>,
     pub created_at: String,
+    pub last_attempt_at: Option<String>,
     /// Invoice / credit-note number, or a total, so the cashier can recognise the transaction.
     pub summary: String,
 }
@@ -30,7 +31,7 @@ pub fn list(db: &Db, status: Option<&str>, limit: i64) -> Result<Vec<BatchRow>, 
                         MAX(COALESCE(json_extract(payload, '$.invoice_number'), json_extract(payload, '$.credit_note_number'),
                                      json_extract(payload, '$.z_number'))),
                         MAX(json_extract(payload, '$.total_cents')), MAX(json_extract(payload, '$.total_refund_cents')),
-                        MAX(json_extract(payload, '$.amount_cents'))
+                        MAX(json_extract(payload, '$.amount_cents')), MAX(last_attempt_at)
                  FROM sync_queue
                  WHERE (?1 IS NULL OR status = ?1)
                  GROUP BY batch_id ORDER BY MIN(rowid) DESC LIMIT ?2",
@@ -58,6 +59,7 @@ pub fn list(db: &Db, status: Option<&str>, limit: i64) -> Result<Vec<BatchRow>, 
                     attempts: row.get(4)?,
                     last_error: row.get(5)?,
                     created_at: row.get(6)?,
+                    last_attempt_at: row.get(11)?,
                     summary,
                 })
             })

@@ -144,6 +144,9 @@ export function SyncCenterModal({ session, onClose }: { session: CashierSession;
                   <p className="text-xs text-charcoal/50 dark:text-zinc-400 tabular-nums">
                     {new Date(batch.created_at).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}
                     {batch.attempts > 0 && batch.status === "pending" ? ` · ${batch.attempts} failed attempts` : ""}
+                    {batch.last_attempt_at
+                      ? ` · Last attempt ${new Date(batch.last_attempt_at).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}`
+                      : ""}
                   </p>
                 </div>
                 {batch.status === "rejected" ? (

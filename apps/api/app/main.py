@@ -96,7 +96,13 @@ def create_app() -> FastAPI:
         try:
             response = await call_next(request)
         except Exception as exc:
-            logger.exception("Unhandled error %s on %s %s", request_id, request.method, request.url.path)
+            logger.exception(
+                "Unhandled error %s attempt %s on %s %s",
+                request_id,
+                request.headers.get("x-sync-attempt", "-"),
+                request.method,
+                request.url.path,
+            )
             status, body = unhandled_error(
                 exc,
                 debug=settings.app_env != "production",

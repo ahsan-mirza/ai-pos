@@ -21,6 +21,7 @@ mod media_cache;
 mod menu;
 mod payments;
 mod cash_drawer;
+mod drawer_manager;
 mod printer;
 mod printer_discovery;
 mod printer_gdi;

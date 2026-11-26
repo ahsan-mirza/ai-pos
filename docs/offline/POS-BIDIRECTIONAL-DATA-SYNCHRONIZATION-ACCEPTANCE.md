@@ -20,7 +20,7 @@ The expenses list is still `GET /api/v1/expenses` when the register is online. P
 
 ## Conflicts
 
-A repeated expense key keeps the first server row, including its original description. Sale and stock conflicts stay on the O5/O6 rules. Settings, tax, and security records are not last-write-wins in this pass, and they are not newly queued offline.
+A repeated expense key keeps the first server row, including its original description. Sale and stock conflicts stay on the O5/O6 rules. A Sync Center upload that returns HTTP 500 leaves the original payload and key pending; the next independent batch is still attempted. See `SYNC-CENTER-PENDING-UPLOAD-ROOT-CAUSE-AND-FIX.md`. Settings, tax, and security records are not last-write-wins in this pass, and they are not newly queued offline.
 
 ## Tests
 

@@ -505,6 +505,12 @@ export interface PrinterSettings {
   host_voltage?: string;
   /** Card and other non-cash tenders stay closed unless this is on. */
   open_on_non_cash?: boolean;
+  /** printer, separate, or none. Empty keeps the printer kick path. */
+  drawer_connection?: "printer" | "separate" | "none" | "";
+  /** usb, serial, network, or vendor when the drawer is a separate device. */
+  drawer_controller_kind?: string;
+  drawer_controller_address?: string;
+  drawer_controller_protocol?: string;
 }
 
 export interface BluetoothSerialPort {
@@ -595,6 +601,11 @@ export interface PrinterProbe {
   drawerProfile?: string;
   hostVoltage?: string;
   openOnNonCash?: boolean;
+  /** printer, separate, or none. */
+  drawerConnection?: "printer" | "separate" | "none" | string;
+  /** off, printer, blocked, or ready. */
+  drawerStatus?: string;
+  drawerControllerKind?: string;
 }
 
 export function probePrinter(): Promise<PrinterProbe> {
@@ -847,6 +858,7 @@ export interface QueuedBatch {
   attempts: number;
   last_error: string | null;
   created_at: string;
+  last_attempt_at?: string | null;
   summary: string;
 }
 

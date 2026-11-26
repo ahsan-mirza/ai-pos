@@ -10,6 +10,8 @@ The HP Standard Duty Cash Drawer, model **VB400-BL1616**, assembly **661672-001*
 
 Physical opening of a VB400-BL1616 was **not** confirmed on this machine. The row below is **Supported by driver** from the HP cash-drawer user guide (printer-driven, 24V only). It is not marked Tested.
 
+The register now stores a drawer connection separately from the receipt printer: through the receipt printer, a separate controller, or none. A separate USB, serial, network, or vendor controller is not kicked in this build, because no verified command is installed. An RJ11/RJ12 drawer is not treated as a PC USB device. The MTP-3 drawer output is labelled DC12V/1A, so it is not a match for the 24V HP drawer. See `AXIZPOS-UNIVERSAL-CASH-DRAWER-ARCHITECTURE.md`.
+
 ## Matrix
 
 | Device or connection | Status | What AxizPOS will send |

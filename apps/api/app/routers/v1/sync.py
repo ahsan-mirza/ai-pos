@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Header
 from sqlalchemy.orm import Session
 
 from app.core.config import Settings, get_settings
@@ -18,5 +18,8 @@ def push_sync(
     db: Annotated[Session, Depends(get_db)],
     settings: Annotated[Settings, Depends(get_settings)],
     principal: Annotated[Principal, Depends(require_device)],
+    x_sync_attempt: Annotated[str | None, Header(alias="X-Sync-Attempt")] = None,
 ) -> SyncPushResponse:
-    return push_batch(db, request, settings, source="register", device=principal.device)
+    return push_batch(
+        db, request, settings, source="register", device=principal.device, attempt_id=x_sync_attempt
+    )

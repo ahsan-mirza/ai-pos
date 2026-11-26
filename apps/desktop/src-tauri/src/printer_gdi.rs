@@ -16,7 +16,8 @@ pub fn paper_size_tenths(width_dots: u32, height_dots: u32) -> (i16, i16) {
     (width, length as i16)
 }
 
-/// Source rows for each driver page. A short page is continued, not scaled down to a quarter of the slip.
+/// Source rows for each driver page. Roll printing does not use this; a short page must not become a new form.
+#[cfg_attr(not(test), allow(dead_code))]
 pub fn page_slices(height: u32, rows_per_page: u32) -> Vec<(u32, u32)> {
     let page = rows_per_page.max(1);
     let mut slices = Vec::new();
@@ -29,6 +30,7 @@ pub fn page_slices(height: u32, rows_per_page: u32) -> Vec<(u32, u32)> {
     slices
 }
 
+#[cfg_attr(not(test), allow(dead_code))]
 pub fn slice_packed(width: u32, packed: &[u8], start: u32, rows: u32) -> Result<Vec<u8>, String> {
     let row_bytes = width.div_ceil(8) as usize;
     let from = start as usize * row_bytes;
@@ -39,19 +41,35 @@ pub fn slice_packed(width: u32, packed: &[u8], start: u32, rows: u32) -> Result<
     Ok(packed[from..to].to_vec())
 }
 
-/// Destination size in driver pixels. The image keeps its physical width and stays inside the printable area.
+/// Destination size in driver pixels. The image keeps its physical width.
+/// A reported printable width far below the raster is ignored, so a 576-dot slip is not
+/// squeezed into a few millimetres when the driver mixes DPI and dot counts.
 pub fn gdi_destination(src_w: u32, src_h: u32, dpi: i32, printable: i32) -> (i32, i32) {
     let dpi = if dpi <= 0 { 203 } else { dpi };
     let mut dest_w = (src_w as i64 * i64::from(dpi) / 203).max(1) as i32;
     let mut dest_h = (src_h as i64 * i64::from(dpi) / 203).max(1) as i32;
-    if printable > 0 && dest_w > printable {
+    let source_mm = f64::from(src_w) / 203.0 * 25.4;
+    let printable_mm = if printable > 0 {
+        f64::from(printable) / f64::from(dpi) * 25.4
+    } else {
+        source_mm
+    };
+    if printable > 0 && dest_w > printable && printable_mm + 1.0 >= source_mm * 0.85 {
         dest_h = ((i64::from(dest_h) * i64::from(printable)) / i64::from(dest_w)).max(1) as i32;
         dest_w = printable;
     }
     (dest_w, dest_h)
 }
 
+/// One page for the whole raster. A short driver page used to start a new form per slice,
+/// and the roll then showed the footer after a blank sheet.
+pub fn roll_page(height: u32) -> Vec<(u32, u32)> {
+    vec![(0, height.max(1))]
+}
+
 /// Expands MSB-first 1-bit rows (1 = black) into a top-down 24-bit BGR DIB.
+/// Production pages call `expand_rows` after the whole receipt has already been rejected if it is blank.
+#[cfg_attr(not(test), allow(dead_code))]
 pub fn expand_bgr24(width: u32, height: u32, packed: &[u8]) -> Result<(usize, Vec<u8>), String> {
     if !packed.iter().any(|byte| *byte != 0) {
         return Err(RENDER_FAILED.into());
@@ -106,7 +124,8 @@ pub fn graphics_precede_cut(bytes: &[u8]) -> bool {
 pub fn print_gdi(name: &str, width: u32, height: u32, packed: &[u8], copies: u32) -> Result<(), String> {
     use windows_sys::Win32::Foundation::GetLastError;
     use windows_sys::Win32::Graphics::Gdi::{
-        CreateDCW, DeleteDC, GetDeviceCaps, SetStretchBltMode, BLACKONWHITE, HORZRES, LOGPIXELSX, VERTRES,
+        CreateDCW, DeleteDC, GetDeviceCaps, SetStretchBltMode, SetViewportOrgEx, SetWindowOrgEx, COLORONCOLOR,
+        HORZRES, LOGPIXELSX,
     };
     use windows_sys::Win32::Graphics::Printing::{ClosePrinter, OpenPrinterW, PRINTER_HANDLE};
     use windows_sys::Win32::Storage::Xps::{EndDoc, EndPage, StartDocW, StartPage, DOCINFOW};
@@ -143,50 +162,36 @@ pub fn print_gdi(name: &str, width: u32, height: u32, packed: &[u8], copies: u32
             if StartDocW(hdc, &info) <= 0 {
                 return Err(format!("{TRANSMIT_FAILED} Windows error {}.", GetLastError()));
             }
-            SetStretchBltMode(hdc, BLACKONWHITE);
+            SetStretchBltMode(hdc, COLORONCOLOR);
+            let _ = SetViewportOrgEx(hdc, 0, 0, std::ptr::null_mut());
+            let _ = SetWindowOrgEx(hdc, 0, 0, std::ptr::null_mut());
             let dpi = GetDeviceCaps(hdc, LOGPIXELSX as i32);
             let printable = GetDeviceCaps(hdc, HORZRES as i32);
-            let page_px = GetDeviceCaps(hdc, VERTRES as i32).max(1);
             let (dest_w, dest_h) = gdi_destination(width, height, dpi, printable);
-            let rows_per_page = if dest_h <= page_px.saturating_add(8) {
-                height
-            } else {
-                ((u64::from(height) * u64::from(page_px as u32)) / u64::from(dest_h.max(1) as u32)).max(1) as u32
+            let (stride, pixels) = match expand_rows(width, height, packed) {
+                Ok(expanded) => expanded,
+                Err(message) => {
+                    let _ = EndDoc(hdc);
+                    return Err(message);
+                }
             };
-            let slices = page_slices(height, rows_per_page);
+            // Positive biHeight. A negative height can report success while the driver keeps only the last rows.
+            let bottom_up = flip_bottom_up(height, stride, &pixels);
+            let pages = roll_page(height);
+            if pages.len() != 1 || pages[0].1 != height {
+                let _ = EndDoc(hdc);
+                return Err("The receipt was split across pages.".into());
+            }
             for _ in 0..copies.max(1) {
-                for (start, rows) in &slices {
-                    let slice = match slice_packed(width, packed, *start, *rows) {
-                        Ok(slice) => slice,
-                        Err(message) => {
-                            let _ = EndDoc(hdc);
-                            return Err(message);
-                        }
-                    };
-                    let (slice_stride, slice_pixels) = match expand_rows(width, *rows, &slice) {
-                        Ok(expanded) => expanded,
-                        Err(message) => {
-                            let _ = EndDoc(hdc);
-                            return Err(message);
-                        }
-                    };
-                    let slice_dest_h = ((i64::from(dest_h) * i64::from(*rows)) / i64::from(height.max(1))).max(1) as i32;
-                    if StartPage(hdc) <= 0 {
-                        let _ = EndDoc(hdc);
-                        return Err(format!("{TRANSMIT_FAILED} Windows error {}.", GetLastError()));
-                    }
-                    let bottom_up = flip_bottom_up(*rows, slice_stride, &slice_pixels);
-                    let top = paint(hdc, width, *rows, slice_stride, &slice_pixels, dest_w, slice_dest_h, true);
-                    let painted = if top {
-                        true
-                    } else {
-                        paint(hdc, width, *rows, slice_stride, &bottom_up, dest_w, slice_dest_h, false)
-                    };
-                    let _ = EndPage(hdc);
-                    if !painted {
-                        let _ = EndDoc(hdc);
-                        return Err(format!("{TRANSMIT_FAILED} Windows error {}.", GetLastError()));
-                    }
+                if StartPage(hdc) <= 0 {
+                    let _ = EndDoc(hdc);
+                    return Err(format!("{TRANSMIT_FAILED} Windows error {}.", GetLastError()));
+                }
+                let painted = paint(hdc, width, height, stride, &bottom_up, dest_w, dest_h, false);
+                let _ = EndPage(hdc);
+                if !painted {
+                    let _ = EndDoc(hdc);
+                    return Err(format!("{TRANSMIT_FAILED} Windows error {}.", GetLastError()));
                 }
             }
             if EndDoc(hdc) <= 0 {
@@ -256,7 +261,8 @@ fn prepare_devmode(
     height: u32,
 ) -> Option<Vec<u8>> {
     use windows_sys::Win32::Graphics::Gdi::{
-        DEVMODEW, DM_ORIENTATION, DM_PAPERLENGTH, DM_PAPERSIZE, DM_PAPERWIDTH, DMPAPER_USER,
+        DEVMODEW, DM_ORIENTATION, DM_PAPERLENGTH, DM_PAPERSIZE, DM_PAPERWIDTH, DM_PRINTQUALITY, DM_SCALE,
+        DM_YRESOLUTION, DMPAPER_USER,
     };
     use windows_sys::Win32::Graphics::Printing::DocumentPropertiesW;
     unsafe {
@@ -276,13 +282,19 @@ fn prepare_devmode(
         {
             return None;
         }
-        let mode = current.as_mut_ptr() as *mut DEVMODEW;
-        let (paper_w, paper_h) = paper_size_tenths(width, height);
-        (*mode).dmFields |= DM_ORIENTATION | DM_PAPERSIZE | DM_PAPERLENGTH | DM_PAPERWIDTH;
-        (*mode).Anonymous1.Anonymous1.dmOrientation = 1;
-        (*mode).Anonymous1.Anonymous1.dmPaperSize = DMPAPER_USER as i16;
-        (*mode).Anonymous1.Anonymous1.dmPaperLength = paper_h;
-        (*mode).Anonymous1.Anonymous1.dmPaperWidth = paper_w;
+        let apply = |mode: *mut DEVMODEW| {
+            let (paper_w, paper_h) = paper_size_tenths(width, height);
+            (*mode).dmFields |=
+                DM_ORIENTATION | DM_PAPERSIZE | DM_PAPERLENGTH | DM_PAPERWIDTH | DM_SCALE | DM_PRINTQUALITY | DM_YRESOLUTION;
+            (*mode).Anonymous1.Anonymous1.dmOrientation = 1;
+            (*mode).Anonymous1.Anonymous1.dmPaperSize = DMPAPER_USER as i16;
+            (*mode).Anonymous1.Anonymous1.dmPaperLength = paper_h;
+            (*mode).Anonymous1.Anonymous1.dmPaperWidth = paper_w;
+            (*mode).Anonymous1.Anonymous1.dmScale = 100;
+            (*mode).Anonymous1.Anonymous1.dmPrintQuality = 203;
+            (*mode).dmYResolution = 203;
+        };
+        apply(current.as_mut_ptr().cast());
         let mut updated = current.clone();
         if DocumentPropertiesW(
             std::ptr::null_mut(),
@@ -295,6 +307,8 @@ fn prepare_devmode(
         {
             return Some(current);
         }
+        // The driver merge can restore a long default page. Put the raster's page size back.
+        apply(updated.as_mut_ptr().cast());
         Some(updated)
     }
 }
@@ -469,8 +483,10 @@ mod tests {
         assert!(narrow.0 < wide.0);
         assert_eq!(wide.0, 576);
         let scaled = gdi_destination(576, 600, 300, 400);
-        assert_eq!(scaled.0, 400);
-        assert!(scaled.1 < 600);
+        let kept = (576i64 * 300 / 203) as i32;
+        assert_eq!(scaled.0, kept);
+        assert!(scaled.1 > 600);
+        assert_eq!(roll_page(1_000), vec![(0, 1_000)]);
     }
 
     #[test]

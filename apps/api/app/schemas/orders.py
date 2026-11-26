@@ -22,8 +22,9 @@ class OrderItemIn(ApiModel):
     unit_price_cents: int = Field(ge=0)
     modifiers: list[ModifierChoice] = Field(default_factory=list, max_length=30)
     price_option_id: UUID | None = None
-    # Explicit exception for this line only. Absent keeps the recipe.
-    skip_recipe: bool = False
+    # Absent follows the menu item. An explicit value that disagrees with that item is refused.
+    # Other business types still treat absent as "keep the recipe".
+    skip_recipe: bool | None = None
     # Meal components for a combo item; each fires to its own kitchen station.
     components: list[ComboChoice] = Field(default_factory=list, max_length=20)
     seat: int | None = Field(default=None, ge=1, le=99)

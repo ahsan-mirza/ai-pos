@@ -557,6 +557,7 @@ export function OrdersPage({ session }: { session: CashierSession }) {
       unit_price_cents: (line.priceOption?.price_cents ?? line.product.price_cents) + modifierDelta(line.modifiers) + comboDelta(line.components),
       modifiers: line.modifiers,
       ...(line.priceOption ? { price_option_id: line.priceOption.id } : {}),
+      ...(line.product.sell_without_recipe ? { skip_recipe: true } : {}),
       ...(line.components.length ? { components: line.components } : {}),
       seat: line.seat,
       ...(line.note.trim() ? { note: line.note.trim() } : {}),

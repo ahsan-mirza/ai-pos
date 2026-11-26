@@ -9,6 +9,8 @@ describe("cash drawer kick policy", () => {
     expect(shouldKickDrawer({ kickDrawer: false }, enabled)).toBe(false);
     expect(shouldKickDrawer({ kickDrawer: true }, { ...enabled, drawer_kick: false })).toBe(false);
     expect(shouldKickDrawer({ kickDrawer: true }, { ...enabled, transport: "none" })).toBe(false);
+    expect(shouldKickDrawer({ kickDrawer: true }, { ...enabled, drawer_connection: "none" })).toBe(false);
+    expect(shouldKickDrawer({ kickDrawer: true }, { drawer_kick: true, transport: "none", drawer_connection: "separate" })).toBe(true);
     expect(shouldKickDrawer({ kickDrawer: false }, enabled)).toBe(false);
   });
 

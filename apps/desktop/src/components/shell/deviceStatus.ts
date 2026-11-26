@@ -1,5 +1,5 @@
 import type { PrinterProbe } from "../../lib/tauri";
-import { pulseProfileReady } from "../../features/printing/drawerProfiles";
+import { drawerConnection, pulseProfileReady } from "../../features/printing/drawerProfiles";
 import type { KeyboardStatus } from "../../hooks/useVirtualKeyboard";
 
 export type Light = "green" | "red" | "gray" | "amber";
@@ -199,6 +199,7 @@ export function printerIndicator(probe: PrinterProbe): Indicator | null {
 const DRAWER_UNKNOWN = "Open/closed state: Not reported.";
 
 export function drawerCanTest(probe: PrinterProbe): boolean {
+  if (drawerConnection(probe.drawerConnection) !== "printer") return false;
   const known = probe.supportsDrawerKick === true && probe.compatibility === "compatible";
   return (
     probe.configured &&
@@ -211,6 +212,36 @@ export function drawerCanTest(probe: PrinterProbe): boolean {
 }
 
 export function drawerIndicator(probe: PrinterProbe): Indicator | null {
+  const connection = drawerConnection(probe.drawerConnection);
+  if (connection === "none") {
+    return row({
+      id: "cash-drawer",
+      kind: "cash_drawer",
+      label: "Drawer",
+      name: "Cash drawer",
+      light: "gray",
+      status: `Cash drawer is off for this register. ${DRAWER_UNKNOWN}`,
+      connection: "None",
+      configured: 1,
+      actions: ["configure"],
+    });
+  }
+  if (connection === "separate") {
+    return row({
+      id: "cash-drawer",
+      kind: "cash_drawer",
+      label: "Drawer",
+      name: "Cash drawer",
+      light: probe.drawerKick ? "amber" : "gray",
+      status: probe.drawerKick
+        ? `Separate drawer controller is not verified. No pulse will be sent. ${DRAWER_UNKNOWN}`
+        : `Cash payments do not kick the drawer on this register. ${DRAWER_UNKNOWN}`,
+      connection: "Separate device",
+      lastError: probe.lastKickError,
+      configured: 1,
+      actions: ["configure"],
+    });
+  }
   if (!probe.configured) {
     return row({
       id: "cash-drawer",

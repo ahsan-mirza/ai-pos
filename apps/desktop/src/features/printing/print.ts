@@ -74,13 +74,13 @@ export interface PrintRequest {
 }
 export function shouldKickDrawer(
   options: { kickDrawer: boolean },
-  settings: Pick<PrinterSettings, "drawer_kick" | "transport">,
+  settings: Pick<PrinterSettings, "drawer_kick" | "transport" | "drawer_connection">,
 ): boolean {
-  return (
-    options.kickDrawer &&
-    settings.drawer_kick &&
-    (settings.transport === "tcp" || settings.transport === "windows")
-  );
+  if (!options.kickDrawer || !settings.drawer_kick) return false;
+  const connection = settings.drawer_connection ?? "printer";
+  if (connection === "none") return false;
+  if (connection === "separate") return true;
+  return settings.transport === "tcp" || settings.transport === "windows";
 }
 
 /**

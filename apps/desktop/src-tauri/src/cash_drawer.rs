@@ -24,12 +24,14 @@ pub struct Profile {
     pub model: &'static str,
     pub voltage: &'static str,
     pub connector: &'static str,
+    #[cfg_attr(not(test), allow(dead_code))]
     pub matrix: &'static str,
     kind: Kind,
     /// ESC/POS pin locked by the profile. None means the saved pin (0 or 1) is used.
     locked_pin: Option<u8>,
     on: u8,
     off: u8,
+    #[cfg_attr(not(test), allow(dead_code))]
     pub physical_open_confirmed: bool,
 }
 
@@ -133,12 +135,24 @@ pub struct KickHost<'a> {
     pub port: &'a str,
 }
 
+#[cfg_attr(not(test), allow(dead_code))]
 pub fn profiles() -> &'static [Profile] {
     PROFILES
 }
 
 pub fn find(id: &str) -> Option<&'static Profile> {
     PROFILES.iter().find(|profile| profile.id == id.trim())
+}
+
+/// printer, usb, serial, opos, or adapter. None when the id is not in the list.
+pub fn interface(id: &str) -> Option<&'static str> {
+    find(id).map(|profile| match profile.kind {
+        Kind::PrinterDk => "printer",
+        Kind::Usb => "usb",
+        Kind::Serial => "serial",
+        Kind::Opos => "opos",
+        Kind::Adapter => "adapter",
+    })
 }
 
 pub fn validate(profile_id: &str, voltage: &str) -> Result<(), String> {

@@ -1,5 +1,5 @@
 import type { InstalledPrinter, PrinterProbe, PrinterSettings } from "../../lib/tauri";
-import { lacksKickCircuit, pulseProfileReady } from "./drawerProfiles";
+import { drawerConnection, lacksKickCircuit, pulseProfileReady } from "./drawerProfiles";
 import { BLE_UNSUPPORTED, TCP_OPEN_NOTICE } from "./printerConnections";
 
 export const DISCOVERING = "Discovering Windows printers...";
@@ -127,9 +127,10 @@ export function canTestPrint(draft: Pick<PrinterSettings, "transport" | "address
 }
 
 export function canTestDrawer(
-  draft: Pick<PrinterSettings, "transport" | "address" | "drawer_kick" | "drawer_profile" | "host_voltage">,
+  draft: Pick<PrinterSettings, "transport" | "address" | "drawer_kick" | "drawer_profile" | "host_voltage" | "drawer_connection">,
   queues: readonly InstalledPrinter[],
 ): boolean {
+  if (drawerConnection(draft.drawer_connection) !== "printer") return false;
   if (draft.transport === "none" || draft.transport === "serial" || draft.transport === "ble" || draft.drawer_kick === false) return false;
   if (!pulseProfileReady(draft)) return false;
   if (draft.transport === "tcp") return true;
@@ -150,7 +151,7 @@ export function canTestPrintFromProbe(probe: PrinterProbe | null): boolean {
 }
 
 export function canTestDrawerFromProbe(probe: PrinterProbe | null): boolean {
-  if (!probe) return false;
+  if (!probe || drawerConnection(probe.drawerConnection) !== "printer") return false;
   const reachable =
     probe.configured &&
     probe.transport !== "none" &&
