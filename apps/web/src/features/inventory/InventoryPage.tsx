@@ -1,6 +1,6 @@
 import { actionHoverClass } from "@ai-pos/ui";
 import { Permission, activePriceOptions, formatMoney, noMatchesMessage, type Product, type ProductSearchHit } from "@ai-pos/shared-types";
-import { Package, Pencil, Plus, Power, Printer, Trash2, Upload } from "lucide-react";
+import { Package, Pencil, Plus, Power, Printer, Search, Trash2, Upload } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { DataTable, type DataTableColumn, type TableFilter } from "../../components/ui/DataTable";
