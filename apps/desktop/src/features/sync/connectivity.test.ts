@@ -10,7 +10,8 @@ describe("server connectivity", () => {
     expect(endpointKind("http://not-activated.invalid", false)).toBe("unactivated");
     expect(mayProbe("development")).toBe(true);
     expect(mayProbe("https")).toBe(true);
-    expect(mayProbe("insecure")).toBe(false);
+    expect(mayProbe("insecure")).toBe(true);
+    expect(mayProbe("invalid")).toBe(false);
     expect(linkState({ reachable: false, syncing: false, activated: true })).toBe("offline");
     expect(linkState({ reachable: false, syncing: true, activated: true })).toBe("reconnecting");
     expect(linkState({ reachable: true, syncing: false, activated: false })).toBe("not_activated");
@@ -20,6 +21,7 @@ describe("server connectivity", () => {
     expect(unlockFailureMessage(new Error("The server is unreachable and this cashier has not unlocked this register online yet."))).toBe("");
     expect(unlockFailureMessage(new Error("offline-quiet"))).toBe(NO_CACHED_PIN);
     expect(unlockFailureMessage(new Error("Invalid username or credentials."))).toBe("Invalid username or credentials.");
-    expect(linkMessage("offline", "insecure")).toContain("not HTTPS");
+    expect(linkMessage("offline", "insecure")).toBe(OFFLINE_NOTICE);
+    expect(linkMessage("online", "insecure")).toContain("reach its configured server");
   });
 });

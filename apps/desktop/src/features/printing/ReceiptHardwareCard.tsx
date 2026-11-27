@@ -18,7 +18,7 @@ import { printExactReceipt } from "./print";
 import { pulseProfileReady } from "./drawerProfiles";
 import { MISSING, OFFLINE, SPOOLER_ACCEPTED, UNSUPPORTED_METHOD, candidateMessage, canTestDrawerFromProbe, canTestPrintFromProbe } from "./printerSelection";
 import { ReceiptPreviewPanel } from "./ReceiptPreviewPanel";
-import { detectionResult, layoutWidth, paperLabel, settingsPreviewReceipt, setupSteps } from "./settingsPreview";
+import { layoutWidth, paperLabel, settingsPreviewReceipt } from "./settingsPreview";
 import type { ReceiptDoc } from "@ai-pos/receipt";
 
 function when(seconds: number | null | undefined): string {
@@ -276,25 +276,6 @@ export function ReceiptHardwareCard({
       {probe?.previousAddress && probe.previousAddress !== probe.address ? (
         <p className="mt-3 text-sm text-zinc-500">Previous configured printer: {probe.previousAddress}</p>
       ) : null}
-      <p role="status" className="mt-4 text-sm font-medium">
-        {detectionResult(probe, queues)}
-      </p>
-      <ol className="mt-4 space-y-2 text-sm" aria-label="Printer setup">
-        {setupSteps({
-          queue: probe?.configured ? probe.address : "",
-          driver: selected?.driver || probe?.driver || "",
-          port: selected?.port || probe?.port || "",
-          compatibility: probe?.compatibility || "",
-          transport: selected?.printTransport || probe?.printTransport || "",
-          drawerVerified: Boolean(kickSupported && probe?.compatibility === "compatible"),
-          paper: paperLabel(paperDots),
-          reachable: Boolean(probe?.reachable),
-        }).map((item) => (
-          <li key={item.step}>
-            <span className="font-semibold">Step {item.step} — {item.title}.</span> {item.detail}
-          </li>
-        ))}
-      </ol>
       <div className="mt-4 flex flex-wrap gap-2" role="group" aria-label="Paper width">
         {([576, 384] as const).map((dots) => (
           <button

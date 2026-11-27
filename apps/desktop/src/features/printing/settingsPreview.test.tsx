@@ -186,7 +186,7 @@ describe("register settings receipt preview", () => {
     expect(html).toContain("Receipt Preview");
     expect(html).toContain("58 mm");
     expect(html).toContain("80 mm");
-    expect(html).toContain("Step 1");
+    expect(html).not.toContain("Step 1");
     expect(html).toContain("does not create a sale");
     expect(html).toContain("Rendering receipt preview");
     const prompt: ReceiptPrompt = {

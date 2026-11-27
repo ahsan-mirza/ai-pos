@@ -35,7 +35,9 @@ pub fn endpoint_kind(url: &str, release: bool) -> EndpointKind {
 }
 
 pub fn may_probe(kind: EndpointKind) -> bool {
-    matches!(kind, EndpointKind::Https | EndpointKind::Development)
+    // The activated server may be HTTP until a hostname and certificate exist.
+    // A missing or invalid address is still not called.
+    matches!(kind, EndpointKind::Https | EndpointKind::Development | EndpointKind::Insecure)
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -64,9 +66,6 @@ pub fn link_message(state: LinkState, kind: EndpointKind) -> &'static str {
     if state == LinkState::NotActivated {
         return "This register is not activated. Local setup can continue. No remote server is assumed.";
     }
-    if kind == EndpointKind::Insecure {
-        return "The configured server is not HTTPS, so AxizPOS will not send the register's data to it. Local POS operations remain available.";
-    }
     if kind == EndpointKind::Invalid {
         return "The configured server address is not a valid URL. Local POS operations remain available.";
     }
@@ -82,7 +81,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn localhost_is_a_development_url_and_a_remote_http_url_is_not_called() {
+    fn a_configured_http_server_is_checked_and_localhost_stays_development() {
         assert_eq!(endpoint_kind("http://localhost:8000", false), EndpointKind::Development);
         assert_eq!(endpoint_kind("http://localhost:8000", true), EndpointKind::Insecure);
         assert_eq!(endpoint_kind("https://client1.example.com", true), EndpointKind::Https);
@@ -90,7 +89,10 @@ mod tests {
         assert_eq!(endpoint_kind("http://not-activated.invalid", false), EndpointKind::Unactivated);
         assert!(may_probe(EndpointKind::Development));
         assert!(may_probe(EndpointKind::Https));
-        assert!(!may_probe(EndpointKind::Insecure));
+        assert!(may_probe(EndpointKind::Insecure));
+        assert!(!may_probe(EndpointKind::Invalid));
+        assert_eq!(link_message(LinkState::Offline, EndpointKind::Insecure), OFFLINE_NOTICE);
+        assert!(link_message(LinkState::Online, EndpointKind::Insecure).contains("reach its configured server"));
         assert_eq!(link_state(true, false, true), LinkState::Reconnecting);
         assert_eq!(link_state(true, false, false), LinkState::Offline);
         assert_eq!(link_state(false, false, false), LinkState::NotActivated);

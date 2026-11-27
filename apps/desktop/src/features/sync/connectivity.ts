@@ -43,9 +43,9 @@ export function endpointKind(url: string, release: boolean): EndpointKind {
   return "invalid";
 }
 
-/** A configured address is never rewritten. An insecure remote is not called. */
+/** A configured address is never rewritten. HTTP and HTTPS servers are both checked. */
 export function mayProbe(kind: EndpointKind): boolean {
-  return kind === "https" || kind === "development";
+  return kind === "https" || kind === "development" || kind === "insecure";
 }
 
 export function linkState(input: { reachable: boolean; syncing: boolean; activated: boolean }): LinkState {
@@ -57,9 +57,6 @@ export function linkState(input: { reachable: boolean; syncing: boolean; activat
 export function linkMessage(state: LinkState, kind: EndpointKind): string {
   if (state === "not_activated") {
     return "This register is not activated. Local setup can continue. No remote server is assumed.";
-  }
-  if (kind === "insecure") {
-    return "The configured server is not HTTPS, so AxizPOS will not send the register's data to it. Local POS operations remain available.";
   }
   if (kind === "invalid") {
     return "The configured server address is not a valid URL. Local POS operations remain available.";

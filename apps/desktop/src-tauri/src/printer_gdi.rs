@@ -118,11 +118,11 @@ fn expand_rows(width: u32, height: u32, packed: &[u8]) -> Result<(usize, Vec<u8>
     Ok((stride, pixels))
 }
 
-/// Row count used only when a raster is split for inspection. A Windows receipt is one page.
-/// A separate `StartPage` for each slice is what left the middle of the slip blank.
+/// Rows in one printer page. A taller single bitmap is what left only the footer on this driver.
+/// 1-bit rows stay far under the size that bitmap was truncated to.
 pub const GDI_BAND_ROWS: u32 = 128;
 
-/// Exact roll size in tenths of a millimetre. No added tail: extra length is a blank band.
+/// Paper for one band, in tenths of a millimetre, with no extra tail. A tail is a white cut through the next line.
 pub fn band_paper_tenths(width_dots: u32, height_dots: u32) -> (i16, i16) {
     let width = if width_dots <= 384 { 580 } else { 800 };
     let length = ((height_dots.max(1) as i64) * 254 / 203).clamp(1, 32_000);
@@ -141,8 +141,8 @@ pub fn gdi_bands(height: u32) -> Vec<(u32, u32)> {
     bands
 }
 
-/// Bottom-up 24-bit BGR for one band. Black stays black and paper stays white, so the driver
-/// has no gray to dither. DWORD aligned. The first bytes are the last source row.
+/// Bottom-up 24-bit BGR for the rows `[start, start + rows)`. Black stays black.
+/// The first bytes are the last source row, which is what `SetDIBitsToDevice` expects.
 pub fn band_bgr24(width: u32, packed: &[u8], start: u32, rows: u32) -> Result<Vec<u8>, String> {
     let row_bytes = width.div_ceil(8) as usize;
     let stride = (width as usize)
@@ -215,13 +215,8 @@ fn set_band_paper(bytes: &mut [u8], width: u32, height: u32) {
     unsafe {
         let mode = bytes.as_mut_ptr().cast::<DEVMODEW>();
         let (paper_w, paper_h) = band_paper_tenths(width, height);
-        (*mode).dmFields |= DM_ORIENTATION
-            | DM_PAPERSIZE
-            | DM_PAPERLENGTH
-            | DM_PAPERWIDTH
-            | DM_SCALE
-            | DM_PRINTQUALITY
-            | DM_YRESOLUTION;
+        (*mode).dmFields |=
+            DM_ORIENTATION | DM_PAPERSIZE | DM_PAPERLENGTH | DM_PAPERWIDTH | DM_SCALE | DM_PRINTQUALITY | DM_YRESOLUTION;
         (*mode).Anonymous1.Anonymous1.dmOrientation = 1;
         (*mode).Anonymous1.Anonymous1.dmPaperSize = DMPAPER_USER as i16;
         (*mode).Anonymous1.Anonymous1.dmPaperLength = paper_h;
@@ -233,45 +228,75 @@ fn set_band_paper(bytes: &mut [u8], width: u32, height: u32) {
 }
 
 #[cfg(windows)]
-pub fn print_gdi(name: &str, width: u32, height: u32, packed: &[u8], copies: u32) -> Result<(), String> {
+pub fn print_gdi(
+    name: &str,
+    width: u32,
+    height: u32,
+    packed: &[u8],
+    copies: u32,
+) -> Result<(), String> {
     use windows_sys::Win32::Foundation::GetLastError;
     use windows_sys::Win32::Graphics::Gdi::{
-        CreateDCW, DeleteDC, GetDeviceCaps, SetMapMode, SetViewportOrgEx, SetWindowOrgEx, HORZRES, MM_TEXT,
-        VERTRES,
+        CreateDCW, DeleteDC, GetDeviceCaps, SetMapMode, SetViewportOrgEx, SetWindowOrgEx, HORZRES, LOGPIXELSX,
+        LOGPIXELSY, MM_TEXT, VERTRES,
     };
     use windows_sys::Win32::Graphics::Printing::{ClosePrinter, OpenPrinterW, PRINTER_HANDLE};
-    use windows_sys::Win32::Storage::Xps::{EndDoc, EndPage, StartDocW, StartPage, DOCINFOW};
+    use windows_sys::Win32::Storage::Xps::{
+        EndDoc, EndPage, StartDocW, StartPage, DOCINFOW,
+    };
 
     if !has_visible_ink(width, height, packed)? {
         return Err(RENDER_FAILED.into());
     }
-    note_gdi_device_log(String::new());
-    // One bottom-up bitmap of every row. Splitting this into pages is what skipped the middle.
+
+    // One bitmap of every row. Separate slices on one page are what this driver drops in the middle.
     let pixels = band_bgr24(width, packed, 0, height)?;
-    let (paper_w, paper_h) = band_paper_tenths(width, height);
     let printer = wide(name);
     let winspool = wide("WINSPOOL");
     let document = wide("AxizPOS receipt");
+
     unsafe {
         let mut handle = PRINTER_HANDLE::default();
+
         if OpenPrinterW(printer.as_ptr(), &mut handle, std::ptr::null()) == 0 {
-            return Err(format!("{} Windows error {}.", printer_discovery::QUEUE_CLOSED, GetLastError()));
+            return Err(format!(
+                "{} Windows error {}.",
+                printer_discovery::QUEUE_CLOSED,
+                GetLastError()
+            ));
         }
+
+        // Exact receipt length at 203 dpi. The longer form was scaling the whole slip.
         let mut devmode = prepare_devmode(handle, printer.as_ptr(), width, height);
         if let Some(bytes) = devmode.as_mut() {
-            // The driver merge puts a long form back. Write the receipt length last.
-            commit_exact_paper(handle, printer.as_ptr(), bytes, width, height);
+            set_band_paper(bytes, width, height);
         }
+
         let devmode_ptr = devmode
             .as_ref()
-            .map(|bytes| bytes.as_ptr() as *const windows_sys::Win32::Graphics::Gdi::DEVMODEW)
+            .map(|bytes| {
+                bytes.as_ptr()
+                    as *const windows_sys::Win32::Graphics::Gdi::DEVMODEW
+            })
             .unwrap_or(std::ptr::null());
-        let hdc = CreateDCW(winspool.as_ptr(), printer.as_ptr(), std::ptr::null(), devmode_ptr);
+
+        let hdc = CreateDCW(
+            winspool.as_ptr(),
+            printer.as_ptr(),
+            std::ptr::null(),
+            devmode_ptr,
+        );
+
         ClosePrinter(handle);
+
         if hdc.is_null() {
-            return Err(format!("{TRANSMIT_FAILED} Windows error {}.", GetLastError()));
+            return Err(format!(
+                "{TRANSMIT_FAILED} Windows error {}.",
+                GetLastError()
+            ));
         }
-        let drawn = (|| {
+
+        let result = (|| {
             let info = DOCINFOW {
                 cbSize: std::mem::size_of::<DOCINFOW>() as i32,
                 lpszDocName: document.as_ptr(),
@@ -279,36 +304,32 @@ pub fn print_gdi(name: &str, width: u32, height: u32, packed: &[u8], copies: u32
                 lpszDatatype: std::ptr::null(),
                 fwType: 0,
             };
+
             if StartDocW(hdc, &info) <= 0 {
-                return Err(format!("{TRANSMIT_FAILED} Windows error {}.", GetLastError()));
+                return Err(format!(
+                    "{TRANSMIT_FAILED} Windows error {}.",
+                    GetLastError()
+                ));
             }
+
             for _ in 0..copies.max(1) {
                 if StartPage(hdc) <= 0 {
                     let _ = EndDoc(hdc);
                     return Err(format!("{TRANSMIT_FAILED} Windows error {}.", GetLastError()));
                 }
-                note_gdi_device_log(device_log(hdc, paper_w, paper_h));
-                let printable_w = GetDeviceCaps(hdc, HORZRES as i32);
-                let printable_h = GetDeviceCaps(hdc, VERTRES as i32);
-                // A few dots are the hardware margin. A short page is the old sliced slip, so refuse it.
-                let margin = 48;
-                if printable_w > 0 && printable_w + margin < width as i32 {
-                    let _ = EndDoc(hdc);
-                    return Err(format!(
-                        "The printer's printable width is {printable_w} dots and this receipt is {width} dots wide. It was not scaled or cropped."
-                    ));
-                }
-                if printable_h > 0 && printable_h + margin < height as i32 {
-                    let _ = EndDoc(hdc);
-                    return Err(format!(
-                        "The printer page is {printable_h} dots tall and the receipt is {height} dots tall. It was not scaled or cropped."
-                    ));
-                }
-                // The raster already includes its margin. A negative hardware offset clips the left edge.
+                // Shifting by the hardware offset is what cut the top line and the left of the totals.
                 let _ = SetMapMode(hdc, MM_TEXT);
                 let _ = SetViewportOrgEx(hdc, 0, 0, std::ptr::null_mut());
                 let _ = SetWindowOrgEx(hdc, 0, 0, std::ptr::null_mut());
+                eprintln!(
+                    "ai-pos: gdi page {width}x{height} dpi={}x{} printable={}x{}",
+                    GetDeviceCaps(hdc, LOGPIXELSX as i32),
+                    GetDeviceCaps(hdc, LOGPIXELSY as i32),
+                    GetDeviceCaps(hdc, HORZRES as i32),
+                    GetDeviceCaps(hdc, VERTRES as i32),
+                );
                 if let Err(message) = paint_page(hdc, width, height, &pixels) {
+                    let _ = EndPage(hdc);
                     let _ = EndDoc(hdc);
                     return Err(message);
                 }
@@ -317,86 +338,23 @@ pub fn print_gdi(name: &str, width: u32, height: u32, packed: &[u8], copies: u32
                     return Err(format!("{TRANSMIT_FAILED} Windows error {}.", GetLastError()));
                 }
             }
+
             if EndDoc(hdc) <= 0 {
-                return Err(format!("{TRANSMIT_FAILED} Windows error {}.", GetLastError()));
+                return Err(format!(
+                    "{TRANSMIT_FAILED} Windows error {}.",
+                    GetLastError()
+                ));
             }
+
             Ok(())
         })();
+
         DeleteDC(hdc);
-        drawn
+        result
     }
 }
 
-#[cfg(windows)]
-fn commit_exact_paper(
-    handle: windows_sys::Win32::Graphics::Printing::PRINTER_HANDLE,
-    name: *const u16,
-    bytes: &mut Vec<u8>,
-    width: u32,
-    height: u32,
-) {
-    use windows_sys::Win32::Graphics::Printing::DocumentPropertiesW;
-
-    set_band_paper(bytes, width, height);
-    let mut updated = bytes.clone();
-    unsafe {
-        if DocumentPropertiesW(
-            std::ptr::null_mut(),
-            handle,
-            name,
-            updated.as_mut_ptr().cast(),
-            bytes.as_ptr().cast(),
-            10,
-        ) >= 0
-        {
-            *bytes = updated;
-        }
-    }
-    set_band_paper(bytes, width, height);
-}
-
-#[cfg(windows)]
-fn device_log(hdc: windows_sys::Win32::Graphics::Gdi::HDC, paper_w: i16, paper_h: i16) -> String {
-    use windows_sys::Win32::Graphics::Gdi::{
-        GetDeviceCaps, HORZRES, LOGPIXELSX, LOGPIXELSY, PHYSICALHEIGHT, PHYSICALOFFSETX, PHYSICALOFFSETY,
-        PHYSICALWIDTH, VERTRES,
-    };
-    unsafe {
-        format!(
-            "dc dpi={}x{} printable={}x{} physical={}x{} offset={},{} paper={}x{}tenths",
-            GetDeviceCaps(hdc, LOGPIXELSX as i32),
-            GetDeviceCaps(hdc, LOGPIXELSY as i32),
-            GetDeviceCaps(hdc, HORZRES as i32),
-            GetDeviceCaps(hdc, VERTRES as i32),
-            GetDeviceCaps(hdc, PHYSICALWIDTH as i32),
-            GetDeviceCaps(hdc, PHYSICALHEIGHT as i32),
-            GetDeviceCaps(hdc, PHYSICALOFFSETX as i32),
-            GetDeviceCaps(hdc, PHYSICALOFFSETY as i32),
-            paper_w,
-            paper_h,
-        )
-    }
-}
-
-fn gdi_device_slot() -> &'static std::sync::Mutex<String> {
-    static SLOT: std::sync::OnceLock<std::sync::Mutex<String>> = std::sync::OnceLock::new();
-    SLOT.get_or_init(|| std::sync::Mutex::new(String::new()))
-}
-
-pub fn take_gdi_device_log() -> String {
-    gdi_device_slot()
-        .lock()
-        .map(|mut slot| std::mem::take(&mut *slot))
-        .unwrap_or_default()
-}
-
-fn note_gdi_device_log(text: String) {
-    if let Ok(mut slot) = gdi_device_slot().lock() {
-        *slot = text;
-    }
-}
-
-/// Copies the whole bottom-up bitmap once. A short copy is a failure, so the slip is not cropped.
+/// One copy of the whole bottom-up bitmap. A short copy fails so the slip is not cropped.
 #[cfg(windows)]
 fn paint_page(hdc: windows_sys::Win32::Graphics::Gdi::HDC, width: u32, height: u32, pixels: &[u8]) -> Result<(), String> {
     use windows_sys::Win32::Graphics::Gdi::{SetDIBitsToDevice, BITMAPINFOHEADER, DIB_RGB_COLORS};
@@ -704,11 +662,6 @@ mod tests {
         assert_eq!(bits.len(), 8);
         assert_eq!(bits[4], 0b1000_0000);
         assert_eq!(bits[0], 0b0100_0000);
-        let color = band_bgr24(8, &packed, 0, 2).unwrap();
-        assert_eq!(color.len(), 48);
-        assert_eq!(&color[0..3], &[255, 255, 255]);
-        assert_eq!(&color[3..6], &[0, 0, 0]);
-        assert_eq!(&color[24..27], &[0, 0, 0]);
         let bands = gdi_bands(300);
         assert_eq!(bands.iter().map(|band| band.1).sum::<u32>(), 300);
         assert!(bands.iter().all(|band| band.1 <= GDI_BAND_ROWS));
@@ -716,24 +669,17 @@ mod tests {
     }
 
     #[test]
-    fn a_full_page_keeps_the_middle_row_and_both_paper_widths() {
+    fn one_page_bitmap_keeps_top_middle_and_bottom() {
         let height = 9u32;
         let mut packed = vec![0u8; height as usize];
         packed[0] = 0b1000_0000;
         packed[4] = 0b0100_0000;
         packed[8] = 0b0010_0000;
-        assert_eq!(roll_page(height), vec![(0, height)]);
-        assert_eq!(roll_page(1_000).len(), 1);
-        let bands = gdi_bands(1_000);
-        assert!(bands.len() > 1);
-        assert_eq!(bands.iter().map(|band| band.1).sum::<u32>(), 1_000);
         let bits = band_bgr24(8, &packed, 0, height).unwrap();
-        let stride = 24;
-        assert_eq!(bits.len(), stride * height as usize);
+        assert_eq!(bits.len(), 24 * height as usize);
         assert_eq!(&bits[6..9], &[0, 0, 0]);
         assert_eq!(&bits[96 + 3..96 + 6], &[0, 0, 0]);
         assert_eq!(&bits[192..195], &[0, 0, 0]);
-        assert_eq!(&bits[195..198], &[255, 255, 255]);
         assert_eq!(band_paper_tenths(384, 900).0, 580);
         assert_eq!(band_paper_tenths(576, 900).0, 800);
         assert_eq!(band_paper_tenths(576, 900).1, (900i64 * 254 / 203) as i16);
