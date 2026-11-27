@@ -15,7 +15,7 @@ import {
   type ActivationDecision,
   type TerminalStatus,
 } from "../../lib/tauri";
-import { activationNotice, hideServerAddress, SERVER_UNREACHABLE } from "./messages";
+import { activationNotice, hideServerAddress, retryLabel, retrySeconds, SERVER_UNREACHABLE } from "./messages";
 
 /** Store host for this build: a public IP until DNS exists, otherwise a domain suffix. */
 const BASE_DOMAIN = (import.meta.env.VITE_TENANT_BASE_DOMAIN?.trim() || "axizpos.com").replace(/^\./, "").toLowerCase();
@@ -111,6 +111,7 @@ export function ActivationScreen({ onCancel }: { onCancel?: () => void }) {
   const [key, setKey] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [retryUntil, setRetryUntil] = useState<number | null>(null);
   const [done, setDone] = useState<TerminalStatus | null>(null);
   const [stages, setStages] = useState<StageState[]>(STAGE_LABELS.map(() => "waiting"));
   const [migration, setMigration] = useState<ActivationDecision | null>(null);
@@ -126,6 +127,22 @@ export function ActivationScreen({ onCancel }: { onCancel?: () => void }) {
     return () => window.clearTimeout(timer);
   }, [done]);
 
+  useEffect(() => {
+    if (retryUntil === null) return;
+    const tick = () => {
+      const left = Math.ceil((retryUntil - Date.now()) / 1000);
+      if (left <= 0) {
+        setRetryUntil(null);
+        setError("You can try again.");
+        return;
+      }
+      setError(retryLabel(left));
+    };
+    tick();
+    const timer = window.setInterval(tick, 1000);
+    return () => window.clearInterval(timer);
+  }, [retryUntil]);
+
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     if (!keyReady || busy) return;
@@ -136,6 +153,7 @@ export function ActivationScreen({ onCancel }: { onCancel?: () => void }) {
     }
     setBusy(true);
     setError(null);
+    setRetryUntil(null);
     setNotice(null);
     setStages(STAGE_LABELS.map((_, index) => (index === 0 ? "done" : index < 5 ? "active" : "waiting")));
     try {
@@ -156,7 +174,14 @@ export function ActivationScreen({ onCancel }: { onCancel?: () => void }) {
       const parsed = activationFailure(caught instanceof Error ? caught.message : String(caught));
       const failed = stageIndex(parsed.code);
       setStages(STAGE_LABELS.map((_, index) => (index < failed ? "done" : index === failed ? "failed" : "waiting")));
-      setError(parsed.message);
+      const wait = retrySeconds(parsed.message);
+      if (wait === null) {
+        setRetryUntil(null);
+        setError(parsed.message);
+      } else {
+        setError(retryLabel(wait));
+        setRetryUntil(Date.now() + wait * 1000);
+      }
     } finally {
       setBusy(false);
     }
@@ -375,7 +400,7 @@ export function ActivationScreen({ onCancel }: { onCancel?: () => void }) {
               ) : null}
               <button
                 type="submit"
-                disabled={!keyReady || busy}
+                disabled={!keyReady || busy || retryUntil !== null}
                 className="flex h-14 w-full items-center justify-center gap-2 rounded-xl bg-orange-500 text-base font-bold text-white shadow-lg shadow-orange-500/25 transition-colors hover:bg-orange-600 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-orange-500/30 disabled:cursor-not-allowed disabled:bg-zinc-200 disabled:text-zinc-500 disabled:shadow-none dark:disabled:bg-zinc-800"
               >
                 {busy ? <Loader2 size={18} aria-hidden="true" className="animate-spin" /> : <KeyRound size={18} aria-hidden="true" />}

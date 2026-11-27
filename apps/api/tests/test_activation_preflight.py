@@ -215,3 +215,22 @@ def test_key_id_mismatch_and_missing_trusted_key_do_not_consume(client, session:
         _unused(session, key)
     finally:
         _clear_signing()
+
+
+def test_repeated_activation_checks_report_the_remaining_wait(client) -> None:
+    from app.routers.v1 import terminals
+
+    terminals._attempts.clear()
+    try:
+        for _ in range(terminals.MAX_ATTEMPTS):
+            allowed = client.post("/api/v1/terminals/activation-preflight", json={"activation_key": "", "local": {}})
+            assert allowed.status_code != 429
+        blocked = client.post("/api/v1/terminals/activation-preflight", json={"activation_key": "", "local": {}})
+        assert blocked.status_code == 429
+        error = blocked.json()["error"]
+        assert error["code"] == "too_many_attempts"
+        seconds = error["details"]["retry_after_seconds"]
+        assert 1 <= seconds <= terminals.WINDOW_SECONDS
+        assert error["message"] == terminals.wait_message(seconds)
+    finally:
+        terminals._attempts.clear()

@@ -1,3 +1,4 @@
+import math
 import threading
 import time
 import uuid
@@ -30,6 +31,13 @@ _issue_attempts: dict[str, deque[float]] = defaultdict(deque)
 _lock = threading.Lock()
 
 
+def wait_message(seconds: int) -> str:
+    """The till shows this sentence and counts the clock down."""
+    remaining = max(1, seconds)
+    minutes, rest = divmod(remaining, 60)
+    return f"Too many activation attempts. Try again in {minutes}:{rest:02d}."
+
+
 def _throttle(request: Request, bucket: dict[str, deque[float]] | None = None) -> None:
     """Activation keys are short, so guessing is slowed to MAX_ATTEMPTS per address per window."""
     client = request.client.host if request.client else "unknown"
@@ -40,7 +48,13 @@ def _throttle(request: Request, bucket: dict[str, deque[float]] | None = None) -
         while recent and recent[0] < now - WINDOW_SECONDS:
             recent.popleft()
         if len(recent) >= MAX_ATTEMPTS:
-            raise ApiError(429, "too_many_attempts", "Too many activation attempts. Wait a few minutes and try again.")
+            retry_after = max(1, math.ceil(recent[0] + WINDOW_SECONDS - now))
+            raise ApiError(
+                429,
+                "too_many_attempts",
+                wait_message(retry_after),
+                details={"retry_after_seconds": retry_after},
+            )
         recent.append(now)
 
 

@@ -13,6 +13,22 @@ export const API_UNAVAILABLE =
   "Your records are محفوظ locally. Reconnect to the original store to synchronize before migration.";
 export const SERVER_UNREACHABLE =
   "Cannot reach the server. Check the store code and the internet connection.";
+/** Matches the API activation window. Used when an older server omits the clock. */
+export const ACTIVATION_WAIT_SECONDS = 600;
+
+export function retrySeconds(text: string): number | null {
+  if (!/too many activation attempts/i.test(text)) return null;
+  const clock = /try again in (\d+):(\d{2})/i.exec(text);
+  if (clock) return Number(clock[1]) * 60 + Number(clock[2]);
+  return ACTIVATION_WAIT_SECONDS;
+}
+
+export function retryLabel(seconds: number): string {
+  const left = Math.max(0, seconds);
+  const minutes = Math.floor(left / 60);
+  const rest = left % 60;
+  return `Too many activation attempts. Try again in ${minutes}:${String(rest).padStart(2, "0")}.`;
+}
 
 /** Connection failures stay on screen. The server address does not. */
 export function hideServerAddress(text: string): string | null {

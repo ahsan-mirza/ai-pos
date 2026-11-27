@@ -461,7 +461,13 @@ pub fn preflight(
     let body = response.text().map_err(|err| err.to_string())?;
     if !status.is_success() {
         let message = serde_json::from_str::<ErrorBody>(&body)
-            .map(|parsed| parsed.error.message)
+            .map(|parsed| {
+                if parsed.error.code.is_empty() {
+                    parsed.error.message
+                } else {
+                    format!("[{}] {}", parsed.error.code, parsed.error.message)
+                }
+            })
             .unwrap_or_else(|_| format!("Activation could not be checked ({}).", status.as_u16()));
         return Err(message);
     }

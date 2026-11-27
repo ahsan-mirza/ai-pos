@@ -9,6 +9,8 @@ import {
   SYNC_ONE,
   activationNotice,
   hideServerAddress,
+  retryLabel,
+  retrySeconds,
 } from "./messages";
 
 describe("activation notices", () => {
@@ -29,5 +31,13 @@ describe("activation notices", () => {
     expect(hideServerAddress(SERVER_UNREACHABLE)).toBe(SERVER_UNREACHABLE);
     expect(hideServerAddress("No store is registered at that code.")).toBeNull();
     expect(SERVER_UNREACHABLE).not.toMatch(/\d{1,3}(?:\.\d{1,3}){3}/);
+  });
+
+  it("reads the activation wait and formats the remaining clock", () => {
+    expect(retrySeconds("Too many activation attempts. Try again in 9:41.")).toBe(581);
+    expect(retrySeconds("Too many activation attempts. Wait a few minutes and try again.")).toBe(600);
+    expect(retrySeconds("Cannot reach the server.")).toBeNull();
+    expect(retryLabel(581)).toBe("Too many activation attempts. Try again in 9:41.");
+    expect(retryLabel(65)).toBe("Too many activation attempts. Try again in 1:05.");
   });
 });
