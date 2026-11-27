@@ -277,7 +277,7 @@ export function Select<T extends string>({
   };
 
   return (
-    <div className={`relative w-full ${className}`}>
+    <div className={`relative w-full min-w-0 ${className}`}>
       <button
         ref={triggerRef}
         id={triggerId}
@@ -289,9 +289,10 @@ export function Select<T extends string>({
         aria-labelledby={labelledBy ? `${labelledBy} ${valueId}` : undefined}
         aria-invalid={invalid || undefined}
         aria-label={labelledBy ? undefined : ariaLabel}
+        title={selected?.label ?? placeholder}
         onClick={() => (open ? close(false) : openMenu())}
         onKeyDown={onTriggerKey}
-        className={`flex w-full items-center border text-start font-medium tracking-normal text-charcoal normal-case transition focus:outline-none focus:ring-2 focus:ring-orange-500 disabled:cursor-not-allowed disabled:opacity-50 dark:text-zinc-100 ${
+        className={`flex w-full min-w-0 items-center overflow-hidden border text-start font-medium tracking-normal text-charcoal normal-case transition focus:outline-none focus:ring-2 focus:ring-orange-500 disabled:cursor-not-allowed disabled:opacity-50 dark:text-zinc-100 ${
           invalid
             ? "border-rose-500 bg-rose-50/20 dark:border-rose-500 dark:bg-rose-500/10"
             : "border-gray-200 bg-gray-50 hover:border-gray-300 dark:border-zinc-700 dark:bg-zinc-900"
@@ -302,7 +303,7 @@ export function Select<T extends string>({
         } ${open ? "border-orange-500 ring-2 ring-orange-500" : "hover:border-gray-300"}`}
       >
         <span id={valueId} className={`flex min-w-0 flex-1 items-center gap-2 ${selected ? "" : "text-gray-400"}`}>
-          <span className="truncate">{selected?.label ?? placeholder}</span>
+          <span className="min-w-0 flex-1 truncate">{selected?.label ?? placeholder}</span>
           {selected?.badge}
         </span>
       </button>
