@@ -76,7 +76,7 @@ export function RegistersPage() {
   };
 
   const issueActivation = async (device: Device) => {
-    if (signing && !signing.ready) {
+    if (device.activation_status !== "pending" && signing && !signing.ready) {
       setError(signing.message);
       return;
     }
@@ -189,9 +189,9 @@ export function RegistersPage() {
                               id: "activate",
                               label: "Activation key",
                               icon: KeyRound,
-                              disabled: signing !== null && !signing.ready,
+                              disabled: device.activation_status !== "pending" && signing !== null && !signing.ready,
                               title:
-                                signing && !signing.ready
+                                device.activation_status !== "pending" && signing && !signing.ready
                                   ? signing.message
                                   : "Show the activation key",
                               onSelect: () => void issueActivation(device),

@@ -20,7 +20,7 @@ The key id is `ENTITLEMENT_SIGNING_KEY_ID`. `POS_ENTITLEMENT_KEY_ID` is used onl
 
 `POS_ENTITLEMENT_PUBLIC_KEY` and `POS_ENTITLEMENT_PUBLIC_KEYS` (`id:base64`, comma-separated) are the desktop trust list. When that list is non-empty, the derived public key and the active key id must match an entry. A mismatch uses the same `entitlement_key_mismatch` code. An invalid seed uses `entitlement_unconfigured`. The seed is never returned.
 
-Business Pro calls `GET /api/v1/devices/activation-preflight` when Registers loads. If `ready` is false, **Activation key** stays disabled and the menu shows the administrator message. The yellow banner is not restored.
+Business Pro calls `GET /api/v1/devices/activation-preflight` when Registers loads. A till whose status is Activation pending can still open **Activation key**. Other tills stay disabled while `ready` is false, and the menu shows the administrator message. The yellow banner is not restored.
 
 Signing runs before the one-time key is marked used and before the device token is rotated. A failed sign rolls back with the request. Preflight does not write.
 
