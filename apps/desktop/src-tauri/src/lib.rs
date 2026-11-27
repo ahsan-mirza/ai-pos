@@ -509,6 +509,134 @@ fn terminal_api_key(state: tauri::State<AppState>) -> String {
     state.config.api_key.clone()
 }
 
+fn local_activation_context(state: &AppState) -> Result<terminal::LocalActivationContext, String> {
+    let (pending_sales, pending_returns, pending_cash_movements) = state.db.pending_breakdown()?;
+    let saved = terminal::load(&state.terminal_path)?;
+    Ok(terminal::LocalActivationContext {
+        tenant_id: saved.as_ref().map(|item| item.config.tenant_id.clone()).unwrap_or_default(),
+        store_id: saved.as_ref().map(|item| item.config.store_id.clone()).unwrap_or_default(),
+        register_id: saved.as_ref().map(|item| item.config.register_id.clone()).unwrap_or_default(),
+        device_public_key: saved.map(|item| item.device_public_key).unwrap_or_default(),
+        pending_sales,
+        pending_returns,
+        pending_cash_movements,
+    })
+}
+
+fn migration_archive_path(terminal_path: &std::path::Path) -> PathBuf {
+    terminal_path
+        .parent()
+        .unwrap_or(std::path::Path::new("."))
+        .join("migration-archive.json")
+}
+
+fn migration_archived(terminal_path: &std::path::Path, target: &str) -> bool {
+    let Ok(text) = std::fs::read_to_string(migration_archive_path(terminal_path)) else {
+        return false;
+    };
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(&text) else {
+        return false;
+    };
+    value.get("target_store").and_then(|item| item.as_str()) == Some(target)
+        && value.get("queue_cleared").and_then(|item| item.as_bool()) == Some(false)
+}
+
+#[tauri::command]
+fn activation_preflight(
+    state: tauri::State<AppState>,
+    subdomain: String,
+    activation_key: String,
+) -> Result<terminal::ActivationDecision, String> {
+    let local = local_activation_context(&state)?;
+    terminal::preflight(&subdomain, &activation_key, &local)
+}
+
+#[tauri::command]
+fn export_pending_records(state: tauri::State<AppState>) -> Result<Vec<String>, String> {
+    let rows = state.db.pending_export_rows()?;
+    let directory = state
+        .terminal_path
+        .parent()
+        .unwrap_or(std::path::Path::new("."))
+        .join("exports");
+    std::fs::create_dir_all(&directory).map_err(|err| err.to_string())?;
+    let csv_path = directory.join("pending-records.csv");
+    let excel_path = directory.join("pending-records.xls");
+    std::fs::write(&csv_path, pending_csv(&rows)).map_err(|err| err.to_string())?;
+    std::fs::write(&excel_path, pending_spreadsheet(&rows)).map_err(|err| err.to_string())?;
+    Ok(vec![csv_path.display().to_string(), excel_path.display().to_string()])
+}
+
+#[tauri::command]
+fn archive_pending_for_migration(
+    state: tauri::State<AppState>,
+    target_store: String,
+) -> Result<String, String> {
+    let (sales, returns, cash) = state.db.pending_breakdown()?;
+    let path = migration_archive_path(&state.terminal_path);
+    let document = serde_json::json!({
+        "target_store": target_store.trim().to_lowercase(),
+        "pending_sales": sales,
+        "pending_returns": returns,
+        "pending_cash_movements": cash,
+        "queue_cleared": false,
+        "note": "Export and this archive do not sync, settle, or delete the original store's pending records.",
+    });
+    std::fs::write(&path, serde_json::to_vec_pretty(&document).map_err(|err| err.to_string())?)
+        .map_err(|err| err.to_string())?;
+    Ok(path.display().to_string())
+}
+
+fn csv_cell(value: &str) -> String {
+    if value.contains([',', '"', '\n', '\r']) {
+        format!("\"{}\"", value.replace('"', "\"\""))
+    } else {
+        value.to_string()
+    }
+}
+
+fn pending_csv(rows: &[(String, String, String, String)]) -> String {
+    let mut out = String::from("entity_type,idempotency_key,occurred_at,payload\n");
+    for (entity, key, occurred, payload) in rows {
+        out.push_str(&csv_cell(entity));
+        out.push(',');
+        out.push_str(&csv_cell(key));
+        out.push(',');
+        out.push_str(&csv_cell(occurred));
+        out.push(',');
+        out.push_str(&csv_cell(payload));
+        out.push('\n');
+    }
+    out
+}
+
+fn xml_cell(value: &str) -> String {
+    value
+        .replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+}
+
+fn pending_spreadsheet(rows: &[(String, String, String, String)]) -> String {
+    let mut out = String::from(
+        r#"<?xml version="1.0"?>
+<?mso-application progid="Excel.Sheet"?>
+<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">
+<Worksheet ss:Name="Pending"><Table>
+<Row><Cell><Data ss:Type="String">entity_type</Data></Cell><Cell><Data ss:Type="String">idempotency_key</Data></Cell><Cell><Data ss:Type="String">occurred_at</Data></Cell><Cell><Data ss:Type="String">payload</Data></Cell></Row>
+"#,
+    );
+    for (entity, key, occurred, payload) in rows {
+        out.push_str("<Row>");
+        for value in [entity, key, occurred, payload] {
+            out.push_str(&format!("<Cell><Data ss:Type=\"String\">{}</Data></Cell>", xml_cell(value)));
+        }
+        out.push_str("</Row>\n");
+    }
+    out.push_str("</Table></Worksheet></Workbook>\n");
+    out
+}
+
 /// Exchanges subdomain + activation key for this register's identity, stores it encrypted, and restarts
 /// so the tenant's own local database is opened.
 #[tauri::command]
@@ -518,8 +646,14 @@ async fn activate_terminal(
     subdomain: String,
     activation_key: String,
 ) -> Result<terminal::TerminalStatus, String> {
-    if let Some(blocked) = terminal::replacement_block(&state.terminal.source, state.db.pending_count()?) {
-        return Err(blocked);
+    let local = local_activation_context(&state)?;
+    let decision = terminal::preflight(&subdomain, &activation_key, &local)?;
+    let target = subdomain.trim().to_lowercase();
+    if let Some(blocked) = terminal::activation_block(&decision, migration_archived(&state.terminal_path, &target)) {
+        return Err(format!("[{}] {blocked}", decision.code));
+    }
+    if decision.same_store && local.pending_total() > 0 {
+        state.db.preserve_pending_identity(&local.register_id)?;
     }
     let path = state.terminal_path.clone();
     let activated = tauri::async_runtime::spawn_blocking(move || {
@@ -623,7 +757,8 @@ async fn enroll_demo_path(app: tauri::AppHandle, path: String) -> Result<termina
     if state.terminal.activated && !state.terminal.demo {
         return Err("This register is already activated.".into());
     }
-    if let Some(blocked) = terminal::replacement_block(&state.terminal.source, state.db.pending_count()?) {
+    let pending = state.db.pending_count()?;
+    if let Some(blocked) = terminal::replacement_block("different_store", pending) {
         return Err(blocked);
     }
     let file = PathBuf::from(&path);
@@ -1806,6 +1941,9 @@ pub fn run() {
             terminal_status,
             terminal_api_key,
             activate_terminal,
+            activation_preflight,
+            export_pending_records,
+            archive_pending_for_migration,
             enroll_demo_file,
             take_demo_notice,
             open_demo_session,

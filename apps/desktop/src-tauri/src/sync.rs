@@ -198,7 +198,12 @@ pub fn flush(db: &Db, config: &DesktopConfig) -> Result<SyncReport, String> {
         let Some((batch_id, events)) = db.next_pending_except(&skipped)? else {
             break;
         };
-        match post_batch(config, &events, &attempt) {
+        let origin = db.preserved_device_id(&batch_id).unwrap_or_default();
+        let mut posted = config.clone();
+        if !origin.is_empty() {
+            posted.device_id = origin;
+        }
+        match post_batch(&posted, &events, &attempt) {
             Ok(response) => {
                 let queued = if response.results.iter().any(|result| result.status == "awaiting_review") {
                     "awaiting_review"

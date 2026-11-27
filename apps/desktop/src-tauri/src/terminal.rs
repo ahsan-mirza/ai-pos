@@ -349,16 +349,138 @@ fn machine_name() -> String {
         .collect()
 }
 
-/// A second till at the same store uses its own key. This installation can take that key when its
-/// queue is empty. Unsynced sales still belong to the register already stored here.
-pub fn replacement_block(source: &str, pending: i64) -> Option<String> {
-    if source != "activation" || pending <= 0 {
+pub const SIGNING_UNAVAILABLE: &str =
+    "The server cannot currently issue a permanent device entitlement. Contact your administrator.";
+pub const SAME_STORE_PENDING: &str =
+    "Existing store detected. Your pending records will remain associated with this store and register.";
+pub const DIFFERENT_STORE_PENDING: &str =
+    "This device contains transactions belonging to another store. Sync or export them before changing stores.";
+pub const API_UNAVAILABLE: &str =
+    "Your records are محفوظ locally. Reconnect to the original store to synchronize before migration.";
+
+pub fn sync_before_retire(sales: i64) -> String {
+    if sales == 1 {
+        "1 sale is waiting to sync. Synchronize it before retiring the previous register identity.".into()
+    } else {
+        format!("{sales} sales are waiting to sync. Synchronize them before retiring the previous register identity.")
+    }
+}
+
+/// Same-store pending records are not a reason to refuse a key. A different store still is.
+pub fn replacement_block(decision: &str, pending: i64) -> Option<String> {
+    if pending <= 0 {
         return None;
     }
-    let sales = if pending == 1 { "sale is" } else { "sales are" };
-    Some(format!(
-        "{pending} {sales} still waiting to sync on this till. Sync them, then enter the new register's key."
-    ))
+    match decision {
+        "different_store" => Some(DIFFERENT_STORE_PENDING.into()),
+        "same_store_replacement" => Some(sync_before_retire(pending)),
+        "same_store" | "same_store_additional" => None,
+        "signing" => Some(SIGNING_UNAVAILABLE.into()),
+        "offline" => Some(API_UNAVAILABLE.into()),
+        _ => None,
+    }
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct ActivationDecision {
+    pub decision: String,
+    pub kind: String,
+    #[serde(default)]
+    pub same_tenant: bool,
+    #[serde(default)]
+    pub same_store: bool,
+    #[serde(default)]
+    pub blocked: bool,
+    pub code: String,
+    pub message: String,
+    #[serde(default)]
+    pub signing_ready: bool,
+    #[serde(default)]
+    pub pending_sales: i64,
+    #[serde(default)]
+    pub pending_returns: i64,
+    #[serde(default)]
+    pub pending_cash_movements: i64,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct LocalActivationContext {
+    pub tenant_id: String,
+    pub store_id: String,
+    pub register_id: String,
+    pub device_public_key: String,
+    pub pending_sales: i64,
+    pub pending_returns: i64,
+    pub pending_cash_movements: i64,
+}
+
+impl LocalActivationContext {
+    pub fn pending_total(&self) -> i64 {
+        self.pending_sales + self.pending_returns + self.pending_cash_movements
+    }
+}
+
+pub fn preflight(
+    subdomain: &str,
+    activation_key: &str,
+    local: &LocalActivationContext,
+) -> Result<ActivationDecision, String> {
+    let (slug, domain) = normalize_subdomain(subdomain)?;
+    let key: String = activation_key.chars().filter(|ch| ch.is_ascii_alphanumeric()).collect();
+    let api_base_url = tenant_api_url(&slug);
+    let response = reqwest::blocking::Client::builder()
+        .timeout(Duration::from_secs(15))
+        .build()
+        .map_err(|err| err.to_string())?
+        .post(format!("{api_base_url}/api/v1/terminals/activation-preflight"))
+        .header("X-Tenant-Domain", &domain)
+        .json(&serde_json::json!({
+            "store_code": slug,
+            "activation_key": key,
+            "local": {
+                "tenant_id": local.tenant_id,
+                "store_id": local.store_id,
+                "register_id": local.register_id,
+                "device_public_key": local.device_public_key,
+                "pending_sales": local.pending_sales,
+                "pending_returns": local.pending_returns,
+                "pending_cash_movements": local.pending_cash_movements,
+            }
+        }))
+        .send()
+        .map_err(|_| {
+            if local.pending_total() > 0 {
+                API_UNAVAILABLE.to_string()
+            } else {
+                format!("Could not reach {api_base_url}. Check the store code and the internet connection.")
+            }
+        })?;
+    let status = response.status();
+    let body = response.text().map_err(|err| err.to_string())?;
+    if !status.is_success() {
+        let message = serde_json::from_str::<ErrorBody>(&body)
+            .map(|parsed| parsed.error.message)
+            .unwrap_or_else(|_| format!("Activation could not be checked ({}).", status.as_u16()));
+        return Err(message);
+    }
+    serde_json::from_str(&body).map_err(|err| format!("Unexpected activation check: {err}"))
+}
+
+/// Stops activation only when the decision says it must stop. Same-store notices are not a stop.
+pub fn activation_block(decision: &ActivationDecision, archived: bool) -> Option<String> {
+    if decision.code == "pending_different_store" && archived {
+        return None;
+    }
+    if decision.blocked {
+        return Some(if decision.code == "entitlement_unconfigured" {
+            SIGNING_UNAVAILABLE.to_string()
+        } else if decision.message.trim().is_empty() {
+            "Activation could not be completed. Contact your administrator.".to_string()
+        } else {
+            decision.message.clone()
+        });
+    }
+    None
 }
 
 pub struct ActivationOutcome {
@@ -555,11 +677,32 @@ mod tests {
             ("client1".into(), "client1".into())
         );
         assert!(dev("client1.axizpos.com").is_err());
-        assert!(replacement_block("activation", 0).is_none());
-        assert!(replacement_block("none", 3).is_none());
-        assert!(replacement_block("activation", 2)
+        assert!(SAME_STORE_PENDING.contains("Existing store detected"));
+        assert!(replacement_block("same_store_additional", 2).is_none());
+        assert!(replacement_block("different_store", 0).is_none());
+        assert!(replacement_block("different_store", 1)
             .unwrap()
-            .contains("2 sales are still waiting"));
+            .contains("another store"));
+        assert!(replacement_block("same_store_replacement", 1)
+            .unwrap()
+            .contains("1 sale is waiting to sync"));
+        assert!(replacement_block("signing", 1).unwrap().contains("permanent device entitlement"));
+        assert!(replacement_block("offline", 1).unwrap().contains("محفوظ"));
+        let different = ActivationDecision {
+            code: "pending_different_store".into(),
+            blocked: true,
+            message: DIFFERENT_STORE_PENDING.into(),
+            ..ActivationDecision::default()
+        };
+        assert!(activation_block(&different, false).unwrap().contains("another store"));
+        assert!(activation_block(&different, true).is_none());
+        let unsigned = ActivationDecision {
+            code: "entitlement_unconfigured".into(),
+            blocked: true,
+            message: "Traceback (most recent call last)".into(),
+            ..ActivationDecision::default()
+        };
+        assert!(activation_block(&unsigned, false).unwrap().contains("permanent device entitlement"));
         let ip = |input: &str| normalize_subdomain_for(input, "130.210.53.214");
         assert_eq!(ip("Client1").unwrap(), ("client1".into(), "client1".into()));
         assert_eq!(

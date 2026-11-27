@@ -16,6 +16,7 @@ from app.models.device import Device, DeviceActivation
 from app.models.document_sequence import DocumentSequence
 from app.models.store import Store
 from app.schemas.devices import (
+    ActivationDecision,
     ActivationKeyOut,
     DeviceCreate,
     DeviceKeyOut,
@@ -25,6 +26,7 @@ from app.schemas.devices import (
     RegisterCapacity,
     TerminalActivate,
     TerminalActivation,
+    TerminalActivationPreflight,
 )
 from app.services import audit, entitlement_service
 from app.services.numbering import DEVICE_SUFFIX, device_prefix
@@ -346,6 +348,157 @@ def replace_device_token(db: Session, device: Device) -> str:
     return token
 
 
+SAME_STORE_PENDING = (
+    "Existing store detected. Your pending records will remain associated with this store and register."
+)
+DIFFERENT_STORE_PENDING = (
+    "This device contains transactions belonging to another store. Sync or export them before changing stores."
+)
+
+
+def _norm_id(value: str) -> str:
+    text = value.strip().lower().replace("-", "")
+    if len(text) == 32 and all(character in "0123456789abcdef" for character in text):
+        return text
+    return ""
+
+
+def _sync_before_retire(sales: int) -> str:
+    if sales == 1:
+        return "1 sale is waiting to sync. Synchronize it before retiring the previous register identity."
+    return f"{sales} sales are waiting to sync. Synchronize them before retiring the previous register identity."
+
+
+def activation_decision(db: Session, data: TerminalActivationPreflight) -> ActivationDecision:
+    """Classifies a till activation. Nothing is written and the one-time key stays unused."""
+    signing = entitlement_service.signing_preflight()
+    local = data.local
+    local_tenant = _norm_id(local.tenant_id)
+    local_store = _norm_id(local.store_id)
+    local_register = _norm_id(local.register_id)
+    from app.tenancy.scoping import active_tenant_id
+
+    current_tenant = _norm_id(str(active_tenant_id()))
+    device: Device | None = None
+    register_valid = False
+    key = data.activation_key.strip()
+    if key:
+        activation = db.scalar(select(DeviceActivation).where(DeviceActivation.code_hash == _hash_activation(key)))
+        expires = activation.expires_at if activation is not None else None
+        if expires is not None and expires.tzinfo is None:
+            expires = expires.replace(tzinfo=UTC)
+        now = datetime.now(UTC)
+        if activation is not None and activation.used_at is None and expires is not None and expires > now:
+            found = db.get(Device, activation.device_id)
+            if found is not None and found.deleted_at is None:
+                device = found
+                register_valid = True
+    thumb = ""
+    if local.device_public_key.strip():
+        try:
+            public = entitlement_service.decode_device_public_key(local.device_public_key)
+            thumb = entitlement_service.thumbprint(public)
+        except ApiError:
+            thumb = ""
+    registered = device
+    if thumb:
+        bound = db.scalar(
+            select(Device).where(Device.device_public_key_thumbprint == thumb, Device.deleted_at.is_(None))
+        )
+        if bound is not None:
+            registered = bound
+    device_registered = registered is not None and (
+        not local_register or _norm_id(str(registered.id)) == local_register or bool(thumb)
+    )
+    same_tenant = bool(local_tenant) and local_tenant == current_tenant
+    target_store = _norm_id(str(device.store_id)) if device is not None else ""
+    parsed_store = uuid.UUID(local_store) if _store_uuid(local_store) else None
+    store_known = parsed_store is not None and db.get(Store, parsed_store) is not None
+    same_store = same_tenant and (not local_store or store_known or local_store == target_store)
+    same_branch = same_store and bool(target_store) and (not local_store or local_store == target_store)
+    if not local_tenant:
+        kind = "fresh"
+        decision = "fresh"
+    elif not same_tenant:
+        kind = "different_store"
+        decision = "different_store"
+    elif device is not None and local_register and _norm_id(str(device.id)) == local_register:
+        kind = "device_replacement"
+        decision = "same_store_replacement"
+    else:
+        kind = "additional_till"
+        decision = "same_store_additional"
+    within_plan = True
+    if device is not None and device.revoked_at is not None:
+        from app.console.plan_limits import limit_value
+
+        cap = limit_value("registers")
+        within_plan = cap is None or _active_register_count(db) < cap
+    from app.services.settings_service import offline_pending_for
+
+    server_pending = offline_pending_for(str(device.id)) if device is not None else 0
+    pending_total = local.pending_sales + local.pending_returns + local.pending_cash_movements
+    if key and not register_valid:
+        code = "activation_invalid"
+        message = "This activation key is wrong, already used, or expired."
+        blocked = True
+    elif decision == "different_store" and pending_total > 0:
+        code = "pending_different_store"
+        message = DIFFERENT_STORE_PENDING
+        blocked = True
+    elif not signing.ready:
+        code = signing.code or "entitlement_unconfigured"
+        message = signing.message
+        blocked = True
+    elif not within_plan:
+        code = "plan_limit"
+        message = "This plan has no free register seat. Delete an existing till or upgrade the package."
+        blocked = True
+    elif decision == "same_store_replacement" and local.pending_sales > 0:
+        code = "pending_same_store"
+        message = _sync_before_retire(local.pending_sales)
+        blocked = False
+    elif same_store and pending_total > 0:
+        code = "pending_same_store"
+        message = SAME_STORE_PENDING
+        blocked = False
+    elif server_pending > 0:
+        code = "pending_offline"
+        message = _sync_before_retire(server_pending)
+        blocked = False
+    else:
+        code = "ready"
+        message = "Activation can continue."
+        blocked = False
+    return ActivationDecision(
+        decision=decision,
+        kind=kind,
+        same_tenant=same_tenant,
+        same_store=same_store,
+        same_branch=same_branch,
+        device_registered=device_registered and same_tenant,
+        register_valid=register_valid,
+        within_plan=within_plan,
+        blocked=blocked,
+        pending_sales=local.pending_sales,
+        pending_returns=local.pending_returns,
+        pending_cash_movements=local.pending_cash_movements,
+        server_pending=server_pending,
+        signing_ready=signing.ready,
+        signing_code=signing.code,
+        code=code,
+        message=message,
+    )
+
+
+def _store_uuid(value: str) -> bool:
+    try:
+        uuid.UUID(value)
+    except ValueError:
+        return False
+    return True
+
+
 def activate_terminal(db: Session, data: TerminalActivate) -> TerminalActivation:
     """Exchanges a one-time key for the register's device token (the key is rotated, so old installs stop)."""
     now = datetime.now(UTC)
@@ -363,12 +516,9 @@ def activate_terminal(db: Session, data: TerminalActivate) -> TerminalActivation
         raise ApiError(401, "activation_invalid", "This activation key is wrong, already used, or expired.")
     from app.services.settings_service import offline_pending_for
 
-    if offline_pending_for(str(device.id)) > 0:
-        raise ApiError(
-            409,
-            "pending_offline",
-            "This till still has unsynced transactions. Sync it before activating a replacement.",
-        )
+    waiting = offline_pending_for(str(device.id))
+    if waiting > 0:
+        raise ApiError(409, "pending_offline", _sync_before_retire(waiting))
     if device.revoked_at is not None:
         _require_register_seat(db)
     entitlement = None

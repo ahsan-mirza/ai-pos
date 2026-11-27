@@ -66,8 +66,8 @@ def thumbprint(public_key: bytes) -> str:
     return hashlib.sha256(public_key).hexdigest()
 
 
-UNCONFIGURED = "Permanent entitlement signing is not configured."
-MISMATCH = "The active signing key does not match a trusted desktop public key."
+UNCONFIGURED = "The server cannot currently issue a permanent device entitlement. Contact your administrator."
+MISMATCH = "The active signing key does not match a trusted desktop public key. Contact your administrator."
 
 
 @dataclass(frozen=True)

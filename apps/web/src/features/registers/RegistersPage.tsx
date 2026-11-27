@@ -18,7 +18,6 @@ import { ErrorNote, GhostButton, PrimaryButton, SelectField, TextField } from ".
 import { useConfirm } from "../../components/ui/ConfirmDialog";
 import { Modal } from "../../components/ui/Modal";
 import { Toast } from "../../components/ui/Toast";
-import { env } from "../../config/env";
 import { apiGet, apiPost } from "../../lib/api";
 import { useAuth } from "../../lib/auth";
 import { useCapabilities } from "../../lib/capabilities";
@@ -77,8 +76,7 @@ export function RegistersPage() {
   };
 
   const issueActivation = async (device: Device) => {
-    const waiting = !device.activation_status || device.activation_status === "pending";
-    if (signing && !signing.ready && !waiting) {
+    if (signing && !signing.ready) {
       setError(signing.message);
       return;
     }
@@ -124,13 +122,13 @@ export function RegistersPage() {
             {capacity?.available === 0 ? <p className="mt-1 text-sm text-amber-800">{seats}</p> : null}
           </div>
           <div className="flex flex-wrap gap-2">
-            <a
-              href={`${env.apiBaseUrl}/api/download/installer/win`}
+            <Link
+              to="/downloads"
               className={`inline-flex items-center justify-center rounded-full border border-gray-200 bg-white px-6 py-2.5 text-sm font-medium text-black ${actionHoverClass("neutral")}`}
             >
               <Download size={16} aria-hidden="true" className="-ml-2 mr-1.5" />
               Download POS app
-            </a>
+            </Link>
             <PrimaryButton onClick={() => setCreating(true)}>
               <Plus size={16} aria-hidden="true" className="-ml-2 mr-1.5" />
               Register a till
@@ -191,10 +189,9 @@ export function RegistersPage() {
                               id: "activate",
                               label: "Activation key",
                               icon: KeyRound,
-                              disabled:
-                                signing !== null && !signing.ready && device.activation_status !== "pending",
+                              disabled: signing !== null && !signing.ready,
                               title:
-                                signing && !signing.ready && device.activation_status !== "pending"
+                                signing && !signing.ready
                                   ? signing.message
                                   : "Show the activation key",
                               onSelect: () => void issueActivation(device),

@@ -11,7 +11,14 @@ from app.core.database import get_db
 from app.core.deps import Principal, require_device
 from app.core.errors import ApiError
 from app.models.store import Store
-from app.schemas.devices import EntitlementRequest, SignedEntitlement, TerminalActivate, TerminalActivation
+from app.schemas.devices import (
+    ActivationDecision,
+    EntitlementRequest,
+    SignedEntitlement,
+    TerminalActivate,
+    TerminalActivation,
+    TerminalActivationPreflight,
+)
 from app.services import bootstrap_service, device_service, entitlement_service
 
 router = APIRouter()
@@ -35,6 +42,17 @@ def _throttle(request: Request, bucket: dict[str, deque[float]] | None = None) -
         if len(recent) >= MAX_ATTEMPTS:
             raise ApiError(429, "too_many_attempts", "Too many activation attempts. Wait a few minutes and try again.")
         recent.append(now)
+
+
+@router.post("/activation-preflight", response_model=ActivationDecision)
+def activation_preflight(
+    payload: TerminalActivationPreflight,
+    request: Request,
+    db: Annotated[Session, Depends(get_db)],
+) -> ActivationDecision:
+    """Public lookup. The activation key is not marked used and no device row changes."""
+    _throttle(request)
+    return device_service.activation_decision(db, payload)
 
 
 @router.post("/activate", response_model=TerminalActivation)

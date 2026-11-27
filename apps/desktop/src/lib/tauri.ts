@@ -254,6 +254,58 @@ export function applyPreviewTerminal(saved: PreviewTerminal): void {
   if (saved.status.tenant_domain) env.tenantDomain = saved.status.tenant_domain;
 }
 
+export interface ActivationDecision {
+  decision: string;
+  kind: string;
+  same_tenant: boolean;
+  same_store: boolean;
+  blocked: boolean;
+  code: string;
+  message: string;
+  signing_ready: boolean;
+  pending_sales: number;
+  pending_returns: number;
+  pending_cash_movements: number;
+}
+
+async function postActivationCheck(subdomain: string, activationKey: string, path: string): Promise<ActivationDecision> {
+  const slug = subdomain.trim().toLowerCase();
+  const host = baseDomain();
+  const apiBaseUrl = directIp(host) ? `http://${host}` : env.apiBaseUrl;
+  const key = activationKey.toUpperCase().replace(/[^A-Z0-9]/g, "");
+  let response: Response;
+  try {
+    response = await fetch(`${apiBaseUrl}${path}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Tenant-Domain": slug },
+      body: JSON.stringify({ store_code: slug, activation_key: key, local: {} }),
+    });
+  } catch {
+    throw new Error(`[network] Could not reach the API at ${apiBaseUrl}.`);
+  }
+  const body = (await response.json().catch(() => null)) as ActivationDecision | { error?: { code?: string; message?: string } } | null;
+  if (!response.ok || body === null || !("code" in body)) {
+    const detail = body && "error" in body ? body.error : null;
+    const message = detail?.message || `Activation could not be checked (${response.status}).`;
+    throw new Error(detail?.code ? `[${detail.code}] ${message}` : message);
+  }
+  return body;
+}
+
+/** Asks the target store what this key would do. The key is not consumed. */
+export async function preflightActivation(subdomain: string, activationKey: string): Promise<ActivationDecision> {
+  if (inTauri()) return invoke<ActivationDecision>("activation_preflight", { subdomain, activationKey });
+  return postActivationCheck(subdomain, activationKey, "/api/v1/terminals/activation-preflight");
+}
+
+export function exportPendingRecords(): Promise<string[]> {
+  return invoke<string[]>("export_pending_records");
+}
+
+export function archivePendingForMigration(targetStore: string): Promise<string> {
+  return invoke<string>("archive_pending_for_migration", { targetStore });
+}
+
 /** The desktop window stores this in terminal.bin. The browser preview calls the same API and keeps the token locally. */
 export async function activateTerminal(subdomain: string, activationKey: string): Promise<TerminalStatus> {
   if (inTauri()) return invoke<TerminalStatus>("activate_terminal", { subdomain, activationKey });

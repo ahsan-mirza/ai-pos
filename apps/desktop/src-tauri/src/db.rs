@@ -257,6 +257,7 @@ impl Db {
         conn.execute_batch("PRAGMA foreign_keys = ON;")
             .map_err(|err| err.to_string())?;
         migrate(&conn)?;
+        let _ = conn.execute("ALTER TABLE sync_queue ADD COLUMN origin_device_id TEXT NOT NULL DEFAULT ''", []);
         crate::search_index::migrate(&conn)?;
         crate::returns::migrate(&conn)?;
         crate::settings::migrate(&conn)?;
@@ -949,6 +950,69 @@ impl Db {
             );
             Ok(value.unwrap_or(None).filter(|cursor| !cursor.is_empty()))
         })
+    }
+
+    pub fn pending_breakdown(&self) -> Result<(i64, i64, i64), String> {
+        let conn = self.lock()?;
+        let mut statement = conn
+            .prepare("SELECT entity_type, COUNT(DISTINCT batch_id) FROM sync_queue WHERE status = 'pending' GROUP BY entity_type")
+            .map_err(|err| err.to_string())?;
+        let rows = statement
+            .query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?)))
+            .map_err(|err| err.to_string())?;
+        let mut sales = 0;
+        let mut returns = 0;
+        let mut cash = 0;
+        for row in rows {
+            let (kind, count) = row.map_err(|err| err.to_string())?;
+            match kind.as_str() {
+                "sale" => sales = count,
+                "sale_return" => returns = count,
+                "cash_movement" => cash = count,
+                _ => {}
+            }
+        }
+        Ok((sales, returns, cash))
+    }
+
+    /// Keeps the register that created each waiting batch. Later sync sends that id, not the new till's.
+    pub fn preserve_pending_identity(&self, register_id: &str) -> Result<(), String> {
+        if register_id.trim().is_empty() {
+            return Ok(());
+        }
+        let conn = self.lock()?;
+        conn.execute(
+            "UPDATE sync_queue SET origin_device_id = ?1 WHERE status = 'pending' AND origin_device_id = ''",
+            params![register_id],
+        )
+        .map_err(|err| err.to_string())?;
+        Ok(())
+    }
+
+    pub fn preserved_device_id(&self, batch_id: &str) -> Result<String, String> {
+        let conn = self.lock()?;
+        conn.query_row(
+            "SELECT COALESCE(MAX(origin_device_id), '') FROM sync_queue WHERE batch_id = ?1 AND origin_device_id != ''",
+            params![batch_id],
+            |row| row.get(0),
+        )
+        .or_else(|err| match err {
+            rusqlite::Error::QueryReturnedNoRows => Ok(String::new()),
+            other => Err(other.to_string()),
+        })
+    }
+
+    pub fn pending_export_rows(&self) -> Result<Vec<(String, String, String, String)>, String> {
+        let conn = self.lock()?;
+        let mut statement = conn
+            .prepare(
+                "SELECT entity_type, idempotency_key, occurred_at, payload FROM sync_queue WHERE status = 'pending' ORDER BY rowid",
+            )
+            .map_err(|err| err.to_string())?;
+        let rows = statement
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)))
+            .map_err(|err| err.to_string())?;
+        rows.collect::<Result<Vec<_>, _>>().map_err(|err| err.to_string())
     }
 
     pub fn pending_count(&self) -> Result<i64, String> {
@@ -1949,6 +2013,46 @@ mod preference_tests {
         assert!(db
             .write_catalogue_preference("", "user-a", "grid", "2026-11-19T10:07:00Z", 1, false)
             .is_err());
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn pending_records_keep_their_original_register_and_payload() {
+        let path = std::env::temp_dir().join(format!("axiz-pending-{}-{}.db", std::process::id(), line!()));
+        let _ = std::fs::remove_file(&path);
+        let db = Db::open(&path).expect("database");
+        db.enqueue(
+            "batch-sale",
+            &[super::QueuedEvent {
+                id: "sale-row".into(),
+                idempotency_key: "sale-1".into(),
+                entity_type: "sale".into(),
+                operation: "create".into(),
+                payload: serde_json::json!({"invoice_number": "INV-9", "register_id": "old-till"}),
+                occurred_at: "2026-11-27T00:00:00Z".into(),
+            }],
+        )
+        .unwrap();
+        db.enqueue(
+            "batch-cash",
+            &[super::QueuedEvent {
+                id: "cash-row".into(),
+                idempotency_key: "cash-1".into(),
+                entity_type: "cash_movement".into(),
+                operation: "create".into(),
+                payload: serde_json::json!({"amount": "12.00"}),
+                occurred_at: "2026-11-27T00:01:00Z".into(),
+            }],
+        )
+        .unwrap();
+        assert_eq!(db.pending_breakdown().unwrap(), (1, 0, 1));
+        db.preserve_pending_identity("old-till").unwrap();
+        assert_eq!(db.preserved_device_id("batch-sale").unwrap(), "old-till");
+        assert_eq!(db.preserved_device_id("batch-cash").unwrap(), "old-till");
+        let exported = db.pending_export_rows().unwrap();
+        assert_eq!(exported.len(), 2);
+        assert!(exported[0].3.contains("INV-9"));
+        assert_eq!(db.pending_count().unwrap(), 2);
         let _ = std::fs::remove_file(&path);
     }
 }

@@ -80,6 +80,46 @@ class PosExchangeRequest(ApiModel):
     machine_name: str = Field(default="", max_length=120)
 
 
+class LocalActivationContext(ApiModel):
+    """Identity already stored on the register. Empty fields mean this machine has not been activated."""
+
+    tenant_id: str = Field(default="", max_length=80)
+    store_id: str = Field(default="", max_length=80)
+    register_id: str = Field(default="", max_length=80)
+    device_public_key: str = Field(default="", max_length=128)
+    pending_sales: int = Field(default=0, ge=0, le=100000)
+    pending_returns: int = Field(default=0, ge=0, le=100000)
+    pending_cash_movements: int = Field(default=0, ge=0, le=100000)
+
+
+class TerminalActivationPreflight(ApiModel):
+    """Look up an activation. The key is not consumed."""
+
+    store_code: str = Field(default="", max_length=80)
+    activation_key: str = Field(default="", max_length=32)
+    local: LocalActivationContext = LocalActivationContext()
+
+
+class ActivationDecision(ApiModel):
+    decision: str
+    kind: str
+    same_tenant: bool
+    same_store: bool
+    same_branch: bool
+    device_registered: bool
+    register_valid: bool
+    within_plan: bool
+    blocked: bool
+    pending_sales: int
+    pending_returns: int
+    pending_cash_movements: int
+    server_pending: int
+    signing_ready: bool
+    signing_code: str | None = None
+    code: str
+    message: str
+
+
 class TerminalActivate(ApiModel):
     activation_key: str = Field(min_length=8, max_length=32)
     machine_name: str = Field(default="", max_length=120)

@@ -4,7 +4,18 @@ import { CheckCircle2, KeyRound, Loader2, ShieldCheck, Store } from "lucide-reac
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useRegisterLayout } from "../../components/RegisterLayout";
 import { useCapabilities } from "../../lib/capabilities";
-import { activateTerminal, enrollDemoFile, inTauri, type TerminalStatus } from "../../lib/tauri";
+import {
+  activateTerminal,
+  archivePendingForMigration,
+  enrollDemoFile,
+  exportPendingRecords,
+  flushSync,
+  inTauri,
+  preflightActivation,
+  type ActivationDecision,
+  type TerminalStatus,
+} from "../../lib/tauri";
+import { activationNotice } from "./messages";
 
 /** Store host for this build: a public IP until DNS exists, otherwise a domain suffix. */
 const BASE_DOMAIN = (import.meta.env.VITE_TENANT_BASE_DOMAIN?.trim() || "axizpos.com").replace(/^\./, "").toLowerCase();
@@ -38,13 +49,26 @@ const STAGE_LABELS = [
   "Synchronization completed or requires attention",
 ] as const;
 
+function safeActivationMessage(text: string): string {
+  if (/traceback|exception|sqlalchemy|psycopg|internal server error/i.test(text)) {
+    return "Activation could not be completed. Contact your administrator.";
+  }
+  return text;
+}
+
 function activationFailure(text: string): { code: string; message: string } {
   const match = /^\[([a-z0-9_]+)\]\s+([\s\S]+)$/.exec(text);
   if (!match) {
-    if (/could not reach/i.test(text)) return { code: "network", message: text };
-    return { code: "activation_failed", message: text };
+    if (text.includes("محفوظ") || /could not reach/i.test(text)) {
+      return { code: "network", message: text.includes("محفوظ") ? activationNotice("network") : text };
+    }
+    return { code: "activation_failed", message: safeActivationMessage(text) };
   }
-  return { code: match[1] ?? "activation_failed", message: match[2] ?? text };
+  const code = match[1] ?? "activation_failed";
+  const raw = match[2] ?? "";
+  if (code === "pending_same_store") return { code, message: safeActivationMessage(raw) };
+  const notice = activationNotice(code);
+  return { code, message: notice || safeActivationMessage(raw) };
 }
 
 function stageIndex(code: string): number {
@@ -85,6 +109,8 @@ export function ActivationScreen({ onCancel }: { onCancel?: () => void }) {
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<TerminalStatus | null>(null);
   const [stages, setStages] = useState<StageState[]>(STAGE_LABELS.map(() => "waiting"));
+  const [migration, setMigration] = useState<ActivationDecision | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const storeCode = useRef<HTMLInputElement>(null);
   const slug = subdomainOf(subdomain);
   const keyReady = key.replace(/-/g, "").length === 12;
@@ -106,8 +132,20 @@ export function ActivationScreen({ onCancel }: { onCancel?: () => void }) {
     }
     setBusy(true);
     setError(null);
+    setNotice(null);
     setStages(STAGE_LABELS.map((_, index) => (index === 0 ? "done" : index < 5 ? "active" : "waiting")));
     try {
+      const decision = await preflightActivation(slug, key);
+      if (decision.code === "pending_different_store") {
+        setMigration(decision);
+        setStages(STAGE_LABELS.map((_, index) => (index === 0 ? "done" : index === 1 ? "failed" : "waiting")));
+        setBusy(false);
+        return;
+      }
+      if (decision.blocked) {
+        throw new Error(`[${decision.code}] ${decision.message}`);
+      }
+      if (decision.code === "pending_same_store") setNotice(decision.message);
       setDone(await activateTerminal(slug, key));
       setStages(STAGE_LABELS.map((_, index) => (index < 6 ? "done" : "active")));
     } catch (caught) {
@@ -253,6 +291,79 @@ export function ActivationScreen({ onCancel }: { onCancel?: () => void }) {
               <ActivationStages
                 states={stages.map((state, index) => (index === 0 && storeReady && state === "waiting" ? "done" : state))}
               />
+              {notice ? <p className="rounded-xl bg-zinc-100 px-4 py-3 text-sm text-zinc-700 dark:bg-zinc-800 dark:text-zinc-200">{notice}</p> : null}
+              {migration ? (
+                <div className="space-y-3 rounded-xl border border-zinc-200 p-4 dark:border-zinc-700">
+                  <p className="text-sm font-semibold">This device contains transactions belonging to another store.</p>
+                  <p className="text-sm text-zinc-600 dark:text-zinc-300">{migration.message}</p>
+                  <ul className="text-sm text-zinc-600 dark:text-zinc-300">
+                    <li>{migration.pending_sales} sales</li>
+                    <li>{migration.pending_returns} returns</li>
+                    <li>{migration.pending_cash_movements} cash movements</li>
+                  </ul>
+                  <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                    Exporting keeps a copy for review. It does not sync, settle, or remove the original store&apos;s records.
+                  </p>
+                  <div className="grid gap-2">
+                    <button
+                      type="button"
+                      disabled={busy || !inTauri()}
+                      onClick={() => {
+                        setBusy(true);
+                        setError(null);
+                        void flushSync()
+                          .then(() => preflightActivation(slug, key))
+                          .then((decision) => {
+                            if (decision.code === "pending_different_store") setMigration(decision);
+                            else setMigration(null);
+                          })
+                          .catch((caught) => setError(caught instanceof Error ? caught.message : String(caught)))
+                          .finally(() => setBusy(false));
+                      }}
+                      className="h-11 rounded-xl bg-zinc-950 text-sm font-semibold text-white disabled:opacity-60"
+                    >
+                      Sync to original store
+                    </button>
+                    <button
+                      type="button"
+                      disabled={busy || !inTauri()}
+                      onClick={() => {
+                        setBusy(true);
+                        setError(null);
+                        void exportPendingRecords()
+                          .then((paths) => setNotice(`Exported for review. The pending queue was not cleared. ${paths.join(" ")}`))
+                          .catch((caught) => setError(caught instanceof Error ? caught.message : String(caught)))
+                          .finally(() => setBusy(false));
+                      }}
+                      className="h-11 rounded-xl border border-zinc-300 text-sm font-semibold disabled:opacity-60"
+                    >
+                      Export pending data
+                    </button>
+                    <button
+                      type="button"
+                      disabled={busy || !inTauri()}
+                      onClick={() => {
+                        setBusy(true);
+                        setError(null);
+                        void archivePendingForMigration(slug)
+                          .then(() => activateTerminal(slug, key))
+                          .then((status) => {
+                            setMigration(null);
+                            setDone(status);
+                          })
+                          .catch((caught) => setError(caught instanceof Error ? caught.message : String(caught)))
+                          .finally(() => setBusy(false));
+                      }}
+                      className="h-11 rounded-xl border border-red-300 text-sm font-semibold text-red-700 disabled:opacity-60"
+                    >
+                      Archive locally and change store
+                    </button>
+                    <button type="button" onClick={() => setMigration(null)} className="h-11 text-sm font-semibold text-zinc-500">
+                      Cancel migration
+                    </button>
+                  </div>
+                </div>
+              ) : null}
               {error ? (
                 <p role="alert" className="rounded-xl bg-red-500/10 px-4 py-3 text-sm text-red-700 ring-1 ring-red-500/20 dark:text-red-300">
                   {error}
