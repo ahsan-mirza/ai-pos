@@ -7,6 +7,7 @@ import { cachedProducts, catalogRevision as readDesktopRevision, inTauri, refres
 import { registerCapabilities } from "../../lib/capabilities";
 import { productFitsRegister } from "../../lib/industry";
 import { GIFT_CARD_SKU } from "./cart";
+import { LINK_RESTORED_EVENT } from "../sync/autoReconnect";
 import { activeStore, businessCurrency, syncBusinessCurrency } from "./currency";
 import { refreshMenu } from "./menu";
 
@@ -192,25 +193,37 @@ export function requestCatalogueSync(): void {
 export function useCatalogUpdates(reload: () => void): void {
   useEffect(() => {
     let seen: string | null = null;
+    let missed = false;
     let cancelled = false;
     const poll = async () => {
       const revision = await readCatalogRevision();
-      if (cancelled || revision === null) return;
-      if (seen === null) {
-        seen = revision;
+      if (cancelled) return;
+      if (revision === null) {
+        missed = true;
         return;
       }
-      if (revision === seen) return;
+      if (seen === null) {
+        seen = revision;
+        missed = false;
+        return;
+      }
+      if (!missed && revision === seen) return;
       seen = revision;
+      missed = false;
       requestCatalogueSync();
     };
     const onSync = () => reload();
+    const onRestored = () => {
+      missed = true;
+      void poll();
+    };
     void poll();
     const timer = window.setInterval(() => void poll(), CATALOG_POLL_MS);
     const again = () => void poll();
     const onReturn = () => reload();
     window.addEventListener("online", again);
     window.addEventListener("focus", again);
+    window.addEventListener(LINK_RESTORED_EVENT, onRestored);
     window.addEventListener("pos-return-processed", onReturn);
     window.addEventListener(CATALOGUE_SYNC_EVENT, onSync);
     return () => {
@@ -218,6 +231,7 @@ export function useCatalogUpdates(reload: () => void): void {
       window.clearInterval(timer);
       window.removeEventListener("online", again);
       window.removeEventListener("focus", again);
+      window.removeEventListener(LINK_RESTORED_EVENT, onRestored);
       window.removeEventListener("pos-return-processed", onReturn);
       window.removeEventListener(CATALOGUE_SYNC_EVENT, onSync);
     };

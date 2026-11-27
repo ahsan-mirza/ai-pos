@@ -1,5 +1,6 @@
 import {
   EMPTY_BRANDING,
+  INK_THRESHOLD,
   PAPER_DOTS,
   prepareLogo,
   receiptTitle,
@@ -473,7 +474,7 @@ function ReceiptPreview({
           const data = pixels.data;
           for (let offset = 0; offset < data.length; offset += 4) {
             const luminance = 0.299 * (data[offset] ?? 255) + 0.587 * (data[offset + 1] ?? 255) + 0.114 * (data[offset + 2] ?? 255);
-            const tone = luminance < 160 ? 0 : 255;
+            const tone = luminance < INK_THRESHOLD ? 0 : 255;
             data[offset] = tone;
             data[offset + 1] = tone;
             data[offset + 2] = tone;

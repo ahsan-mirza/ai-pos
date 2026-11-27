@@ -15,6 +15,7 @@ from app.schemas.auth import (
     AccountPasswordChange,
     AccountProfileUpdate,
     CashierOption,
+    CashierVerifierFeed,
     ForgotPasswordRequest,
     ForgotPasswordResponse,
     PasswordLoginRequest,
@@ -123,6 +124,16 @@ def cashiers(
 ) -> list[CashierOption]:
     """Profiles for the activated register. The branch comes from the device token, never from the query string."""
     return rbac_service.list_pos_cashiers(db, principal.store_id)
+
+
+@router.get("/cashier-verifiers", response_model=CashierVerifierFeed)
+def cashier_verifiers(
+    db: Annotated[Session, Depends(get_db)],
+    settings: Annotated[Settings, Depends(get_settings)],
+    principal: Annotated[Principal, Depends(require_device)],
+) -> CashierVerifierFeed:
+    """Hashes for this device's branch. The register stores them so a cashier need not unlock online first."""
+    return CashierVerifierFeed.model_validate(rbac_service.cashier_verifier_feed(db, settings, principal.store_id))
 
 
 @router.post("/login-pin", response_model=TokenResponse)

@@ -19,7 +19,7 @@ export function registerHeaderStatus(input: RegisterStatusInput): SyncState {
   if (!input.desktop) {
     return { tone: input.apiReachable ? "live" : "offline", label: input.apiReachable ? "Live" : "Offline", title };
   }
-  if (input.sessionMode === "online") {
+  if (input.sessionMode === "online" || input.apiReachable) {
     if (failed > 0 && pending === 0) {
       return { tone: "pending", label: failed === 1 ? "Online · 1 sync failed" : `Online · ${failed} sync failed`, title };
     }
@@ -28,10 +28,6 @@ export function registerHeaderStatus(input: RegisterStatusInput): SyncState {
       label: pending > 0 ? "Online · Sync pending" : "Online · Queue clear",
       title,
     };
-  }
-  if (input.apiReachable) {
-    const label = pending > 0 ? `Connection restored · ${queue}` : "Connection restored · Re-authenticate";
-    return { tone: "pending", label, title };
   }
   return { tone: "offline", label: `Offline · ${queue}`, title };
 }

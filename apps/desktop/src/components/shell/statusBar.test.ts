@@ -57,15 +57,15 @@ describe("status bar", () => {
     expect(model.chips[2]?.vars).toEqual({ count: 3 });
   });
 
-  it("asks for a fresh sign-in when the connection returns with an empty queue", () => {
+  it("shows online when the server is reachable again, including after an offline unlock", () => {
     expect(
       labels({
         sessionMode: "offline",
         apiReachable: true,
         pending: 0,
-        page: { tone: "pending", label: "Connection restored · Re-authenticate", title: "Sign in." },
+        page: { tone: "live", label: "Online · Queue clear", title: "Back." },
       }),
-    ).toEqual(["Activated", "Connection restored", "Re-authenticate"]);
+    ).toEqual(["Activated", "Online"]);
   });
 
   it("shows the queue while sales are still waiting", () => {

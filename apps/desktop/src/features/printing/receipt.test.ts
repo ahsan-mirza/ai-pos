@@ -1,6 +1,7 @@
 import {
   EMPTY_BRANDING,
   asGiftReceipt,
+  INK_THRESHOLD,
   packBits,
   receiptOps,
   receiptTitle,
@@ -267,5 +268,10 @@ describe("receipt", () => {
     const pixels = new Uint8ClampedArray(width * 4).fill(255);
     for (const x of [0, 9]) pixels.set([0, 0, 0, 255], x * 4);
     expect(packBits(pixels, width, 1)).toEqual([0b10000000, 0b01000000]);
+    const fringe = new Uint8ClampedArray(4);
+    fringe.set([180, 180, 180, 255], 0);
+    expect(packBits(fringe, 1, 1, INK_THRESHOLD)).toEqual([0b10000000]);
+    const paper = new Uint8ClampedArray([250, 250, 250, 255]);
+    expect(packBits(paper, 1, 1, INK_THRESHOLD)).toEqual([0]);
   });
 });

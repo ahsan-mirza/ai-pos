@@ -132,10 +132,27 @@ export function useBusinessSettingsMeta(): BusinessSettingsMeta {
 
 let branchTaxBlocked = false;
 let apiReachable = false;
+const reachListeners = new Set<() => void>();
 
 /** True after this register's own settings request succeeds. An empty sync queue does not set this. */
 export function businessApiReachable(): boolean {
   return apiReachable;
+}
+
+/** Publishes a reachability change without redrawing prices, the catalogue, or printer settings. */
+export function markApiReachable(next: boolean): void {
+  if (apiReachable === next) return;
+  apiReachable = next;
+  for (const listener of reachListeners) listener();
+}
+
+export function useApiReachable(): boolean {
+  return useSyncExternalStore(subscribeReach, businessApiReachable, businessApiReachable);
+}
+
+function subscribeReach(listener: () => void): () => void {
+  reachListeners.add(listener);
+  return () => reachListeners.delete(listener);
 }
 
 export function taxConfigurationRequired(): boolean {
@@ -191,17 +208,17 @@ export async function syncBusinessCurrency(): Promise<string> {
       applyScopedProfile(snapshot.profile);
       if (snapshot.receipt) receipt = snapshot.receipt;
       // A cached or seeded profile is not a live settings response.
-      apiReachable = snapshot.source === "api";
+      markApiReachable(snapshot.source === "api");
     } else {
       const settings = await getBusinessSettings();
       next = settings.currency;
       identityChanged = applyTax(settings);
       applyScopedProfile(settings);
       receipt = await getReceiptProfile(home.id).catch(() => receipt);
-      apiReachable = true;
+      markApiReachable(true);
     }
   } catch {
-    apiReachable = false;
+    markApiReachable(false);
     // Offline with nothing cached: keep the last known currency.
   }
   const currencyChanged = next !== null && next !== current;

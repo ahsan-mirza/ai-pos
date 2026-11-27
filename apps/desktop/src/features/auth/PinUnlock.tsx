@@ -43,7 +43,7 @@ export function PinUnlock({
         if (!cancelled) setCashiers(cards);
       })
       .catch((caught: unknown) => {
-        if (!cancelled) setDirectoryError(unlockFailureMessage(caught));
+        if (!cancelled) setDirectoryError(unlockFailureMessage(caught) || null);
       });
     return () => {
       cancelled = true;
@@ -69,7 +69,7 @@ export function PinUnlock({
       const session = manual || selected === null ? await unlock(username, pin) : await unlockSelected(selected.id, pin);
       onUnlocked(session);
     } catch (caught) {
-      setError(unlockFailureMessage(caught));
+      setError(unlockFailureMessage(caught) || null);
       setPin("");
     } finally {
       lock.current = false;

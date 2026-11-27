@@ -115,6 +115,22 @@ export function drawerProfile(id: string | undefined): DrawerProfile {
   return DRAWER_PROFILES.find((item) => item.id === (id ?? "")) ?? fallback;
 }
 
+/** Explains a saved profile that cannot be pulsed. Empty when the profile and voltage match. */
+export function drawerMismatch(settings: { drawer_profile?: string; host_voltage?: string; model?: string }): string | null {
+  const profile = drawerProfile(settings.drawer_profile);
+  if (!profile.pulse) return null;
+  const voltage = (settings.host_voltage ?? "").trim();
+  const mtp = (settings.model ?? "").toLowerCase().includes("mtp");
+  if (!voltage) {
+    return `Confirm the printer drawer-port voltage. ${profile.label} requires ${profile.voltage}V. No pulse is sent until it matches.`;
+  }
+  if (voltage !== profile.voltage) {
+    const port = mtp ? " The MTP-3 cashbox output is labelled DC12V/1A, so a 24V profile is not sent." : "";
+    return `This drawer profile is ${profile.voltage}V and the confirmed printer port is ${voltage}V. 12V and 24V are not interchangeable. No pulse is sent.${port}`;
+  }
+  return null;
+}
+
 /** True only when a pulse-capable profile and the matching drawer-port voltage are both saved. */
 export function pulseProfileReady(settings: { drawer_profile?: string; host_voltage?: string }): boolean {
   const profile = drawerProfile(settings.drawer_profile);

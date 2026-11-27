@@ -250,7 +250,7 @@ export function SidebarNav({ busy, onNavigate, onLock }: SidebarNavProps) {
 
       <aside
         aria-label="Register navigation"
-        className={`hidden h-full shrink-0 flex-col border-e border-zinc-200 bg-white text-zinc-900 transition-[width] duration-200 ease-out motion-reduce:transition-none md:flex dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-100 ${
+        className={`hidden h-full min-h-0 shrink-0 flex-col overflow-hidden border-e border-zinc-200 bg-white text-zinc-900 transition-[width] duration-200 ease-out motion-reduce:transition-none md:flex dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-100 ${
           collapsed ? "w-20" : "w-64"
         }`}
       >
@@ -274,7 +274,7 @@ export function SidebarNav({ busy, onNavigate, onLock }: SidebarNavProps) {
           </button>
         </div>
 
-        <nav aria-label={t("Register")} className={`px-3 ${collapsed ? "py-2" : "custom-scrollbar flex-1 overflow-y-auto py-3"}`}>
+        <nav aria-label={t("Register")} className={`custom-scrollbar min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 ${collapsed ? "py-2" : "py-3"}`}>
           {collapsed ? null : <p className="mb-2 px-3 text-[0.6875rem] font-semibold uppercase tracking-wider text-zinc-400 dark:text-zinc-500">{t(foodAndBeverage ? "Service" : "Sell")}</p>}
           <div className="flex flex-col gap-0.5">{pageButtons}</div>
           {collapsed ? (
@@ -285,7 +285,7 @@ export function SidebarNav({ busy, onNavigate, onLock }: SidebarNavProps) {
           <div className="flex flex-col gap-0.5">{toolButtons}</div>
         </nav>
 
-        <div className={`shrink-0 space-y-1 border-t border-zinc-200 dark:border-zinc-800 ${collapsed ? "mt-2 p-2" : "mt-auto p-3"}`}>
+        <div className={`shrink-0 space-y-1 border-t border-zinc-200 dark:border-zinc-800 ${collapsed ? "p-2" : "p-3"}`}>
           <div
             tabIndex={collapsed ? 0 : undefined}
             role={collapsed ? "img" : undefined}

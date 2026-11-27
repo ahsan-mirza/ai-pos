@@ -678,6 +678,8 @@ pub fn find_queue<'a>(configured: &str, queues: &'a [InstalledPrinter]) -> Optio
 #[derive(Debug)]
 pub struct KickPlan {
     pub queue: String,
+    /// A drawer-only ESC/POS pulse. For Windows queues this is sent through the same RAW
+    /// spooler path used by the successful cash-sale drawer workflow, not GDI PASSTHROUGH.
     pub bytes: Vec<u8>,
 }
 
@@ -723,23 +725,8 @@ pub fn plan_drawer_kick(
     if !queue.openable {
         return Err(queue_open_error(&queue.name, false).unwrap_err());
     }
-    let known = queue.supports_drawer_kick && queue.compatibility == "compatible";
-    if !known {
-        if crate::cash_drawer::lacks_kick_circuit(&queue.driver, &queue.port) && !settings.drawer_profile.trim().is_empty() {
-            let message = match crate::cash_drawer::require_pulse(
-                settings,
-                Some(crate::cash_drawer::KickHost {
-                    driver: &queue.driver,
-                    port: &queue.port,
-                }),
-            ) {
-                Ok(_) => "This printer has no known drawer-kick profile. Test drawer kick stays off.".into(),
-                Err(message) => message,
-            };
-            return Err(message);
-        }
-        return Err("This printer has no known drawer-kick profile. Test drawer kick stays off.".into());
-    }
+    // One planner for a cash sale and for Test Drawer Kick. A manufacturer name is not required
+    // when the saved ESC/POS drawer profile and the confirmed port voltage already match.
     let pulse = crate::cash_drawer::require_pulse(
         settings,
         Some(crate::cash_drawer::KickHost {
@@ -747,12 +734,32 @@ pub fn plan_drawer_kick(
             port: &queue.port,
         }),
     )?;
+    if !drawer_transport_ready(settings, queue) {
+        return Err(
+            "This printer is not sending ESC/POS, so the drawer pulse stays off. Choose ESC/POS on a receipt printer that is not a text-only, office, or Windows-only driver. No pulse was sent.".into(),
+        );
+    }
     let mut bytes = vec![0x1b, b'@'];
     bytes.extend(pulse);
     Ok(KickPlan {
         queue: queue.name.clone(),
         bytes,
     })
+}
+
+/// Generic ESC/POS is enough when the cashier selected it. A known receipt driver is the other path.
+/// A Toshiba-style Windows driver still gets one pulse, wrapped in the driver job. Text-only drivers do not.
+fn drawer_transport_ready(settings: &PrinterSettings, queue: &InstalledPrinter) -> bool {
+    if crate::printer_discovery::is_text_only_driver(&queue.driver) {
+        return false;
+    }
+    if crate::printer_discovery::expects_rendered_job(&queue.driver, &queue.port) {
+        return true;
+    }
+    if settings.protocol.trim() == "escpos" {
+        return true;
+    }
+    queue.compatibility == "compatible" && queue.print_transport == "escpos" && queue.supports_drawer_kick
 }
 
 pub fn missing_printer_message(name: &str) -> String {
@@ -1044,6 +1051,66 @@ pub struct PrintDiagnostic {
     pub bytes_submitted: usize,
     pub bytes_accepted: Option<usize>,
     pub outcome: String,
+    pub executable_sha256: String,
+    pub spooler_job_id: Option<i32>,
+    pub windows_error: Option<u32>,
+    pub black_pixels: usize,
+}
+
+struct SpoolerTrace {
+    job_id: Option<i32>,
+    bytes_accepted: Option<usize>,
+    windows_error: Option<u32>,
+    write_printer: bool,
+}
+
+fn empty_trace() -> SpoolerTrace {
+    SpoolerTrace {
+        job_id: None,
+        bytes_accepted: None,
+        windows_error: None,
+        write_printer: false,
+    }
+}
+
+fn spooler_trace() -> &'static std::sync::Mutex<SpoolerTrace> {
+    static TRACE: std::sync::OnceLock<std::sync::Mutex<SpoolerTrace>> = std::sync::OnceLock::new();
+    TRACE.get_or_init(|| std::sync::Mutex::new(empty_trace()))
+}
+
+pub fn note_spooler_trace(job_id: Option<i32>, bytes_accepted: Option<usize>, windows_error: Option<u32>, write_printer: bool) {
+    if let Ok(mut trace) = spooler_trace().lock() {
+        *trace = SpoolerTrace {
+            job_id,
+            bytes_accepted,
+            windows_error,
+            write_printer,
+        };
+    }
+}
+
+fn take_spooler_trace() -> SpoolerTrace {
+    spooler_trace().lock().map(|mut trace| std::mem::replace(&mut *trace, empty_trace())).unwrap_or_else(|_| empty_trace())
+}
+
+pub fn executable_sha256() -> String {
+    static CACHED: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    CACHED
+        .get_or_init(|| {
+            let Some(path) = std::env::current_exe().ok() else {
+                return String::new();
+            };
+            let Ok(bytes) = std::fs::read(&path) else {
+                return String::new();
+            };
+            use sha2::{Digest, Sha256};
+            format!("{:X}", Sha256::digest(bytes))
+        })
+        .clone()
+}
+
+pub fn black_pixels(data: &[u8]) -> usize {
+    data.iter().map(|byte| byte.count_ones() as usize).sum()
 }
 
 fn last_diagnostic() -> Option<PrintDiagnostic> {
@@ -1304,6 +1371,7 @@ pub fn probe(db: &Db) -> Result<PrinterProbe, String> {
         )
     };
     let explicit = settings.protocol.clone();
+    let saved_for_drawer = settings.clone();
     let mut probe = annotate(
         finish_probe(
             settings,
@@ -1322,8 +1390,21 @@ pub fn probe(db: &Db) -> Result<PrinterProbe, String> {
         probe.print_transport = selected.as_str().into();
     }
     if explicit == "escpos" && selected == crate::printer_discovery::PrintTransport::EscPos && queue.compatibility != "compatible" {
-        probe.capabilities = "Generic ESC/POS was selected for this model. It is not verified, and the drawer is not kicked.".into();
-        probe.supports_drawer_kick = false;
+        let pulse_ready = crate::cash_drawer::require_pulse(
+            &saved_for_drawer,
+            Some(crate::cash_drawer::KickHost {
+                driver: &queue.driver,
+                port: &queue.port,
+            }),
+        )
+        .is_ok()
+            && drawer_transport_ready(&saved_for_drawer, &queue);
+        probe.supports_drawer_kick = pulse_ready;
+        probe.capabilities = if pulse_ready {
+            "Generic ESC/POS. The saved drawer profile matches the confirmed drawer-port voltage. Open/closed is not reported.".into()
+        } else {
+            "Generic ESC/POS was selected. A drawer pulse is sent only when the drawer profile and the confirmed drawer-port voltage match. No pulse was sent.".into()
+        };
     }
     Ok(probe)
 }
@@ -1340,11 +1421,21 @@ pub fn ink_bytes(data: &[u8]) -> usize {
 
 /// Rejects a raster that cannot be printed. An all-white image used to become a feed-and-cut with no text.
 pub fn validate_raster(job: &RasterJob) -> Result<(), String> {
-    let row_bytes = job.width.div_ceil(8);
-    if job.width == 0 || job.height == 0 || job.data.len() != (row_bytes * job.height) as usize {
+    // Keep the frontend raster within the same safe bounds used by the native GDI renderer.
+    if job.width == 0 || job.height == 0 || job.width > 2_048 || job.height > 20_000 {
+        return Err("Receipt dimensions are invalid or exceed the safe limit.".into());
+    }
+    let row_bytes = (job.width as usize)
+        .checked_add(7)
+        .ok_or_else(|| "Receipt row size overflow.".to_string())?
+        / 8;
+    let expected = row_bytes
+        .checked_mul(job.height as usize)
+        .ok_or_else(|| "Receipt raster size overflow.".to_string())?;
+    if job.data.len() != expected {
         return Err("The receipt image is malformed.".into());
     }
-    if ink_bytes(&job.data) == 0 {
+    if !crate::printer_gdi::has_visible_ink(job.width, job.height, &job.data)? {
         return Err(crate::printer_discovery::RENDER_FAILED.into());
     }
     Ok(())
@@ -1355,7 +1446,8 @@ pub fn escpos_raster(job: &RasterJob, copies: u32, kick: &[u8]) -> Result<Vec<u8
     let row_bytes = job.width.div_ceil(8);
     let mut out = Vec::with_capacity(job.data.len() * copies as usize + 64);
     for copy in 0..copies.max(1) {
-        out.extend_from_slice(&[0x1b, b'@']);
+        // Zero line spacing, or a clone head inserts a feed between raster bands and cuts the type.
+        out.extend_from_slice(&[0x1b, b'@', 0x1b, b'3', 0]);
         let mut start = 0;
         while start < job.height {
             let rows = (job.height - start).min(BAND_ROWS);
@@ -1430,7 +1522,11 @@ pub fn describe_escpos(bytes: &[u8]) -> String {
 }
 
 pub fn describe_gdi(width: u32, height: u32) -> String {
-    format!("GDI one page {width}x{height} bottom-up at the top of the page. No form-feed split. No drawer pulse.")
+    let bands = crate::printer_gdi::gdi_bands(height).len();
+    format!(
+        "GDI 1-bit {width}x{height}, {bands} pages of at most {} rows at 203 dpi, one unscaled blit each. No raw ESC/POS. No drawer pulse.",
+        crate::printer_gdi::GDI_BAND_ROWS
+    )
 }
 
 pub fn ink_span(data: &[u8], width: u32, height: u32) -> (u32, Option<u32>, Option<u32>) {
@@ -1756,8 +1852,11 @@ fn write_spooler(name: &str, bytes: &[u8]) -> Result<(), String> {
             pDatatype: datatype.as_ptr() as *mut u16,
         };
         let result = (|| {
-            if StartDocPrinterW(handle, 1, &info as *const DOC_INFO_1W) == 0 {
-                return Err("The spooler refused the print job.".to_string());
+            let job = StartDocPrinterW(handle, 1, &info as *const DOC_INFO_1W);
+            if job == 0 {
+                let code = GetLastError();
+                note_spooler_trace(None, None, Some(code), true);
+                return Err(format!("The spooler refused the print job. Windows error {code}."));
             }
             StartPagePrinter(handle);
             let mut written = 0u32;
@@ -1770,6 +1869,7 @@ fn write_spooler(name: &str, bytes: &[u8]) -> Result<(), String> {
             EndPagePrinter(handle);
             EndDocPrinter(handle);
             let code = if ok == 0 || written as usize != bytes.len() { GetLastError() } else { 0 };
+            note_spooler_trace(Some(job as i32), Some(written as usize), if code == 0 { None } else { Some(code) }, true);
             spooler_accept(ok != 0, written, bytes.len(), code).map(|_| ())
         })();
         ClosePrinter(handle);
@@ -2041,6 +2141,7 @@ fn record_print(
     error: Option<&str>,
     summary: &str,
 ) {
+    let trace = take_spooler_trace();
     let profile = match resolved.transport {
         crate::printer_discovery::PrintTransport::EscPos => "passed",
         crate::printer_discovery::PrintTransport::WindowsGdi => "unverified",
@@ -2060,7 +2161,12 @@ fn record_print(
         ink_bytes: ink_bytes(&job.data),
         payload_bytes,
         payload_type: payload_type.into(),
-        encoding: if payload_type == "escpos" { "ESC/POS" } else { "BGR24" }.into(),
+        encoding: match payload_type {
+            "escpos" | "escpos-passthrough" => "ESC/POS",
+            "text" => "text",
+            _ => "BGR24",
+        }
+        .into(),
         queue: resolved.queue.clone(),
         driver: resolved.driver.clone(),
         port: resolved.port.clone(),
@@ -2085,8 +2191,12 @@ fn record_print(
         text_bytes: job.plain_text.len(),
         command_summary: summary.to_string(),
         bytes_submitted: payload_bytes,
-        bytes_accepted: if submitted { Some(payload_bytes) } else { None },
+        bytes_accepted: if trace.write_printer { trace.bytes_accepted } else { None },
         outcome: submission_outcome(submitted, error).into(),
+        executable_sha256: executable_sha256(),
+        spooler_job_id: trace.job_id,
+        windows_error: trace.windows_error,
+        black_pixels: black_pixels(&job.data),
     });
 }
 
@@ -2140,6 +2250,10 @@ pub fn print_raster(db: &Db, job: &RasterJob) -> Result<(), String> {
                 bytes_submitted: 0,
                 bytes_accepted: None,
                 outcome: submission_outcome(false, Some(&message)).into(),
+                executable_sha256: executable_sha256(),
+                spooler_job_id: None,
+                windows_error: None,
+                black_pixels: black_pixels(&job.data),
             });
             return Err(message);
         }
@@ -2157,11 +2271,12 @@ pub fn print_raster(db: &Db, job: &RasterJob) -> Result<(), String> {
     };
     let mut kicking = planned.is_some();
     let kick_owned = planned
+        .as_ref()
         .map(|plan| {
             if plan.bytes.starts_with(&[0x1b, b'@']) {
                 plan.bytes[2..].to_vec()
             } else {
-                plan.bytes
+                plan.bytes.clone()
             }
         })
         .unwrap_or_default();
@@ -2179,6 +2294,7 @@ pub fn print_raster(db: &Db, job: &RasterJob) -> Result<(), String> {
         total_cents: job.total_cents,
         plain_text: job.plain_text.clone(),
     };
+    let _ = take_spooler_trace();
     PRINTING.store(true, Ordering::Relaxed);
     let result = match resolved.transport {
         crate::printer_discovery::PrintTransport::EscPos => match escpos_raster(&printable, settings.copies, kick) {
@@ -2209,37 +2325,42 @@ pub fn print_raster(db: &Db, job: &RasterJob) -> Result<(), String> {
         },
         crate::printer_discovery::PrintTransport::WindowsGdi => {
             let text_only = crate::printer_discovery::is_text_only_driver(&resolved.driver);
-            let payload_bytes = if text_only { printable.plain_text.len() } else { printable.data.len() };
-            let sent = if text_only {
+            let (payload_bytes, payload_type, summary, sent) = if text_only {
                 let text = printable.plain_text.trim();
-                if text.is_empty() {
+                let sent = if text.is_empty() {
                     Err("This printer only prints text, and this receipt had no text to send.".into())
                 } else {
                     send_gdi_text(&resolved.queue, text, settings.copies)
-                }
+                };
+                (
+                    printable.plain_text.len(),
+                    "text",
+                    format!("GDI text, {} characters. No raster and no drawer pulse.", printable.plain_text.len()),
+                    sent,
+                )
             } else {
-                send_gdi(&resolved.queue, &printable, settings.copies)
-            };
-            let summary = if text_only {
-                format!("GDI text, {} characters. No raster and no drawer pulse.", printable.plain_text.len())
-            } else {
-                describe_gdi(printable.width, printable.height)
+                (
+                    printable.data.len(),
+                    "raster-image",
+                    describe_gdi(printable.width, printable.height),
+                    send_gdi(&resolved.queue, &printable, settings.copies),
+                )
             };
             record_print(
                 &printable,
                 &resolved,
                 payload_bytes,
-                if text_only { "text" } else { "raster-image" },
+                payload_type,
                 sent.is_ok(),
                 sent.as_ref().err().map(String::as_str),
                 &summary,
             );
             if sent.is_ok() && kicking {
-                let mut pulse_bytes = vec![0x1b, b'@'];
-                pulse_bytes.extend_from_slice(kick);
-                if let Err(message) = send_spooler(&resolved.queue, &pulse_bytes) {
-                    remember_kick(db, Some(&message));
-                    kicking = false;
+                if let Some(plan) = planned.as_ref() {
+                    if let Err(message) = send_drawer_kick_plan(&settings, plan) {
+                        remember_kick(db, Some(&message));
+                        kicking = false;
+                    }
                 }
             }
             sent
@@ -2252,11 +2373,9 @@ pub fn print_raster(db: &Db, job: &RasterJob) -> Result<(), String> {
     };
     PRINTING.store(false, Ordering::Relaxed);
     let phase = crate::printer_profile::advance_job(result.is_ok());
-    let payload_type = match resolved.transport {
-        crate::printer_discovery::PrintTransport::EscPos => "escpos",
-        crate::printer_discovery::PrintTransport::WindowsGdi => "raster-image",
-        crate::printer_discovery::PrintTransport::None => "rejected",
-    };
+    let payload_type = last_diagnostic()
+        .map(|diagnostic| diagnostic.payload_type)
+        .unwrap_or_else(|| "rejected".into());
     let _ = record_print_job(
         db,
         &job.document_number,
@@ -2264,7 +2383,7 @@ pub fn print_raster(db: &Db, job: &RasterJob) -> Result<(), String> {
         &settings.connection_kind,
         resolved.transport.as_str(),
         resolved.transport.as_str(),
-        payload_type,
+        &payload_type,
         job.data.len(),
         &phase,
         result.as_ref().err().map(String::as_str),
@@ -2293,6 +2412,19 @@ fn send_gdi_text(name: &str, text: &str, copies: u32) -> Result<(), String> {
         Ok(result) => result,
         Err(std::sync::mpsc::RecvTimeoutError::Timeout) => Err(spooler_timeout_message().into()),
         Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => Err("The printer connection ended before a result.".into()),
+    }
+}
+
+/// Sends a drawer-only pulse using the same transport for manual testing and cash sales.
+/// Windows GDI receipt rendering and drawer control are separate jobs: the receipt is rendered
+/// through GDI, then the verified pulse is sent as a short RAW spooler job. Do not use
+/// ExtEscape/PASSTHROUGH here; many valid Windows drivers reject that escape entirely.
+fn send_drawer_kick_plan(settings: &PrinterSettings, plan: &KickPlan) -> Result<(), String> {
+    match settings.transport.as_str() {
+        "tcp" => send_tcp(&settings.address, &plan.bytes),
+        "windows" => send_spooler(&plan.queue, &plan.bytes),
+        "serial" | "ble" => Err(crate::printer_profile::DRAWER_UNVERIFIED.into()),
+        _ => Err("No supported drawer connection is configured for this register.".into()),
     }
 }
 
@@ -2347,14 +2479,12 @@ pub fn kick_drawer(db: &Db) -> Result<(), String> {
             return Err(message);
         }
     };
-    LAST_KICK_AT.store(now, Ordering::Relaxed);
     PRINTING.store(true, Ordering::Relaxed);
-    let result = match settings.transport.as_str() {
-        "tcp" => send_tcp(&settings.address, &plan.bytes),
-        "windows" => send_spooler(&plan.queue, &plan.bytes),
-        _ => Err("No receipt printer is configured. Open Register settings to add one.".into()),
-    };
+    let result = send_drawer_kick_plan(&settings, &plan);
     PRINTING.store(false, Ordering::Relaxed);
+    if result.is_ok() {
+        LAST_KICK_AT.store(now_secs(), Ordering::Relaxed);
+    }
     remember_kick(db, result.as_ref().err().map(String::as_str));
     result
 }
@@ -2563,6 +2693,24 @@ mod tests {
     }
 
     #[test]
+    fn raster_padding_bits_do_not_count_as_printable_ink() {
+        let job = RasterJob {
+            width: 1,
+            height: 1,
+            data: vec![0x7f], // Only unused padding bits are set; the visible pixel is white.
+            kick_drawer: false,
+            line_count: 1,
+            document_number: "TEST-1".into(),
+            subtotal_cents: 0,
+            tax_cents: 0,
+            discount_cents: 0,
+            total_cents: 0,
+            plain_text: String::new(),
+        };
+        assert!(validate_raster(&job).unwrap_err().contains("could not be rendered"));
+    }
+
+    #[test]
     fn escpos_image_bytes_precede_the_cut() {
         let job = RasterJob {
             width: 8,
@@ -2599,6 +2747,23 @@ mod tests {
     }
 
     #[test]
+    fn isolated_text_and_raster_payloads_keep_their_content() {
+        let text = escpos_text_receipt(&["Axiz Cafe", "Line 2", "Line 3", "AED 10.00", "END-TEXT"]);
+        assert!(text.starts_with(&[0x1b, b'@']));
+        assert!(text.windows(7).any(|window| window == b"AED 10."));
+        assert!(text.windows(8).any(|window| window == b"END-TEXT"));
+        assert!(!text.windows(3).any(|window| window == [0x1d, b'v', b'0']));
+        assert!(!text.windows(2).any(|window| window == [0x1b, b'p']));
+        let width = 8u32;
+        let height = 4u32;
+        let data = vec![0b1111_0000, 0, 0b0000_1111, 0b1010_1010];
+        let job = marked_job(width, height, data);
+        let raster = escpos_raster(&job, 1, &[]).unwrap();
+        assert_eq!(black_pixels(&job.data), 4 + 4 + 4);
+        assert!(crate::printer_gdi::graphics_precede_cut(&raster));
+    }
+
+    #[test]
     fn header_items_and_footer_survive_in_order_without_a_leading_feed() {
         let width = 576u32;
         let height = 300u32;
@@ -2617,6 +2782,7 @@ mod tests {
         assert!(!bytes.windows(5).any(|window| window == DRAWER_KICK));
         assert!(!leading_feed(&bytes));
         assert_eq!(&bytes[..2], &[0x1b, b'@']);
+        assert_eq!(&bytes[2..5], &[0x1b, b'3', 0]);
         let bands = escpos_band_rows(&bytes);
         assert!(bands.iter().all(|rows| (1..=128).contains(rows)));
         assert_eq!(bands.iter().sum::<u32>(), height);
@@ -2689,13 +2855,19 @@ mod tests {
         assert_eq!(mapped.connection, "USB");
         assert_eq!(mapped.print_transport, "windows-gdi");
         assert!(!mapped.supports_drawer_kick);
-        assert!(mapped.capabilities.contains("Raw ESC/POS is not sent"));
+        assert!(mapped.capabilities.contains("matching drawer profile"));
+        let mut kick = windows_settings(&mapped.name);
+        kick.drawer_profile = "hp-vb400-bl1616".into();
+        kick.host_voltage = "24".into();
+        let plan = plan_drawer_kick(&kick, &[mapped.clone()], 100, 0).unwrap();
+        assert_eq!(plan.bytes.windows(5).filter(|window| *window == DRAWER_KICK).count(), 1);
+        assert!(plan.bytes.starts_with(&[0x1b, b'@']));
         let refused = plan_drawer_kick(&windows_settings(&mapped.name), &[mapped], 100, 0).unwrap_err();
-        assert!(refused.contains("drawer-kick"));
+        assert!(refused.contains("drawer profile"));
         let text_only = map_enumerated_queue(&enumerated("Generic / Text Only", "Generic / Text Only", "COM4:", 0, Some(true))).unwrap();
         assert!(!text_only.supports_drawer_kick);
         let refused_com = plan_drawer_kick(&windows_settings(&text_only.name), &[text_only.clone()], 100, 0).unwrap_err();
-        assert!(refused_com.contains("drawer-kick"));
+        assert!(refused_com.contains("drawer profile"));
         let mut hp_on_com = windows_settings(&text_only.name);
         hp_on_com.drawer_profile = "hp-vb400-bl1616".into();
         hp_on_com.host_voltage = "24".into();
@@ -2792,6 +2964,51 @@ mod tests {
         assert!(mismatch.contains("not interchangeable"));
     }
 
+    fn mtp3_queue() -> InstalledPrinter {
+        map_enumerated_queue(&enumerated("MTP-3", "POS-80", "USB001", 0, Some(true))).unwrap()
+    }
+
+    #[test]
+    fn windows_drawer_plan_is_a_standalone_raw_spooler_pulse() {
+        let queue = map_enumerated_queue(&enumerated(
+            "Toshiba POS Printer (CR)",
+            "Toshiba Native Windows Driver",
+            "Toshiba: 0_USB",
+            0,
+            Some(true),
+        ))
+        .unwrap();
+        let mut settings = windows_settings(&queue.name);
+        settings.drawer_profile = "hp-vb400-bl1616".into();
+        settings.host_voltage = "24".into();
+        let plan = plan_drawer_kick(&settings, &[queue], 100, 0).unwrap();
+        assert_eq!(plan.bytes.as_slice(), &[0x1b, b'@', 0x1b, b'p', 0, 25, 250]);
+    }
+
+    #[test]
+    fn a_generic_escpos_printer_uses_the_same_pulse_as_a_named_driver() {
+        let queue = mtp3_queue();
+        assert_eq!(queue.compatibility, "candidate");
+        assert!(!queue.supports_drawer_kick);
+        let mut matched = windows_settings(&queue.name);
+        matched.protocol = "escpos".into();
+        matched.drawer_profile = "escpos-dk-12v".into();
+        matched.host_voltage = "12".into();
+        let plan = plan_drawer_kick(&matched, &[queue.clone()], 100, 0).unwrap();
+        assert_eq!(plan.queue, "MTP-3");
+        assert_eq!(plan.bytes.windows(5).filter(|window| *window == DRAWER_KICK).count(), 1);
+        let mut wrong = matched.clone();
+        wrong.drawer_profile = "escpos-dk-24v".into();
+        wrong.host_voltage = "12".into();
+        let mismatch = plan_drawer_kick(&wrong, &[queue.clone()], 100, 0).unwrap_err();
+        assert!(mismatch.contains("not interchangeable"));
+        assert!(!mismatch.contains("no known drawer-kick"));
+        let mut graphics = matched.clone();
+        graphics.protocol = String::new();
+        let held = plan_drawer_kick(&graphics, &[queue], 100, 0).unwrap_err();
+        assert!(held.contains("not sending ESC/POS"));
+    }
+
     #[test]
     fn repeated_kicks_are_refused_and_open_state_is_unknown() {
         assert!(!kick_allowed(10, 8, 3));
@@ -2808,7 +3025,7 @@ mod tests {
         item.supports_drawer_kick = false;
         item.compatibility = "candidate".into();
         let error = plan_drawer_kick(&windows_settings("Label"), &[item], 100, 0).unwrap_err();
-        assert!(error.contains("drawer-kick"));
+        assert!(error.contains("drawer profile"));
     }
 
     #[test]

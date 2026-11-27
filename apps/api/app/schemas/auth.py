@@ -129,6 +129,27 @@ class CashierOption(ApiModel):
     avatar_url: str | None = None
 
 
+class CashierVerifier(ApiModel):
+    """A POS user this register may unlock offline. The verifier is a hash, never the PIN."""
+
+    user_id: UUID
+    username: str
+    full_name: str
+    store_id: UUID | None = None
+    role_name: str
+    permissions: list[str]
+    pin_verifier: str
+    is_active: bool
+    max_discount_bps: int | None = None
+
+
+class CashierVerifierFeed(ApiModel):
+    """Device-only copy of this branch's cashiers, including the pepper the hash was built with."""
+
+    pin_salt: str
+    staff: list[CashierVerifier]
+
+
 class RegisterStaffOut(ApiModel):
     """A staff member a register can name as the sales associate ("Served by")."""
 

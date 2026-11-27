@@ -127,7 +127,7 @@ export function canTestPrint(draft: Pick<PrinterSettings, "transport" | "address
 }
 
 export function canTestDrawer(
-  draft: Pick<PrinterSettings, "transport" | "address" | "drawer_kick" | "drawer_profile" | "host_voltage" | "drawer_connection">,
+  draft: Pick<PrinterSettings, "transport" | "address" | "drawer_kick" | "drawer_profile" | "host_voltage" | "drawer_connection"> & { protocol?: string },
   queues: readonly InstalledPrinter[],
 ): boolean {
   if (drawerConnection(draft.drawer_connection) !== "printer") return false;
@@ -137,7 +137,31 @@ export function canTestDrawer(
   const queue = queues.find((item) => item.name === draft.address.trim());
   if (!queue || queue.openable === false || queue.availability !== "ready") return false;
   if (lacksKickCircuit(queue)) return false;
-  return queue.compatibility === "compatible" && queue.supportsDrawerKick === true;
+  if (windowsDriverDrawer(queue)) return true;
+  return genericEscposDrawer(draft.protocol, queue);
+}
+
+/** Toshiba and other native Windows receipt drivers take the pulse inside the driver job, not as a raw spooler document. */
+export function windowsDriverDrawer(queue: { compatibility?: string; driver?: string | null; port?: string | null }): boolean {
+  if (queue.compatibility === "unsupported") return false;
+  const driver = (queue.driver ?? "").toLowerCase();
+  const port = (queue.port ?? "").trim().toLowerCase();
+  if (driver.includes("text only") || driver.includes("generic text") || driver.includes("generic / text")) return false;
+  return port.startsWith("toshiba:") || driver.includes("native windows driver");
+}
+
+/** A named receipt driver, or generic ESC/POS on a real candidate queue. Text-only drivers stay off. */
+export function genericEscposDrawer(
+  protocol: string | undefined,
+  queue: { compatibility?: string; supportsDrawerKick?: boolean; driver?: string | null; port?: string | null; printTransport?: string },
+): boolean {
+  if (queue.compatibility === "unsupported") return false;
+  const driver = (queue.driver ?? "").toLowerCase();
+  const port = (queue.port ?? "").trim().toLowerCase();
+  if (port.startsWith("toshiba:") || driver.includes("native windows driver")) return false;
+  if (driver.includes("text only") || driver.includes("generic text") || driver.includes("generic / text")) return false;
+  if (queue.compatibility === "compatible" && queue.supportsDrawerKick === true) return true;
+  return protocol === "escpos" && queue.compatibility === "candidate";
 }
 
 export function canTestPrintFromProbe(probe: PrinterProbe | null): boolean {
@@ -152,17 +176,23 @@ export function canTestPrintFromProbe(probe: PrinterProbe | null): boolean {
 
 export function canTestDrawerFromProbe(probe: PrinterProbe | null): boolean {
   if (!probe || drawerConnection(probe.drawerConnection) !== "printer") return false;
+  const windowsDrawer = windowsDriverDrawer(probe);
+  const statusOk =
+    probe.printerStatus === "ready" ||
+    (probe.printerStatus === "candidate" && (probe.printTransport === "escpos" || windowsDrawer));
   const reachable =
     probe.configured &&
     probe.transport !== "none" &&
     probe.drawerKick &&
     probe.reachable &&
-    probe.printerStatus === "ready" &&
+    statusOk &&
     probe.compatibility !== "unsupported";
   if (!reachable) return false;
   if (!pulseProfileReady({ drawer_profile: probe.drawerProfile, host_voltage: probe.hostVoltage })) return false;
   if (lacksKickCircuit(probe)) return false;
-  return probe.supportsDrawerKick === true && probe.compatibility === "compatible";
+  const escpos = windowsDrawer || genericEscposDrawer(probe.printTransport === "escpos" ? "escpos" : "", probe);
+  if (!escpos) return false;
+  return probe.printerStatus === "ready" || probe.printerStatus === "candidate";
 }
 
 /** A saved Windows queue is operational only when discovery classifies it as a ready compatible receipt printer. */

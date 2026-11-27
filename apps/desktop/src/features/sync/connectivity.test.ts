@@ -16,7 +16,9 @@ describe("server connectivity", () => {
     expect(linkState({ reachable: true, syncing: false, activated: false })).toBe("not_activated");
     expect(linkMessage("offline", "https")).toBe(OFFLINE_NOTICE);
     expect(OFFLINE_NOTICE).not.toContain("localhost:8000");
-    expect(unlockFailureMessage(new Error("Cannot reach the API at http://localhost:8000. Check that the backend is running."))).toBe(NO_CACHED_PIN);
+    expect(unlockFailureMessage(new Error("Cannot reach the API at http://localhost:8000. Check that the backend is running."))).toBe("");
+    expect(unlockFailureMessage(new Error("The server is unreachable and this cashier has not unlocked this register online yet."))).toBe("");
+    expect(unlockFailureMessage(new Error("offline-quiet"))).toBe(NO_CACHED_PIN);
     expect(unlockFailureMessage(new Error("Invalid username or credentials."))).toBe("Invalid username or credentials.");
     expect(linkMessage("offline", "insecure")).toContain("not HTTPS");
   });

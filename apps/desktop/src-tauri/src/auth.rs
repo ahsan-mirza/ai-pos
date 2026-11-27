@@ -3,7 +3,9 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use argon2::password_hash::rand_core::OsRng;
 use argon2::password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString};
 use argon2::Argon2;
+use hmac::{Hmac, Mac};
 use serde::{Deserialize, Serialize};
+use sha2::Sha256;
 
 use crate::db::{CachedUser, Db};
 use crate::sync::DesktopConfig;
@@ -11,6 +13,8 @@ use crate::sync::DesktopConfig;
 const LOCAL_MAX_ATTEMPTS: i64 = 5;
 const LOCAL_LOCKOUT_SECS: i64 = 5 * 60;
 const POS_ACCESS: &str = "pos:access";
+/// The lock screen stays blank for this case. Staff sync while the register is online, so a missing cache is not an error to read aloud.
+const OFFLINE_QUIET: &str = "offline-quiet";
 const OFFLINE_ADDON_SECS: i64 = 24 * 60 * 60;
 /// An unlocked register stays signed in across a restart for the same window as the offline add-on cache.
 pub const REGISTER_SESSION_SECS: i64 = OFFLINE_ADDON_SECS;
@@ -234,10 +238,7 @@ fn accept_remote(db: &Db, response: TokenResponse, pin: &str) -> Result<PinUnloc
 
 fn offline_login(db: &Db, username: &str, pin: &str) -> Result<PinUnlock, String> {
     let Some(cached) = db.cached_user(username)? else {
-        return Err(
-            "The server is unreachable and this cashier has not unlocked this register online yet."
-                .into(),
-        );
+        return Err(OFFLINE_QUIET.into());
     };
     finish_offline(db, cached, pin)
 }
@@ -260,10 +261,7 @@ fn cached_profile(cached: CachedUser) -> Result<CashierProfile, String> {
 
 fn offline_login_id(db: &Db, config: &DesktopConfig, user_id: &str, pin: &str) -> Result<PinUnlock, String> {
     let Some(cached) = db.cached_user_by_id(user_id)? else {
-        return Err(
-            "The server is unreachable and this cashier has not unlocked this register online yet."
-                .into(),
-        );
+        return Err(OFFLINE_QUIET.into());
     };
     if let Some(store) = &cached.store_id {
         if !config.store_id.is_empty() && store != &config.store_id {
@@ -285,7 +283,8 @@ fn finish_offline(db: &Db, cached: CachedUser, pin: &str) -> Result<PinUnlock, S
     if cached.locked_until.is_some_and(|until| until > now) {
         return Err("Too many failed attempts on this register. Try again in a few minutes.".into());
     }
-    if !verify_pin(pin, &cached.pin_hash) {
+    let pepper = db.local_meta("pin_salt").ok().flatten();
+    if !verify_cached_pin(pin, &cached.pin_hash, pepper.as_deref()) {
         let attempts = cached.failed_attempts + 1;
         let locked_until = (attempts >= LOCAL_MAX_ATTEMPTS).then_some(now + LOCAL_LOCKOUT_SECS);
         db.record_cached_failure(
@@ -348,6 +347,7 @@ pub fn cashier_directory(db: &Db, config: &DesktopConfig) -> Result<Vec<CashierC
                 })
                 .collect::<Vec<_>>();
             db.replace_cashier_directory(&scope, &rows)?;
+            let _ = sync_cashier_verifiers(db, config);
             Ok(cards)
         }
         Err(true) => Ok(db.list_cashier_directory(&scope)?.into_iter().map(CashierCard::from).collect()),
@@ -537,14 +537,173 @@ mod tests {
         assert!(message.contains("Too many failed attempts"));
         let _ = std::fs::remove_file(&path);
     }
+
+    #[test]
+    fn a_synced_scrypt_pin_unlocks_offline_without_a_prior_online_sign_in() {
+        let path = std::env::temp_dir().join(format!("axiz-o7-sync-{}.db", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        let db = crate::db::Db::open(&path).unwrap();
+        let encoded = "scrypt$00112233445566778899aabbccddeeff$9de2f8791a80046bf8fb9d6d1280be7829d2d602181373450149888af19475d6";
+        db.set_local_meta("pin_salt", "test-pin-pepper-16chars").unwrap();
+        db.replace_synced_staff(
+            "branch-a",
+            &[crate::db::SyncedStaff {
+                user_id: "bilal".into(),
+                username: "bilal".into(),
+                full_name: "Bilal".into(),
+                store_id: Some("branch-a".into()),
+                role_name: "Cashier".into(),
+                permissions: "[\"pos:access\"]".into(),
+                pin_hash: encoded.into(),
+                is_active: true,
+                max_discount_bps: None,
+            }],
+            1,
+        )
+        .unwrap();
+        let config = crate::sync::DesktopConfig {
+            api_base_url: "https://example.invalid".into(),
+            api_key: String::new(),
+            device_id: "till-a".into(),
+            store_id: "branch-a".into(),
+            tenant_domain: String::new(),
+            tenant_slug: String::new(),
+        };
+        assert!(super::offline_login_id(&db, &config, "bilal", "1357").is_ok());
+        assert!(super::offline_login_id(&db, &config, "bilal", "0000").is_err());
+        let Err(missing) = super::offline_login_id(&db, &config, "nobody", "1357") else {
+            panic!("a cashier who was never synced was allowed in");
+        };
+        assert_eq!(missing, super::OFFLINE_QUIET);
+        let _ = std::fs::remove_file(&path);
+    }
 }
 
+#[cfg_attr(not(test), allow(dead_code))]
 pub(crate) fn verify_pin(pin: &str, encoded: &str) -> bool {
-    PasswordHash::new(encoded)
-        .map(|parsed| {
-            Argon2::default()
-                .verify_password(pin.as_bytes(), &parsed)
-                .is_ok()
+    verify_cached_pin(pin, encoded, None)
+}
+
+fn verify_cached_pin(pin: &str, encoded: &str, pepper: Option<&str>) -> bool {
+    if encoded.starts_with("$argon2") {
+        return PasswordHash::new(encoded)
+            .map(|parsed| Argon2::default().verify_password(pin.as_bytes(), &parsed).is_ok())
+            .unwrap_or(false);
+    }
+    let Some(pepper) = pepper else {
+        return false;
+    };
+    verify_scrypt_pin(pin, encoded, pepper)
+}
+
+/// Server PINs are `scrypt$salt$digest` of HMAC-SHA256(pepper, pin), matching the API.
+fn verify_scrypt_pin(pin: &str, encoded: &str, pepper: &str) -> bool {
+    let mut parts = encoded.split('$');
+    if parts.next() != Some("scrypt") {
+        return false;
+    }
+    let Some(salt_hex) = parts.next() else {
+        return false;
+    };
+    let Some(digest_hex) = parts.next() else {
+        return false;
+    };
+    if parts.next().is_some() {
+        return false;
+    }
+    let Some(salt) = decode_hex(salt_hex) else {
+        return false;
+    };
+    let Some(expected) = decode_hex(digest_hex) else {
+        return false;
+    };
+    if expected.len() != 32 {
+        return false;
+    }
+    let Ok(mut mac) = Hmac::<Sha256>::new_from_slice(pepper.as_bytes()) else {
+        return false;
+    };
+    mac.update(pin.as_bytes());
+    let peppered = encode_hex(&mac.finalize().into_bytes());
+    let Ok(params) = scrypt::Params::new(14, 8, 1, 32) else {
+        return false;
+    };
+    let mut out = [0u8; 32];
+    if scrypt::scrypt(peppered.as_bytes(), &salt, &params, &mut out).is_err() {
+        return false;
+    }
+    out.as_slice() == expected.as_slice()
+}
+
+fn decode_hex(value: &str) -> Option<Vec<u8>> {
+    if value.len() % 2 != 0 {
+        return None;
+    }
+    (0..value.len())
+        .step_by(2)
+        .map(|index| u8::from_str_radix(&value[index..index + 2], 16).ok())
+        .collect()
+}
+
+fn encode_hex(bytes: &[u8]) -> String {
+    bytes.iter().map(|byte| format!("{byte:02x}")).collect()
+}
+
+#[derive(Deserialize)]
+struct VerifierFeed {
+    pin_salt: String,
+    staff: Vec<VerifierRow>,
+}
+
+#[derive(Deserialize)]
+struct VerifierRow {
+    user_id: String,
+    username: String,
+    full_name: String,
+    store_id: Option<String>,
+    role_name: String,
+    permissions: Vec<String>,
+    pin_verifier: String,
+    is_active: bool,
+    max_discount_bps: Option<i64>,
+}
+
+/// Pulls every cashier for this branch, including the PIN verifier, so offline unlock does not wait for a first online sign-in.
+pub fn sync_cashier_verifiers(db: &Db, config: &DesktopConfig) -> Result<(), String> {
+    if config.api_base_url.is_empty() || config.api_base_url.contains("not-activated") {
+        return Ok(());
+    }
+    let client = reqwest::blocking::Client::builder()
+        .timeout(Duration::from_secs(8))
+        .build()
+        .map_err(|err| err.to_string())?;
+    let response = client
+        .get(format!("{}/api/v1/auth/cashier-verifiers", config.api_base_url))
+        .headers(config.auth_headers())
+        .send()
+        .map_err(|err| err.to_string())?;
+    if !response.status().is_success() {
+        return Err("The register could not refresh cashiers.".into());
+    }
+    let feed: VerifierFeed = response.json().map_err(|err| err.to_string())?;
+    if !feed.pin_salt.is_empty() {
+        db.set_local_meta("pin_salt", &feed.pin_salt)?;
+    }
+    let rows = feed
+        .staff
+        .into_iter()
+        .filter(|row| row.pin_verifier.starts_with("scrypt$") || row.pin_verifier.starts_with("$argon2"))
+        .map(|row| crate::db::SyncedStaff {
+            user_id: row.user_id,
+            username: row.username,
+            full_name: row.full_name,
+            store_id: row.store_id,
+            role_name: row.role_name,
+            permissions: serde_json::to_string(&row.permissions).unwrap_or_else(|_| "[]".into()),
+            pin_hash: row.pin_verifier,
+            is_active: row.is_active,
+            max_discount_bps: row.max_discount_bps,
         })
-        .unwrap_or(false)
+        .collect::<Vec<_>>();
+    db.replace_synced_staff(&config.store_id, &rows, now_secs())
 }

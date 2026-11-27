@@ -10,9 +10,9 @@ export const BLUETOOTH_EMPTY =
 export const SERIAL_EMPTY =
   "Choose the COM port Windows assigned to this printer. AxizPOS does not change baud, parity, data bits, or stop bits, and it does not send a receipt while discovering ports.";
 export const GENERIC_ESCPOS =
-  "Generic ESC/POS was selected for this model. It is not verified, and the drawer is not kicked.";
+  "Generic ESC/POS was selected. A drawer pulse is sent only when the saved drawer profile matches the confirmed drawer-port voltage.";
 export const MTP3_LABEL =
-  "MTP-3 label profile: 80 mm, ESC/POS, 90 mm/s, cashbox output DC 12V/1A. The label does not identify USB, Wi-Fi, or Bluetooth, and the drawer kick is not verified.";
+  "MTP-3 label profile: 80 mm, ESC/POS, 90 mm/s, cashbox output DC12V/1A. Use the 12V ESC/POS drawer profile only when the drawer is also 12V. A 24V profile is not pulsed.";
 
 export type ConnectionChoice = "windows" | "usb" | "network" | "bluetooth" | "serial" | "none";
 

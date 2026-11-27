@@ -175,6 +175,18 @@ pub struct CashierDirectoryRow {
     pub avatar_url: Option<String>,
 }
 
+pub struct SyncedStaff {
+    pub user_id: String,
+    pub username: String,
+    pub full_name: String,
+    pub store_id: Option<String>,
+    pub role_name: String,
+    pub permissions: String,
+    pub pin_hash: String,
+    pub is_active: bool,
+    pub max_discount_bps: Option<i64>,
+}
+
 fn cached_user_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<CachedUser> {
     Ok(CachedUser {
         user_id: row.get(0)?,
@@ -552,6 +564,7 @@ impl Db {
     }
 
     /// Oldest pending batch. A batch is one checkout and is pushed as one server transaction.
+    #[cfg_attr(not(test), allow(dead_code))]
     pub fn next_pending_batch(&self) -> Result<Option<(String, Vec<QueuedEvent>)>, String> {
         self.next_pending_except(&[])
     }
@@ -1229,6 +1242,103 @@ impl Db {
         tx.commit().map_err(|err| err.to_string())
     }
 
+    pub fn local_meta(&self, key: &str) -> Result<Option<String>, String> {
+        let conn = self.lock()?;
+        match conn.query_row(
+            "SELECT value FROM local_meta WHERE key = ?1",
+            params![key],
+            |row| row.get(0),
+        ) {
+            Ok(value) => Ok(Some(value)),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(err) => Err(err.to_string()),
+        }
+    }
+
+    pub fn set_local_meta(&self, key: &str, value: &str) -> Result<(), String> {
+        self.lock()?
+            .execute(
+                "INSERT INTO local_meta (key, value) VALUES (?1, ?2)
+                 ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                params![key, value],
+            )
+            .map_err(|err| err.to_string())?;
+        Ok(())
+    }
+
+    /// Stores cashiers pulled while online. Lockouts stay, and people missing from this branch can no longer unlock.
+    pub fn replace_synced_staff(&self, store_id: &str, rows: &[SyncedStaff], now: i64) -> Result<(), String> {
+        let mut conn = self.lock()?;
+        let tx = conn.transaction().map_err(|err| err.to_string())?;
+        for row in rows {
+            if row.user_id.is_empty() || row.username.is_empty() || row.pin_hash.is_empty() {
+                continue;
+            }
+            tx.execute(
+                "DELETE FROM cached_users WHERE username = ?1 AND user_id <> ?2",
+                params![row.username, row.user_id],
+            )
+            .map_err(|err| err.to_string())?;
+            tx.execute(
+                "INSERT INTO cached_users (
+                    user_id, username, full_name, store_id, role_name, permissions, pin_hash,
+                    failed_attempts, locked_until, updated_at, max_discount_bps, addon_modules,
+                    provisioning_status, is_active
+                 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 0, NULL, ?8, ?9, '[]', 'accepted', ?10)
+                 ON CONFLICT(user_id) DO UPDATE SET
+                    username = excluded.username,
+                    full_name = excluded.full_name,
+                    store_id = excluded.store_id,
+                    role_name = excluded.role_name,
+                    permissions = excluded.permissions,
+                    pin_hash = excluded.pin_hash,
+                    updated_at = excluded.updated_at,
+                    max_discount_bps = excluded.max_discount_bps,
+                    is_active = excluded.is_active,
+                    provisioning_status = 'accepted'",
+                params![
+                    row.user_id,
+                    row.username,
+                    row.full_name,
+                    row.store_id,
+                    row.role_name,
+                    row.permissions,
+                    row.pin_hash,
+                    now,
+                    row.max_discount_bps,
+                    i64::from(row.is_active),
+                ],
+            )
+            .map_err(|err| err.to_string())?;
+        }
+        if !store_id.is_empty() {
+            let mut keep = rows
+                .iter()
+                .filter(|row| !row.user_id.is_empty())
+                .map(|row| row.user_id.clone())
+                .collect::<Vec<_>>();
+            if keep.is_empty() {
+                keep.push(String::new());
+            }
+            let marks = keep.iter().map(|_| "?").collect::<Vec<_>>().join(", ");
+            let sql = format!(
+                "UPDATE cached_users SET is_active = 0
+                 WHERE provisioning_status IN ('accepted', 'server')
+                   AND (store_id IS NULL OR store_id = '' OR store_id = ?)
+                   AND user_id NOT IN ({marks})"
+            );
+            let mut statement = tx.prepare(&sql).map_err(|err| err.to_string())?;
+            let mut values: Vec<&dyn rusqlite::types::ToSql> = Vec::with_capacity(keep.len() + 1);
+            values.push(&store_id);
+            for id in &keep {
+                values.push(id);
+            }
+            statement.execute(values.as_slice()).map_err(|err| err.to_string())?;
+            drop(statement);
+        }
+        tx.commit().map_err(|err| err.to_string())
+    }
+
     /// Replaces the cached permission list after the server reports a role change. The PIN verifier stays.
     pub fn replace_cached_permissions(&self, user_id: &str, permissions: &[String]) -> Result<(), String> {
         let encoded = serde_json::to_string(permissions).map_err(|err| err.to_string())?;
@@ -1683,6 +1793,10 @@ fn migrate(conn: &Connection) -> Result<(), String> {
             operation TEXT NOT NULL,
             payload TEXT,
             seq INTEGER NOT NULL
+         );
+         CREATE TABLE IF NOT EXISTS local_meta (
+            key TEXT PRIMARY KEY,
+            value TEXT NOT NULL
          );",
     )
     .map_err(|err| err.to_string())

@@ -3,11 +3,20 @@
 import uuid
 
 from sqlalchemy import select
-from tests.test_auth import API_KEY, CASHIER_ROLE, OTHER_STORE_ID, STORE_ID, admin_token, bearer, seed_stores
+from tests.test_auth import (
+    API_KEY,
+    CASHIER_PIN,
+    CASHIER_ROLE,
+    OTHER_STORE_ID,
+    STORE_ID,
+    admin_token,
+    bearer,
+    seed_stores,
+)
 
 from app.core.config import get_settings
 from app.core.permissions import CASHIER_ROLE_ID
-from app.core.security import hash_pin
+from app.core.security import hash_pin, verify_pin
 from app.models.audit_log import AuditLog
 from app.models.user import User
 
@@ -75,6 +84,24 @@ def test_directory_lists_only_active_pos_users_and_hides_secrets(client) -> None
     assert client.get("/api/v1/auth/cashiers").status_code == 401
 
 
+def test_device_receives_verifiers_for_its_branch_only(client) -> None:
+    headers = {"X-Api-Key": API_KEY}
+    assert client.get("/api/v1/auth/cashier-verifiers").status_code == 401
+    feed = client.get("/api/v1/auth/cashier-verifiers", headers=headers)
+    assert feed.status_code == 200, feed.text
+    body = feed.json()
+    assert body["pin_salt"] == get_settings().pin_salt
+    assert "email" not in feed.text
+    row = next(item for item in body["staff"] if item["full_name"] == "Front Cashier")
+    assert row["username"] == "cashier"
+    assert row["pin_verifier"].startswith("scrypt$")
+    assert verify_pin(CASHIER_PIN, row["pin_verifier"], get_settings())
+    assert "pos:access" in row["permissions"]
+    cards = client.get("/api/v1/auth/cashiers", headers=headers)
+    assert "pin_verifier" not in cards.text
+    assert "pin_salt" not in cards.text
+
+
 def test_bound_register_ignores_a_client_store_and_another_tenant(client, session) -> None:
     seed_stores(client)
     token = admin_token(client)
@@ -139,6 +166,12 @@ def test_bound_register_ignores_a_client_store_and_another_tenant(client, sessio
     spoofed = client.get(f"/api/v1/auth/cashiers?store_id={OTHER_STORE_ID}", headers=terminal)
     assert spoofed.status_code == 200, spoofed.text
     assert "Elsewhere Cashier" not in {row["display_name"] for row in spoofed.json()}
+    verifiers = client.get(f"/api/v1/auth/cashier-verifiers?store_id={OTHER_STORE_ID}", headers=terminal)
+    assert verifiers.status_code == 200, verifiers.text
+    synced = {row["full_name"] for row in verifiers.json()["staff"]}
+    assert "Here Cashier" in synced
+    assert "Elsewhere Cashier" not in synced
+    assert "Foreign Cashier" not in synced
 
     unlocked = client.post(
         "/api/v1/auth/unlock",

@@ -9,10 +9,10 @@ describe("register header status", () => {
     expect(registerHeaderStatus({ ...base, sessionMode: "offline", apiReachable: false, pending: 0 }).label).toBe("Offline · Queue clear");
     expect(registerHeaderStatus({ ...base, sessionMode: "offline", apiReachable: false, pending: 3 }).label).toBe("Offline · 3 pending");
     expect(registerHeaderStatus({ ...base, sessionMode: "offline", apiReachable: true, pending: 0 }).label).toBe(
-      "Connection restored · Re-authenticate",
+      "Online · Queue clear",
     );
     expect(registerHeaderStatus({ ...base, sessionMode: "offline", apiReachable: true, pending: 2 }).label).toBe(
-      "Connection restored · 2 pending",
+      "Online · Sync pending",
     );
     expect(registerHeaderStatus({ ...base, sessionMode: "online", apiReachable: true, pending: 2 }).label).toBe("Online · Sync pending");
     expect(registerHeaderStatus({ ...base, sessionMode: "online", apiReachable: true, pending: 0, failed: 1 }).label).toBe(

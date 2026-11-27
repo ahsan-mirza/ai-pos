@@ -351,6 +351,7 @@ fn machine_name() -> String {
 
 pub const SIGNING_UNAVAILABLE: &str =
     "The server cannot currently issue a permanent device entitlement. Contact your administrator.";
+#[cfg_attr(not(test), allow(dead_code))]
 pub const SAME_STORE_PENDING: &str =
     "Existing store detected. Your pending records will remain associated with this store and register.";
 pub const DIFFERENT_STORE_PENDING: &str =

@@ -106,7 +106,7 @@ function cacheFailure(reason: "missing" | "invalid" | "locked" | "disabled"): Er
 
 /**
  * The server is asked first. When it cannot be reached, the PIN is checked against the verifier
- * saved at the last online unlock. That path does not create an access token.
+ * synced for this register. That path does not create an access token.
  */
 async function onlineThenCached(
   pin: string,

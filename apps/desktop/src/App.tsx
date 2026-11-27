@@ -34,6 +34,7 @@ import { VirtualKeyboardProvider } from "./hooks/useVirtualKeyboard";
 import { env } from "./config/env";
 import { CatalogSkeleton } from "./features/checkout/CatalogSkeleton";
 import { syncBusinessCurrency } from "./features/checkout/currency";
+import { useAutoReconnect } from "./features/sync/autoReconnect";
 import { inTauri, openDemoSession, takeDemoNotice } from "./lib/tauri";
 
 const customerDisplay = new URLSearchParams(window.location.search).get("display") === "1";
@@ -97,6 +98,7 @@ function RegisterApp() {
   const shiftState = useShift();
   const { foodAndBeverage, enabled, profile } = useCapabilities();
   const { density } = useRegisterLayout();
+  useAutoReconnect();
 
   const laundryBusiness = profile === "laundry";
   useEffect(() => {

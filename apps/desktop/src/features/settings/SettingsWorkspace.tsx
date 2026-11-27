@@ -195,7 +195,7 @@ export function SettingsWorkspace() {
           : "Catalogue, variants, pricing, and stock rules follow this retail profile.";
 
   return (
-    <div data-settings-frame className="flex min-h-0 flex-1">
+    <div data-settings-frame className="flex h-full min-h-0 overflow-hidden">
       <SettingsLayout
         sidebar={
           <SettingsSidebar

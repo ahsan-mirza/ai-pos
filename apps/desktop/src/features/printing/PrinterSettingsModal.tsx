@@ -1,7 +1,7 @@
 import { Select } from "@ai-pos/ui";
 import { renderReceipt, type ReceiptDoc } from "@ai-pos/receipt";
-import { Printer, RefreshCw, X } from "lucide-react";
-import { useEffect, useId, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import { Printer, RefreshCw, X, ZoomIn } from "lucide-react";
+import { memo, useCallback, useEffect, useId, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import {
   inTauri,
   listBluetoothPrinters,
@@ -42,7 +42,7 @@ import {
   CONNECTED,
   type DiagnosticStage,
 } from "./printerSelection";
-import { drawerConnection, drawerProfile, profilesFor } from "./drawerProfiles";
+import { drawerConnection, drawerMismatch, drawerProfile, profilesFor } from "./drawerProfiles";
 import {
   BLUETOOTH_EMPTY,
   GENERIC_ESCPOS,
@@ -60,7 +60,7 @@ import {
   type ConnectionChoice,
 } from "./printerConnections";
 import { layoutWidth, settingsPreviewReceipt } from "./settingsPreview";
-import { useBusinessCurrency } from "../checkout/currency";
+import { businessCurrency } from "../checkout/currency";
 
 interface PrinterSettingsModalProps {
   sample: ReceiptDoc;
@@ -86,7 +86,6 @@ export function PrinterSettingsModal({
   canSave = true,
   initialBusy = false,
 }: PrinterSettingsModalProps) {
-  const currency = useBusinessCurrency();
   const titleId = useId();
   const queueLabelId = useId();
   const desktop = inTauri();
@@ -104,6 +103,9 @@ export function PrinterSettingsModal({
   const [queuesError, setQueuesError] = useState<string | null>(null);
   const [loading, setLoading] = useState(initialLoading ?? desktop);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [zoomPreview, setZoomPreview] = useState(false);
+  const togglePreviewZoom = useCallback(() => setZoomPreview((open) => !open), []);
+  const [confirmKick, setConfirmKick] = useState(false);
   const [stages, setStages] = useState<DiagnosticStage[]>([]);
   const [confirmTest, setConfirmTest] = useState(false);
   const printing = useRef(false);
@@ -242,7 +244,6 @@ export function PrinterSettingsModal({
       setError("Copies per sale must be 1, 2, or 3.");
       return null;
     }
-    setBusy(true);
     try {
       const saved = await savePrinterSettings(draft);
       setDraft(saved);
@@ -250,7 +251,6 @@ export function PrinterSettingsModal({
       return saved;
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught));
-      setBusy(false);
       return null;
     }
   };
@@ -258,6 +258,7 @@ export function PrinterSettingsModal({
   const save = async (): Promise<boolean> => {
     if (saving.current || busy) return false;
     saving.current = true;
+    setBusy(true);
     const saved = await persist();
     if (!saved) {
       saving.current = false;
@@ -281,7 +282,7 @@ export function PrinterSettingsModal({
   };
 
   const selectedQueue = () => queues.find((queue) => queue.name === draft.address.trim());
-  const testDocument = () => settingsPreviewReceipt(registerIdentity(), currency);
+  const testDocument = () => settingsPreviewReceipt(registerIdentity(), businessCurrency());
 
   const showStages = (rendered: boolean, ink: number, submitted: boolean) => {
     const queue = selectedQueue();
@@ -303,7 +304,6 @@ export function PrinterSettingsModal({
       return;
     }
     if (!(await persist())) return;
-    setBusy(true);
     try {
       const probe = await probePrinter();
       const message = connectionMessage(probe);
@@ -312,13 +312,10 @@ export function PrinterSettingsModal({
       showStages(false, 0, false);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught));
-    } finally {
-      setBusy(false);
     }
   };
 
   const renderPreview = async () => {
-    setBusy(true);
     setError(null);
     try {
       const rendered = await renderReceipt(testDocument(), layoutWidth(draft.paper_dots));
@@ -330,8 +327,6 @@ export function PrinterSettingsModal({
       else setStatus(`Receipt preview has visible content (${ink} ink bytes, ${rendered.width} dots wide). Nothing was sent to the printer.`);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught));
-    } finally {
-      setBusy(false);
     }
   };
 
@@ -342,7 +337,6 @@ export function PrinterSettingsModal({
       printing.current = false;
       return;
     }
-    setBusy(true);
     const document = testDocument();
     let ink = 0;
     try {
@@ -352,20 +346,17 @@ export function PrinterSettingsModal({
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught));
       showStages(false, 0, false);
-      setBusy(false);
       printing.current = false;
       return;
     }
     if (ink === 0) {
       showStages(true, 0, false);
       setError(RENDER_FAILED);
-      setBusy(false);
       printing.current = false;
       return;
     }
     const outcome = await printExactReceipt(document, layoutWidth(draft.paper_dots));
     showStages(true, ink, outcome.printed);
-    setBusy(false);
     printing.current = false;
     if (!outcome.printed) setError(outcome.message || PRINT_FAILURE);
     else setStatus(TEST_SUBMITTED);
@@ -374,17 +365,27 @@ export function PrinterSettingsModal({
   const testDrawer = async () => {
     if (printing.current || busy) return;
     printing.current = true;
-    setBusy(true);
     try {
       await openCashDrawer();
       setStatus("Drawer kick command submitted. Open/closed state: Not reported.");
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught));
     } finally {
-      setBusy(false);
       printing.current = false;
     }
   };
+
+  useEffect(() => {
+    let cancelled = false;
+    void renderReceipt(settingsPreviewReceipt(registerIdentity(), businessCurrency()), layoutWidth(draft.paper_dots))
+      .then((rendered) => {
+        if (!cancelled && inkBytes(rendered.bits()) > 0) setPreviewUrl(rendered.canvas.toDataURL("image/png"));
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [draft.paper_dots]);
 
   const addressLabel = "Printer IP address";
   const warning = draft.transport === "windows" && !loading ? selectionWarning(draft.address, queues) : null;
@@ -392,7 +393,7 @@ export function PrinterSettingsModal({
   const missingName = warning && !selected ? draft.address.trim() : "";
   const discovery =
     loading ? DISCOVERING : queuesError ? queuesError : queues.length === 0 ? NONE_FOUND : foundMessage(queues.length);
-  const printDisabled = !canSave || busy || draft.transport === "ble" || (draft.transport === "windows" && !canTestPrint(draft, queues));
+  const printDisabled = !canSave || draft.transport === "ble" || (draft.transport === "windows" && !canTestPrint(draft, queues));
   const drawerDisabled = draft.transport === "none" || draft.transport === "serial" || draft.transport === "ble";
   const usbMode = activeConnection(draft) === "usb";
   const shownQueues = usbMode ? queues.filter(isUsbQueue) : queues;
@@ -401,22 +402,27 @@ export function PrinterSettingsModal({
     ? labelProfile(`${selectedQueueNow.name} ${selectedQueueNow.driver} ${selectedQueueNow.manufacturer ?? ""}`)
     : null;
   const connection = drawerConnection(draft.drawer_connection);
-  const kickDisabled = busy || !canTestDrawer(draft, queues);
+  const kickDisabled = !canTestDrawer(draft, queues);
+  const mismatch = drawerMismatch({
+    drawer_profile: draft.drawer_profile,
+    host_voltage: draft.host_voltage,
+    model: `${draft.address} ${selectedQueueNow?.driver ?? ""} ${selectedQueueNow?.name ?? ""}`,
+  });
   const drawerPolicyDisabled = !canSave || connection === "none" || (connection === "printer" && drawerDisabled);
   const shownError = !canSave && error === REGISTER_VIEW_ONLY ? null : error;
 
   return (
     <div className="modal-backdrop" role="presentation">
-      <div role="dialog" aria-modal="true" aria-labelledby={titleId} className="modal-card max-w-2xl">
+      <div role="dialog" aria-modal="true" aria-labelledby={titleId} className="modal-card flex max-h-[min(92dvh,52rem)] w-full max-w-5xl flex-col">
         <div className="flex items-start gap-3">
-          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-charcoal text-white dark:bg-zinc-100 dark:text-zinc-900">
+          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-primary text-white">
             <Printer size={20} aria-hidden="true" />
           </span>
           <div className="min-w-0 flex-1">
             <h2 id={titleId} className="text-xl font-semibold">
-              Register settings
+              Receipt Printer & Cash Drawer
             </h2>
-            <p className="text-sm text-charcoal/60 dark:text-zinc-400">Receipt printer and cash drawer for this register only.</p>
+            <p className="text-sm text-charcoal/60 dark:text-zinc-400">This register only. Preview and tests do not create a sale.</p>
           </div>
           <button type="button" aria-label="Close" onClick={onClose} disabled={busy} className="modal-close">
             <X size={18} aria-hidden="true" />
@@ -424,12 +430,14 @@ export function PrinterSettingsModal({
         </div>
 
         <form
-          className="mt-5 space-y-4"
+          className="mt-4 flex min-h-0 flex-1 flex-col overflow-hidden"
           onSubmit={(event) => {
             event.preventDefault();
             void save();
           }}
         >
+          <div className="grid min-h-0 flex-1 gap-4 overflow-y-auto lg:grid-cols-[minmax(0,1.35fr)_17rem]">
+          <div className="space-y-4">
           <div
             className="flex flex-nowrap gap-1 overflow-x-auto rounded-3xl bg-charcoal p-1"
             role="tablist"
@@ -839,6 +847,11 @@ export function PrinterSettingsModal({
                   />
                 </label>
                 <p className="px-1 text-sm text-charcoal/60 dark:text-zinc-400">{drawerProfile(draft.drawer_profile).note}</p>
+                {mismatch ? (
+                  <p role="alert" className="rounded-xl bg-red-500/10 px-3 py-2 text-sm font-medium text-red-700 dark:text-red-300">
+                    {mismatch}
+                  </p>
+                ) : null}
                 <label className="flex items-center justify-between gap-3 px-1 text-sm font-medium">
                   Drawer connector
                   <Select
@@ -938,9 +951,14 @@ export function PrinterSettingsModal({
               </tbody>
             </table>
           ) : null}
-          {previewUrl ? (
-            <img src={previewUrl} alt="Diagnostic receipt preview" className="mx-auto max-h-48 w-auto rounded-xl border border-line bg-white" />
-          ) : null}
+          </div>
+          <ReceiptPreview
+            url={previewUrl}
+            zoom={zoomPreview}
+            paper={draft.paper_dots === 384 ? "58 mm" : "80 mm"}
+            onZoom={togglePreviewZoom}
+          />
+          </div>
 
           {confirmTest ? (
             <div className="rounded-2xl bg-surface dark:bg-zinc-800/60 p-3 text-sm">
@@ -969,7 +987,7 @@ export function PrinterSettingsModal({
               <button
                 type="button"
                 onClick={() => void validateConnection()}
-                disabled={busy || !draft.address.trim()}
+                disabled={!draft.address.trim()}
                 className="rounded-full border border-line px-4 py-2 text-sm font-semibold hover:border-primary hover:text-primary disabled:opacity-40 dark:border-zinc-800"
               >
                 Validate connection
@@ -978,7 +996,6 @@ export function PrinterSettingsModal({
             <button
               type="button"
               onClick={() => void renderPreview()}
-              disabled={busy}
               className="rounded-full border border-line px-4 py-2 text-sm font-semibold hover:border-primary hover:text-primary disabled:opacity-40 dark:border-zinc-800"
             >
               Test receipt rendering
@@ -999,15 +1016,39 @@ export function PrinterSettingsModal({
             </button>
             <button
               type="button"
-              onClick={() => void testDrawer()}
+              onClick={() => setConfirmKick(true)}
               disabled={!canSave || kickDisabled}
-              title={kickDisabled ? "Drawer kick stays off until that capability is verified on its own." : "Send one drawer pulse"}
-              className="rounded-full border border-line px-4 py-2 text-sm font-semibold hover:border-primary hover:text-primary disabled:opacity-40 dark:border-zinc-800"
+              title={kickDisabled ? mismatch || "Drawer kick stays off until the profile, voltage, and ESC/POS path match." : "Send one drawer pulse"}
+              className="rounded-full bg-primary px-4 py-2 text-sm font-semibold text-white hover:brightness-110 disabled:opacity-40"
             >
               Test drawer kick
             </button>
           </div>
-          <div className="flex items-center justify-end gap-3">
+          {confirmKick ? (
+            <div className="rounded-2xl bg-surface p-3 text-sm dark:bg-zinc-800/60">
+              <p>
+                Send one drawer pulse to {draft.address || "the selected printer"} on its DK port
+                {draft.host_voltage ? ` at ${draft.host_voltage}V` : ""}. This uses the same command as a cash sale. Open/closed stays Not reported.
+              </p>
+              <div className="mt-3 flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setConfirmKick(false);
+                    void testDrawer();
+                  }}
+                  disabled={kickDisabled}
+                  className="rounded-full bg-primary px-4 py-2 font-semibold text-white disabled:opacity-40"
+                >
+                  Send one pulse
+                </button>
+                <button type="button" onClick={() => setConfirmKick(false)} disabled={busy} className="rounded-full border border-line px-4 py-2 font-semibold">
+                  Cancel
+                </button>
+              </div>
+            </div>
+          ) : null}
+          <div className="mt-3 flex items-center justify-end gap-3 border-t border-line pt-3">
             <div className="flex gap-3">
               <button type="button" onClick={onClose} disabled={busy} className="modal-cancel">
                 Cancel
@@ -1022,3 +1063,42 @@ export function PrinterSettingsModal({
     </div>
   );
 }
+
+const ReceiptPreview = memo(function ReceiptPreview({
+  url,
+  zoom,
+  paper,
+  onZoom,
+}: {
+  url: string | null;
+  zoom: boolean;
+  paper: string;
+  onZoom: () => void;
+}) {
+  return (
+    <aside className="space-y-2 rounded-2xl border border-line bg-surface p-3 dark:border-zinc-800 dark:bg-zinc-800/40">
+      <div className="flex items-center justify-between gap-2">
+        <h3 className="text-sm font-semibold">Receipt preview</h3>
+        <button
+          type="button"
+          onClick={onZoom}
+          disabled={!url}
+          className="inline-flex h-9 items-center gap-1 rounded-full border border-line px-3 text-xs font-semibold disabled:opacity-40"
+        >
+          <ZoomIn size={14} aria-hidden="true" />
+          {zoom ? "Shrink" : "Zoom"}
+        </button>
+      </div>
+      <p className="text-xs text-charcoal/60 dark:text-zinc-400">{paper} sample. Nothing is printed and the drawer stays closed.</p>
+      {url ? (
+        <img
+          src={url}
+          alt="Receipt preview"
+          className={`mx-auto w-auto rounded-xl border border-line bg-white ${zoom ? "max-h-[32rem]" : "max-h-64"}`}
+        />
+      ) : (
+        <p className="text-sm text-charcoal/60 dark:text-zinc-400">The sample receipt appears here when the preview is ready.</p>
+      )}
+    </aside>
+  );
+});

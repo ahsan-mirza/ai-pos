@@ -247,8 +247,8 @@ export function SettingsSidebar({
     current?.scrollIntoView({ block: "nearest" });
   }, [active, collapsed]);
   return (
-    <aside aria-label="Settings sections" className={`box-border flex h-full shrink-0 flex-col overflow-hidden bg-zinc-900 py-4 text-white ${collapsed ? "w-[4.5rem]" : "w-[14.5rem]"}`}>
-      <div className={`flex items-start gap-2 ${collapsed ? "justify-center px-2" : "px-3"}`}>
+    <aside aria-label="Settings sections" className={`box-border flex h-full min-h-0 shrink-0 flex-col overflow-hidden bg-zinc-900 py-4 text-white ${collapsed ? "w-[4.5rem]" : "w-[14.5rem]"}`}>
+      <div className={`flex shrink-0 items-start gap-2 ${collapsed ? "justify-center px-2" : "px-3"}`}>
         {collapsed ? null : (
           <div className="min-w-0 flex-1">
             <h2 className="text-sm font-semibold leading-5">{title}</h2>
@@ -258,7 +258,7 @@ export function SettingsSidebar({
         <SettingsCollapseButton collapsed={collapsed} onClick={onToggle} />
       </div>
       {collapsed ? null : (
-        <div className="px-3 pt-3">
+        <div className="shrink-0 px-3 pt-3">
           <SettingsSearch value={query} onChange={onQuery} />
         </div>
       )}
@@ -360,7 +360,7 @@ export function StoreInformationSummary({
 
 export function SettingsLayout({ sidebar, children }: { sidebar: ReactNode; children: ReactNode }) {
   return (
-    <div className="flex min-h-0 flex-1 bg-slate-50">
+    <div className="flex h-full min-h-0 w-full overflow-hidden bg-slate-50">
       {sidebar}
       <div className="min-h-0 min-w-0 flex-1 overflow-y-auto p-4 md:p-6">{children}</div>
     </div>

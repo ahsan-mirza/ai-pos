@@ -1754,7 +1754,7 @@ fn connectivity_status(state: tauri::State<AppState>) -> Result<ConnectivityStat
 
 fn probe_server(url: &str) -> bool {
     let client = reqwest::blocking::Client::builder()
-        .timeout(std::time::Duration::from_secs(2))
+        .timeout(std::time::Duration::from_secs(8))
         .build();
     let Ok(client) = client else {
         return false;

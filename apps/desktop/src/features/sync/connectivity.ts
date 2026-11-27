@@ -3,14 +3,15 @@
 export const OFFLINE_NOTICE =
   "You're working offline. Local POS operations remain available. Pending changes will synchronize when a connection is restored.";
 
-/** Shown when the PIN cannot be checked locally because this cashier has never unlocked here online. */
-export const NO_CACHED_PIN =
-  "The server is unreachable and this cashier has not unlocked this register online yet.";
+/** Kept so older callers compile. The lock screen does not print this while the register is offline. */
+export const NO_CACHED_PIN = "";
 
-/** The unlock keypad must not ask the cashier to start a localhost API. */
+/** The unlock keypad stays quiet when the server cannot be reached. A wrong PIN still says so. */
 export function unlockFailureMessage(caught: unknown): string {
   const message = caught instanceof Error ? caught.message : String(caught);
   if (
+    message === "offline-quiet" ||
+    message.includes("has not unlocked this register online yet") ||
     message.includes("Cannot reach the API") ||
     message.includes("backend is running") ||
     message.includes("localhost:8000")

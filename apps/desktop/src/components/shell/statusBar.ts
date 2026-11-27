@@ -73,20 +73,20 @@ function pageRest(page: SyncState | null): string {
 function connectionChip(input: StatusBarInput): StatusChip {
   const page = input.page;
   const title = page?.title || "";
+  if (input.apiKnown && input.apiReachable) {
+    return {
+      id: "connection",
+      label: "Online",
+      title: title || "This register is online.",
+      tone: "live",
+    };
+  }
   if (input.apiKnown && !input.apiReachable) {
     return {
       id: "connection",
       label: "Offline",
       title: title || OFFLINE_NOTICE,
       tone: "offline",
-    };
-  }
-  if (page?.label.startsWith("Connection restored") || (input.sessionMode === "offline" && input.apiReachable)) {
-    return {
-      id: "connection",
-      label: "Connection restored",
-      title: title || "The API is reachable. Sign in again to resume the online session.",
-      tone: "pending",
     };
   }
   if (page?.tone === "offline" || page?.label.startsWith("Offline") || input.sessionMode === "offline") {

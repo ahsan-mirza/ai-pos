@@ -64,5 +64,16 @@ describe("cash drawer profiles", () => {
     expect(canTestDrawer(settings({ transport: "serial", address: "COM4" }), [epson])).toBe(false);
     expect(canTestDrawer(settings({ drawer_connection: "none" }), [epson])).toBe(false);
     expect(canTestDrawer(settings({ drawer_connection: "separate", transport: "none" }), [epson])).toBe(false);
+    const mtp: InstalledPrinter = {
+      ...epson,
+      name: "MTP-3",
+      driver: "POS-80",
+      compatibility: "candidate",
+      supportsDrawerKick: false,
+      profileId: "",
+    };
+    expect(canTestDrawer(settings({ address: "MTP-3", protocol: "escpos", drawer_profile: "escpos-dk-24v", host_voltage: "12" }), [mtp])).toBe(false);
+    expect(canTestDrawer(settings({ address: "MTP-3", protocol: "escpos", drawer_profile: "escpos-dk-12v", host_voltage: "12" }), [mtp])).toBe(true);
+    expect(canTestDrawer(settings({ address: "MTP-3", drawer_profile: "escpos-dk-12v", host_voltage: "12" }), [mtp])).toBe(false);
   });
 });

@@ -1,5 +1,6 @@
 import type { PrinterProbe } from "../../lib/tauri";
 import { drawerConnection, pulseProfileReady } from "../../features/printing/drawerProfiles";
+import { canTestDrawerFromProbe } from "../../features/printing/printerSelection";
 import type { KeyboardStatus } from "../../hooks/useVirtualKeyboard";
 
 export type Light = "green" | "red" | "gray" | "amber";
@@ -200,15 +201,7 @@ const DRAWER_UNKNOWN = "Open/closed state: Not reported.";
 
 export function drawerCanTest(probe: PrinterProbe): boolean {
   if (drawerConnection(probe.drawerConnection) !== "printer") return false;
-  const known = probe.supportsDrawerKick === true && probe.compatibility === "compatible";
-  return (
-    probe.configured &&
-    probe.drawerKick &&
-    probe.reachable &&
-    probe.printerStatus === "ready" &&
-    known &&
-    pulseProfileReady({ drawer_profile: probe.drawerProfile, host_voltage: probe.hostVoltage })
-  );
+  return canTestDrawerFromProbe(probe);
 }
 
 export function drawerIndicator(probe: PrinterProbe): Indicator | null {
@@ -268,7 +261,7 @@ export function drawerIndicator(probe: PrinterProbe): Indicator | null {
   } else if (!pulseProfileReady({ drawer_profile: probe.drawerProfile, host_voltage: probe.hostVoltage })) {
     status = `Choose a cash drawer profile and confirm the drawer-port voltage before sending a pulse. ${DRAWER_UNKNOWN}`;
   } else if (!probe.supportsDrawerKick) {
-    status = `This printer has no known drawer-kick profile. ${DRAWER_UNKNOWN}`;
+    status = `The drawer profile and this printer's ESC/POS port are not both confirmed, so no pulse is sent. ${DRAWER_UNKNOWN}`;
   } else if (probe.lastKickError) {
     light = "amber";
     status = `Drawer command failed. ${DRAWER_UNKNOWN} ${probe.lastKickError}`;

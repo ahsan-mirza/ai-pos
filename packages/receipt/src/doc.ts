@@ -331,8 +331,14 @@ function formatIssued(value: Date): string {
   return `${value.getFullYear()}-${pad(value.getMonth() + 1)}-${pad(value.getDate())} ${pad(value.getHours())}:${pad(value.getMinutes())}`;
 }
 
+/**
+ * Luminance below this becomes a black dot. Antialiased strokes sit around 180–210;
+ * a lower cut drops those pixels and the printed letters break apart.
+ */
+export const INK_THRESHOLD = 208;
+
 /** RGBA pixels to packed 1-bit rows (MSB first, 1 = black), the layout ESC/POS GS v 0 expects. */
-export function packBits(rgba: Uint8ClampedArray, width: number, height: number, threshold = 160): number[] {
+export function packBits(rgba: Uint8ClampedArray, width: number, height: number, threshold = INK_THRESHOLD): number[] {
   const rowBytes = Math.ceil(width / 8);
   const out = new Array<number>(rowBytes * height).fill(0);
   for (let y = 0; y < height; y += 1) {

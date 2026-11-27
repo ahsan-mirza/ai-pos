@@ -232,7 +232,7 @@ pub fn capability_summary(transport: PrintTransport, drawer: bool) -> String {
     match transport {
         PrintTransport::EscPos if drawer => "ESC/POS receipt graphics. Drawer kick is a separate verified profile.".into(),
         PrintTransport::EscPos => "ESC/POS receipt graphics. Drawer kick is not verified.".into(),
-        PrintTransport::WindowsGdi => "Windows driver graphics. Raw ESC/POS is not sent. Drawer kick is not verified.".into(),
+        PrintTransport::WindowsGdi => "Windows driver graphics. A matching drawer profile sends one pulse through this driver.".into(),
         PrintTransport::None => "No supported receipt transport.".into(),
     }
 }
@@ -471,7 +471,7 @@ mod tests {
         );
         assert_eq!(select_transport("Microsoft Print To PDF", "PORTPROMPT:"), PrintTransport::None);
         assert_eq!(select_transport("Canon Generic PCL6 Driver", "10.10.101.250"), PrintTransport::None);
-        assert!(capability_summary(PrintTransport::WindowsGdi, false).contains("Drawer kick is not verified"));
+        assert!(capability_summary(PrintTransport::WindowsGdi, false).contains("matching drawer profile"));
         assert!(SPOOLER_ACCEPTED.contains("physical output has not yet been verified"));
         assert!(RENDER_FAILED.contains("could not be rendered"));
         assert!(TRANSMIT_FAILED.contains("did not accept"));

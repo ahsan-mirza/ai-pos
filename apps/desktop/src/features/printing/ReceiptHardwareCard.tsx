@@ -48,6 +48,7 @@ export function ReceiptHardwareCard({
   const [probe, setProbe] = useState<PrinterProbe | null>(initialProbe);
   const [queues, setQueues] = useState<InstalledPrinter[]>(initialQueues);
   const [notice, setNotice] = useState<string | null>(null);
+  const [confirmKick, setConfirmKick] = useState(false);
   const [busy, setBusy] = useState(false);
   const [paperDots, setPaperDots] = useState<384 | 576>(layoutWidth(initialPaperDots));
   const [stored, setStored] = useState<PrinterSettings | null>(null);
@@ -94,8 +95,8 @@ export function ReceiptHardwareCard({
   const missing = probe?.printerStatus === "missing";
   const selected = queues.find((queue) => queue.name === probe?.address);
   const profileReady = pulseProfileReady({ drawer_profile: probe?.drawerProfile, host_voltage: probe?.hostVoltage });
-  const kickSupported = Boolean(selected?.supportsDrawerKick ?? probe?.supportsDrawerKick) && probe?.compatibility === "compatible";
-  const canKick = canTestDrawerFromProbe(probe) && kickSupported;
+  const kickSupported = canTestDrawerFromProbe(probe);
+  const canKick = kickSupported;
   const canPrint = desktop && canTestPrintFromProbe(probe);
   const kickReason = !desktop
     ? "Test drawer kick is available on the desktop register."
@@ -114,7 +115,7 @@ export function ReceiptHardwareCard({
             : probe.printerStatus === "unavailable" || !probe.reachable
               ? "Receipt printer unavailable."
               : !kickSupported
-                ? "This printer has no known drawer-kick profile."
+                ? "Choose a drawer profile whose voltage matches this printer, and ESC/POS when the driver is not already verified. No pulse is sent until both match."
                 : !probe.drawerKick
                   ? "Cash drawer kicks are turned off for this register."
                   : "";
@@ -239,13 +240,26 @@ export function ReceiptHardwareCard({
           </dl>
           <button
             type="button"
-            onClick={() => void testKick()}
+            onClick={() => setConfirmKick(true)}
             disabled={busy || !canKick}
             title={canKick ? "Send one drawer-kick pulse" : kickReason}
             className="mt-4 h-11 rounded-xl bg-primary px-4 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40"
           >
             Test drawer kick
           </button>
+          {confirmKick && canKick ? (
+            <div className="mt-3 rounded-xl bg-zinc-50 p-3 dark:bg-zinc-800">
+              <p>Send one pulse to {probe?.address || "this printer"} on its DK port. Open/closed stays Not reported.</p>
+              <div className="mt-2 flex gap-2">
+                <button type="button" onClick={() => { setConfirmKick(false); void testKick(); }} className="h-10 rounded-xl bg-primary px-3 text-sm font-semibold text-white">
+                  Send one pulse
+                </button>
+                <button type="button" onClick={() => setConfirmKick(false)} className="h-10 rounded-xl border border-zinc-300 px-3 text-sm font-semibold">
+                  Cancel
+                </button>
+              </div>
+            </div>
+          ) : null}
           {!canKick ? <p className="mt-2 text-sm text-zinc-500">{kickReason}</p> : null}
         </div>
       </div>

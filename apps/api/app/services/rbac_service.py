@@ -287,6 +287,37 @@ def list_pos_cashiers(db: Session, store_id: uuid.UUID | None) -> list[CashierOp
     return cards
 
 
+def cashier_verifier_feed(db: Session, settings: Settings, store_id: uuid.UUID | None) -> dict[str, object]:
+    """Same people as the cashier cards, plus the stored PIN verifier so a till can unlock offline."""
+    statement = select(User).where(
+        User.is_active.is_(True),
+        User.has_pos_access.is_(True),
+        User.hashed_pin.is_not(None),
+    )
+    if store_id is not None:
+        statement = statement.where((User.store_id.is_(None)) | (User.store_id == store_id))
+    staff: list[dict[str, object]] = []
+    for user in db.scalars(statement).unique():
+        verifier = user.hashed_pin or ""
+        if _locked(user) or not verifier or Permission.POS_ACCESS.value not in user.permissions:
+            continue
+        staff.append(
+            {
+                "user_id": user.id,
+                "username": user.username,
+                "full_name": user.full_name,
+                "store_id": user.store_id,
+                "role_name": user.role.name if user.role else "",
+                "permissions": sorted(user.permissions),
+                "pin_verifier": verifier,
+                "is_active": user.is_active,
+                "max_discount_bps": user.role.max_discount_bps if user.role else None,
+            }
+        )
+    staff.sort(key=lambda row: str(row["full_name"]).lower())
+    return {"pin_salt": settings.pin_salt, "staff": staff}
+
+
 def unlock_cashier(
     db: Session,
     settings: Settings,

@@ -400,9 +400,9 @@ describe("Windows printer dropdown", () => {
     expect(html).not.toContain("does not support the configured");
     expect(selectionWarning(toshiba.name, [toshiba])).toBe(notice);
     expect(canTestPrint(draft, [toshiba])).toBe(true);
-    expect(canTestDrawer(draft, [toshiba])).toBe(false);
+    expect(canTestDrawer(draft, [toshiba])).toBe(true);
     expect(controlDisabled(html, "Print test receipt")).toBe(false);
-    expect(controlDisabled(html, "Test drawer kick")).toBe(true);
+    expect(controlDisabled(html, "Test drawer kick")).toBe(false);
     expect(saveFeedback(draft, [toshiba])).toContain("Register settings saved");
     expect(saveFeedback(draft, [toshiba])).toContain("not yet been verified");
     expect(saveFeedback(draft, [toshiba])).not.toContain(CANDIDATE);

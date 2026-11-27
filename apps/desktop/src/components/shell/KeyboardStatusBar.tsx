@@ -13,10 +13,11 @@ import {
   Wifi,
   type LucideIcon,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import { terminal } from "../../config/terminal";
 import { env } from "../../config/env";
 import { store } from "../../features/checkout/catalog";
+import { linkSnapshot, subscribeLink } from "../../features/sync/autoReconnect";
 import { openDisplayWindow } from "../../features/display/displayChannel";
 import { listenForTableEvents } from "../../features/orders/tableSync";
 import { sampleReceipt } from "../../features/printing/saleReceipt";
@@ -27,7 +28,7 @@ import { ApiRejectedError, ApiUnavailableError, checkCardTerminal, peripheralSna
 import { useAppVersion } from "../../lib/appVersion";
 import { capabilitiesAvailable, subscriptionHold, useCapabilities } from "../../lib/capabilities";
 import { noteSyncCounts, subscribeSyncActivity, type SyncSnapshot } from "../../lib/syncActivity";
-import { bootstrapReadiness, conflictCount, connectivityStatus, exitDemo, flushLocalExpenses, inTauri, openCashDrawer, pendingCount, probePrinter, readScale, rejectedCount, type PrinterProbe } from "../../lib/tauri";
+import { bootstrapReadiness, conflictCount, exitDemo, inTauri, openCashDrawer, pendingCount, probePrinter, readScale, rejectedCount, type PrinterProbe } from "../../lib/tauri";
 import { VirtualKeyboard } from "../common/VirtualKeyboard";
 import { openHardwareSettings } from "./settingsEntry";
 import { useShell } from "./ShellContext";
@@ -101,9 +102,14 @@ export function KeyboardStatusBar() {
   const [scale, setScale] = useState<ScaleResult>(null);
   const [displayLocal, setDisplayLocal] = useState<"open" | "closed" | "absent">("absent");
   const [remotes, setRemotes] = useState<RemotePeripheral[]>([]);
-  const [apiUp, setApiUp] = useState(false);
-  const [apiKnown, setApiKnown] = useState(false);
-  const [apiDetail, setApiDetail] = useState("Checking the register API.");
+  const link = useSyncExternalStore(subscribeLink, linkSnapshot, linkSnapshot);
+  const [browserUp, setBrowserUp] = useState(false);
+  const [browserKnown, setBrowserKnown] = useState(false);
+  const [browserDetail, setBrowserDetail] = useState("Checking the register API.");
+  const desktopLink = inTauri();
+  const apiUp = desktopLink ? link.up : browserUp;
+  const apiKnown = desktopLink ? link.known : browserKnown;
+  const apiDetail = desktopLink ? link.message : browserDetail;
   const [syncSnap, setSyncSnap] = useState<SyncSnapshot>({ syncing: false, pending: null, failed: null, conflicts: null });
   const [openId, setOpenId] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -135,40 +141,24 @@ export function KeyboardStatusBar() {
   useEffect(() => {
     let stopped = false;
     const loadRemote = async () => {
-      if (inTauri()) {
-        try {
-          const status = await connectivityStatus();
-          if (stopped) return;
-          setApiKnown(true);
-          setApiUp(status.state === "online");
-          setApiDetail(status.message);
-          setRemotes([]);
-          if (status.state === "online") void flushLocalExpenses().catch(() => undefined);
-        } catch (error) {
-          if (stopped) return;
-          setApiKnown(true);
-          setApiUp(false);
-          setApiDetail(error instanceof Error ? error.message : "You're working offline. Local POS operations remain available. Pending changes will synchronize when a connection is restored.");
-        }
-        return;
-      }
+      if (inTauri()) return;
       try {
         const items = await peripheralSnapshot();
         if (stopped) return;
-        setApiKnown(true);
-        setApiUp(true);
-        setApiDetail("The register can reach the AxizPOS API. This light does not mean the cashier is signed in or that laundry sync succeeded.");
+        setBrowserKnown(true);
+        setBrowserUp(true);
+        setBrowserDetail("The register can reach the AxizPOS API. This light does not mean the cashier is signed in or that laundry sync succeeded.");
         setRemotes(items);
       } catch (error) {
         if (stopped) return;
-        setApiKnown(true);
+        setBrowserKnown(true);
         if (error instanceof ApiRejectedError) {
-          setApiUp(true);
-          setApiDetail(error.message);
+          setBrowserUp(true);
+          setBrowserDetail(error.message);
           setRemotes([]);
           return;
         }
-        if (error instanceof ApiUnavailableError || error instanceof Error) setApiUp(false);
+        if (error instanceof ApiUnavailableError || error instanceof Error) setBrowserUp(false);
       }
     };
     void loadRemote();

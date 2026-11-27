@@ -322,6 +322,7 @@ fn refresh_catalogue(config: &DesktopConfig, db: &Db) -> Result<(), String> {
     // The selling screen reads the assembled modifier document. Refresh it from the same API
     // after the signed rows commit, and keep the previous document if this call misses.
     let _ = crate::menu::refresh(db, config);
+    let _ = crate::auth::sync_cashier_verifiers(db, config);
     Ok(())
 }
 

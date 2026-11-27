@@ -104,7 +104,7 @@ import {
 } from "./fnb/tableSessions";
 import { invoiceOf, preparePermittedBatch, submitCharge, submitQuote, type ChargeBatch } from "./checkout";
 import { registerHeaderStatus } from "./registerStatus";
-import { activeStore, businessApiReachable, businessTax, customerTax, taxConfigurationRequired, useBusinessCurrency } from "./currency";
+import { activeStore, businessTax, customerTax, taxConfigurationRequired, useApiReachable, useBusinessCurrency } from "./currency";
 import { RentModal } from "./RentModal";
 import { refreshPricing } from "./customerPricing";
 import { CustomerBar, GuestLookup } from "./CustomerBar";
@@ -335,6 +335,7 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
   const closeCart = useCallback(() => setCartOpen(false), []);
   const { report, desktop } = useSyncEngine(pulse);
   const failedSync = useRejectedSyncCount(desktop, pulse);
+  const apiReachable = useApiReachable();
   const { hits, debouncedQuery, searching, resolve } = useProductSearch(query, catalog.products);
 
   const [promotions, setPromotions] = useState<Promotion[]>([]);
@@ -1296,7 +1297,7 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
     ? registerHeaderStatus({
         desktop: true,
         sessionMode: session.mode,
-        apiReachable: businessApiReachable(),
+        apiReachable,
         pending: report.pending,
         failed: failedSync,
         detail: statusText,

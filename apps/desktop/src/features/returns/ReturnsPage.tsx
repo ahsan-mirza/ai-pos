@@ -37,7 +37,7 @@ import {
   type LocalReturn,
 } from "../../lib/tauri";
 import type { CashierSession } from "../auth/session";
-import { businessApiReachable } from "../checkout/currency";
+import { useApiReachable } from "../checkout/currency";
 import { registerHeaderStatus } from "../checkout/registerStatus";
 import { printReceipt } from "../printing/print";
 import type { ReceiptDoc } from "@ai-pos/receipt";
@@ -142,6 +142,7 @@ export function ReturnsPage({ session, openingInvoice = null }: ReturnsPageProps
   const [pulse, setPulse] = useState(0);
   const batchRef = useRef<ReturnBatch | null>(null);
   const { report, desktop } = useSyncEngine(pulse);
+  const apiReachable = useApiReachable();
   const failedSync = useRejectedSyncCount(desktop, pulse);
   const codeInput = useRef<HTMLInputElement>(null);
   useShellPage(busy, setNotice);
@@ -429,7 +430,7 @@ export function ReturnsPage({ session, openingInvoice = null }: ReturnsPageProps
         ...registerHeaderStatus({
           desktop: true,
           sessionMode: session.mode,
-          apiReachable: businessApiReachable(),
+          apiReachable,
           pending: report.pending,
           failed: failedSync,
           detail: statusText,
