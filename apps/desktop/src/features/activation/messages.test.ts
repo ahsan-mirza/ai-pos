@@ -4,9 +4,11 @@ import {
   DIFFERENT_STORE_PENDING,
   KEY_MISMATCH,
   SAME_STORE_PENDING,
+  SERVER_UNREACHABLE,
   SIGNING_UNAVAILABLE,
   SYNC_ONE,
   activationNotice,
+  hideServerAddress,
 } from "./messages";
 
 describe("activation notices", () => {
@@ -18,5 +20,14 @@ describe("activation notices", () => {
     expect(activationNotice("pending_different_store")).toBe(DIFFERENT_STORE_PENDING);
     expect(activationNotice("network")).toBe(API_UNAVAILABLE);
     expect(API_UNAVAILABLE).toContain("محفوظ");
+  });
+
+  it("replaces a connection error that names the server address", () => {
+    expect(hideServerAddress("Could not reach http://203.0.113.10. Check the store code and the internet connection.")).toBe(
+      SERVER_UNREACHABLE,
+    );
+    expect(hideServerAddress(SERVER_UNREACHABLE)).toBe(SERVER_UNREACHABLE);
+    expect(hideServerAddress("No store is registered at that code.")).toBeNull();
+    expect(SERVER_UNREACHABLE).not.toMatch(/\d{1,3}(?:\.\d{1,3}){3}/);
   });
 });

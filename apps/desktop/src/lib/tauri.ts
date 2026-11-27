@@ -281,7 +281,7 @@ async function postActivationCheck(subdomain: string, activationKey: string, pat
       body: JSON.stringify({ store_code: slug, activation_key: key, local: {} }),
     });
   } catch {
-    throw new Error(`[network] Could not reach the API at ${apiBaseUrl}.`);
+    throw new Error("[network] Cannot reach the server. Check the store code and the internet connection.");
   }
   const body = (await response.json().catch(() => null)) as ActivationDecision | { error?: { code?: string; message?: string } } | null;
   if (!response.ok || body === null || !("code" in body)) {
@@ -323,7 +323,7 @@ export async function activateTerminal(subdomain: string, activationKey: string)
       body: JSON.stringify({ activation_key: key, machine_name: "Browser preview" }),
     });
   } catch {
-    throw new Error(`Could not reach the API at ${apiBaseUrl}.`);
+    throw new Error("Cannot reach the server. Check the store code and the internet connection.");
   }
   const body = (await response.json().catch(() => null)) as { error?: { code?: string; message?: string } } | ActivationResponse | null;
   if (!response.ok || body === null || !("device_token" in body)) {

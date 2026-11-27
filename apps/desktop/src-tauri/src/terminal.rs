@@ -357,6 +357,8 @@ pub const DIFFERENT_STORE_PENDING: &str =
     "This device contains transactions belonging to another store. Sync or export them before changing stores.";
 pub const API_UNAVAILABLE: &str =
     "Your records are محفوظ locally. Reconnect to the original store to synchronize before migration.";
+pub const SERVER_UNREACHABLE: &str =
+    "Cannot reach the server. Check the store code and the internet connection.";
 
 pub fn sync_before_retire(sales: i64) -> String {
     if sales == 1 {
@@ -452,7 +454,7 @@ pub fn preflight(
             if local.pending_total() > 0 {
                 API_UNAVAILABLE.to_string()
             } else {
-                format!("Could not reach {api_base_url}. Check the store code and the internet connection.")
+                SERVER_UNREACHABLE.to_string()
             }
         })?;
     let status = response.status();
@@ -514,7 +516,7 @@ pub fn activate(
             "device_public_key": device_public_key,
         }))
         .send()
-        .map_err(|err| format!("Could not reach {api_base_url}. Check the store code and the internet connection. ({err})"))?;
+        .map_err(|_| SERVER_UNREACHABLE.to_string())?;
     let status = response.status();
     let body = response.text().map_err(|err| err.to_string())?;
     if !status.is_success() {

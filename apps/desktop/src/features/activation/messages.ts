@@ -11,6 +11,20 @@ export const DIFFERENT_STORE_PENDING =
   "This device contains transactions belonging to another store. Sync or export them before changing stores.";
 export const API_UNAVAILABLE =
   "Your records are محفوظ locally. Reconnect to the original store to synchronize before migration.";
+export const SERVER_UNREACHABLE =
+  "Cannot reach the server. Check the store code and the internet connection.";
+
+/** Connection failures stay on screen. The server address does not. */
+export function hideServerAddress(text: string): string | null {
+  if (
+    /could not reach|cannot reach the server/i.test(text) ||
+    /\b\d{1,3}(?:\.\d{1,3}){3}\b/.test(text) ||
+    /https?:\/\//i.test(text)
+  ) {
+    return SERVER_UNREACHABLE;
+  }
+  return null;
+}
 
 export function activationNotice(code: string, sales = 0): string {
   if (code === "entitlement_unconfigured") return SIGNING_UNAVAILABLE;

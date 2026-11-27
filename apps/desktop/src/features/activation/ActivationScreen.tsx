@@ -15,7 +15,7 @@ import {
   type ActivationDecision,
   type TerminalStatus,
 } from "../../lib/tauri";
-import { activationNotice } from "./messages";
+import { activationNotice, hideServerAddress, SERVER_UNREACHABLE } from "./messages";
 
 /** Store host for this build: a public IP until DNS exists, otherwise a domain suffix. */
 const BASE_DOMAIN = (import.meta.env.VITE_TENANT_BASE_DOMAIN?.trim() || "axizpos.com").replace(/^\./, "").toLowerCase();
@@ -59,16 +59,20 @@ function safeActivationMessage(text: string): string {
 function activationFailure(text: string): { code: string; message: string } {
   const match = /^\[([a-z0-9_]+)\]\s+([\s\S]+)$/.exec(text);
   if (!match) {
-    if (text.includes("محفوظ") || /could not reach/i.test(text)) {
-      return { code: "network", message: text.includes("محفوظ") ? activationNotice("network") : text };
-    }
+    if (text.includes("محفوظ")) return { code: "network", message: activationNotice("network") };
+    const hidden = hideServerAddress(text);
+    if (hidden) return { code: "network", message: hidden };
     return { code: "activation_failed", message: safeActivationMessage(text) };
   }
   const code = match[1] ?? "activation_failed";
   const raw = match[2] ?? "";
-  if (code === "pending_same_store") return { code, message: safeActivationMessage(raw) };
+  if (code === "network") {
+    return { code, message: raw.includes("محفوظ") ? activationNotice("network") : SERVER_UNREACHABLE };
+  }
+  if (code === "pending_same_store") return { code, message: hideServerAddress(raw) ?? safeActivationMessage(raw) };
   const notice = activationNotice(code);
-  return { code, message: notice || safeActivationMessage(raw) };
+  const shown = notice || safeActivationMessage(raw);
+  return { code, message: hideServerAddress(shown) ?? shown };
 }
 
 function stageIndex(code: string): number {
