@@ -118,8 +118,8 @@ fn expand_rows(width: u32, height: u32, packed: &[u8]) -> Result<(usize, Vec<u8>
     Ok((stride, pixels))
 }
 
-/// Rows in one printer page. A taller single bitmap is what left only the footer on this driver.
-/// 1-bit rows stay far under the size that bitmap was truncated to.
+/// Rows in one printer page. One tall bitmap, and several blits on one page, left only the footer
+/// on this driver. Each band is its own page, sized to those rows.
 pub const GDI_BAND_ROWS: u32 = 128;
 
 /// Paper for one band, in tenths of a millimetre, with no extra tail. A tail is a white cut through the next line.
@@ -139,6 +139,39 @@ pub fn gdi_bands(height: u32) -> Vec<(u32, u32)> {
         start += rows;
     }
     bands
+}
+
+/// Bottom-up 24-bit BGR for one band. Black stays black and paper stays white, so the driver
+/// has no gray to dither. DWORD aligned. The first bytes are the last source row.
+pub fn band_bgr24(width: u32, packed: &[u8], start: u32, rows: u32) -> Result<Vec<u8>, String> {
+    let row_bytes = width.div_ceil(8) as usize;
+    let stride = (width as usize)
+        .checked_mul(3)
+        .and_then(|bytes| bytes.checked_add(3))
+        .map(|bytes| bytes / 4 * 4)
+        .ok_or_else(|| "Receipt bitmap stride overflow.".to_string())?;
+    let from = start as usize * row_bytes;
+    let to = from
+        .checked_add(rows as usize * row_bytes)
+        .ok_or_else(|| "Receipt bitmap size overflow.".to_string())?;
+    if width == 0 || rows == 0 || to > packed.len() {
+        return Err("The receipt image is malformed.".into());
+    }
+    let dib_len = stride
+        .checked_mul(rows as usize)
+        .ok_or_else(|| "Receipt bitmap size overflow.".to_string())?;
+    let mut out = vec![255u8; dib_len];
+    for y in 0..rows as usize {
+        let source_row = &packed[from + y * row_bytes..from + (y + 1) * row_bytes];
+        let dst_row = (rows as usize - 1 - y) * stride;
+        for x in 0..width as usize {
+            if source_row[x >> 3] & (0x80u8 >> (x & 7)) != 0 {
+                let offset = dst_row + x * 3;
+                out[offset..offset + 3].fill(0);
+            }
+        }
+    }
+    Ok(out)
 }
 
 /// Bottom-up 1-bit rows, DWORD aligned. Bit 1 stays black. Padding bits stay white.
@@ -198,7 +231,7 @@ fn set_band_paper(bytes: &mut [u8], width: u32, height: u32) {
 pub fn print_gdi(name: &str, width: u32, height: u32, packed: &[u8], copies: u32) -> Result<(), String> {
     use windows_sys::Win32::Foundation::GetLastError;
     use windows_sys::Win32::Graphics::Gdi::{
-        CreateDCW, DeleteDC, GetDeviceCaps, SetViewportOrgEx, SetWindowOrgEx, PHYSICALOFFSETX, PHYSICALOFFSETY,
+        CreateDCW, DeleteDC, SetMapMode, SetViewportOrgEx, SetWindowOrgEx, MM_TEXT,
     };
     use windows_sys::Win32::Graphics::Printing::{ClosePrinter, OpenPrinterW, PRINTER_HANDLE};
     use windows_sys::Win32::Storage::Xps::{EndDoc, EndPage, StartDocW, StartPage, DOCINFOW};
@@ -217,7 +250,9 @@ pub fn print_gdi(name: &str, width: u32, height: u32, packed: &[u8], copies: u32
         }
         let mut devmode = prepare_devmode(handle, printer.as_ptr(), width, GDI_BAND_ROWS);
         if let Some(bytes) = devmode.as_mut() {
-            set_band_paper(bytes, width, GDI_BAND_ROWS);
+            // The driver merge puts a long form back. Write the band length again so each page
+            // advances only as far as the rows just drawn.
+            commit_exact_paper(handle, printer.as_ptr(), bytes, width, GDI_BAND_ROWS);
         }
         let devmode_ptr = devmode
             .as_ref()
@@ -239,25 +274,26 @@ pub fn print_gdi(name: &str, width: u32, height: u32, packed: &[u8], copies: u32
             if StartDocW(hdc, &info) <= 0 {
                 return Err(format!("{TRANSMIT_FAILED} Windows error {}.", GetLastError()));
             }
-            let origin_x = GetDeviceCaps(hdc, PHYSICALOFFSETX as i32);
-            let origin_y = GetDeviceCaps(hdc, PHYSICALOFFSETY as i32);
             for _ in 0..copies.max(1) {
                 for (start, rows) in &bands {
                     if StartPage(hdc) <= 0 {
                         let _ = EndDoc(hdc);
                         return Err(format!("{TRANSMIT_FAILED} Windows error {}.", GetLastError()));
                     }
-                    let _ = SetViewportOrgEx(hdc, -origin_x, -origin_y, std::ptr::null_mut());
+                    // The receipt raster already includes its own margin. Shifting by the hardware
+                    // offset pushes the left of the slip into the unprintable area.
+                    let _ = SetMapMode(hdc, MM_TEXT);
+                    let _ = SetViewportOrgEx(hdc, 0, 0, std::ptr::null_mut());
                     let _ = SetWindowOrgEx(hdc, 0, 0, std::ptr::null_mut());
-                    let bits = match band_1bit(width, packed, *start, *rows) {
+                    let bits = match band_bgr24(width, packed, *start, *rows) {
                         Ok(bits) => bits,
                         Err(message) => {
                             let _ = EndDoc(hdc);
                             return Err(message);
                         }
                     };
-                    // One unscaled 1-bit blit. A 24-bit stretch is what turned the type into gray streaks.
-                    let painted = paint_1bit(hdc, width, *rows, &bits);
+                    // One unscaled blit. A second blit on the same page is what kept only the footer.
+                    let painted = paint_bgr24(hdc, width, *rows, &bits);
                     if EndPage(hdc) <= 0 || !painted {
                         let _ = EndDoc(hdc);
                         return Err(format!("{TRANSMIT_FAILED} Windows error {}.", GetLastError()));
@@ -275,78 +311,77 @@ pub fn print_gdi(name: &str, width: u32, height: u32, packed: &[u8], copies: u32
 }
 
 #[cfg(windows)]
-fn paint_1bit(hdc: windows_sys::Win32::Graphics::Gdi::HDC, width: u32, height: u32, pixels: &[u8]) -> bool {
+fn commit_exact_paper(
+    handle: windows_sys::Win32::Graphics::Printing::PRINTER_HANDLE,
+    name: *const u16,
+    bytes: &mut Vec<u8>,
+    width: u32,
+    height: u32,
+) {
+    use windows_sys::Win32::Graphics::Printing::DocumentPropertiesW;
+
+    set_band_paper(bytes, width, height);
+    let mut updated = bytes.clone();
+    unsafe {
+        if DocumentPropertiesW(
+            std::ptr::null_mut(),
+            handle,
+            name,
+            updated.as_mut_ptr().cast(),
+            bytes.as_ptr().cast(),
+            10,
+        ) >= 0
+        {
+            *bytes = updated;
+        }
+    }
+    set_band_paper(bytes, width, height);
+}
+
+#[cfg(windows)]
+fn paint_bgr24(hdc: windows_sys::Win32::Graphics::Gdi::HDC, width: u32, height: u32, pixels: &[u8]) -> bool {
     use windows_sys::Win32::Graphics::Gdi::{
-        SetDIBitsToDevice, StretchDIBits, BITMAPINFOHEADER, DIB_RGB_COLORS, RGBQUAD, SRCCOPY,
+        SetStretchBltMode, StretchDIBits, BITMAPINFOHEADER, COLORONCOLOR, DIB_RGB_COLORS, SRCCOPY,
     };
 
-    #[repr(C)]
-    struct Info {
-        header: BITMAPINFOHEADER,
-        colors: [RGBQUAD; 2],
-    }
-
-    let stride = (width as usize).div_ceil(32) * 4;
+    let stride = (width as usize * 3).div_ceil(4) * 4;
     if height == 0 || pixels.len() != stride * height as usize {
         return false;
     }
-    let mut info = Info {
-        header: BITMAPINFOHEADER {
-            biSize: std::mem::size_of::<BITMAPINFOHEADER>() as u32,
-            biWidth: width as i32,
-            biHeight: height as i32,
-            biPlanes: 1,
-            biBitCount: 1,
-            biCompression: 0,
-            biSizeImage: pixels.len() as u32,
-            biXPelsPerMeter: 0,
-            biYPelsPerMeter: 0,
-            biClrUsed: 2,
-            biClrImportant: 2,
-        },
-        colors: [RGBQUAD::default(), RGBQUAD::default()],
+    // 203 dpi in pixels per metre, so a 1:1 blit stays the preview size.
+    let ppm = 203 * 10_000 / 254;
+    let info = BITMAPINFOHEADER {
+        biSize: std::mem::size_of::<BITMAPINFOHEADER>() as u32,
+        biWidth: width as i32,
+        biHeight: height as i32,
+        biPlanes: 1,
+        biBitCount: 24,
+        biCompression: 0,
+        biSizeImage: pixels.len() as u32,
+        biXPelsPerMeter: ppm,
+        biYPelsPerMeter: ppm,
+        biClrUsed: 0,
+        biClrImportant: 0,
     };
-    info.colors[0].rgbRed = 255;
-    info.colors[0].rgbGreen = 255;
-    info.colors[0].rgbBlue = 255;
-    let copied = unsafe {
-        let info_ptr = (&info as *const Info).cast();
-        let placed = SetDIBitsToDevice(
+    unsafe {
+        // COLORONCOLOR keeps a same-size copy from blending black type into gray streaks.
+        let _ = SetStretchBltMode(hdc, COLORONCOLOR);
+        StretchDIBits(
             hdc,
             0,
             0,
-            width,
-            height,
+            width as i32,
+            height as i32,
             0,
             0,
-            0,
-            height,
+            width as i32,
+            height as i32,
             pixels.as_ptr().cast(),
-            info_ptr,
+            (&info as *const BITMAPINFOHEADER).cast(),
             DIB_RGB_COLORS,
-        );
-        if placed == height as i32 {
-            placed
-        } else {
-            // Same-size copy only. A scaled 24-bit blit is what broke the strokes.
-            StretchDIBits(
-                hdc,
-                0,
-                0,
-                width as i32,
-                height as i32,
-                0,
-                0,
-                width as i32,
-                height as i32,
-                pixels.as_ptr().cast(),
-                info_ptr,
-                DIB_RGB_COLORS,
-                SRCCOPY,
-            )
-        }
-    };
-    copied == height as i32
+            SRCCOPY,
+        ) == height as i32
+    }
 }
 
 #[cfg(windows)]
@@ -609,6 +644,11 @@ mod tests {
         assert_eq!(bits.len(), 8);
         assert_eq!(bits[4], 0b1000_0000);
         assert_eq!(bits[0], 0b0100_0000);
+        let color = band_bgr24(8, &packed, 0, 2).unwrap();
+        assert_eq!(color.len(), 48);
+        assert_eq!(&color[0..3], &[255, 255, 255]);
+        assert_eq!(&color[3..6], &[0, 0, 0]);
+        assert_eq!(&color[24..27], &[0, 0, 0]);
         let bands = gdi_bands(300);
         assert_eq!(bands.iter().map(|band| band.1).sum::<u32>(), 300);
         assert!(bands.iter().all(|band| band.1 <= GDI_BAND_ROWS));

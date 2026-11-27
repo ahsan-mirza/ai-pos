@@ -1524,7 +1524,7 @@ pub fn describe_escpos(bytes: &[u8]) -> String {
 pub fn describe_gdi(width: u32, height: u32) -> String {
     let bands = crate::printer_gdi::gdi_bands(height).len();
     format!(
-        "GDI 1-bit {width}x{height}, {bands} pages of at most {} rows at 203 dpi, one unscaled blit each. No raw ESC/POS. No drawer pulse.",
+        "GDI 24-bit {width}x{height}, {bands} pages of at most {} rows at 203 dpi, one unscaled blit each. No raw ESC/POS. No drawer pulse.",
         crate::printer_gdi::GDI_BAND_ROWS
     )
 }
