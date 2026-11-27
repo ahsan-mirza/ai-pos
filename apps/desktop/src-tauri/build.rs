@@ -80,6 +80,10 @@ fn main() {
             fill_public_signing(&production, &mut key_id, &mut public_key, &mut public_keys);
         }
     }
+    if release && pos_env != "acceptance" && (key_id.is_empty() || public_key.is_empty()) {
+        panic!("A production till build needs POS_ENTITLEMENT_KEY_ID and POS_ENTITLEMENT_PUBLIC_KEY. Do not compile the private seed into the till.");
+    }
+    println!("cargo:warning=till entitlement key id={key_id} public_len={}", public_key.len());
     println!("cargo:rustc-env=POS_ENTITLEMENT_KEY_ID={key_id}");
     println!("cargo:rustc-env=POS_ENTITLEMENT_PUBLIC_KEY={public_key}");
     println!("cargo:rustc-env=POS_ENTITLEMENT_PUBLIC_KEYS={public_keys}");

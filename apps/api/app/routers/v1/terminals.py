@@ -23,7 +23,7 @@ from app.services import bootstrap_service, device_service, entitlement_service
 
 router = APIRouter()
 
-WINDOW_SECONDS = 600
+WINDOW_SECONDS = 60
 MAX_ATTEMPTS = 10
 _attempts: dict[str, deque[float]] = defaultdict(deque)
 _issue_attempts: dict[str, deque[float]] = defaultdict(deque)
