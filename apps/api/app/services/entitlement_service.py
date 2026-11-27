@@ -242,6 +242,7 @@ def issue(
         select(Device.id).where(
             Device.device_public_key_thumbprint == digest,
             Device.id != device.id,
+            Device.deleted_at.is_(None),
         )
     )
     if taken is not None:

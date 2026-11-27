@@ -1,6 +1,7 @@
 """Releasing a till retires its credential and frees the package seat. History stays."""
 
 import base64
+import hashlib
 import uuid
 from datetime import UTC, datetime, timedelta
 
@@ -306,6 +307,56 @@ def test_delete_frees_the_seat_and_the_till_code(client, session: Session, monke
     assert over.json()["error"]["code"] == "plan_limit"
     gone = client.post(f"/api/v1/devices/{till['id']}/activation-key", headers=headers)
     assert gone.status_code == 404
+
+
+def test_delete_releases_the_device_identity_immediately(client, session: Session, signing_key) -> None:
+    del signing_key
+    seed(client)
+    headers, _user = admin(client)
+    _key, till = _create(client, headers, "R01")
+    issued = client.post(f"/api/v1/devices/{till['id']}/activation-key", headers=headers)
+    assert issued.status_code == 201, issued.text
+    public = _public()
+    activated = client.post(
+        "/api/v1/terminals/activate",
+        json={
+            "activation_key": issued.json()["activation_key"],
+            "machine_name": "Counter",
+            "device_public_key": public,
+        },
+    )
+    assert activated.status_code == 200, activated.text
+    token = activated.json()["device_token"]
+    cleared = client.get("/api/v1/settings", headers={"X-Terminal-Token": token, "X-Pending-Sales": "0"})
+    assert cleared.status_code == 200, cleared.text
+
+    deleted = client.post(f"/api/v1/devices/{till['id']}/delete", headers=headers)
+    assert deleted.status_code == 200, deleted.text
+    session.expire_all()
+    retired = session.get(Device, uuid.UUID(till["id"]))
+    assert retired is not None and retired.deleted_at is not None
+    assert retired.device_public_key_thumbprint is None
+    # A till deleted before this release still has the old binding. It must not keep the seat.
+    retired.device_public_key_thumbprint = hashlib.sha256(base64.b64decode(public)).hexdigest()
+    session.commit()
+    opened = client.get("/api/v1/devices/capacity", headers=headers)
+    assert opened.status_code == 200, opened.text
+    assert opened.json()["used"] == 0
+
+    _replacement_key, replacement = _create(client, headers, "R01")
+    fresh = client.post(f"/api/v1/devices/{replacement['id']}/activation-key", headers=headers)
+    assert fresh.status_code == 201, fresh.text
+    rebound = client.post(
+        "/api/v1/terminals/activate",
+        json={
+            "activation_key": fresh.json()["activation_key"],
+            "machine_name": "Counter",
+            "device_public_key": public,
+        },
+    )
+    assert rebound.status_code == 200, rebound.text
+    assert rebound.json()["register_code"] == "R01"
+    assert rebound.json()["register_id"] == replacement["id"]
 
 
 def test_an_offline_till_is_not_marked_active(client, session: Session) -> None:

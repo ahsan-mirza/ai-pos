@@ -1521,12 +1521,72 @@ pub fn describe_escpos(bytes: &[u8]) -> String {
     )
 }
 
-pub fn describe_gdi(width: u32, height: u32) -> String {
-    let bands = crate::printer_gdi::gdi_bands(height).len();
+pub fn describe_gdi(width: u32, height: u32, data: &[u8]) -> String {
+    let coverage = raster_coverage(width, height, data);
+    let (paper_w, paper_h) = crate::printer_gdi::band_paper_tenths(width, height);
+    let ink = match (coverage.first_ink_row, coverage.last_ink_row) {
+        (Some(first), Some(last)) => format!("{first}..{last}"),
+        _ => "none".to_string(),
+    };
     format!(
-        "GDI 24-bit {width}x{height}, {bands} pages of at most {} rows at 203 dpi, one unscaled blit each. No raw ESC/POS. No drawer pulse.",
-        crate::printer_gdi::GDI_BAND_ROWS
+        "GDI one page {width}x{height}, {} bytes, ink rows {ink}, top={} middle={} bottom={} px, paper {paper_w}x{paper_h} tenths at 203 dpi, one unscaled 24-bit blit. No raw ESC/POS. No drawer pulse.",
+        data.len(),
+        coverage.top_pixels,
+        coverage.middle_pixels,
+        coverage.bottom_pixels,
     )
+}
+
+/// Ink in the top, middle, and bottom thirds of the packed raster that arrived for printing.
+pub fn raster_coverage(width: u32, height: u32, data: &[u8]) -> RasterCoverage {
+    let (row_bytes, first_ink_row, last_ink_row) = ink_span(data, width, height);
+    let mut coverage = RasterCoverage {
+        row_bytes,
+        byte_count: data.len(),
+        first_ink_row,
+        last_ink_row,
+        top_pixels: 0,
+        middle_pixels: 0,
+        bottom_pixels: 0,
+    };
+    if row_bytes == 0 || height == 0 || data.len() != (row_bytes * height) as usize {
+        return coverage;
+    }
+    let top_end = height / 3;
+    let middle_end = height.saturating_mul(2) / 3;
+    for row in 0..height {
+        let start = (row * row_bytes) as usize;
+        let pixels = row_ink_pixels(&data[start..start + row_bytes as usize], width);
+        if row < top_end {
+            coverage.top_pixels += pixels;
+        } else if row < middle_end {
+            coverage.middle_pixels += pixels;
+        } else {
+            coverage.bottom_pixels += pixels;
+        }
+    }
+    coverage
+}
+
+fn row_ink_pixels(row: &[u8], width: u32) -> usize {
+    let mut count = 0usize;
+    for x in 0..width as usize {
+        if row[x >> 3] & (0x80 >> (x & 7)) != 0 {
+            count += 1;
+        }
+    }
+    count
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RasterCoverage {
+    pub row_bytes: u32,
+    pub byte_count: usize,
+    pub first_ink_row: Option<u32>,
+    pub last_ink_row: Option<u32>,
+    pub top_pixels: usize,
+    pub middle_pixels: usize,
+    pub bottom_pixels: usize,
 }
 
 pub fn ink_span(data: &[u8], width: u32, height: u32) -> (u32, Option<u32>, Option<u32>) {
@@ -2142,6 +2202,18 @@ fn record_print(
     summary: &str,
 ) {
     let trace = take_spooler_trace();
+    let mut summary = summary.to_string();
+    if resolved.transport == crate::printer_discovery::PrintTransport::WindowsGdi {
+        let device = crate::printer_gdi::take_gdi_device_log();
+        if !device.is_empty() {
+            summary.push(' ');
+            summary.push_str(&device);
+        }
+        eprintln!(
+            "ai-pos: receipt gdi queue={} driver={} port={} {summary}",
+            resolved.queue, resolved.driver, resolved.port
+        );
+    }
     let profile = match resolved.transport {
         crate::printer_discovery::PrintTransport::EscPos => "passed",
         crate::printer_discovery::PrintTransport::WindowsGdi => "unverified",
@@ -2189,7 +2261,7 @@ fn record_print(
         last_ink_row,
         raster_bytes: job.data.len(),
         text_bytes: job.plain_text.len(),
-        command_summary: summary.to_string(),
+        command_summary: summary,
         bytes_submitted: payload_bytes,
         bytes_accepted: if trace.write_printer { trace.bytes_accepted } else { None },
         outcome: submission_outcome(submitted, error).into(),
@@ -2342,7 +2414,7 @@ pub fn print_raster(db: &Db, job: &RasterJob) -> Result<(), String> {
                 (
                     printable.data.len(),
                     "raster-image",
-                    describe_gdi(printable.width, printable.height),
+                    describe_gdi(printable.width, printable.height, &printable.data),
                     send_gdi(&resolved.queue, &printable, settings.copies),
                 )
             };
@@ -2610,6 +2682,35 @@ pub fn download_document(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn gdi_summary_is_one_page_and_names_a_missing_middle() {
+        let width = 8u32;
+        let height = 9u32;
+        let mut data = vec![0u8; height as usize];
+        data[0] = 0x80;
+        data[4] = 0x40;
+        data[8] = 0x20;
+        let summary = describe_gdi(width, height, &data);
+        assert!(summary.contains("one page 8x9"));
+        assert!(summary.contains("9 bytes"));
+        assert!(summary.contains("ink rows 0..8"));
+        assert!(summary.contains("top=1 middle=1 bottom=1 px"));
+        assert!(summary.contains("one unscaled 24-bit blit"));
+        assert!(!summary.contains("pages of at most"));
+        let wide = describe_gdi(576, height, &vec![0x80; height as usize * 72]);
+        let narrow = describe_gdi(384, height, &vec![0x80; height as usize * 48]);
+        assert!(wide.contains("paper 800x"));
+        assert!(narrow.contains("paper 580x"));
+        data[4] = 0;
+        let gap = raster_coverage(width, height, &data);
+        assert_eq!(gap.byte_count, 9);
+        assert_eq!(gap.first_ink_row, Some(0));
+        assert_eq!(gap.last_ink_row, Some(8));
+        assert_eq!(gap.middle_pixels, 0);
+        assert_eq!(gap.top_pixels, 1);
+        assert_eq!(gap.bottom_pixels, 1);
+    }
 
     #[test]
     fn raster_is_banded_and_kicks_once() {

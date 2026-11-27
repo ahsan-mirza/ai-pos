@@ -271,6 +271,8 @@ def delete_device(db: Session, principal: Principal, device_id: uuid.UUID) -> De
     original = device.code
     device.deleted_at = now
     device.code = f"Z{device.id.hex[:11]}"
+    # The physical till keeps its device key. Drop the binding now so the next register can use it.
+    device.device_public_key_thumbprint = None
     audit.record(
         db,
         action_type="UPDATE",
