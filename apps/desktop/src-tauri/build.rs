@@ -13,7 +13,7 @@ fn main() {
     println!("cargo:rerun-if-env-changed=POS_ENTITLEMENT_PUBLIC_KEYS");
     let mut key_id = env::var("POS_ENTITLEMENT_KEY_ID").unwrap_or_default();
     let mut public_key = env::var("POS_ENTITLEMENT_PUBLIC_KEY").unwrap_or_default();
-    let public_keys = env::var("POS_ENTITLEMENT_PUBLIC_KEYS").unwrap_or_default();
+    let mut public_keys = env::var("POS_ENTITLEMENT_PUBLIC_KEYS").unwrap_or_default();
     let pos_env_early = env::var("POS_ENV").unwrap_or_default().trim().to_lowercase();
     // A Tauri release spawn can drop the parent environment. An acceptance build may
     // read the disposable public key from the temp directory. Production never does.
@@ -61,9 +61,6 @@ fn main() {
             );
         }
     }
-    println!("cargo:rustc-env=POS_ENTITLEMENT_KEY_ID={key_id}");
-    println!("cargo:rustc-env=POS_ENTITLEMENT_PUBLIC_KEY={public_key}");
-    println!("cargo:rustc-env=POS_ENTITLEMENT_PUBLIC_KEYS={public_keys}");
     let release = env::var("PROFILE").is_ok_and(|profile| profile == "release");
     let pos_env = env::var("POS_ENV")
         .ok()
@@ -73,6 +70,19 @@ fn main() {
     if !ENVIRONMENTS.contains(&pos_env.as_str()) {
         panic!("POS_ENV must be one of {ENVIRONMENTS:?}; got {pos_env:?}.");
     }
+    if pos_env != "acceptance" {
+        let env_path = repo_env_path(&pos_env);
+        println!("cargo:rerun-if-changed={}", env_path.display());
+        fill_public_signing(&env_path, &mut key_id, &mut public_key, &mut public_keys);
+        let production = env_path.parent().unwrap_or(&env_path).join(".env.production");
+        if production != env_path {
+            println!("cargo:rerun-if-changed={}", production.display());
+            fill_public_signing(&production, &mut key_id, &mut public_key, &mut public_keys);
+        }
+    }
+    println!("cargo:rustc-env=POS_ENTITLEMENT_KEY_ID={key_id}");
+    println!("cargo:rustc-env=POS_ENTITLEMENT_PUBLIC_KEY={public_key}");
+    println!("cargo:rustc-env=POS_ENTITLEMENT_PUBLIC_KEYS={public_keys}");
     if pos_env == "acceptance" {
         emit_acceptance();
         tauri_build::build();
@@ -173,6 +183,44 @@ fn emit_acceptance() {
     println!("cargo:rustc-env=POS_ACCEPTANCE_BUILD=1");
     println!("cargo:rustc-env=POS_ACCEPTANCE_IDENTIFIER={identifier}");
     println!("cargo:rustc-env=POS_ACCEPTANCE_API_BASE={url}");
+}
+
+fn repo_env_path(pos_env: &str) -> PathBuf {
+    let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR is set by cargo"));
+    let file_name = if pos_env == "development" {
+        ".env".to_string()
+    } else {
+        format!(".env.{pos_env}")
+    };
+    manifest_dir.join("..").join("..").join("..").join(file_name)
+}
+
+/// Public verify key only. The private seed is never read into the till binary.
+fn fill_public_signing(path: &std::path::Path, key_id: &mut String, public_key: &mut String, public_keys: &mut String) {
+    if key_id.is_empty() {
+        *key_id = env_file_value(path, "POS_ENTITLEMENT_KEY_ID");
+    }
+    if public_key.is_empty() {
+        *public_key = env_file_value(path, "POS_ENTITLEMENT_PUBLIC_KEY");
+    }
+    if public_keys.is_empty() {
+        *public_keys = env_file_value(path, "POS_ENTITLEMENT_PUBLIC_KEYS");
+    }
+}
+
+fn env_file_value(path: &std::path::Path, name: &str) -> String {
+    let Ok(text) = fs::read_to_string(path) else {
+        return String::new();
+    };
+    for line in text.lines().map(str::trim).filter(|line| !line.is_empty() && !line.starts_with('#')) {
+        let Some((key, value)) = line.split_once('=') else {
+            continue;
+        };
+        if key.trim() == name {
+            return value.trim().trim_matches('"').to_string();
+        }
+    }
+    String::new()
 }
 
 fn read_tenant_pair(path: &std::path::Path) -> (String, String) {
