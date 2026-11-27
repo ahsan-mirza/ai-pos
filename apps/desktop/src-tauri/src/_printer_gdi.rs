@@ -141,6 +141,39 @@ pub fn gdi_bands(height: u32) -> Vec<(u32, u32)> {
     bands
 }
 
+/// Bottom-up 24-bit BGR for the rows `[start, start + rows)`. Black stays black.
+/// The first bytes are the last source row, which is what `SetDIBitsToDevice` expects.
+pub fn band_bgr24(width: u32, packed: &[u8], start: u32, rows: u32) -> Result<Vec<u8>, String> {
+    let row_bytes = width.div_ceil(8) as usize;
+    let stride = (width as usize)
+        .checked_mul(3)
+        .and_then(|bytes| bytes.checked_add(3))
+        .map(|bytes| bytes / 4 * 4)
+        .ok_or_else(|| "Receipt bitmap stride overflow.".to_string())?;
+    let from = start as usize * row_bytes;
+    let to = from
+        .checked_add(rows as usize * row_bytes)
+        .ok_or_else(|| "Receipt bitmap size overflow.".to_string())?;
+    if width == 0 || rows == 0 || to > packed.len() {
+        return Err("The receipt image is malformed.".into());
+    }
+    let dib_len = stride
+        .checked_mul(rows as usize)
+        .ok_or_else(|| "Receipt bitmap size overflow.".to_string())?;
+    let mut out = vec![255u8; dib_len];
+    for y in 0..rows as usize {
+        let source_row = &packed[from + y * row_bytes..from + (y + 1) * row_bytes];
+        let dst_row = (rows as usize - 1 - y) * stride;
+        for x in 0..width as usize {
+            if source_row[x >> 3] & (0x80u8 >> (x & 7)) != 0 {
+                let offset = dst_row + x * 3;
+                out[offset..offset + 3].fill(0);
+            }
+        }
+    }
+    Ok(out)
+}
+
 /// Bottom-up 1-bit rows, DWORD aligned. Bit 1 stays black. Padding bits stay white.
 pub fn band_1bit(width: u32, packed: &[u8], start: u32, rows: u32) -> Result<Vec<u8>, String> {
     let row_bytes = width.div_ceil(8) as usize;
@@ -204,8 +237,8 @@ pub fn print_gdi(
 ) -> Result<(), String> {
     use windows_sys::Win32::Foundation::GetLastError;
     use windows_sys::Win32::Graphics::Gdi::{
-        CreateDCW, DeleteDC, GetDeviceCaps, SetViewportOrgEx, SetWindowOrgEx,
-        PHYSICALOFFSETX, PHYSICALOFFSETY,
+        CreateDCW, DeleteDC, GetDeviceCaps, SetMapMode, SetViewportOrgEx, SetWindowOrgEx, HORZRES, LOGPIXELSX,
+        LOGPIXELSY, MM_TEXT, VERTRES,
     };
     use windows_sys::Win32::Graphics::Printing::{ClosePrinter, OpenPrinterW, PRINTER_HANDLE};
     use windows_sys::Win32::Storage::Xps::{
@@ -216,7 +249,9 @@ pub fn print_gdi(
         return Err(RENDER_FAILED.into());
     }
 
-    let bands = gdi_bands(height);
+    // The 24-bit bitmap of this slip is about 1.7 KB per row. This driver keeps the front of that
+    // buffer, which is the footer, and still feeds the full page. 1-bit is 72 bytes per row, so the
+    // same buffer holds the header through the footer in one blit.
     let printer = wide(name);
     let winspool = wide("WINSPOOL");
     let document = wide("AxizPOS receipt");
@@ -232,9 +267,11 @@ pub fn print_gdi(
             ));
         }
 
-        // IMPORTANT: Configure the driver for the COMPLETE receipt length,
-        // not an individual 128-row band.
-        let devmode = prepare_devmode(handle, printer.as_ptr(), width, height);
+        // Exact receipt length at 203 dpi. The longer form was scaling the whole slip.
+        let mut devmode = prepare_devmode(handle, printer.as_ptr(), width, height);
+        if let Some(bytes) = devmode.as_mut() {
+            set_band_paper(bytes, width, height);
+        }
 
         let devmode_ptr = devmode
             .as_ref()
@@ -276,36 +313,23 @@ pub fn print_gdi(
                 ));
             }
 
-            // ONE page for the entire receipt.
-            if StartPage(hdc) <= 0 {
-                let _ = EndDoc(hdc);
-                return Err(format!(
-                    "{TRANSMIT_FAILED} Windows error {}.",
-                    GetLastError()
-                ));
-            }
-
-            let origin_x = GetDeviceCaps(hdc, PHYSICALOFFSETX as i32);
-            let origin_y = GetDeviceCaps(hdc, PHYSICALOFFSETY as i32);
-
-            let _ = SetViewportOrgEx(
-                hdc,
-                -origin_x,
-                -origin_y,
-                std::ptr::null_mut(),
-            );
-
-            let _ = SetWindowOrgEx(
-                hdc,
-                0,
-                0,
-                std::ptr::null_mut(),
-            );
-
-            // Draw all raster bands on the SAME page.
-            // Never call StartPage/EndPage inside this loop.
-            for (start, rows) in &bands {
-                let bits = match band_1bit(width, packed, *start, *rows) {
+            for _ in 0..copies.max(1) {
+                if StartPage(hdc) <= 0 {
+                    let _ = EndDoc(hdc);
+                    return Err(format!("{TRANSMIT_FAILED} Windows error {}.", GetLastError()));
+                }
+                // Shifting by the hardware offset is what cut the top line and the left of the totals.
+                let _ = SetMapMode(hdc, MM_TEXT);
+                let _ = SetViewportOrgEx(hdc, 0, 0, std::ptr::null_mut());
+                let _ = SetWindowOrgEx(hdc, 0, 0, std::ptr::null_mut());
+                eprintln!(
+                    "ai-pos: gdi page {width}x{height} dpi={}x{} printable={}x{}",
+                    GetDeviceCaps(hdc, LOGPIXELSX as i32),
+                    GetDeviceCaps(hdc, LOGPIXELSY as i32),
+                    GetDeviceCaps(hdc, HORZRES as i32),
+                    GetDeviceCaps(hdc, VERTRES as i32),
+                );
+                let bits = match band_1bit(width, packed, 0, height) {
                     Ok(bits) => bits,
                     Err(message) => {
                         let _ = EndPage(hdc);
@@ -313,31 +337,15 @@ pub fn print_gdi(
                         return Err(message);
                     }
                 };
-
-                let painted = paint_1bit_at(
-                    hdc,
-                    width,
-                    *rows,
-                    &bits,
-                    *start as i32,
-                );
-
-                if !painted {
+                if let Err(message) = paint_page(hdc, width, height, &bits) {
                     let _ = EndPage(hdc);
                     let _ = EndDoc(hdc);
-                    return Err(format!(
-                        "{TRANSMIT_FAILED} Windows error {}.",
-                        GetLastError()
-                    ));
+                    return Err(message);
                 }
-            }
-
-            if EndPage(hdc) <= 0 {
-                let _ = EndDoc(hdc);
-                return Err(format!(
-                    "{TRANSMIT_FAILED} Windows error {}.",
-                    GetLastError()
-                ));
+                if EndPage(hdc) <= 0 {
+                    let _ = EndDoc(hdc);
+                    return Err(format!("{TRANSMIT_FAILED} Windows error {}.", GetLastError()));
+                }
             }
 
             if EndDoc(hdc) <= 0 {
@@ -355,32 +363,23 @@ pub fn print_gdi(
     }
 }
 
+/// One copy of the whole bottom-up 1-bit bitmap. Bit 1 is black. A short copy fails.
 #[cfg(windows)]
-fn paint_1bit_at(
-    hdc: windows_sys::Win32::Graphics::Gdi::HDC,
-    width: u32,
-    height: u32,
-    pixels: &[u8],
-    destination_y: i32,
-) -> bool {
-    use windows_sys::Win32::Graphics::Gdi::{
-        SetDIBitsToDevice, StretchDIBits, BITMAPINFOHEADER,
-        DIB_RGB_COLORS, RGBQUAD, SRCCOPY,
-    };
+fn paint_page(hdc: windows_sys::Win32::Graphics::Gdi::HDC, width: u32, height: u32, pixels: &[u8]) -> Result<(), String> {
+    use windows_sys::Win32::Graphics::Gdi::{SetDIBitsToDevice, BITMAPINFOHEADER, DIB_RGB_COLORS, RGBQUAD};
 
     #[repr(C)]
-    struct Info {
+    struct Info1 {
         header: BITMAPINFOHEADER,
         colors: [RGBQUAD; 2],
     }
 
     let stride = (width as usize).div_ceil(32) * 4;
-
     if height == 0 || pixels.len() != stride * height as usize {
-        return false;
+        return Err("The receipt image is malformed.".into());
     }
-
-    let mut info = Info {
+    let ppm = 203 * 10_000 / 254;
+    let info = Info1 {
         header: BITMAPINFOHEADER {
             biSize: std::mem::size_of::<BITMAPINFOHEADER>() as u32,
             biWidth: width as i32,
@@ -389,27 +388,21 @@ fn paint_1bit_at(
             biBitCount: 1,
             biCompression: 0,
             biSizeImage: pixels.len() as u32,
-            biXPelsPerMeter: 0,
-            biYPelsPerMeter: 0,
+            biXPelsPerMeter: ppm,
+            biYPelsPerMeter: ppm,
             biClrUsed: 2,
             biClrImportant: 2,
         },
-        colors: [RGBQUAD::default(), RGBQUAD::default()],
+        colors: [
+            RGBQUAD { rgbBlue: 255, rgbGreen: 255, rgbRed: 255, rgbReserved: 0 },
+            RGBQUAD { rgbBlue: 0, rgbGreen: 0, rgbRed: 0, rgbReserved: 0 },
+        ],
     };
-
-    // Color index 0 = white, index 1 = black
-    info.colors[0].rgbRed = 255;
-    info.colors[0].rgbGreen = 255;
-    info.colors[0].rgbBlue = 255;
-
-    let info_ptr = (&info as *const Info).cast();
-
     let copied = unsafe {
-        // Draw the band at its original Y position on the same print page.
-        let placed = SetDIBitsToDevice(
+        SetDIBitsToDevice(
             hdc,
             0,
-            destination_y,
+            0,
             width,
             height,
             0,
@@ -417,33 +410,17 @@ fn paint_1bit_at(
             0,
             height,
             pixels.as_ptr().cast(),
-            info_ptr,
+            (&info as *const Info1).cast(),
             DIB_RGB_COLORS,
-        );
-
-        if placed == height as i32 {
-            placed
-        } else {
-            // Same-size fallback. Do not stretch or distort receipt content.
-            StretchDIBits(
-                hdc,
-                0,
-                destination_y,
-                width as i32,
-                height as i32,
-                0,
-                0,
-                width as i32,
-                height as i32,
-                pixels.as_ptr().cast(),
-                info_ptr,
-                DIB_RGB_COLORS,
-                SRCCOPY,
-            )
-        }
+        )
     };
-
-    copied == height as i32
+    if copied == height as i32 {
+        Ok(())
+    } else {
+        Err(format!(
+            "The printer copied {copied} of {height} rows. The receipt was not scaled or cropped."
+        ))
+    }
 }
 
 #[cfg(windows)]
@@ -710,6 +687,28 @@ mod tests {
         assert_eq!(bands.iter().map(|band| band.1).sum::<u32>(), 300);
         assert!(bands.iter().all(|band| band.1 <= GDI_BAND_ROWS));
         assert_eq!(band_paper_tenths(576, GDI_BAND_ROWS).1, (GDI_BAND_ROWS as i64 * 254 / 203) as i16);
+    }
+
+    #[test]
+    fn one_page_bitmap_keeps_top_middle_and_bottom() {
+        let height = 9u32;
+        let mut packed = vec![0u8; height as usize];
+        packed[0] = 0b1000_0000;
+        packed[4] = 0b0100_0000;
+        packed[8] = 0b0010_0000;
+        let bits = band_bgr24(8, &packed, 0, height).unwrap();
+        assert_eq!(bits.len(), 24 * height as usize);
+        assert_eq!(&bits[6..9], &[0, 0, 0]);
+        assert_eq!(&bits[96 + 3..96 + 6], &[0, 0, 0]);
+        assert_eq!(&bits[192..195], &[0, 0, 0]);
+        let one_bit = band_1bit(576, &vec![0xffu8; 72 * 1_600], 0, 1_600).unwrap();
+        let color = ((576usize * 3 + 3) / 4 * 4) * 1_600;
+        assert!(one_bit.len() < 128 * 1024);
+        assert!(color > 128 * 1024);
+        assert_eq!(band_paper_tenths(384, 900).0, 580);
+        assert_eq!(band_paper_tenths(576, 900).0, 800);
+        assert_eq!(band_paper_tenths(576, 900).1, (900i64 * 254 / 203) as i16);
+        assert!(paper_size_tenths(576, 900).1 > band_paper_tenths(576, 900).1);
     }
 
     #[test]

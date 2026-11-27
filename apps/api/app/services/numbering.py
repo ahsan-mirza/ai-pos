@@ -45,6 +45,15 @@ def device_prefix(store: Store, device: Device, doc_type: str) -> str:
     return f"{series_code(store.code)}-{series_code(device.code)}{DEVICE_SUFFIX[doc_type]}"
 
 
+def _still_owns_series(db: Session, device_id: uuid.UUID, doc_type: str, prefix: str) -> bool:
+    """True when another active till still numbers this series from its current code."""
+    owner = db.get(Device, device_id)
+    if owner is None or owner.deleted_at is not None or owner.revoked_at is not None:
+        return False
+    store = db.get(Store, owner.store_id)
+    return store is not None and device_prefix(store, owner, doc_type) == prefix
+
+
 def _locked(db: Session, statement):  # type: ignore[no-untyped-def]
     if db.get_bind().dialect.name == "postgresql":
         statement = statement.with_for_update()
@@ -98,7 +107,10 @@ def accept_register_number(
     if row.store_id != store_id or row.doc_type != doc_type:
         raise SyncRejected(f"Series {prefix} belongs to another store or document type.")
     if device is not None and row.device_id not in (None, device.id):
-        raise SyncRejected(f"Series {prefix} belongs to another register.")
+        # A deleted, revoked, or renamed till no longer holds this code. The current till keeps the series.
+        if _still_owns_series(db, row.device_id, doc_type, prefix):
+            raise SyncRejected(f"Series {prefix} belongs to another register.")
+        row.device_id = device.id
     if value != row.last_value + 1:
         row.gaps += 1
     row.last_value = max(row.last_value, value)

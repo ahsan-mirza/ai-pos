@@ -1524,7 +1524,7 @@ pub fn describe_escpos(bytes: &[u8]) -> String {
 pub fn describe_gdi(width: u32, height: u32) -> String {
     let (paper_w, paper_h) = crate::printer_gdi::band_paper_tenths(width, height);
     format!(
-        "GDI one page {width}x{height} at 203 dpi, paper {paper_w}x{paper_h} tenths, one unscaled 24-bit blit. No raw ESC/POS. No drawer pulse."
+        "GDI one page {width}x{height} at 203 dpi, paper {paper_w}x{paper_h} tenths, one unscaled 1-bit blit. No raw ESC/POS. No drawer pulse."
     )
 }
 

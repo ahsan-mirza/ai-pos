@@ -296,8 +296,29 @@ def test_delete_frees_the_seat_and_the_till_code(client, session: Session, monke
     entry = session.scalar(select(AuditLog).where(AuditLog.action == "device.delete"))
     assert entry is not None and entry.user_id == uuid.UUID(user_id)
 
-    _, replacement = _create(client, headers, "DEL1")
+    new_key, replacement = _create(client, headers, "DEL1")
     assert replacement["invoice_prefix"] == "DT-01-DEL1"
+    continued = client.post(
+        "/api/v1/sync/push",
+        headers={"X-Api-Key": new_key},
+        json={
+            "device_id": "DEL1",
+            "events": [
+                event(
+                    "del-sale-2",
+                    "sale",
+                    sale([line(CABLE, 1, 1500)], invoice_number="DT-01-DEL1-000002"),
+                    occurred_at=recent_occurred_at(),
+                )
+            ],
+        },
+    )
+    assert continued.status_code == 200, continued.text
+    session.expire_all()
+    continued_series = session.scalar(select(DocumentSequence).where(DocumentSequence.prefix == "DT-01-DEL1"))
+    assert continued_series is not None
+    assert continued_series.device_id == uuid.UUID(replacement["id"])
+    assert continued_series.last_value == 2
     over = client.post(
         "/api/v1/devices",
         headers=headers,
@@ -307,6 +328,104 @@ def test_delete_frees_the_seat_and_the_till_code(client, session: Session, monke
     assert over.json()["error"]["code"] == "plan_limit"
     gone = client.post(f"/api/v1/devices/{till['id']}/activation-key", headers=headers)
     assert gone.status_code == 404
+
+
+def test_renaming_a_till_gives_its_series_to_the_till_that_now_has_the_code(client, session: Session) -> None:
+    seed(client)
+    headers, _user = admin(client)
+    key, till = _create(client, headers, "R01")
+    first = client.post(
+        "/api/v1/sync/push",
+        headers={"X-Api-Key": key},
+        json={
+            "device_id": "R01",
+            "events": [
+                event(
+                    "rename-sale-1",
+                    "sale",
+                    sale([line(CABLE, 1, 1500)], invoice_number="DT-01-R01-000001"),
+                    occurred_at=recent_occurred_at(),
+                )
+            ],
+        },
+    )
+    assert first.status_code == 200, first.text
+    session.expire_all()
+    previous = session.get(Device, uuid.UUID(till["id"]))
+    assert previous is not None
+    previous.code = "R09"
+    session.commit()
+
+    new_key, replacement = _create(client, headers, "R01")
+    second = client.post(
+        "/api/v1/sync/push",
+        headers={"X-Api-Key": new_key},
+        json={
+            "device_id": "R01",
+            "events": [
+                event(
+                    "rename-sale-2",
+                    "sale",
+                    sale([line(CABLE, 1, 1500)], invoice_number="DT-01-R01-000002"),
+                    occurred_at=recent_occurred_at(),
+                )
+            ],
+        },
+    )
+    assert second.status_code == 200, second.text
+    session.expire_all()
+    row = session.scalar(select(DocumentSequence).where(DocumentSequence.prefix == "DT-01-R01"))
+    assert row is not None
+    assert row.device_id == uuid.UUID(replacement["id"])
+    assert row.last_value == 2
+
+
+def test_a_live_register_keeps_its_series_when_another_code_collapses_to_it(client, session: Session) -> None:
+    seed(client)
+    headers, _user = admin(client)
+    key, till = _create(client, headers, "R01")
+    first = client.post(
+        "/api/v1/sync/push",
+        headers={"X-Api-Key": key},
+        json={
+            "device_id": "R01",
+            "events": [
+                event(
+                    "collide-sale-1",
+                    "sale",
+                    sale([line(CABLE, 1, 1500)], invoice_number="DT-01-R01-000001"),
+                    occurred_at=recent_occurred_at(),
+                )
+            ],
+        },
+    )
+    assert first.status_code == 200, first.text
+    other_key, other = _create(client, headers, "R02")
+    session.expire_all()
+    renamed = session.get(Device, uuid.UUID(other["id"]))
+    assert renamed is not None
+    renamed.code = "r01"
+    session.commit()
+    blocked = client.post(
+        "/api/v1/sync/push",
+        headers={"X-Api-Key": other_key},
+        json={
+            "device_id": "r01",
+            "events": [
+                event(
+                    "collide-sale-2",
+                    "sale",
+                    sale([line(CABLE, 1, 1500)], invoice_number="DT-01-R01-000002"),
+                    occurred_at=recent_occurred_at(),
+                )
+            ],
+        },
+    )
+    assert blocked.status_code == 422, blocked.text
+    assert blocked.json()["error"]["message"] == "Series DT-01-R01 belongs to another register."
+    session.expire_all()
+    row = session.scalar(select(DocumentSequence).where(DocumentSequence.prefix == "DT-01-R01"))
+    assert row is not None and row.device_id == uuid.UUID(till["id"]) and row.last_value == 1
 
 
 def test_delete_releases_the_device_identity_immediately(client, session: Session, signing_key) -> None:
