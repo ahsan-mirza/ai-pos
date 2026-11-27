@@ -7,7 +7,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
-from pydantic import Field, field_validator, model_validator
+from pydantic import AliasChoices, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 PIN_PATTERN = re.compile(r"\d{4}")
@@ -98,8 +98,18 @@ class Settings(BaseSettings):
     api_key: str = Field(min_length=16)
     # Ed25519 seed (standard base64, 32 bytes) and key id for permanent register entitlements.
     # Empty leaves issuance unconfigured. The desktop build receives only the matching public key.
+    # The seed file is read when the inline seed is empty. This process never generates a key.
     entitlement_signing_seed: str = ""
+    entitlement_signing_seed_file: str = ""
     entitlement_signing_key_id: str = ""
+    # Desktop trust list. Used only to prove the server key id and public key match the release.
+    # These values are public. They are never a substitute for the private seed.
+    pos_entitlement_key_id: str = Field(default="", validation_alias=AliasChoices("POS_ENTITLEMENT_KEY_ID"))
+    pos_entitlement_public_key: str = Field(default="", validation_alias=AliasChoices("POS_ENTITLEMENT_PUBLIC_KEY"))
+    pos_entitlement_public_keys: str = Field(
+        default="",
+        validation_alias=AliasChoices("POS_ENTITLEMENT_PUBLIC_KEYS"),
+    )
     api_host: str = "0.0.0.0"
     api_port: int = Field(default=8000, ge=1, le=65535)
     cors_origins: str

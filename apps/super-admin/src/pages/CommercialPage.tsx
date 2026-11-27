@@ -9,10 +9,11 @@ import {
   type ModuleCatalogueItem,
   type StoreSubscription,
 } from "@ai-pos/shared-types";
-import { DataTable, Select, type DataTableColumn } from "@ai-pos/ui";
+import { DataTable, TableToolbar, type DataTableColumn } from "@ai-pos/ui";
+import { Eye, Power, Tags } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { useConfirm } from "../components/ConfirmDialog";
-import { FilterSearch, FilterSlot, PageHeader } from "../components/PageHeader";
+import { PageHeader } from "../components/PageHeader";
 import { ErrorNote, Field, GhostButton, Modal, PrimaryButton } from "../components/ui";
 import { ConsoleError, api, errorText } from "../lib/api";
 import { money, when } from "../lib/format";
@@ -134,33 +135,34 @@ export function PackagesPage() {
       <PageHeader
         title="Packages"
         description="Monthly prices before the billing-cycle discount. Checkout and the public site read these rows."
-        controls={
-          <>
-            {admin ? (
-              <PrimaryButton
-                onClick={() => {
-                  setNotice(null);
-                  setActionError(null);
-                  setCreating(true);
-                }}
-              >
-                New package
-              </PrimaryButton>
-            ) : null}
-            <FilterSearch label="Search packages" value={query} onChange={setQuery} placeholder="Search name or code" />
-            <FilterSlot>
-              <Select
-                aria-label="Publication"
-                value={status}
-                onChange={setStatus}
-                options={[
-                  { value: "", label: "All packages" },
-                  { value: "published", label: "Published" },
-                  { value: "hidden", label: "Unpublished" },
-                ]}
-              />
-            </FilterSlot>
-          </>
+      />
+      <TableToolbar
+        search={{ value: query, onChange: setQuery, label: "Search packages", placeholder: "Search name or code" }}
+        filters={[
+          {
+            id: "publication",
+            label: "Publication",
+            value: status,
+            onChange: setStatus,
+            options: [
+              { value: "", label: "All packages" },
+              { value: "published", label: "Published" },
+              { value: "hidden", label: "Unpublished" },
+            ],
+          },
+        ]}
+        actions={
+          admin ? (
+            <PrimaryButton
+              onClick={() => {
+                setNotice(null);
+                setActionError(null);
+                setCreating(true);
+              }}
+            >
+              New package
+            </PrimaryButton>
+          ) : null
         }
       />
       <ErrorNote message={error ?? actionError} />
@@ -780,46 +782,14 @@ export function AddonsPage() {
         header: "Status",
         cell: (row) => <StatusPill on={row.active} onLabel="Active" offLabel="Inactive" />,
       },
-      {
-        id: "actions",
-        header: "Actions",
-        cell: (row) => (
-          <span className="flex flex-wrap gap-2">
-            <GhostButton onClick={() => setViewing(row)}>View</GhostButton>
-            {admin ? (
-              <>
-                <GhostButton onClick={() => setActivating(row)}>{row.active ? "Deactivate" : "Activate"}</GhostButton>
-                <GhostButton onClick={() => setEditing(row)}>Pricing</GhostButton>
-              </>
-            ) : null}
-          </span>
-        ),
-      },
     ],
-    [admin],
+    [],
   );
   return (
     <section>
       <PageHeader
         title="Add-ons"
         description="Activate an add-on to list it in store settings. Set the monthly price, the one-time price, and whether that one-time amount is a refundable deposit."
-        controls={
-          <>
-            <FilterSearch label="Search add-ons" value={query} onChange={setQuery} placeholder="Name or description" />
-            <FilterSlot>
-              <Select
-                aria-label="Status"
-                value={status}
-                onChange={setStatus}
-                options={[
-                  { value: "", label: "All add-ons" },
-                  { value: "active", label: "Active" },
-                  { value: "inactive", label: "Inactive" },
-                ]}
-              />
-            </FilterSlot>
-          </>
-        }
       />
       <ErrorNote message={error} />
       <DataTable
@@ -827,6 +797,28 @@ export function AddonsPage() {
         columns={columns}
         data={rows}
         getRowId={(row) => row.id}
+        rowActionLabel={(row) => row.name}
+        rowActions={(row) => [
+          { id: "view", label: "View", icon: Eye, onSelect: () => setViewing(row) },
+          { id: "active", label: row.active ? "Deactivate" : "Activate", icon: Power, hidden: !admin, onSelect: () => setActivating(row) },
+          { id: "pricing", label: "Pricing", icon: Tags, hidden: !admin, onSelect: () => setEditing(row) },
+        ]}
+        toolbar={{
+          search: { value: query, onChange: setQuery, label: "Search add-ons", placeholder: "Name or description" },
+          filters: [
+            {
+              id: "status",
+              label: "Status",
+              value: status,
+              onChange: setStatus,
+              options: [
+                { value: "", label: "All add-ons" },
+                { value: "active", label: "Active" },
+                { value: "inactive", label: "Inactive" },
+              ],
+            },
+          ],
+        }}
         isLoading={catalog === null && error === null}
         emptyState={{ title: query.trim() ? "No add-ons match that search" : "No add-ons" }}
         minWidth="1100px"
@@ -1206,25 +1198,6 @@ export function SubscriptionsPage() {
       <PageHeader
         title="Subscriptions"
         description="Assign a package from the store's drawer. The next amount uses today's catalog."
-        controls={
-          <>
-            <FilterSearch label="Search subscriptions" value={query} onChange={setQuery} placeholder="Search store or package" />
-            <FilterSlot>
-              <Select
-                aria-label="Subscription status"
-                value={status}
-                onChange={setStatus}
-                options={[
-                  { value: "", label: "All statuses" },
-                  { value: "trialing", label: "Trialing" },
-                  { value: "active", label: "Active" },
-                  { value: "past_due", label: "Past due" },
-                  { value: "canceled", label: "Canceled" },
-                ]}
-              />
-            </FilterSlot>
-          </>
-        }
       />
       <div>
         <DataTable
@@ -1233,6 +1206,24 @@ export function SubscriptionsPage() {
           columns={columns}
           data={visible}
           getRowId={(row) => row.tenant_id}
+          toolbar={{
+            search: { value: query, onChange: setQuery, label: "Search subscriptions", placeholder: "Search store or package" },
+            filters: [
+              {
+                id: "status",
+                label: "Subscription status",
+                value: status,
+                onChange: setStatus,
+                options: [
+                  { value: "", label: "All statuses" },
+                  { value: "trialing", label: "Trialing" },
+                  { value: "active", label: "Active" },
+                  { value: "past_due", label: "Past due" },
+                  { value: "canceled", label: "Canceled" },
+                ],
+              },
+            ],
+          }}
           isLoading={loading}
           error={error}
           onRetry={load}

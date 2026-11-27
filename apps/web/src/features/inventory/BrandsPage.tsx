@@ -1,11 +1,11 @@
 import { Permission, type Brand } from "@ai-pos/shared-types";
 import type { DataTableColumn } from "@ai-pos/ui";
-import { Pencil, Plus, Search, Trash2 } from "lucide-react";
+import { Pencil, Plus, Trash2 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useConfirm } from "../../components/ui/ConfirmDialog";
 import { DataTable } from "../../components/ui/DataTable";
-import { ErrorNote, GhostButton, PrimaryButton, TextField, filterLabel } from "../../components/ui/Field";
+import { ErrorNote, GhostButton, PrimaryButton, TextField } from "../../components/ui/Field";
 import { Modal } from "../../components/ui/Modal";
 import { useTenant } from "../../context/TenantContext";
 import { useAuth } from "../../lib/auth";
@@ -13,7 +13,6 @@ import { useAutoCode } from "../../lib/codes";
 import { MODEL_PROFILES } from "../../lib/industry";
 import { brandsApi, message } from "./api";
 import { useBrands, useCategories } from "./shared";
-import { IconButton } from "./StockPage";
 
 /** Global brand list; each brand shows the sub-categories it sells in. */
 export function BrandsPage() {
@@ -81,23 +80,6 @@ export function BrandsPage() {
     },
     { id: "products", header: "Products", align: "right", sortValue: (row) => row.product_count, cell: (row) => row.product_count },
   ];
-  if (manage) {
-    columns.push({
-      id: "actions",
-      header: "Actions",
-      align: "right",
-      cell: (row) => (
-        <div className="flex justify-end gap-1">
-          <IconButton label={`Edit ${row.name}`} onClick={() => setEditing(row)}>
-            <Pencil size={14} />
-          </IconButton>
-          <IconButton label={`Delete ${row.name}`} onClick={() => void remove(row)}>
-            <Trash2 size={14} />
-          </IconButton>
-        </div>
-      ),
-    });
-  }
 
   const remove = async (brand: Brand) => {
     const accepted = await confirm({
@@ -125,19 +107,6 @@ export function BrandsPage() {
           </div>
         </div>
         <div className="flex flex-wrap items-end gap-3">
-          <label className="w-64">
-            <span className={filterLabel}>Search</span>
-            <span className="relative block">
-              <Search size={15} aria-hidden="true" className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-charcoal/40" />
-              <input
-                type="search"
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-                placeholder="Brand or code"
-                className="h-11 w-full rounded-full border border-line bg-white pl-10 pr-4 text-sm font-medium text-charcoal placeholder:font-normal placeholder:text-charcoal/40 hover:border-gray-400 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20"
-              />
-            </span>
-          </label>
           {manage ? (
             <PrimaryButton onClick={() => setEditing("new")}>
               <span className="inline-flex items-center gap-2">
@@ -154,6 +123,18 @@ export function BrandsPage() {
         columns={columns}
         data={visible}
         getRowId={(row) => row.id}
+        rowActionLabel={(row) => row.name}
+        rowActions={
+          manage
+            ? (row) => [
+                { id: "edit", label: "Edit", icon: Pencil, onSelect: () => setEditing(row) },
+                { id: "delete", label: "Delete", icon: Trash2, tone: "danger", onSelect: () => void remove(row) },
+              ]
+            : undefined
+        }
+        toolbar={{
+          search: { value: query, onChange: setQuery, label: "Search brands", placeholder: "Brand or code" },
+        }}
         error={loadError}
         onRetry={() => void reload()}
         pagination={{ mode: "client", resetKey: needle }}

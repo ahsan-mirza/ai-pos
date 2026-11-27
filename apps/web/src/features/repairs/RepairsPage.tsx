@@ -8,7 +8,7 @@ import {
   type RepairTicket,
 } from "@ai-pos/shared-types";
 import { DataTable, RepairJobsToolbar, actionHoverClass, actionIntentFromLabel, formatDateTime, usePagination, type DataTableColumn } from "@ai-pos/ui";
-import { CircleDot, Package, ReceiptText, Trash2, Wrench } from "lucide-react";
+import { CircleDot, Eye, Package, ReceiptText, Trash2, Wrench } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { ErrorNote, GhostButton, PrimaryButton, TextField } from "../../components/ui/Field";
@@ -304,15 +304,6 @@ export function RepairsPage() {
           },
         ]
       : []),
-    {
-      id: "open",
-      header: "",
-      cell: (row) => (
-        <button type="button" className="text-sm font-semibold text-accent" onClick={() => navigate(`/repairs/${row.id}`)}>
-          View details
-        </button>
-      ),
-    },
   ];
 
   if (ticketId) {
@@ -380,13 +371,8 @@ export function RepairsPage() {
         technician={technicianId}
         onTechnician={setTechnicianId}
         technicianOptions={[{ value: "", label: "Anyone" }, ...technicians.map((person) => ({ value: person.id, label: person.name }))]}
-        moreActive={warranty}
-        more={
-          <label className="flex h-11 items-center gap-2 text-sm">
-            <input type="checkbox" checked={warranty} onChange={(event) => setWarranty(event.target.checked)} />
-            Warranty repair
-          </label>
-        }
+        warranty={warranty}
+        onWarranty={setWarranty}
         onClear={clearFilters}
         clearVisible={filtered}
       />
@@ -403,6 +389,8 @@ export function RepairsPage() {
           error={error}
           onRetry={load}
           onRowClick={(row) => navigate(`/repairs/${row.id}`)}
+          rowActionLabel={(row) => row.reference || row.id.slice(0, 8).toUpperCase()}
+          rowActions={(row) => [{ id: "view", label: "View details", icon: Eye, onSelect: () => navigate(`/repairs/${row.id}`) }]}
           pagination={{
             mode: "server",
             currentPage: pager.page,

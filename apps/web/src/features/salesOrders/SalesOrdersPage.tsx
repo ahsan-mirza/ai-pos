@@ -10,10 +10,10 @@ import {
   type SalesOrderStatus,
 } from "@ai-pos/shared-types";
 import { actionHoverClass, useLocale } from "@ai-pos/ui";
-import { PackageCheck, Plus, Search, Trash2, Truck } from "lucide-react";
+import { PackageCheck, Plus, Trash2, Truck } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
-import { DataTable, usePagination, type DataTableColumn } from "../../components/ui/DataTable";
-import { ErrorNote, FilterSelect, GhostButton, PrimaryButton, SelectField, TextField } from "../../components/ui/Field";
+import { DataTable, usePagination, type DataTableColumn, type TableToolbarProps } from "../../components/ui/DataTable";
+import { ErrorNote, GhostButton, PrimaryButton, SelectField, TextField } from "../../components/ui/Field";
 import { Modal } from "../../components/ui/Modal";
 import { ProductPicker } from "../../components/ui/ProductPicker";
 import { SegmentedControl } from "../../components/ui/SegmentedControl";
@@ -209,6 +209,29 @@ export function SalesOrdersPage() {
     { id: "since", header: "Ordered", className: "pl-6", cell: (row) => formatDate(row.ordered_at) },
   ];
 
+  const orderToolbar: TableToolbarProps = {
+    search:
+      view === "backorders"
+        ? undefined
+        : { value: search, onChange: setSearch, label: "Find an order", placeholder: "Order, customer or their ref" },
+    filters: user?.store_id
+      ? []
+      : [
+          {
+            id: "branch",
+            label: "Branch",
+            value: storeId,
+            onChange: setStoreId,
+            options: [{ value: "", label: "All branches" }, ...storeOptions(stores)],
+          },
+        ],
+    actions: can(Permission.SalesOrders) ? (
+      <PrimaryButton onClick={() => setCreating(true)}>
+        <Plus size={16} aria-hidden="true" className="-ml-1 mr-1.5" /> New order
+      </PrimaryButton>
+    ) : null,
+  };
+
   return (
     <section className="space-y-4">
       <div className="grid gap-4 md:grid-cols-3">
@@ -230,38 +253,8 @@ export function SalesOrdersPage() {
       </div>
 
       <div className="overflow-hidden rounded-card border border-line bg-white">
-        <div className="flex flex-wrap items-end justify-between gap-3 p-6 pb-5">
+        <div className="flex flex-wrap items-end justify-between gap-3 px-6 pt-5">
           <SegmentedControl label="Order view" value={view} options={VIEWS} onChange={setView} />
-          <div className="flex flex-wrap items-end gap-3">
-            {view === "backorders" ? null : (
-              <label className="w-60">
-                <span className="sr-only">Find an order</span>
-                <span className="relative block">
-                  <Search size={15} aria-hidden="true" className="absolute left-3.5 top-1/2 -translate-y-1/2 text-charcoal/40" />
-                  <input
-                    value={search}
-                    onChange={(event) => setSearch(event.target.value)}
-                    placeholder="Order, customer or their ref"
-                    className="w-full rounded-full border border-line bg-white py-2.5 pl-9 pr-4 text-sm focus:border-accent focus:outline-none"
-                  />
-                </span>
-              </label>
-            )}
-            {user?.store_id ? null : (
-              <FilterSelect
-                label="Branch"
-                value={storeId}
-                options={[{ value: "", label: "All branches" }, ...storeOptions(stores)]}
-                onChange={setStoreId}
-                className="w-52"
-              />
-            )}
-            {can(Permission.SalesOrders) ? (
-              <PrimaryButton onClick={() => setCreating(true)}>
-                <Plus size={16} aria-hidden="true" className="-ml-1 mr-1.5" /> New order
-              </PrimaryButton>
-            ) : null}
-          </div>
           {error ? (
             <div className="w-full">
               <ErrorNote message={error} />
@@ -276,6 +269,7 @@ export function SalesOrdersPage() {
             columns={backorderColumns}
             data={backorders}
             getRowId={(row) => `${row.order_id}-${row.product_id}`}
+            toolbar={orderToolbar}
             isLoading={loading && backorders.length === 0}
             emptyState={{ icon: PackageCheck, title: "Nothing is waiting for stock" }}
           />
@@ -287,6 +281,7 @@ export function SalesOrdersPage() {
             columns={columns}
             data={rows ?? []}
             getRowId={(row) => row.id}
+            toolbar={orderToolbar}
             onRowClick={(row) => setOpenId(row.id)}
             isLoading={rows === null && error === null}
             isFetching={loading && rows !== null}

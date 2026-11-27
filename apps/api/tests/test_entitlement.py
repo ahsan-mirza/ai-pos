@@ -110,6 +110,70 @@ def test_missing_signing_key_does_not_consume_the_activation_key(client, monkeyp
         get_settings.cache_clear()
 
 
+def test_preflight_reports_a_missing_seed_and_a_matching_desktop_key(client, monkeypatch, tmp_path) -> None:
+    seed(client)
+    headers = admin(client)
+    _configure(monkeypatch, False)
+    try:
+        missing = client.get("/api/v1/devices/activation-preflight", headers=headers)
+        assert missing.status_code == 200, missing.text
+        assert missing.json()["ready"] is False
+        assert missing.json()["code"] == "entitlement_unconfigured"
+        assert "seed" not in missing.text.lower() or "signing" in missing.json()["message"].lower()
+        assert SEED.hex() not in missing.text
+
+        public = base64.b64encode(
+            Ed25519PrivateKey.from_private_bytes(SEED).public_key().public_bytes(Encoding.Raw, PublicFormat.Raw)
+        ).decode("ascii")
+        secret = tmp_path / "seed.txt"
+        secret.write_text(base64.b64encode(SEED).decode("ascii"), encoding="utf-8")
+        monkeypatch.setenv("ENTITLEMENT_SIGNING_SEED_FILE", str(secret))
+        monkeypatch.delenv("ENTITLEMENT_SIGNING_KEY_ID", raising=False)
+        monkeypatch.setenv("POS_ENTITLEMENT_KEY_ID", KEY_ID)
+        monkeypatch.setenv("POS_ENTITLEMENT_PUBLIC_KEY", public)
+        monkeypatch.setenv("POS_ENTITLEMENT_PUBLIC_KEYS", f"{KEY_ID}:{public}")
+        get_settings.cache_clear()
+        ready = client.get("/api/v1/devices/activation-preflight", headers=headers)
+        assert ready.status_code == 200, ready.text
+        body = ready.json()
+        assert body["ready"] is True
+        assert body["key_id"] == KEY_ID
+        assert body["public_key"] == public
+        assert base64.b64encode(SEED).decode("ascii") not in ready.text
+    finally:
+        get_settings.cache_clear()
+
+
+def test_a_desktop_key_mismatch_does_not_consume_the_activation_key(client, monkeypatch) -> None:
+    seed(client)
+    headers = admin(client)
+    device_id = _register(client, headers)
+    activation_key = _key(client, headers, device_id)
+    _configure(monkeypatch, True)
+    other = Ed25519PrivateKey.generate().public_key().public_bytes(Encoding.Raw, PublicFormat.Raw)
+    monkeypatch.setenv("POS_ENTITLEMENT_PUBLIC_KEY", base64.b64encode(other).decode("ascii"))
+    monkeypatch.setenv("POS_ENTITLEMENT_KEY_ID", KEY_ID)
+    get_settings.cache_clear()
+    try:
+        refused = client.post(
+            "/api/v1/terminals/activate",
+            json={"activation_key": activation_key, "device_public_key": _device_public()},
+        )
+        assert refused.status_code == 503
+        assert refused.json()["error"]["code"] == "entitlement_key_mismatch"
+        assert "device_token" not in refused.text
+        monkeypatch.delenv("POS_ENTITLEMENT_PUBLIC_KEY", raising=False)
+        monkeypatch.delenv("POS_ENTITLEMENT_KEY_ID", raising=False)
+        get_settings.cache_clear()
+        accepted = client.post(
+            "/api/v1/terminals/activate",
+            json={"activation_key": activation_key, "device_public_key": _device_public()},
+        )
+        assert accepted.status_code == 200, accepted.text
+    finally:
+        get_settings.cache_clear()
+
+
 def test_bad_activation_and_anonymous_entitlement_are_refused(client) -> None:
     refused = client.post("/api/v1/terminals/activate", json={"activation_key": "NOT-A-REAL-KEY"})
     assert refused.status_code == 401

@@ -11,9 +11,12 @@ import hashlib
 import json
 import logging
 import uuid
+from dataclasses import dataclass
 from datetime import UTC, datetime
+from pathlib import Path
 
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey, Ed25519PublicKey
+from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -63,12 +66,87 @@ def thumbprint(public_key: bytes) -> str:
     return hashlib.sha256(public_key).hexdigest()
 
 
-def _signing_key() -> tuple[str, Ed25519PrivateKey]:
+UNCONFIGURED = "Permanent entitlement signing is not configured."
+MISMATCH = "The active signing key does not match a trusted desktop public key."
+
+
+@dataclass(frozen=True)
+class SigningPreflight:
+    ready: bool
+    code: str | None
+    message: str
+    key_id: str
+    public_key: str
+
+
+def _decode_public(value: str) -> bytes | None:
+    raw = "".join(value.split())
+    if not raw:
+        return None
+    padded = raw + ("=" * (-len(raw) % 4))
+    for decoder in (base64.b64decode, base64.urlsafe_b64decode):
+        try:
+            decoded = decoder(padded)
+        except Exception:
+            continue
+        if len(decoded) == 32:
+            return decoded
+    return None
+
+
+def _seed_material() -> str:
+    """Inline secret first, then a server-side file. Neither is created here."""
     settings = get_settings()
-    seed_b64 = settings.entitlement_signing_seed.strip()
-    key_id = settings.entitlement_signing_key_id.strip()
+    inline = settings.entitlement_signing_seed.strip()
+    if inline:
+        return inline
+    path = settings.entitlement_signing_seed_file.strip()
+    if not path:
+        return ""
+    try:
+        return Path(path).read_text(encoding="utf-8").strip()
+    except OSError:
+        logger.error("entitlement signing secret file could not be read")
+        return ""
+
+
+def _key_id() -> str:
+    settings = get_settings()
+    primary = settings.entitlement_signing_key_id.strip()
+    desktop = settings.pos_entitlement_key_id.strip()
+    if primary and desktop and primary != desktop:
+        raise ApiError(503, "entitlement_key_mismatch", MISMATCH)
+    return primary or desktop
+
+
+def _trusted_public(key_id: str) -> dict[str, bytes]:
+    """Public keys declared for the desktop release. An empty map means none were configured."""
+    settings = get_settings()
+    found: dict[str, bytes] = {}
+    for entry in settings.pos_entitlement_public_keys.split(","):
+        item = entry.strip()
+        if ":" not in item:
+            continue
+        entry_id, material = item.split(":", 1)
+        decoded = _decode_public(material)
+        if entry_id.strip() and decoded is not None:
+            found[entry_id.strip()] = decoded
+    singular = _decode_public(settings.pos_entitlement_public_key)
+    if singular is not None:
+        singular_id = settings.pos_entitlement_key_id.strip() or key_id
+        if singular_id:
+            previous = found.get(singular_id)
+            if previous is not None and previous != singular:
+                raise ApiError(503, "entitlement_key_mismatch", MISMATCH)
+            found[singular_id] = singular
+    return found
+
+
+def _signing_key() -> tuple[str, Ed25519PrivateKey]:
+    seed_b64 = _seed_material()
+    key_id = _key_id()
     if not seed_b64 or not key_id:
-        raise ApiError(503, "entitlement_unconfigured", "Permanent entitlement signing is not configured.")
+        raise ApiError(503, "entitlement_unconfigured", UNCONFIGURED)
     try:
         seed = base64.b64decode(seed_b64)
         if len(seed) != 32:
@@ -76,8 +154,30 @@ def _signing_key() -> tuple[str, Ed25519PrivateKey]:
         key = Ed25519PrivateKey.from_private_bytes(seed)
     except Exception:
         logger.error("entitlement signing key is unusable")
-        raise ApiError(503, "entitlement_unconfigured", "Permanent entitlement signing is not configured.") from None
+        raise ApiError(503, "entitlement_unconfigured", UNCONFIGURED) from None
+    public = key.public_key().public_bytes(Encoding.Raw, PublicFormat.Raw)
+    trusted = _trusted_public(key_id)
+    if trusted:
+        expected = trusted.get(key_id)
+        if expected is None or expected != public:
+            raise ApiError(503, "entitlement_key_mismatch", MISMATCH)
     return key_id, key
+
+
+def signing_preflight() -> SigningPreflight:
+    """Whether this server can sign a till entitlement. The seed is never returned."""
+    try:
+        key_id, private = _signing_key()
+    except ApiError as exc:
+        return SigningPreflight(ready=False, code=exc.code, message=exc.message, key_id="", public_key="")
+    public = base64.b64encode(private.public_key().public_bytes(Encoding.Raw, PublicFormat.Raw)).decode("ascii")
+    return SigningPreflight(
+        ready=True,
+        code=None,
+        message="Entitlement signing is ready.",
+        key_id=key_id,
+        public_key=public,
+    )
 
 
 def _limits() -> dict[str, int | None]:

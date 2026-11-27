@@ -1,6 +1,6 @@
 import type { Brand, Category, ProductModel, StockStatus, Store } from "@ai-pos/shared-types";
 import { stockStatusLabel } from "@ai-pos/shared-types";
-import { formatDate as formatAxizDate, formatDateTime } from "@ai-pos/ui";
+import { formatDate as formatAxizDate, formatDateTime, type FilterControlProps } from "@ai-pos/ui";
 import { useCallback, useEffect, useState } from "react";
 import { FilterSelect } from "../../components/ui/Field";
 import type { SelectOption } from "../../components/ui/Select";
@@ -213,6 +213,64 @@ export function BrandModelFilters({
         onChange={(next) => onChange(brandId, next === "" ? null : next)}
       />
     </>
+  );
+}
+
+export function BrandFilterControl({ value, setValue }: FilterControlProps) {
+  const { brands } = useBrands(null);
+  return (
+    <FilterSelect
+      hideLabel
+      label="Brand"
+      value={value}
+      options={[{ value: "", label: "All brands" }, ...brands.map((brand) => ({ value: brand.id, label: brand.name }))]}
+      onChange={setValue}
+    />
+  );
+}
+
+export function ScopedBrandFilterControl({ value, setValue, draft }: FilterControlProps) {
+  const { brands } = useBrands(draft.sub || null);
+  return (
+    <FilterSelect
+      hideLabel
+      label="Brand"
+      value={value}
+      options={[{ value: "", label: "All brands" }, ...brands.map((brand) => ({ value: brand.id, label: brand.name }))]}
+      onChange={setValue}
+    />
+  );
+}
+
+export function ScopedModelFilterControl({ value, setValue, draft }: FilterControlProps) {
+  const { models } = useModels(draft.sub || null, draft.brand || null, { allowAll: true });
+  return (
+    <FilterSelect
+      hideLabel
+      label="Model"
+      value={value}
+      options={[
+        { value: "", label: "All models" },
+        ...models.map((model) => ({ value: model.id, label: model.name, hint: model.sub_category_name })),
+      ]}
+      onChange={setValue}
+    />
+  );
+}
+
+export function ModelFilterControl({ value, setValue, draft }: FilterControlProps) {
+  const { models } = useModels(null, draft.brand || null, { allowAll: true });
+  return (
+    <FilterSelect
+      hideLabel
+      label="Model"
+      value={value}
+      options={[
+        { value: "", label: "All models" },
+        ...models.map((model) => ({ value: model.id, label: model.name, hint: model.sub_category_name })),
+      ]}
+      onChange={setValue}
+    />
   );
 }
 

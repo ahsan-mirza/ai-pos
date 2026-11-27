@@ -1,7 +1,8 @@
 import { DataTable, type DataTableColumn } from "@ai-pos/ui";
+import { Eye } from "lucide-react";
 import { useEffect, useState } from "react";
 import { PageHeader } from "../../components/PageHeader";
-import { ErrorNote, Field, GhostButton, PrimaryButton } from "../../components/ui";
+import { ErrorNote, Field, PrimaryButton } from "../../components/ui";
 import { api, errorText } from "../../lib/api";
 import { when } from "../../lib/format";
 import { ENQUIRY_STATUSES, type CatalogEnquiry } from "./types";
@@ -68,7 +69,6 @@ export function HardwareEnquiriesPage() {
     { id: "interest", header: "Interest", cell: (row) => row.product_label || row.package_label || row.enquiry_type },
     { id: "status", header: "Status", cell: (row) => row.status },
     { id: "created", header: "Received", cell: (row) => when(row.created_at) },
-    { id: "open", header: "Actions", cell: (row) => <GhostButton onClick={() => open(row.id)}>Open</GhostButton> },
   ];
 
   return (
@@ -76,18 +76,33 @@ export function HardwareEnquiriesPage() {
       <div>
         <PageHeader title="Enquiries" description="Website quotation requests. Updating a status does not create a store." />
         <ErrorNote message={error} />
-        <div className="mb-4 flex flex-wrap gap-2">
-          <input aria-label="Search enquiries" value={query} onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") load(); }} placeholder="Search name, email, or reference" className="h-10 w-full max-w-sm rounded-xl border border-line px-3 text-sm" />
-          <select aria-label="Enquiry status" value={status} onChange={(event) => setStatus(event.target.value)} className="h-10 rounded-xl border border-line px-3 text-sm">
-            <option value="">All statuses</option>
-            {ENQUIRY_STATUSES.map((value) => (
-              <option key={value} value={value}>
-                {value}
-              </option>
-            ))}
-          </select>
-        </div>
-        <DataTable aria-label="Hardware enquiries" columns={columns} data={rows} getRowId={(row) => row.id} emptyState={{ title: "No enquiries", description: "Requests from the website appear here." }} />
+        <DataTable
+          aria-label="Hardware enquiries"
+          columns={columns}
+          data={rows}
+          getRowId={(row) => row.id}
+          rowActionLabel={(row) => row.enquiry_reference}
+          rowActions={(row) => [{ id: "open", label: "Open", icon: Eye, onSelect: () => void open(row.id) }]}
+          toolbar={{
+            search: {
+              value: query,
+              onChange: setQuery,
+              onSubmit: () => load(),
+              label: "Search enquiries",
+              placeholder: "Search name, email, or reference",
+            },
+            filters: [
+              {
+                id: "status",
+                label: "Enquiry status",
+                value: status,
+                onChange: setStatus,
+                options: [{ value: "", label: "All statuses" }, ...ENQUIRY_STATUSES.map((value) => ({ value, label: value }))],
+              },
+            ],
+          }}
+          emptyState={{ title: "No enquiries", description: "Requests from the website appear here." }}
+        />
       </div>
       {selected ? (
         <aside className="rounded-2xl border border-line bg-card p-4 text-sm">

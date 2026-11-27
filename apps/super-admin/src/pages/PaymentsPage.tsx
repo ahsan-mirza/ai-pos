@@ -1,8 +1,9 @@
-import { DataTable, Select, type DataTableColumn } from "@ai-pos/ui";
+import { DataTable, type DataTableColumn } from "@ai-pos/ui";
+import { Ban, FileText, RotateCcw, ShieldOff, ShieldCheck } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useConfirm } from "../components/ConfirmDialog";
-import { FilterSearch, FilterSlot, PageHeader } from "../components/PageHeader";
+import { PageHeader } from "../components/PageHeader";
 import { ErrorNote, GhostButton, PrimaryButton } from "../components/ui";
 import { api, consoleBlob, errorText } from "../lib/api";
 import { money, when } from "../lib/format";
@@ -237,51 +238,6 @@ export function PaymentsPage() {
       sortValue: (row) => row.status,
       cell: (row) => row.status.replace(/_/g, " "),
     },
-    {
-      id: "actions",
-      header: "",
-      cell: (row) => (
-        <span className="flex flex-wrap gap-2">
-          <GhostButton onClick={() => void openReceipt(row.id)}>Receipt</GhostButton>
-          {admin && row.status === "pending_review" ? (
-            <>
-              <GhostButton onClick={() => void approve(row)}>Verify and activate</GhostButton>
-              <GhostButton
-                onClick={() => {
-                  setDecision("reject");
-                  setRejecting(row.id);
-                  setReason("");
-                }}
-              >
-                Reject
-              </GhostButton>
-            </>
-          ) : null}
-          {admin && row.status === "rejected" ? (
-            <GhostButton
-              onClick={() => {
-                setDecision("reopen");
-                setRejecting(row.id);
-                setReason("");
-              }}
-            >
-              Reopen
-            </GhostButton>
-          ) : null}
-          {admin && row.status === "approved" ? (
-            <GhostButton
-              onClick={() => {
-                setDecision("revoke");
-                setRejecting(row.id);
-                setReason("");
-              }}
-            >
-              Revoke activation
-            </GhostButton>
-          ) : null}
-        </span>
-      ),
-    },
   ];
 
   return (
@@ -419,30 +375,7 @@ export function PaymentsPage() {
         </div>
       </div>
 
-      <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
-        <h2 className="text-lg font-semibold">Receipts</h2>
-        <div className="flex w-full min-w-0 flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap sm:items-center">
-          <FilterSearch
-            label="Search receipts"
-            value={query}
-            onChange={setQuery}
-            placeholder="Search store, invoice, or reference"
-          />
-          <FilterSlot>
-            <Select
-              aria-label="Receipt status"
-              value={status}
-              onChange={setStatus}
-              options={[
-                { value: "pending_review", label: "Pending review" },
-                { value: "approved", label: "Approved" },
-                { value: "rejected", label: "Rejected" },
-                { value: "", label: "All" },
-              ]}
-            />
-          </FilterSlot>
-        </div>
-      </div>
+      <h2 className="mt-8 text-lg font-semibold">Receipts</h2>
       <div className="mt-4">
         <DataTable
           aria-label="Transfer receipts"
@@ -450,6 +383,64 @@ export function PaymentsPage() {
           columns={columns}
           data={visible}
           getRowId={(row) => row.id}
+          rowActionLabel={(row) => row.bank_reference || row.id}
+          rowActions={(row) => [
+            { id: "receipt", label: "Receipt", icon: FileText, onSelect: () => void openReceipt(row.id) },
+            { id: "approve", label: "Verify and activate", icon: ShieldCheck, hidden: !admin || row.status !== "pending_review", onSelect: () => void approve(row) },
+            {
+              id: "reject",
+              label: "Reject",
+              icon: Ban,
+              tone: "danger",
+              hidden: !admin || row.status !== "pending_review",
+              onSelect: () => {
+                setDecision("reject");
+                setRejecting(row.id);
+                setReason("");
+              },
+            },
+            {
+              id: "reopen",
+              label: "Reopen",
+              icon: RotateCcw,
+              hidden: !admin || row.status !== "rejected",
+              onSelect: () => {
+                setDecision("reopen");
+                setRejecting(row.id);
+                setReason("");
+              },
+            },
+            {
+              id: "revoke",
+              label: "Revoke activation",
+              icon: ShieldOff,
+              tone: "danger",
+              hidden: !admin || row.status !== "approved",
+              onSelect: () => {
+                setDecision("revoke");
+                setRejecting(row.id);
+                setReason("");
+              },
+            },
+          ]}
+          toolbar={{
+            search: { value: query, onChange: setQuery, label: "Search receipts", placeholder: "Search store, invoice, or reference" },
+            filters: [
+              {
+                id: "status",
+                label: "Receipt status",
+                value: status,
+                clearedValue: "pending_review",
+                onChange: setStatus,
+                options: [
+                  { value: "pending_review", label: "Pending review" },
+                  { value: "approved", label: "Approved" },
+                  { value: "rejected", label: "Rejected" },
+                  { value: "", label: "All" },
+                ],
+              },
+            ],
+          }}
           rowClassName={(row) => (row.id === focusId ? "bg-accent/10" : "")}
           isLoading={loading}
           error={error}

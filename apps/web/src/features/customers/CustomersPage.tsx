@@ -2,11 +2,10 @@ import { actionHoverClass } from "@ai-pos/ui";
 import { Capability, PAYMENT_TERMS_LABELS, PRICE_TIER_LABELS, formatMoney, type Customer } from "@ai-pos/shared-types";
 import { FileSpreadsheet, Plus, Repeat2, Send, SquarePen, Users } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { useConfirm } from "../../components/ui/ConfirmDialog";
 import { DataTable, type DataTableColumn } from "../../components/ui/DataTable";
-import { ErrorNote, PrimaryButton, SearchField } from "../../components/ui/Field";
-import { SegmentedControl } from "../../components/ui/SegmentedControl";
+import { ErrorNote, PrimaryButton } from "../../components/ui/Field";
 import { Toast } from "../../components/ui/Toast";
 import { useCapability } from "../../lib/capabilities";
 import { useCurrency } from "../../lib/currency";
@@ -23,6 +22,7 @@ const typeOptions = [
 ] as const;
 
 export function CustomersPage() {
+  const navigate = useNavigate();
   const { currency } = useCurrency();
   const creditModule = useCapability(Capability.B2bCredit);
   const reorderModule = useCapability(Capability.CustomerReorders);
@@ -168,40 +168,6 @@ export function CustomersPage() {
           },
         ]
       : []),
-    {
-      id: "actions",
-      header: "Actions",
-      align: "right",
-      cell: (row) => (
-        <div className="flex items-center justify-end gap-1">
-          <Link
-            to={`/customers/${row.id}`}
-            className={`flex h-9 items-center gap-1.5 rounded-full border border-line px-3.5 text-xs font-semibold ${actionHoverClass("info")}`}
-          >
-            <FileSpreadsheet size={14} aria-hidden="true" />
-            Statement
-          </Link>
-          {reorderModule ? (
-            <Link
-              to={`/reorders?customer=${row.id}`}
-              className={`flex h-9 items-center rounded-full border border-line px-3.5 text-xs font-semibold ${actionHoverClass("info")}`}
-            >
-              <Repeat2 size={14} aria-hidden="true" />
-              Reorders
-            </Link>
-          ) : null}
-          <button
-            type="button"
-            aria-label={`Edit ${row.company_name ?? row.name}`}
-            title="Edit"
-            onClick={() => setEditing(row)}
-            className={`flex h-9 w-9 items-center justify-center rounded-full border border-line ${actionHoverClass("primary")}`}
-          >
-            <SquarePen size={15} aria-hidden="true" />
-          </button>
-        </div>
-      ),
-    },
   ];
 
   return (
@@ -227,56 +193,11 @@ export function CustomersPage() {
       </div>
 
       <div className="overflow-hidden rounded-card border border-line bg-white">
-        <div className="flex flex-wrap items-end gap-3 p-6 pb-5">
-          <SearchField
-            className="min-w-[240px] flex-1"
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder="Company, contact, code, phone, TRN"
-          />
-          <SegmentedControl label="Customer type" value={type} options={typeOptions} onChange={setType} />
-          <button
-            type="button"
-            aria-pressed={inactive}
-            onClick={() => setInactive((value) => !value)}
-            className={`h-10 rounded-full border px-5 text-sm font-semibold transition-colors ${
-              inactive ? "border-charcoal bg-charcoal text-white" : "border-line bg-white text-charcoal/70 hover:text-charcoal"
-            }`}
-          >
-            Show inactive
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              void (async () => {
-                const accepted = await confirm({
-                  title: "Send statements",
-                  message: "Send a statement to every wholesale account with a balance?",
-                  confirmLabel: "Send",
-                });
-                if (!accepted) return;
-                try {
-                  const result = await customersApi.sendStatements();
-                  setToast(`${result.queued} statements queued; ${result.skipped} accounts have no messaging consent.`);
-                } catch (caught) {
-                  setError(message(caught, "Could not send statements."));
-                }
-              })();
-            }}
-            className={`inline-flex h-10 items-center gap-2 rounded-full border border-line bg-white px-5 text-sm font-semibold text-charcoal/80 ${actionHoverClass("info")}`}
-          >
-            <Send size={15} aria-hidden="true" /> Send statements
-          </button>
-          <PrimaryButton onClick={() => setEditing("new")}>
-            <Plus size={16} aria-hidden="true" className="-ml-2 mr-1.5" />
-            New customer
-          </PrimaryButton>
-          {error ? (
-            <div className="w-full">
-              <ErrorNote message={error} />
-            </div>
-          ) : null}
-        </div>
+        {error ? (
+          <div className="px-6 pt-5">
+            <ErrorNote message={error} />
+          </div>
+        ) : null}
         <DataTable
           aria-label="Customers"
           variant="flush"
@@ -284,6 +205,63 @@ export function CustomersPage() {
           columns={columns}
           data={rows}
           getRowId={(row) => row.id}
+          rowActionLabel={(row) => row.company_name ?? row.name}
+          rowActions={(row) => [
+            { id: "statement", label: "Statement", icon: FileSpreadsheet, onSelect: () => navigate(`/customers/${row.id}`) },
+            { id: "reorders", label: "Reorders", icon: Repeat2, hidden: !reorderModule, onSelect: () => navigate(`/reorders?customer=${row.id}`) },
+            { id: "edit", label: "Edit", icon: SquarePen, onSelect: () => setEditing(row) },
+          ]}
+          toolbar={{
+            search: { value: query, onChange: setQuery, label: "Search customers", placeholder: "Company, contact, code, phone, TRN" },
+            filters: [
+              {
+                id: "type",
+                label: "Customer type",
+                value: type,
+                clearedValue: "all",
+                onChange: (value) => setType(value as TypeFilter),
+                options: typeOptions,
+              },
+              {
+                id: "inactive",
+                label: "Show inactive",
+                kind: "toggle",
+                value: inactive ? "true" : "false",
+                clearedValue: "false",
+                onChange: (value) => setInactive(value === "true"),
+              },
+            ],
+            actions: (
+              <>
+                <button
+                  type="button"
+                  onClick={() => {
+                    void (async () => {
+                      const accepted = await confirm({
+                        title: "Send statements",
+                        message: "Send a statement to every wholesale account with a balance?",
+                        confirmLabel: "Send",
+                      });
+                      if (!accepted) return;
+                      try {
+                        const result = await customersApi.sendStatements();
+                        setToast(`${result.queued} statements queued; ${result.skipped} accounts have no messaging consent.`);
+                      } catch (caught) {
+                        setError(message(caught, "Could not send statements."));
+                      }
+                    })();
+                  }}
+                  className={`inline-flex h-11 items-center gap-2 rounded-full border border-line bg-white px-5 text-sm font-semibold text-charcoal/80 ${actionHoverClass("info")}`}
+                >
+                  <Send size={15} aria-hidden="true" /> Send statements
+                </button>
+                <PrimaryButton onClick={() => setEditing("new")}>
+                  <Plus size={16} aria-hidden="true" className="-ml-2 mr-1.5" />
+                  New customer
+                </PrimaryButton>
+              </>
+            ),
+          }}
           isLoading={customers === null && error === null}
           rowClassName={(row) => (row.is_active ? "" : "opacity-50")}
           emptyState={

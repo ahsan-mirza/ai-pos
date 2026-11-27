@@ -26,6 +26,53 @@ function subdomainOf(raw: string): string {
 const input =
   "h-12 w-full rounded-xl border border-zinc-200 bg-white px-4 text-base text-zinc-900 placeholder:text-zinc-400 focus:border-orange-500 focus:outline-none focus:ring-4 focus:ring-orange-500/15 dark:border-zinc-800 dark:bg-zinc-900/60 dark:text-zinc-100 dark:placeholder:text-zinc-500";
 
+type StageState = "waiting" | "active" | "done" | "failed";
+
+const STAGE_LABELS = [
+  "Store identified",
+  "Register assigned",
+  "Entitlement signing verified",
+  "Activation credential validated",
+  "Device activated",
+  "Initial synchronization started",
+  "Synchronization completed or requires attention",
+] as const;
+
+function activationFailure(text: string): { code: string; message: string } {
+  const match = /^\[([a-z0-9_]+)\]\s+([\s\S]+)$/.exec(text);
+  if (!match) {
+    if (/could not reach/i.test(text)) return { code: "network", message: text };
+    return { code: "activation_failed", message: text };
+  }
+  return { code: match[1] ?? "activation_failed", message: match[2] ?? text };
+}
+
+function stageIndex(code: string): number {
+  if (code === "network" || code === "tenant_not_found" || code === "tenant_invalid") return 0;
+  if (code === "plan_limit" || code === "device_binding" || code === "conflict") return 1;
+  if (code === "entitlement_unconfigured" || code === "entitlement_key_mismatch") return 2;
+  if (code === "activation_invalid") return 3;
+  if (code === "pending_offline") return 5;
+  return 4;
+}
+
+function ActivationStages({ states }: { states: StageState[] }) {
+  return (
+    <ol className="space-y-2 text-sm">
+      {STAGE_LABELS.map((label, index) => {
+        const state = states[index] ?? "waiting";
+        const mark = state === "done" ? "Done" : state === "failed" ? "Failed" : state === "active" ? "In progress" : "Waiting";
+        return (
+          <li key={label} className="flex items-center justify-between gap-3">
+            <span>{label}</span>
+            <span className={state === "failed" ? "font-semibold text-red-600 dark:text-red-300" : "text-zinc-500 dark:text-zinc-400"}>{mark}</span>
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
+
 /** First run: binds this register to a store code with a one-time key from the admin portal. */
 export function ActivationScreen({ onCancel }: { onCancel?: () => void }) {
   const { theme } = useRegisterLayout();
@@ -37,6 +84,7 @@ export function ActivationScreen({ onCancel }: { onCancel?: () => void }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<TerminalStatus | null>(null);
+  const [stages, setStages] = useState<StageState[]>(STAGE_LABELS.map(() => "waiting"));
   const storeCode = useRef<HTMLInputElement>(null);
   const slug = subdomainOf(subdomain);
   const keyReady = key.replace(/-/g, "").length === 12;
@@ -58,10 +106,15 @@ export function ActivationScreen({ onCancel }: { onCancel?: () => void }) {
     }
     setBusy(true);
     setError(null);
+    setStages(STAGE_LABELS.map((_, index) => (index === 0 ? "done" : index < 5 ? "active" : "waiting")));
     try {
       setDone(await activateTerminal(slug, key));
+      setStages(STAGE_LABELS.map((_, index) => (index < 6 ? "done" : "active")));
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : String(caught));
+      const parsed = activationFailure(caught instanceof Error ? caught.message : String(caught));
+      const failed = stageIndex(parsed.code);
+      setStages(STAGE_LABELS.map((_, index) => (index < failed ? "done" : index === failed ? "failed" : "waiting")));
+      setError(parsed.message);
     } finally {
       setBusy(false);
     }
@@ -143,9 +196,12 @@ export function ActivationScreen({ onCancel }: { onCancel?: () => void }) {
                   </div>
                 ))}
               </dl>
-              <p className="mt-5 flex items-center gap-2 text-sm text-zinc-500 dark:text-zinc-400">
+              <div className="mt-5">
+                <ActivationStages states={stages} />
+              </div>
+              <p className="mt-4 flex items-center gap-2 text-sm text-zinc-500 dark:text-zinc-400">
                 <Loader2 size={16} aria-hidden="true" className="animate-spin" />
-                Restarting with this store's data…
+                Device activated. Initial synchronization starts when this register restarts and downloads this store&apos;s catalogue.
               </p>
             </div>
           ) : (
@@ -194,6 +250,9 @@ export function ActivationScreen({ onCancel }: { onCancel?: () => void }) {
                   className={`${input} font-mono tracking-[0.2em]`}
                 />
               </label>
+              <ActivationStages
+                states={stages.map((state, index) => (index === 0 && storeReady && state === "waiting" ? "done" : state))}
+              />
               {error ? (
                 <p role="alert" className="rounded-xl bg-red-500/10 px-4 py-3 text-sm text-red-700 ring-1 ring-red-500/20 dark:text-red-300">
                   {error}

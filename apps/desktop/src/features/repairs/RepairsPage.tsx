@@ -694,6 +694,7 @@ export function RepairsPage({ session }: { session: CashierSession }) {
           onSearch={setJobQuery}
           status={jobStatus}
           onStatus={setJobStatus}
+          statusCleared="active"
           statusOptions={[
             { value: "active", label: "Active jobs" },
             { value: "", label: "All statuses" },

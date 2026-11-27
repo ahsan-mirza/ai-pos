@@ -1,4 +1,5 @@
 import { actionHoverClass, useLocale } from "@ai-pos/ui";
+import { RowActionsMenu } from "../../components/ui/DataTable";
 import {
   activationBusinessCode,
   businessCodeLabel,
@@ -12,6 +13,7 @@ import {
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { Check, Copy, Download, KeyRound, MonitorSmartphone, Plus, RotateCw, ShieldOff, Trash2, X } from "lucide-react";
 import { useCallback, useEffect, useId, useState } from "react";
+import { Link } from "react-router-dom";
 import { ErrorNote, GhostButton, PrimaryButton, SelectField, TextField } from "../../components/ui/Field";
 import { useConfirm } from "../../components/ui/ConfirmDialog";
 import { Modal } from "../../components/ui/Modal";
@@ -34,17 +36,20 @@ export function RegistersPage() {
   const [issued, setIssued] = useState<DeviceKey | null>(null);
   const [activation, setActivation] = useState<{ device: Device; key: DeviceActivationKey } | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  const [signing, setSigning] = useState<{ ready: boolean; message: string } | null>(null);
   const dismissToast = useCallback(() => setToast(null), []);
   const confirm = useConfirm();
 
   const load = useCallback(async () => {
     try {
-      const [rows, seats] = await Promise.all([
+      const [rows, seats, preflight] = await Promise.all([
         apiGet<Device[]>("/api/v1/devices"),
         apiGet<RegisterCapacity>("/api/v1/devices/capacity"),
+        apiGet<{ ready: boolean; message: string }>("/api/v1/devices/activation-preflight"),
       ]);
       setDevices(rows);
       setCapacity(seats);
+      setSigning(preflight);
       setError(null);
     } catch (caught) {
       setError(errorMessage(caught, "Could not load registers."));
@@ -94,6 +99,10 @@ export function RegistersPage() {
   };
 
   const issueActivation = async (device: Device) => {
+    if (signing && !signing.ready) {
+      setError(signing.message);
+      return;
+    }
     try {
       const key = await apiPost<DeviceActivationKey>(`/api/v1/devices/${device.id}/activation-key`, {});
       setActivation({ device, key });
@@ -149,6 +158,11 @@ export function RegistersPage() {
             </PrimaryButton>
           </div>
         </div>
+        {signing && !signing.ready ? (
+          <p role="alert" className="mb-4 rounded-2xl bg-amber-50 px-4 py-3 text-sm text-amber-950 ring-1 ring-amber-200">
+            {signing.message} An activation key is not issued until signing is ready, so a till is not left half-registered.
+          </p>
+        ) : null}
         <ErrorNote message={error} />
         <div className="overflow-x-auto">
           <table className="w-full min-w-[880px] text-left text-sm">
@@ -195,47 +209,44 @@ export function RegistersPage() {
                     </td>
                     <td className="py-3 font-mono text-xs text-charcoal/60">…{device.key_hint}</td>
                     <td className="py-3">
-                      <div className="flex justify-end gap-1">
-                        <button
-                          type="button"
-                          title="Generate activation key"
-                          aria-label={`Generate activation key for ${device.code}`}
-                          onClick={() => void issueActivation(device)}
-                          className={`inline-flex h-9 items-center gap-1.5 rounded-full border border-line px-3 text-xs font-semibold ${actionHoverClass("success")}`}
-                        >
-                          <KeyRound size={14} aria-hidden="true" /> Activate
-                        </button>
-                        <button
-                          type="button"
-                          title="Issue a new key"
-                          aria-label={`Issue a new key for ${device.code}`}
-                          onClick={() => void act(device, "rotate")}
-                          className={`flex h-9 w-9 items-center justify-center rounded-full border border-line ${actionHoverClass("warning")}`}
-                        >
-                          <RotateCw size={15} aria-hidden="true" />
-                        </button>
-                        {!device.revoked_at ? (
-                          <button
-                            type="button"
-                            title="Revoke"
-                            aria-label={`Revoke ${device.code}`}
-                            onClick={() => void act(device, "revoke")}
-                            className={`flex h-9 w-9 items-center justify-center rounded-full border border-line ${actionHoverClass("danger")}`}
-                          >
-                            <ShieldOff size={15} aria-hidden="true" />
-                          </button>
-                        ) : null}
-                        {!device.revoked_at ? (
-                          <button
-                            type="button"
-                            title="Release this till and free its package seat"
-                            aria-label={`Release ${device.code}`}
-                            onClick={() => void act(device, "release")}
-                            className={`inline-flex h-9 items-center gap-1.5 rounded-full border border-line px-3 text-xs font-semibold ${actionHoverClass("danger")}`}
-                          >
-                            <Trash2 size={14} aria-hidden="true" /> Release
-                          </button>
-                        ) : null}
+                      <div className="flex justify-end">
+                        <RowActionsMenu
+                          label={`Actions for ${device.code}`}
+                          actions={[
+                            {
+                              id: "activate",
+                              label: "Activate",
+                              icon: KeyRound,
+                              disabled: signing !== null && !signing.ready,
+                              title: signing && !signing.ready ? signing.message : "Generate activation key",
+                              onSelect: () => void issueActivation(device),
+                            },
+                            {
+                              id: "rotate",
+                              label: "Rotate key",
+                              icon: RotateCw,
+                              title: "Issue a new key",
+                              onSelect: () => void act(device, "rotate"),
+                            },
+                            {
+                              id: "revoke",
+                              label: "Revoke",
+                              icon: ShieldOff,
+                              tone: "danger",
+                              hidden: Boolean(device.revoked_at),
+                              onSelect: () => void act(device, "revoke"),
+                            },
+                            {
+                              id: "release",
+                              label: "Release",
+                              icon: Trash2,
+                              tone: "danger",
+                              hidden: Boolean(device.revoked_at),
+                              title: "Release this till and free its package seat",
+                              onSelect: () => void act(device, "release"),
+                            },
+                          ]}
+                        />
                       </div>
                     </td>
                   </tr>
@@ -296,6 +307,7 @@ function CreateRegisterModal({
   const [name, setName] = useState("Front counter");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [intent, setIntent] = useState<"choose" | "same" | "other">("choose");
 
   const branch = stores.find((store) => store.id === storeId);
   const series = invoiceSeriesPreview(branch?.code ?? "", code.trim() || "R01");
@@ -316,18 +328,55 @@ function CreateRegisterModal({
 
   return (
     <Modal
-      title="Register a till"
-      subtitle={t(businessCodePhrase(profile, "activateHint"))}
+      title={intent === "other" ? "Different restaurant" : "Register a till"}
+      subtitle={
+        intent === "same"
+          ? "This till joins the branch you select. It downloads that store's catalogue after activation. No export is required."
+          : t(businessCodePhrase(profile, "activateHint"))
+      }
       onClose={onClose}
       footer={
         <>
           <GhostButton onClick={onClose}>Cancel</GhostButton>
-          <PrimaryButton disabled={busy || full || !storeId || !code.trim()} onClick={() => void save()}>
-            {busy ? "Registering…" : "Register and get activation key"}
-          </PrimaryButton>
+          {intent === "same" ? (
+            <PrimaryButton disabled={busy || full || !storeId || !code.trim()} onClick={() => void save()}>
+              {busy ? "Registering…" : "Register and get activation key"}
+            </PrimaryButton>
+          ) : null}
         </>
       }
     >
+      {intent === "choose" ? (
+        <div className="space-y-3">
+          <p className="text-sm text-charcoal/70">Where will this till sell?</p>
+          <button type="button" className="block w-full rounded-2xl border border-line px-4 py-3 text-left" onClick={() => setIntent("same")}>
+            <span className="block font-semibold">Existing store</span>
+            <span className="mt-1 block text-sm text-charcoal/60">Another till or branch of this restaurant. The catalogue stays here and syncs to the new machine.</span>
+          </button>
+          <button type="button" className="block w-full rounded-2xl border border-line px-4 py-3 text-left" onClick={() => setIntent("other")}>
+            <span className="block font-semibold">Different restaurant</span>
+            <span className="mt-1 block text-sm text-charcoal/60">A separate store. Nothing from this restaurant is copied unless you export it and import it there.</span>
+          </button>
+        </div>
+      ) : null}
+      {intent === "other" ? (
+        <div className="space-y-3 text-sm text-charcoal/70">
+          <p className="font-medium text-charcoal">Start empty</p>
+          <p>Open that restaurant&apos;s own Business Pro account and register the till there. This account&apos;s products, sales, and balances stay here.</p>
+          <p className="font-medium text-charcoal">Copy master data</p>
+          <p>
+            Export the Excel catalogue from this store, then import it in the other store after you review the preview. The workbook can carry categories, products, SKUs, barcodes, units, brands, portions, and modifiers. It does not carry sales, payments, credit, cash, stock movements, device keys, or passwords. Opening stock is entered with the inventory opening workflow.
+          </p>
+          <Link to="/inventory/products" className="inline-flex font-semibold text-accent">
+            Open the catalogue to export or import
+          </Link>
+          <p className="font-medium text-charcoal">This machine belongs to this store after all</p>
+          <button type="button" className="font-semibold text-accent" onClick={() => setIntent("same")}>
+            Register it on an existing branch instead
+          </button>
+        </div>
+      ) : null}
+      {intent === "same" ? (
       <div className="space-y-4">
         <p className="text-sm text-charcoal/70">{capacity ? seatSummary(capacity) : "Checking package seats…"}</p>
         <SelectField label="Branch" value={storeId} options={storeOptions(stores)} placeholder="Choose a branch" onChange={setStoreId} />
@@ -354,7 +403,11 @@ function CreateRegisterModal({
             Invoices, credit notes, and Z reports keep this series. Releasing the till does not reuse or erase those numbers.
           </p>
         </div>
+        <p className="text-sm text-charcoal/70">
+          After the till activates, it downloads this branch&apos;s products, prices, portions, modifiers, and settings. Printer and drawer setup stay on that machine. Sales already on another till are not copied.
+        </p>
       </div>
+      ) : null}
       <ErrorNote message={error} />
     </Modal>
   );

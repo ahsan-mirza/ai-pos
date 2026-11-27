@@ -1,7 +1,8 @@
 import type { HardwareItem } from "@ai-pos/shared-types";
-import { AxizTabs, DataTable, Select, type DataTableColumn } from "@ai-pos/ui";
+import { AxizTabs, DataTable, TableToolbar, type DataTableColumn } from "@ai-pos/ui";
+import { Eye } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
-import { FilterSearch, FilterSlot, PageHeader } from "../components/PageHeader";
+import { PageHeader } from "../components/PageHeader";
 import { ErrorNote, Field, GhostButton, Modal, PrimaryButton } from "../components/ui";
 import { api, errorText } from "../lib/api";
 import { money } from "../lib/format";
@@ -108,51 +109,11 @@ export function HardwarePage() {
   const { operator } = useSession();
   const admin = operator?.role === "ADMIN";
   const [tab, setTab] = useState<"catalogue" | "orders">("catalogue");
-  const [query, setQuery] = useState("");
-  const [payment, setPayment] = useState("");
-  const [fulfillment, setFulfillment] = useState("");
   return (
     <section>
       <PageHeader
         title="Hardware"
         description="Optional products a store can lease or buy. A refundable deposit is not monthly revenue."
-        controls={
-          tab === "orders" ? (
-              <>
-                <FilterSearch label="Search orders" value={query} onChange={setQuery} placeholder="Search orders" />
-                <FilterSlot>
-                  <Select
-                    aria-label="Payment"
-                    value={payment}
-                    onChange={setPayment}
-                    options={[
-                      { value: "", label: "Any payment" },
-                      { value: "awaiting_payment", label: "Awaiting payment" },
-                      { value: "under_review", label: "Under review" },
-                      { value: "paid", label: "Paid" },
-                      { value: "canceled", label: "Canceled" },
-                    ]}
-                  />
-                </FilterSlot>
-                <FilterSlot wide>
-                  <Select
-                    aria-label="Fulfillment"
-                    value={fulfillment}
-                    onChange={setFulfillment}
-                    options={[
-                      { value: "", label: "Any fulfillment" },
-                      { value: "awaiting_payment", label: "Awaiting payment" },
-                      { value: "awaiting_fulfillment", label: "Awaiting fulfillment" },
-                      { value: "partial", label: "Partially fulfilled" },
-                      { value: "fulfilled", label: "Fulfilled" },
-                      { value: "canceled", label: "Canceled" },
-                      { value: "returned", label: "Returned" },
-                    ]}
-                  />
-                </FilterSlot>
-              </>
-          ) : undefined
-        }
       />
       <AxizTabs
         ariaLabel="Hardware section"
@@ -165,7 +126,7 @@ export function HardwarePage() {
           { id: "orders", label: "Orders" },
         ]}
       />
-      {tab === "catalogue" ? <Catalogue admin={admin} /> : <Orders admin={admin} query={query} payment={payment} fulfillment={fulfillment} />}
+      {tab === "catalogue" ? <Catalogue admin={admin} /> : <Orders admin={admin} />}
     </section>
   );
 }
@@ -206,18 +167,19 @@ function Catalogue({ admin }: { admin: boolean }) {
   return (
     <div className="mt-6">
       <ErrorNote message={error} />
-      <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
-        <FilterSearch label="Search hardware" value={query} onChange={setQuery} placeholder="Search name or SKU" />
-        <FilterSlot>
-          <Select
-            aria-label="Category"
-            value={categoryId}
-            onChange={setCategoryId}
-            options={[{ value: "", label: "All categories" }, ...categories.map((category) => ({ value: category.id, label: category.name }))]}
-          />
-        </FilterSlot>
-        {admin ? <PrimaryButton onClick={() => setEditing(blankItem(categories.find((category) => category.active)?.id ?? ""))}>New item</PrimaryButton> : null}
-      </div>
+      <TableToolbar
+        search={{ value: query, onChange: setQuery, label: "Search hardware", placeholder: "Search name or SKU" }}
+        filters={[
+          {
+            id: "category",
+            label: "Category",
+            value: categoryId,
+            onChange: setCategoryId,
+            options: [{ value: "", label: "All categories" }, ...categories.map((category) => ({ value: category.id, label: category.name }))],
+          },
+        ]}
+        actions={admin ? <PrimaryButton onClick={() => setEditing(blankItem(categories.find((category) => category.active)?.id ?? ""))}>New item</PrimaryButton> : null}
+      />
       <h2 className="text-sm font-semibold">Categories</h2>
       <ul className="mt-2 overflow-hidden rounded-2xl border border-line bg-white">
         {categories.map((category) => {
@@ -522,17 +484,10 @@ function ItemEditor({
   );
 }
 
-function Orders({
-  admin,
-  query,
-  payment,
-  fulfillment,
-}: {
-  admin: boolean;
-  query: string;
-  payment: string;
-  fulfillment: string;
-}) {
+function Orders({ admin }: { admin: boolean }) {
+  const [query, setQuery] = useState("");
+  const [payment, setPayment] = useState("");
+  const [fulfillment, setFulfillment] = useState("");
   const [rows, setRows] = useState<HardwareOrder[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -577,21 +532,6 @@ function Orders({
     { header: "Deposit", align: "right", cell: (row) => aed(row.deposit_fils) },
     { header: "Payment", cell: (row) => row.payment_status.replaceAll("_", " ") },
     { header: "Fulfillment", cell: (row) => row.fulfillment_status.replaceAll("_", " ") },
-    {
-      header: "",
-      cell: (row) => (
-        <GhostButton
-          onClick={() => {
-            void api
-              .get<HardwareOrder>(`/hardware/orders/${row.id}`)
-              .then(setOpen)
-              .catch((caught) => setError(errorText(caught, "Could not open the order.")));
-          }}
-        >
-          Open
-        </GhostButton>
-      ),
-    },
   ];
   return (
     <div>
@@ -601,6 +541,54 @@ function Orders({
         columns={columns}
         data={rows}
         getRowId={(row) => row.id}
+        rowActionLabel={(row) => row.reference}
+        rowActions={(row) => [
+          {
+            id: "open",
+            label: "Open",
+            icon: Eye,
+            onSelect: () => {
+              void api
+                .get<HardwareOrder>(`/hardware/orders/${row.id}`)
+                .then(setOpen)
+                .catch((caught) => setError(errorText(caught, "Could not open the order.")));
+            },
+          },
+        ]}
+        toolbar={{
+          search: { value: query, onChange: setQuery, label: "Search orders", placeholder: "Search orders" },
+          onFiltersCommit: () => setPage(1),
+          filters: [
+            {
+              id: "payment",
+              label: "Payment",
+              value: payment,
+              onChange: setPayment,
+              options: [
+                { value: "", label: "Any payment" },
+                { value: "awaiting_payment", label: "Awaiting payment" },
+                { value: "under_review", label: "Under review" },
+                { value: "paid", label: "Paid" },
+                { value: "canceled", label: "Canceled" },
+              ],
+            },
+            {
+              id: "fulfillment",
+              label: "Fulfillment",
+              value: fulfillment,
+              onChange: setFulfillment,
+              options: [
+                { value: "", label: "Any fulfillment" },
+                { value: "awaiting_payment", label: "Awaiting payment" },
+                { value: "awaiting_fulfillment", label: "Awaiting fulfillment" },
+                { value: "partial", label: "Partially fulfilled" },
+                { value: "fulfilled", label: "Fulfilled" },
+                { value: "canceled", label: "Canceled" },
+                { value: "returned", label: "Returned" },
+              ],
+            },
+          ],
+        }}
         isLoading={loading && rows.length === 0}
         isFetching={loading && rows.length > 0}
         minWidth="980px"

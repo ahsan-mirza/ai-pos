@@ -2,6 +2,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
 import type { StoreSubscription } from "@ai-pos/shared-types";
+import { ConfirmProvider } from "../components/ConfirmDialog";
 import { CataloguePage } from "./CataloguePage";
 import { HardwarePage } from "./HardwarePage";
 import { PaymentsPage } from "./PaymentsPage";
@@ -53,6 +54,13 @@ afterEach(() => {
   get.mockReset();
 });
 
+async function applyDrawerFilter(selectName: string, optionName: string) {
+  fireEvent.click(screen.getByRole("button", { name: /^Filters/ }));
+  fireEvent.click(screen.getByRole("button", { name: selectName }));
+  fireEvent.click(await screen.findByRole("option", { name: optionName }));
+  fireEvent.click(screen.getByRole("button", { name: "Apply" }));
+}
+
 describe("console filter layout", () => {
   it("sends tenant search and status to the tenants query", async () => {
     page.mockResolvedValue({ rows: [], total: 3 });
@@ -65,11 +73,9 @@ describe("console filter layout", () => {
     await waitFor(() => expect(page).toHaveBeenCalled());
     fireEvent.change(screen.getByPlaceholderText("Name, subdomain or owner email"), { target: { value: "baristo" } });
     await waitFor(() => expect(page.mock.calls.some((call) => String(call[0]).includes("q=baristo"))).toBe(true));
-    fireEvent.click(screen.getByRole("button", { name: "Status" }));
-    fireEvent.click(await screen.findByRole("option", { name: "Suspended" }));
+    await applyDrawerFilter("Status", "Suspended");
     await waitFor(() => expect(page.mock.calls.some((call) => String(call[0]).includes("status=suspended"))).toBe(true));
-    fireEvent.click(screen.getByRole("button", { name: "Business type" }));
-    fireEvent.click(await screen.findByRole("option", { name: "Restaurant" }));
+    await applyDrawerFilter("Business type", "Restaurant");
     await waitFor(() =>
       expect(
         page.mock.calls.some((call) => String(call[0]).includes("status=suspended") && String(call[0]).includes("profile=restaurant")),
@@ -104,8 +110,7 @@ describe("console filter layout", () => {
     expect(screen.getByText("Cafe")).toBeTruthy();
     expect(screen.queryByText("Market")).toBeNull();
     fireEvent.change(screen.getByPlaceholderText("Search store or package"), { target: { value: "" } });
-    fireEvent.click(screen.getByRole("button", { name: "Subscription status" }));
-    fireEvent.click(await screen.findByRole("option", { name: "Trialing" }));
+    await applyDrawerFilter("Subscription status", "Trialing");
     expect(screen.queryByText("Cafe")).toBeNull();
     expect(screen.getByText("Market")).toBeTruthy();
   });
@@ -160,14 +165,12 @@ describe("console filter layout", () => {
         <HardwarePage />
       </MemoryRouter>,
     );
-    fireEvent.click(screen.getByRole("button", { name: "Orders" }));
+    fireEvent.click(screen.getByRole("tab", { name: "Orders" }));
     fireEvent.change(screen.getByPlaceholderText("Search orders"), { target: { value: "HW-1" } });
     await waitFor(() => expect(page.mock.calls.some((call) => String(call[0]).includes("q=HW-1"))).toBe(true));
-    fireEvent.click(screen.getByRole("button", { name: "Payment" }));
-    fireEvent.click(await screen.findByRole("option", { name: "Paid" }));
+    await applyDrawerFilter("Payment", "Paid");
     await waitFor(() => expect(page.mock.calls.some((call) => String(call[0]).includes("payment=paid"))).toBe(true));
-    fireEvent.click(screen.getByRole("button", { name: "Fulfillment" }));
-    fireEvent.click(await screen.findByRole("option", { name: "Fulfilled" }));
+    await applyDrawerFilter("Fulfillment", "Fulfilled");
     await waitFor(() =>
       expect(page.mock.calls.some((call) => String(call[0]).includes("payment=paid") && String(call[0]).includes("fulfillment=fulfilled"))).toBe(
         true,
@@ -212,15 +215,16 @@ describe("console filter layout", () => {
     });
     render(
       <MemoryRouter>
-        <PaymentsPage />
+        <ConfirmProvider>
+          <PaymentsPage />
+        </ConfirmProvider>
       </MemoryRouter>,
     );
     expect(await screen.findByText("Cafe")).toBeTruthy();
     fireEvent.change(screen.getByPlaceholderText("Search store, invoice, or reference"), { target: { value: "market" } });
     expect(screen.queryByText("Cafe")).toBeNull();
     expect(screen.getByText("Market")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Receipt status" }));
-    fireEvent.click(await screen.findByRole("option", { name: "Approved" }));
+    await applyDrawerFilter("Receipt status", "Approved");
     await waitFor(() => expect(get).toHaveBeenCalledWith("/billing/transfers?status=approved"));
   });
 });

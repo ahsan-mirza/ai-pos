@@ -1,4 +1,5 @@
 import { GENDER_LABELS, type CatalogAttributes } from "@ai-pos/shared-types";
+import type { FilterControlProps } from "@ai-pos/ui";
 import { useEffect, useState } from "react";
 import { FilterSelect } from "../../components/ui/Field";
 import { modelsApi } from "./api";
@@ -10,6 +11,29 @@ export interface FashionFilterValue {
 }
 
 export const NO_FASHION_FILTER: FashionFilterValue = { season: null, collection: null, gender: null };
+
+export function encodeFashionFilter(value: FashionFilterValue): string {
+  return JSON.stringify([value.season ?? "", value.collection ?? "", value.gender ?? ""]);
+}
+
+export function fashionFilterValue(encoded: string): FashionFilterValue {
+  try {
+    const parsed = JSON.parse(encoded) as unknown;
+    if (!Array.isArray(parsed)) return NO_FASHION_FILTER;
+    const [season, collection, gender] = parsed;
+    return {
+      season: typeof season === "string" && season ? season : null,
+      collection: typeof collection === "string" && collection ? collection : null,
+      gender: typeof gender === "string" && gender ? gender : null,
+    };
+  } catch {
+    return NO_FASHION_FILTER;
+  }
+}
+
+export function FashionFilterControl({ value, setValue }: FilterControlProps) {
+  return <FashionFilters value={fashionFilterValue(value)} onChange={(next) => setValue(encodeFashionFilter(next))} />;
+}
 
 /** Season, collection and gender pickers; each shows only once the catalogue uses that attribute. */
 export function FashionFilters({

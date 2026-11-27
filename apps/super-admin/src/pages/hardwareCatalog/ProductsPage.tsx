@@ -1,8 +1,9 @@
 import { DataTable, type DataTableColumn } from "@ai-pos/ui";
+import { Eye, Pencil } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { PageHeader } from "../../components/PageHeader";
-import { ErrorNote, GhostButton } from "../../components/ui";
+import { ErrorNote } from "../../components/ui";
 import { api, errorText } from "../../lib/api";
 import { money, when } from "../../lib/format";
 import { useSession } from "../../lib/session";
@@ -55,13 +56,6 @@ export function HardwareProductsPage() {
     { id: "stock", header: "Availability", cell: (row) => stockLabel(row.stock_status) },
     { id: "status", header: "Publishing", cell: (row) => (row.archived ? "Archived" : row.is_published ? "Published" : "Draft") },
     { id: "updated", header: "Updated", cell: (row) => when(row.updated_at) },
-    {
-      id: "actions",
-      header: "Actions",
-      cell: (row) => (
-        <GhostButton onClick={() => navigate(`/hardware-catalog/products/${row.id}`)}>{admin ? "Edit" : "View"}</GhostButton>
-      ),
-    },
   ];
 
   return (
@@ -78,20 +72,46 @@ export function HardwareProductsPage() {
         }
       />
       <ErrorNote message={error} />
-      <div className="mb-4 flex flex-wrap gap-2">
-        <input aria-label="Search products" value={query} onChange={(event) => { setPage(1); setQuery(event.target.value); }} placeholder="Search name, SKU, or brand" className="h-10 w-full max-w-xs rounded-xl border border-line px-3 text-sm" />
-        <select aria-label="Publishing status" value={status} onChange={(event) => { setPage(1); setStatus(event.target.value); }} className="h-10 rounded-xl border border-line px-3 text-sm">
-          <option value="">All statuses</option>
-          <option value="published">Published</option>
-          <option value="draft">Draft</option>
-          <option value="archived">Archived</option>
-        </select>
-      </div>
       <DataTable
         aria-label="Hardware products"
         columns={columns}
         data={rows}
         getRowId={(row) => row.id}
+        rowActionLabel={(row) => row.name}
+        rowActions={(row) => [
+          {
+            id: "open",
+            label: admin ? "Edit" : "View",
+            icon: admin ? Pencil : Eye,
+            onSelect: () => navigate(`/hardware-catalog/products/${row.id}`),
+          },
+        ]}
+        toolbar={{
+          search: {
+            value: query,
+            onChange: (value) => {
+              setPage(1);
+              setQuery(value);
+            },
+            label: "Search products",
+            placeholder: "Search name, SKU, or brand",
+          },
+          onFiltersCommit: () => setPage(1),
+          filters: [
+            {
+              id: "status",
+              label: "Publishing status",
+              value: status,
+              onChange: setStatus,
+              options: [
+                { value: "", label: "All statuses" },
+                { value: "published", label: "Published" },
+                { value: "draft", label: "Draft" },
+                { value: "archived", label: "Archived" },
+              ],
+            },
+          ],
+        }}
         isLoading={loading && rows.length === 0}
         minWidth="1100px"
         emptyState={{ title: "No products", description: "Create a product to publish it on the website." }}

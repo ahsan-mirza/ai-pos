@@ -11,6 +11,16 @@ export {
   type ServerPagination,
 } from "./DataTable";
 export {
+  FilterDrawer,
+  TableToolbar,
+  activeFilterCount,
+  type FilterControlProps,
+  type TableFilter,
+  type TableSearch,
+  type TableToolbarProps,
+} from "./FilterDrawer";
+export { RowActionsMenu, type RowActionItem } from "./RowActionsMenu";
+export {
   DiningTableShape,
   chairsPerSide,
   tableFootprint,

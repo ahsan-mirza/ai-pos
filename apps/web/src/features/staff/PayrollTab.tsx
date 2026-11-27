@@ -15,8 +15,8 @@ import {
 import { formatDate, useLocale } from "@ai-pos/ui";
 import { Download, Lock, Play, RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { DataTable, type DataTableColumn } from "../../components/ui/DataTable";
-import { ErrorNote, FilterSelect, GhostButton, PrimaryButton, SearchField, TextField } from "../../components/ui/Field";
+import { DataTable, TableToolbar, type DataTableColumn } from "../../components/ui/DataTable";
+import { ErrorNote, FilterSelect, GhostButton, PrimaryButton, TextField } from "../../components/ui/Field";
 import { Modal } from "../../components/ui/Modal";
 import { apiBlob, apiGet, apiPost, apiPut } from "../../lib/api";
 import { useAuth } from "../../lib/auth";
@@ -335,19 +335,22 @@ export function PayrollTab({ onToast }: { onToast: (text: string) => void }) {
                 : t("Run a payroll month to see the register.")}
             </p>
           </div>
-          <div className="flex flex-wrap gap-3">
-            <SearchField label={t("Search employees")} value={query} onChange={(event) => setQuery(event.target.value)} />
-            <FilterSelect
-              label={t("Calculation")}
-              value={lineStatus}
-              options={[
-                { value: "", label: t("All statuses") },
-                { value: "OK", label: "OK" },
-                { value: "WARNING", label: t("Warning") },
-              ]}
-              onChange={setLineStatus}
-            />
-          </div>
+          <TableToolbar
+            search={{ value: query, onChange: setQuery, label: t("Search employees"), placeholder: t("Search employees") }}
+            filters={[
+              {
+                id: "calculation",
+                label: t("Calculation"),
+                value: lineStatus,
+                onChange: setLineStatus,
+                options: [
+                  { value: "", label: t("All statuses") },
+                  { value: "OK", label: "OK" },
+                  { value: "WARNING", label: t("Warning") },
+                ],
+              },
+            ]}
+          />
         </div>
         {run ? (
           <>

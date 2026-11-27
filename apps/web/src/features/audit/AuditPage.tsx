@@ -1,18 +1,15 @@
 import { AUDIT_ACTION_LABELS, AuditActionType, type AuditLogRow } from "@ai-pos/shared-types";
-import { DateInput, actionHoverClass } from "@ai-pos/ui";
+import { actionHoverClass } from "@ai-pos/ui";
 import {
   Activity,
   FileDown,
   FileSpreadsheet,
   RefreshCw,
-  Search,
   ShieldAlert,
-  SlidersHorizontal,
   Users,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { DataTable, usePagination, type DataTableColumn } from "../../components/ui/DataTable";
-import { filterLabel, FilterSelect } from "../../components/ui/Field";
 import { ApiRequestError } from "../../lib/api";
 import { AuditDiffDrawer } from "./AuditDiffDrawer";
 import { ActionBadge, Avatar, DeviceLabel, formatStamp, shortId } from "./AuditParts";
@@ -161,13 +158,6 @@ export function AuditPage() {
   ];
 
   const stats = summary.state === "ready" ? summary.data : null;
-  const filtersActive =
-    filters.userId !== "" ||
-    filters.storeId !== "" ||
-    filters.actionType !== "" ||
-    filters.sensitiveOnly ||
-    filters.search.trim() !== "" ||
-    filters.range !== initialFilters.range;
 
   const columns: DataTableColumn<AuditLogRow>[] = [
     {
@@ -360,96 +350,9 @@ export function AuditPage() {
         </MetricCard>
       </div>
 
-      <div className="rounded-2xl border border-line bg-white p-4 sm:p-5">
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-[1.2fr_1fr_1fr_1fr_1.3fr]">
-          <FilterSelect
-            label="Date range"
-            value={filters.range}
-            options={rangeOptions}
-            onChange={(range) => update({ range })}
-          />
-          <FilterSelect label="User" value={filters.userId} options={userOptions} onChange={(userId) => update({ userId })} />
-          <FilterSelect
-            label="Store branch"
-            value={filters.storeId}
-            options={storeOptions}
-            onChange={(storeId) => update({ storeId })}
-          />
-          <FilterSelect
-            label="Action"
-            value={filters.actionType}
-            options={actionOptions}
-            onChange={(actionType) => update({ actionType })}
-          />
-          <label className="block">
-            <span className={filterLabel}>Search</span>
-            <span className="relative block">
-              <Search
-                size={15}
-                className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-charcoal/40"
-                aria-hidden="true"
-              />
-              <input
-                type="search"
-                value={search}
-                onChange={(event) => setSearch(event.target.value)}
-                placeholder="User, entity, action or reason"
-                className="h-11 w-full rounded-full border border-transparent bg-surface pl-10 pr-4 text-sm transition placeholder:text-charcoal/40 focus:border-accent focus:bg-white focus:outline-none"
-              />
-            </span>
-          </label>
-        </div>
-        <div className="mt-3 flex flex-wrap items-end gap-3">
-          {filters.range === "custom" ? (
-            <>
-              <label className="block">
-                <span className={filterLabel}>From</span>
-                <DateInput
-                  value={filters.customFrom}
-                  max={filters.customTo || undefined}
-                  onChange={(event) => update({ customFrom: event.target.value })}
-                  className="h-11 rounded-full border border-transparent bg-surface px-4 text-sm tabular-nums focus:border-accent focus:bg-white focus:outline-none"
-                />
-              </label>
-              <label className="block">
-                <span className={filterLabel}>To</span>
-                <DateInput
-                  value={filters.customTo}
-                  min={filters.customFrom || undefined}
-                  onChange={(event) => update({ customTo: event.target.value })}
-                  className="h-11 rounded-full border border-transparent bg-surface px-4 text-sm tabular-nums focus:border-accent focus:bg-white focus:outline-none"
-                />
-              </label>
-            </>
-          ) : null}
-          <button
-            type="button"
-            role="switch"
-            aria-checked={filters.sensitiveOnly}
-            onClick={() => update({ sensitiveOnly: !filters.sensitiveOnly })}
-            className={`inline-flex h-11 items-center gap-2 rounded-full px-4 text-sm font-semibold transition ${
-              filters.sensitiveOnly ? "bg-accent text-white" : "bg-surface text-charcoal hover:bg-charcoal/10"
-            }`}
-          >
-            <ShieldAlert size={15} aria-hidden="true" /> Sensitive only
-          </button>
-          {filtersActive ? (
-            <button
-              type="button"
-              onClick={() => {
-                setSearch("");
-                update(initialFilters);
-              }}
-              className="inline-flex h-11 items-center gap-2 rounded-full px-4 text-sm font-semibold text-charcoal/60 transition hover:bg-surface hover:text-charcoal"
-            >
-              <SlidersHorizontal size={15} aria-hidden="true" /> Reset filters
-            </button>
-          ) : null}
-          <p className="ml-auto text-sm tabular-nums text-charcoal/60">
-            {page.state === "ready" ? `${total.toLocaleString()} ${total === 1 ? "entry" : "entries"}` : ""}
-          </p>
-        </div>
-      </div>
+      <p className="text-sm tabular-nums text-charcoal/60">
+        {page.state === "ready" ? `${total.toLocaleString()} ${total === 1 ? "entry" : "entries"}` : ""}
+      </p>
 
       <div className="flex items-start gap-6">
         <div className="min-w-0 flex-1 space-y-3">
@@ -464,6 +367,69 @@ export function AuditPage() {
             columns={columns}
             data={rows}
             getRowId={(row) => row.id}
+            toolbar={{
+              search: {
+                value: search,
+                onChange: setSearch,
+                label: "Search audit trail",
+                placeholder: "User, entity, action or reason",
+              },
+              onClearAll: () => {
+                setSearch("");
+                update(initialFilters);
+              },
+              filters: [
+                {
+                  id: "range",
+                  label: "Date range",
+                  value: filters.range,
+                  clearedValue: initialFilters.range,
+                  onChange: (range) => update({ range: range as RangePreset }),
+                  options: rangeOptions,
+                },
+                {
+                  id: "from",
+                  label: "From",
+                  kind: "date",
+                  value: filters.customFrom,
+                  hidden: (draft) => draft.range !== "custom",
+                  max: (draft) => draft.to || undefined,
+                  onChange: (customFrom) => update({ customFrom }),
+                },
+                {
+                  id: "to",
+                  label: "To",
+                  kind: "date",
+                  value: filters.customTo,
+                  hidden: (draft) => draft.range !== "custom",
+                  min: (draft) => draft.from || undefined,
+                  onChange: (customTo) => update({ customTo }),
+                },
+                { id: "user", label: "User", value: filters.userId, onChange: (userId) => update({ userId }), options: userOptions },
+                {
+                  id: "store",
+                  label: "Store branch",
+                  value: filters.storeId,
+                  onChange: (storeId) => update({ storeId }),
+                  options: storeOptions,
+                },
+                {
+                  id: "action",
+                  label: "Action",
+                  value: filters.actionType,
+                  onChange: (actionType) => update({ actionType: actionType as AuditFilterState["actionType"] }),
+                  options: actionOptions,
+                },
+                {
+                  id: "sensitive",
+                  label: "Sensitive only",
+                  kind: "toggle",
+                  value: filters.sensitiveOnly ? "true" : "false",
+                  clearedValue: "false",
+                  onChange: (value) => update({ sensitiveOnly: value === "true" }),
+                },
+              ],
+            }}
             isLoading={page.state === "loading" && rows.length === 0}
             isFetching={page.state === "loading" && rows.length > 0}
             isRowActive={(row) => row.id === selectedId && !closing}

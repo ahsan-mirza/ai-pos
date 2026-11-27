@@ -1688,6 +1688,15 @@ const arabic: Record<string, string> = {
   "Help Center": "مركز المساعدة",
   "Hello AxizPOS Support Team, I need assistance with my account.":
     "مرحباً فريق دعم AxizPOS، أحتاج إلى مساعدة بخصوص حسابي.",
+  Filters: "عوامل التصفية",
+  "Filters, {count} selected": "عوامل التصفية، {count} محددة",
+  "{count} selected": "{count} محددة",
+  Apply: "تطبيق",
+  "Clear all": "مسح الكل",
+  "Actions for {name}": "إجراءات {name}",
+  Search: "بحث",
+  "No actions": "لا توجد إجراءات",
+  "Dismiss filters": "إغلاق عوامل التصفية",
 };
 
 /** Latin tokens that stay unchanged in Arabic mode. The checker allows these exact values. */

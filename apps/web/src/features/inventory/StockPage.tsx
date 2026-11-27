@@ -1,22 +1,22 @@
 import { Permission, formatWeight, type StockRow, type StockStatus, type StockSummary, type StockView } from "@ai-pos/shared-types";
 import { Boxes, History, Package, SlidersHorizontal, SquarePen, UtensilsCrossed } from "lucide-react";
 import { useCallback, useEffect, useState, type ReactNode } from "react";
-import { DataTable, type DataTableColumn } from "../../components/ui/DataTable";
-import { ErrorNote, SearchField } from "../../components/ui/Field";
+import { DataTable, type DataTableColumn, type TableFilter } from "../../components/ui/DataTable";
+import { ErrorNote } from "../../components/ui/Field";
 import { SegmentedControl } from "../../components/ui/SegmentedControl";
 import { Toast } from "../../components/ui/Toast";
 import { useTenant } from "../../context/TenantContext";
 import { useAuth } from "../../lib/auth";
-import { actionButtonClass, actionHoverClass, actionIntentFromLabel } from "@ai-pos/ui";
+import { actionButtonClass, actionIntentFromLabel } from "@ai-pos/ui";
 import { ProductImage } from "../../components/ui/ProductImage";
 import { AdjustStockModal } from "./AdjustStockModal";
 import { inventoryApi, message } from "./api";
-import { FashionFilters, NO_FASHION_FILTER, type FashionFilterValue } from "./FashionFilters";
+import { encodeFashionFilter, FashionFilterControl, fashionFilterValue, NO_FASHION_FILTER, type FashionFilterValue } from "./FashionFilters";
 import {
-  BrandModelFilters,
-  CategoryCascade,
+  ScopedBrandFilterControl,
+  ScopedModelFilterControl,
   StatusBadge,
-  StoreSelect,
+  storeOptions,
   useCategories,
   useStoreScope,
   useStores,
@@ -40,6 +40,102 @@ const menuStatusOptions = [
   { value: "ok", label: "Available" },
   { value: "unavailable", label: "Unavailable" },
 ] as const;
+
+function stockFilters(input: {
+  stores: Parameters<typeof storeOptions>[0];
+  pinned: boolean;
+  storeId: string | null;
+  setStoreId: (value: string | null) => void;
+  categories: { id: string; name: string; sub_categories: { id: string; name: string }[] }[];
+  categoryId: string | null;
+  setCategoryId: (value: string | null) => void;
+  subCategoryId: string | null;
+  setSubCategoryId: (value: string | null) => void;
+  brandId: string | null;
+  setBrandId: (value: string | null) => void;
+  modelId: string | null;
+  setModelId: (value: string | null) => void;
+  fashion: FashionFilterValue;
+  setFashion: (value: FashionFilterValue) => void;
+  status: string;
+  setStatus: (value: StatusFilter) => void;
+  menu: boolean;
+}): TableFilter[] {
+  return [
+    {
+      id: "store",
+      label: "Store",
+      value: input.storeId ?? "",
+      clearedValue: input.pinned ? (input.storeId ?? "") : "",
+      disabled: input.pinned,
+      onChange: (value) => input.setStoreId(value || null),
+      options: [
+        ...(input.pinned ? [] : [{ value: "", label: "All Stores (Consolidated)" }]),
+        ...storeOptions(input.stores),
+      ],
+    },
+    {
+      id: "category",
+      label: "Category",
+      value: input.categoryId ?? "",
+      clears: ["sub", "model"],
+      onChange: (value) => input.setCategoryId(value || null),
+      options: [
+        { value: "", label: "All categories" },
+        ...input.categories.map((category) => ({ value: category.id, label: category.name })),
+      ],
+    },
+    {
+      id: "sub",
+      label: "Sub-category",
+      value: input.subCategoryId ?? "",
+      clears: ["model"],
+      disabled: (draft) => {
+        const category = input.categories.find((item) => item.id === draft.category);
+        return category === undefined || category.sub_categories.length === 0;
+      },
+      onChange: (value) => input.setSubCategoryId(value || null),
+      options: (draft) => {
+        const category = input.categories.find((item) => item.id === draft.category);
+        return [
+          { value: "", label: category ? "All sub-categories" : "Pick a category first" },
+          ...(category?.sub_categories ?? []).map((sub) => ({ value: sub.id, label: sub.name })),
+        ];
+      },
+    },
+    {
+      id: "brand",
+      label: "Brand",
+      value: input.brandId ?? "",
+      clears: ["model"],
+      onChange: (value) => input.setBrandId(value || null),
+      Control: ScopedBrandFilterControl,
+    },
+    {
+      id: "model",
+      label: "Model",
+      value: input.modelId ?? "",
+      onChange: (value) => input.setModelId(value || null),
+      Control: ScopedModelFilterControl,
+    },
+    {
+      id: "fashion",
+      label: "",
+      value: encodeFashionFilter(input.fashion),
+      clearedValue: encodeFashionFilter(NO_FASHION_FILTER),
+      onChange: (value) => input.setFashion(fashionFilterValue(value)),
+      Control: FashionFilterControl,
+    },
+    {
+      id: "status",
+      label: "Stock status",
+      value: input.status,
+      clearedValue: "all",
+      onChange: (value) => input.setStatus(value as StatusFilter),
+      options: input.menu ? menuStatusOptions : stockStatusOptions,
+    },
+  ];
+}
 
 const viewOptions = [
   { value: "stock", label: "Raw ingredients & stock" },
@@ -213,26 +309,6 @@ export function StockPage() {
     },
     { id: "min", header: "Min reorder", align: "right", accessorKey: "min_reorder_level" },
     { id: "status", header: "Status", cell: (row) => <StatusBadge status={row.status} /> },
-    {
-      id: "actions",
-      header: "Actions",
-      align: "right",
-      cell: (row) => (
-        <div className="flex items-center justify-end gap-1">
-          {canAdjust ? (
-            <AdjustButton consolidated={row.store_id === null} onClick={() => setDialog({ kind: "adjust", row })} />
-          ) : null}
-          {row.store_id !== null && manage ? (
-            <IconButton label="Reorder levels & shelf" onClick={() => setDialog({ kind: "levels", row })}>
-              <SlidersHorizontal size={15} />
-            </IconButton>
-          ) : null}
-          <IconButton label="Movement history" onClick={() => setDialog({ kind: "history", row })}>
-            <History size={15} />
-          </IconButton>
-        </div>
-      ),
-    },
   ];
 
   return (
@@ -290,46 +366,11 @@ export function StockPage() {
       ) : null}
 
       <div className="overflow-hidden rounded-card border border-line bg-white">
-        <div className="flex flex-wrap items-end gap-3 p-6 pb-5">
-          <StoreSelect stores={stores} value={storeId} onChange={setStoreId} disabled={pinned} allowAll={!pinned} />
-          <CategoryCascade
-            categories={categories}
-            categoryId={categoryId}
-            subCategoryId={subCategoryId}
-            onChange={(category, sub) => {
-              setCategoryId(category);
-              setSubCategoryId(sub);
-              setModelId(null);
-            }}
-          />
-          <BrandModelFilters
-            subCategoryId={subCategoryId}
-            brandId={brandId}
-            modelId={modelId}
-            onChange={(brand, model) => {
-              setBrandId(brand);
-              setModelId(model);
-            }}
-          />
-          <FashionFilters value={fashion} onChange={setFashion} />
-          <SearchField
-            className="min-w-[220px] flex-1"
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder="Name, SKU, barcode, model, brand"
-          />
-          <SegmentedControl
-            label="Stock status"
-            value={status}
-            options={menu ? menuStatusOptions : stockStatusOptions}
-            onChange={setStatus}
-          />
-          {error ? (
-            <div className="w-full">
-              <ErrorNote message={error} />
-            </div>
-          ) : null}
-        </div>
+        {error ? (
+          <div className="px-6 pt-5">
+            <ErrorNote message={error} />
+          </div>
+        ) : null}
         <DataTable
           aria-label={menu ? "Menu item availability" : "Stock levels"}
           variant="flush"
@@ -337,6 +378,54 @@ export function StockPage() {
           columns={columns}
           data={rows}
           getRowId={(row) => `${row.product_id}-${row.store_id ?? "all"}`}
+          rowActionLabel={(row) => row.name}
+          rowActions={(row) => [
+            {
+              id: "adjust",
+              label: "Adjust",
+              icon: SquarePen,
+              hidden: !canAdjust,
+              disabled: row.store_id === null,
+              title: row.store_id === null ? CONSOLIDATED_HINT : "Adjust stock",
+              onSelect: () => setDialog({ kind: "adjust", row }),
+            },
+            {
+              id: "levels",
+              label: "Reorder levels",
+              icon: SlidersHorizontal,
+              hidden: row.store_id === null || !manage,
+              onSelect: () => setDialog({ kind: "levels", row }),
+            },
+            { id: "history", label: "Movement history", icon: History, onSelect: () => setDialog({ kind: "history", row }) },
+          ]}
+          toolbar={{
+            search: {
+              value: query,
+              onChange: setQuery,
+              label: "Search stock",
+              placeholder: "Name, SKU, barcode, model, brand",
+            },
+            filters: stockFilters({
+              stores,
+              pinned,
+              storeId,
+              setStoreId,
+              categories,
+              categoryId,
+              setCategoryId,
+              subCategoryId,
+              setSubCategoryId,
+              brandId,
+              setBrandId,
+              modelId,
+              setModelId,
+              fashion,
+              setFashion,
+              status,
+              setStatus,
+              menu,
+            }),
+          }}
           isLoading={summary === null && error === null}
           emptyState={{ icon: Boxes, title: "No products match these filters" }}
           pagination={{
@@ -377,35 +466,6 @@ function MenuBadge({ row }: { row: StockRow }) {
   return (
     <span className={`inline-flex whitespace-nowrap rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${tone}`}>
       {label}
-    </span>
-  );
-}
-
-function AdjustButton({ consolidated, onClick }: { consolidated: boolean; onClick: () => void }) {
-  return (
-    <span className="group relative inline-flex">
-      <button
-        type="button"
-        onClick={consolidated ? undefined : onClick}
-        aria-disabled={consolidated}
-        aria-label={consolidated ? `Adjust stock. ${CONSOLIDATED_HINT}` : "Adjust stock"}
-        className={`flex h-9 items-center gap-1.5 rounded-full border px-3.5 text-xs font-semibold transition-colors ${
-          consolidated
-            ? "cursor-not-allowed border-line text-charcoal/30"
-            : `border-line text-charcoal ${actionHoverClass("primary")}`}
-        }`}
-      >
-        <SquarePen size={14} aria-hidden="true" />
-        Adjust
-      </button>
-      {consolidated ? (
-        <span
-          role="tooltip"
-          className="pointer-events-none absolute bottom-full right-0 z-20 mb-2 w-56 rounded-xl bg-charcoal px-3 py-2 text-left text-xs font-normal normal-case tracking-normal text-white opacity-0 shadow-lg transition-opacity group-focus-within:opacity-100 group-hover:opacity-100"
-        >
-          {CONSOLIDATED_HINT}
-        </span>
-      ) : null}
     </span>
   );
 }

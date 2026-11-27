@@ -29,6 +29,16 @@ class DeviceOut(ApiModel):
     machine_name: str | None = None
 
 
+class ActivationPreflight(ApiModel):
+    """Signing readiness for a new till. `public_key` is the Ed25519 verify key, never the seed."""
+
+    ready: bool
+    code: str | None = None
+    message: str
+    key_id: str = ""
+    public_key: str = ""
+
+
 class RegisterCapacity(ApiModel):
     """Package seats. `limit` and `available` are null when the plan does not cap registers."""
 

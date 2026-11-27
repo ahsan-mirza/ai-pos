@@ -1,10 +1,10 @@
 import { actionHoverClass } from "@ai-pos/ui";
 import { Permission, activePriceOptions, formatMoney, noMatchesMessage, type Product, type ProductSearchHit } from "@ai-pos/shared-types";
-import { Package, Pencil, Plus, Power, Printer, Search, Trash2, Upload } from "lucide-react";
+import { Package, Pencil, Plus, Power, Printer, Trash2, Upload } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { DataTable, type DataTableColumn } from "../../components/ui/DataTable";
-import { FilterSelect, GhostButton, PrimaryButton, SearchField } from "../../components/ui/Field";
+import { DataTable, type DataTableColumn, type TableFilter } from "../../components/ui/DataTable";
+import { GhostButton, PrimaryButton } from "../../components/ui/Field";
 import { Modal } from "../../components/ui/Modal";
 import { useTenant } from "../../context/TenantContext";
 import { apiGet } from "../../lib/api";
@@ -16,10 +16,72 @@ import { inventoryApi, labelsApi, message } from "./api";
 import { ProductDetailDrawer } from "./ProductDetailDrawer";
 import { ImportWizardModal } from "./import/ImportWizardModal";
 import { ProductFormModal } from "./ProductFormModal";
-import { BrandModelFilters } from "./shared";
-import { IconButton } from "./StockPage";
+import { BrandFilterControl, ModelFilterControl } from "./shared";
 import { catalogPriceLabel, isMultiplePortionProduct } from "./portionPricing";
 import { useProductSearch } from "./useProductSearch";
+
+function catalogFilters(
+  menu: boolean,
+  live: boolean,
+  portion: string,
+  activity: string,
+  brandId: string | null,
+  modelId: string | null,
+  setPortion: (value: "all" | "single" | "portions") => void,
+  setActivity: (value: "all" | "active" | "inactive") => void,
+  setBrand: (value: string | null) => void,
+  setModel: (value: string | null) => void,
+): TableFilter[] {
+  const filters: TableFilter[] = [];
+  if (menu) {
+    filters.push(
+      {
+        id: "price",
+        label: "Price",
+        value: portion,
+        clearedValue: "all",
+        onChange: (value) => setPortion(value as "all" | "single" | "portions"),
+        options: [
+          { value: "all", label: "All prices" },
+          { value: "single", label: "Single price" },
+          { value: "portions", label: "Multiple portions" },
+        ],
+      },
+      {
+        id: "activity",
+        label: "Status",
+        value: activity,
+        clearedValue: "all",
+        onChange: (value) => setActivity(value as "all" | "active" | "inactive"),
+        options: [
+          { value: "all", label: "All statuses" },
+          { value: "active", label: "Active" },
+          { value: "inactive", label: "Inactive" },
+        ],
+      },
+    );
+  }
+  if (live) {
+    filters.push(
+      {
+        id: "brand",
+        label: "Brand",
+        value: brandId ?? "",
+        onChange: (value) => setBrand(value || null),
+        clears: ["model"],
+        Control: BrandFilterControl,
+      },
+      {
+        id: "model",
+        label: "Model",
+        value: modelId ?? "",
+        onChange: (value) => setModel(value || null),
+        Control: ModelFilterControl,
+      },
+    );
+  }
+  return filters;
+}
 
 export function InventoryPage() {
   const { currency } = useCurrency();
@@ -265,65 +327,6 @@ export function InventoryPage() {
         </>
       ),
     },
-    ...(manage
-      ? [
-          {
-            id: "edit",
-            header: "Edit",
-            align: "right" as const,
-            className: splitHide,
-            cell: ({ product }: (typeof hits)[number]) => (
-              <div className="flex justify-end gap-1" onClick={(event) => event.stopPropagation()}>
-                <IconButton
-                  label={product.is_active === false ? `Activate ${product.name}` : `Deactivate ${product.name}`}
-                  onClick={() => {
-                    setRowBusy(true);
-                    setNotice(null);
-                    void inventoryApi
-                      .updateProduct(product.id, { is_active: product.is_active === false })
-                      .then(() => {
-                        reload();
-                        setNotice(
-                          product.is_active === false
-                            ? `${product.name} is active and can be sold.`
-                            : `${product.name} is inactive and hidden on the register.`,
-                        );
-                      })
-                      .catch((caught: unknown) => setNotice(message(caught, "Could not update this product.")))
-                      .finally(() => setRowBusy(false));
-                  }}
-                >
-                  <Power size={14} className={product.is_active === false ? "text-charcoal/40" : "text-accent"} />
-                </IconButton>
-                <IconButton
-                  label={`Delete ${product.name}`}
-                  onClick={() => {
-                    if (rowBusy) return;
-                    setDeleteError(null);
-                    setPendingDelete(product);
-                  }}
-                >
-                  <Trash2 size={14} />
-                </IconButton>
-                <IconButton
-                  label={`Print labels for ${product.name}`}
-                  onClick={() => {
-                    const copies = Number(window.prompt(`How many labels for ${product.name}?`, "1"));
-                    if (Number.isInteger(copies) && copies > 0) {
-                      void labelsApi.products([{ product_id: product.id, copies: Math.min(copies, 500) }], "a4_3x8");
-                    }
-                  }}
-                >
-                  <Printer size={14} />
-                </IconButton>
-                <IconButton label={`Edit ${product.name}`} onClick={() => setEditing(product)}>
-                  <Pencil size={14} />
-                </IconButton>
-              </div>
-            ),
-          },
-        ]
-      : []),
   ];
 
   return (
@@ -368,70 +371,6 @@ export function InventoryPage() {
             </div>
           ) : null}
         </div>
-        <div className="mb-5 flex min-w-0 flex-wrap items-center gap-3">
-          <SearchField
-            hideLabel
-            id="inventory-search"
-            label="Search product, model, barcode or IMEI"
-            autoComplete="off"
-            spellCheck={false}
-            value={query}
-            onChange={(event) => {
-              setQuery(event.target.value);
-              setNotice(null);
-            }}
-            onKeyDown={(event) => {
-              if (event.key === "Enter") {
-                event.preventDefault();
-                void submit(event.currentTarget.value);
-              } else if (event.key === "Escape") {
-                setQuery("");
-              }
-            }}
-            placeholder="Search product, model, barcode or IMEI..."
-            className="min-w-0 max-w-full flex-1 basis-[var(--field-md)] !w-auto"
-          />
-          {menuCatalog ? (
-            <>
-              <FilterSelect
-                hideLabel
-                label="Price"
-                className="w-[min(100%,var(--field-sm))] shrink-0"
-                value={portionFilter}
-                options={[
-                  { value: "all", label: "All prices" },
-                  { value: "single", label: "Single price" },
-                  { value: "portions", label: "Multiple portions" },
-                ]}
-                onChange={setPortionFilter}
-              />
-              <FilterSelect
-                hideLabel
-                label="Status"
-                className="w-[min(100%,var(--field-sm))] shrink-0"
-                value={activityFilter}
-                options={[
-                  { value: "all", label: "All statuses" },
-                  { value: "active", label: "Active" },
-                  { value: "inactive", label: "Inactive" },
-                ]}
-                onChange={setActivityFilter}
-              />
-            </>
-          ) : null}
-          {source === "live" ? (
-            <BrandModelFilters
-              className="w-[min(100%,var(--field-sm))] shrink-0"
-              subCategoryId={null}
-              brandId={brandId}
-              modelId={modelId}
-              onChange={(brand, model) => {
-                setBrandId(brand);
-                setModelId(model);
-              }}
-            />
-          ) : null}
-        </div>
         {notice ? (
           <p className="mb-4 text-sm" role="status">
             {notice}
@@ -445,6 +384,73 @@ export function InventoryPage() {
           columns={columns}
           data={hits}
           getRowId={(hit) => hit.product.id}
+          rowActionLabel={(hit) => hit.product.name}
+          rowActions={
+            manage
+              ? ({ product }) => [
+                  {
+                    id: "active",
+                    label: product.is_active === false ? "Activate" : "Deactivate",
+                    icon: Power,
+                    disabled: rowBusy,
+                    onSelect: () => {
+                      setRowBusy(true);
+                      setNotice(null);
+                      void inventoryApi
+                        .updateProduct(product.id, { is_active: product.is_active === false })
+                        .then(() => {
+                          reload();
+                          setNotice(
+                            product.is_active === false
+                              ? `${product.name} is active and can be sold.`
+                              : `${product.name} is inactive and hidden on the register.`,
+                          );
+                        })
+                        .catch((caught: unknown) => setNotice(message(caught, "Could not update this product.")))
+                        .finally(() => setRowBusy(false));
+                    },
+                  },
+                  {
+                    id: "delete",
+                    label: "Delete",
+                    icon: Trash2,
+                    tone: "danger",
+                    disabled: rowBusy,
+                    onSelect: () => {
+                      setDeleteError(null);
+                      setPendingDelete(product);
+                    },
+                  },
+                  {
+                    id: "print",
+                    label: "Print labels",
+                    icon: Printer,
+                    disabled: rowBusy,
+                    onSelect: () => {
+                      const copies = Number(window.prompt(`How many labels for ${product.name}?`, "1"));
+                      if (Number.isInteger(copies) && copies > 0) {
+                        void labelsApi.products([{ product_id: product.id, copies: Math.min(copies, 500) }], "a4_3x8");
+                      }
+                    },
+                  },
+                  { id: "edit", label: "Edit", icon: Pencil, disabled: rowBusy, onSelect: () => setEditing(product) },
+                ]
+              : undefined
+          }
+          toolbar={{
+            search: {
+              value: query,
+              label: "Search product, model, barcode or IMEI",
+              placeholder: "Search product, model, barcode or IMEI...",
+              onChange: (value) => {
+                setQuery(value);
+                setNotice(null);
+              },
+              onSubmit: (value) => void submit(value),
+            },
+            onFiltersCommit: () => setPage(1),
+            filters: catalogFilters(menuCatalog, source === "live", portionFilter, activityFilter, brandId, modelId, setPortionFilter, setActivityFilter, setBrandId, setModelId),
+          }}
           isLoading={searching && hits.length === 0}
           onRowClick={(hit) => toggleRow(hit.product.id)}
           isRowActive={(hit) => open && selectedId === hit.product.id}

@@ -10,13 +10,14 @@ from app.core.errors import ApiError
 from app.core.permissions import Permission
 from app.schemas.devices import (
     ActivationKeyOut,
+    ActivationPreflight,
     DeviceCreate,
     DeviceKeyOut,
     DeviceOut,
     DeviceSelfOut,
     RegisterCapacity,
 )
-from app.services import device_service
+from app.services import device_service, entitlement_service
 
 router = APIRouter()
 
@@ -32,6 +33,20 @@ def list_devices(db: Db, principal: CanManage, store_id: uuid.UUID | None = None
 @router.post("", response_model=DeviceKeyOut, status_code=201)
 def create_device(payload: DeviceCreate, db: Db, principal: CanManage) -> DeviceKeyOut:
     return device_service.create_device(db, principal, payload)
+
+
+@router.get("/activation-preflight", response_model=ActivationPreflight)
+def activation_preflight(principal: CanManage) -> ActivationPreflight:
+    """Reports whether permanent entitlement signing can run. Does not create a key or a device."""
+    _ = principal
+    report = entitlement_service.signing_preflight()
+    return ActivationPreflight(
+        ready=report.ready,
+        code=report.code,
+        message=report.message,
+        key_id=report.key_id,
+        public_key=report.public_key,
+    )
 
 
 @router.get("/capacity", response_model=RegisterCapacity)

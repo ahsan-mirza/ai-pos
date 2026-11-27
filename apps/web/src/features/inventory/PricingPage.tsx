@@ -12,7 +12,7 @@ import { actionHoverClass } from "@ai-pos/ui";
 import { Layers, Save, Tags } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { DataTable, type DataTableColumn } from "../../components/ui/DataTable";
-import { ErrorNote, FilterSelect, PrimaryButton, SearchField } from "../../components/ui/Field";
+import { ErrorNote, PrimaryButton } from "../../components/ui/Field";
 import { Toast } from "../../components/ui/Toast";
 import { useAuth } from "../../lib/auth";
 import { useCurrency } from "../../lib/currency";
@@ -321,45 +321,6 @@ export function PricingPage() {
       </div>
 
       <div className="overflow-hidden rounded-card border border-line bg-white">
-        <div className="flex flex-wrap items-end gap-3 p-6 pb-5">
-          <FilterSelect
-            label="Category"
-            className="min-w-[200px]"
-            value={categoryId ?? ""}
-            options={[{ value: "", label: "All categories" }, ...categories.map((item) => ({ value: item.id, label: item.name }))]}
-            onChange={(next) => setCategoryId(next === "" ? null : next)}
-          />
-          <FilterSelect
-            label="Brand"
-            className="min-w-[180px]"
-            value={brand ?? ""}
-            options={[{ value: "", label: "All brands" }, ...(matrix?.brands ?? []).map((item) => ({ value: item, label: item }))]}
-            onChange={(next) => setBrand(next === "" ? null : next)}
-          />
-          <SearchField
-            className="min-w-[220px] flex-1"
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder="Product name or SKU"
-          />
-          {canEdit ? (
-            <>
-              <button
-                type="button"
-                onClick={() => setBulkOpen(true)}
-                disabled={rows.length === 0}
-                className={`inline-flex h-11 items-center gap-2 rounded-full border border-line bg-white px-5 text-sm font-semibold disabled:opacity-40 ${actionHoverClass("primary")}`}
-              >
-                <Layers size={16} aria-hidden="true" />
-                Bulk update{selected.size ? ` (${selected.size})` : ""}
-              </button>
-              <PrimaryButton disabled={dirty.length === 0 || saving} onClick={() => void saveAll()}>
-                <Save size={16} aria-hidden="true" className="-ml-2 mr-2" />
-                {saving ? "Saving…" : dirty.length ? `Save ${dirty.length} ${dirty.length === 1 ? "change" : "changes"}` : "Saved"}
-              </PrimaryButton>
-            </>
-          ) : null}
-        </div>
         {error ? (
           <div className="px-6 pb-5">
             <ErrorNote message={error} />
@@ -372,6 +333,42 @@ export function PricingPage() {
           columns={columns}
           data={rows}
           getRowId={(row) => row.product_id}
+          toolbar={{
+            search: { value: query, onChange: setQuery, label: "Search products", placeholder: "Product name or SKU" },
+            filters: [
+              {
+                id: "category",
+                label: "Category",
+                value: categoryId ?? "",
+                onChange: (next) => setCategoryId(next || null),
+                options: [{ value: "", label: "All categories" }, ...categories.map((item) => ({ value: item.id, label: item.name }))],
+              },
+              {
+                id: "brand",
+                label: "Brand",
+                value: brand ?? "",
+                onChange: (next) => setBrand(next || null),
+                options: [{ value: "", label: "All brands" }, ...(matrix?.brands ?? []).map((item) => ({ value: item, label: item }))],
+              },
+            ],
+            actions: canEdit ? (
+              <>
+                <button
+                  type="button"
+                  onClick={() => setBulkOpen(true)}
+                  disabled={rows.length === 0}
+                  className={`inline-flex h-11 items-center gap-2 rounded-full border border-line bg-white px-5 text-sm font-semibold disabled:opacity-40 ${actionHoverClass("primary")}`}
+                >
+                  <Layers size={16} aria-hidden="true" />
+                  Bulk update{selected.size ? ` (${selected.size})` : ""}
+                </button>
+                <PrimaryButton disabled={dirty.length === 0 || saving} onClick={() => void saveAll()}>
+                  <Save size={16} aria-hidden="true" className="-ml-2 mr-2" />
+                  {saving ? "Saving…" : dirty.length ? `Save ${dirty.length} ${dirty.length === 1 ? "change" : "changes"}` : "Saved"}
+                </PrimaryButton>
+              </>
+            ) : null,
+          }}
           isLoading={matrix === null && error === null}
           rowClassName={(row) => (drafts[row.product_id] ? "bg-accent/[0.04]" : "")}
           emptyState={{ icon: Tags, title: "No products match these filters" }}

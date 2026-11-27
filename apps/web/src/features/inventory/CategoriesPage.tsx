@@ -14,7 +14,6 @@ import { destinationCategories, type AssignedModel } from "./categoryDelete";
 import { CatalogDrilldown, type CatalogPath } from "./CatalogDrilldown";
 import { codeError, fieldErrors, useInvalidFocus, type FieldErrors } from "./formErrors";
 import { useCategories } from "./shared";
-import { IconButton } from "./StockPage";
 
 type Editing =
   | { kind: "category"; category: Category | null }
@@ -111,26 +110,6 @@ export function CategoriesPage() {
         </span>
       ),
     },
-    ...(manage && selected
-      ? [
-          {
-            id: "actions",
-            header: <span className="sr-only">Actions</span>,
-            align: "right" as const,
-            width: 96,
-            cell: (sub: SubCategory) => (
-              <div className="flex justify-end gap-1">
-                <IconButton label="Edit sub-category" onClick={() => setEditing({ kind: "sub", category: selected, sub })}>
-                  <Pencil size={14} />
-                </IconButton>
-                <IconButton label="Delete sub-category" onClick={() => void removeSub(sub)}>
-                  <Trash2 size={14} />
-                </IconButton>
-              </div>
-            ),
-          },
-        ]
-      : []),
   ];
 
   return (
@@ -214,6 +193,15 @@ export function CategoriesPage() {
               columns={subColumns}
               data={selected.sub_categories}
               getRowId={(sub) => sub.id}
+              rowActionLabel={(sub) => sub.name}
+              rowActions={
+                manage
+                  ? (sub) => [
+                      { id: "edit", label: "Edit", icon: Pencil, onSelect: () => setEditing({ kind: "sub", category: selected, sub }) },
+                      { id: "delete", label: "Delete", icon: Trash2, tone: "danger", onSelect: () => void removeSub(sub) },
+                    ]
+                  : undefined
+              }
               onRowClick={(sub) => setDrill({ subId: sub.id })}
               rowClassName={() => "group"}
               emptyState={{ icon: FolderPlus, title: `No sub-categories under ${selected.name} yet` }}

@@ -1,17 +1,46 @@
 import { Permission, type Product, type StockTransfer, type Store, type TransferStatus } from "@ai-pos/shared-types";
 import { ArrowRight, Plus, Trash2, Truck } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
-import { DataTable, usePagination, type DataTableColumn } from "../../components/ui/DataTable";
-import { ErrorNote, FilterSelect, GhostButton, PrimaryButton, SelectField, TextField } from "../../components/ui/Field";
+import { DataTable, usePagination, type DataTableColumn, type TableFilter } from "../../components/ui/DataTable";
+import { ErrorNote, GhostButton, PrimaryButton, SelectField, TextField } from "../../components/ui/Field";
 import { Modal } from "../../components/ui/Modal";
 import { useAuth } from "../../lib/auth";
 import { inventoryApi, message } from "./api";
 import { GridQuantityEditor } from "./GridQuantityEditor";
-import { DocStatus, StoreSelect, formatDate, statusLabel, useStoreScope, useStores } from "./shared";
+import { DocStatus, StoreSelect, formatDate, statusLabel, storeOptions, useStoreScope, useStores } from "./shared";
 import { IconButton } from "./StockPage";
 
 const statuses: (TransferStatus | "all")[] = ["all", "requested", "in_transit", "received", "cancelled"];
 const statusOptions = statuses.map((value) => ({ value, label: value === "all" ? "All statuses" : statusLabel(value) }));
+
+function transferFilters(
+  stores: Parameters<typeof storeOptions>[0],
+  pinned: boolean,
+  storeId: string | null,
+  setStoreId: (value: string | null) => void,
+  status: string,
+  setStatus: (value: TransferStatus | "all") => void,
+): TableFilter[] {
+  return [
+    {
+      id: "store",
+      label: "Branch",
+      value: storeId ?? "",
+      clearedValue: pinned ? (storeId ?? "") : "",
+      disabled: pinned,
+      onChange: (value) => setStoreId(value || null),
+      options: [...(pinned ? [] : [{ value: "", label: "All Stores (Consolidated)" }]), ...storeOptions(stores)],
+    },
+    {
+      id: "status",
+      label: "Status",
+      value: status,
+      clearedValue: "all",
+      onChange: (value) => setStatus(value as TransferStatus | "all"),
+      options: statusOptions,
+    },
+  ];
+}
 
 export function TransfersPage() {
   const { can } = useAuth();
@@ -96,24 +125,11 @@ export function TransfersPage() {
 
   return (
     <section className="overflow-hidden rounded-card border border-line bg-white">
-      <div className="flex flex-wrap items-end justify-between gap-3 p-6 pb-5">
-        <div className="flex flex-wrap items-end gap-3">
-          <StoreSelect stores={stores} value={storeId} onChange={setStoreId} disabled={pinned} allowAll={!pinned} label="Branch" />
-          <FilterSelect label="Status" className="min-w-[200px]" value={status} options={statusOptions} onChange={setStatus} />
+      {error ? (
+        <div className="px-6 pt-5">
+          <ErrorNote message={error} />
         </div>
-        {manage ? (
-          <PrimaryButton onClick={() => setCreating(true)}>
-            <span className="inline-flex items-center gap-2">
-              <Plus size={16} aria-hidden="true" /> New transfer
-            </span>
-          </PrimaryButton>
-        ) : null}
-        {error ? (
-          <div className="w-full">
-            <ErrorNote message={error} />
-          </div>
-        ) : null}
-      </div>
+      ) : null}
       <DataTable
         aria-label="Stock transfers"
         variant="flush"
@@ -121,6 +137,16 @@ export function TransfersPage() {
         columns={columns}
         data={transfers}
         getRowId={(transfer) => transfer.id}
+        toolbar={{
+          filters: transferFilters(stores, pinned, storeId, setStoreId, status, setStatus),
+          actions: manage ? (
+            <PrimaryButton onClick={() => setCreating(true)}>
+              <span className="inline-flex items-center gap-2">
+                <Plus size={16} aria-hidden="true" /> New transfer
+              </span>
+            </PrimaryButton>
+          ) : null,
+        }}
         isLoading={loading && !loaded}
         isFetching={loading && loaded}
         onRowClick={(transfer) => setOpenId(transfer.id)}

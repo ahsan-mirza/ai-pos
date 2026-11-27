@@ -5,12 +5,11 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useConfirm } from "../../components/ui/ConfirmDialog";
 import { DataTable } from "../../components/ui/DataTable";
-import { ErrorNote, FilterSelect, GhostButton, PrimaryButton, SearchField } from "../../components/ui/Field";
+import { ErrorNote, GhostButton, PrimaryButton } from "../../components/ui/Field";
 import { useAuth } from "../../lib/auth";
 import { message, modelsApi } from "./api";
 import { MatrixBuilderModal } from "./VariantMatrixPanel";
 import { ModelFormModal } from "./ModelFormModal";
-import { IconButton } from "./StockPage";
 import { useBrands, useCategories } from "./shared";
 
 function specLabel(model: ProductModel): string {
@@ -98,25 +97,8 @@ export function ModelsPage() {
         cell: (row) => row.variant_count,
       },
     ];
-    if (manage) {
-      defined.push({
-        id: "actions",
-        header: "Actions",
-        align: "right",
-        cell: (row) => (
-          <div className="flex justify-end gap-1">
-            <IconButton label={`Edit ${row.name}`} onClick={() => setEditing(row)}>
-              <Pencil size={14} />
-            </IconButton>
-            <IconButton label={`Delete ${row.name}`} onClick={() => void remove(row)}>
-              <Trash2 size={14} />
-            </IconButton>
-          </div>
-        ),
-      });
-    }
     return defined;
-  }, [manage]);
+  }, []);
 
   const exportModels = () => {
     downloadCsv(
@@ -170,20 +152,6 @@ export function ModelsPage() {
           </p>
         </div>
         <div className="flex flex-wrap items-end gap-3">
-          <SearchField
-            className="w-64"
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder="Search model name, code..."
-          />
-          <FilterSelect
-            label="Brand"
-            className="w-52"
-            value={brandId}
-            placeholder="All brands"
-            options={[{ value: "", label: "All brands" }, ...brands.map((brand) => ({ value: brand.id, label: brand.name }))]}
-            onChange={setBrand}
-          />
           <GhostButton type="button" onClick={exportModels} disabled={visible.length === 0}>
             Export
           </GhostButton>
@@ -203,6 +171,27 @@ export function ModelsPage() {
         columns={columns}
         data={visible}
         getRowId={(row) => row.id}
+        rowActionLabel={(row) => row.name}
+        rowActions={
+          manage
+            ? (row) => [
+                { id: "edit", label: "Edit", icon: Pencil, onSelect: () => setEditing(row) },
+                { id: "delete", label: "Delete", icon: Trash2, tone: "danger", onSelect: () => void remove(row) },
+              ]
+            : undefined
+        }
+        toolbar={{
+          search: { value: query, onChange: setQuery, label: "Search models", placeholder: "Search model name, code..." },
+          filters: [
+            {
+              id: "brand",
+              label: "Brand",
+              value: brandId,
+              onChange: setBrand,
+              options: [{ value: "", label: "All brands" }, ...brands.map((brand) => ({ value: brand.id, label: brand.name }))],
+            },
+          ],
+        }}
         isLoading={loading}
         error={loadError}
         onRetry={() => void reload()}

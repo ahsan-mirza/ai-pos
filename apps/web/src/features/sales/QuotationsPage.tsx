@@ -5,9 +5,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { useConfirm } from "../../components/ui/ConfirmDialog";
 import { DataTable, usePagination, type DataTableColumn } from "../../components/ui/DataTable";
 import { ErrorNote } from "../../components/ui/Field";
-import { SegmentedControl } from "../../components/ui/SegmentedControl";
 import { Toast } from "../../components/ui/Toast";
-import { actionHoverClass, type ActionIntent } from "@ai-pos/ui";
 import { useAuth } from "../../lib/auth";
 import { useCapability } from "../../lib/capabilities";
 import { useCurrency } from "../../lib/currency";
@@ -137,9 +135,6 @@ export function QuotationsPage() {
     }
   };
 
-  const iconAction = (intent: ActionIntent) =>
-    `flex h-9 w-9 items-center justify-center rounded-full border border-line disabled:opacity-40 ${actionHoverClass(intent)}`;
-
   const columns: DataTableColumn<Quote>[] = [
     {
       id: "quote",
@@ -210,72 +205,6 @@ export function QuotationsPage() {
       },
     },
     { id: "status", header: "Status", cell: (quote) => <StatusChip status={quote.quote_status} /> },
-    {
-      id: "actions",
-      header: "Actions",
-      align: "right",
-      cell: (quote) => (
-        <div className="flex items-center justify-end gap-1">
-          <button
-            type="button"
-            aria-label={`Open ${quote.number} PDF`}
-            title="Open PDF"
-            disabled={busyId === quote.id}
-            onClick={() => void openPdf(quote)}
-            className={iconAction("info")}
-          >
-            <FileDown size={15} aria-hidden="true" />
-          </button>
-          {quote.quote_status === "OPEN" && manage ? (
-            <>
-              <button
-                type="button"
-                aria-label={`Cancel ${quote.number}`}
-                title="Cancel and release stock"
-                disabled={busyId === quote.id}
-                onClick={() => void cancel(quote)}
-                className={iconAction("danger")}
-              >
-                <Ban size={15} aria-hidden="true" />
-              </button>
-              {quote.quote_kind === "LAYAWAY" ? (
-                <button
-                  type="button"
-                  aria-label={`Take a deposit on ${quote.number}`}
-                  title="Take a deposit"
-                  disabled={busyId === quote.id}
-                  onClick={() => setDepositFor(quote)}
-                  className={iconAction("neutral")}
-                >
-                  <Banknote size={15} aria-hidden="true" />
-                </button>
-              ) : null}
-              {ordersOn && quote.quote_kind !== "LAYAWAY" && quote.customer_id ? (
-                <button
-                  type="button"
-                  aria-label={`Make ${quote.number} a sales order`}
-                  title="Make a sales order (deliver in parts)"
-                  disabled={busyId === quote.id}
-                  onClick={() => void toOrder(quote)}
-                  className={iconAction("primary")}
-                >
-                  <Truck size={15} aria-hidden="true" />
-                </button>
-              ) : null}
-              <button
-                type="button"
-                disabled={busyId === quote.id}
-                onClick={() => setConverting(quote)}
-                className="flex h-9 items-center gap-1.5 whitespace-nowrap rounded-full bg-accent px-3.5 text-xs font-semibold text-white hover:bg-accent-hover disabled:opacity-40"
-              >
-                <ArrowRightLeft size={14} aria-hidden="true" />
-                Convert to sale
-              </button>
-            </>
-          ) : null}
-        </div>
-      ),
-    },
   ];
 
   return (
@@ -316,15 +245,12 @@ export function QuotationsPage() {
       </div>
 
       <div className="overflow-hidden rounded-card border border-line bg-white">
-        <div className="flex flex-wrap items-center justify-between gap-3 p-6 pb-5">
-          <SegmentedControl label="Quote status" value={status} options={statusOptions} onChange={setStatus} />
-          <p className="text-sm text-charcoal/60">Quotes are created at the register with “Save as Proforma Quote”.</p>
-          {error ? (
-            <div className="w-full">
-              <ErrorNote message={error} />
-            </div>
-          ) : null}
-        </div>
+        <p className="px-6 pt-5 text-sm text-charcoal/60">Quotes are created at the register with “Save as Proforma Quote”.</p>
+        {error ? (
+          <div className="px-6 pt-3">
+            <ErrorNote message={error} />
+          </div>
+        ) : null}
         <DataTable
           aria-label="Quotations"
           variant="flush"
@@ -332,6 +258,30 @@ export function QuotationsPage() {
           columns={columns}
           data={quotes}
           getRowId={(quote) => quote.id}
+          rowActionLabel={(quote) => quote.number}
+          rowActions={(quote) => {
+            const open = quote.quote_status === "OPEN" && manage;
+            const busy = busyId === quote.id;
+            return [
+              { id: "pdf", label: "Open PDF", icon: FileDown, disabled: busy, onSelect: () => void openPdf(quote) },
+              { id: "cancel", label: "Cancel", icon: Ban, tone: "danger", hidden: !open, disabled: busy, onSelect: () => void cancel(quote) },
+              { id: "deposit", label: "Take deposit", icon: Banknote, hidden: !open || quote.quote_kind !== "LAYAWAY", disabled: busy, onSelect: () => setDepositFor(quote) },
+              { id: "order", label: "Make sales order", icon: Truck, hidden: !open || !ordersOn || quote.quote_kind === "LAYAWAY" || !quote.customer_id, disabled: busy, onSelect: () => void toOrder(quote) },
+              { id: "convert", label: "Convert to sale", icon: ArrowRightLeft, hidden: !open, disabled: busy, onSelect: () => setConverting(quote) },
+            ];
+          }}
+          toolbar={{
+            filters: [
+              {
+                id: "status",
+                label: "Quote status",
+                value: status,
+                clearedValue: "OPEN",
+                onChange: (value) => setStatus(value as StatusFilter),
+                options: statusOptions,
+              },
+            ],
+          }}
           isLoading={data === null && error === null}
           isFetching={loading && data !== null}
           emptyState={{ icon: FileText, title: "No quotations with this status" }}

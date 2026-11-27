@@ -1,9 +1,9 @@
 import { PROFILE_PRESETS, type BusinessProfile, type TenantRow } from "@ai-pos/shared-types";
-import { DataTable, Select, type DataTableColumn } from "@ai-pos/ui";
+import { DataTable, type DataTableColumn } from "@ai-pos/ui";
 import { Building2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { Outlet, useNavigate, useParams } from "react-router-dom";
-import { FilterSearch, FilterSlot, PageHeader } from "../components/PageHeader";
+import { PageHeader } from "../components/PageHeader";
 import { ErrorNote, StatusBadge } from "../components/ui";
 import { api, errorText } from "../lib/api";
 import { bytes, date, money } from "../lib/format";
@@ -97,48 +97,6 @@ export function TenantsPage() {
         icon={Building2}
         title="Tenants"
         description={`${total} registered stores`}
-        controls={
-          <>
-            <FilterSearch
-              label="Search tenants"
-              value={query}
-              placeholder="Name, subdomain or owner email"
-              onChange={(value) => {
-                setQuery(value);
-                setPage(1);
-              }}
-            />
-            <FilterSlot>
-              <Select
-                aria-label="Status"
-                value={status}
-                onChange={(value) => {
-                  setStatus(value);
-                  setPage(1);
-                }}
-                options={[
-                  { value: "", label: "All statuses" },
-                  { value: "active", label: "Active" },
-                  { value: "suspended", label: "Suspended" },
-                ]}
-              />
-            </FilterSlot>
-            <FilterSlot wide>
-              <Select
-                aria-label="Business type"
-                value={profile}
-                onChange={(value) => {
-                  setProfile(value);
-                  setPage(1);
-                }}
-                options={[
-                  { value: "", label: "All business types" },
-                  ...profiles.map((id) => ({ value: id, label: PROFILE_PRESETS[id].label })),
-                ]}
-              />
-            </FilterSlot>
-          </>
-        }
       />
       <ErrorNote message={error} />
       <DataTable
@@ -149,6 +107,41 @@ export function TenantsPage() {
         isLoading={loading && rows.length === 0}
         isFetching={loading && rows.length > 0}
         onRowClick={(row) => navigate(`/tenants/${row.id}`)}
+        toolbar={{
+          search: {
+            value: query,
+            onChange: (value) => {
+              setQuery(value);
+              setPage(1);
+            },
+            label: "Search tenants",
+            placeholder: "Name, subdomain or owner email",
+          },
+          onFiltersCommit: () => setPage(1),
+          filters: [
+            {
+              id: "status",
+              label: "Status",
+              value: status,
+              onChange: setStatus,
+              options: [
+                { value: "", label: "All statuses" },
+                { value: "active", label: "Active" },
+                { value: "suspended", label: "Suspended" },
+              ],
+            },
+            {
+              id: "profile",
+              label: "Business type",
+              value: profile,
+              onChange: setProfile,
+              options: [
+                { value: "", label: "All business types" },
+                ...profiles.map((id) => ({ value: id, label: PROFILE_PRESETS[id].label })),
+              ],
+            },
+          ],
+        }}
         isRowActive={(row) => row.id === tenantId}
         minWidth="980px"
         emptyState={{ title: "No tenants match", description: "Try another search or filter.", icon: Building2 }}

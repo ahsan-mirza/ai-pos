@@ -1,4 +1,6 @@
 import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Inbox, type LucideIcon } from "lucide-react";
+import { TableToolbar, type TableToolbarProps } from "./FilterDrawer";
+import { RowActionsMenu, type RowActionItem } from "./RowActionsMenu";
 import {
   useEffect,
   useId,
@@ -102,6 +104,12 @@ export interface DataTableProps<T> {
   "aria-label": string;
   className?: string;
   skeletonRows?: number;
+  /** Search stays visible. Other filters open from the Filter button. */
+  toolbar?: TableToolbarProps;
+  /** Replaces a hand-built Actions column with one kebab menu per row. */
+  rowActions?: (row: T) => readonly RowActionItem[];
+  /** Accessible name for that menu. Defaults to the row id. */
+  rowActionLabel?: (row: T) => string;
 }
 
 const alignClass: Record<ColumnAlign, string> = { left: "text-start", center: "text-center", right: "text-end" };
@@ -140,6 +148,9 @@ export function DataTable<T>({
   "aria-label": ariaLabel,
   className = "",
   skeletonRows,
+  toolbar,
+  rowActions,
+  rowActionLabel,
 }: DataTableProps<T>) {
   const client = pagination !== false && pagination.mode === "client" ? pagination : null;
   const [innerPage, setInnerPage] = useState(1);
@@ -214,6 +225,26 @@ export function DataTable<T>({
   };
 
   const { t } = useLocale();
+  const columnsWithActions = useMemo(() => {
+    if (!rowActions) return columns;
+    const actionColumn: DataTableColumn<T> = {
+      id: "actions",
+      header: t("Actions"),
+      align: "right",
+      width: "4.5rem",
+      cell: (row, index) => {
+        const items = rowActions(row);
+        if (items.length === 0) return null;
+        return (
+          <RowActionsMenu
+            label={t("Actions for {name}", { name: rowActionLabel?.(row) ?? getRowId(row, index) })}
+            actions={items}
+          />
+        );
+      },
+    };
+    return [...columns.filter((column) => (column.id ?? column.accessorKey) !== "actions"), actionColumn];
+  }, [columns, getRowId, rowActionLabel, rowActions, t]);
   const pad = density === "compact" ? "py-2" : "py-3";
   const cellX = "px-3 first:ps-4 last:pe-4 sm:first:ps-5 sm:last:pe-5";
   const skeletonCount = skeletonRows ?? Math.min(Math.max(view.rows.length, 5), Math.min(view.pageSize || 8, 10));
@@ -243,6 +274,11 @@ export function DataTable<T>({
           <div className="h-full w-1/3 animate-pulse rounded-full bg-primary" />
         </div>
       ) : null}
+      {toolbar ? (
+        <div className="min-w-0 overflow-x-hidden border-b border-line px-4 py-3 sm:px-5 dark:border-zinc-800">
+          <TableToolbar {...toolbar} />
+        </div>
+      ) : null}
       <div className={`min-h-0 flex-1 overflow-x-auto ${stickyHeader ? "overflow-y-auto" : ""}`}>
         <table
           aria-label={ariaLabel}
@@ -252,7 +288,7 @@ export function DataTable<T>({
         >
           <thead className={stickyHeader ? "sticky top-0 z-10" : undefined}>
             <tr className="bg-surface/70 text-[0.6875rem] font-semibold uppercase tracking-wider text-[#6B7280] shadow-[inset_0_-0.0625rem_0_#DBDBDB] backdrop-blur dark:bg-zinc-900/90 dark:text-zinc-400 dark:shadow-[inset_0_-0.0625rem_0_#27272a]">
-              {columns.map((column, index) => (
+              {columnsWithActions.map((column, index) => (
                 <th
                   key={columnKey(column, index)}
                   scope="col"
@@ -297,7 +333,7 @@ export function DataTable<T>({
             {isLoading
               ? Array.from({ length: skeletonCount }, (_, rowIndex) => (
                   <tr key={`skeleton-${rowIndex}`} aria-hidden="true">
-                    {columns.map((column, index) => (
+                    {columnsWithActions.map((column, index) => (
                       <td key={columnKey(column, index)} className={`${cellX} ${pad} ${column.className ?? ""}`}>
                         <div
                           className={`h-4 animate-pulse rounded-full ${
@@ -312,7 +348,7 @@ export function DataTable<T>({
               : null}
             {!isLoading && error ? (
               <tr>
-                <td colSpan={columns.length} className="px-6 py-14 text-center">
+                <td colSpan={columnsWithActions.length} className="px-6 py-14 text-center">
                   <div className="mx-auto flex max-w-sm flex-col items-center">
                     <p className="text-sm font-semibold">{t("Could not load this list")}</p>
                     <p className="mt-1 text-sm text-charcoal/50 dark:text-zinc-400">{error}</p>
@@ -331,7 +367,7 @@ export function DataTable<T>({
             ) : null}
             {!isLoading && !error && view.rows.length === 0 ? (
               <tr>
-                <td colSpan={columns.length} className="whitespace-normal px-6 py-14 text-center">
+                <td colSpan={columnsWithActions.length} className="whitespace-normal px-6 py-14 text-center">
                   <div className="mx-auto max-w-sm whitespace-normal">
                     {isEmptyState(emptyState) ? <EmptyState {...emptyState} /> : emptyState}
                   </div>
@@ -360,7 +396,7 @@ export function DataTable<T>({
                           : "hover:bg-surface/60 dark:hover:bg-white/[0.03]"
                       } ${rowClassName?.(row, index) ?? ""}`}
                     >
-                      {columns.map((column, columnIndex) => (
+                      {columnsWithActions.map((column, columnIndex) => (
                         <td
                           key={columnKey(column, columnIndex)}
                           style={widthStyle(column.width)}

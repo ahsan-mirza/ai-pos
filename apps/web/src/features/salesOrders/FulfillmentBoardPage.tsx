@@ -5,14 +5,12 @@ import {
   type FulfillmentBoard,
   type SalesOrderRow,
 } from "@ai-pos/shared-types";
-import { AxizDateRange, AxizTabs, pageCount, useLocale } from "@ai-pos/ui";
-import { MapPinned, PackageCheck, Search, Truck } from "lucide-react";
+import { AxizTabs, pageCount, useLocale } from "@ai-pos/ui";
+import { Eye, MapPinned, PackageCheck, Truck } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { tabBarClass } from "../../components/layout/AppShell";
-import { DataTable, PaginationFooter, usePagination, type DataTableColumn } from "../../components/ui/DataTable";
-import { FilterSelect } from "../../components/ui/Field";
-import { SegmentedControl } from "../../components/ui/SegmentedControl";
+import { DataTable, PaginationFooter, TableToolbar, usePagination, type DataTableColumn } from "../../components/ui/DataTable";
 import { useAuth } from "../../lib/auth";
 import { useCapability } from "../../lib/capabilities";
 import { formatDate, storeOptions, useStores } from "../inventory/shared";
@@ -113,7 +111,6 @@ export function FulfillmentBoardView({
 }: FulfillmentBoardViewProps) {
   const { t, locale } = useLocale();
   const filters = { query: search, storeId, lockedStore };
-  const filtersActive = view !== "OPEN" || search.trim() !== "" || (storeId !== "" && !lockedStore);
   const waiting = view === "backorders";
   const list = waiting ? null : rows;
   const waitingRows = waiting ? backorders : null;
@@ -178,16 +175,6 @@ export function FulfillmentBoardView({
       header: t("Created"),
       className: "hidden 2xl:table-cell whitespace-nowrap",
       cell: (row) => formatDate(row.created_at, board?.timezone),
-    },
-    {
-      id: "actions",
-      header: t("Actions"),
-      align: "right",
-      cell: (row) => (
-        <button type="button" onClick={() => onOpen(row.id)} className="text-xs font-semibold text-accent">
-          {t("View")}
-        </button>
-      ),
     },
   ];
 
@@ -293,59 +280,58 @@ export function FulfillmentBoardView({
       )}
 
       <div className="min-w-0 rounded-2xl border border-line bg-white">
-        <div className="flex flex-wrap items-end justify-between gap-3 p-4">
-          <SegmentedControl
-            label={t("Order view")}
-            value={view}
-            onChange={onView}
-            options={[
-              { value: "OPEN", label: t("Open") },
-              { value: "DRAFT", label: t("Drafts") },
-              { value: "DELIVERED", label: t("Delivered") },
-              { value: "all", label: t("All") },
-              { value: "backorders", label: t("Backorders") },
+        <div className="p-4">
+          <TableToolbar
+            search={
+              waiting
+                ? undefined
+                : { value: search, onChange: onSearch, label: t("Find an order"), placeholder: t("Order, customer or their ref") }
+            }
+            onClearAll={onClear}
+            filters={[
+              {
+                id: "view",
+                label: t("Order view"),
+                value: view,
+                clearedValue: "OPEN",
+                onChange: (value) => onView(value as FulfillmentView),
+                options: [
+                  { value: "OPEN", label: t("Open") },
+                  { value: "DRAFT", label: t("Drafts") },
+                  { value: "DELIVERED", label: t("Delivered") },
+                  { value: "all", label: t("All") },
+                  { value: "backorders", label: t("Backorders") },
+                ],
+              },
+              {
+                id: "from",
+                label: t("From"),
+                kind: "date",
+                value: dateFrom,
+                hidden: (draft) => draft.view === "backorders" || onDateFrom == null,
+                max: (draft) => draft.to || undefined,
+                onChange: (value) => onDateFrom?.(value),
+              },
+              {
+                id: "to",
+                label: t("To"),
+                kind: "date",
+                value: dateTo,
+                hidden: (draft) => draft.view === "backorders" || onDateTo == null,
+                min: (draft) => draft.from || undefined,
+                onChange: (value) => onDateTo?.(value),
+              },
+              {
+                id: "store",
+                label: t("Branch"),
+                value: storeId,
+                hidden: lockedStore,
+                clearedValue: lockedStore ? storeId : "",
+                onChange: onStore,
+                options: [{ value: "", label: t("All branches") }, ...branchOptions],
+              },
             ]}
           />
-          <div className="flex min-w-0 flex-1 flex-wrap items-end justify-end gap-3">
-            {waiting ? null : (
-              <label className="w-full min-w-0 sm:w-64">
-                <span className="sr-only">{t("Find an order")}</span>
-                <span className="relative block">
-                  <Search size={15} aria-hidden="true" className="absolute start-3.5 top-1/2 -translate-y-1/2 text-charcoal/40" />
-                  <input
-                    value={search}
-                    onChange={(event) => onSearch(event.target.value)}
-                    placeholder={t("Order, customer or their ref")}
-                    className="w-full rounded-full border border-line bg-white py-2.5 pe-4 ps-9 text-sm focus:border-accent focus:outline-none"
-                  />
-                </span>
-              </label>
-            )}
-            {waiting || !onDateFrom || !onDateTo ? null : (
-              <AxizDateRange
-                from={dateFrom}
-                to={dateTo}
-                onFromChange={onDateFrom}
-                onToChange={onDateTo}
-                fromLabel={t("From")}
-                toLabel={t("To")}
-              />
-            )}
-            {lockedStore ? null : (
-              <FilterSelect
-                label={t("Branch")}
-                value={storeId}
-                options={[{ value: "", label: t("All branches") }, ...branchOptions]}
-                onChange={onStore}
-                className="w-full sm:w-52"
-              />
-            )}
-            {filtersActive ? (
-              <button type="button" onClick={onClear} className="h-10 text-sm font-semibold text-charcoal/70 hover:text-charcoal">
-                {t("Clear filters")}
-              </button>
-            ) : null}
-          </div>
         </div>
 
         <div className="hidden min-w-0 md:block">
@@ -381,6 +367,8 @@ export function FulfillmentBoardView({
               error={listFailed ? knownError(listError ?? "", t) : null}
               onRetry={onRetry}
               onRowClick={(row) => onOpen(row.id)}
+              rowActionLabel={(row) => row.number}
+              rowActions={(row) => [{ id: "view", label: t("View"), icon: Eye, onSelect: () => onOpen(row.id) }]}
               emptyState={{ icon: Truck, title }}
               pagination={{
                 mode: "server",
@@ -588,6 +576,8 @@ export function FulfillmentBoardPage() {
       onClear={() => {
         setView("OPEN");
         setSearch("");
+        setDateFrom("");
+        setDateTo("");
         if (!lockedStore) setStoreId("");
       }}
       rows={rows}

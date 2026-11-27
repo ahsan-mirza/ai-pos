@@ -273,10 +273,11 @@ export async function activateTerminal(subdomain: string, activationKey: string)
   } catch {
     throw new Error(`Could not reach the API at ${apiBaseUrl}.`);
   }
-  const body = (await response.json().catch(() => null)) as { error?: { message?: string } } | ActivationResponse | null;
+  const body = (await response.json().catch(() => null)) as { error?: { code?: string; message?: string } } | ActivationResponse | null;
   if (!response.ok || body === null || !("device_token" in body)) {
-    const message = body && "error" in body ? body.error?.message : null;
-    throw new Error(message || `Activation failed (${response.status}).`);
+    const detail = body && "error" in body ? body.error : null;
+    const message = detail?.message || `Activation failed (${response.status}).`;
+    throw new Error(detail?.code ? `[${detail.code}] ${message}` : message);
   }
   const status: TerminalStatus = {
     activated: true,

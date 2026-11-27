@@ -115,11 +115,10 @@ describe("fulfillment board", () => {
     expect(html).toContain("Map provider is not configured.");
     expect(html).toContain("overflow-x-auto");
     expect(html).toContain("Find an order");
-    expect(html).toContain("All branches");
+    expect(html).toContain("Filters");
     expect(html).toContain("Showing");
-    expect(html).toContain("Open");
-    expect(html).toContain("Drafts");
-    expect(html).toContain("Backorders");
+    expect(html).toContain("Open orders");
+    expect(html).toContain("Actions for DT-01-SO-000001");
   });
 
   it("reserves a taller map panel only after a provider is configured", () => {
@@ -150,7 +149,7 @@ describe("fulfillment board", () => {
   it("names a search miss and an empty branch separately", () => {
     expect(markup({ rows: [], total: 0, search: "DOCK-42" })).toContain("No orders match these filters.");
     expect(markup({ rows: [], total: 0, storeId: "store-1" })).toContain("No orders in this branch.");
-    expect(markup({ rows: [], total: 0, search: "DOCK-42" })).toContain("Clear filters");
+    expect(markup({ rows: [], total: 0, search: "DOCK-42" })).toContain("Filters");
   });
 
   it("shows the list error and a retry instead of an empty list", () => {
