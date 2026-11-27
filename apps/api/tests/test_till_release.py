@@ -86,7 +86,7 @@ def test_release_frees_the_seat_and_keeps_history(client, session: Session, monk
     )
     assert blocked.status_code == 409
     assert blocked.json()["error"]["code"] == "plan_limit"
-    assert "Release an existing till or upgrade the package" in blocked.json()["error"]["message"]
+    assert "Delete an existing till or upgrade the package" in blocked.json()["error"]["message"]
     full = client.get("/api/v1/devices/capacity", headers=headers)
     assert full.status_code == 200
     assert full.json() == {"used": 1, "limit": 1, "available": 0}
@@ -236,6 +236,76 @@ def test_a_revoked_key_and_a_copied_device_identity_are_rejected(client, session
     current = session.get(Device, uuid.UUID(replacement["id"]))
     assert current is not None and current.revoked_at is None
     assert current.device_public_key_thumbprint != old.device_public_key_thumbprint
+
+
+def test_delete_frees_the_seat_and_the_till_code(client, session: Session, monkeypatch) -> None:
+    seed(client)
+    headers, user_id = admin(client)
+    monkeypatch.setattr("app.console.plan_limits.limit_value", _cap_one)
+    key, till = _create(client, headers, "DEL1")
+    invoice = "DT-01-DEL1-000001"
+    pushed = client.post(
+        "/api/v1/sync/push",
+        headers={"X-Api-Key": key},
+        json={
+            "device_id": "DEL1",
+            "events": [
+                event(
+                    "del-sale",
+                    "sale",
+                    sale([line(CABLE, 1, 1500)], invoice_number=invoice),
+                    occurred_at=recent_occurred_at(),
+                )
+            ],
+        },
+    )
+    assert pushed.status_code == 200, pushed.text
+    sales_before = int(session.scalar(select(func.count()).select_from(Sale)) or 0)
+    blocked = client.post(
+        "/api/v1/devices",
+        headers=headers,
+        json={"store_id": STORE, "code": "DEL2", "name": "Needs a free seat"},
+    )
+    assert blocked.status_code == 409
+    assert blocked.json()["error"]["code"] == "plan_limit"
+
+    reported = client.get("/api/v1/settings", headers={"X-Api-Key": key, "X-Pending-Sales": "1"})
+    assert reported.status_code == 200, reported.text
+    waiting = client.post(f"/api/v1/devices/{till['id']}/delete", headers=headers)
+    assert waiting.status_code == 409
+    assert waiting.json()["error"]["code"] == "pending_offline"
+
+    cleared = client.get("/api/v1/settings", headers={"X-Api-Key": key, "X-Pending-Sales": "0"})
+    assert cleared.status_code == 200, cleared.text
+    deleted = client.post(f"/api/v1/devices/{till['id']}/delete", headers=headers)
+    assert deleted.status_code == 200, deleted.text
+    listed = client.get("/api/v1/devices", headers=headers)
+    assert listed.status_code == 200
+    assert all(item["id"] != till["id"] for item in listed.json())
+    opened = client.get("/api/v1/devices/capacity", headers=headers)
+    assert opened.json()["available"] == 1
+
+    session.expire_all()
+    kept = session.get(Device, uuid.UUID(till["id"]))
+    assert kept is not None and kept.deleted_at is not None and kept.revoked_at is not None
+    assert kept.code != "DEL1"
+    assert int(session.scalar(select(func.count()).select_from(Sale)) or 0) == sales_before
+    sequence = session.scalar(select(DocumentSequence).where(DocumentSequence.prefix == "DT-01-DEL1"))
+    assert sequence is not None and sequence.last_value == 1
+    entry = session.scalar(select(AuditLog).where(AuditLog.action == "device.delete"))
+    assert entry is not None and entry.user_id == uuid.UUID(user_id)
+
+    _, replacement = _create(client, headers, "DEL1")
+    assert replacement["invoice_prefix"] == "DT-01-DEL1"
+    over = client.post(
+        "/api/v1/devices",
+        headers=headers,
+        json={"store_id": STORE, "code": "DEL2", "name": "Over the cap"},
+    )
+    assert over.status_code == 409
+    assert over.json()["error"]["code"] == "plan_limit"
+    gone = client.post(f"/api/v1/devices/{till['id']}/activation-key", headers=headers)
+    assert gone.status_code == 404
 
 
 def test_an_offline_till_is_not_marked_active(client, session: Session) -> None:

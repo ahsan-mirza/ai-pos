@@ -11,7 +11,7 @@ import {
   type RegisterCapacity,
 } from "@ai-pos/shared-types";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { Check, Copy, Download, KeyRound, MonitorSmartphone, Plus, RotateCw, ShieldOff, Trash2, X } from "lucide-react";
+import { Check, Copy, Download, KeyRound, MonitorSmartphone, Plus, Trash2, X } from "lucide-react";
 import { useCallback, useEffect, useId, useState } from "react";
 import { Link } from "react-router-dom";
 import { ErrorNote, GhostButton, PrimaryButton, SelectField, TextField } from "../../components/ui/Field";
@@ -33,7 +33,6 @@ export function RegistersPage() {
   const [capacity, setCapacity] = useState<RegisterCapacity | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
-  const [issued, setIssued] = useState<DeviceKey | null>(null);
   const [activation, setActivation] = useState<{ device: Device; key: DeviceActivationKey } | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [signing, setSigning] = useState<{ ready: boolean; message: string } | null>(null);
@@ -60,46 +59,26 @@ export function RegistersPage() {
     void load();
   }, [load]);
 
-  const act = async (device: Device, action: "rotate" | "revoke" | "release") => {
-    const accepted =
-      action === "release"
-        ? await confirm({
-            title: "Release till",
-            message: `Release ${device.code}? This retires the till and frees its package seat. Sales, invoices, cash movements, audit records, and invoice numbers stay.`,
-            confirmLabel: "Release till",
-            tone: "danger",
-          })
-        : action === "revoke"
-          ? await confirm({
-              title: "Revoke register",
-              message: `Revoke ${device.code}? It stops syncing until it gets a new key.`,
-              confirmLabel: "Revoke",
-              tone: "danger",
-            })
-          : await confirm({
-              title: "Issue a new key",
-              message: `Issue a new key for ${device.code}? The old key stops working immediately.`,
-              confirmLabel: "Issue key",
-              tone: "danger",
-            });
+  const removeTill = async (device: Device) => {
+    const accepted = await confirm({
+      title: "Delete till",
+      message: `Delete ${device.code}? This frees its package seat so you can register another till, up to the number included in your package. Sales, invoices, cash movements, and invoice numbers stay.`,
+      confirmLabel: "Delete till",
+      tone: "danger",
+    });
     if (!accepted) return;
     try {
-      if (action === "rotate") setIssued(await apiPost<DeviceKey>(`/api/v1/devices/${device.id}/rotate`, {}));
-      else if (action === "release") {
-        await apiPost<Device>(`/api/v1/devices/${device.id}/release`, {});
-        setToast(`${device.code} released. Its package seat is free.`);
-      } else {
-        await apiPost<Device>(`/api/v1/devices/${device.id}/revoke`, {});
-        setToast(`${device.code} revoked.`);
-      }
+      await apiPost<Device>(`/api/v1/devices/${device.id}/delete`, {});
+      setToast(`${device.code} deleted. Its package seat is free.`);
       await load();
     } catch (caught) {
-      setError(errorMessage(caught, "Could not update the register."));
+      setError(errorMessage(caught, "Could not delete the till."));
     }
   };
 
   const issueActivation = async (device: Device) => {
-    if (signing && !signing.ready) {
+    const waiting = !device.activation_status || device.activation_status === "pending";
+    if (signing && !signing.ready && !waiting) {
       setError(signing.message);
       return;
     }
@@ -158,11 +137,6 @@ export function RegistersPage() {
             </PrimaryButton>
           </div>
         </div>
-        {signing && !signing.ready ? (
-          <p role="alert" className="mb-4 rounded-2xl bg-amber-50 px-4 py-3 text-sm text-amber-950 ring-1 ring-amber-200">
-            {signing.message} An activation key is not issued until signing is ready, so a till is not left half-registered.
-          </p>
-        ) : null}
         <ErrorNote message={error} />
         <div className="overflow-x-auto">
           <table className="w-full min-w-[880px] text-left text-sm">
@@ -215,35 +189,23 @@ export function RegistersPage() {
                           actions={[
                             {
                               id: "activate",
-                              label: "Activate",
+                              label: "Activation key",
                               icon: KeyRound,
-                              disabled: signing !== null && !signing.ready,
-                              title: signing && !signing.ready ? signing.message : "Generate activation key",
+                              disabled:
+                                signing !== null && !signing.ready && device.activation_status !== "pending",
+                              title:
+                                signing && !signing.ready && device.activation_status !== "pending"
+                                  ? signing.message
+                                  : "Show the activation key",
                               onSelect: () => void issueActivation(device),
                             },
                             {
-                              id: "rotate",
-                              label: "Rotate key",
-                              icon: RotateCw,
-                              title: "Issue a new key",
-                              onSelect: () => void act(device, "rotate"),
-                            },
-                            {
-                              id: "revoke",
-                              label: "Revoke",
-                              icon: ShieldOff,
-                              tone: "danger",
-                              hidden: Boolean(device.revoked_at),
-                              onSelect: () => void act(device, "revoke"),
-                            },
-                            {
-                              id: "release",
-                              label: "Release",
+                              id: "delete",
+                              label: "Delete",
                               icon: Trash2,
                               tone: "danger",
-                              hidden: Boolean(device.revoked_at),
-                              title: "Release this till and free its package seat",
-                              onSelect: () => void act(device, "release"),
+                              title: "Delete this till and free its package seat",
+                              onSelect: () => void removeTill(device),
                             },
                           ]}
                         />
@@ -273,7 +235,6 @@ export function RegistersPage() {
           }}
         />
       ) : null}
-      {issued ? <KeyModal issued={issued} onClose={() => setIssued(null)} /> : null}
       {activation ? (
         <ActivationModal
           device={activation.device}
@@ -653,47 +614,5 @@ function CopyChip({
         </motion.span>
       </AnimatePresence>
     </motion.button>
-  );
-}
-
-function KeyModal({ issued, onClose }: { issued: DeviceKey; onClose: () => void }) {
-  const [copied, setCopied] = useState(false);
-  const [copyError, setCopyError] = useState<string | null>(null);
-  return (
-    <Modal
-      title={`Key for ${issued.device.code}`}
-      subtitle="Copy it now. It cannot be shown again."
-      onClose={onClose}
-      footer={<PrimaryButton onClick={onClose}>Done</PrimaryButton>}
-    >
-      <div className="rounded-2xl bg-charcoal p-4 text-white">
-        <p className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-white/50">
-          <KeyRound size={14} aria-hidden="true" /> DEVICE_KEY
-        </p>
-        <p className="mt-2 flex items-center justify-between gap-3">
-          <span className="min-w-0 break-all font-mono text-sm">{issued.key}</span>
-          <button
-            type="button"
-            onClick={() => {
-              setCopied(false);
-              setCopyError(null);
-              void copyVisible(issued.key).then((ok) => {
-                if (ok) setCopied(true);
-                else setCopyError("Could not copy the key. Select it and copy it manually.");
-              });
-            }}
-            aria-label={copied ? "Copied" : "Copy key"}
-            title={copied ? "Copied" : "Copy key"}
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-white/80 hover:bg-white/10"
-          >
-            {copied ? <Check size={16} aria-hidden="true" /> : <Copy size={16} aria-hidden="true" />}
-          </button>
-        </p>
-      </div>
-      {copyError ? <p className="mt-2 text-sm text-danger">{copyError}</p> : null}
-      <p className="mt-4 text-sm text-charcoal/60">
-        Invoices from this till are numbered <span className="font-mono">{issued.device.invoice_prefix}-000001</span> onward.
-      </p>
-    </Modal>
   );
 }

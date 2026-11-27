@@ -35,7 +35,14 @@ ONLINE_WINDOW = timedelta(minutes=10)
 
 
 def _active_register_count(db: Session) -> int:
-    return int(db.scalar(select(func.count()).select_from(Device).where(Device.revoked_at.is_(None))) or 0)
+    return int(
+        db.scalar(
+            select(func.count())
+            .select_from(Device)
+            .where(Device.revoked_at.is_(None), Device.deleted_at.is_(None))
+        )
+        or 0
+    )
 
 
 def _require_register_seat(db: Session) -> None:
@@ -48,7 +55,7 @@ def _require_register_seat(db: Session) -> None:
     raise ApiError(
         409,
         "plan_limit",
-        f"This plan includes {cap} registers. Release an existing till or upgrade the package.",
+        f"This plan includes {cap} registers. Delete an existing till or upgrade the package.",
     )
 
 
@@ -119,7 +126,7 @@ def _get(db: Session, principal: Principal, device_id: uuid.UUID) -> Device:
 
 
 def list_devices(db: Session, principal: Principal, store_id: uuid.UUID | None) -> list[DeviceOut]:
-    statement = select(Device).order_by(Device.store_id, Device.code)
+    statement = select(Device).where(Device.deleted_at.is_(None)).order_by(Device.store_id, Device.code)
     scope = principal.store_id or store_id
     if scope is not None:
         statement = statement.where(Device.store_id == scope)
@@ -171,6 +178,8 @@ def create_device(db: Session, principal: Principal, data: DeviceCreate) -> Devi
 
 def rotate_key(db: Session, principal: Principal, device_id: uuid.UUID) -> DeviceKeyOut:
     device = _get(db, principal, device_id)
+    if device.deleted_at is not None:
+        raise ApiError(404, "not_found", "Register was not found.")
     if device.revoked_at is not None:
         _require_register_seat(db)
     key, digest = _new_key()
@@ -190,19 +199,25 @@ def rotate_key(db: Session, principal: Principal, device_id: uuid.UUID) -> Devic
     return DeviceKeyOut(device=device_out(db, device), key=key)
 
 
+def _block_if_unsynced(device: Device, verb: str) -> None:
+    from app.services.settings_service import offline_pending_for
+
+    if offline_pending_for(str(device.id)) > 0:
+        raise ApiError(
+            409,
+            "pending_offline",
+            f"This till still has unsynced transactions. Sync it before {verb} it.",
+        )
+
+
 def _retire(db: Session, principal: Principal, device_id: uuid.UUID, *, action: str) -> DeviceOut:
     """Stops the till and frees its package seat. Sales, sequences, and the device row stay."""
     device = _get(db, principal, device_id)
+    if device.deleted_at is not None:
+        raise ApiError(404, "not_found", "Register was not found.")
     if device.revoked_at is None:
-        from app.services.settings_service import offline_pending_for
-
-        if offline_pending_for(str(device.id)) > 0:
-            verb = "releasing" if action == "device.release" else "revoking"
-            raise ApiError(
-                409,
-                "pending_offline",
-                f"This till still has unsynced transactions. Sync it before {verb} it.",
-            )
+        verb = "releasing" if action == "device.release" else "revoking"
+        _block_if_unsynced(device, verb)
         now = datetime.now(UTC)
         device.revoked_at = now
         db.execute(
@@ -237,6 +252,43 @@ def release_device(db: Session, principal: Principal, device_id: uuid.UUID) -> D
     return _retire(db, principal, device_id, action="device.release")
 
 
+def delete_device(db: Session, principal: Principal, device_id: uuid.UUID) -> DeviceOut:
+    """Frees the package seat and the till code. Sales, cash, and invoice numbers stay on this row."""
+    device = _get(db, principal, device_id)
+    if device.deleted_at is not None:
+        raise ApiError(404, "not_found", "Register was not found.")
+    now = datetime.now(UTC)
+    if device.revoked_at is None:
+        _block_if_unsynced(device, "deleting")
+        device.revoked_at = now
+        db.execute(
+            update(DeviceActivation)
+            .where(DeviceActivation.device_id == device.id, DeviceActivation.used_at.is_(None))
+            .values(expires_at=now)
+        )
+    original = device.code
+    device.deleted_at = now
+    device.code = f"Z{device.id.hex[:11]}"
+    audit.record(
+        db,
+        action_type="UPDATE",
+        action="device.delete",
+        target_entity="Device",
+        target_entity_id=device.id,
+        user=principal.user,
+        store_id=device.store_id,
+        new_values={
+            "code": original,
+            "store_id": str(device.store_id),
+            "revoked_at": device.revoked_at.isoformat() if device.revoked_at is not None else None,
+            "deleted_at": now.isoformat(),
+        },
+    )
+    db.commit()
+    db.refresh(device)
+    return device_out(db, device)
+
+
 ACTIVATION_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"  # no 0/O or 1/I to misread
 ACTIVATION_TTL = timedelta(hours=24)
 
@@ -252,6 +304,8 @@ def _hash_activation(value: str) -> str:
 def issue_activation_key(db: Session, principal: Principal, device_id: uuid.UUID) -> ActivationKeyOut:
     """A fresh one-time key for this register; any earlier unused key stops working."""
     device = _get(db, principal, device_id)
+    if device.deleted_at is not None:
+        raise ApiError(404, "not_found", "Register was not found.")
     now = datetime.now(UTC)
     db.execute(
         update(DeviceActivation)
@@ -305,7 +359,7 @@ def activate_terminal(db: Session, data: TerminalActivate) -> TerminalActivation
         raise ApiError(401, "activation_invalid", "This activation key is wrong, already used, or expired.")
     device = db.get(Device, activation.device_id)
     store = db.get(Store, device.store_id) if device is not None else None
-    if device is None or store is None:
+    if device is None or store is None or device.deleted_at is not None:
         raise ApiError(401, "activation_invalid", "This activation key is wrong, already used, or expired.")
     from app.services.settings_service import offline_pending_for
 

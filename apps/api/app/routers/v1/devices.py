@@ -80,3 +80,8 @@ def revoke(device_id: uuid.UUID, db: Db, principal: CanManage) -> DeviceOut:
 @router.post("/{device_id}/release", response_model=DeviceOut)
 def release(device_id: uuid.UUID, db: Db, principal: CanManage) -> DeviceOut:
     return device_service.release_device(db, principal, device_id)
+
+
+@router.post("/{device_id}/delete", response_model=DeviceOut)
+def delete_device(device_id: uuid.UUID, db: Db, principal: CanManage) -> DeviceOut:
+    return device_service.delete_device(db, principal, device_id)

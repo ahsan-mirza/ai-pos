@@ -30,6 +30,8 @@ class Device(TenantScoped, TimestampMixin, Base):
     entitlement_revision: Mapped[int | None] = mapped_column(Integer, nullable=True)
     entitlement_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Hidden from the register list. The row stays so sales and invoice series keep their device.
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     # Set only by demo enrollment. A client request cannot turn a production register into a demo register.
     is_demo: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=false())
     created_by_id: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True), ForeignKey("users.id"), nullable=True)
