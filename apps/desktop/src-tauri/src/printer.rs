@@ -510,6 +510,8 @@ pub struct RasterJob {
 const DRAWER_KICK: [u8; 5] = [0x1b, b'p', 0, 25, 250];
 /// One ESC/POS graphic band. 256 encodes as a zero low byte, and some printers then print only the leftover rows.
 const BAND_ROWS: u32 = 128;
+/// One text line at 203 dpi. The pre-cut feed is this tall so the cutter misses the last line.
+const LINE_DOTS: u8 = 10;
 const KICK_GAP_SECS: i64 = 3;
 const SPOOLER_TIMEOUT: Duration = Duration::from_secs(30);
 static PRINTING: AtomicBool = AtomicBool::new(false);
@@ -1118,6 +1120,21 @@ fn last_diagnostic() -> Option<PrintDiagnostic> {
 }
 
 fn store_diagnostic(diagnostic: PrintDiagnostic) {
+    eprintln!(
+        "ai-pos: raster transport={} payload={} width={} height={} first_ink_row={} last_ink_row={} black_pixels={} bytes_submitted={} bytes_accepted={:?} spooler_job_id={:?} windows_error={:?} native_error={}",
+        diagnostic.transport,
+        diagnostic.payload_type,
+        diagnostic.width,
+        diagnostic.height,
+        diagnostic.first_ink_row.map(|row| row.to_string()).unwrap_or_else(|| "none".into()),
+        diagnostic.last_ink_row.map(|row| row.to_string()).unwrap_or_else(|| "none".into()),
+        diagnostic.black_pixels,
+        diagnostic.bytes_submitted,
+        diagnostic.bytes_accepted,
+        diagnostic.spooler_job_id,
+        diagnostic.windows_error,
+        diagnostic.native_error.as_deref().unwrap_or(""),
+    );
     if let Ok(mut slot) = LAST_DIAGNOSTIC.lock() {
         *slot = Some(diagnostic);
     }
@@ -1458,7 +1475,87 @@ pub fn escpos_raster(job: &RasterJob, copies: u32, kick: &[u8]) -> Result<Vec<u8
             out.extend_from_slice(&job.data[offset..offset + (rows * row_bytes) as usize]);
             start += rows;
         }
-        out.extend_from_slice(&[0x1b, b'd', 4, 0x1d, b'V', 66, 0]);
+        append_short_cut(&mut out);
+        if copy == 0 && job.kick_drawer && !kick.is_empty() {
+            out.extend_from_slice(kick);
+        }
+    }
+    Ok(out)
+}
+
+/// Ten dots, then the cut. A longer feed is the blank tail on the slip.
+fn append_short_cut(out: &mut Vec<u8>) {
+    out.extend_from_slice(&[0x1b, b'3', LINE_DOTS, 0x1b, b'd', 1, 0x1d, b'V', 66, 0]);
+}
+
+/// Rows of the top ink block. The caller sends the whole slip in `data`; this is only the logo and header.
+pub fn header_raster_rows(data: &[u8], width: u32, height: u32) -> u32 {
+    let row_bytes = width.div_ceil(8) as usize;
+    if row_bytes == 0 || height == 0 || data.len() < row_bytes {
+        return 1;
+    }
+    let cap = height.min(320);
+    let mut seen_ink = false;
+    let mut white = 0u32;
+    let mut end = 1u32;
+    for row in 0..cap {
+        let start = row as usize * row_bytes;
+        let ink = start + row_bytes <= data.len() && data[start..start + row_bytes].iter().any(|byte| *byte != 0);
+        if ink {
+            seen_ink = true;
+            white = 0;
+            end = row + 1;
+        } else if seen_ink {
+            white += 1;
+            if white >= 16 {
+                return end;
+            }
+        }
+    }
+    end
+}
+
+fn append_raster_bands(out: &mut Vec<u8>, data: &[u8], width: u32, rows: u32) {
+    let row_bytes = width.div_ceil(8);
+    let mut start = 0u32;
+    while start < rows {
+        let band = (rows - start).min(BAND_ROWS);
+        out.extend_from_slice(&[0x1d, b'v', b'0', 0]);
+        out.extend_from_slice(&[(row_bytes & 0xff) as u8, (row_bytes >> 8) as u8]);
+        out.extend_from_slice(&[(band & 0xff) as u8, (band >> 8) as u8]);
+        let offset = (start * row_bytes) as usize;
+        let end = offset + (band * row_bytes) as usize;
+        out.extend_from_slice(&data[offset..end.min(data.len())]);
+        start += band;
+    }
+}
+
+/// True when raw ESC/POS text will still contain a letter or digit after non-ASCII characters are dropped.
+pub fn plain_text_has_ascii(text: &str) -> bool {
+    text.chars().any(|ch| ch.is_ascii_alphanumeric())
+}
+
+/// Logo and header as a short raster, then the plain lines. One kick, and only on the first copy.
+pub fn escpos_hybrid_receipt(job: &RasterJob, copies: u32, kick: &[u8]) -> Result<Vec<u8>, String> {
+    validate_raster(job)?;
+    let rows = header_raster_rows(&job.data, job.width, job.height).clamp(1, job.height);
+    let mut out = Vec::with_capacity(job.data.len().min(8_192) + job.plain_text.len() + 64);
+    for copy in 0..copies.max(1) {
+        out.extend_from_slice(&[0x1b, b'@', 0x1b, b'3', 0]);
+        append_raster_bands(&mut out, &job.data, job.width, rows);
+        out.extend_from_slice(&[0x1b, b'a', 0, 0x1b, b'3', LINE_DOTS]);
+        for line in job.plain_text.split(['\n', '\r']) {
+            if line.is_empty() {
+                continue;
+            }
+            for byte in line.bytes() {
+                if byte.is_ascii() && byte != b'\n' && byte != b'\r' {
+                    out.push(byte);
+                }
+            }
+            out.push(b'\n');
+        }
+        append_short_cut(&mut out);
         if copy == 0 && job.kick_drawer && !kick.is_empty() {
             out.extend_from_slice(kick);
         }
@@ -1469,8 +1566,15 @@ pub fn escpos_raster(job: &RasterJob, copies: u32, kick: &[u8]) -> Result<Vec<u8
 /// Plain-text ESC/POS diagnostic. ASCII only. No raster, no density command, and no drawer pulse.
 #[cfg_attr(not(test), allow(dead_code))]
 pub fn escpos_text_receipt(lines: &[&str]) -> Vec<u8> {
-    let mut out = vec![0x1b, b'@', 0x1b, b'a', 0, 0x1b, b'3', 30];
-    for line in lines {
+    let mut out = vec![0x1b, b'@', 0x1b, b'a', 0, 0x1b, b'3', LINE_DOTS];
+    let mut body: Vec<&str> = lines.iter().copied().collect();
+    while body.first().is_some_and(|line| line.trim().is_empty()) {
+        body.remove(0);
+    }
+    while body.last().is_some_and(|line| line.trim().is_empty()) {
+        body.pop();
+    }
+    for line in body {
         for byte in line.bytes() {
             if byte.is_ascii() && byte != b'\n' && byte != b'\r' {
                 out.push(byte);
@@ -1478,7 +1582,7 @@ pub fn escpos_text_receipt(lines: &[&str]) -> Vec<u8> {
         }
         out.push(b'\n');
     }
-    out.extend_from_slice(&[0x1b, b'd', 3, 0x1d, b'V', 66, 0]);
+    append_short_cut(&mut out);
     out
 }
 
@@ -1522,9 +1626,12 @@ pub fn describe_escpos(bytes: &[u8]) -> String {
 }
 
 pub fn describe_gdi(width: u32, height: u32) -> String {
-    let (paper_w, paper_h) = crate::printer_gdi::band_paper_tenths(width, height);
+    let page_rows = height.saturating_add(crate::printer_gdi::LINE_GAP * 2);
+    let (paper_w, paper_h) = crate::printer_gdi::band_paper_tenths(width, page_rows);
     format!(
-        "GDI one page {width}x{height} at 203 dpi, paper {paper_w}x{paper_h} tenths, one unscaled 1-bit blit. No raw ESC/POS. No drawer pulse."
+        "GDI one page {width}x{page_rows}, {} dot margin, {} dot side inset, paper {paper_w}x{paper_h} tenths. No raw ESC/POS. No drawer pulse.",
+        crate::printer_gdi::LINE_GAP,
+        crate::printer_gdi::SIDE_INSET
     )
 }
 
@@ -2161,9 +2268,9 @@ fn record_print(
         payload_bytes,
         payload_type: payload_type.into(),
         encoding: match payload_type {
-            "escpos" | "escpos-passthrough" => "ESC/POS",
+            "escpos" | "escpos-hybrid" | "escpos-passthrough" => "ESC/POS",
             "text" => "text",
-            _ => "BGR24",
+            _ => "1-bit",
         }
         .into(),
         queue: resolved.queue.clone(),
@@ -2296,11 +2403,18 @@ pub fn print_raster(db: &Db, job: &RasterJob) -> Result<(), String> {
     let _ = take_spooler_trace();
     PRINTING.store(true, Ordering::Relaxed);
     let result = match resolved.transport {
-        crate::printer_discovery::PrintTransport::EscPos => match escpos_raster(&printable, settings.copies, kick) {
+        crate::printer_discovery::PrintTransport::EscPos => {
+            let payload_type = if plain_text_has_ascii(&printable.plain_text) { "escpos-hybrid" } else { "escpos" };
+            let built = if payload_type == "escpos" {
+                escpos_raster(&printable, settings.copies, kick)
+            } else {
+                escpos_hybrid_receipt(&printable, settings.copies, if kicking { kick } else { &[] })
+            };
+            match built {
             Ok(bytes) => {
                 if !crate::printer_gdi::graphics_precede_cut(&bytes) {
                     let message = crate::printer_discovery::RENDER_FAILED.to_string();
-                    record_print(&printable, &resolved, bytes.len(), "escpos", false, Some(&message), &describe_escpos(&bytes));
+                    record_print(&printable, &resolved, bytes.len(), payload_type, false, Some(&message), &describe_escpos(&bytes));
                     Err(message)
                 } else {
                     let summary = describe_escpos(&bytes);
@@ -2309,7 +2423,7 @@ pub fn print_raster(db: &Db, job: &RasterJob) -> Result<(), String> {
                         &printable,
                         &resolved,
                         bytes.len(),
-                        "escpos",
+                        payload_type,
                         sent.is_ok(),
                         sent.as_ref().err().map(String::as_str),
                         &summary,
@@ -2318,9 +2432,10 @@ pub fn print_raster(db: &Db, job: &RasterJob) -> Result<(), String> {
                 }
             }
             Err(message) => {
-                record_print(&printable, &resolved, 0, "escpos", false, Some(&message), "ESC/POS payload was not built.");
+                record_print(&printable, &resolved, 0, payload_type, false, Some(&message), "ESC/POS payload was not built.");
                 Err(message)
             }
+        }
         },
         crate::printer_discovery::PrintTransport::WindowsGdi => {
             let text_only = crate::printer_discovery::is_text_only_driver(&resolved.driver);
@@ -2763,6 +2878,33 @@ mod tests {
     }
 
     #[test]
+    fn hybrid_keeps_the_header_raster_and_the_text_and_kicks_once() {
+        let width = 8u32;
+        let height = 40u32;
+        let mut data = vec![0u8; height as usize];
+        data[0] = 0b1000_0000;
+        data[2] = 0b0100_0000;
+        data[30] = 0xff;
+        let mut job = marked_job(width, height, data);
+        job.kick_drawer = true;
+        job.plain_text = "Cappuccino\nTotal AED 55.75\n".into();
+        assert_eq!(header_raster_rows(&job.data, width, height), 3);
+        let bytes = escpos_hybrid_receipt(&job, 2, &DRAWER_KICK).unwrap();
+        let bands = escpos_band_rows(&bytes);
+        assert_eq!(bands.iter().sum::<u32>(), 3 * 2);
+        assert!(bands.iter().all(|rows| *rows <= 128));
+        assert!(bytes.windows(10).any(|window| window == b"Cappuccino"));
+        assert!(bytes.windows(7).any(|window| window == b"AED 55."));
+        assert_eq!(bytes.windows(5).filter(|window| *window == DRAWER_KICK).count(), 1);
+        assert!(!leading_feed(&bytes));
+        assert!(crate::printer_gdi::graphics_precede_cut(&bytes));
+        let full = escpos_raster(&job, 1, &[]).unwrap();
+        assert_eq!(escpos_band_rows(&full).iter().sum::<u32>(), height);
+        assert!(!plain_text_has_ascii("فاتورة\nضريبة"));
+        assert!(plain_text_has_ascii("Total AED 55.75"));
+    }
+
+    #[test]
     fn header_items_and_footer_survive_in_order_without_a_leading_feed() {
         let width = 576u32;
         let height = 300u32;
@@ -2817,6 +2959,8 @@ mod tests {
         }
         assert!(!leading_feed(&bytes));
         assert!(!bytes.windows(2).any(|window| window == [0x1b, b'p']));
+        assert!(bytes.windows(3).any(|window| window == [0x1b, b'3', 10]));
+        assert!(bytes.windows(3).any(|window| window == [0x1b, b'd', 1]));
         assert!(bytes.windows(3).any(|window| window == [0x1d, b'V', 66]));
         let end = bytes.windows(11).position(|window| window == b"END OF TEST").unwrap();
         let cut = bytes.windows(3).position(|window| window == [0x1d, b'V', 66]).unwrap();

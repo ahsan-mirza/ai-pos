@@ -39,6 +39,8 @@ export interface Catalog {
   products: ProductUpsert[];
   source: "api" | "cache";
   message: string | null;
+  /** The server cursor matches this register. Keep the products already on screen. */
+  unchanged?: boolean;
 }
 
 /** A failed refresh keeps the products already on screen. A successful empty catalogue is a real empty catalogue. */
@@ -106,13 +108,22 @@ async function fetchCatalog(): Promise<Catalog> {
   let catalog: Catalog;
   if (inTauri()) {
     const snapshot = await refreshProducts();
-    const products = withoutBundledDemo(snapshot.products);
-    if (snapshot.source === "api") remember(products);
-    catalog = {
-      products,
-      source: snapshot.source === "api" ? "api" : "cache",
-      message: snapshot.source === "api" ? null : products.length > 0 ? OFFLINE_NOTICE : UNAVAILABLE_NOTICE,
-    };
+    if (snapshot.unchanged) {
+      catalog = {
+        products: withoutBundledDemo(snapshot.products),
+        source: "api",
+        message: null,
+        unchanged: true,
+      };
+    } else {
+      const products = withoutBundledDemo(snapshot.products);
+      if (snapshot.source === "api") remember(products);
+      catalog = {
+        products,
+        source: snapshot.source === "api" ? "api" : "cache",
+        message: snapshot.source === "api" ? null : products.length > 0 ? OFFLINE_NOTICE : UNAVAILABLE_NOTICE,
+      };
+    }
   } else {
     try {
       const products = withoutBundledDemo(await listProducts());
@@ -125,7 +136,7 @@ async function fetchCatalog(): Promise<Catalog> {
         : { products: [], source: "cache", message: UNAVAILABLE_NOTICE };
     }
   }
-  const ready = { ...catalog, products: present(catalog.products) };
+  const ready = { ...catalog, products: present(catalog.products), unchanged: catalog.unchanged };
   console.info(
     `[POS_API_PERF] endpoint=catalog source=${ready.source} count=${ready.products.length} total_ms=${Math.round(performance.now() - started)}`,
   );

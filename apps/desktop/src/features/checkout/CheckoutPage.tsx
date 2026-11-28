@@ -526,10 +526,17 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
     try {
       const local = await localCatalog();
       if (local && local.products.length > 0) {
-        setCatalog((current) => (current.source === "api" ? current : local));
+        setCatalog((current) => (current.products.length > 0 ? current : local));
         setCatalogLoaded(true);
       }
       const next = await loadCatalog();
+      if (next.unchanged) {
+        setCatalog((current) => {
+          if (current.products.length > 0) return { ...current, source: "api", message: null };
+          return next.products.length > 0 ? next : (local ?? current);
+        });
+        return;
+      }
       setCatalog((current) => mergeCatalog(current.products, next));
     } catch (error) {
       setCatalog((current) => ({

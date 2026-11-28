@@ -86,6 +86,8 @@ struct CatalogSnapshot {
     products: Vec<db::ProductRow>,
     source: &'static str,
     message: Option<String>,
+    /// The rows already on disk match the server cursor, so nothing was downloaded or rewritten.
+    unchanged: bool,
 }
 
 #[tauri::command]
@@ -1253,29 +1255,55 @@ async fn refresh_products(
     let expected = saved_terminal(&state).ok().map(|saved| expected_binding(&saved));
     let snapshot =
         tauri::async_runtime::spawn_blocking(move || -> Result<CatalogSnapshot, String> {
-            match sync::fetch_products(&config) {
-                Ok(products) => {
-                    db.replace_products(&products)?;
-                    if let Some(expected) = expected.as_ref() {
-                        // A feed error leaves the catalogue in place. An invalid manifest is not installed.
-                        let _ = sync::install_allocations(&config, &db, expected);
+            let cached = db.list_products()?;
+            // One small cursor check. A matching cursor skips the full catalogue download and the
+            // delete-and-insert that rewrites the search index. A missed cursor uses what is already
+            // on disk instead of waiting out a second, longer download.
+            match sync::catalog_revision(&config) {
+                Ok(revision) => {
+                    let stored = db.local_meta("catalog_revision").unwrap_or(None);
+                    if stored.as_deref() == Some(revision.as_str()) && !cached.is_empty() {
+                        return Ok(CatalogSnapshot {
+                            products: cached,
+                            source: "api",
+                            message: None,
+                            unchanged: true,
+                        });
                     }
-                    Ok(CatalogSnapshot {
-                        products,
-                        source: "api",
-                        message: None,
-                    })
+                    match sync::fetch_products(&config) {
+                        Ok(products) => {
+                            db.replace_products(&products)?;
+                            let _ = db.set_local_meta("catalog_revision", &revision);
+                            if let Some(expected) = expected.as_ref() {
+                                // A feed error leaves the catalogue in place. An invalid manifest is not installed.
+                                let _ = sync::install_allocations(&config, &db, expected);
+                            }
+                            Ok(CatalogSnapshot {
+                                products,
+                                source: "api",
+                                message: None,
+                                unchanged: false,
+                            })
+                        }
+                        Err(reason) => Ok(CatalogSnapshot {
+                            products: cached,
+                            source: "cache",
+                            message: Some(reason),
+                            unchanged: false,
+                        }),
+                    }
                 }
                 Err(reason) => Ok(CatalogSnapshot {
-                    products: db.list_products()?,
+                    products: cached,
                     source: "cache",
                     message: Some(reason),
+                    unchanged: false,
                 }),
             }
         })
         .await
         .map_err(|err| err.to_string())??;
-    if snapshot.source == "api" {
+    if snapshot.source == "api" && !snapshot.unchanged {
         let urls = media_cache::urls(&snapshot.products);
         tauri::async_runtime::spawn(async move {
             let saved = tauri::async_runtime::spawn_blocking(move || {
@@ -1722,11 +1750,14 @@ struct ConnectivityStatus {
 }
 
 #[tauri::command]
-fn connectivity_status(state: tauri::State<AppState>) -> Result<ConnectivityStatus, String> {
+async fn connectivity_status(state: tauri::State<'_, AppState>) -> Result<ConnectivityStatus, String> {
     let kind = connectivity::endpoint_kind(&state.config.api_base_url, !cfg!(debug_assertions));
     let activated = !state.config.api_base_url.contains("not-activated") && !state.config.api_key.is_empty();
+    let url = state.config.api_base_url.clone();
     let reachable = if connectivity::may_probe(kind) {
-        probe_server(&state.config.api_base_url)
+        tauri::async_runtime::spawn_blocking(move || probe_server(&url))
+            .await
+            .unwrap_or(false)
     } else {
         false
     };
@@ -1754,7 +1785,8 @@ fn connectivity_status(state: tauri::State<AppState>) -> Result<ConnectivityStat
 
 fn probe_server(url: &str) -> bool {
     let client = reqwest::blocking::Client::builder()
-        .timeout(std::time::Duration::from_secs(8))
+        .connect_timeout(std::time::Duration::from_secs(2))
+        .timeout(std::time::Duration::from_secs(3))
         .build();
     let Ok(client) = client else {
         return false;

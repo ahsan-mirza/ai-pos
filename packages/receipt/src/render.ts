@@ -1,9 +1,10 @@
 import QRCode from "qrcode";
-import { packBits, receiptOps, type ReceiptDoc, type ReceiptOp } from "./doc";
+import { packBits, receiptOps, trimVerticalMargin, type ReceiptDoc, type ReceiptOp } from "./doc";
 
 const FONT = "Archivo, 'Segoe UI', Tahoma, sans-serif";
 const ARABIC_FONT = "'Noto Naskh Arabic', Tahoma, sans-serif";
-const PADDING = 12;
+const PADDING = 36;
+const PAD_Y = 10;
 
 /** Printable dots across the paper: 576 for 80 mm, 384 for 58 mm. */
 export const PAPER_DOTS = { "80mm": 576, "58mm": 384 } as const;
@@ -72,7 +73,7 @@ function layout(
   images: Map<string, HTMLImageElement>,
 ): number {
   const inner = width - PADDING * 2;
-  let y = PADDING;
+  let y = PAD_Y;
   ctx.fillStyle = "#000";
   ctx.strokeStyle = "#000";
   ctx.textBaseline = "top";
@@ -172,7 +173,7 @@ function layout(
       y += lines.length * (op.size + 6);
     }
   }
-  return Math.ceil(y + PADDING);
+  return Math.ceil(y + PAD_Y);
 }
 
 export interface RenderedReceipt {
@@ -210,10 +211,11 @@ export async function renderOps(ops: ReceiptOp[], width: number): Promise<Render
   ctx.fillStyle = "#fff";
   ctx.fillRect(0, 0, width, height);
   layout(ctx, ops, width, true, images);
+  const trimmed = trimVerticalMargin(packBits(ctx.getImageData(0, 0, width, height).data, width, height), width, height, PAD_Y);
   return {
     width,
-    height,
+    height: trimmed.height,
     canvas,
-    bits: () => packBits(ctx.getImageData(0, 0, width, height).data, width, height),
+    bits: () => trimmed.data,
   };
 }

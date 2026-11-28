@@ -32,6 +32,8 @@ export interface CatalogSnapshot {
   products: ProductUpsert[];
   source: "api" | "cache";
   message: string | null;
+  /** True when these rows were already on disk and nothing was downloaded. */
+  unchanged?: boolean;
 }
 
 export interface CashierProfile {

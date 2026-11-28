@@ -264,7 +264,7 @@ export function receiptOps(doc: ReceiptDoc): ReceiptOp[] {
       ops.push({ kind: "text", text: doc.returnCode.slice(0, 8).toUpperCase(), size: 20, align: "center" });
     }
     const giftNote = written(arabic ? brand?.footer_text_ar : brand?.footer_text) ?? copy.gift;
-    ops.push({ kind: "gap", height: 14 }, ...centered(giftNote, 20, arabic || hasArabic(giftNote)), { kind: "gap", height: 24 });
+    ops.push({ kind: "gap", height: 10 }, ...centered(giftNote, 20, arabic || hasArabic(giftNote)), { kind: "gap", height: 10 });
     return ops;
   }
   if (doc.customer) ops.push(row(copy.customer, doc.customer, 20));
@@ -290,11 +290,11 @@ export function receiptOps(doc: ReceiptDoc): ReceiptOp[] {
   if (doc.changeCents !== null && doc.changeCents > 0) {
     ops.push(row(copy.change, money(doc.changeCents), 22, true));
   }
-  if (doc.qr) ops.push({ kind: "gap", height: 14 }, { kind: "qr", data: doc.qr, size: 220 });
+  if (doc.qr) ops.push({ kind: "gap", height: 10 }, { kind: "qr", data: doc.qr, size: 220 });
   const customFooter = written(arabic ? brand?.footer_text_ar : brand?.footer_text);
   const footer = customFooter ?? written(doc.footer) ?? copy.thankYou;
-  if (footer) ops.push({ kind: "gap", height: 14 }, ...centered(footer, 20, arabic || hasArabic(footer)));
-  ops.push({ kind: "gap", height: 24 });
+  if (footer) ops.push({ kind: "gap", height: 10 }, ...centered(footer, 20, arabic || hasArabic(footer)));
+  ops.push({ kind: "gap", height: 10 });
   return ops;
 }
 
@@ -323,7 +323,9 @@ export function receiptPlainText(doc: ReceiptDoc, columns = 42): string {
     else if (op.kind === "row") lines.push(pair(op.left, op.right));
     else if (op.kind === "rule") lines.push((op.dashed ? "-" : "=").repeat(width));
   }
-  return `${lines.join("\r\n")}\r\n\r\n\r\n`;
+  while (lines.length > 0 && lines[0]?.trim() === "") lines.shift();
+  while (lines.length > 0 && lines[lines.length - 1]?.trim() === "") lines.pop();
+  return lines.length === 0 ? "" : `${lines.join("\r\n")}\r\n`;
 }
 
 function formatIssued(value: Date): string {
@@ -336,6 +338,32 @@ function formatIssued(value: Date): string {
  * a lower cut drops those pixels and the printed letters break apart.
  */
 export const INK_THRESHOLD = 208;
+
+/** Drops blank rows outside a 10-dot margin. Ink rows are kept, including the first and last. */
+export function trimVerticalMargin(
+  data: number[],
+  width: number,
+  height: number,
+  keep = 10,
+): { data: number[]; height: number } {
+  const rowBytes = Math.ceil(width / 8);
+  if (rowBytes === 0 || height === 0 || data.length !== rowBytes * height) return { data, height };
+  const inkAt = (row: number) => {
+    const start = row * rowBytes;
+    return data.slice(start, start + rowBytes).some((byte) => byte !== 0);
+  };
+  let first = 0;
+  let last = height - 1;
+  while (first <= last && !inkAt(first)) first += 1;
+  while (last >= first && !inkAt(last)) last -= 1;
+  if (first > last) return { data, height };
+  const top = Math.max(0, first - keep);
+  const bottom = Math.min(height - 1, last + keep);
+  return {
+    data: data.slice(top * rowBytes, (bottom + 1) * rowBytes),
+    height: bottom - top + 1,
+  };
+}
 
 /** RGBA pixels to packed 1-bit rows (MSB first, 1 = black), the layout ESC/POS GS v 0 expects. */
 export function packBits(rgba: Uint8ClampedArray, width: number, height: number, threshold = INK_THRESHOLD): number[] {

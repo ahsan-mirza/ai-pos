@@ -635,7 +635,9 @@ fn http_date_to_iso(value: &str) -> Option<String> {
 
 pub(crate) fn client() -> Result<reqwest::blocking::Client, String> {
     reqwest::blocking::Client::builder()
+        .connect_timeout(Duration::from_secs(3))
         .timeout(Duration::from_secs(20))
+        .pool_idle_timeout(Duration::from_secs(30))
         .build()
         .map_err(|err| err.to_string())
 }

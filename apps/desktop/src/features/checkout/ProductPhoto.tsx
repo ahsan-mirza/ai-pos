@@ -1,9 +1,9 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { displayPhoto, mediaSrc, subscribePhotos } from "./productImages";
+import { displayPhoto, subscribePhotos } from "./productImages";
 
 /** A product photo. The card is already showing the name and price; the picture fills in when it arrives. */
 export function ProductPhoto({ src, className = "" }: { src: string | null | undefined; className?: string }) {
-  const [shown, setShown] = useState<string | null>(src ? mediaSrc(src) : null);
+  const [shown, setShown] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
   const [ready, setReady] = useState(false);
   const [revision, setRevision] = useState(0);
@@ -15,13 +15,11 @@ export function ProductPhoto({ src, className = "" }: { src: string | null | und
       setShown(null);
       return;
     }
-    setShown(mediaSrc(src));
-  }, [src]);
-  useEffect(() => {
-    if (!src) return;
+    // Wait for the on-disk file. Setting the remote address first makes every card
+    // download its photo from the server even when this register already has it.
     let cancelled = false;
     void displayPhoto(src).then((url) => {
-      if (!cancelled) setShown((current) => (current === url ? current : url));
+      if (!cancelled) setShown(url);
     });
     return () => {
       cancelled = true;

@@ -350,8 +350,18 @@ pub fn cashier_directory(db: &Db, config: &DesktopConfig) -> Result<Vec<CashierC
             let _ = sync_cashier_verifiers(db, config);
             Ok(cards)
         }
-        Err(true) => Ok(db.list_cashier_directory(&scope)?.into_iter().map(CashierCard::from).collect()),
-        Err(false) => Err("The register could not load cashiers.".into()),
+        Err(unreachable) => {
+            let cached = db.list_cashier_directory(&scope)?;
+            if !cached.is_empty() {
+                // A refusal or a slow server must not hide cashiers this register already saved.
+                return Ok(cached.into_iter().map(CashierCard::from).collect());
+            }
+            if unreachable {
+                Ok(Vec::new())
+            } else {
+                Err("The register could not load cashiers.".into())
+            }
+        }
     }
 }
 
@@ -365,7 +375,8 @@ fn directory_scope(config: &DesktopConfig) -> String {
 
 fn remote_cashiers(config: &DesktopConfig) -> Result<Vec<CashierCard>, bool> {
     let Ok(client) = reqwest::blocking::Client::builder()
-        .timeout(Duration::from_secs(8))
+        .connect_timeout(Duration::from_secs(2))
+        .timeout(Duration::from_secs(3))
         .build()
     else {
         return Err(true);
