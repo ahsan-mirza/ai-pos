@@ -43,10 +43,13 @@ export interface Catalog {
   unchanged?: boolean;
 }
 
-/** A failed refresh keeps the products already on screen. A successful empty catalogue is a real empty catalogue. */
+/** A failed refresh keeps the products already on screen and stays silent. A successful empty catalogue is a real empty catalogue. */
 export function mergeCatalog(current: readonly ProductUpsert[], next: Catalog): Catalog {
   if (next.products.length === 0 && next.message && current.length > 0) {
-    return { products: [...current], source: "cache", message: next.message };
+    return { products: [...current], source: "cache", message: null };
+  }
+  if (next.products.length > 0 && next.message === OFFLINE_NOTICE) {
+    return { ...next, message: null };
   }
   return next;
 }
@@ -121,7 +124,7 @@ async function fetchCatalog(): Promise<Catalog> {
       catalog = {
         products,
         source: snapshot.source === "api" ? "api" : "cache",
-        message: snapshot.source === "api" ? null : products.length > 0 ? OFFLINE_NOTICE : UNAVAILABLE_NOTICE,
+        message: snapshot.source === "api" || products.length > 0 ? null : UNAVAILABLE_NOTICE,
       };
     }
   } else {
@@ -132,7 +135,7 @@ async function fetchCatalog(): Promise<Catalog> {
     } catch {
       const cached = readRemembered();
       catalog = cached
-        ? { products: cached, source: "cache", message: OFFLINE_NOTICE }
+        ? { products: cached, source: "cache", message: null }
         : { products: [], source: "cache", message: UNAVAILABLE_NOTICE };
     }
   }

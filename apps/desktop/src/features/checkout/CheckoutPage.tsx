@@ -539,10 +539,14 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
       }
       setCatalog((current) => mergeCatalog(current.products, next));
     } catch (error) {
-      setCatalog((current) => ({
-        ...current,
-        message: error instanceof Error ? error.message : "Could not load products.",
-      }));
+      setCatalog((current) =>
+        current.products.length > 0
+          ? { ...current, message: null }
+          : {
+              ...current,
+              message: error instanceof Error ? error.message : "Could not load products.",
+            },
+      );
     } finally {
       setSyncingCatalog(false);
       setCatalogLoaded(true);
@@ -2021,14 +2025,6 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
             );
           })()}
 
-          {catalog.message && catalog.products.length > 0 ? (
-            <p className="rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-200" role="status">
-              {catalog.message}{" "}
-              <button type="button" className="font-semibold underline" onClick={() => void reloadCatalog()}>
-                Retry
-              </button>
-            </p>
-          ) : null}
           {!catalogLoaded && catalog.products.length === 0 ? <CatalogSkeleton density={density} view={catalogueView} /> : null}
           {catalogLoaded && visibleHits.length === 0 && !searching ? (
             <div className="rounded-2xl border border-dashed border-zinc-300 px-4 py-5 text-center text-sm text-zinc-500 dark:border-zinc-700 dark:text-zinc-400">

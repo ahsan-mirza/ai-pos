@@ -13,7 +13,7 @@ describe("checkout catalogue loading", () => {
     expect(withoutBundledDemo([demo, real]).map((row) => row.name)).toEqual(["Basmati Rice 5kg"]);
   });
 
-  it("keeps the current catalogue when a refresh fails with nothing new", () => {
+  it("keeps the current catalogue when a refresh fails and does not raise a banner", () => {
     const current = [product("real-1", "Basmati Rice 5kg")];
     const next = mergeCatalog(current, {
       products: [],
@@ -21,7 +21,18 @@ describe("checkout catalogue loading", () => {
       message: "Unable to refresh the catalogue. Showing the last synchronized products.",
     });
     expect(next.products).toEqual(current);
-    expect(next.message).toContain("last synchronized");
+    expect(next.message).toBeNull();
+  });
+
+  it("drops the offline refresh notice when the last products are still on screen", () => {
+    const current = [product("real-1", "Basmati Rice 5kg")];
+    const next = mergeCatalog(current, {
+      products: current,
+      source: "cache",
+      message: "Unable to refresh the catalogue. Showing the last synchronized products.",
+    });
+    expect(next.products).toEqual(current);
+    expect(next.message).toBeNull();
   });
 
   it("accepts a successful empty catalogue", () => {
