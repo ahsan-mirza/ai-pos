@@ -178,6 +178,13 @@ export function blockPharmacyOfflineSale(pharmacyCatalog: boolean, offline: bool
   return PHARMACY_OFFLINE_SALE;
 }
 
+/** A committed local sale stays completed. Sync status is only a label for the outbox. */
+export function settleLocalSale(status: string | null | undefined, error?: string | null): ChargeOutcome {
+  if (status === "synced") return { kind: "recorded" };
+  const detail = error && status && status !== "pending" ? ` Sync will retry (${error}).` : "";
+  return { kind: "queued", message: `Saved on this register. It will sync when the server is reachable.${detail}` };
+}
+
 export async function submitCharge(batch: ChargeBatch): Promise<ChargeOutcome> {
   if (inTauri()) {
     const blocked = chargeGate(await resolveGate());
@@ -186,13 +193,9 @@ export async function submitCharge(batch: ChargeBatch): Promise<ChargeOutcome> {
       await enqueueBatch(batch.batchId, batch.events);
       batch.enqueued = true;
     }
-    const report = await flushSync();
-    const status = await batchStatus(batch.batchId);
-    if (status?.status === "synced") return { kind: "recorded" };
-    if (status?.status === "rejected") {
-      return { kind: "rejected", message: status.error ?? "The API rejected the sale." };
-    }
-    return { kind: "queued", message: report.message };
+    const status = await batchStatus(batch.batchId).catch(() => null);
+    void flushSync().catch(() => undefined);
+    return settleLocalSale(status?.status, status?.error ?? null);
   }
 
   const blocked = chargeGate(await resolveGate());

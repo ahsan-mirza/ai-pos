@@ -1224,7 +1224,7 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
       setLastReceipt({ doc: receipt, saleId: savedSaleId });
       showThanks(`${receipt.number} · ${formatMoney(receipt.totalCents, currency)}`);
       setReceiptOutput("combined");
-      await kickDrawerForCashSale(takesCash, false, { load: loadPrinter, kick: openCashDrawer });
+      await kickDrawerForCashSale(takesCash, false, { load: loadPrinter, kick: openCashDrawer }).catch(() => undefined);
       setNotice(message);
       const prompt = buildReceiptPrompt(
         {
@@ -1259,21 +1259,23 @@ export function CheckoutPage({ session }: CheckoutPageProps) {
         setSettlement(null);
         setTipCents(0);
       }
-      if (outcome.kind === "recorded") {
+      if (outcome.kind === "recorded" || outcome.kind === "queued") {
+        const saved =
+          outcome.kind === "recorded"
+            ? summary + invoice + einvoiceNote
+            : `${summary}${invoice} Saved on this register. It will sync when the server is reachable.${einvoiceNote}`;
         resetSale();
-        await askForReceipt(summary + invoice + einvoiceNote, "recorded");
-        await reloadCatalog();
+        try {
+          await askForReceipt(saved, outcome.kind);
+          await reloadCatalog();
+        } catch {
+          setNotice(`${saved} The receipt or drawer could not run. The sale is saved.`);
+        }
       } else if (outcome.kind === "rejected") {
         batchRef.current = null;
         setNotice(`Sale not recorded: ${outcome.message}`);
         setChargeError(`Sale not recorded: ${outcome.message}`);
         await reloadCatalog();
-      } else if (outcome.kind === "queued") {
-        resetSale();
-        await askForReceipt(
-          `Saved on this register but not in Postgres yet.${invoice} It will sync when the API is reachable. (${outcome.message})${einvoiceNote}`,
-          "queued",
-        );
       } else {
         setNotice(`Sale not recorded: ${outcome.message} Charge again to retry.`);
         setChargeError(`Sale not recorded: ${outcome.message} Charge again to retry.`);
